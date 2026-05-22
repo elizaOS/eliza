@@ -153,7 +153,7 @@ workloads:
         sha256: ee8980e961e4efd58a88d82de918d5d402563efd526f3fb0dc92b887e99808f4
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
-        sha256: b14277505787e7794c115d51346baee554843cc2ff60ff1d9d0886e5c89c587c
+        sha256: 7db6e90a4f8e97bc8661fc22a8a2d9993d98912e5dcec5eea646bb143af1b301
         role: runtime
     input_shape:
       input: tiny_mlp_test_fixture
@@ -176,10 +176,10 @@ workloads:
     license_status: local_project_fixture
     artifacts:
       - path: compiler/quantization/awq_int4.py
-        sha256: fd48274a16bd6cacaf7009a99f4be90ccf33c640fcfe6a64d66436ac104c37bf
+        sha256: 57e9589674ee0fd5d222a73769ee3368efcd7cf8fda0da1230bdf500c6a2071a
         role: awq_calibrator
       - path: compiler/quantization/gptq_int4.py
-        sha256: 37fd5bfef5b67987df036390d60ac53330a9bbc2ed173db3ef234beb3be0ea97
+        sha256: 4309d2b3ef1d5237fde826ec4da23d26f7e274bb84e13a9f01a75e0647cee654
         role: gptq_calibrator
       - path: compiler/quantization/tests/test_awq_int4_mlp_e2e.py
         sha256: 3a70d4cf8b50632b6e8f50d47b44446c2b1c0bfa321253859d7de215e707ee5f

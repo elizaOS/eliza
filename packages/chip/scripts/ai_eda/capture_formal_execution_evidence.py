@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -113,11 +113,22 @@ def summarize_strict_attempts(work_root: Path) -> tuple[list[dict[str, Any]], li
             continue
         status_path = attempt_dir / "status"
         log_path = attempt_dir / "logfile.txt"
-        status_text = status_path.read_text(encoding="utf-8", errors="ignore") if status_path.is_file() else ""
-        log_text = log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+        status_text = (
+            status_path.read_text(encoding="utf-8", errors="ignore")
+            if status_path.is_file()
+            else ""
+        )
+        log_text = (
+            log_path.read_text(encoding="utf-8", errors="ignore") if log_path.is_file() else ""
+        )
         error_markers = [
             marker
-            for marker in ("ERROR", "Traceback", "BrokenPipeError", "Engine terminated without status")
+            for marker in (
+                "ERROR",
+                "Traceback",
+                "BrokenPipeError",
+                "Engine terminated without status",
+            )
             if marker in f"{status_text}\n{log_text}"
         ]
         attempt = {
@@ -192,14 +203,19 @@ def main() -> int:
 
     entry_summary, entry_blockers = summarize_entries(manifest)
     blockers.extend(entry_blockers)
-    strict_attempts, strict_attempt_blockers = summarize_strict_attempts(repo_path(str(args.strict_work_root)))
+    strict_attempts, strict_attempt_blockers = summarize_strict_attempts(
+        repo_path(str(args.strict_work_root))
+    )
     blockers.extend(strict_attempt_blockers)
     mode = str(manifest.get("mode")) if isinstance(manifest, dict) else None
     strict_ready = (
         isinstance(manifest, dict)
         and manifest.get("mode") == "sby-deep-top"
         and entry_summary
-        and all(item["status"] == "pass" and str(item["evidence_class"]).startswith("sby") for item in entry_summary)
+        and all(
+            item["status"] == "pass" and str(item["evidence_class"]).startswith("sby")
+            for item in entry_summary
+        )
     )
     if strict_ready and not blockers:
         status = "STRICT_FORMAL_EVIDENCE_READY"
@@ -214,7 +230,7 @@ def main() -> int:
     artifacts.update(strict_attempt_artifacts(strict_attempts))
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

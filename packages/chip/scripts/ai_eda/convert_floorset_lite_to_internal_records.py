@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -67,7 +67,7 @@ def tensor_summary(value: Any) -> dict[str, Any]:
 
 def load_case(data_path: Path, label_path: Path) -> tuple[list[Any], list[Any]]:
     try:
-        import torch  # type: ignore
+        import torch
     except Exception as exc:  # noqa: BLE001
         raise SystemExit(
             "FloorSet conversion requires a Python environment with torch; "
@@ -273,7 +273,7 @@ def main() -> int:
             )
     report = {
         "schema": "eliza.ai_eda.floorset_lite_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "source_revision": REVISION,

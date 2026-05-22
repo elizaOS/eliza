@@ -12,7 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/floorset_lite_splits/validation/split_manifest.json"
 EXPECTED_SCHEMA = "eliza.ai_eda.floorset_lite_split_manifest.v1"
-EXPECTED_CLAIM_BOUNDARY = "floorset_lite_split_manifest_training_only_no_e1_signoff_or_release_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "floorset_lite_split_manifest_training_only_no_e1_signoff_or_release_claim"
+)
 REQUIRED_SPLITS = {"train", "val", "test"}
 
 

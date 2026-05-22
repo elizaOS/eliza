@@ -80,9 +80,7 @@ def test_all_named_generators_emit_events():
 
 def test_python_default_geometry_tracks_rtl_package():
     """The MPKI sweep must evaluate the production RTL geometry by default."""
-    pkg_values = _parse_rtl_geometry(
-        (ROOT / "rtl/cpu/bpu/bpu_pkg.sv").read_text(encoding="utf-8")
-    )
+    pkg_values = _parse_rtl_geometry((ROOT / "rtl/cpu/bpu/bpu_pkg.sv").read_text(encoding="utf-8"))
     shared = {
         "BIM_ENTRIES",
         "BIM_CTR_W",

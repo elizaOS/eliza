@@ -35,7 +35,7 @@ VENV_PYTHON := $(VENV)/bin/python
 BENCH_PYTHON := $(if $(wildcard $(VENV_PYTHON)),$(VENV_PYTHON),$(PYTHON))
 COCOTB_PYTHON ?= $(shell if [ -x "$(VENV_PYTHON)" ] && "$(VENV_PYTHON)" -c "import cocotb" >/dev/null 2>&1; then printf '%s' "$(VENV_PYTHON)"; else command -v "$(PYTHON)" || printf '%s' "$(PYTHON)"; fi)
 RTL_TOP := e1_chip_top
-RTL_SRCS := rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
+RTL_SRCS := rtl/top/e1_soc_pkg.sv rtl/peripherals/e1_mmio_decode.sv rtl/peripherals/e1_clint.sv rtl/memory/e1_behavioral_dram.sv rtl/top/e1_chip_top.sv rtl/clock/e1_reset_sync.sv rtl/debug/e1_dbg_mmio_bridge.sv rtl/top/e1_soc_top.sv rtl/bootrom/e1_bootrom.sv rtl/dma/e1_dma.sv rtl/npu/e1_npu.sv rtl/display/e1_display.sv rtl/peripherals/e1_peripherals.sv rtl/cpu/e1_cpu_subsystem_stub.sv rtl/interconnect/e1_axi_lite_interconnect.sv rtl/memory/e1_axi_lite_dram.sv rtl/memory/e1_weight_buffer_sram.sv rtl/interrupts/e1_interrupt_controller.sv rtl/interconnect/e1_linux_soc_contract.sv
 BUILD := build
 
 .PHONY: ci-release-evidence evidence-regression-test formal-fast formal-strict openlane-orchestration-test physical-gates-test pipeline-check-strict strict-release-gate-test
@@ -1533,7 +1533,7 @@ software-bsp-test:
 	@$(PYTHON) scripts/test_software_bsp_evidence.py
 	@$(PYTHON) scripts/test_software_bsp_scope.py
 
-evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
+evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test synth verilator formal cocotb cocotb-npu cocotb-contract cocotb-cpu cocotb-cross-domain record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
 .PHONY: ai-eda-source-inventory-check ai-eda-ai-workload-manifest-check ai-eda-assertion-candidate-manifests-check ai-eda-external-method-wrapper-readiness-check ai-eda-external-assets-check ai-eda-external-intake-check \
@@ -1664,7 +1664,7 @@ ai-eda-mlcad-fpga-macro-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/records
 	@$(PYTHON) scripts/ai_eda/check_mlcad_2023_fpga_macro_conversion.py --report build/ai_eda/mlcad_2023_fpga_macro/$(AI_EDA_RUN_ID)/conversion_report.json
 
-ai-eda-floorplanning-dataset-readiness: ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest ai-eda-r-zoo-split-manifest ai-eda-r-zoo-license-review
+ai-eda-floorplanning-dataset-readiness: ai-eda-floorset-license-review ai-eda-floorset-hf-archive-manifest
 	@$(PYTHON) scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id $(AI_EDA_RUN_ID)
 	@$(PYTHON) scripts/ai_eda/check_floorplanning_dataset_readiness.py --report build/ai_eda/floorplanning_dataset_readiness/$(AI_EDA_RUN_ID)/floorplanning_dataset_readiness.json
 

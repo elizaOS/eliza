@@ -36,8 +36,7 @@ _ENGINE_DECL = re.compile(r"summary: (engine_\d+) \(([^)]*)\) (.+)$")
 # "SBY 6:21:27 [task] DONE (PASS, rc=0)"
 _DONE = re.compile(r"DONE \((PASS|FAIL|ERROR|UNKNOWN|TIMEOUT)[,)]")
 
-_PASS_VERDICTS = ("returned pass", "returned pass for basecase",
-                  "returned pass for induction")
+_PASS_VERDICTS = ("returned pass", "returned pass for basecase", "returned pass for induction")
 
 
 @dataclass
@@ -105,15 +104,16 @@ def evaluate(result: TaskResult) -> list[str]:
         if not ev.passed:
             problems.append(
                 f"{result.name}: overall PASS but {ev.engine} "
-                f"({ev.solver}) did not pass — verdict: \"{ev.verdict}\""
+                f'({ev.solver}) did not pass — verdict: "{ev.verdict}"'
             )
     return problems
 
 
 def default_targets() -> list[Path]:
     base = ROOT / "verify/formal"
-    return sorted(p / "logfile.txt" for p in base.iterdir()
-                  if p.is_dir() and (p / "logfile.txt").is_file())
+    return sorted(
+        p / "logfile.txt" for p in base.iterdir() if p.is_dir() and (p / "logfile.txt").is_file()
+    )
 
 
 def main(argv: list[str]) -> int:

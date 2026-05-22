@@ -7,7 +7,7 @@ import argparse
 import json
 import urllib.error
 import urllib.request
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -165,7 +165,7 @@ def provenance_by_source() -> dict[str, dict[str, Any]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument("--timeout-seconds", type=float, default=8.0)
     parser.add_argument("--limit", type=int, default=0, help="optional source limit for debugging")
@@ -204,7 +204,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.external_source_probe.v1",
         "run_id": args.run_id,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "mode": "metadata_probe",
         "status": "PROBED_WITH_RELEASE_USE_BLOCKED",
         "claim_boundary": CLAIM_BOUNDARY,

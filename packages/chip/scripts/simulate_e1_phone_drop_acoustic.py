@@ -44,6 +44,7 @@ Writes:
   mechanical/e1-phone/review/drop-acoustic-simulation.md
   mechanical/e1-phone/review/drop-impact-curve.png
 """
+
 from __future__ import annotations
 
 import json
@@ -116,9 +117,7 @@ def load_mass_g() -> tuple[float, float]:
 # ===========================================================================
 # PART A - DROP
 # ===========================================================================
-def hertz_contact_stiffness(
-    *, e_eff_pa: float, radius_m: float
-) -> float:
+def hertz_contact_stiffness(*, e_eff_pa: float, radius_m: float) -> float:
     """Hertzian contact: nonlinear stiffness k such that F = k * delta^1.5 for a
     sphere (radius_m) pressing a flat. k_hertz = (4/3) * E* * sqrt(R).
 
@@ -264,7 +263,9 @@ def drop_orientation(
         radius_m = contact_radius_mm * 1e-3
         imp = hertz_impact(mass_kg=mass_kg, v_impact=v_impact, e_eff_pa=e_eff, radius_m=radius_m)
     else:
-        imp = linear_structural_impact(mass_kg=mass_kg, v_impact=v_impact, k_lin_n_per_m=k_lin_n_per_m)
+        imp = linear_structural_impact(
+            mass_kg=mass_kg, v_impact=v_impact, k_lin_n_per_m=k_lin_n_per_m
+        )
 
     checks: dict[str, Any] = {}
 
@@ -296,7 +297,9 @@ def drop_orientation(
         # Informational peak Hertz contact pressure (local yielding expected).
         patch_r_mm = imp["contact_patch_radius_m"] * 1e3
         patch_area_mm2 = math.pi * patch_r_mm**2
-        peak_pressure_mpa = (imp["peak_force_n"] / (patch_area_mm2 * 1e-6)) / 1e6 if patch_area_mm2 > 0 else 0.0
+        peak_pressure_mpa = (
+            (imp["peak_force_n"] / (patch_area_mm2 * 1e-6)) / 1e6 if patch_area_mm2 > 0 else 0.0
+        )
         checks["enclosure_corner"] = {
             "criterion": "impact_energy_vs_notched_izod",
             "ligament_mm": ligament_mm,
@@ -330,7 +333,11 @@ def drop_orientation(
         # plate bending. Glass is very strong in compression; the failure mode is
         # the small in-plane tensile component, modeled as the spread-load
         # bending of a fully-supported plate with a LARGE contact patch.
-        patch_m = (glass_contact_patch_mm * 1e-3) if glass_contact_patch_mm else screen_half_mm * 0.5 * 1e-3
+        patch_m = (
+            (glass_contact_patch_mm * 1e-3)
+            if glass_contact_patch_mm
+            else screen_half_mm * 0.5 * 1e-3
+        )
         # Rim inset: the cover glass top sits glass_rim_inset_mm below the molded
         # bezel rim crown, so on a flat face drop the PC+ABS rim contacts the floor
         # first and crushes/flexes before the glass is loaded. The rim is a much
@@ -345,7 +352,9 @@ def drop_orientation(
         # Fraction of the peak contact force that reaches the glass after the rim
         # takes the first-contact share over its inset travel (energy partition of
         # a series rim spring + glass-stack spring; deeper inset => more rim share).
-        rim_relief = dmax_mm / (dmax_mm + 2.0 * rim_engage_mm) if (dmax_mm + rim_engage_mm) > 0 else 1.0
+        rim_relief = (
+            dmax_mm / (dmax_mm + 2.0 * rim_engage_mm) if (dmax_mm + rim_engage_mm) > 0 else 1.0
+        )
         force_into_glass = imp["peak_force_n"] * rim_relief
         glass_stress_pa = glass_plate_bending_stress(
             force_n=force_into_glass,
@@ -387,9 +396,7 @@ def drop_orientation(
         # A flat face drop is normal-dominated (compression into the backing);
         # only a small in-plane component shears the perimeter PSA.
         bond_shear_frac = 0.05  # [ASSUMED] in-plane share on a flat-face drop
-        bond_shear_mpa = (
-            (imp["peak_force_n"] * bond_shear_frac) / (bond_area_mm2 * 1e-6) / 1e6
-        )
+        bond_shear_mpa = (imp["peak_force_n"] * bond_shear_frac) / (bond_area_mm2 * 1e-6) / 1e6
         bond_sf = PSA_SHEAR_STRENGTH_MPA / bond_shear_mpa if bond_shear_mpa > 0 else math.inf
         checks["display_bond"] = {
             "bond_area_mm2": round(bond_area_mm2, 1),
@@ -486,23 +493,38 @@ def run_drop(params: dict[str, Any], mass_g: float) -> dict[str, Any]:
     # giving a few-ms pulse and a few-hundred G; we take 1.5e6 N/m [ASSUMED] for
     # the screen-down face and a stiffer 2.5e6 N/m for the bare back wall.
     k_face_screen = 1.5e6  # [ASSUMED] N/m, cushioned glass+display+frame stack
-    k_face_back = 2.5e6    # [ASSUMED] N/m, stiffer molded back wall
+    k_face_back = 2.5e6  # [ASSUMED] N/m, stiffer molded back wall
     # Edge line contact: a rounded edge fillet, Hertz with a small radius.
     edge_r = 1.5  # [ASSUMED] mm edge/fillet radius (1.15 mm wall + corner break)
 
     # (name, regime, contact_radius_mm, k_lin, body_E, body_nu, bearing_area_mm2,
     #  glass_patch_mm, is_screen_face)
     specs = [
-        ("front_face_screen_down", "linear", 0.0, k_face_screen, GLASS_E_GPA,
-         GLASS_NU, face_area_xy * 0.6, screen_half_mm * 0.5, True),
-        ("back_face_flat", "linear", 0.0, k_face_back, PCABS_E_GPA, PCABS_NU,
-         face_area_xy * 0.6, None, False),
-        ("long_edge", "hertzian", edge_r, 0.0, PCABS_E_GPA, PCABS_NU,
-         0.0, None, False),
-        ("short_edge_bottom", "hertzian", edge_r, 0.0, PCABS_E_GPA, PCABS_NU,
-         0.0, None, False),
-        ("corner", "hertzian", corner_r, 0.0, PCABS_E_GPA, PCABS_NU,
-         0.0, None, False),
+        (
+            "front_face_screen_down",
+            "linear",
+            0.0,
+            k_face_screen,
+            GLASS_E_GPA,
+            GLASS_NU,
+            face_area_xy * 0.6,
+            screen_half_mm * 0.5,
+            True,
+        ),
+        (
+            "back_face_flat",
+            "linear",
+            0.0,
+            k_face_back,
+            PCABS_E_GPA,
+            PCABS_NU,
+            face_area_xy * 0.6,
+            None,
+            False,
+        ),
+        ("long_edge", "hertzian", edge_r, 0.0, PCABS_E_GPA, PCABS_NU, 0.0, None, False),
+        ("short_edge_bottom", "hertzian", edge_r, 0.0, PCABS_E_GPA, PCABS_NU, 0.0, None, False),
+        ("corner", "hertzian", corner_r, 0.0, PCABS_E_GPA, PCABS_NU, 0.0, None, False),
     ]
 
     results = []
@@ -572,8 +594,12 @@ def sealed_box_speaker(chamber_mm3: float) -> dict[str, Any]:
     return {
         "model": "thiele_small_sealed_box",
         "ts_params": {
-            "Re_ohm": re, "fs_hz": fs, "Qts": qts, "Vas_cc": vas_cc,
-            "sensitivity_1w_10cm_db": sens_1w_10cm, "rated_w": rated_w,
+            "Re_ohm": re,
+            "fs_hz": fs,
+            "Qts": qts,
+            "Vas_cc": vas_cc,
+            "sensitivity_1w_10cm_db": sens_1w_10cm,
+            "rated_w": rated_w,
         },
         "box_volume_cc": round(vb_cc, 4),
         "system_resonance_fc_hz": round(fc, 1),
@@ -761,14 +787,23 @@ def acoustic_leak(speaker: dict[str, Any], params: dict[str, Any]) -> dict[str, 
 # ===========================================================================
 def plot_impact(drop: dict[str, Any]) -> Path:
     fig, ax = plt.subplots(figsize=(8, 5))
-    colors = {"front_face_screen_down": "tab:blue", "back_face_flat": "tab:green",
-              "long_edge": "tab:purple", "short_edge_bottom": "tab:olive",
-              "corner": "tab:red"}
+    colors = {
+        "front_face_screen_down": "tab:blue",
+        "back_face_flat": "tab:green",
+        "long_edge": "tab:purple",
+        "short_edge_bottom": "tab:olive",
+        "corner": "tab:red",
+    }
     for o in drop["orientations"]:
         imp = o["_impact"]
         t_ms, g = half_sine_pulse(o["peak_g"], imp["contact_time_s"])
-        ax.plot(t_ms, g, lw=2, color=colors.get(o["orientation"], "gray"),
-                label=f"{o['orientation']} ({o['peak_g']:.0f} G, {o['contact_time_ms']:.2f} ms)")
+        ax.plot(
+            t_ms,
+            g,
+            lw=2,
+            color=colors.get(o["orientation"], "gray"),
+            label=f"{o['orientation']} ({o['peak_g']:.0f} G, {o['contact_time_ms']:.2f} ms)",
+        )
     ax.set_xlabel("Contact time (ms)")
     ax.set_ylabel("Deceleration (G)")
     ax.set_title("E1 phone 1.0 m drop - Hertzian impact deceleration (half-sine)")
@@ -798,9 +833,11 @@ def render_md(result: dict[str, Any], png: Path) -> str:
     L.append("# E1 phone drop + acoustic physics simulation")
     L.append("")
     L.append(f"- evidence_class: `{result['evidence_class']}`")
-    L.append("- This retires the residual lab acoustic + drop test to a "
-             "**verified-confident simulation** level. No physical drop tower, "
-             "anechoic chamber, or B&K mic was used.")
+    L.append(
+        "- This retires the residual lab acoustic + drop test to a "
+        "**verified-confident simulation** level. No physical drop tower, "
+        "anechoic chamber, or B&K mic was used."
+    )
     L.append(f"- params: `{result['params_source']}`")
     L.append(f"- mass budget: `{result['mass_source']}`")
     L.append(f"- impact deceleration plot: `{png.relative_to(ROOT)}`")
@@ -816,34 +853,44 @@ def render_md(result: dict[str, Any], png: Path) -> str:
     # PART A
     L.append("## Part A - Drop (analytical impact mechanics)")
     L.append("")
-    L.append(f"- Drop height: {d['drop_height_m']} m -> impact velocity "
-             f"v = sqrt(2 g h) = **{d['impact_velocity_m_s']} m/s**.")
-    L.append(f"- Device mass: {d['mass_g']} g. Coefficient of restitution "
-             f"{d['restitution']} (hard plastic on hard tile).")
+    L.append(
+        f"- Drop height: {d['drop_height_m']} m -> impact velocity "
+        f"v = sqrt(2 g h) = **{d['impact_velocity_m_s']} m/s**."
+    )
+    L.append(
+        f"- Device mass: {d['mass_g']} g. Coefficient of restitution "
+        f"{d['restitution']} (hard plastic on hard tile)."
+    )
     L.append(f"- Survive criterion: safety factor >= {d['safety_factor_target']}.")
     L.append("")
-    L.append("Two physically distinct contact regimes are used. **Flat faces** "
-             "land conformally and the slab + internal stack acts as a linear "
-             "cushioning spring: (1/2) m v^2 = (1/2) k dmax^2, F = v sqrt(m k), "
-             "tc = pi sqrt(m/k). **Edges and corners** are rounded Hertzian "
-             "contacts: F = k_H delta^1.5 with (1/2) m v^2 = (2/5) k_H dmax^2.5, "
-             "k_H = (4/3) E* sqrt(R), and tc = 3.218 (m^2/(k_H^2 v))^(1/5) "
-             "(Goldsmith / Johnson, Contact Mechanics). Per-element failure modes: "
-             "cover glass = fully-backed plate back-face tensile stress vs "
-             "strengthened-glass flexural strength (Roark central-patch bending); "
-             "enclosure corner/edge = impact energy vs notched-Izod toughness "
-             "(local Hertzian surface yielding is expected and absorbs energy, so "
-             "a static stress-vs-yield comparison is not the fracture criterion "
-             "for a ductile notched part); display bond = perimeter PSA shear; "
-             "screw bosses = battery+PCB inertial shear (rigid-coupling worst case).")
+    L.append(
+        "Two physically distinct contact regimes are used. **Flat faces** "
+        "land conformally and the slab + internal stack acts as a linear "
+        "cushioning spring: (1/2) m v^2 = (1/2) k dmax^2, F = v sqrt(m k), "
+        "tc = pi sqrt(m/k). **Edges and corners** are rounded Hertzian "
+        "contacts: F = k_H delta^1.5 with (1/2) m v^2 = (2/5) k_H dmax^2.5, "
+        "k_H = (4/3) E* sqrt(R), and tc = 3.218 (m^2/(k_H^2 v))^(1/5) "
+        "(Goldsmith / Johnson, Contact Mechanics). Per-element failure modes: "
+        "cover glass = fully-backed plate back-face tensile stress vs "
+        "strengthened-glass flexural strength (Roark central-patch bending); "
+        "enclosure corner/edge = impact energy vs notched-Izod toughness "
+        "(local Hertzian surface yielding is expected and absorbs energy, so "
+        "a static stress-vs-yield comparison is not the fracture criterion "
+        "for a ductile notched part); display bond = perimeter PSA shear; "
+        "screw bosses = battery+PCB inertial shear (rigid-coupling worst case)."
+    )
     L.append("")
-    L.append("| Orientation | Peak G | Peak force (N) | Contact (ms) | Governing element | SF | Survives |")
+    L.append(
+        "| Orientation | Peak G | Peak force (N) | Contact (ms) | Governing element | SF | Survives |"
+    )
     L.append("|---|---|---|---|---|---|---|")
     for o in d["orientations"]:
-        L.append(f"| {o['orientation']} | {o['peak_g']} | {o['peak_force_n']} | "
-                 f"{o['contact_time_ms']} | {o['governing_element']} | "
-                 f"{o['governing_safety_factor']} | "
-                 f"{'YES' if o['survives'] else '**NO**'} |")
+        L.append(
+            f"| {o['orientation']} | {o['peak_g']} | {o['peak_force_n']} | "
+            f"{o['contact_time_ms']} | {o['governing_element']} | "
+            f"{o['governing_safety_factor']} | "
+            f"{'YES' if o['survives'] else '**NO**'} |"
+        )
     L.append("")
     L.append("### Per-element governing check (worst orientation per element)")
     L.append("")
@@ -858,18 +905,36 @@ def render_md(result: dict[str, Any], png: Path) -> str:
                     demand = f"{c['local_energy_j']} J"
                     capacity = f"{c['izod_capacity_j']} J (Izod)"
                 else:
-                    stress = next((c[k] for k in (
-                        "tensile_stress_mpa", "bending_stress_mpa",
-                        "bearing_stress_mpa", "shear_stress_mpa") if k in c), None)
-                    strength = next((c[k] for k in (
-                        "flex_strength_mpa", "yield_strength_mpa",
-                        "shear_strength_mpa") if k in c), None)
+                    stress = next(
+                        (
+                            c[k]
+                            for k in (
+                                "tensile_stress_mpa",
+                                "bending_stress_mpa",
+                                "bearing_stress_mpa",
+                                "shear_stress_mpa",
+                            )
+                            if k in c
+                        ),
+                        None,
+                    )
+                    strength = next(
+                        (
+                            c[k]
+                            for k in (
+                                "flex_strength_mpa",
+                                "yield_strength_mpa",
+                                "shear_strength_mpa",
+                            )
+                            if k in c
+                        ),
+                        None,
+                    )
                     demand = f"{stress} MPa"
                     capacity = f"{strength} MPa"
                 seen[elem] = (sf, demand, capacity, c["survives"])
     for elem, (sf, demand, capacity, surv) in seen.items():
-        L.append(f"| {elem} | {demand} | {capacity} | {sf} | "
-                 f"{'YES' if surv else '**NO**'} |")
+        L.append(f"| {elem} | {demand} | {capacity} | {sf} | {'YES' if surv else '**NO**'} |")
     L.append("")
     if result["drop_recommendations"]:
         L.append("### Recommendations")
@@ -884,49 +949,67 @@ def render_md(result: dict[str, Any], png: Path) -> str:
     sp = a["speaker"]
     L.append("### Bottom speaker (1115, sealed-box Thiele-Small)")
     L.append("")
-    L.append(f"- Rear chamber Vb = {sp['box_volume_cc']} cc. T-S: fs={sp['ts_params']['fs_hz']} Hz, "
-             f"Qts={sp['ts_params']['Qts']}, Vas={sp['ts_params']['Vas_cc']} cc, "
-             f"sensitivity {sp['ts_params']['sensitivity_1w_10cm_db']} dB @1W/10cm.")
-    L.append(f"- System resonance fc = fs*sqrt(1+Vas/Vb) = **{sp['system_resonance_fc_hz']} Hz**, "
-             f"Qtc = {sp['system_Qtc']}, low-freq -3 dB = {sp['low_freq_minus3db_hz']} Hz.")
-    L.append(f"- SPL @1W/10cm = **{sp['spl_1w_10cm_db']} dB** (target {sp['target_spl_db']} dB) -> "
-             f"{'PASS' if sp['meets_target'] else 'FAIL'}.")
+    L.append(
+        f"- Rear chamber Vb = {sp['box_volume_cc']} cc. T-S: fs={sp['ts_params']['fs_hz']} Hz, "
+        f"Qts={sp['ts_params']['Qts']}, Vas={sp['ts_params']['Vas_cc']} cc, "
+        f"sensitivity {sp['ts_params']['sensitivity_1w_10cm_db']} dB @1W/10cm."
+    )
+    L.append(
+        f"- System resonance fc = fs*sqrt(1+Vas/Vb) = **{sp['system_resonance_fc_hz']} Hz**, "
+        f"Qtc = {sp['system_Qtc']}, low-freq -3 dB = {sp['low_freq_minus3db_hz']} Hz."
+    )
+    L.append(
+        f"- SPL @1W/10cm = **{sp['spl_1w_10cm_db']} dB** (target {sp['target_spl_db']} dB) -> "
+        f"{'PASS' if sp['meets_target'] else 'FAIL'}."
+    )
     L.append(f"- {sp['note']}")
     L.append("")
     ep = a["earpiece"]
     L.append("### Earpiece (1206 receiver)")
     L.append("")
-    L.append(f"- SPL at ear reference = **{ep['spl_ear_reference_db']} dB** "
-             f"({ep['reference']}); target {ep['target_spl_db']} dB -> "
-             f"{'PASS' if ep['meets_target'] else 'FAIL'}.")
+    L.append(
+        f"- SPL at ear reference = **{ep['spl_ear_reference_db']} dB** "
+        f"({ep['reference']}); target {ep['target_spl_db']} dB -> "
+        f"{'PASS' if ep['meets_target'] else 'FAIL'}."
+    )
     L.append(f"- {ep['note']}")
     L.append("")
     gr = a["grille_helmholtz"]
     L.append("### Grille / port Helmholtz")
     L.append("")
-    L.append(f"- Resonance = **{gr['resonance_hz']} Hz** (port {gr['port_open_area_mm2']} mm^2, "
-             f"chamber {gr['chamber_volume_mm3']} mm^3); voiceband top {gr['voiceband_hz'][1]} Hz -> "
-             f"outside voiceband {'YES' if gr['outside_voiceband'] else '**NO**'}.")
+    L.append(
+        f"- Resonance = **{gr['resonance_hz']} Hz** (port {gr['port_open_area_mm2']} mm^2, "
+        f"chamber {gr['chamber_volume_mm3']} mm^3); voiceband top {gr['voiceband_hz'][1]} Hz -> "
+        f"outside voiceband {'YES' if gr['outside_voiceband'] else '**NO**'}."
+    )
     L.append(f"- {gr['note']}")
     L.append("")
     mc = a["mic"]
     L.append("### MEMS microphone")
     L.append("")
-    L.append(f"- SNR = **{mc['snr_dba']} dBA** (target {mc['target_snr_db']} dB) -> "
-             f"{'PASS' if mc['snr_meets_target'] else 'FAIL'}. AOP {mc['aop_db_spl']} dB SPL.")
-    L.append(f"- Sound-tunnel low-pass corner = {mc['tunnel_lowpass_corner_hz']} Hz "
-             f"(tunnel {mc['tunnel_length_mm']} mm x {mc['tunnel_area_mm2']} mm^2) -> "
-             f"above 20 kHz audio band {'YES' if mc['tunnel_above_audio_band'] else '**NO**'}.")
+    L.append(
+        f"- SNR = **{mc['snr_dba']} dBA** (target {mc['target_snr_db']} dB) -> "
+        f"{'PASS' if mc['snr_meets_target'] else 'FAIL'}. AOP {mc['aop_db_spl']} dB SPL."
+    )
+    L.append(
+        f"- Sound-tunnel low-pass corner = {mc['tunnel_lowpass_corner_hz']} Hz "
+        f"(tunnel {mc['tunnel_length_mm']} mm x {mc['tunnel_area_mm2']} mm^2) -> "
+        f"above 20 kHz audio band {'YES' if mc['tunnel_above_audio_band'] else '**NO**'}."
+    )
     L.append(f"- {mc['note']}")
     L.append("")
     lk = a["leak"]
     L.append("### Acoustic leak (gasket compression set)")
     L.append("")
-    L.append(f"- Residual slit {lk['residual_slit_um']} um over {lk['seal_perimeter_mm']} mm seal -> "
-             f"leak area {lk['leak_area_mm2']} mm^2.")
-    L.append(f"- Leak corner f_leak = {lk['leak_corner_f_leak_hz']} Hz vs box corner "
-             f"fc = {lk['box_corner_fc_hz']} Hz. LF SPL loss = **{lk['lf_spl_loss_db']} dB** -> "
-             f"{'PASS' if lk['acceptable'] else 'FAIL'}.")
+    L.append(
+        f"- Residual slit {lk['residual_slit_um']} um over {lk['seal_perimeter_mm']} mm seal -> "
+        f"leak area {lk['leak_area_mm2']} mm^2."
+    )
+    L.append(
+        f"- Leak corner f_leak = {lk['leak_corner_f_leak_hz']} Hz vs box corner "
+        f"fc = {lk['box_corner_fc_hz']} Hz. LF SPL loss = **{lk['lf_spl_loss_db']} dB** -> "
+        f"{'PASS' if lk['acceptable'] else 'FAIL'}."
+    )
     L.append(f"- {lk['note']}")
     L.append("")
 
@@ -939,31 +1022,43 @@ def render_md(result: dict[str, Any], png: Path) -> str:
 
     L.append("## What a real lab would confirm")
     L.append("")
-    L.append("- **Drop tower (e.g. Lansmont / instrumented free-fall rig)**: "
-             "high-G accelerometer on the device confirms peak G and contact "
-             "time per orientation; high-speed video confirms the impact "
-             "kinematics; post-drop inspection confirms glass/enclosure/bond "
-             "survival. Replaces the Hertzian energy-balance estimate with "
-             "measured deceleration pulses.")
-    L.append("- **Anechoic / semi-anechoic chamber + B&K measurement mic**: "
-             "1 m / 10 cm SPL frequency sweep on the speaker confirms SPL@1W/10cm, "
-             "fc, and the low-frequency rolloff; an IEC 60318 ear simulator "
-             "confirms the earpiece ear-reference SPL. Replaces the T-S sealed-box "
-             "and receiver-typical numbers with measured response curves.")
-    L.append("- **Impedance/excursion sweep (Klippel or LMS)**: measures the real "
-             "T-S parameters (fs, Qts, Vas, Bl, Mms) that this model assumed.")
-    L.append("- **Acoustic leak / SPL-delta test**: gasket compression vs sealed "
-             "SPL confirms the <3 dB low-frequency leak budget and gasket "
-             "compression-set over life.")
-    L.append("- **Mic SNR / AOP bench (B&K pistonphone + reference)**: confirms "
-             "datasheet SNR through the molded tunnel + mesh and the acoustic "
-             "overload point.")
+    L.append(
+        "- **Drop tower (e.g. Lansmont / instrumented free-fall rig)**: "
+        "high-G accelerometer on the device confirms peak G and contact "
+        "time per orientation; high-speed video confirms the impact "
+        "kinematics; post-drop inspection confirms glass/enclosure/bond "
+        "survival. Replaces the Hertzian energy-balance estimate with "
+        "measured deceleration pulses."
+    )
+    L.append(
+        "- **Anechoic / semi-anechoic chamber + B&K measurement mic**: "
+        "1 m / 10 cm SPL frequency sweep on the speaker confirms SPL@1W/10cm, "
+        "fc, and the low-frequency rolloff; an IEC 60318 ear simulator "
+        "confirms the earpiece ear-reference SPL. Replaces the T-S sealed-box "
+        "and receiver-typical numbers with measured response curves."
+    )
+    L.append(
+        "- **Impedance/excursion sweep (Klippel or LMS)**: measures the real "
+        "T-S parameters (fs, Qts, Vas, Bl, Mms) that this model assumed."
+    )
+    L.append(
+        "- **Acoustic leak / SPL-delta test**: gasket compression vs sealed "
+        "SPL confirms the <3 dB low-frequency leak budget and gasket "
+        "compression-set over life."
+    )
+    L.append(
+        "- **Mic SNR / AOP bench (B&K pistonphone + reference)**: confirms "
+        "datasheet SNR through the molded tunnel + mesh and the acoustic "
+        "overload point."
+    )
     L.append("")
     L.append("## Value legend")
     L.append("")
-    L.append("- `[PARAMS]` from `e1_phone_params.yaml`; `[MASS]` from "
-             "`mass-budget.json`; `[LIT]` literature/datasheet-typical material "
-             "or T-S value; `[ASSUMED]` engineering value chosen for EVT planning.")
+    L.append(
+        "- `[PARAMS]` from `e1_phone_params.yaml`; `[MASS]` from "
+        "`mass-budget.json`; `[LIT]` literature/datasheet-typical material "
+        "or T-S value; `[ASSUMED]` engineering value chosen for EVT planning."
+    )
     L.append("")
     return "\n".join(L)
 
@@ -995,8 +1090,10 @@ def main() -> None:
 
     # Worst-case drop summary.
     worst = max(drop["orientations"], key=lambda o: o["peak_g"])
-    glass = next((o["checks"]["cover_glass"] for o in drop["orientations"]
-                  if "cover_glass" in o["checks"]), None)
+    glass = next(
+        (o["checks"]["cover_glass"] for o in drop["orientations"] if "cover_glass" in o["checks"]),
+        None,
+    )
     any_drop_fail = any(not o["survives"] for o in drop["orientations"])
 
     # Recommendations: one per failing element type, citing the worst orientation.
@@ -1011,27 +1108,35 @@ def main() -> None:
         "cover_glass": (
             "inset the cover glass below a raised frame lip and add a compliant "
             "perimeter gasket so the frame, not the glass, takes corner/edge impact; "
-            "a 0.1-0.2 mm inset and edge cushioning lifts the glass SF above 1.5."),
+            "a 0.1-0.2 mm inset and edge cushioning lifts the glass SF above 1.5."
+        ),
         "enclosure_corner": (
             "add internal corner ribs / a TPU corner bumper to spread the contact "
-            "and absorb more impact energy at the corners and edges."),
+            "and absorb more impact energy at the corners and edges."
+        ),
         "display_bond": (
             "widen the perimeter PSA or add a structural foam dam to share the "
-            "in-plane impact share off the display bond."),
+            "in-plane impact share off the display bond."
+        ),
         "screw_boss": (
             "the boss check uses worst-case RIGID coupling of the battery+PCB to the "
             "deceleration; add a compliant battery retention shelf / foam preload and "
             "increase boss count or OD to cut the transmitted inertial shear (the "
-            "0.6 mm swell foam pad already softens this coupling in practice)."),
+            "0.6 mm swell foam pad already softens this coupling in practice)."
+        ),
     }
     recs: list[str] = []
     for elem, (sf, orient) in worst_fail.items():
-        recs.append(f"{elem} (worst {orient}, SF {sf} < {SAFETY_FACTOR_TARGET}): "
-                    f"{rec_text.get(elem, 'review element.')}")
+        recs.append(
+            f"{elem} (worst {orient}, SF {sf} < {SAFETY_FACTOR_TARGET}): "
+            f"{rec_text.get(elem, 'review element.')}"
+        )
     if not recs:
-        recs.append("All drop orientations clear the SF>=1.5 survive target with the "
-                    "current geometry; a drop-tower test should still confirm the "
-                    "corner orientation.")
+        recs.append(
+            "All drop orientations clear the SF>=1.5 survive target with the "
+            "current geometry; a drop-tower test should still confirm the "
+            "corner orientation."
+        )
 
     def vd(ok: bool) -> str:
         return "PASS" if ok else "FAIL"
@@ -1047,7 +1152,7 @@ def main() -> None:
         },
         "all_drop_orientations_survive": {
             "value": f"{sum(o['survives'] for o in drop['orientations'])}/"
-                     f"{len(drop['orientations'])} survive",
+            f"{len(drop['orientations'])} survive",
             "verdict": vd(not any_drop_fail),
         },
         "speaker_spl": {
@@ -1080,18 +1185,21 @@ def main() -> None:
             "low-frequency SPL (leak corner above the box corner). Tighten gasket "
             "compression-set control (closed-cell foam, higher preload) to keep the "
             "residual slit under ~10 um, which pushes the leak corner below fc and "
-            "the loss under 3 dB; confirm with a sealed-vs-leaking SPL-delta sweep.")
+            "the loss under 3 dB; confirm with a sealed-vs-leaking SPL-delta sweep."
+        )
     if not speaker["meets_target"]:
         acoustic_recs.append(
             f"speaker SPL {speaker['spl_1w_10cm_db']} dB is at/below the "
             f"{speaker['target_spl_db']} dB target: the 0.5 cc rear chamber limits "
             "output; enlarge the rear volume or select a higher-sensitivity 1115 "
-            "driver to clear 90 dB.")
+            "driver to clear 90 dB."
+        )
     if not acoustic_recs:
         acoustic_recs.append(
             "Speaker SPL, earpiece SPL, mic SNR, grille resonance, and tunnel "
             "rolloff all meet targets; an anechoic/coupler measurement should "
-            "confirm the assumed Thiele-Small and receiver values.")
+            "confirm the assumed Thiele-Small and receiver values."
+        )
 
     result = {
         "evidence_class": EVIDENCE_CLASS,
@@ -1118,14 +1226,18 @@ def main() -> None:
     md_path = REVIEW / "drop-acoustic-simulation.md"
     md_path.write_text(render_md(result, png))
 
-    print(f"worst-case drop: {worst['orientation']} {worst['peak_g']} G, "
-          f"governing {worst['governing_element']} SF {worst['governing_safety_factor']}, "
-          f"survives={worst['survives']}")
+    print(
+        f"worst-case drop: {worst['orientation']} {worst['peak_g']} G, "
+        f"governing {worst['governing_element']} SF {worst['governing_safety_factor']}, "
+        f"survives={worst['survives']}"
+    )
     if glass:
         print(f"cover glass SF {glass['safety_factor']} survives={glass['survives']}")
-    print(f"speaker SPL {speaker['spl_1w_10cm_db']} dB, "
-          f"earpiece {acoustic['earpiece']['spl_ear_reference_db']} dB, "
-          f"mic SNR {acoustic['mic']['snr_dba']} dBA")
+    print(
+        f"speaker SPL {speaker['spl_1w_10cm_db']} dB, "
+        f"earpiece {acoustic['earpiece']['spl_ear_reference_db']} dB, "
+        f"mic SNR {acoustic['mic']['snr_dba']} dBA"
+    )
     fails = [k for k, v in verdicts.items() if v["verdict"] == "FAIL"]
     print(f"FAILs: {fails if fails else 'none'}")
     print(f"wrote: {json_path}\n       {md_path}\n       {png}")

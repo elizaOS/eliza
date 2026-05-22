@@ -11,14 +11,16 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/verireason_rtl_datasets"
 SCHEMA = "eliza.ai_eda.verireason_rtl_dataset_manifest.v1"
-CLAIM_BOUNDARY = "verireason_rtl_dataset_manifest_training_only_no_rtl_execution_or_e1_signoff_claim"
+CLAIM_BOUNDARY = (
+    "verireason_rtl_dataset_manifest_training_only_no_rtl_execution_or_e1_signoff_claim"
+)
 
 DATASETS: tuple[dict[str, Any], ...] = (
     {
@@ -174,13 +176,13 @@ def capture_file(payload: Path, spec: dict[str, Any]) -> dict[str, Any]:
 def capture_dataset(spec: dict[str, Any]) -> dict[str, Any]:
     payload = repo_path(spec["payload"])
     revision_path = payload / ".hf_revision"
-    actual_revision = revision_path.read_text(encoding="utf-8").strip() if revision_path.is_file() else None
+    actual_revision = (
+        revision_path.read_text(encoding="utf-8").strip() if revision_path.is_file() else None
+    )
     files = [capture_file(payload, file_spec) for file_spec in spec["jsonl_files"]]
     readme = payload / "README.md"
     blockers = [
-        f"{item['filename']}: {','.join(item['errors'])}"
-        for item in files
-        if item["errors"]
+        f"{item['filename']}: {','.join(item['errors'])}" for item in files if item["errors"]
     ]
     if actual_revision != spec["revision"]:
         blockers.append("hf_revision_mismatch")
@@ -209,7 +211,9 @@ def capture_dataset(spec: dict[str, Any]) -> dict[str, Any]:
             "size_bytes": readme.stat().st_size if readme.is_file() else None,
             "sha256": sha256_file(readme),
         },
-        "status": "VERIFIED_TRAINING_ONLY_JSONL_PAYLOAD" if not blockers else "BLOCKED_INCOMPLETE_JSONL_PAYLOAD",
+        "status": "VERIFIED_TRAINING_ONLY_JSONL_PAYLOAD"
+        if not blockers
+        else "BLOCKED_INCOMPLETE_JSONL_PAYLOAD",
         "blockers": blockers,
     }
 
@@ -231,10 +235,12 @@ def main() -> int:
     ]
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
-        "status": "VERIFIED_VERIREASON_RTL_DATASETS" if not blockers else "BLOCKED_VERIREASON_RTL_DATASETS",
+        "status": "VERIFIED_VERIREASON_RTL_DATASETS"
+        if not blockers
+        else "BLOCKED_VERIREASON_RTL_DATASETS",
         "release_use_allowed": False,
         "training_use_allowed": not blockers,
         "rtl_execution_claim_allowed": False,

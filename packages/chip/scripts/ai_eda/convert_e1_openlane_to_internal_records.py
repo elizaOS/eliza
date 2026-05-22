@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -104,7 +104,8 @@ def macro_objects(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list[di
     for macro_name, macro in config.get("MACROS", {}).items():
         if not isinstance(macro, dict):
             continue
-        lef_paths = macro.get("lef") if isinstance(macro.get("lef"), list) else []
+        lef_paths_value = macro.get("lef")
+        lef_paths: list[Any] = lef_paths_value if isinstance(lef_paths_value, list) else []
         size = None
         size_source = None
         for lef_value in lef_paths:
@@ -116,7 +117,7 @@ def macro_objects(config: dict[str, Any]) -> tuple[list[dict[str, Any]], list[di
                 size_source = "lef"
                 break
         if size is None and macro_name in KNOWN_MACRO_SIZES_UM:
-            fallback = KNOWN_MACRO_SIZES_UM[macro_name]
+            fallback: dict[str, Any] = KNOWN_MACRO_SIZES_UM[macro_name]
             size = (float(fallback["width_um"]), float(fallback["height_um"]))
             size_source = str(fallback["source"])
         for inst_name, inst in macro.get("instances", {}).items():
@@ -285,7 +286,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=DEFAULT_CONFIG)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
 
 
@@ -306,7 +307,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.e1_openlane_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "config": rel(config_path),

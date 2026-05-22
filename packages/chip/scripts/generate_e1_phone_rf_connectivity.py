@@ -48,7 +48,9 @@ def flatten_net_groups(groups: dict[str, Any]) -> set[str]:
     return nets
 
 
-def keepout_audit(overlay_keepouts: dict[str, Any], cad_radio: dict[str, Any], board_bbox: dict[str, float]) -> dict[str, Any]:
+def keepout_audit(
+    overlay_keepouts: dict[str, Any], cad_radio: dict[str, Any], board_bbox: dict[str, float]
+) -> dict[str, Any]:
     """Geometric cad-estimate cross-check of routed antenna keepouts against the
     board outline and the CAD per-radio keepout envelopes. Not an EM solver."""
     board_w = float(board_bbox["width"])
@@ -92,8 +94,12 @@ def keepout_audit(overlay_keepouts: dict[str, Any], cad_radio: dict[str, Any], b
         "board_bbox_mm": {"width": board_w, "height": board_h},
         "device_envelope_mm": [78.0, 153.6, 11.8],
         "results": audit,
-        "all_keepouts_within_board_outline": all(item["routed_within_64x132_board_outline"] for item in audit),
-        "all_routed_lengths_bounded_by_board_edge": all(item["routed_clear_length_mm"] <= board_w for item in audit),
+        "all_keepouts_within_board_outline": all(
+            item["routed_within_64x132_board_outline"] for item in audit
+        ),
+        "all_routed_lengths_bounded_by_board_edge": all(
+            item["routed_clear_length_mm"] <= board_w for item in audit
+        ),
     }
 
 
@@ -161,9 +167,7 @@ def probe_em_solvers() -> dict[str, Any]:
     present so the artifact either carries an em_simulated tier or fails closed
     with a named tooling blocker -- it never fabricates S-parameters."""
     binaries = {name: shutil.which(name) for name in EM_SOLVER_BINARIES}
-    modules = {
-        name: bool(importlib.util.find_spec(name)) for name in EM_SOLVER_PY_MODULES
-    }
+    modules = {name: bool(importlib.util.find_spec(name)) for name in EM_SOLVER_PY_MODULES}
     found_binaries = sorted(name for name, path in binaries.items() if path)
     found_modules = sorted(name for name, present in modules.items() if present)
     return {
@@ -225,9 +229,21 @@ def build_em_simulation(probe: dict[str, Any], cad_params: dict[str, Any]) -> di
             "substrate_thickness_mm": thickness_mm,
             "enclosure_wall_thickness_mm": wall_mm,
             "feeds_to_model": [
-                {"net": "CELL_RF_MAIN", "bands_ghz": [0.617, 3.8], "geometry": "edge-slot PIFA in the cellular keepout"},
-                {"net": "WIFI_BT_RF0", "bands_ghz": [2.4, 7.125], "geometry": "side-edge PIFA in the wifi_bt keepout"},
-                {"net": "CELL_GNSS_RF", "bands_ghz": [1.559, 1.61], "geometry": "narrow L1 monopole/PIFA"},
+                {
+                    "net": "CELL_RF_MAIN",
+                    "bands_ghz": [0.617, 3.8],
+                    "geometry": "edge-slot PIFA in the cellular keepout",
+                },
+                {
+                    "net": "WIFI_BT_RF0",
+                    "bands_ghz": [2.4, 7.125],
+                    "geometry": "side-edge PIFA in the wifi_bt keepout",
+                },
+                {
+                    "net": "CELL_GNSS_RF",
+                    "bands_ghz": [1.559, 1.61],
+                    "geometry": "narrow L1 monopole/PIFA",
+                },
             ],
             "outputs": "simulated S11 (return loss) and total efficiency vs the module band plans, tagged em_simulated_not_chamber_measured with solver name+version and mesh/boundary assumptions",
         },
@@ -273,9 +289,21 @@ def build_plan_estimates(placements: dict[str, Any], cad_params: dict[str, Any])
             "module_center_separation_mm": module_center_separation_mm,
             "device_width_mm": float(cad_params["device"]["envelope_mm"][0]),
             "targets": [
-                {"pair": "cellular_main_to_cellular_diversity", "target_isolation_db_min": 10.0, "basis": "opposite-edge feeds in a 78 mm-wide enclosure"},
-                {"pair": "wifi_chain0_to_wifi_chain1", "target_isolation_db_min": 10.0, "basis": "2x2 MIMO chains, supplier-defined ECC requirement"},
-                {"pair": "wifi_to_cellular_main", "target_isolation_db_min": 12.0, "basis": "cross-radio coexistence in compact midframe"},
+                {
+                    "pair": "cellular_main_to_cellular_diversity",
+                    "target_isolation_db_min": 10.0,
+                    "basis": "opposite-edge feeds in a 78 mm-wide enclosure",
+                },
+                {
+                    "pair": "wifi_chain0_to_wifi_chain1",
+                    "target_isolation_db_min": 10.0,
+                    "basis": "2x2 MIMO chains, supplier-defined ECC requirement",
+                },
+                {
+                    "pair": "wifi_to_cellular_main",
+                    "target_isolation_db_min": 12.0,
+                    "basis": "cross-radio coexistence in compact midframe",
+                },
             ],
             "residual_measurement": "VNA S21 isolation matrix across all feed pairs on a routed board.",
         },
@@ -285,9 +313,21 @@ def build_plan_estimates(placements: dict[str, Any], cad_params: dict[str, Any])
             "back_wall_thickness_mm": wall_mm,
             "body_separation_basis": "flush-back 11.8 mm slab held against torso; no metal midframe over antenna keepouts keeps the radiating edges closest to the plastic wall",
             "exposure_states": [
-                {"state": "cellular_tx_max_against_body", "limit_standard": "FCC 1.6 W/kg 1g / CE 2.0 W/kg 10g", "status": "planning_estimate_requires_sar_lab"},
-                {"state": "cellular_tx_plus_wifi_tx", "limit_standard": "simultaneous-transmission SAR aggregation", "status": "planning_estimate_requires_sar_lab"},
-                {"state": "cellular_tx_plus_usb_c_charging", "limit_standard": "SAR with charging/thermal interaction", "status": "planning_estimate_requires_sar_lab"},
+                {
+                    "state": "cellular_tx_max_against_body",
+                    "limit_standard": "FCC 1.6 W/kg 1g / CE 2.0 W/kg 10g",
+                    "status": "planning_estimate_requires_sar_lab",
+                },
+                {
+                    "state": "cellular_tx_plus_wifi_tx",
+                    "limit_standard": "simultaneous-transmission SAR aggregation",
+                    "status": "planning_estimate_requires_sar_lab",
+                },
+                {
+                    "state": "cellular_tx_plus_usb_c_charging",
+                    "limit_standard": "SAR with charging/thermal interaction",
+                    "status": "planning_estimate_requires_sar_lab",
+                },
             ],
             "skin_temperature_coupling_c_max": max_skin_temp_c,
             "residual_measurement": "Near-field SAR scan in the final orange PC/ABS enclosure plastics with production antenna gains and modem transmit power; no SAR claim is permitted until measured.",
@@ -489,8 +529,16 @@ def main() -> int:
                 "case": "cellular_tx_vs_wifi_bt",
                 "radios_active": ["cellular_tx", "wifi_2p4_or_5_or_6_ghz", "bluetooth"],
                 "aggressor_victim": [
-                    {"aggressor": "cellular_tx_n7_n38_2500_2700_mhz", "victim": "wifi_bt_2p4_ghz", "mechanism": "adjacent-band blocking and intermod near the 2.4 GHz edge"},
-                    {"aggressor": "wifi_5_6_ghz_tx", "victim": "cellular_n77_n78_3300_3800_mhz", "mechanism": "out-of-band emission into NR mid-band"},
+                    {
+                        "aggressor": "cellular_tx_n7_n38_2500_2700_mhz",
+                        "victim": "wifi_bt_2p4_ghz",
+                        "mechanism": "adjacent-band blocking and intermod near the 2.4 GHz edge",
+                    },
+                    {
+                        "aggressor": "wifi_5_6_ghz_tx",
+                        "victim": "cellular_n77_n78_3300_3800_mhz",
+                        "mechanism": "out-of-band emission into NR mid-band",
+                    },
                 ],
                 "evidence_required": "conducted sensitivity/output-power delta and firmware coexistence log",
             },
@@ -498,7 +546,11 @@ def main() -> int:
                 "case": "cellular_tx_vs_gnss",
                 "radios_active": ["cellular_tx", "gnss_optional"],
                 "aggressor_victim": [
-                    {"aggressor": "cellular_tx_harmonics", "victim": "gnss_l1_1575_mhz", "mechanism": "modem TX harmonic/spur landing in the L1 receive band"},
+                    {
+                        "aggressor": "cellular_tx_harmonics",
+                        "victim": "gnss_l1_1575_mhz",
+                        "mechanism": "modem TX harmonic/spur landing in the L1 receive band",
+                    },
                 ],
                 "evidence_required": "GNSS C/N0 degradation and cellular harmonic/desense sweep",
             },
@@ -511,8 +563,16 @@ def main() -> int:
                     "cellular_diversity",
                 ],
                 "aggressor_victim": [
-                    {"aggressor": "wifi_2p4_ghz_2nd_harmonic_~4800_5000_mhz", "victim": "wifi_5_ghz_rx", "mechanism": "self-desense across MIMO chains"},
-                    {"aggressor": "wifi_2p4_ghz_2nd_harmonic", "victim": "gnss_l1_1575_mhz", "mechanism": "classic 2.4 GHz harmonic vs GNSS L1 desense path"},
+                    {
+                        "aggressor": "wifi_2p4_ghz_2nd_harmonic_~4800_5000_mhz",
+                        "victim": "wifi_5_ghz_rx",
+                        "mechanism": "self-desense across MIMO chains",
+                    },
+                    {
+                        "aggressor": "wifi_2p4_ghz_2nd_harmonic",
+                        "victim": "gnss_l1_1575_mhz",
+                        "mechanism": "classic 2.4 GHz harmonic vs GNSS L1 desense path",
+                    },
                 ],
                 "evidence_required": "VNA S21 isolation matrix and antenna efficiency report",
             },
@@ -525,7 +585,11 @@ def main() -> int:
                     "wifi_rx",
                 ],
                 "aggressor_victim": [
-                    {"aggressor": "usb_c_charging_switching_and_display_bias_boost", "victim": "gnss_l1_and_cellular_low_band_rx", "mechanism": "broadband conducted/radiated switching noise raising the receive noise floor"},
+                    {
+                        "aggressor": "usb_c_charging_switching_and_display_bias_boost",
+                        "victim": "gnss_l1_and_cellular_low_band_rx",
+                        "mechanism": "broadband conducted/radiated switching noise raising the receive noise floor",
+                    },
                 ],
                 "evidence_required": "noise-floor and packet-error-rate comparison with charger/display states toggled",
             },

@@ -206,8 +206,17 @@ selected_hardware_route_sequence:
       id: radio_rf_and_host_escape
       selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference_plus_Murata_LBEE5XV2EA-802
       placement_lock: U_CELL_and_U_WIFI_BT
-      corridor_constraints: [CELL_USB2_DP_DN, CELL_PCIE_TX, CELL_PCIE_RX, WIFI_PCIE_TX, WIFI_PCIE_RX, CELL_RF_MAIN,
-        CELL_RF_DIV, CELL_GNSS_RF, WIFI_BT_RF0, WIFI_BT_RF1]
+      corridor_constraints:
+        - CELL_USB2_DP_DN
+        - CELL_PCIE_TX
+        - CELL_PCIE_RX
+        - WIFI_PCIE_TX
+        - WIFI_PCIE_RX
+        - CELL_RF_MAIN
+        - CELL_RF_DIV
+        - CELL_GNSS_RF
+        - WIFI_BT_RF0
+        - WIFI_BT_RF1
       required_supplier_function: cellular_and_wifi_bluetooth
       required_before_route:
         - selected cellular branch, exact region SKU, pad map, reference layout, RF rules, and STEP model

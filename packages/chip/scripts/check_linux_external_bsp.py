@@ -220,16 +220,24 @@ def main(argv: list[str]) -> int:
     parser.add_argument("linux_tree", nargs="?")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--require-pass", action="store_true")
+    parser.add_argument(
+        "--report",
+        default=str(REPORT),
+        help=f"status report path (default: {rel(REPORT)})",
+    )
     args = parser.parse_args(argv)
 
+    report_path = Path(args.report).expanduser()
+    if not report_path.is_absolute():
+        report_path = ROOT / report_path
     report = build_report(candidate_linux_tree(args.linux_tree))
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         print(f"STATUS: {report['status'].upper()} linux.external_bsp_status")
-        print(f"  report: {rel(REPORT)}")
+        print(f"  report: {rel(report_path)}")
         for key, value in report["producer_commands"].items():
             print(f"  command.{key}: {value}")
         for blocker in report["blockers"]:

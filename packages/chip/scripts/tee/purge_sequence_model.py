@@ -52,8 +52,7 @@ class PurgeSequencer:
 
     def assert_can_cross(self) -> None:
         if not self.complete:
-            remaining = PURGE_STEPS[self._next_index:]
+            remaining = PURGE_STEPS[self._next_index :]
             raise PurgeError(
-                "boundary crossing blocked: purge incomplete, "
-                f"pending {', '.join(remaining)}"
+                f"boundary crossing blocked: purge incomplete, pending {', '.join(remaining)}"
             )

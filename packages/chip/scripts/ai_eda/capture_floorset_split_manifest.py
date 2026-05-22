@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -90,7 +90,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     conversion_run_id = args.conversion_run_id or args.run_id
-    conversion_path = ROOT / f"build/ai_eda/floorset_lite/{conversion_run_id}/conversion_report.json"
+    conversion_path = (
+        ROOT / f"build/ai_eda/floorset_lite/{conversion_run_id}/conversion_report.json"
+    )
     conversion = load_json(conversion_path)
     blockers: list[str] = []
     if conversion.get("schema") != CONVERSION_SCHEMA:
@@ -129,7 +131,7 @@ def main() -> int:
         blockers.append("split manifest must cover exactly 100 FloorSet Lite validation cases")
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
@@ -149,7 +151,9 @@ def main() -> int:
         },
         "summary": {
             "case_count": sum(len(cases) for cases in split_cases.values()),
-            "record_count": sum(case["record_count"] for cases in split_cases.values() for case in cases),
+            "record_count": sum(
+                case["record_count"] for cases in split_cases.values() for case in cases
+            ),
             "split_counts": {split: len(cases) for split, cases in split_cases.items()},
             "blocker_count": len(blockers),
         },

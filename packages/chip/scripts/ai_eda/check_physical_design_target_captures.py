@@ -10,7 +10,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 
-EXPECTED_REPORTS = {
+EXPECTED_REPORTS: dict[str, dict[str, Any]] = {
     "timing_closure": {
         "path": "build/ai_eda/timing_closure_targets/{run_id}/targets_report.json",
         "schema": "eliza.ai_eda.timing_closure_targets.v1",

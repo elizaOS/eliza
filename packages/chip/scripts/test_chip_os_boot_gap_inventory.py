@@ -122,13 +122,13 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                 },
             )
             write_json(report_dir / "linux_bsp_contract.json", {"status": "pass", "findings": []})
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, _ = inv.build_inventory(args)
         coverage = report["aggregate_gate_detail_coverage"][0]
         self.assertFalse(coverage["has_detailed_report"])
-        self.assertEqual(coverage["mismatched_detail_reports"], [str(report_dir / "linux_bsp_contract.json")])
+        self.assertEqual(
+            coverage["mismatched_detail_reports"], [str(report_dir / "linux_bsp_contract.json")]
+        )
         self.assertIn(
             "detail_report_mismatch_linux_bsp_contract_check",
             report["detailed_blocker_codes"],
@@ -141,11 +141,11 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             aggregate = root / "aggregate.json"
             report_dir = root / "reports"
             write_json(aggregate, {"gates": []})
-            write_json(report_dir / "a.json", {"status": "blocked", "blockers": ["AOSP boot absent"]})
-            write_json(report_dir / "b.json", {"status": "blocked", "reason": "No launcher trace"})
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
+            write_json(
+                report_dir / "a.json", {"status": "blocked", "blockers": ["AOSP boot absent"]}
             )
+            write_json(report_dir / "b.json", {"status": "blocked", "reason": "No launcher trace"})
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["detailed_blocker_entries"], 2)
@@ -193,9 +193,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     "summary": {"stale_reports": 1},
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["detailed_blocker_entries"], 0)
@@ -250,9 +248,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                 report_dir / "software_bsp.json",
                 {"status": "blocked", "findings": [{"code": "buildroot_log_missing"}]},
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, _ = inv.build_inventory(args)
         coverage = {row["name"]: row for row in report["aggregate_gate_detail_coverage"]}
         self.assertTrue(coverage["cpu-ap-completion-gate"]["has_detailed_report"])
@@ -290,9 +286,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     "findings": [{"code": "apk_missing_riscv64", "severity": "blocker"}],
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, _ = inv.build_inventory(args)
         coverage = report["aggregate_gate_detail_coverage"][0]
         self.assertEqual(coverage["source_script"], "scripts/check_android_app_runtime_contract.py")

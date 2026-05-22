@@ -7,9 +7,10 @@ import argparse
 import json
 import os
 import shutil
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPO = ROOT.parents[1]
@@ -44,35 +45,119 @@ class PathSpec:
 
 
 TOOLS = (
-    ToolSpec("qemu-system-riscv64", "run Linux/AOSP riscv64 virtual-device smoke tests", ("os_rv64_qemu_tooling", "aosp_qemu_boot")),
+    ToolSpec(
+        "qemu-system-riscv64",
+        "run Linux/AOSP riscv64 virtual-device smoke tests",
+        ("os_rv64_qemu_tooling", "aosp_qemu_boot"),
+    ),
     ToolSpec("renode", "run Renode-based AOSP/e1 SoC smoke evidence", ("aosp_renode_boot",)),
     ToolSpec("repo", "sync/import external AOSP checkout", ("aosp_checkout",)),
-    ToolSpec("adb", "capture launcher foreground, package, service, and health evidence", ("android_launcher_runtime",)),
-    ToolSpec("fastboot", "flash or validate Android release images where needed", ("android_release_validation",)),
-    ToolSpec("verilator", "build/run generated Chipyard Verilator AP simulator", ("generated_ap_linux_boot",)),
-    ToolSpec("java", "run AOSP/Android tooling and Tradefed style checks", ("aosp_build_and_cts_vts",)),
+    ToolSpec(
+        "adb",
+        "capture launcher foreground, package, service, and health evidence",
+        ("android_launcher_runtime",),
+    ),
+    ToolSpec(
+        "fastboot",
+        "flash or validate Android release images where needed",
+        ("android_release_validation",),
+    ),
+    ToolSpec(
+        "verilator",
+        "build/run generated Chipyard Verilator AP simulator",
+        ("generated_ap_linux_boot",),
+    ),
+    ToolSpec(
+        "java", "run AOSP/Android tooling and Tradefed style checks", ("aosp_build_and_cts_vts",)
+    ),
     ToolSpec("make", "run chip and OS bring-up targets", ("workflow",)),
 )
 
 ENVS = (
     EnvSpec("AOSP_DIR", "external AOSP checkout path", ("aosp_checkout", "aosp_build")),
-    EnvSpec("AOSP_QEMU_SMOKE_COMMAND", "target-specific command that actually boots AOSP in QEMU", ("aosp_qemu_boot",)),
-    EnvSpec("AOSP_RENODE_SMOKE_COMMAND", "target-specific command that actually boots AOSP in Renode", ("aosp_renode_boot",)),
-    EnvSpec("ELIZA_LINUX_TREE", "external Linux tree for BSP build evidence", ("linux_bsp_external_evidence",)),
-    EnvSpec("ELIZA_BUILDROOT_TREE", "external Buildroot tree for rootfs/image evidence", ("buildroot_external_evidence",)),
-    EnvSpec("ELIZA_OPENSBI_TREE", "external OpenSBI tree for firmware handoff evidence", ("opensbi_external_evidence",)),
-    EnvSpec("CHIPYARD_LINUX_BINARY", "payload used by Chipyard Verilator Linux smoke", ("generated_ap_linux_boot",)),
+    EnvSpec(
+        "AOSP_QEMU_SMOKE_COMMAND",
+        "target-specific command that actually boots AOSP in QEMU",
+        ("aosp_qemu_boot",),
+    ),
+    EnvSpec(
+        "AOSP_RENODE_SMOKE_COMMAND",
+        "target-specific command that actually boots AOSP in Renode",
+        ("aosp_renode_boot",),
+    ),
+    EnvSpec(
+        "ELIZA_LINUX_TREE",
+        "external Linux tree for BSP build evidence",
+        ("linux_bsp_external_evidence",),
+    ),
+    EnvSpec(
+        "ELIZA_BUILDROOT_TREE",
+        "external Buildroot tree for rootfs/image evidence",
+        ("buildroot_external_evidence",),
+    ),
+    EnvSpec(
+        "ELIZA_OPENSBI_TREE",
+        "external OpenSBI tree for firmware handoff evidence",
+        ("opensbi_external_evidence",),
+    ),
+    EnvSpec(
+        "CHIPYARD_LINUX_BINARY",
+        "payload used by Chipyard Verilator Linux smoke",
+        ("generated_ap_linux_boot",),
+    ),
 )
 
 PATHS = (
-    PathSpec("chipyard_checkout", "packages/chip/external/chipyard", "external Chipyard checkout", ("generated_ap_linux_boot",)),
-    PathSpec("os_rv64_iso", "packages/os/linux/elizaos/out/*riscv64*.iso", "built Linux RV64 live ISO", ("os_rv64_qemu_tooling",), glob=True),
-    PathSpec("os_rv64_out_writable", "packages/os/linux/elizaos/out", "OS output directory must be writable by the current user", ("os_rv64_build_regeneration",), writable=True),
-    PathSpec("chipyard_smoke_report", "packages/chip/build/reports/chipyard_verilator_linux_smoke.json", "generated AP Linux smoke report", ("generated_ap_linux_boot",)),
-    PathSpec("qemu_virt_smoke_report", "packages/chip/build/reports/qemu_virt_smoke.json", "OS qemu-virt smoke report", ("os_rv64_qemu_tooling",)),
-    PathSpec("android_launcher_runtime_evidence", "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json", "booted Android launcher/agent runtime evidence", ("android_launcher_runtime",)),
-    PathSpec("aosp_evidence_manifest", "packages/chip/sw/aosp-device/evidence_manifest.json", "AOSP chip evidence manifest", ("aosp_evidence_capture",)),
-    PathSpec("android_eliza_apk", "packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk", "Android Eliza privileged APK prebuilt", ("android_launcher_runtime", "android_agent_health")),
+    PathSpec(
+        "chipyard_checkout",
+        "packages/chip/external/chipyard",
+        "external Chipyard checkout",
+        ("generated_ap_linux_boot",),
+    ),
+    PathSpec(
+        "os_rv64_iso",
+        "packages/os/linux/elizaos/out/*riscv64*.iso",
+        "built Linux RV64 live ISO",
+        ("os_rv64_qemu_tooling",),
+        glob=True,
+    ),
+    PathSpec(
+        "os_rv64_out_writable",
+        "packages/os/linux/elizaos/out",
+        "OS output directory must be writable by the current user",
+        ("os_rv64_build_regeneration",),
+        writable=True,
+    ),
+    PathSpec(
+        "chipyard_smoke_report",
+        "packages/chip/build/reports/chipyard_verilator_linux_smoke.json",
+        "generated AP Linux smoke report",
+        ("generated_ap_linux_boot",),
+    ),
+    PathSpec(
+        "qemu_virt_smoke_report",
+        "packages/chip/build/reports/qemu_virt_smoke.json",
+        "OS qemu-virt smoke report",
+        ("os_rv64_qemu_tooling",),
+    ),
+    PathSpec(
+        "android_launcher_runtime_evidence",
+        "packages/chip/docs/evidence/android/eliza_launcher_runtime_evidence.json",
+        "booted Android launcher/agent runtime evidence",
+        ("android_launcher_runtime",),
+    ),
+    PathSpec(
+        "aosp_evidence_manifest",
+        "packages/chip/sw/aosp-device/evidence_manifest.json",
+        "AOSP chip evidence manifest",
+        ("aosp_evidence_capture",),
+    ),
+    PathSpec(
+        "android_eliza_apk",
+        "packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk",
+        "Android Eliza privileged APK prebuilt",
+        ("android_launcher_runtime", "android_agent_health"),
+    ),
 )
 
 
@@ -93,7 +178,9 @@ def finding(code: str, message: str, evidence: str, next_step: str) -> dict[str,
     }
 
 
-def check_tools(which: Callable[[str], str | None]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def check_tools(
+    which: Callable[[str], str | None],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     rows: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     for spec in TOOLS:

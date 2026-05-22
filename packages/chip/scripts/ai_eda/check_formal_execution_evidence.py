@@ -94,7 +94,10 @@ def validate(report: dict[str, Any]) -> list[str]:
             errors.append("non-strict evidence must not allow formal proof claim")
         if not report.get("blockers"):
             errors.append("non-strict evidence must list blockers")
-    if report.get("fallback_evidence_only") is True and report.get("strict_deep_formal_ready") is True:
+    if (
+        report.get("fallback_evidence_only") is True
+        and report.get("strict_deep_formal_ready") is True
+    ):
         errors.append("fallback evidence cannot also be strict deep formal")
     entries = report.get("entry_summary")
     if not isinstance(entries, list) or not entries:
@@ -112,7 +115,11 @@ def validate(report: dict[str, Any]) -> list[str]:
         if not isinstance(strict_attempts, list) or not strict_attempts:
             errors.append("engine-error status must include strict_attempt_summary")
         else:
-            if not any(item.get("has_error_marker") is True for item in strict_attempts if isinstance(item, dict)):
+            if not any(
+                item.get("has_error_marker") is True
+                for item in strict_attempts
+                if isinstance(item, dict)
+            ):
                 errors.append("engine-error status must include at least one failed strict attempt")
     elif strict_attempts is not None and not isinstance(strict_attempts, list):
         errors.append("strict_attempt_summary must be a list when present")

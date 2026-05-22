@@ -88,12 +88,8 @@ module uftb
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned s = 0; s < UFTB_SETS; s++) begin
-                for (int unsigned w = 0; w < UFTB_WAYS; w++) begin
-                    storage_q[s][w] <= '{valid:1'b0, tag:'0, next_pc:'0};
-                end
-                rr_ptr_q[s] <= '0;
-            end
+            storage_q <= '{default: '{default: '{valid:1'b0, tag:'0, next_pc:'0}}};
+            rr_ptr_q  <= '{default: '0};
             pmu_hit <= 1'b0;
         end else begin
             pmu_hit <= lkp_valid && lkp_hit;

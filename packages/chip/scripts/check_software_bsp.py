@@ -445,10 +445,54 @@ def check_boot_transcript_schema(errors: list[str]) -> None:
             errors.append(f"virtual-device smoke schema missing required field {field}")
 
 
+def active_aosp_hal_names(manifest_text: str) -> list[str]:
+    active_text = re.sub(r"<!--.*?-->", "", manifest_text, flags=re.DOTALL)
+    names: list[str] = []
+    for hal_block in re.findall(r"<hal(?:\s|>).*?</hal>", active_text, flags=re.DOTALL):
+        match = re.search(r"<name>\s*([^<\s]+)\s*</name>", hal_block)
+        names.append(match.group(1) if match else "<unnamed>")
+    return names
+
+
+def aosp_make_text_without_comments(device_text: str) -> str:
+    lines: list[str] = []
+    for line in device_text.splitlines():
+        lines.append(line.split("#", 1)[0])
+    return "\n".join(lines)
+
+
+def aosp_hal_source_files(device_root: Path, hal_name: str) -> list[Path]:
+    if hal_name == "vendor.eliza.e1_npu":
+        hal_root = device_root / "hal/e1_npu"
+        return [
+            hal_root / "Android.bp",
+            hal_root / "service.cpp",
+            hal_root / "E1Npu.cpp",
+            hal_root / "vendor.eliza.e1_npu@1.0-service.rc",
+            hal_root / "vendor.eliza.e1_npu@1.0-service.xml",
+        ]
+    if hal_name == "android.hardware.graphics.composer":
+        hal_root = device_root / "hal/hwcomposer"
+        return [
+            hal_root / "Android.bp",
+            hal_root / "service.cpp",
+            hal_root / "hwcomposer.cpp",
+            hal_root / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc",
+            hal_root / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml",
+        ]
+    return []
+
+
+def aosp_hal_source_available(device_root: Path, hal_name: str) -> bool:
+    source_files = aosp_hal_source_files(device_root, hal_name)
+    return bool(source_files) and all(path.is_file() for path in source_files)
+
+
 def check_aosp_product_glue(errors: list[str]) -> None:
-    product = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/AndroidProducts.mk"
-    board = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk"
-    manifest = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml"
+    device_root = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc"
+    product = device_root / "AndroidProducts.mk"
+    board = device_root / "BoardConfig.mk"
+    manifest = device_root / "manifest.xml"
     text = product.read_text(errors="ignore") if product.is_file() else ""
     lunch_choices = {
         "eliza_ai_soc-userdebug",
@@ -472,17 +516,37 @@ def check_aosp_product_glue(errors: list[str]) -> None:
                 errors.append(f"AOSP VINTF manifest missing XML marker {term}")
         if "</manifest>" not in manifest_text and "/>" not in manifest_text:
             errors.append("AOSP VINTF manifest is missing closing </manifest> marker")
-        active_text = re.sub(r"<!--.*?-->", "", manifest_text, flags=re.DOTALL)
-        if re.search(r"<hal(?:\s|>)", active_text):
+        active_hals_without_sources = [
+            name
+            for name in active_aosp_hal_names(manifest_text)
+            if not aosp_hal_source_available(device_root, name)
+        ]
+        if active_hals_without_sources:
             errors.append(
-                "AOSP VINTF manifest must not declare active HAL entries until source or prebuilts exist"
+                "AOSP VINTF manifest must not declare active HAL entries until source "
+                "or prebuilts exist: " + ", ".join(active_hals_without_sources)
             )
-    device = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/device.mk"
+    device = device_root / "device.mk"
     device_text = device.read_text(errors="ignore") if device.is_file() else ""
-    if "PRODUCT_PACKAGES +=" in device_text and (
-        "e1_npu.default" in device_text or "hwcomposer.eliza_ai_soc" in device_text
-    ):
-        errors.append("AOSP device.mk must not list HAL packages until source or prebuilts exist")
+    active_device_text = aosp_make_text_without_comments(device_text)
+    hal_package_sources = {
+        "e1_npu.default": "vendor.eliza.e1_npu",
+        "vendor.eliza.e1_npu@1.0-service": "vendor.eliza.e1_npu",
+        "android.hardware.graphics.composer@2.4-service.eliza_ai_soc": (
+            "android.hardware.graphics.composer"
+        ),
+        "hwcomposer.eliza_ai_soc": "android.hardware.graphics.composer",
+    }
+    hal_packages_without_sources = [
+        package
+        for package, hal_name in hal_package_sources.items()
+        if package in active_device_text and not aosp_hal_source_available(device_root, hal_name)
+    ]
+    if hal_packages_without_sources:
+        errors.append(
+            "AOSP device.mk must not list HAL packages until source or prebuilts exist: "
+            + ", ".join(hal_packages_without_sources)
+        )
     forbidden_feature_terms = [
         "android.hardware.camera",
         "android.hardware.audio",
@@ -745,7 +809,9 @@ def build_scaffold_report(
         for blocker in result["blockers"]:
             findings.append(
                 {
-                    "code": blocker_code(f"{name} {blocker}", "software_bsp_external_evidence_blocked"),
+                    "code": blocker_code(
+                        f"{name} {blocker}", "software_bsp_external_evidence_blocked"
+                    ),
                     "severity": "blocker",
                     "target": name,
                     "message": blocker,

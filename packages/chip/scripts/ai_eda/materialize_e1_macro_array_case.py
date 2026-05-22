@@ -34,7 +34,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/e1_macro_array_cases"
-DEFAULT_LEFDEF_MANIFEST = ROOT / "build/ai_eda/e1_macro_array_lefdef/validation/lefdef_manifest.json"
+DEFAULT_LEFDEF_MANIFEST = (
+    ROOT / "build/ai_eda/e1_macro_array_lefdef/validation/lefdef_manifest.json"
+)
 OPENLANE_CONFIG = ROOT / "pd/openlane/config.macro-array.sky130.json"
 DESIGN_BUNDLE_ID = "e1-macro-array-weight-buffer-design-bundle"
 PLACEMENT_CASE_ID = "e1-macro-array-weight-buffer-placement-case"
@@ -193,14 +195,11 @@ def build_records(
         },
         "replay": {
             "deterministic_command": (
-                "openlane --pdk-root external/pdks "
-                "pd/openlane/config.macro-array.sky130.json"
+                "openlane --pdk-root external/pdks pd/openlane/config.macro-array.sky130.json"
             ),
             "candidate_config_template": "pd/openlane/config.macro-array.sky130.json",
             "macro_placement_cfg_key": "MACRO_PLACEMENT_CFG",
-            "ppa_collector": (
-                "python3 scripts/ai_eda/collect_macro_array_post_route_ppa.py"
-            ),
+            "ppa_collector": ("python3 scripts/ai_eda/collect_macro_array_post_route_ppa.py"),
             "expected_report": "build/ai_eda/e1_macro_array_cases/validation/materialization_report.json",
         },
         "claim_boundary": CLAIM_BOUNDARY,
@@ -214,9 +213,7 @@ def build_records(
             "tools": ["openlane", "openroad"],
             "version_capture": "pd/openlane/config.macro-array.sky130.json",
         },
-        "command": (
-            "openlane --pdk-root external/pdks pd/openlane/config.macro-array.sky130.json"
-        ),
+        "command": ("openlane --pdk-root external/pdks pd/openlane/config.macro-array.sky130.json"),
         "inputs": {
             "design_bundle": DESIGN_BUNDLE_ID,
             "placement_case": PLACEMENT_CASE_ID,
@@ -266,16 +263,24 @@ def main() -> int:
         return 0
     manifest = load_json(args.lefdef_manifest)
     if manifest.get("status") != "GENERATED_MOVABLE_MACRO_LEFDEF":
-        path = write_blocked(out_dir, [f"lefdef manifest is not generated: {manifest.get('status')!r}"])
+        path = write_blocked(
+            out_dir, [f"lefdef manifest is not generated: {manifest.get('status')!r}"]
+        )
         print(f"STATUS: PASS_BLOCKED ai_eda.e1_macro_array_case blocked_lefdef {rel(path)}")
         return 0
 
     reference_cfg = next(
-        (variant["placement_cfg"] for variant in manifest["variants"] if variant["variant"] == REFERENCE_VARIANT),
+        (
+            variant["placement_cfg"]
+            for variant in manifest["variants"]
+            if variant["variant"] == REFERENCE_VARIANT
+        ),
         None,
     )
     if reference_cfg is None:
-        path = write_blocked(out_dir, [f"reference variant {REFERENCE_VARIANT} not in lefdef manifest"])
+        path = write_blocked(
+            out_dir, [f"reference variant {REFERENCE_VARIANT} not in lefdef manifest"]
+        )
         print(f"STATUS: PASS_BLOCKED ai_eda.e1_macro_array_case {rel(path)}")
         return 0
     reference_placement = parse_placement_cfg(ROOT / reference_cfg)

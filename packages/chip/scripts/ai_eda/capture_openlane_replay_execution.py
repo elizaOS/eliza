@@ -13,7 +13,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -203,11 +203,7 @@ def main() -> int:
         if item["status"] != "PRESENT":
             blockers.append(f"required artifact missing: {name}")
     artifacts.update(
-        {
-            name: artifact(path, False)
-            for name, path in optional.items()
-            if path is not None
-        }
+        {name: artifact(path, False) for name, path in optional.items() if path is not None}
     )
 
     metrics = load_json(required["metrics"])
@@ -258,7 +254,11 @@ def main() -> int:
                 if isinstance(item, dict)
             ]
     in_handoff = args.candidate_id in handoff_candidates
-    if args.replay_role == "candidate" and args.candidate_id not in queue_candidates and not in_handoff:
+    if (
+        args.replay_role == "candidate"
+        and args.candidate_id not in queue_candidates
+        and not in_handoff
+    ):
         blockers.append("candidate_id is not present in replay queue or handoff")
     preflight = load_json(required["replay_preflight"]) if "replay_preflight" in required else None
     if (
@@ -272,7 +272,7 @@ def main() -> int:
     status = "EXECUTED_REPLAY_EVIDENCE_READY" if not blockers else "BLOCKED_EXECUTION_EVIDENCE"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "replay_role": args.replay_role,
         "candidate_id": args.candidate_id,

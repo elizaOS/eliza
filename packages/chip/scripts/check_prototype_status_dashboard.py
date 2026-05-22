@@ -11,6 +11,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DASHBOARD = ROOT / "docs/project/prototype-status-dashboard.md"
 REPORT = ROOT / "build/reports/prototype_status_dashboard.json"
+VOLATILE_BUILD_OUTPUT_SUBSYSTEMS = {
+    "synthesis",
+    "cocotb",
+    "verilator",
+    "formal",
+    "qemu",
+    "renode",
+    "benchmarks",
+    "release-pipeline",
+}
 
 
 def write_report(status: str, findings: list[dict[str, str]]) -> None:
@@ -90,12 +100,59 @@ def normalize_cell(value: str) -> str:
     return " ".join(value.split())
 
 
+def conservative_snapshot_allowed(
+    subsystem: str,
+    status: dict[str, str],
+    row: dict[str, str],
+) -> bool:
+    """Allow source docs to stay conservative after local build artifacts appear."""
+
+    if subsystem not in VOLATILE_BUILD_OUTPUT_SUBSYSTEMS:
+        return False
+
+    dashboard_status = normalize_cell(row.get("Status", ""))
+    dashboard_evidence = normalize_cell(row.get("Evidence class", ""))
+    current_status = str(status.get("status", "")).upper()
+    current_evidence = str(status.get("evidence_class", ""))
+
+    if (
+        current_status == "PASS"
+        and current_evidence == "generated_artifact"
+        and dashboard_status == "BLOCK"
+        and dashboard_evidence in {"tool_blocker", "regen_required", "scaffold_only"}
+    ):
+        return True
+
+    if (
+        current_status == "BLOCK"
+        and dashboard_status == "BLOCK"
+        and current_evidence in {"tool_blocker", "regen_required"}
+        and dashboard_evidence in {"tool_blocker", "regen_required", "scaffold_only"}
+    ):
+        return True
+
+    return (
+        subsystem == "formal"
+        and current_status == "BLOCK"
+        and current_evidence == "formal_fallback"
+        and dashboard_status == "BLOCK"
+        and dashboard_evidence in {"tool_blocker", "regen_required"}
+    )
+
+
 def main() -> int:
     if not DASHBOARD.is_file():
         message = f"missing dashboard: {DASHBOARD.relative_to(ROOT)}"
         write_report(
             "fail",
-            [blocker("prototype_dashboard_missing", message, str(DASHBOARD), "Restore the prototype status dashboard.")],
+            [
+                blocker(
+                    "prototype_dashboard_missing",
+                    message,
+                    str(DASHBOARD),
+                    "Restore the prototype status dashboard.",
+                )
+            ],
         )
         print(message)
         return 1
@@ -172,6 +229,8 @@ def main() -> int:
             "Evidence class": status["evidence_class"],
             "Next action": status["next_step"],
         }
+        if conservative_snapshot_allowed(subsystem, status, row):
+            continue
         for column, expected_value in expected.items():
             observed = normalize_cell(row.get(column, ""))
             if observed != normalize_cell(expected_value):

@@ -235,7 +235,9 @@ def evaluate_requirement(req: Requirement, report_dir: Path) -> dict[str, Any]:
         proof_state = BLOCKED
     elif req.static_only:
         proof_state = WEAK
-        findings.append("static contract passes but does not prove runtime boot, launcher, or agent liveness")
+        findings.append(
+            "static contract passes but does not prove runtime boot, launcher, or agent liveness"
+        )
     else:
         proof_state = PROVEN
 

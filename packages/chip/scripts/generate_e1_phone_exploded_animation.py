@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import trimesh
@@ -195,7 +196,7 @@ def color_for(name: str) -> tuple[int, int, int, int]:
 
 
 # --------------------------------------------------------------- build GLB
-def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
+def build_animated_glb(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> None:
     """Author an animated GLB with translation keyframes per part node."""
     import pygltflib as pg
     from pygltflib import (
@@ -377,7 +378,7 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
 
 
 # ----------------------------------------------------------- render mp4
-def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
+def render_mp4(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> tuple[str, float]:
     """Render 12s turntable with explode-hold-reassemble-hold timing.
 
     Returns (renderer_label, seconds_elapsed).
@@ -410,11 +411,11 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
 
     # build base meshes once with colors
     base_meshes: dict[str, trimesh.Trimesh] = {}
-    for p in parts:
-        g = scene.geometry[p["name"]].copy()
-        c = color_for(p["name"])
+    for part in parts:
+        g = scene.geometry[part["name"]].copy()
+        c = color_for(part["name"])
         g.visual = trimesh.visual.ColorVisuals(g, vertex_colors=np.tile(c, (len(g.vertices), 1)))
-        base_meshes[p["name"]] = g
+        base_meshes[part["name"]] = g
 
     # camera target = centroid
     target = np.array([0.0, 0.0, 0.0])
@@ -436,7 +437,9 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
     fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=1.5)
     rim = pyrender.DirectionalLight(color=np.ones(3), intensity=1.8)
 
-    key_frame_times = {round(x * 0.5, 2) for x in range(int(TURNTABLE_S / 0.5) + 1)}
+    key_frame_times: list[float] = [
+        float(round(x * 0.5, 2)) for x in range(int(TURNTABLE_S / 0.5) + 1)
+    ]
 
     for fi in range(n_frames):
         if fi > 0 and fi % RENDERER_CHUNK == 0:
@@ -447,11 +450,11 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
             bg_color=np.array([0.22, 0.22, 0.24, 1.0]), ambient_light=np.array([0.28, 0.28, 0.30])
         )
         # add parts with displaced positions
-        for p in parts:
-            offset = part_offset(t, p["dir"], p["ring"])
+        for part in parts:
+            offset = part_offset(t, part["dir"], part["ring"])
             T = np.eye(4)
             T[:3, 3] = offset
-            mesh = pyrender.Mesh.from_trimesh(base_meshes[p["name"]], smooth=False)
+            mesh = pyrender.Mesh.from_trimesh(base_meshes[part["name"]], smooth=False)
             pyscene.add(mesh, pose=T)
 
         # camera orbit
@@ -489,9 +492,16 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
         img = Image.fromarray(color)
         img.save(FRAMES_DIR / f"frame_{fi:04d}.png")
         # also save keyframe copy
-        tr = round(t, 2)
+        tr = float(round(t, 2))
         if any(abs(tr - kt) < (1.0 / FPS) / 2 for kt in key_frame_times):
-            kt = round(min(key_frame_times, key=lambda x: abs(x - tr)), 1)
+            nearest_key = key_frame_times[0]
+            nearest_delta = abs(nearest_key - tr)
+            for frame_time in key_frame_times[1:]:
+                delta = abs(float(frame_time) - tr)
+                if delta < nearest_delta:
+                    nearest_key = frame_time
+                    nearest_delta = delta
+            kt = round(nearest_key, 1)
             img.save(FRAMES_DIR / f"keyframe_t{kt:04.1f}s.png")
     renderer.delete()
     elapsed = time.time() - t0
@@ -535,9 +545,9 @@ def verify_glb(path: Path) -> dict:
 # --------------------------------------------------------------- main
 def main() -> int:
     print(f"[load] {ASM_GLB}")
-    scene = trimesh.load(str(ASM_GLB), force="scene")
+    scene = cast(trimesh.Scene, trimesh.load(str(ASM_GLB), force="scene"))
     manifest = json.loads(MANIFEST.read_text())
-    parts = []
+    parts: list[dict[str, Any]] = []
     for entry in manifest:
         name = entry["name"]
         if name not in scene.geometry:

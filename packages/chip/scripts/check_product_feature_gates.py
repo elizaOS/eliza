@@ -359,7 +359,9 @@ def check_security_scope_gate(failures: list[str]) -> None:
 
 def code_from_text(text: str) -> str:
     cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
-    return "_".join(part for part in cleaned.split("_") if part)[:96] or "product_feature_gate_failure"
+    return (
+        "_".join(part for part in cleaned.split("_") if part)[:96] or "product_feature_gate_failure"
+    )
 
 
 def write_report(failures: list[str]) -> None:

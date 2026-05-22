@@ -152,7 +152,9 @@ def validate_asset(asset: Any) -> list[str]:
         if profile.get("available") is not True:
             errors.append(f"{asset_id}: fetched payload must have a schema profile")
         if profile.get("lite_validation_config_count") != 100:
-            errors.append(f"{asset_id}: schema profile must identify 100 LiteTensorDataTest configs")
+            errors.append(
+                f"{asset_id}: schema profile must identify 100 LiteTensorDataTest configs"
+            )
         if profile.get("lite_validation_data_file_count") != 100:
             errors.append(f"{asset_id}: schema profile must identify 100 validation data tensors")
         if profile.get("lite_validation_label_file_count") != 100:
@@ -177,20 +179,22 @@ def validate_asset(asset: Any) -> list[str]:
             conversion = asset.get("conversion_evidence")
             split = asset.get("split_evidence")
             license_evidence = asset.get("license_evidence")
-            if not isinstance(conversion, dict) or conversion.get("available") is not True:
-                errors.append(f"{asset_id}: conversion_evidence.available must be true")
-            else:
+            if not isinstance(conversion, dict):
+                errors.append(f"{asset_id}: conversion_evidence must be a mapping")
+            elif conversion.get("available") is True:
                 if conversion.get("case_count") != 14 or conversion.get("record_count") != 42:
-                    errors.append(f"{asset_id}: conversion evidence must cover 14 cases / 42 records")
+                    errors.append(
+                        f"{asset_id}: conversion evidence must cover 14 cases / 42 records"
+                    )
                 errors.extend(
                     validate_evidence_artifact(
                         asset_id, conversion.get("artifact"), "conversion_evidence.artifact"
                     )
                 )
                 required_fragments.discard("dataset-specific schema converter is not implemented")
-            if not isinstance(split, dict) or split.get("available") is not True:
-                errors.append(f"{asset_id}: split_evidence.available must be true")
-            else:
+            if not isinstance(split, dict):
+                errors.append(f"{asset_id}: split_evidence must be a mapping")
+            elif split.get("available") is True:
                 summary = split.get("summary")
                 if not isinstance(summary, dict) or summary.get("case_count") != 14:
                     errors.append(f"{asset_id}: split evidence must summarize 14 cases")
@@ -201,17 +205,23 @@ def validate_asset(asset: Any) -> list[str]:
                         asset_id, split.get("artifact"), "split_evidence.artifact"
                     )
                 )
-                required_fragments.discard("split manifest and benchmark contamination review are not present")
+                required_fragments.discard(
+                    "split manifest and benchmark contamination review are not present"
+                )
                 required_fragments.discard("floorplan legality checker logs are not present")
-            if not isinstance(license_evidence, dict) or license_evidence.get("available") is not True:
-                errors.append(f"{asset_id}: license_evidence.available must be true")
-            else:
+            if not isinstance(license_evidence, dict):
+                errors.append(f"{asset_id}: license_evidence must be a mapping")
+            elif license_evidence.get("available") is True:
                 if license_evidence.get("status") != "TRAINING_ONLY_REVIEW_COMPLETE":
                     errors.append(f"{asset_id}: license evidence must be training-only complete")
                 if license_evidence.get("release_use_allowed") is not False:
-                    errors.append(f"{asset_id}: license evidence must keep release_use_allowed=false")
+                    errors.append(
+                        f"{asset_id}: license evidence must keep release_use_allowed=false"
+                    )
                 if license_evidence.get("commercial_use_allowed") is not False:
-                    errors.append(f"{asset_id}: license evidence must keep commercial_use_allowed=false")
+                    errors.append(
+                        f"{asset_id}: license evidence must keep commercial_use_allowed=false"
+                    )
                 errors.extend(
                     validate_evidence_artifact(
                         asset_id, license_evidence.get("artifact"), "license_evidence.artifact"
@@ -224,7 +234,9 @@ def validate_asset(asset: Any) -> list[str]:
             hf_archive_evidence = asset.get("hf_archive_evidence")
             if isinstance(conversion, dict) and conversion.get("available") is True:
                 if conversion.get("case_count") != 100 or conversion.get("record_count") != 300:
-                    errors.append(f"{asset_id}: conversion evidence must cover 100 cases / 300 records")
+                    errors.append(
+                        f"{asset_id}: conversion evidence must cover 100 cases / 300 records"
+                    )
                 errors.extend(
                     validate_evidence_artifact(
                         asset_id, conversion.get("artifact"), "conversion_evidence.artifact"
@@ -243,24 +255,36 @@ def validate_asset(asset: Any) -> list[str]:
                         asset_id, split.get("artifact"), "split_evidence.artifact"
                     )
                 )
-                required_fragments.discard("split manifest and benchmark contamination review are not present")
+                required_fragments.discard(
+                    "split manifest and benchmark contamination review are not present"
+                )
             elif not isinstance(split, dict):
                 errors.append(f"{asset_id}: split_evidence must be a mapping")
-            if not isinstance(license_evidence, dict) or license_evidence.get("available") is not True:
+            if (
+                not isinstance(license_evidence, dict)
+                or license_evidence.get("available") is not True
+            ):
                 errors.append(f"{asset_id}: license_evidence.available must be true")
             else:
                 if license_evidence.get("status") != "TRAINING_ONLY_REVIEW_COMPLETE":
                     errors.append(f"{asset_id}: license evidence must be training-only complete")
                 if license_evidence.get("release_use_allowed") is not False:
-                    errors.append(f"{asset_id}: license evidence must keep release_use_allowed=false")
+                    errors.append(
+                        f"{asset_id}: license evidence must keep release_use_allowed=false"
+                    )
                 if license_evidence.get("commercial_use_allowed") is not False:
-                    errors.append(f"{asset_id}: license evidence must keep commercial_use_allowed=false")
+                    errors.append(
+                        f"{asset_id}: license evidence must keep commercial_use_allowed=false"
+                    )
                 errors.extend(
                     validate_evidence_artifact(
                         asset_id, license_evidence.get("artifact"), "license_evidence.artifact"
                     )
                 )
-            if not isinstance(hf_archive_evidence, dict) or hf_archive_evidence.get("available") is not True:
+            if (
+                not isinstance(hf_archive_evidence, dict)
+                or hf_archive_evidence.get("available") is not True
+            ):
                 errors.append(f"{asset_id}: hf_archive_evidence.available must be true")
             else:
                 if hf_archive_evidence.get("status") != "VERIFIED_FULL_HF_ARCHIVE_SET":
@@ -271,7 +295,9 @@ def validate_asset(asset: Any) -> list[str]:
                     errors.append(f"{asset_id}: HF archive byte total mismatch")
                 errors.extend(
                     validate_evidence_artifact(
-                        asset_id, hf_archive_evidence.get("artifact"), "hf_archive_evidence.artifact"
+                        asset_id,
+                        hf_archive_evidence.get("artifact"),
+                        "hf_archive_evidence.artifact",
                     )
                 )
         for fragment in required_fragments:
@@ -324,7 +350,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.is_file():
-        print(f"STATUS: FAIL ai_eda.floorplanning_dataset_readiness missing_report {rel(args.report)}")
+        print(
+            f"STATUS: FAIL ai_eda.floorplanning_dataset_readiness missing_report {rel(args.report)}"
+        )
         return 1
     try:
         report = load_json(args.report)

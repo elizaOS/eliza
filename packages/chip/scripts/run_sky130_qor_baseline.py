@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -50,8 +49,7 @@ NODE_ID = "sky130"
 DESIGN = "e1_chip_top"
 QOR_SYNTH_YS = ROOT / "yosys_e1_soc_qor.ys"
 SKY130_LIBERTY = (
-    ROOT
-    / "external/pdks/volare/sky130/versions/"
+    ROOT / "external/pdks/volare/sky130/versions/"
     "c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/"
     "sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib"
 )
@@ -134,9 +132,7 @@ def run_synth(args: argparse.Namespace, feedback: dict[str, Any]) -> int:
     build_dir.mkdir(parents=True, exist_ok=True)
     abc_delay_ps = int(round(args.clock_period_ns * 1000))
     retime = bool(
-        feedback.get("signals", {})
-        .get("critical_paths", {})
-        .get("recommend_retiming", False)
+        feedback.get("signals", {}).get("critical_paths", {}).get("recommend_retiming", False)
     )
     stat_json = build_dir / "sky130_stat.json"
     script = build_synth_script(
@@ -222,10 +218,7 @@ def record_post_route(args: argparse.Namespace) -> int:
         baseline=args.baseline,
     )
     append_row(row)
-    print(
-        f"PASS: recorded Sky130 post-route QoR row run_id={args.run_id} "
-        f"baseline={args.baseline}"
-    )
+    print(f"PASS: recorded Sky130 post-route QoR row run_id={args.run_id} baseline={args.baseline}")
     return 0
 
 

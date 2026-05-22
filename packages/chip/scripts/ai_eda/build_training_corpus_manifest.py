@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -189,7 +189,7 @@ def build_dataset_entry(spec: dict[str, str], run_id: str) -> dict[str, Any]:
                 "claim_boundary": claim_boundary,
             }
         )
-    jsonl_files = [
+    jsonl_files: list[dict[str, Any]] = [
         {
             "path": rel(path),
             "sha256": sha256_file(path),
@@ -221,7 +221,7 @@ def build_dataset_entry(spec: dict[str, str], run_id: str) -> dict[str, Any]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
@@ -243,7 +243,7 @@ def main() -> int:
             missing.append(dataset["id"])
     manifest = {
         "schema": "eliza.ai_eda.training_corpus_manifest.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "policy": {

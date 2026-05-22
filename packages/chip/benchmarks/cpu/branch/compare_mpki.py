@@ -76,9 +76,7 @@ def _score(branches: list[BranchEvent], inst_count: int) -> dict[str, object]:
         "cva6_mpki": round(cva6_mpki, 6),
         "mpki_reduction": round(mpki_reduction, 6),
         "improvement_ratio_cva6_over_e1": (
-            round(improvement_ratio, 4)
-            if math.isfinite(improvement_ratio)
-            else "inf"
+            round(improvement_ratio, 4) if math.isfinite(improvement_ratio) else "inf"
         ),
         "e1_misp": int(e1.stats().get("misp", 0)),
         "cva6_misp": int(cva6.stats().get("misp", 0)),
@@ -151,12 +149,8 @@ def _aggregate(results: dict[str, dict]) -> dict[str, object]:
     cva6_geo = _geomean(cva6_vals)
     pooled_e1 = total_e1_misp * 1000.0 / total_inst if total_inst else 0.0
     pooled_cva6 = total_cva6_misp * 1000.0 / total_inst if total_inst else 0.0
-    e1_wins = sorted(
-        name for name, r in results.items() if r["e1_mpki"] < r["cva6_mpki"]
-    )
-    e1_ties = sorted(
-        name for name, r in results.items() if r["e1_mpki"] == r["cva6_mpki"]
-    )
+    e1_wins = sorted(name for name, r in results.items() if r["e1_mpki"] < r["cva6_mpki"])
+    e1_ties = sorted(name for name, r in results.items() if r["e1_mpki"] == r["cva6_mpki"])
     e1_regressions = sorted(
         (
             {

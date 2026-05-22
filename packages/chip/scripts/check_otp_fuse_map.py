@@ -70,9 +70,7 @@ def validate(fuse_map: dict[str, Any]) -> list[str]:
             continue
         for word in range(offset, offset + words):
             if word in occupied:
-                errors.append(
-                    f"{prefix} word {word} overlaps {occupied[word]}"
-                )
+                errors.append(f"{prefix} word {word} overlaps {occupied[word]}")
             else:
                 occupied[word] = str(partition_id)
 
@@ -81,9 +79,7 @@ def validate(fuse_map: dict[str, Any]) -> list[str]:
             if partition.get("writeLockable") is not True:
                 errors.append(f"{prefix} secret partition must be writeLockable")
             if partition.get("readableInProduction") is not False:
-                errors.append(
-                    f"{prefix} secret partition must not be readable in production"
-                )
+                errors.append(f"{prefix} secret partition must not be readable in production")
         if partition_id == "rollback_index":
             has_rollback = True
             if partition.get("monotonic") is not True:

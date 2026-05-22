@@ -118,7 +118,10 @@ PATTERNS: tuple[tuple[str, str, re.Pattern[str]], ...] = (
     (
         "deferred_blocked",
         "deferred or blocked-work marker",
-        re.compile(r"\b(STATUS_LATER(?:_[A-Z0-9_]+)?|deferred|blocked until|remain(?:s)? blocked|not yet)\b", re.I),
+        re.compile(
+            r"\b(STATUS_LATER(?:_[A-Z0-9_]+)?|deferred|blocked until|remain(?:s)? blocked|not yet)\b",
+            re.I,
+        ),
     ),
 )
 
@@ -224,9 +227,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
             "paths_with_findings": len(by_path),
         },
         "scan_roots": roots,
-        "top_paths": [
-            {"path": path, "findings": count} for path, count in by_path.most_common(25)
-        ],
+        "top_paths": [{"path": path, "findings": count} for path, count in by_path.most_common(25)],
         "findings": findings,
     }
 

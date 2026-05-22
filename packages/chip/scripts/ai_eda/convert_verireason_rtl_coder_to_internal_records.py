@@ -8,15 +8,13 @@ import hashlib
 import json
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/verireason_rtl_coder"
-CLAIM_BOUNDARY = (
-    "verireason_rtl_coder_text_sample_only_no_training_inference_e1_or_release_claim"
-)
+CLAIM_BOUNDARY = "verireason_rtl_coder_text_sample_only_no_training_inference_e1_or_release_claim"
 
 ASSETS = (
     {
@@ -33,25 +31,21 @@ ASSETS = (
         "payload": "external/datasets/verireason-rtl-coder-reasoning-simple/payload",
         "files": ("processed_entries.jsonl",),
         "source_url": (
-            "https://huggingface.co/datasets/"
-            "Nellyw888/RTL-Coder_7b_reasoning_tb_simple"
+            "https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_simple"
         ),
     },
     {
         "id": "verireason-rtl-coder-reasoning-hard",
         "payload": "external/datasets/verireason-rtl-coder-reasoning-hard/payload",
         "files": ("train_tb_filtered.jsonl",),
-        "source_url": (
-            "https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb"
-        ),
+        "source_url": ("https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb"),
     },
     {
         "id": "verireason-rtl-coder-reasoning-combined",
         "payload": "external/datasets/verireason-rtl-coder-reasoning-combined/payload",
         "files": ("combined_dataset.jsonl",),
         "source_url": (
-            "https://huggingface.co/datasets/"
-            "Nellyw888/RTL-Coder_7b_reasoning_tb_combined"
+            "https://huggingface.co/datasets/Nellyw888/RTL-Coder_7b_reasoning_tb_combined"
         ),
     },
 )
@@ -97,7 +91,7 @@ def sanitize(value: str) -> str:
 
 
 def split_for(asset_id: str, file_name: str, row_index: int) -> str:
-    digest = hashlib.sha256(f"{asset_id}:{file_name}:{row_index}".encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(f"{asset_id}:{file_name}:{row_index}".encode()).hexdigest()
     bucket = int(digest[:8], 16) % 10
     if bucket == 8:
         return "val"
@@ -176,7 +170,7 @@ def make_record(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     return parser.parse_args()
 
 
@@ -261,7 +255,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.verireason_rtl_coder_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "converted_asset_count": len([item for item in asset_reports if item["record_count"] > 0]),

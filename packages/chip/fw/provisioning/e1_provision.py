@@ -238,9 +238,7 @@ def _bytes_to_words(data: bytes, words: int) -> list[int]:
     if len(data) > needed:
         raise ProvisioningError(f"field material {len(data)}B exceeds {needed}B capacity")
     padded = data + b"\x00" * (needed - len(data))
-    return [
-        int.from_bytes(padded[i : i + 4], "big") for i in range(0, needed, 4)
-    ]
+    return [int.from_bytes(padded[i : i + 4], "big") for i in range(0, needed, 4)]
 
 
 def _unary(index: int, bit_width: int) -> list[int]:
@@ -379,11 +377,7 @@ class SecretStore:
     wiped: bool = False
 
     def has_live_secrets(self) -> bool:
-        return bool(
-            self.keymint_keyslots
-            or self.user_data_wrapping_key
-            or self.attestation_blobs
-        )
+        return bool(self.keymint_keyslots or self.user_data_wrapping_key or self.attestation_blobs)
 
     def scrub(self) -> None:
         self.keymint_keyslots = b""
@@ -445,9 +439,7 @@ class ProvisioningSession:
         current = self.lifecycle
         allowed = _ALLOWED_TRANSITIONS[current]
         if target not in allowed:
-            raise ProvisioningError(
-                f"illegal lifecycle transition {current.name} -> {target.name}"
-            )
+            raise ProvisioningError(f"illegal lifecycle transition {current.name} -> {target.name}")
         if target == Lifecycle.LOCKED and not functional_test_pass:
             # key-ceremony.md §5.6 — MFG->LOCKED only after functional test pass.
             raise ProvisioningError("MFG->LOCKED requires a functional-test-pass token")
@@ -496,9 +488,7 @@ class ProvisioningSession:
                 f"partition '{partition_id}' expects {part.words} words, got {len(words)}"
             )
         if part.write_lockable and self.lifecycle >= Lifecycle.LOCKED:
-            raise ProvisioningError(
-                f"partition '{partition_id}' is write-locked after LOCKED"
-            )
+            raise ProvisioningError(f"partition '{partition_id}' is write-locked after LOCKED")
         for word_index, value in enumerate(words):
             for replica in range(REPLICAS):
                 self.otp.blow_word(part.offset + word_index, replica, value)
@@ -513,9 +503,7 @@ class ProvisioningSession:
             raise ProvisioningError("rollback advance only after initial programming")
         current = self.read_rollback()
         if target_index < current:
-            raise ProvisioningError(
-                f"rollback cannot decrease ({current} -> {target_index})"
-            )
+            raise ProvisioningError(f"rollback cannot decrease ({current} -> {target_index})")
         words = _unary(target_index, part.bit_width)
         for word_index, value in enumerate(words):
             for replica in range(REPLICAS):

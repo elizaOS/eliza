@@ -28,7 +28,6 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
-from typing import Callable
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -69,9 +68,7 @@ def evaluate(
 
         if key in HARD_NO_INCREASE:
             if cand > base:
-                violations.append(
-                    f"{key}: {base:g} -> {cand:g} (count increased; not allowed)"
-                )
+                violations.append(f"{key}: {base:g} -> {cand:g} (count increased; not allowed)")
             continue
 
         if key in HIGHER_IS_BETTER:

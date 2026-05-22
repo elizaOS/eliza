@@ -90,9 +90,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         "BLOCKED_EXECUTION_EVIDENCE",
     }:
         errors.append("unsupported status")
-    if report.get("status") != "EXECUTED_REPLAY_EVIDENCE_READY" and report.get(
-        "optimization_claim_allowed"
-    ) is not False:
+    if (
+        report.get("status") != "EXECUTED_REPLAY_EVIDENCE_READY"
+        and report.get("optimization_claim_allowed") is not False
+    ):
         errors.append("optimization_claim_allowed must be false unless execution evidence is ready")
     replay_role = report.get("replay_role", "candidate")
     if replay_role not in {"baseline", "candidate"}:

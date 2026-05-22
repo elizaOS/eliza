@@ -191,9 +191,7 @@ def evaluate(
             "gnn_mae": round(gnn_mae, 8) if gnn_mae is not None else None,
             "baseline_mae": round(base_mae, 8) if base_mae is not None else None,
             "gnn_beats_baseline": (
-                bool(gnn_mae < base_mae)
-                if gnn_mae is not None and base_mae is not None
-                else None
+                bool(gnn_mae < base_mae) if gnn_mae is not None and base_mae is not None else None
             ),
             "relative_improvement": improvement,
         }
@@ -247,9 +245,7 @@ def main() -> int:
         patience=args.patience,
     )
     baseline = mean_baseline(splits["train"])
-    evaluations = {
-        split: evaluate(model, rows, stats, baseline) for split, rows in splits.items()
-    }
+    evaluations = {split: evaluate(model, rows, stats, baseline) for split, rows in splits.items()}
 
     out_dir = args.out_root / args.run_id
     out_dir.mkdir(parents=True, exist_ok=True)

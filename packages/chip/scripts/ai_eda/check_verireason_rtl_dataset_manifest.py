@@ -12,7 +12,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/verireason_rtl_datasets/validation/dataset_manifest.json"
 EXPECTED_SCHEMA = "eliza.ai_eda.verireason_rtl_dataset_manifest.v1"
-EXPECTED_CLAIM_BOUNDARY = "verireason_rtl_dataset_manifest_training_only_no_rtl_execution_or_e1_signoff_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "verireason_rtl_dataset_manifest_training_only_no_rtl_execution_or_e1_signoff_claim"
+)
 EXPECTED_STATUS = "VERIFIED_VERIREASON_RTL_DATASETS"
 EXPECTED_DATASET_COUNT = 4
 EXPECTED_JSONL_FILE_COUNT = 5
@@ -91,7 +93,9 @@ def validate_file(item: Any, label: str) -> list[str]:
     first_row_keys = item.get("first_row_keys")
     if not isinstance(required_fields, list) or not required_fields:
         errors.append(f"{label}.required_fields must be non-empty")
-    if not isinstance(first_row_keys, list) or not set(required_fields or []).issubset(first_row_keys):
+    if not isinstance(first_row_keys, list) or not set(required_fields or []).issubset(
+        first_row_keys
+    ):
         errors.append(f"{label}.first_row_keys missing required fields")
     if item.get("errors") != []:
         errors.append(f"{label}.errors must be empty")
@@ -155,9 +159,15 @@ def validate_dataset(item: Any, index: int) -> tuple[str | None, list[str]]:
     if item.get("blockers") != []:
         errors.append(f"{label}.blockers must be empty")
     if isinstance(files, list):
-        row_count = sum(int(file_item.get("actual_rows", 0)) for file_item in files if isinstance(file_item, dict))
+        row_count = sum(
+            int(file_item.get("actual_rows", 0))
+            for file_item in files
+            if isinstance(file_item, dict)
+        )
         total_bytes = sum(
-            int(file_item.get("actual_size_bytes", 0)) for file_item in files if isinstance(file_item, dict)
+            int(file_item.get("actual_size_bytes", 0))
+            for file_item in files
+            if isinstance(file_item, dict)
         )
         if item.get("jsonl_row_count") != row_count:
             errors.append(f"{label}.jsonl_row_count mismatch")
@@ -228,7 +238,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.is_file():
-        print(f"STATUS: FAIL ai_eda.verireason_rtl_dataset_manifest missing_report {rel(args.report)}")
+        print(
+            f"STATUS: FAIL ai_eda.verireason_rtl_dataset_manifest missing_report {rel(args.report)}"
+        )
         return 1
     try:
         report = load_json(args.report)

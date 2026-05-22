@@ -125,16 +125,12 @@ class CoverageHolesTests(unittest.TestCase):
 
     def test_block_has_evidence_logic(self) -> None:
         self.assertTrue(
-            holes.block_has_evidence(
-                {"cocotb": {"missing_required_classes": [], "bins_hit": 2}}
-            )
+            holes.block_has_evidence({"cocotb": {"missing_required_classes": [], "bins_hit": 2}})
         )
         self.assertTrue(holes.block_has_evidence({"formal": {"status": "pass"}}))
         self.assertFalse(holes.block_has_evidence({"formal": {"status": "fail"}}))
         self.assertFalse(
-            holes.block_has_evidence(
-                {"cocotb": {"missing_required_classes": ["x"], "bins_hit": 2}}
-            )
+            holes.block_has_evidence({"cocotb": {"missing_required_classes": ["x"], "bins_hit": 2}})
         )
 
 

@@ -281,8 +281,6 @@ async def ap_cannot_write_response_bank(dut):
     await _ap_write(dut, REG_RESP_DOORBELL, 0x1)
 
     # The write must be dropped: no RESP_READY, and the response bank is untouched.
-    assert int(dut.mbox2_resp_ready.value) == 0, (
-        "ISOLATION VIOLATION: AP set RESP_READY"
-    )
+    assert int(dut.mbox2_resp_ready.value) == 0, "ISOLATION VIOLATION: AP set RESP_READY"
     resp = await _ap_read(dut, REG_RESP_DATA0)
     assert resp == 0x0, f"ISOLATION VIOLATION: AP wrote response bank ({resp:#x})"

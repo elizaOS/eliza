@@ -247,7 +247,9 @@ def _eval_config(item: tuple[str, dict]) -> tuple[str, dict]:
             "weight": tr.weight,
         }
     wsum = sum(tr.weight for tr in _WORKER_TRACES)
-    weighted = sum(per_trace[tr.name]["mpki"] * tr.weight for tr in _WORKER_TRACES) / max(wsum, 1e-9)
+    weighted = sum(per_trace[tr.name]["mpki"] * tr.weight for tr in _WORKER_TRACES) / max(
+        wsum, 1e-9
+    )
     return name, {"weighted_mpki": round(weighted, 6), "per_trace": per_trace}
 
 
@@ -385,7 +387,12 @@ def main() -> int:
         "harness": "behavioural-bpu-model",
         "max_branches_per_trace": args.max_branches,
         "trace_set": [
-            {"name": t.name, "branches": len(t.events), "instructions": t.inst_count, "weight": t.weight}
+            {
+                "name": t.name,
+                "branches": len(t.events),
+                "instructions": t.inst_count,
+                "weight": t.weight,
+            }
             for t in traces
         ],
         "weights": DEFAULT_WEIGHTS,

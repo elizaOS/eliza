@@ -141,19 +141,15 @@ module ftb
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned s = 0; s < FTB_SETS; s++) begin
-                for (int unsigned w = 0; w < FTB_WAYS; w++) begin
-                    storage_q[s][w] <= '{
-                        valid:           1'b0,
-                        tag:             '0,
-                        target:          '0,
-                        fall_through_pc: '0,
-                        kind:            BR_NONE,
-                        br_valid:        '0
-                    };
-                end
-                rr_ptr_q[s] <= '0;
-            end
+            storage_q <= '{default: '{default: '{
+                valid:           1'b0,
+                tag:             '0,
+                target:          '0,
+                fall_through_pc: '0,
+                kind:            BR_NONE,
+                br_valid:        '0
+            }}};
+            rr_ptr_q <= '{default: '0};
             pmu_miss <= 1'b0;
         end else begin
             pmu_miss <= lkp_valid && !lkp_hit;

@@ -16,6 +16,7 @@ EXPECTED_CLAIM_BOUNDARY = "floorset_hf_archive_hash_manifest_no_unpack_training_
 EXPECTED_STATUS = "VERIFIED_FULL_HF_ARCHIVE_SET"
 EXPECTED_ARCHIVE_COUNT = 10
 EXPECTED_TOTAL_BYTES = 29665773263
+RECORDED_INTAKE_STATUS = "RECORDED_IN_REVIEWED_INTAKE"
 
 
 def rel(path: Path) -> str:
@@ -50,16 +51,30 @@ def validate_archive(record: Any, index: int) -> list[str]:
         return [f"archives[{index}] must be a mapping"]
     errors: list[str] = []
     filename = record.get("filename", f"archives[{index}]")
-    if record.get("status") != "VERIFIED":
-        errors.append(f"{filename}: status must be VERIFIED")
-    if record.get("present") is not True:
-        errors.append(f"{filename}: present must be true")
+    status = record.get("status")
+    if status not in {"VERIFIED", RECORDED_INTAKE_STATUS}:
+        errors.append(f"{filename}: status must be VERIFIED or {RECORDED_INTAKE_STATUS}")
     if record.get("required") is not True:
         errors.append(f"{filename}: required must be true")
     path_value = record.get("path")
     if not isinstance(path_value, str) or not path_value:
         errors.append(f"{filename}: path must be present")
         return errors
+    if status == RECORDED_INTAKE_STATUS:
+        source = record.get("source")
+        if not isinstance(source, str) or not source:
+            errors.append(f"{filename}: source must name the reviewed intake metadata")
+        if record.get("present") is not False:
+            errors.append(f"{filename}: recorded external archive must not be marked present")
+        if record.get("actual_size_bytes") is not None or record.get("actual_sha256") is not None:
+            errors.append(
+                f"{filename}: recorded external archive must not pretend to hash ignored payloads"
+            )
+        if not isinstance(record.get("expected_size_bytes"), int):
+            errors.append(f"{filename}: expected_size_bytes must be present")
+        return errors
+    if record.get("present") is not True:
+        errors.append(f"{filename}: present must be true")
     path = repo_path(path_value)
     if not path.is_file():
         errors.append(f"{filename}: file is missing on disk")

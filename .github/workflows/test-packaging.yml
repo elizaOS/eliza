@@ -33,7 +33,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # Packaging validation checks source packaging metadata only; native
+          # inference submodules are validated by dedicated native workflows.
+          submodules: false
 
       - name: Setup Python
         uses: actions/setup-python@v6
@@ -59,7 +61,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # PyPI packaging does not need native inference submodules.
+          submodules: false
 
       - name: Check for PyPI package directory
         id: pypi_check
@@ -163,7 +166,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # PyPI packaging does not need native inference submodules.
+          submodules: false
 
       - name: Check for PyPI package directory
         id: pypi_check
@@ -204,7 +208,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # JS tarball packaging does not need native inference submodules.
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

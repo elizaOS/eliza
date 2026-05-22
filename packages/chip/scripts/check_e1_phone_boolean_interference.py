@@ -23,6 +23,7 @@ import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from OCP.Bnd import Bnd_Box
 from OCP.BRepAlgoAPI import BRepAlgoAPI_Common
@@ -88,67 +89,71 @@ CONTACT_KEYWORDS = (
     # Wave-2 residual closure parts: corner gussets, glass edge cushion, and the
     # cellular aperture/band-switch tuner footprint. Each is an envelope solid that
     # bonds against the parts it constrains (rim/frame, glass edge, board feed).
-    "corner_rib", "perimeter_cushion", "aperture_tuner",
+    "corner_rib",
+    "perimeter_cushion",
+    "aperture_tuner",
 )
 
 # Explicit pairwise allowlist for envelope-style overlaps that don't share a
 # keyword (e.g. battery_pouch sits compressed against the back shell). Each
 # entry is an unordered (a, b) tuple-set.
-INTENTIONAL_PAIRS = frozenset({
-    frozenset({"battery_pouch", "orange_back_shell"}),
-    # Compressible back-void foam pad sits compressed against the back shell by
-    # design (its 0.18 mm compression allowance is the overlap volume).
-    frozenset({"battery_back_void_foam_pad", "orange_back_shell"}),
-    # Rear-camera bezel lands are molded into the back shell inner face (0-gap
-    # face seat framing the flush camera window), like the stray-light septum.
-    frozenset({"orange_back_shell", "orange_rear_camera_bezel_top"}),
-    frozenset({"orange_back_shell", "orange_rear_camera_bezel_bottom"}),
-    frozenset({"orange_back_shell", "orange_rear_camera_bezel_left"}),
-    frozenset({"orange_back_shell", "orange_rear_camera_bezel_right"}),
-    frozenset({"orange_back_shell", "orange_rear_flash_bezel_top"}),
-    frozenset({"orange_back_shell", "orange_rear_flash_bezel_bottom"}),
-    frozenset({"orange_back_shell", "orange_rear_flash_bezel_left"}),
-    frozenset({"orange_back_shell", "orange_rear_flash_bezel_right"}),
-    frozenset({"battery_pouch", "orange_battery_left_rib"}),
-    frozenset({"battery_pouch", "orange_battery_right_rib"}),
-    frozenset({"battery_pouch", "main_pcb"}),
-    frozenset({"bottom_speaker_module", "orange_back_shell"}),
-    frozenset({"bottom_speaker_module", "main_pcb"}),
-    frozenset({"bottom_mic", "main_pcb"}),
-    frozenset({"top_mic", "main_pcb"}),
-    frozenset({"usb_c_receptacle", "main_pcb"}),
-    frozenset({"haptic_lra", "orange_back_shell"}),
-    frozenset({"haptic_lra", "orange_side_frame"}),
-    frozenset({"orange_side_frame", "screen_cover_glass"}),
-    frozenset({"orange_side_frame", "display_lcm"}),
-    frozenset({"orange_side_frame", "main_pcb"}),
-    frozenset({"orange_side_frame", "usb_c_receptacle"}),
-    frozenset({"orange_side_frame", "sim_tray_outline"}),
-    frozenset({"orange_back_shell", "rear_camera_cover_glass"}),
-    frozenset({"orange_back_shell", "orange_side_frame"}),
-    # stray-light septum is molded to the back shell inner wall (0-gap face seat)
-    frozenset({"orange_back_shell", "rear_flash_camera_septum"}),
-    frozenset({"main_pcb", "rear_camera_module"}),
-    frozenset({"display_lcm", "rear_camera_module"}),
-    frozenset({"display_fpc_connector", "rear_camera_module"}),
-    frozenset({"display_fpc_connector", "pmic_shield_can"}),
-    frozenset({"pmic_shield_can", "rear_camera_module"}),
-    frozenset({"side_key_power_actuator_tail", "side_key_power_flex_tail"}),
-    frozenset({"side_key_volume_actuator_tail", "side_key_volume_flex_tail"}),
-    # button caps protrude through the side frame apertures by design
-    frozenset({"orange_side_frame", "power_button_cap"}),
-    frozenset({"orange_side_frame", "volume_button_cap"}),
-    # USB-C shell sits inside the reinforcement saddle
-    frozenset({"usb_c_receptacle", "orange_usb_reinforcement_saddle"}),
-    # split-interconnect connector pads bond on top of the battery pouch tab
-    frozenset({"battery_pouch", "split_interconnect_top_connector"}),
-    # rear torch: LED emitter sits buried behind the back wall, its window is a
-    # cut in the back shell, and the emitter registers against its own window.
-    frozenset({"rear_flash_led", "rear_flash_led_window"}),
-    frozenset({"rear_flash_led_window", "orange_back_shell"}),
-    frozenset({"rear_flash_led", "orange_back_shell"}),
-    frozenset({"rear_flash_led", "main_pcb"}),
-})
+INTENTIONAL_PAIRS = frozenset(
+    {
+        frozenset({"battery_pouch", "orange_back_shell"}),
+        # Compressible back-void foam pad sits compressed against the back shell by
+        # design (its 0.18 mm compression allowance is the overlap volume).
+        frozenset({"battery_back_void_foam_pad", "orange_back_shell"}),
+        # Rear-camera bezel lands are molded into the back shell inner face (0-gap
+        # face seat framing the flush camera window), like the stray-light septum.
+        frozenset({"orange_back_shell", "orange_rear_camera_bezel_top"}),
+        frozenset({"orange_back_shell", "orange_rear_camera_bezel_bottom"}),
+        frozenset({"orange_back_shell", "orange_rear_camera_bezel_left"}),
+        frozenset({"orange_back_shell", "orange_rear_camera_bezel_right"}),
+        frozenset({"orange_back_shell", "orange_rear_flash_bezel_top"}),
+        frozenset({"orange_back_shell", "orange_rear_flash_bezel_bottom"}),
+        frozenset({"orange_back_shell", "orange_rear_flash_bezel_left"}),
+        frozenset({"orange_back_shell", "orange_rear_flash_bezel_right"}),
+        frozenset({"battery_pouch", "orange_battery_left_rib"}),
+        frozenset({"battery_pouch", "orange_battery_right_rib"}),
+        frozenset({"battery_pouch", "main_pcb"}),
+        frozenset({"bottom_speaker_module", "orange_back_shell"}),
+        frozenset({"bottom_speaker_module", "main_pcb"}),
+        frozenset({"bottom_mic", "main_pcb"}),
+        frozenset({"top_mic", "main_pcb"}),
+        frozenset({"usb_c_receptacle", "main_pcb"}),
+        frozenset({"haptic_lra", "orange_back_shell"}),
+        frozenset({"haptic_lra", "orange_side_frame"}),
+        frozenset({"orange_side_frame", "screen_cover_glass"}),
+        frozenset({"orange_side_frame", "display_lcm"}),
+        frozenset({"orange_side_frame", "main_pcb"}),
+        frozenset({"orange_side_frame", "usb_c_receptacle"}),
+        frozenset({"orange_side_frame", "sim_tray_outline"}),
+        frozenset({"orange_back_shell", "rear_camera_cover_glass"}),
+        frozenset({"orange_back_shell", "orange_side_frame"}),
+        # stray-light septum is molded to the back shell inner wall (0-gap face seat)
+        frozenset({"orange_back_shell", "rear_flash_camera_septum"}),
+        frozenset({"main_pcb", "rear_camera_module"}),
+        frozenset({"display_lcm", "rear_camera_module"}),
+        frozenset({"display_fpc_connector", "rear_camera_module"}),
+        frozenset({"display_fpc_connector", "pmic_shield_can"}),
+        frozenset({"pmic_shield_can", "rear_camera_module"}),
+        frozenset({"side_key_power_actuator_tail", "side_key_power_flex_tail"}),
+        frozenset({"side_key_volume_actuator_tail", "side_key_volume_flex_tail"}),
+        # button caps protrude through the side frame apertures by design
+        frozenset({"orange_side_frame", "power_button_cap"}),
+        frozenset({"orange_side_frame", "volume_button_cap"}),
+        # USB-C shell sits inside the reinforcement saddle
+        frozenset({"usb_c_receptacle", "orange_usb_reinforcement_saddle"}),
+        # split-interconnect connector pads bond on top of the battery pouch tab
+        frozenset({"battery_pouch", "split_interconnect_top_connector"}),
+        # rear torch: LED emitter sits buried behind the back wall, its window is a
+        # cut in the back shell, and the emitter registers against its own window.
+        frozenset({"rear_flash_led", "rear_flash_led_window"}),
+        frozenset({"rear_flash_led_window", "orange_back_shell"}),
+        frozenset({"rear_flash_led", "orange_back_shell"}),
+        frozenset({"rear_flash_led", "main_pcb"}),
+    }
+)
 
 # Scope cases mirror review/full-cad-boolean-interference.md.
 SCOPES: list[dict] = [
@@ -457,7 +462,7 @@ def evaluate_travel_sweep(
         return {"part": travel_part, "axis": axis, "status": "skip_missing"}
     src = parts[travel_part]
     vx, vy, vz = axis_to_vec(axis)
-    samples = []
+    samples: list[dict[str, Any]] = []
     steps = max(1, int(round(max_mm / step_mm)))
     rigid_clash_inter = 0.0
     for i in range(steps + 1):
@@ -509,7 +514,10 @@ def evaluate_travel_sweep(
             }
         )
         rigid_clash_inter = max(rigid_clash_inter, max_rigid_inter_at_d)
-    worst = min((s["min_gap_mm"] for s in samples if s["min_gap_mm"] is not None), default=None)
+    worst_values = [
+        float(sample["min_gap_mm"]) for sample in samples if sample["min_gap_mm"] is not None
+    ]
+    worst = min(worst_values, default=None)
     return {
         "part": travel_part,
         "axis": axis,
@@ -619,7 +627,7 @@ def evaluate_burial(parts: dict[str, Part], back_inner_z: float, targets: list[s
     return out
 
 
-def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
+def evaluate_rear_camera_back_shell_hole(parts: dict[str, Part]) -> dict:
     """Strict proof that the rear camera/window stack does not collide with the back shell.
 
     The generic collision checker allows some named envelope contacts, so this
@@ -650,12 +658,9 @@ def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
     axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
     cxmn, cymn, _czmn, cxmx, cymx, _czmx = cover.bbox
     aperture_clears_cover = (
-        axmn <= cxmn + 1e-6
-        and axmx >= cxmx - 1e-6
-        and aymn <= cymn + 1e-6
-        and aymx >= cymx - 1e-6
+        axmn <= cxmn + 1e-6 and axmx >= cxmx - 1e-6 and aymn <= cymn + 1e-6 and aymx >= cymx - 1e-6
     )
-    pairs: List[Dict] = []
+    pairs: list[dict] = []
     for target in ["rear_camera_cover_glass", "rear_camera_lens_window", "rear_camera_module"]:
         target_part = parts[target]
         inter = brep_intersection_volume(back.shape, target_part.shape)
@@ -668,7 +673,9 @@ def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
                 "status": "pass" if inter <= 1e-6 else "fail",
             }
         )
-    status = "pass" if aperture_clears_cover and all(p["status"] == "pass" for p in pairs) else "fail"
+    status = (
+        "pass" if aperture_clears_cover and all(p["status"] == "pass" for p in pairs) else "fail"
+    )
     return {
         "id": "rear_camera_back_shell_hole_collision",
         "status": status,
@@ -681,7 +688,7 @@ def evaluate_rear_camera_back_shell_hole(parts: Dict[str, Part]) -> Dict:
     }
 
 
-def evaluate_rear_camera_optical_sightline(parts: Dict[str, Part]) -> Dict:
+def evaluate_rear_camera_optical_sightline(parts: dict[str, Part]) -> dict:
     """Strict proof that a camera-radius optical tunnel is open through orange back plastic."""
     required = [
         "orange_back_shell",
@@ -709,10 +716,7 @@ def evaluate_rear_camera_optical_sightline(parts: Dict[str, Part]) -> Dict:
     axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
     txmn, tymn, _tzmn, txmx, tymx, _tzmx = tunnel.bbox
     aperture_contains_tunnel = (
-        axmn <= txmn + 1e-6
-        and axmx >= txmx - 1e-6
-        and aymn <= tymn + 1e-6
-        and aymx >= tymx - 1e-6
+        axmn <= txmn + 1e-6 and axmx >= txmx - 1e-6 and aymn <= tymn + 1e-6 and aymx >= tymx - 1e-6
     )
     orange_inter = brep_intersection_volume(back.shape, tunnel.shape)
     orange_gap = 0.0 if orange_inter > 1e-6 else brep_min_distance(back.shape, tunnel.shape)
@@ -748,7 +752,7 @@ def evaluate_rear_camera_optical_sightline(parts: Dict[str, Part]) -> Dict:
     }
 
 
-def evaluate_rear_flash_back_shell_hole(parts: Dict[str, Part]) -> Dict:
+def evaluate_rear_flash_back_shell_hole(parts: dict[str, Part]) -> dict:
     """Strict proof that the rear flash light-pipe window has a real shell opening."""
     required = [
         "orange_back_shell",
@@ -773,12 +777,9 @@ def evaluate_rear_flash_back_shell_hole(parts: Dict[str, Part]) -> Dict:
     axmn, aymn, _azmn, axmx, aymx, _azmx = aperture.bbox
     wxmn, wymn, _wzmn, wxmx, wymx, _wzmx = window.bbox
     aperture_clears_window = (
-        axmn <= wxmn + 1e-6
-        and axmx >= wxmx - 1e-6
-        and aymn <= wymn + 1e-6
-        and aymx >= wymx - 1e-6
+        axmn <= wxmn + 1e-6 and axmx >= wxmx - 1e-6 and aymn <= wymn + 1e-6 and aymx >= wymx - 1e-6
     )
-    pairs: List[Dict] = []
+    pairs: list[dict] = []
     for target in ["rear_flash_led_window", "rear_flash_led"]:
         target_part = parts[target]
         inter = brep_intersection_volume(back.shape, target_part.shape)
@@ -791,7 +792,9 @@ def evaluate_rear_flash_back_shell_hole(parts: Dict[str, Part]) -> Dict:
                 "status": "pass" if inter <= 1e-6 else "fail",
             }
         )
-    status = "pass" if aperture_clears_window and all(p["status"] == "pass" for p in pairs) else "fail"
+    status = (
+        "pass" if aperture_clears_window and all(p["status"] == "pass" for p in pairs) else "fail"
+    )
     return {
         "id": "rear_flash_back_shell_hole_collision",
         "status": status,
@@ -804,7 +807,7 @@ def evaluate_rear_flash_back_shell_hole(parts: Dict[str, Part]) -> Dict:
     }
 
 
-def evaluate_handset_cover_glass_slot(parts: Dict[str, Part]) -> Dict:
+def evaluate_handset_cover_glass_slot(parts: dict[str, Part]) -> dict:
     """Strict proof that the handset acoustic slot is actually cut through cover glass."""
     required = ["screen_cover_glass", "handset_acoustic_slot", "handset_acoustic_mesh"]
     missing = [name for name in required if name not in parts]
@@ -818,7 +821,7 @@ def evaluate_handset_cover_glass_slot(parts: Dict[str, Part]) -> Dict:
         }
 
     glass = parts["screen_cover_glass"]
-    pairs: List[Dict] = []
+    pairs: list[dict] = []
     for target in ["handset_acoustic_slot", "handset_acoustic_mesh"]:
         target_part = parts[target]
         inter = brep_intersection_volume(glass.shape, target_part.shape)
@@ -840,7 +843,7 @@ def evaluate_handset_cover_glass_slot(parts: Dict[str, Part]) -> Dict:
     }
 
 
-def evaluate_screen_cover_glass_collisions(parts: Dict[str, Part]) -> Dict:
+def evaluate_screen_cover_glass_collisions(parts: dict[str, Part]) -> dict:
     """Strict proof that visible/front-stack solids do not occupy cover glass volume."""
     targets = [
         "orange_side_frame",
@@ -865,7 +868,7 @@ def evaluate_screen_cover_glass_collisions(parts: Dict[str, Part]) -> Dict:
         }
 
     glass = parts["screen_cover_glass"]
-    pairs: List[Dict] = []
+    pairs: list[dict] = []
     for target in targets:
         target_part = parts[target]
         inter = brep_intersection_volume(glass.shape, target_part.shape)
@@ -887,7 +890,7 @@ def evaluate_screen_cover_glass_collisions(parts: Dict[str, Part]) -> Dict:
     }
 
 
-def evaluate_side_frame_external_cutouts(parts: Dict[str, Part]) -> Dict:
+def evaluate_side_frame_external_cutouts(parts: dict[str, Part]) -> dict:
     """Strict proof that side-edge apertures are real side-frame cutouts."""
     aperture_targets = [
         "usb_c_external_aperture",
@@ -915,7 +918,7 @@ def evaluate_side_frame_external_cutouts(parts: Dict[str, Part]) -> Dict:
         }
 
     side_frame = parts["orange_side_frame"]
-    aperture_pairs: List[Dict] = []
+    aperture_pairs: list[dict] = []
     for target in aperture_targets:
         target_part = parts[target]
         inter = brep_intersection_volume(side_frame.shape, target_part.shape)
@@ -929,7 +932,7 @@ def evaluate_side_frame_external_cutouts(parts: Dict[str, Part]) -> Dict:
             }
         )
 
-    insert_contacts: List[Dict] = []
+    insert_contacts: list[dict] = []
     for target in captured_insert_targets:
         if target not in parts:
             insert_contacts.append({"part": target, "status": "missing"})
@@ -1051,16 +1054,18 @@ def main() -> int:
     back_outer_z = back_shell.bbox[2]  # most-negative Z = outer back face
     back_inner_z = back_shell.bbox[5]  # most-positive Z of shell = inner wall face
     flush_back = evaluate_flush_back(parts, back_outer_z)
-    burial = evaluate_burial(parts, back_inner_z,
-                             ["rear_camera_module", "rear_flash_led"])
+    burial = evaluate_burial(parts, back_inner_z, ["rear_camera_module", "rear_flash_led"])
     rear_camera_hole = evaluate_rear_camera_back_shell_hole(parts)
     rear_camera_sightline = evaluate_rear_camera_optical_sightline(parts)
     rear_flash_hole = evaluate_rear_flash_back_shell_hole(parts)
     handset_glass_slot = evaluate_handset_cover_glass_slot(parts)
     screen_glass_collision = evaluate_screen_cover_glass_collisions(parts)
     side_frame_cutouts = evaluate_side_frame_external_cutouts(parts)
-    print(f"[flush_back] max_protrusion={flush_back['max_protrusion_mm']}mm "
-          f"status={flush_back['status']}", file=sys.stderr)
+    print(
+        f"[flush_back] max_protrusion={flush_back['max_protrusion_mm']}mm "
+        f"status={flush_back['status']}",
+        file=sys.stderr,
+    )
     for b in burial:
         print(
             f"[burial] {b['part']}: clearance={b.get('burial_clearance_mm')}mm "
@@ -1072,7 +1077,7 @@ def main() -> int:
     names = sorted(parts.keys())
     {n: i for i, n in enumerate(names)}
     N = len(names)
-    matrix = [[None] * N for _ in range(N)]
+    matrix: list[list[float | None]] = [[None] * N for _ in range(N)]
     interferences: list[tuple[str, str, float, float]] = []
     for i, _ni in enumerate(names):
         matrix[i][i] = 0.0
@@ -1103,16 +1108,18 @@ def main() -> int:
         file=sys.stderr,
     )
 
-    overall_pass = (all(s["status"] == "pass" for s in scope_results)
-                    and len(interferences) == 0
-                    and flush_back["status"] == "pass"
-                    and rear_camera_hole["status"] == "pass"
-                    and rear_camera_sightline["status"] == "pass"
-                    and rear_flash_hole["status"] == "pass"
-                    and handset_glass_slot["status"] == "pass"
-                    and screen_glass_collision["status"] == "pass"
-                    and side_frame_cutouts["status"] == "pass"
-                    and all(b.get("buried") for b in burial))
+    overall_pass = (
+        all(s["status"] == "pass" for s in scope_results)
+        and len(interferences) == 0
+        and flush_back["status"] == "pass"
+        and rear_camera_hole["status"] == "pass"
+        and rear_camera_sightline["status"] == "pass"
+        and rear_flash_hole["status"] == "pass"
+        and handset_glass_slot["status"] == "pass"
+        and screen_glass_collision["status"] == "pass"
+        and side_frame_cutouts["status"] == "pass"
+        and all(b.get("buried") for b in burial)
+    )
 
     # --- write JSON ---
     out_json = {
@@ -1193,9 +1200,12 @@ def main() -> int:
                 f"- PROTRUSION: `{pp['part']}` {pp['protrusion_mm']} mm beyond back outer plane"
             )
     if flush_back["envelope_excursions"]:
-        md_lines.append("- Envelope/void excursions (not solid, not a fault): " +
-                        ", ".join(f"`{e['part']}` ({e['protrusion_mm']}mm)"
-                                  for e in flush_back["envelope_excursions"]))
+        md_lines.append(
+            "- Envelope/void excursions (not solid, not a fault): "
+            + ", ".join(
+                f"`{e['part']}` ({e['protrusion_mm']}mm)" for e in flush_back["envelope_excursions"]
+            )
+        )
     md_lines += [
         "",
         "## Rear Camera Back-Shell Hole",

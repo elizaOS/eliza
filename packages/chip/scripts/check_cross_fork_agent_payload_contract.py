@@ -287,10 +287,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
                 and "/opt/elizaos/app/agent-bundle.js" in linux_agent_runner
                 and "/opt/elizaos/app/server.js" in linux_agent_runner
             )
-            or (
-                "/opt/elizaos/bin/bun" in execstart
-                and "/opt/elizaos/app/server.js" in execstart
-            )
+            or ("/opt/elizaos/bin/bun" in execstart and "/opt/elizaos/app/server.js" in execstart)
         ),
         "linux_rv64_agent_execstart_not_canonical",
         "Linux RV64 agent service does not start the canonical packaged agent binary",

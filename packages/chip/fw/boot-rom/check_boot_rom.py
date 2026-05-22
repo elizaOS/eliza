@@ -86,9 +86,7 @@ def semantic_errors() -> list[str]:
         errors,
     )
     require("ENTRY(_start)" in linker, "rom.ld must use _start as entry", errors)
-    require(
-        "ORIGIN = 0x00000000" in linker, "rom.ld must place ROM at reset address 0x0", errors
-    )
+    require("ORIGIN = 0x00000000" in linker, "rom.ld must place ROM at reset address 0x0", errors)
     require(
         "ASSERT(" in linker, "rom.ld must fail if the ROM exceeds the hardware aperture", errors
     )

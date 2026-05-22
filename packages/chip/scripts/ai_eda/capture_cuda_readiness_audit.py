@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,9 +25,7 @@ FORMAL_PREREQUISITES_SCHEMA = "eliza.ai_eda.formal_verification_prerequisites.v1
 FORMAL_EXECUTION_SCHEMA = "eliza.ai_eda.formal_execution_evidence.v1"
 FORMAL_SOLVER_ISOLATION_SCHEMA = "eliza.ai_eda.formal_solver_isolation.v1"
 ALPHACHIP_SUCCESSOR_SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
-ALPHACHIP_SUCCESSOR_REPRODUCTION_SCHEMA = (
-    "eliza.ai_eda.alphachip_successor_reproduction.v1"
-)
+ALPHACHIP_SUCCESSOR_REPRODUCTION_SCHEMA = "eliza.ai_eda.alphachip_successor_reproduction.v1"
 
 
 def rel(path: Path) -> str:
@@ -302,8 +300,7 @@ def formal_prerequisites_valid(
     if not isinstance(capabilities, dict):
         return False, False, False, "capabilities missing"
     strict_ready = (
-        status == "READY_FOR_STRICT_FORMAL_HOST"
-        and capabilities.get("strict_sby_ready") is True
+        status == "READY_FOR_STRICT_FORMAL_HOST" and capabilities.get("strict_sby_ready") is True
     )
     fallback_possible = capabilities.get("yosys_fallback_possible") is True
     return True, strict_ready, fallback_possible, f"status={status}"
@@ -336,7 +333,9 @@ def formal_execution_valid(report: dict[str, Any] | None) -> tuple[bool, bool, b
         attempts = report.get("strict_attempt_summary")
         if not isinstance(attempts, list) or not attempts:
             return False, False, False, "strict_attempt_summary missing"
-        if not any(item.get("has_error_marker") is True for item in attempts if isinstance(item, dict)):
+        if not any(
+            item.get("has_error_marker") is True for item in attempts if isinstance(item, dict)
+        ):
             return False, False, False, "strict_attempt_summary lacks failed attempt"
     if status != "STRICT_FORMAL_EVIDENCE_READY" and not report.get("blockers"):
         return False, False, False, "non-strict formal execution report lacks blockers"
@@ -394,7 +393,7 @@ def blocker(
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument(
         "--preflight-run-id",
         default=None,
@@ -503,9 +502,7 @@ def main() -> int:
     run_plan_safety_run_id = args.run_plan_safety_run_id or payload_run_id
     alphachip_run_id = args.alphachip_run_id or run_id
     alphachip_successor_run_id = args.alphachip_successor_run_id or run_id
-    alphachip_successor_reproduction_run_id = (
-        args.alphachip_successor_reproduction_run_id or run_id
-    )
+    alphachip_successor_reproduction_run_id = args.alphachip_successor_reproduction_run_id or run_id
     watchlist_run_id = args.watchlist_run_id or run_id
     replay_preflight_run_id = args.replay_preflight_run_id or run_id
     replay_prerequisites_run_id = args.replay_prerequisites_run_id or replay_preflight_run_id
@@ -515,9 +512,7 @@ def main() -> int:
     full_training_matrix_run_id = args.full_training_matrix_run_id or run_id
     formal_prerequisites_run_id = args.formal_prerequisites_run_id or run_id
     formal_execution_run_id = args.formal_execution_run_id or formal_prerequisites_run_id
-    formal_solver_isolation_run_id = (
-        args.formal_solver_isolation_run_id or formal_execution_run_id
-    )
+    formal_solver_isolation_run_id = args.formal_solver_isolation_run_id or formal_execution_run_id
     setup_run_id = args.setup_run_id or run_id
     training_handoff_run_id = args.training_handoff_run_id or f"{run_id}-training-handoff"
     preflight_path = (
@@ -1417,7 +1412,7 @@ def main() -> int:
     hard_blockers = [item for item in blockers if item["severity"] == "hard"]
     report = {
         "schema": "eliza.ai_eda.cuda_readiness_audit.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": run_id,
         "evidence_run_ids": {
             "preflight": preflight_run_id,

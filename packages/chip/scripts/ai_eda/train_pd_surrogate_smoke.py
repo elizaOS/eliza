@@ -28,9 +28,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 OPENLANE_FLOW_LABELS = ROOT / "build/ai_eda/openlane_flow_labels"
-DEFAULT_FLOW_RUN = (
-    OPENLANE_FLOW_LABELS / "validation/records/flow-run-with-metrics.json"
-)
+DEFAULT_FLOW_RUN = OPENLANE_FLOW_LABELS / "validation/records/flow-run-with-metrics.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/pd_surrogate_smoke"
 CLAIM_BOUNDARY = "pd_surrogate_smoke_only_no_ppa_signoff_training_or_release_claim"
 
@@ -116,17 +114,13 @@ def content_signature(flow_run: dict[str, Any]) -> str:
         "design_bundle_id": flow_run.get("design_bundle_id"),
         "metrics": {key: normalized.get(key) for key in CONTENT_KEYS},
     }
-    return hashlib.sha256(
-        json.dumps(payload, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
 
 
 def discover_distinct_real_labels() -> list[tuple[Path, dict[str, Any]]]:
     """Load every parsed OpenLane flow label, keep one per distinct signoff."""
     by_signature: dict[str, tuple[Path, dict[str, Any]]] = {}
-    for path in sorted(
-        OPENLANE_FLOW_LABELS.glob("*/records/flow-run-with-metrics.json")
-    ):
+    for path in sorted(OPENLANE_FLOW_LABELS.glob("*/records/flow-run-with-metrics.json")):
         record = load_json(path)
         if record.get("schema") != "eda.flow_run.v1" or not is_real_label(record):
             continue

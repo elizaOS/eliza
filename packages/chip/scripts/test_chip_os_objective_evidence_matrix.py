@@ -31,9 +31,9 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
                 for field, expected in req.required_fields:
                     if "." in field:
                         first, second = field.split(".", 1)
-                        data.setdefault(first, {})
-                        assert isinstance(data[first], dict)
-                        data[first][second] = expected
+                        nested = data.setdefault(first, {})
+                        assert isinstance(nested, dict)
+                        nested[second] = expected
                     else:
                         data[field] = expected
                 write_json(report_dir / req.required_report, data)
@@ -41,11 +41,7 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertEqual(report["summary"]["proven"], len(matrix.REQUIREMENTS) - 1)
         self.assertEqual(report["summary"]["weak_static_only"], 1)
-        weak = [
-            row
-            for row in report["requirements"]
-            if row["proof_state"] == matrix.WEAK
-        ]
+        weak = [row for row in report["requirements"] if row["proof_state"] == matrix.WEAK]
         self.assertEqual([row["id"] for row in weak], ["cross_fork_agent_payload_static_contract"])
 
     def test_field_expectations_block_when_status_pass_is_too_weak(self) -> None:
@@ -56,7 +52,9 @@ class ChipOsObjectiveEvidenceMatrixTests(unittest.TestCase):
                 for item in matrix.REQUIREMENTS
                 if item.ident == "aosp_full_virtual_device_boot"
             )
-            write_json(report_dir / req.required_report, {"status": "pass", "require_full_evidence": False})
+            write_json(
+                report_dir / req.required_report, {"status": "pass", "require_full_evidence": False}
+            )
             row = matrix.evaluate_requirement(req, report_dir)
         self.assertEqual(row["proof_state"], matrix.BLOCKED)
         self.assertIn("require_full_evidence", row["findings"][0])

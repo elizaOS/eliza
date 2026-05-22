@@ -287,17 +287,12 @@ module e1_l1i_cache
     // -----------------------------------------------------------------
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++) begin
-                for (int s = 0; s < SETS; s++) begin
-                    tag_array[w][s] <= '0;
-                    vld_array[w][s] <= 1'b0;
-                    pfb_array[w][s] <= 1'b0;
-                    par_array[w][s] <= 1'b0;
-                    data_array[w][s] <= '0;
-                end
-            end
-            for (int s = 0; s < SETS; s++)
-                plru[s] <= '0;
+            tag_array  <= '{default: '{default: '0}};
+            vld_array  <= '{default: '{default: 1'b0}};
+            pfb_array  <= '{default: '{default: 1'b0}};
+            par_array  <= '{default: '{default: 1'b0}};
+            data_array <= '{default: '{default: '0}};
+            plru       <= '{default: '0};
 
             s0_valid_q <= 1'b0;
             s0_paddr_q <= '0;

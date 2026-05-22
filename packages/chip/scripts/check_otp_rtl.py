@@ -24,6 +24,7 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 CHIP_ROOT = Path(__file__).resolve().parents[1]
 RTL = CHIP_ROOT / "rtl/security/otp/e1_otp_map.sv"
@@ -103,6 +104,7 @@ def parse_cocotb_xml() -> tuple[bool, str]:
 
 
 def main() -> int:
+    report: dict[str, Any]
     now = datetime.now(UTC).isoformat()
     REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
@@ -123,10 +125,22 @@ def main() -> int:
 
     checks = []
     lint_ok, lint_detail = run_lint()
-    checks.append({"id": "verilator_lint_only_clean", "status": "pass" if lint_ok else "fail", "detail": lint_detail})
+    checks.append(
+        {
+            "id": "verilator_lint_only_clean",
+            "status": "pass" if lint_ok else "fail",
+            "detail": lint_detail,
+        }
+    )
 
     cocotb_ok, cocotb_detail = run_cocotb()
-    checks.append({"id": "cocotb_otp_suite_pass", "status": "pass" if cocotb_ok else "fail", "detail": cocotb_detail})
+    checks.append(
+        {
+            "id": "cocotb_otp_suite_pass",
+            "status": "pass" if cocotb_ok else "fail",
+            "detail": cocotb_detail,
+        }
+    )
 
     failures = [c["id"] for c in checks if c["status"] != "pass"]
     passed = not failures

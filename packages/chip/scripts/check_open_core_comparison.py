@@ -129,9 +129,8 @@ def check(comparison_path: Path) -> list[str]:
             errors.append(f"axis '{axis}': verdict={v.get('verdict')!r} invalid")
         if not str(v.get("reason", "")).strip():
             errors.append(f"axis '{axis}': missing 'reason'")
-        if v.get("verdict") == "win" and v.get("evidence"):
-            if not (ROOT / v["evidence"]).exists():
-                errors.append(f"axis '{axis}': verdict evidence not found: {v['evidence']}")
+        if v.get("verdict") == "win" and v.get("evidence") and not (ROOT / v["evidence"]).exists():
+            errors.append(f"axis '{axis}': verdict evidence not found: {v['evidence']}")
     for axis in sorted(set(verdicts) - axes):
         errors.append(f"verdict for unknown axis '{axis}' (not in comparison_axes)")
 

@@ -74,9 +74,7 @@ def build_spec_sheet(params: dict) -> dict:
                 "height": env[1],
                 "thickness": env[2],
             },
-            "back_face": (
-                "fully flush flat back, no camera bump, no protruding lens ring"
-            ),
+            "back_face": ("fully flush flat back, no camera bump, no protruding lens ring"),
             "envelope_volume_cm3": round(envelope_vol_cm3, 2),
             "corner_radius_mm": dev["corner_radius_mm"],
             "mass_g": round(reconciled_g, 2),
@@ -231,8 +229,7 @@ def md_spec_sheet(s: dict) -> str:
         f"- Revision: {s['device']['revision']}",
         "",
         "## Mechanical",
-        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm "
-        f"({m['back_face']})",
+        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm ({m['back_face']})",
         f"- Envelope volume: {m['envelope_volume_cm3']:.2f} cm^3",
         f"- Corner radius: {m['corner_radius_mm']} mm",
         f"- Mass: {m['mass_g']:.2f} g reconciled "

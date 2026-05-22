@@ -186,9 +186,7 @@ def import_back(
             f"unsupported source tool '{source_tool}'; one of {sorted(SUPPORTED_VENDORS)}"
         )
     if bundle.get("blocked"):
-        raise ValueError(
-            "cannot import vendor report against a blocked (NDA) handoff bundle"
-        )
+        raise ValueError("cannot import vendor report against a blocked (NDA) handoff bundle")
     if not report_path.is_file():
         raise FileNotFoundError(f"vendor report missing: {report_path}")
 

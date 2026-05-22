@@ -170,13 +170,13 @@ async def illegal_transitions_dropped_and_tamper(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
 
     illegal = (
-        (ST_DEV, ST_MFG),       # DEV->MFG forbidden
-        (ST_DEV, ST_LOCKED),    # DEV->LOCKED forbidden
-        (ST_LOCKED, ST_DEV),    # backward
-        (ST_RMA, ST_LOCKED),    # RMA->LOCKED forbidden
-        (ST_DEV, ST_BLANK),     # anything->BLANK forbidden
-        (ST_MFG, 0x06),         # non-one-hot target
-        (ST_MFG, 0x00),         # null target
+        (ST_DEV, ST_MFG),  # DEV->MFG forbidden
+        (ST_DEV, ST_LOCKED),  # DEV->LOCKED forbidden
+        (ST_LOCKED, ST_DEV),  # backward
+        (ST_RMA, ST_LOCKED),  # RMA->LOCKED forbidden
+        (ST_DEV, ST_BLANK),  # anything->BLANK forbidden
+        (ST_MFG, 0x06),  # non-one-hot target
+        (ST_MFG, 0x00),  # null target
     )
     for start, target in illegal:
         await reset(dut, fuse_state=start)

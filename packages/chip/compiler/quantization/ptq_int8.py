@@ -53,9 +53,7 @@ class PtqInt8Calibrator:
         """Record the per-channel max-abs of a weight tensor."""
         if not channel_max_abs:
             raise ValueError(f"weight {name} has zero channels")
-        self._weight_scales[name] = [
-            (v / 127.0) if v > 0 else MIN_SCALE for v in channel_max_abs
-        ]
+        self._weight_scales[name] = [(v / 127.0) if v > 0 else MIN_SCALE for v in channel_max_abs]
 
     def record_activation(self, name: str, values_abs: Sequence[float]) -> None:
         """Record an activation batch's absolute values."""

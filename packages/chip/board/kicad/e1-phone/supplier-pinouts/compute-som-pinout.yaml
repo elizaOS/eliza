@@ -57,24 +57,24 @@ capture_note: >
 # --- Power / ground ---------------------------------------------------------
 power:
   rails:
-  - {pin: 251, name: VCC5V0_SYS, type: power_in, note: main 5V input}
-  - {pin: 253, name: VCC5V0_SYS, type: power_in, note: 5.0V +/-5%}
-  - {pin: 255, name: VCC5V0_SYS, type: power_in}
-  - {pin: 257, name: VCC5V0_SYS, type: power_in, note: 'recommend 5.0V @ 1.5A'}
-  - {pin: 259, name: VCC5V0_SYS, type: power_in}
-  - {pin: 254, name: VCC5V0_SYS, type: power_in}
-  - {pin: 256, name: VCC5V0_SYS, type: power_in}
-  - {pin: 258, name: VCC5V0_SYS, type: power_in}
-  - {pin: 260, name: VCC5V0_SYS, type: power_in}
-  - {pin: 234, name: VCC3V3_SYS, type: power_out, note: 3.3V system rail from module PMIC}
-  - {pin: 235, name: VCC3V3_SYS, type: power_out}
-  - {pin: 226, name: VCC3V3_SD, type: power_out, note: 3.3V SD/SDMMC0 rail}
-  - {pin: 227, name: VCC3V3_SD, type: power_out}
-  - {pin: 228, name: VCC_1V8, type: power_out, note: 1.8V rail}
-  - {pin: 224, name: VCCIO_WL, type: power_out, note: 1.8V output for Wi-Fi VCCIO}
-  - {pin: 230, name: VCCIO_ACODEC, type: power_out, note: 3.3V audio-codec IO rail}
-  - {pin: 221, name: PMIC_PWRON, type: input, active: low, note: PMIC power-on}
-  - {pin: 232, name: PMIC_32KOUT_WIFI, type: output, note: 32.768 kHz clock for Wi-Fi}
+    - {pin: 251, name: VCC5V0_SYS, type: power_in, note: main 5V input}
+    - {pin: 253, name: VCC5V0_SYS, type: power_in, note: 5.0V +/-5%}
+    - {pin: 255, name: VCC5V0_SYS, type: power_in}
+    - {pin: 257, name: VCC5V0_SYS, type: power_in, note: 'recommend 5.0V @ 1.5A'}
+    - {pin: 259, name: VCC5V0_SYS, type: power_in}
+    - {pin: 254, name: VCC5V0_SYS, type: power_in}
+    - {pin: 256, name: VCC5V0_SYS, type: power_in}
+    - {pin: 258, name: VCC5V0_SYS, type: power_in}
+    - {pin: 260, name: VCC5V0_SYS, type: power_in}
+    - {pin: 234, name: VCC3V3_SYS, type: power_out, note: 3.3V system rail from module PMIC}
+    - {pin: 235, name: VCC3V3_SYS, type: power_out}
+    - {pin: 226, name: VCC3V3_SD, type: power_out, note: 3.3V SD/SDMMC0 rail}
+    - {pin: 227, name: VCC3V3_SD, type: power_out}
+    - {pin: 228, name: VCC_1V8, type: power_out, note: 1.8V rail}
+    - {pin: 224, name: VCCIO_WL, type: power_out, note: 1.8V output for Wi-Fi VCCIO}
+    - {pin: 230, name: VCCIO_ACODEC, type: power_out, note: 3.3V audio-codec IO rail}
+    - {pin: 221, name: PMIC_PWRON, type: input, active: low, note: PMIC power-on}
+    - {pin: 232, name: PMIC_32KOUT_WIFI, type: output, note: 32.768 kHz clock for Wi-Fi}
   ground_pins: [7, 13, 19, 43, 61, 79, 97, 115, 158, 172, 190, 222, 244, 246, 248, 250]
 
 # --- Boot / reset / control -------------------------------------------------
@@ -86,30 +86,30 @@ boot_reset:
 # --- MIPI-DSI (display) -- two DSI links; e1-phone uses DSI0 -----------------
 mipi_dsi:
   dsi0:
-    - {pin: 90,  name: MIPI_DSI_TX0_CLKN, alt: LVDS_TX0_CLKN}
-    - {pin: 92,  name: MIPI_DSI_TX0_CLKP, alt: LVDS_TX0_CLKP}
-    - {pin: 81,  name: MIPI_DSI_TX0_D3N, alt: LVDS_TX0_D3N}
-    - {pin: 83,  name: MIPI_DSI_TX0_D3P, alt: LVDS_TX0_D3P}
-    - {pin: 85,  name: MIPI_DSI_TX0_D2N, alt: LVDS_TX0_D2N}
-    - {pin: 87,  name: MIPI_DSI_TX0_D2P, alt: LVDS_TX0_D2P}
-    - {pin: 89,  name: MIPI_DSI_TX0_D1N, alt: LVDS_TX0_D1N}
-    - {pin: 91,  name: MIPI_DSI_TX0_D1P, alt: LVDS_TX0_D1P}
-    - {pin: 93,  name: MIPI_DSI_TX0_D0N, alt: LVDS_TX0_D0N}
-    - {pin: 95,  name: MIPI_DSI_TX0_D0P, alt: LVDS_TX0_D0P}
+    - {pin: 90, name: MIPI_DSI_TX0_CLKN, alt: LVDS_TX0_CLKN}
+    - {pin: 92, name: MIPI_DSI_TX0_CLKP, alt: LVDS_TX0_CLKP}
+    - {pin: 81, name: MIPI_DSI_TX0_D3N, alt: LVDS_TX0_D3N}
+    - {pin: 83, name: MIPI_DSI_TX0_D3P, alt: LVDS_TX0_D3P}
+    - {pin: 85, name: MIPI_DSI_TX0_D2N, alt: LVDS_TX0_D2N}
+    - {pin: 87, name: MIPI_DSI_TX0_D2P, alt: LVDS_TX0_D2P}
+    - {pin: 89, name: MIPI_DSI_TX0_D1N, alt: LVDS_TX0_D1N}
+    - {pin: 91, name: MIPI_DSI_TX0_D1P, alt: LVDS_TX0_D1P}
+    - {pin: 93, name: MIPI_DSI_TX0_D0N, alt: LVDS_TX0_D0N}
+    - {pin: 95, name: MIPI_DSI_TX0_D0P, alt: LVDS_TX0_D0P}
   dsi1:
-    - {pin: 72,  name: MIPI_DSI_TX1_CLKN}
-    - {pin: 74,  name: MIPI_DSI_TX1_CLKP}
-    - {pin: 63,  name: MIPI_DSI_TX1_D3N}
-    - {pin: 65,  name: MIPI_DSI_TX1_D3P}
-    - {pin: 67,  name: MIPI_DSI_TX1_D2N}
-    - {pin: 69,  name: MIPI_DSI_TX1_D2P}
-    - {pin: 71,  name: MIPI_DSI_TX1_D1N}
-    - {pin: 73,  name: MIPI_DSI_TX1_D1P}
-    - {pin: 75,  name: MIPI_DSI_TX1_D0N}
-    - {pin: 77,  name: MIPI_DSI_TX1_D0P}
+    - {pin: 72, name: MIPI_DSI_TX1_CLKN}
+    - {pin: 74, name: MIPI_DSI_TX1_CLKP}
+    - {pin: 63, name: MIPI_DSI_TX1_D3N}
+    - {pin: 65, name: MIPI_DSI_TX1_D3P}
+    - {pin: 67, name: MIPI_DSI_TX1_D2N}
+    - {pin: 69, name: MIPI_DSI_TX1_D2P}
+    - {pin: 71, name: MIPI_DSI_TX1_D1N}
+    - {pin: 73, name: MIPI_DSI_TX1_D1P}
+    - {pin: 75, name: MIPI_DSI_TX1_D0N}
+    - {pin: 77, name: MIPI_DSI_TX1_D0P}
   display_control:
-    - {pin: 28,  name: LCD0_RST_L, active: low, note: MIPI-DSI0 panel reset}
-    - {pin: 26,  name: TP0_RST_L, active: low, note: DSI0 touch-panel reset}
+    - {pin: 28, name: LCD0_RST_L, active: low, note: MIPI-DSI0 panel reset}
+    - {pin: 26, name: TP0_RST_L, active: low, note: DSI0 touch-panel reset}
     - {pin: 125, name: LCD_PWR_EN, active: low, note: DSI0 panel power enable}
     - {pin: 127, name: TP_INT, active: low, note: DSI0 touch interrupt}
     - {pin: 120, name: BL_EN, active: high, note: backlight enable}
@@ -117,29 +117,29 @@ mipi_dsi:
 # --- MIPI-CSI (camera) -- 4-lane RX; supports 2 cameras ---------------------
 mipi_csi:
   csi_rx:
-    - {pin: 66,  name: MIPI_CSI_RX_CLK0N}
-    - {pin: 68,  name: MIPI_CSI_RX_CLK0P}
-    - {pin: 60,  name: MIPI_CSI_RX_CLK1N}
-    - {pin: 62,  name: MIPI_CSI_RX_CLK1P}
-    - {pin: 57,  name: MIPI_CSI_RX_D0N}
-    - {pin: 59,  name: MIPI_CSI_RX_D0P}
-    - {pin: 53,  name: MIPI_CSI_RX_D1N}
-    - {pin: 55,  name: MIPI_CSI_RX_D1P}
-    - {pin: 49,  name: MIPI_CSI_RX_D2N}
-    - {pin: 51,  name: MIPI_CSI_RX_D2P}
-    - {pin: 45,  name: MIPI_CSI_RX_D3N}
-    - {pin: 47,  name: MIPI_CSI_RX_D3P}
+    - {pin: 66, name: MIPI_CSI_RX_CLK0N}
+    - {pin: 68, name: MIPI_CSI_RX_CLK0P}
+    - {pin: 60, name: MIPI_CSI_RX_CLK1N}
+    - {pin: 62, name: MIPI_CSI_RX_CLK1P}
+    - {pin: 57, name: MIPI_CSI_RX_D0N}
+    - {pin: 59, name: MIPI_CSI_RX_D0P}
+    - {pin: 53, name: MIPI_CSI_RX_D1N}
+    - {pin: 55, name: MIPI_CSI_RX_D1P}
+    - {pin: 49, name: MIPI_CSI_RX_D2N}
+    - {pin: 51, name: MIPI_CSI_RX_D2P}
+    - {pin: 45, name: MIPI_CSI_RX_D3N}
+    - {pin: 47, name: MIPI_CSI_RX_D3P}
   camera_control:
-    - {pin: 1,   name: MIPI_MCLK0, type: output, note: rear-camera reference clock}
-    - {pin: 21,  name: MIPI_MCLK1, type: output, note: front-camera reference clock}
-    - {pin: 20,  name: MIPI_RESET0_CAM, note: CSI0 camera reset}
-    - {pin: 31,  name: MIPI_RESET1_CAM, note: CSI1 camera reset}
-    - {pin: 29,  name: MIPI_PDN1_CAM, note: CSI1 camera power-down}
+    - {pin: 1, name: MIPI_MCLK0, type: output, note: rear-camera reference clock}
+    - {pin: 21, name: MIPI_MCLK1, type: output, note: front-camera reference clock}
+    - {pin: 20, name: MIPI_RESET0_CAM, note: CSI0 camera reset}
+    - {pin: 31, name: MIPI_RESET1_CAM, note: CSI1 camera reset}
+    - {pin: 29, name: MIPI_PDN1_CAM, note: CSI1 camera power-down}
 
 # --- USB (modem over USB, plus host/OTG) ------------------------------------
 usb:
   usb2_host2:
-    - {pin: 9,  name: USB_HOST2_DM}
+    - {pin: 9, name: USB_HOST2_DM}
     - {pin: 11, name: USB_HOST2_DP}
   usb2_host3:
     - {pin: 15, name: USB_HOST3_DM}
@@ -151,9 +151,9 @@ usb:
     - {pin: 161, name: USB3_HOST1_SSRXN, alt: SATA1_RXN}
   usb_control:
     - {pin: 145, name: USB_OTG0_VBUSDET, type: input, active: high}
-    - {pin: 33,  name: VCC5V0_USB30_EN, active: high, note: USB3.0 power enable}
-    - {pin: 34,  name: VCC5V0_HOST_EN, note: USB host power enable}
-    - {pin: 36,  name: VCC5V0_OTG_EN, note: USB OTG power enable}
+    - {pin: 33, name: VCC5V0_USB30_EN, active: high, note: USB3.0 power enable}
+    - {pin: 34, name: VCC5V0_HOST_EN, note: USB host power enable}
+    - {pin: 36, name: VCC5V0_OTG_EN, note: USB OTG power enable}
   modem_attach_note: >
     The Quectel RG255C 5G RedCap modem (separate module, public pinout already
     captured) attaches to the SoM over a USB2.0 HOST or OTG link (pins 9/11 or
@@ -205,21 +205,21 @@ sdio_sd:
 # --- I2C / UART / SPI / audio / ADC -----------------------------------------
 control_buses:
   i2c:
-    - {pin: 25,  name: I2C4_SCL_M0, note: 'core-board 2.2k pull-up'}
-    - {pin: 27,  name: I2C4_SDA_M0}
+    - {pin: 25, name: I2C4_SCL_M0, note: 'core-board 2.2k pull-up'}
+    - {pin: 27, name: I2C4_SDA_M0}
     - {pin: 108, name: I2C2_SCL_M0}
     - {pin: 110, name: I2C2_SDA_M0}
     - {pin: 121, name: I2C1_SDA}
-    - {pin: 37,  name: HDMITX_SDA, mux: I2C5_SDA}
-    - {pin: 39,  name: HDMITX_SCL, mux: I2C5_SCL}
+    - {pin: 37, name: HDMITX_SDA, mux: I2C5_SDA}
+    - {pin: 39, name: HDMITX_SCL, mux: I2C5_SCL}
   spi:
-    - {pin: 44,  name: SPI1_MOSI_M1}
-    - {pin: 46,  name: SPI1_CS0_M1}
+    - {pin: 44, name: SPI1_MOSI_M1}
+    - {pin: 46, name: SPI1_CS0_M1}
   adc:
     - {pin: 150, name: SARADC_VIN1}
     - {pin: 154, name: SARADC_VIN2}
   gpio_interrupts:
-    - {pin: 23,  name: GSENSOR_INT_L, note: G-sensor interrupt input}
+    - {pin: 23, name: GSENSOR_INT_L, note: G-sensor interrupt input}
     - {pin: 143, name: RTCIC_INT_L, note: RTC IC interrupt input}
   uart_note: >
     RK3566 exposes 10 UARTs; UART functions are muxed onto the GPIO pads above

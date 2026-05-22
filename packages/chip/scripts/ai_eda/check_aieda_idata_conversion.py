@@ -76,7 +76,13 @@ def validate_stats(
     ):
         if not positive_number(values.get(field)):
             errors.append(f"{record_id}: {field} must be a positive number")
-    if not positive_number(values.get("nonzero_density")) or values.get("nonzero_density") > 1:
+    nonzero_density = values.get("nonzero_density")
+    if (
+        not isinstance(nonzero_density, (int, float))
+        or isinstance(nonzero_density, bool)
+        or nonzero_density <= 0
+        or nonzero_density > 1
+    ):
         errors.append(f"{record_id}: nonzero_density must be in (0, 1]")
     if not positive_int(values.get("edge_count")):
         errors.append(f"{record_id}: edge_count must be a positive integer")

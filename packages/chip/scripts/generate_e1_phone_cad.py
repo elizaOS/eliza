@@ -1167,10 +1167,26 @@ def enclosure_feature_parts(params: dict[str, Any]) -> list[Part]:
         straight_w = glass_w - 2.0 * params["device"]["corner_radius_mm"]
         straight_h = glass_h - 2.0 * params["device"]["corner_radius_mm"]
         for name, size, center in [
-            ("glass_perimeter_cushion_top", [straight_w, cw, ct], [0, glass_h / 2 - cw / 2, cushion_z]),
-            ("glass_perimeter_cushion_bottom", [straight_w, cw, ct], [0, -glass_h / 2 + cw / 2, cushion_z]),
-            ("glass_perimeter_cushion_left", [cw, straight_h, ct], [-glass_w / 2 + cw / 2, 0, cushion_z]),
-            ("glass_perimeter_cushion_right", [cw, straight_h, ct], [glass_w / 2 - cw / 2, 0, cushion_z]),
+            (
+                "glass_perimeter_cushion_top",
+                [straight_w, cw, ct],
+                [0, glass_h / 2 - cw / 2, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_bottom",
+                [straight_w, cw, ct],
+                [0, -glass_h / 2 + cw / 2, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_left",
+                [cw, straight_h, ct],
+                [-glass_w / 2 + cw / 2, 0, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_right",
+                [cw, straight_h, ct],
+                [glass_w / 2 - cw / 2, 0, cushion_z],
+            ),
         ]:
             parts.append(
                 box(
@@ -1408,7 +1424,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     comp = params["components"]
 
     width, height, depth = dev["envelope_mm"]
-    back_z = -depth / 2 + 0.6
+    -depth / 2 + 0.6
     front_z = depth / 2 - 0.35
     corner_radius = dev["corner_radius_mm"]
     wall = dev["wall_thickness_mm"]
@@ -1417,7 +1433,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
     rear_camera_x, rear_camera_y = rear_camera_center_xy(params)
     rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
     rear_sight_radius, rear_sight_depth = rear_camera_optical_sight_tunnel_mm(params)
-    rear_aperture_z = -depth / 2.0 + 0.035
+    -depth / 2.0 + 0.035
     # Bezel lands are 0.14 mm thick; seat their center so the outer face stays at
     # or inside the flat back outer plane (Zmin >= -depth/2), keeping flush back.
     rear_bezel_z = -depth / 2.0 + 0.14 / 2.0
@@ -1478,9 +1494,7 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
             [
                 0,
                 -7.0,
-                -depth / 2
-                + wall
-                + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
+                -depth / 2 + wall + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
             ],
             [0.07, 0.075, 0.08, 0.55],
             "battery support",
@@ -1710,7 +1724,9 @@ def build_parts(params: dict[str, Any], exploded: bool = False) -> list[Part]:
                 [
                     rear_flash_x,
                     rear_flash_y,
-                    -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
+                    -depth / 2
+                    + wall
+                    + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
                 CAMERA,
@@ -2142,9 +2158,7 @@ def write_solid_cad_handoff_artifacts(
                 [
                     0,
                     -7.0,
-                    -depth / 2
-                    + wall
-                    + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
+                    -depth / 2 + wall + float(battery["back_void_foam_pad_mm"][2]) / 2.0,
                 ],
             ),
             "color": cq.Color(0.07, 0.075, 0.08, 0.55),
@@ -2254,9 +2268,7 @@ def write_solid_cad_handoff_artifacts(
                 ],
                 [
                     rear_flash_x,
-                    rear_flash_y
-                    + rear_flash_aperture_h / 2.0
-                    + rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y + rear_flash_aperture_h / 2.0 + rear_flash_bezel_border_mm / 2.0,
                     -depth / 2.0 + 0.06,
                 ],
             ),
@@ -2274,9 +2286,7 @@ def write_solid_cad_handoff_artifacts(
                 ],
                 [
                     rear_flash_x,
-                    rear_flash_y
-                    - rear_flash_aperture_h / 2.0
-                    - rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_y - rear_flash_aperture_h / 2.0 - rear_flash_bezel_border_mm / 2.0,
                     -depth / 2.0 + 0.06,
                 ],
             ),
@@ -2289,9 +2299,7 @@ def write_solid_cad_handoff_artifacts(
             "shape": cq_box(
                 [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
                 [
-                    rear_flash_x
-                    - rear_flash_aperture_w / 2.0
-                    - rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_x - rear_flash_aperture_w / 2.0 - rear_flash_bezel_border_mm / 2.0,
                     rear_flash_y,
                     -depth / 2.0 + 0.06,
                 ],
@@ -2305,9 +2313,7 @@ def write_solid_cad_handoff_artifacts(
             "shape": cq_box(
                 [rear_flash_bezel_border_mm, rear_flash_aperture_h, 0.12],
                 [
-                    rear_flash_x
-                    + rear_flash_aperture_w / 2.0
-                    + rear_flash_bezel_border_mm / 2.0,
+                    rear_flash_x + rear_flash_aperture_w / 2.0 + rear_flash_bezel_border_mm / 2.0,
                     rear_flash_y,
                     -depth / 2.0 + 0.06,
                 ],
@@ -2323,7 +2329,9 @@ def write_solid_cad_handoff_artifacts(
                 [
                     rear_flash_x,
                     rear_flash_y,
-                    -depth / 2 + wall + FLASH_BURIAL_CLEARANCE_MM
+                    -depth / 2
+                    + wall
+                    + FLASH_BURIAL_CLEARANCE_MM
                     + comp["rear_flash_led"]["envelope_mm"][2] / 2.0,
                 ],
             ),
@@ -2608,10 +2616,26 @@ def write_solid_cad_handoff_artifacts(
         straight_w = glass_w - 2.0 * radius
         straight_h = glass_h - 2.0 * radius
         for cname, csize, ccenter in [
-            ("glass_perimeter_cushion_top", [straight_w, cw, ct], [0, glass_h / 2 - cw / 2, cushion_z]),
-            ("glass_perimeter_cushion_bottom", [straight_w, cw, ct], [0, -glass_h / 2 + cw / 2, cushion_z]),
-            ("glass_perimeter_cushion_left", [cw, straight_h, ct], [-glass_w / 2 + cw / 2, 0, cushion_z]),
-            ("glass_perimeter_cushion_right", [cw, straight_h, ct], [glass_w / 2 - cw / 2, 0, cushion_z]),
+            (
+                "glass_perimeter_cushion_top",
+                [straight_w, cw, ct],
+                [0, glass_h / 2 - cw / 2, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_bottom",
+                [straight_w, cw, ct],
+                [0, -glass_h / 2 + cw / 2, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_left",
+                [cw, straight_h, ct],
+                [-glass_w / 2 + cw / 2, 0, cushion_z],
+            ),
+            (
+                "glass_perimeter_cushion_right",
+                [cw, straight_h, ct],
+                [glass_w / 2 - cw / 2, 0, cushion_z],
+            ),
         ]:
             solids.append(
                 {
@@ -2984,7 +3008,9 @@ def write_solid_cad_handoff_artifacts(
         "parts": part_rows,
         "required_solid_presence": required_solid_presence,
         "side_frame_external_cutouts": {
-            "status": "pass" if side_frame_cut_volume_mm3 < side_frame_uncut_volume_mm3 else "blocked",
+            "status": "pass"
+            if side_frame_cut_volume_mm3 < side_frame_uncut_volume_mm3
+            else "blocked",
             "cutout_count": len(side_frame_cutouts),
             "cutouts": [
                 {
@@ -2997,9 +3023,7 @@ def write_solid_cad_handoff_artifacts(
             ],
             "uncut_side_frame_volume_mm3": side_frame_uncut_volume_mm3,
             "cut_side_frame_volume_mm3": side_frame_cut_volume_mm3,
-            "removed_volume_mm3": round(
-                side_frame_uncut_volume_mm3 - side_frame_cut_volume_mm3, 3
-            ),
+            "removed_volume_mm3": round(side_frame_uncut_volume_mm3 - side_frame_cut_volume_mm3, 3),
             "note": (
                 "Orange side-frame STEP is boolean-cut for USB-C, bottom speaker grille, "
                 "bottom/top microphone ports, and side-key cap openings instead of relying "
@@ -3007,7 +3031,9 @@ def write_solid_cad_handoff_artifacts(
             ),
         },
         "cover_glass_external_cutouts": {
-            "status": "pass" if cover_glass_cut_volume_mm3 < cover_glass_uncut_volume_mm3 else "blocked",
+            "status": "pass"
+            if cover_glass_cut_volume_mm3 < cover_glass_uncut_volume_mm3
+            else "blocked",
             "cutout_count": 1,
             "cutouts": [
                 {
@@ -3813,9 +3839,7 @@ def write_visual_review_coverage_acceptance_artifacts(
     part_review_case = {
         "part_count": part_review.get("part_count", 0),
         "contact_sheet": part_review.get("contact_sheet"),
-        "contact_sheet_pass": bool(
-            part_review.get("contact_sheet_check", {}).get("pass", False)
-        ),
+        "contact_sheet_pass": bool(part_review.get("contact_sheet_check", {}).get("pass", False)),
         "exploded_contact_sheet": part_review.get("exploded_contact_sheet"),
         "exploded_contact_sheet_pass": bool(
             part_review.get("exploded_contact_sheet_check", {}).get("pass", False)
@@ -3944,22 +3968,59 @@ def part_visual_required_views(part: dict[str, Any]) -> list[str]:
         return [*base_views, "full_front_iso.png", "full_top_down.png", "exploded_iso.png"]
     if role == "screen retention":
         return [*base_views, "exploded_iso.png"]
-    if role in {"PCB", "battery", "split-board interconnect", "connector", "EMI shield", "RF keepout"}:
+    if role in {
+        "PCB",
+        "battery",
+        "split-board interconnect",
+        "connector",
+        "EMI shield",
+        "RF keepout",
+    }:
         return [*base_views, "component_stack.png", "exploded_iso.png"]
     if role == "I/O" or role == "I/O seal":
-        return [*base_views, "full_bottom_port.png", "component-review-io-buttons.png", "exploded_iso.png"]
+        return [
+            *base_views,
+            "full_bottom_port.png",
+            "component-review-io-buttons.png",
+            "exploded_iso.png",
+        ]
     if role == "button" or role == "button seal":
-        return [*base_views, "full_left_side.png", "component-review-io-buttons.png", "component_stack.png"]
+        return [
+            *base_views,
+            "full_left_side.png",
+            "component-review-io-buttons.png",
+            "component_stack.png",
+        ]
     if role == "camera":
         if name.startswith("front_"):
-            return [*base_views, "full_top_down.png", "component-review-optical.png", "component_stack.png"]
-        return [*base_views, "rear_feature_detail.png", "component-review-optical.png", "component_stack.png"]
+            return [
+                *base_views,
+                "full_top_down.png",
+                "component-review-optical.png",
+                "component_stack.png",
+            ]
+        return [
+            *base_views,
+            "rear_feature_detail.png",
+            "component-review-optical.png",
+            "component_stack.png",
+        ]
     if role == "camera seal":
         return [*base_views, "rear_feature_detail.png", "component-review-optical.png"]
     if role == "audio":
         if name.startswith(("bottom_", "usb_")):
-            return [*base_views, "full_bottom_port.png", "component-review-audio.png", "component_stack.png"]
-        return [*base_views, "exploded_iso.png", "component-review-audio.png", "component_stack.png"]
+            return [
+                *base_views,
+                "full_bottom_port.png",
+                "component-review-audio.png",
+                "component_stack.png",
+            ]
+        return [
+            *base_views,
+            "exploded_iso.png",
+            "component-review-audio.png",
+            "component_stack.png",
+        ]
     if role == "haptics":
         return [*base_views, "component-review-io-buttons.png", "component_stack.png"]
     if role == "service":
@@ -4265,9 +4326,7 @@ def write_component_selection_review_artifacts(
             "release."
         ),
     }
-    (REVIEW_DIR / "component-selection-review.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "component-selection-review.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = [
         "# E1 Phone Component Selection Review",
         "",
@@ -5050,8 +5109,8 @@ def write_supplier_response_artifacts(
     if csv_lines and csv_lines[0].startswith("# evidence_class:"):
         template_evidence_class = csv_lines[0].split(":", 1)[1].strip()
         csv_text = "\n".join(csv_lines[1:]) + "\n"
-    with StringIO(csv_text) as csv_file:
-        reader = csv.DictReader(csv_file)
+    with StringIO(csv_text) as csv_buffer:
+        reader = csv.DictReader(csv_buffer)
         reviewed_rows = list(reader)
     forbidden_evidence_classes = {
         "simulated_supplier_response_for_planning_not_release",
@@ -5415,7 +5474,7 @@ def write_supplier_evidence_acceptance_artifacts(
     supplier_ids = {item["id"] for item in supplier.get("items", [])}
     package_by_id = {package["id"]: package for package in supplier_rfq.get("packages", [])}
     response_cases = {case["supplier_item_id"]: case for case in supplier_response.get("cases", [])}
-    reviewed_families = []
+    reviewed_families: list[dict[str, Any]] = []
     for family in families:
         items = []
         for item_id in family["required_items"]:
@@ -6572,7 +6631,7 @@ def write_acoustic_validation_artifacts(
         },
     ]
 
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "bottom_speaker_spl_1khz_db",
             "unit": "dB SPL",
@@ -7053,7 +7112,7 @@ def write_camera_validation_artifacts(
             and "front_camera_black_mask_window" in part_names,
         },
     ]
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "rear_camera_lens_center_error_mm",
             "unit": "mm",
@@ -7494,7 +7553,7 @@ def write_display_validation_artifacts(
             "pass": bool(interface_cases.get("screen_bond_and_fpc_connection", {}).get("pass")),
         },
     ]
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "display_bond_peel_n_per_mm",
             "unit": "N/mm",
@@ -8136,7 +8195,7 @@ def write_environmental_validation_artifacts(
         },
     ]
 
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "measurement_id": "max_skin_temp_video_call_c",
             "domain": "thermal",
@@ -8996,7 +9055,7 @@ def write_evt_inspection_plan_artifacts(
     display = params["display"]
     interface_cases = {case["id"]: case for case in interface_validation.get("interfaces", [])}
     fixture_case_ids = {case["id"] for case in evt_fixtures.get("cases", [])}
-    measurements = [
+    measurements: list[dict[str, Any]] = [
         {
             "id": "power_button_actuation_force",
             "interface_case": "power_button_force_travel_pressure",
@@ -9992,7 +10051,7 @@ def write_assembly_build_traveler_artifacts(
     parts: list[Part],
 ) -> dict[str, Any]:
     part_names = {part.name for part in parts}
-    steps = [
+    steps: list[dict[str, Any]] = [
         {
             "id": "incoming_supplier_part_inspection",
             "station": "incoming_quality",
@@ -10428,7 +10487,7 @@ def write_process_control_plan_artifacts(
     gdt_release: dict[str, Any],
 ) -> dict[str, Any]:
     traveler_steps = {step["id"] for step in assembly_build.get("steps", [])}
-    controls = [
+    controls: list[dict[str, Any]] = [
         {
             "id": "incoming_supplier_identity_control",
             "station": "incoming_quality",
@@ -11031,18 +11090,12 @@ def write_battery_swell_management_artifacts(
             "envelope_mm": battery["back_void_foam_pad_mm"],
             "bounds_mm": foam_bounds,
             "compression_allowance_mm": battery["back_void_foam_compression_allowance_mm"],
-            "free_gap_to_pouch_mm": clearance_cases["battery_back_void_foam_to_pouch"][
-                "actual_mm"
-            ],
+            "free_gap_to_pouch_mm": clearance_cases["battery_back_void_foam_to_pouch"]["actual_mm"],
         },
         "worst_case_arithmetic": {
             "battery_swell_high_mm": foam_check["battery_swell_high_mm"],
-            "back_void_tolerance_arithmetic_mm": foam_check[
-                "back_void_tolerance_arithmetic_mm"
-            ],
-            "required_back_void_capacity_mm": foam_check[
-                "back_void_required_worst_case_mm"
-            ],
+            "back_void_tolerance_arithmetic_mm": foam_check["back_void_tolerance_arithmetic_mm"],
+            "required_back_void_capacity_mm": foam_check["back_void_required_worst_case_mm"],
             "managed_back_void_capacity_mm": foam_check["back_void_managed_capacity_mm"],
             "margin_mm": round(
                 foam_check["back_void_managed_capacity_mm"]
@@ -11053,9 +11106,7 @@ def write_battery_swell_management_artifacts(
         "checks": {
             "battery_display_and_wall_clearance": display_wall,
             "battery_back_void_foam_management": foam_check,
-            "battery_back_void_foam_to_pouch": clearance_cases[
-                "battery_back_void_foam_to_pouch"
-            ],
+            "battery_back_void_foam_to_pouch": clearance_cases["battery_back_void_foam_to_pouch"],
         },
         "release_blockers": [
             "Supplier battery drawing must include end-of-life swelling envelope, PCM, connector, pull-tab, and sample thickness data.",
@@ -11063,9 +11114,7 @@ def write_battery_swell_management_artifacts(
             "Physical EVT thermal/aging/drop validation must confirm the foam does not preload the pouch or push the display.",
         ],
     }
-    (REVIEW_DIR / "battery-swell-management.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "battery-swell-management.json").write_text(json.dumps(report, indent=2) + "\n")
     lines = [
         "# E1 Phone Battery Swell Management",
         "",
@@ -11625,7 +11674,9 @@ def write_tooling_action_register_artifacts(
             "cad_status": "cad_action_ready",
             "tool_action": "run first-shot CMM, flatness, boss position, aperture, and snap retention feedback loop",
             "linked_process_case": "clamp_tonnage_window",
-            "linked_process_risk": process_cases.get("clamp_tonnage_window", {}).get("risk", "unknown"),
+            "linked_process_risk": process_cases.get("clamp_tonnage_window", {}).get(
+                "risk", "unknown"
+            ),
             "required_returned_evidence": [
                 "first_shot_cmm_report",
                 "warp_measurement_report",
@@ -11661,9 +11712,7 @@ def write_tooling_action_register_artifacts(
             "before injection-tool release."
         ),
     }
-    (REVIEW_DIR / "tooling-action-register.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (REVIEW_DIR / "tooling-action-register.json").write_text(json.dumps(report, indent=2) + "\n")
     csv_path = REVIEW_DIR / "tooling-action-register.csv"
     with csv_path.open("w", newline="") as fh:
         fieldnames = [
@@ -11714,7 +11763,7 @@ def write_mold_flow_acceptance_artifacts(
     mold_process: dict[str, Any],
 ) -> dict[str, Any]:
     mfg = params["manufacturing"]
-    criteria = [
+    criteria: list[dict[str, Any]] = [
         {
             "id": "fill_pressure_at_vp_transfer_mpa",
             "target": "<= 85% of selected press/resin limit",
@@ -11936,8 +11985,8 @@ def write_mold_flow_acceptance_artifacts(
             existing_ids != expected_ids or existing_fields != fieldnames or not existing_rows
         )
     if should_write_template:
-        with template_path.open("w", newline="") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        with template_path.open("w", newline="") as result_template_file:
+            writer = csv.DictWriter(result_template_file, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(rows)
 
@@ -12445,8 +12494,8 @@ def write_board_step_readiness_artifacts(
     if routed_csv_lines and routed_csv_lines[0].startswith("# evidence_class:"):
         routed_template_evidence_class = routed_csv_lines[0].split(":", 1)[1].strip()
         routed_csv_text = "\n".join(routed_csv_lines[1:]) + "\n"
-    with StringIO(routed_csv_text) as csv_file:
-        routed_intake_rows = list(csv.DictReader(csv_file))
+    with StringIO(routed_csv_text) as routed_csv_buffer:
+        routed_intake_rows = list(csv.DictReader(routed_csv_buffer))
     routed_forbidden_evidence_classes = {
         "demo_routed_board_for_planning_not_release",
         "simulated_routed_board_release_for_planning_not_release",
@@ -12745,8 +12794,8 @@ def write_routed_board_clearance_artifacts(
         )
         should_write_template = existing_fields != fieldnames or not has_response_content
     if should_write_template:
-        with template_path.open("w", newline="") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        with template_path.open("w", newline="") as result_template_file:
+            writer = csv.DictWriter(result_template_file, fieldnames=fieldnames)
             writer.writeheader()
             for case in rerun_cases:
                 writer.writerow(
@@ -12932,7 +12981,7 @@ def write_full_cad_boolean_interference_artifacts(
     step_validation: dict[str, Any],
 ) -> dict[str, Any]:
     template_path = REVIEW_DIR / "full-cad-boolean-interference-results-template.csv"
-    scopes = [
+    scopes: list[dict[str, Any]] = [
         {
             "id": "screen_stack_to_orange_rails",
             "source_clearance_ids": [
@@ -13283,7 +13332,7 @@ def write_readiness_artifacts(
     board_step: dict[str, Any],
     supplier_rfq: dict[str, Any],
     supplier_response: dict[str, Any],
-) -> None:
+) -> dict[str, Any]:
     manifest_path = OUT_DIR / "assembly-manifest.json"
     tooling_manifest_path = OUT_DIR / "tooling-manifest.json"
     assembly_manifest = json.loads(manifest_path.read_text()) if manifest_path.is_file() else []
@@ -14451,7 +14500,7 @@ def write_cmf_release_acceptance_artifacts(
     dfm: dict[str, Any],
     toolmaker_signoff: dict[str, Any],
 ) -> dict[str, Any]:
-    criteria = [
+    criteria: list[dict[str, Any]] = [
         {
             "id": "orange_resin_color_plaque_delta_e",
             "domain": "color",
@@ -14535,8 +14584,8 @@ def write_cmf_release_acceptance_artifacts(
         if has_response_content:
             should_write_template = False
     if should_write_template:
-        with template_path.open("w", newline="") as csv_file:
-            writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        with template_path.open("w", newline="") as cmf_template_file:
+            writer = csv.DictWriter(cmf_template_file, fieldnames=fieldnames)
             writer.writeheader()
             for criterion in criteria:
                 writer.writerow(
@@ -15086,18 +15135,12 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     )
     battery_swell_high_mm = round(float(battery["envelope_mm"][2]) * 0.10, 4)
     back_void_tolerance_arithmetic_mm = 0.182
-    back_void_required_worst_case_mm = (
-        battery_swell_high_mm + back_void_tolerance_arithmetic_mm
-    )
-    back_void_managed_capacity_mm = (
-        battery_to_back_wall_gap_mm + foam_compression_allowance_mm
-    )
+    back_void_required_worst_case_mm = battery_swell_high_mm + back_void_tolerance_arithmetic_mm
+    back_void_managed_capacity_mm = battery_to_back_wall_gap_mm + foam_compression_allowance_mm
     if "rear_flash_led" in by_name:
         flash_lo = by_name["rear_flash_led"].bounds[0]
         flash_min = float(flash_lo[2])
-    flash_burial_clearance_mm = (
-        flash_min - back_inner_wall_z if flash_min is not None else 0.0
-    )
+    flash_burial_clearance_mm = flash_min - back_inner_wall_z if flash_min is not None else 0.0
     rear_camera_back_z = rear_camera_front_z = None
     if "rear_camera_module" in by_name:
         cam_lo, cam_hi = by_name["rear_camera_module"].bounds
@@ -15112,7 +15155,10 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
         front_camera_back_z = float(fc_lo[2])
         front_camera_front_z = float(fc_hi[2])
     saddle_to_speaker_chamber_gap_mm = 0.0
-    if "orange_usb_reinforcement_saddle" in by_name and "bottom_speaker_acoustic_chamber" in by_name:
+    if (
+        "orange_usb_reinforcement_saddle" in by_name
+        and "bottom_speaker_acoustic_chamber" in by_name
+    ):
         saddle_to_speaker_chamber_gap_mm = box_gap(
             list(by_name["orange_usb_reinforcement_saddle"].mesh.extents),
             list(by_name["orange_usb_reinforcement_saddle"].mesh.bounds.mean(axis=0)),
@@ -15123,9 +15169,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     if "rear_flash_led_window" in by_name and "rear_camera_lens_window" in by_name:
         flash_c = by_name["rear_flash_led_window"].mesh.bounds.mean(axis=0)
         cam_c = by_name["rear_camera_lens_window"].mesh.bounds.mean(axis=0)
-        flash_camera_center_spacing_mm = float(
-            np.linalg.norm(flash_c[:2] - cam_c[:2])
-        )
+        flash_camera_center_spacing_mm = float(np.linalg.norm(flash_c[:2] - cam_c[:2]))
     rear_aperture_w, rear_aperture_h = rear_camera_shell_aperture_mm(params)
     rear_glass_w, rear_glass_h, _rear_glass_t = comp["rear_camera_glass"]["envelope_mm"]
     rear_camera_aperture_bezel_parts = [
@@ -15150,8 +15194,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
     checks = {
         "battery_display_and_wall_clearance": {
             "pass": battery_to_display_gap_mm + fit_check_epsilon_mm >= 0.15
-            and battery_to_back_wall_gap_mm + fit_check_epsilon_mm
-            >= battery_swell_gap_required_mm,
+            and battery_to_back_wall_gap_mm + fit_check_epsilon_mm >= battery_swell_gap_required_mm,
             "battery_front_z_mm": round(battery_max, 4) if battery_max is not None else None,
             "battery_back_z_mm": round(battery_min, 4) if battery_min is not None else None,
             "display_lcm_back_z_mm": (
@@ -15366,9 +15409,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             and rear_aperture_h > rear_glass_h,
             "aperture_mm": [rear_aperture_w, rear_aperture_h],
             "cover_glass_mm": [rear_glass_w, rear_glass_h],
-            "bezel_parts": [
-                name for name in rear_camera_aperture_bezel_parts if name in by_name
-            ],
+            "bezel_parts": [name for name in rear_camera_aperture_bezel_parts if name in by_name],
             "aperture_present": "rear_camera_shell_aperture" in by_name,
             "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush camera cover window instead of relying on an internal black window hidden under an unbroken shell.",
         },
@@ -15381,9 +15422,7 @@ def run_checks(params: dict[str, Any], parts: list[Part]) -> dict[str, Any]:
             and rear_flash_aperture_h > rear_flash_window_h,
             "aperture_mm": [rear_flash_aperture_w, rear_flash_aperture_h],
             "window_mm": [rear_flash_window_w, rear_flash_window_h],
-            "bezel_parts": [
-                name for name in rear_flash_aperture_bezel_parts if name in by_name
-            ],
+            "bezel_parts": [name for name in rear_flash_aperture_bezel_parts if name in by_name],
             "aperture_present": "rear_flash_shell_aperture" in by_name,
             "note": "Back shell now carries an explicit through-aperture and four orange bevel lands around the flush flash light-pipe window instead of treating the window/back-shell overlap as intentional contact.",
         },
@@ -16083,7 +16122,7 @@ def main() -> int:
     step_validation = write_step_validation_artifacts(solid_cad)
     part_review = write_part_review_artifacts(parts, exploded)
     clearance = write_assembly_clearance_artifacts(params, parts)
-    battery_swell_management = write_battery_swell_management_artifacts(
+    write_battery_swell_management_artifacts(
         params,
         parts,
         checks,
@@ -16143,7 +16182,7 @@ def main() -> int:
     mold_process = write_mold_process_window_artifacts(params, parts, tooling, dfm, tolerance_stack)
     write_mold_flow_acceptance_artifacts(params, dfm, mold_process)
     toolmaker_signoff = write_toolmaker_signoff_artifacts(params, dfm, mold_process)
-    tooling_action_register = write_tooling_action_register_artifacts(dfm, mold_process)
+    write_tooling_action_register_artifacts(dfm, mold_process)
     routed_board_clearance = write_routed_board_clearance_artifacts(
         board_step,
         clearance,
@@ -16171,7 +16210,7 @@ def main() -> int:
     visual_review_coverage = write_visual_review_coverage_acceptance_artifacts(
         visual, part_review, visual_decision, part_visual_coverage
     )
-    component_selection_review = write_component_selection_review_artifacts(params, checks)
+    write_component_selection_review_artifacts(params, checks)
     write_cmf_release_acceptance_artifacts(
         params,
         visual_decision,

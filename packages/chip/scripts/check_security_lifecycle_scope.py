@@ -185,7 +185,7 @@ def build_report() -> dict[str, Any]:
             # signed path is wired to the RoT block boundary, not exercised end to
             # end against real entropy and a real signer.
             "debug_auth": "signed_challenge_response_rot_boundary_unintegrated",
-            "synthetic_otp": "non_production_only",
+            "synthetic_otp": "placeholder_non_secret_non_production_only",
         },
         "blocked_until_real_evidence": [
             "OpenTitan-class rom_ctrl/lc_ctrl/otp_ctrl/otbn integration and DV",
@@ -254,9 +254,13 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("current_scaffold must be a mapping")
     else:
         require(
-            scaffold.get("debug_auth")
-            == "signed_challenge_response_rot_boundary_unintegrated",
+            scaffold.get("debug_auth") == "signed_challenge_response_rot_boundary_unintegrated",
             "current scaffold must expose unintegrated signed-auth status",
+            errors,
+        )
+        require(
+            scaffold.get("synthetic_otp") == "placeholder_non_secret_non_production_only",
+            "current scaffold must preserve non-secret synthetic OTP placeholder status",
             errors,
         )
         require(

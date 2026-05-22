@@ -53,6 +53,14 @@ def test_signed_auth_status_removal_fails() -> None:
     print("PASS signed-auth status removal rejected")
 
 
+def test_synthetic_otp_placeholder_marker_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    mutated["current_scaffold"]["synthetic_otp"] = "production_otp_ready"
+    expect_error(mutated, "synthetic OTP placeholder")
+    print("PASS synthetic OTP placeholder marker removal rejected")
+
+
 def test_blocker_removal_fails() -> None:
     report = check_security_lifecycle_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -66,6 +74,7 @@ def main() -> None:
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
     test_signed_auth_status_removal_fails()
+    test_synthetic_otp_placeholder_marker_removal_fails()
     test_blocker_removal_fails()
 
 

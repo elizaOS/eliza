@@ -77,9 +77,15 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("status") not in {"COMPARISON_READY", "BLOCKED_COMPARISON_EVIDENCE"}:
         errors.append("unsupported status")
-    if report.get("status") != "COMPARISON_READY" and report.get("optimization_claim_allowed") is not False:
+    if (
+        report.get("status") != "COMPARISON_READY"
+        and report.get("optimization_claim_allowed") is not False
+    ):
         errors.append("optimization_claim_allowed must be false unless comparison is ready")
-    if report.get("status") == "COMPARISON_READY" and report.get("optimization_claim_allowed") is not True:
+    if (
+        report.get("status") == "COMPARISON_READY"
+        and report.get("optimization_claim_allowed") is not True
+    ):
         errors.append("ready comparison must allow optimization claim gate")
     artifacts = report.get("artifacts")
     if not isinstance(artifacts, dict):
@@ -131,7 +137,9 @@ def validate(report: dict[str, Any]) -> list[str]:
         if isinstance(candidate_path, str):
             candidate = load_json(repo_path(candidate_path))
             if candidate.get("replay_role", "candidate") != "candidate":
-                errors.append("ready comparison candidate execution must have replay_role=candidate")
+                errors.append(
+                    "ready comparison candidate execution must have replay_role=candidate"
+                )
     gates = report.get("next_required_gates")
     if not isinstance(gates, list) or len(gates) < 3:
         errors.append("next_required_gates must be concrete")

@@ -162,11 +162,7 @@ def row_for_spec(spec: ReportSpec) -> tuple[dict[str, Any], list[dict[str, Any]]
         default=None,
     )
     report_mtime = report.stat().st_mtime if report.exists() else None
-    stale = (
-        report_mtime is not None
-        and newest_source is not None
-        and report_mtime < newest_source
-    )
+    stale = report_mtime is not None and newest_source is not None and report_mtime < newest_source
     if stale:
         findings.append(
             finding(

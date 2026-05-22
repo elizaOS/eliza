@@ -100,8 +100,7 @@ class PageStateMachine:
         self.state = state
         self._transitions = transitions if transitions is not None else load_transitions()
         self._by_edge: dict[tuple[str, str], Transition] = {
-            (transition.source, transition.target): transition
-            for transition in self._transitions
+            (transition.source, transition.target): transition for transition in self._transitions
         }
 
     def can_transition(self, target: str, *, capabilities: frozenset[str]) -> bool:

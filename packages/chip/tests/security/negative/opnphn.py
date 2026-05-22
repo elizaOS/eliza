@@ -279,9 +279,7 @@ class ImageBuilder:
         header_bytes = header.pack()
         signed_region = header_bytes + payload
 
-        signature = (
-            self.signing_key.sign(signed_region) if sign else b"\x00" * ED_SIG_LEN
-        )
+        signature = self.signing_key.sign(signed_region) if sign else b"\x00" * ED_SIG_LEN
 
         if corrupt_signature:
             signature = bytes(b ^ 0x01 if i == 0 else b for i, b in enumerate(signature))

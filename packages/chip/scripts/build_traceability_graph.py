@@ -151,9 +151,7 @@ def load_requirements() -> list[dict[str, Any]]:
         if not isinstance(payload, dict):
             raise TraceabilityError(f"{_rel(yaml_path)}: top-level must be a mapping")
         if payload.get("schema") != REQUIREMENT_SCHEMA:
-            raise TraceabilityError(
-                f"{_rel(yaml_path)}: schema must be {REQUIREMENT_SCHEMA}"
-            )
+            raise TraceabilityError(f"{_rel(yaml_path)}: schema must be {REQUIREMENT_SCHEMA}")
         file_domain = payload.get("domain")
         items = payload.get("requirements")
         if not isinstance(items, list):
@@ -173,9 +171,7 @@ def load_requirements() -> list[dict[str, Any]]:
     return requirements
 
 
-def _normalize_requirement(
-    raw: Any, file_domain: Any, yaml_path: Path
-) -> dict[str, Any]:
+def _normalize_requirement(raw: Any, file_domain: Any, yaml_path: Path) -> dict[str, Any]:
     if not isinstance(raw, dict):
         raise TraceabilityError(f"{_rel(yaml_path)}: each requirement must be a mapping")
     req_id = raw.get("id")
@@ -270,9 +266,7 @@ def load_rtl_gaps() -> list[dict[str, Any]]:
             for gap in area.get("critical_gaps") or []:
                 if not isinstance(gap, dict):
                     continue
-                affected = [
-                    p for p in (gap.get("affected_paths") or []) if isinstance(p, str)
-                ]
+                affected = [p for p in (gap.get("affected_paths") or []) if isinstance(p, str)]
                 gaps.append(
                     {
                         "id": gap.get("id"),

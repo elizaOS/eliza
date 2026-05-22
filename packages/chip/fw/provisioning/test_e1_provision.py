@@ -56,8 +56,7 @@ def test_programmed_value_matches_sha256_of_pubkey(fuse_map, spec_and_key):
     session, _ = _provisioned_locked(fuse_map, spec)
     part = fuse_map.by_id("creator_root_key")
     fused = b"".join(
-        session.otp.read_word(part.offset + w).to_bytes(4, "big")
-        for w in range(part.words)
+        session.otp.read_word(part.offset + w).to_bytes(4, "big") for w in range(part.words)
     )
     assert fused == hashlib.sha256(spec.root_pubkey).digest()
 
@@ -139,7 +138,9 @@ def test_write_locked_field_rejected_after_lock(fuse_map, spec_and_key):
     spec, _ = spec_and_key
     session, _ = _provisioned_locked(fuse_map, spec)
     with pytest.raises(ProvisioningError, match="write-locked|write window"):
-        session._program_partition("creator_root_key", [0] * fuse_map.by_id("creator_root_key").words)
+        session._program_partition(
+            "creator_root_key", [0] * fuse_map.by_id("creator_root_key").words
+        )
 
 
 def test_identity_is_one_time_write(fuse_map, spec_and_key):

@@ -13,7 +13,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +25,7 @@ DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/floorplanning_dataset_readiness"
 SCHEMA = "eliza.ai_eda.floorplanning_dataset_readiness.v1"
 CLAIM_BOUNDARY = "floorplanning_dataset_readiness_only_no_conversion_training_or_e1_claim"
 ASSET_IDS = ("intel-floorset", "r-zoo-rectilinear-floorplan")
+CURRENT_RUN_ID = "validation"
 R_ZOO_CONVERSION_SCHEMA = "eliza.ai_eda.r_zoo_rectilinear_floorplan_conversion_report.v1"
 R_ZOO_SPLIT_SCHEMA = "eliza.ai_eda.r_zoo_rectilinear_floorplan_split_manifest.v1"
 R_ZOO_LICENSE_SCHEMA = "eliza.ai_eda.r_zoo_license_review.v1"
@@ -138,11 +139,15 @@ def parse_diearea(path: Path) -> dict[str, Any]:
     points = [(int(x), int(y)) for x, y in pattern.findall(diearea)]
     xs = [point[0] for point in points]
     ys = [point[1] for point in points]
-    rectilinear = all(
-        points[index][0] == points[(index + 1) % len(points)][0]
-        or points[index][1] == points[(index + 1) % len(points)][1]
-        for index in range(len(points))
-    ) if len(points) >= 2 else False
+    rectilinear = (
+        all(
+            points[index][0] == points[(index + 1) % len(points)][0]
+            or points[index][1] == points[(index + 1) % len(points)][1]
+            for index in range(len(points))
+        )
+        if len(points) >= 2
+        else False
+    )
     return {
         "path": rel(path),
         "bytes": path.stat().st_size,
@@ -163,7 +168,10 @@ def parse_evaluation_legality(readme: Path) -> dict[str, str]:
     if not readme.is_file():
         return {}
     result: dict[str, str] = {}
-    link_pattern = re.compile(r"\[([A-Za-z0-9_]+_(?:single|multi)_notch\.def)\]\([^)]*\)\s*\|\s*(Legal|Illegal)", re.IGNORECASE)
+    link_pattern = re.compile(
+        r"\[([A-Za-z0-9_]+_(?:single|multi)_notch\.def)\]\([^)]*\)\s*\|\s*(Legal|Illegal)",
+        re.IGNORECASE,
+    )
     for line in readme.read_text(encoding="utf-8", errors="replace").splitlines():
         for filename, label in link_pattern.findall(line):
             result[filename] = label.upper()
@@ -232,7 +240,9 @@ def profile_floorset_payload(payload: Path) -> dict[str, Any]:
         "lite_validation_config_count": len(test_configs),
         "lite_validation_data_file_count": len(data_files),
         "lite_validation_label_file_count": len(label_files),
-        "intel_static_layout_png_count": len(sorted((payload / "inteltest_layouts").glob("intel_p*.png"))),
+        "intel_static_layout_png_count": len(
+            sorted((payload / "inteltest_layouts").glob("intel_p*.png"))
+        ),
         "contest_framework_present": contest_dir.is_dir(),
         "contest_files": {
             "evaluate": (contest_dir / "iccad2026_evaluate.py").is_file(),
@@ -291,9 +301,12 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
         schema_profile = profile_floorset_payload(payload_path)
     else:
         schema_profile = {"available": False, "reason": "profiler_not_implemented_for_asset"}
-    revision = entry.get("revision") if isinstance(entry.get("revision"), dict) else {}
-    validation = entry.get("validation") if isinstance(entry.get("validation"), dict) else {}
-    intake = manifest.get("intake") if isinstance(manifest, dict) else {}
+    revision_value = entry.get("revision")
+    validation_value = entry.get("validation")
+    revision: dict[str, Any] = revision_value if isinstance(revision_value, dict) else {}
+    validation: dict[str, Any] = validation_value if isinstance(validation_value, dict) else {}
+    intake_value = manifest.get("intake") if isinstance(manifest, dict) else {}
+    intake: dict[str, Any] = intake_value if isinstance(intake_value, dict) else {}
     blockers: list[str] = []
     if not entry:
         blockers.append("asset is missing from external/SOURCES.lock.yaml")
@@ -317,10 +330,14 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
     conversion_evidence: dict[str, Any] = {"available": False}
     split_evidence: dict[str, Any] = {"available": False}
     license_evidence: dict[str, Any] = {"available": False}
-    run_id = getattr(asset_report, "run_id", "validation")
+    run_id = CURRENT_RUN_ID
     if asset_id == "r-zoo-rectilinear-floorplan":
-        conversion_path = ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/conversion_report.json"
-        split_path = ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan_splits/{run_id}/split_manifest.json"
+        conversion_path = (
+            ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan/{run_id}/conversion_report.json"
+        )
+        split_path = (
+            ROOT / f"build/ai_eda/r_zoo_rectilinear_floorplan_splits/{run_id}/split_manifest.json"
+        )
         license_path = ROOT / f"build/ai_eda/r_zoo_license_review/{run_id}/license_review.json"
         conversion = load_json(conversion_path)
         split = load_json(split_path)
@@ -362,7 +379,9 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
             "release_use_allowed": license_review.get("allowed_use", {}).get("release_use_allowed")
             if license_review
             else None,
-            "commercial_use_allowed": license_review.get("allowed_use", {}).get("commercial_use_allowed")
+            "commercial_use_allowed": license_review.get("allowed_use", {}).get(
+                "commercial_use_allowed"
+            )
             if license_review
             else None,
         }
@@ -407,10 +426,14 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
             "available": license_ok,
             "artifact": evidence_artifact(license_path),
             "status": license_review_report.get("status") if license_review_report else None,
-            "release_use_allowed": license_review_report.get("allowed_use", {}).get("release_use_allowed")
+            "release_use_allowed": license_review_report.get("allowed_use", {}).get(
+                "release_use_allowed"
+            )
             if license_review_report
             else None,
-            "commercial_use_allowed": license_review_report.get("allowed_use", {}).get("commercial_use_allowed")
+            "commercial_use_allowed": license_review_report.get("allowed_use", {}).get(
+                "commercial_use_allowed"
+            )
             if license_review_report
             else None,
         }
@@ -454,7 +477,9 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
         if not split_ok:
             blockers.append("split manifest and benchmark contamination review are not present")
         if not hf_archive_ok:
-            blockers.append("FloorSet full Hugging Face archive hash manifest is missing or incomplete")
+            blockers.append(
+                "FloorSet full Hugging Face archive hash manifest is missing or incomplete"
+            )
     else:
         blockers.extend(
             [
@@ -466,7 +491,11 @@ def asset_report(asset_id: str, lock: dict[str, dict[str, Any]]) -> dict[str, An
     blockers.append(
         "generated floorplans must remain quarantined until deterministic E1 replay/signoff evidence exists"
     )
-    status = "READY_FOR_SCHEMA_PROFILING" if payload["present"] and payload["file_count"] else "BLOCKED_NO_PAYLOAD"
+    status = (
+        "READY_FOR_SCHEMA_PROFILING"
+        if payload["present"] and payload["file_count"]
+        else "BLOCKED_NO_PAYLOAD"
+    )
     return {
         "asset_id": asset_id,
         "source_url": entry.get("source_url"),
@@ -506,18 +535,17 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    global CURRENT_RUN_ID
     args = parse_args()
-    setattr(asset_report, "run_id", args.run_id)
+    CURRENT_RUN_ID = args.run_id
     lock = lock_entries()
     assets = [asset_report(asset_id, lock) for asset_id in ASSET_IDS]
     blockers = [
-        f"{asset['asset_id']}: {blocker}"
-        for asset in assets
-        for blocker in asset["blockers"]
+        f"{asset['asset_id']}: {blocker}" for asset in assets for blocker in asset["blockers"]
     ]
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "asset_ids": list(ASSET_IDS),

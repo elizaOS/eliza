@@ -135,12 +135,10 @@ def phase_row(
     blockers_by_report: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
     req_rows = [requirements[ident] for ident in phase.requirement_ids if ident in requirements]
-    open_rows = [
-        row
-        for row in req_rows
-        if row.get("proof_state") not in {"proven"}
-    ]
-    source_reports = sorted({str(row.get("source_report")) for row in req_rows if row.get("source_report")})
+    open_rows = [row for row in req_rows if row.get("proof_state") not in {"proven"}]
+    source_reports = sorted(
+        {str(row.get("source_report")) for row in req_rows if row.get("source_report")}
+    )
     blocker_entries: list[dict[str, Any]] = []
     for source in source_reports:
         blocker_entries.extend(blockers_by_report.get(source, []))

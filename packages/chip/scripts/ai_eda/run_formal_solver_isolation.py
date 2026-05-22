@@ -12,7 +12,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -128,13 +128,26 @@ def run_case(block: str, solver: str, out_dir: Path, timeout: int) -> dict[str, 
     stderr_path.write_text(stderr_text, encoding="utf-8")
     status_path = work_dir / "status"
     logfile_path = work_dir / "logfile.txt"
-    status_text = status_path.read_text(encoding="utf-8", errors="ignore").strip() if status_path.is_file() else ""
-    log_text = logfile_path.read_text(encoding="utf-8", errors="ignore") if logfile_path.is_file() else ""
+    status_text = (
+        status_path.read_text(encoding="utf-8", errors="ignore").strip()
+        if status_path.is_file()
+        else ""
+    )
+    log_text = (
+        logfile_path.read_text(encoding="utf-8", errors="ignore") if logfile_path.is_file() else ""
+    )
     combined = "\n".join([status_text, log_text, stdout_text, stderr_text])
     markers = sorted(
         {
             marker
-            for marker in ("PASS", "FAIL", "ERROR", "Traceback", "BrokenPipeError", "Engine terminated without status")
+            for marker in (
+                "PASS",
+                "FAIL",
+                "ERROR",
+                "Traceback",
+                "BrokenPipeError",
+                "Engine terminated without status",
+            )
             if marker in combined
         }
     )
@@ -148,7 +161,9 @@ def run_case(block: str, solver: str, out_dir: Path, timeout: int) -> dict[str, 
         status = "FAIL"
     else:
         status = "UNKNOWN"
-    blockers = [] if status == "PASS" else [f"{block}/{solver}: single-solver smoke status is {status}"]
+    blockers = (
+        [] if status == "PASS" else [f"{block}/{solver}: single-solver smoke status is {status}"]
+    )
     return {
         "block": block,
         "solver": solver,
@@ -204,10 +219,14 @@ def main() -> int:
     errored = sum(1 for case in cases if case.get("status") == "ERROR")
     failed = sum(1 for case in cases if case.get("status") == "FAIL")
     timed_out = sum(1 for case in cases if case.get("status") == "TIMEOUT")
-    status = "SOLVER_ISOLATION_PASS" if cases and not blockers else "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS"
+    status = (
+        "SOLVER_ISOLATION_PASS"
+        if cases and not blockers
+        else "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS"
+    )
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

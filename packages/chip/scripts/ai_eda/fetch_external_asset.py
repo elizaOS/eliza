@@ -14,7 +14,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -246,7 +246,7 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
         dataset_id = source_url.rstrip("/").split("/datasets/", 1)[-1]
         revision = expected_revision(asset)
         try:
-            from huggingface_hub import snapshot_download  # type: ignore
+            from huggingface_hub import snapshot_download
         except Exception as exc:  # noqa: BLE001
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface_hub", "error": str(exc)}
         try:
@@ -292,7 +292,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--lockfile", type=Path, default=LOCKFILE)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
@@ -355,7 +355,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.external_asset_fetch_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "mode": mode,
         "claim_boundary": CLAIM_BOUNDARY,

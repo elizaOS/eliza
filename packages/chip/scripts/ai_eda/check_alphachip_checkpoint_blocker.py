@@ -134,9 +134,8 @@ def main() -> int:
             errors.append("AlphaChip checkpoint lock entry must remain allowed_use=blocked")
         if lock_entry.get("license_status") != "unavailable_for_review":
             errors.append("AlphaChip checkpoint lock entry must remain unavailable_for_review")
-        revision = (
-            lock_entry.get("revision") if isinstance(lock_entry.get("revision"), dict) else {}
-        )
+        revision_value = lock_entry.get("revision")
+        revision: dict[str, Any] = revision_value if isinstance(revision_value, dict) else {}
         if revision.get("value") != "BLOCKED_HTTP_403_REAUDIT_REQUIRED":
             errors.append(
                 "AlphaChip checkpoint revision must remain BLOCKED_HTTP_403_REAUDIT_REQUIRED"

@@ -72,9 +72,7 @@ def _find_netlist(final: Path) -> Path | None:
 
 def _find_spef(final: Path, rc_name: str) -> Path | None:
     spef_dir = final / "spef"
-    candidates = (
-        list(spef_dir.glob(f"*{rc_name}*.spef")) if spef_dir.is_dir() else []
-    )
+    candidates = list(spef_dir.glob(f"*{rc_name}*.spef")) if spef_dir.is_dir() else []
     if not candidates:
         candidates = list(final.glob(f"**/*{rc_name}*.spef"))
     return candidates[0] if candidates else None
@@ -266,9 +264,7 @@ def _resolve_scenarios(args: argparse.Namespace) -> list[Scenario] | str:
         return scenarios
     sset = sdb.build_scenario_set(args.node_id)
     if sset.blocked:
-        return (
-            f"node '{args.node_id}' scenario set is blocked: {sset.blocked_reason}"
-        )
+        return f"node '{args.node_id}' scenario set is blocked: {sset.blocked_reason}"
     return sset.scenarios
 
 

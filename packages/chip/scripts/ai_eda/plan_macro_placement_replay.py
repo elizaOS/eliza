@@ -12,7 +12,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -237,7 +237,9 @@ PPA_VARIANT_CFGS = {
 MEASURED_PPA_REUSE_MAX_DISPLACEMENT_UM = 5.0
 
 
-def score_against_real_ppa(candidate: dict[str, Any], ppa_report: dict[str, Any]) -> dict[str, Any] | None:
+def score_against_real_ppa(
+    candidate: dict[str, Any], ppa_report: dict[str, Any]
+) -> dict[str, Any] | None:
     """Attach real measured post-route PPA only when a candidate IS a measured variant.
 
     The candidate is matched to whichever of the three measured post-route
@@ -288,7 +290,11 @@ def score_against_real_ppa(candidate: dict[str, Any], ppa_report: dict[str, Any]
         score["matched_variant"] = nearest_variant
         score["post_route_ppa"] = ppa_by_variant[nearest_variant]
         score["post_route_rank"] = next(
-            (item["rank"] for item in ppa_report.get("ranking", []) if item.get("variant") == nearest_variant),
+            (
+                item["rank"]
+                for item in ppa_report.get("ranking", [])
+                if item.get("variant") == nearest_variant
+            ),
             None,
         )
     else:
@@ -480,7 +486,7 @@ def main() -> int:
     blocked_count = sum(1 for plan in plans if plan["status"].startswith("BLOCKED"))
     report = {
         "schema": "eliza.ai_eda.macro_placement_replay_plan.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "candidate_count": len(plans),

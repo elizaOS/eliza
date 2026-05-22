@@ -83,7 +83,14 @@ class ChipOsClosurePlanTests(unittest.TestCase):
                             "current_status": "pass",
                         }
                     )
-            write_json(matrix, {"status": "pass", "summary": {"proven": len(requirements)}, "requirements": requirements})
+            write_json(
+                matrix,
+                {
+                    "status": "pass",
+                    "summary": {"proven": len(requirements)},
+                    "requirements": requirements,
+                },
+            )
             write_json(inventory, {"summary": {}, "detailed_blockers": []})
             report = plan.build_plan(matrix, inventory)
         self.assertEqual(report["status"], "pass")

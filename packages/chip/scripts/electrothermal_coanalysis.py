@@ -40,8 +40,7 @@ PROCESS_SPEC = ROOT / "docs" / "spec-db" / "process-14a-effects.yaml"
 MANIFEST_PATH = ROOT / "docs" / "evidence" / "power" / "electrothermal-coanalysis.yaml"
 SCHEMA = "eliza.electrothermal_coanalysis.v1"
 CLAIM_BOUNDARY = (
-    "first_order_electrothermal_planning_coanalysis_"
-    "no_package_thermal_model_tcad_or_silicon_claim"
+    "first_order_electrothermal_planning_coanalysis_no_package_thermal_model_tcad_or_silicon_claim"
 )
 
 T_AMBIENT_C = 25.0
@@ -100,9 +99,7 @@ def coanalyze() -> dict[str, object]:
             theta_self = THETA_JA_C_PER_W.get(n, 10.0)
             others_power = total_power - power[n]
             new_temps[n] = (
-                T_AMBIENT_C
-                + theta_self * power[n]
-                + SUBSTRATE_COUPLING_C_PER_W * others_power
+                T_AMBIENT_C + theta_self * power[n] + SUBSTRATE_COUPLING_C_PER_W * others_power
             )
         new_power: dict[str, float] = {}
         for n in names:

@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/formal_solver_isolation/validation/formal_solver_isolation.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/formal_solver_isolation/validation/formal_solver_isolation.json"
+)
 EXPECTED_SCHEMA = "eliza.ai_eda.formal_solver_isolation.v1"
 EXPECTED_CLAIM_BOUNDARY = "single_solver_smoke_evidence_only_no_release_or_deep_proof_claim"
 
@@ -77,7 +79,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("formal_proof_claim_allowed") is not False:
         errors.append("formal_proof_claim_allowed must be false")
-    if report.get("status") not in {"SOLVER_ISOLATION_PASS", "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS"}:
+    if report.get("status") not in {
+        "SOLVER_ISOLATION_PASS",
+        "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS",
+    }:
         errors.append("unsupported status")
     cases = report.get("cases")
     if not isinstance(cases, list) or not cases:
@@ -90,7 +95,14 @@ def validate(report: dict[str, Any]) -> list[str]:
             for field in ("block", "solver", "status", "returncode", "artifacts"):
                 if field not in case:
                     errors.append(f"cases[{index}].{field} missing")
-            if case.get("status") not in {"PASS", "FAIL", "ERROR", "TIMEOUT", "UNKNOWN", "MISSING_SPEC"}:
+            if case.get("status") not in {
+                "PASS",
+                "FAIL",
+                "ERROR",
+                "TIMEOUT",
+                "UNKNOWN",
+                "MISSING_SPEC",
+            }:
                 errors.append(f"cases[{index}].status unsupported")
             artifacts = case.get("artifacts")
             if isinstance(artifacts, dict):
@@ -104,11 +116,15 @@ def validate(report: dict[str, Any]) -> list[str]:
     elif isinstance(cases, list):
         if summary.get("case_count") != len(cases):
             errors.append("summary.case_count mismatch")
-        if summary.get("passed") != sum(1 for case in cases if isinstance(case, dict) and case.get("status") == "PASS"):
+        if summary.get("passed") != sum(
+            1 for case in cases if isinstance(case, dict) and case.get("status") == "PASS"
+        ):
             errors.append("summary.passed mismatch")
     if report.get("status") == "SOLVER_ISOLATION_PASS" and report.get("blockers"):
         errors.append("pass status must not list blockers")
-    if report.get("status") == "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS" and not report.get("blockers"):
+    if report.get("status") == "SOLVER_ISOLATION_RECORDED_WITH_BLOCKERS" and not report.get(
+        "blockers"
+    ):
         errors.append("blocked status must list blockers")
     return errors
 

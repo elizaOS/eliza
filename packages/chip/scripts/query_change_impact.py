@@ -41,11 +41,7 @@ def _rel(path_text: str) -> str:
 
 def find_artifact_nodes(graph: btg.DiGraph, path_text: str) -> list[str]:
     """Return every node whose ``path`` attribute matches ``path_text``."""
-    matches = [
-        node_id
-        for node_id, attrs in graph.nodes.items()
-        if attrs.get("path") == path_text
-    ]
+    matches = [node_id for node_id, attrs in graph.nodes.items() if attrs.get("path") == path_text]
     return sorted(matches)
 
 
@@ -128,11 +124,11 @@ def render_text(impact: dict[str, Any]) -> str:
     if impact["invalidated_gaps"]:
         lines.append(f"  invalidated RTL gaps ({len(impact['invalidated_gaps'])}):")
         for gap in impact["invalidated_gaps"]:
-            lines.append(
-                f"    {gap['gap_id']} [{gap['area']}/{gap['severity']}] {gap['category']}"
-            )
-    lines.append(f"  gates to re-run ({len(impact['invalidated_gates'])}): "
-                 + (", ".join(impact["invalidated_gates"]) or "-"))
+            lines.append(f"    {gap['gap_id']} [{gap['area']}/{gap['severity']}] {gap['category']}")
+    lines.append(
+        f"  gates to re-run ({len(impact['invalidated_gates'])}): "
+        + (", ".join(impact["invalidated_gates"]) or "-")
+    )
     return "\n".join(lines)
 
 

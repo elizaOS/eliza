@@ -52,9 +52,7 @@ class GptqInt4Calibrator:
             raise ValueError(f"GPTQ {name}: scales/zero-points length mismatch")
         if any(z < -8 or z > 7 for z in group_zero_points):
             raise ValueError(f"GPTQ {name}: zero point outside signed 4-bit range")
-        self._weight_scales[name] = [
-            (v / 7.0) if v > 0 else MIN_SCALE for v in group_max_abs
-        ]
+        self._weight_scales[name] = [(v / 7.0) if v > 0 else MIN_SCALE for v in group_max_abs]
         self._weight_zero_points[name] = list(group_zero_points)
 
     def build_manifest(self) -> GptqInt4Manifest:

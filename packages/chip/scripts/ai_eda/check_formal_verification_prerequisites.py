@@ -88,10 +88,18 @@ def validate(report: dict[str, Any]) -> list[str]:
     if not isinstance(capabilities, dict):
         errors.append("capabilities must be a mapping")
     else:
-        for field in ("fallback_counts_as_deep_formal", "runs_formal", "runs_yosys", "mutates_source_tree"):
+        for field in (
+            "fallback_counts_as_deep_formal",
+            "runs_formal",
+            "runs_yosys",
+            "mutates_source_tree",
+        ):
             if capabilities.get(field) is not False:
                 errors.append(f"capabilities.{field} must be false")
-        if report.get("status") == "READY_FOR_STRICT_FORMAL_HOST" and capabilities.get("strict_sby_ready") is not True:
+        if (
+            report.get("status") == "READY_FOR_STRICT_FORMAL_HOST"
+            and capabilities.get("strict_sby_ready") is not True
+        ):
             errors.append("ready report must set strict_sby_ready=true")
     tools = report.get("tools")
     if not isinstance(tools, dict):
@@ -142,7 +150,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.is_file():
-        print(f"STATUS: FAIL ai_eda.formal_verification_prerequisites missing_report {rel(args.report)}")
+        print(
+            f"STATUS: FAIL ai_eda.formal_verification_prerequisites missing_report {rel(args.report)}"
+        )
         return 1
     try:
         report = load_json(args.report)

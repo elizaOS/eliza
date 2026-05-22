@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-REPORTS = {
+REPORTS: dict[str, dict[str, Any]] = {
     "logic_synthesis": {
         "path": "build/ai_eda/logic_synthesis_targets/{run_id}/targets_report.json",
         "schema": "eliza.ai_eda.logic_synthesis_targets.v1",

@@ -100,9 +100,7 @@ def audit() -> tuple[list[dict], list[str]]:
         if t.get("observed_accept") is not False:
             problems.append("image was ACCEPTED (must reject)")
         if t.get("observed_halt_name") != expected_halt:
-            problems.append(
-                f"halt {t.get('observed_halt_name')!r} != expected {expected_halt!r}"
-            )
+            problems.append(f"halt {t.get('observed_halt_name')!r} != expected {expected_halt!r}")
         if t.get("result") != "PASS":
             problems.append(f"result={t.get('result')}")
         rec = t.get("halt_record_hex", "")
@@ -135,9 +133,7 @@ def main() -> int:
             "gate": GATE,
             "status": "BLOCKED",
             "blocker_id": BLOCKER_ID,
-            "blocker_reason": (
-                "no transcripts; run python3 tests/security/negative/run.py first"
-            ),
+            "blocker_reason": ("no transcripts; run python3 tests/security/negative/run.py first"),
             "evidence_paths": [],
             "as_of": now,
             "subsystem": "security",
@@ -148,9 +144,7 @@ def main() -> int:
 
     checks, failures = audit()
     passed = not failures
-    evidence = sorted(
-        str(p.relative_to(CHIP_ROOT)) for p in TRANSCRIPT_DIR.glob("*.json")
-    )
+    evidence = sorted(str(p.relative_to(CHIP_ROOT)) for p in TRANSCRIPT_DIR.glob("*.json"))
     report = {
         "schema": "eliza.gate_status.v1",
         "gate": GATE,

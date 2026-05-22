@@ -10,7 +10,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/r_zoo_rectilinear_floorplan/validation/conversion_report.json"
-CLAIM_BOUNDARY = "r_zoo_rectilinear_floorplan_conversion_training_only_no_e1_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "r_zoo_rectilinear_floorplan_conversion_training_only_no_e1_signoff_or_release_claim"
+)
 LABEL_STATUS = "public_r_zoo_rectilinear_floorplan_legality_training_only_not_e1_signoff"
 REQUIRED_SCHEMAS = {"eda.design_bundle.v1", "eda.graph_sample.v1", "eda.flow_run.v1"}
 

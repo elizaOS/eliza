@@ -81,9 +81,7 @@ def _num(metrics: dict[str, Any], key: str) -> float | None:
 # Worst-setup endpoint lines in OpenROAD STA reports look like:
 #   "Endpoint: <pin>  slack -0.1234"  or a "report_checks" tail with
 #   "<slack> <endpoint>" rows. We scrape negative-slack endpoints generically.
-ENDPOINT_SLACK_RE = re.compile(
-    r"(?:Endpoint:\s*)?(\S+)\s+slack\s+(-?\d+\.\d+)", re.IGNORECASE
-)
+ENDPOINT_SLACK_RE = re.compile(r"(?:Endpoint:\s*)?(\S+)\s+slack\s+(-?\d+\.\d+)", re.IGNORECASE)
 
 
 def parse_timing_reports(run_dir: Path, limit: int = 10) -> list[dict[str, Any]]:
@@ -198,9 +196,7 @@ def main() -> int:
     }
 
     out_path = (
-        Path(args.out)
-        if args.out
-        else ROOT / "build" / "qor" / f"pd_feedback.{args.node_id}.json"
+        Path(args.out) if args.out else ROOT / "build" / "qor" / f"pd_feedback.{args.node_id}.json"
     )
     if not out_path.is_absolute():
         out_path = (ROOT / out_path).resolve()

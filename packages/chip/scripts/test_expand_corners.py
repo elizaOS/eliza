@@ -87,7 +87,9 @@ def test_open_manifest_realized_product() -> None:
         raise AssertionError(f"asap7 expansion failed: {errors}")
     # asap7: 3 pvt x 3 rc x 4 vt (SLVT, LVT, RVT, SRAM) = 36.
     if result["effective_corners"] != 36:
-        raise AssertionError(f"asap7 realized corners must be 36, got {result['effective_corners']}")
+        raise AssertionError(
+            f"asap7 realized corners must be 36, got {result['effective_corners']}"
+        )
     if result["meets_minimum"] is not None:
         raise AssertionError("open/predictive manifests declare no minimum")
 

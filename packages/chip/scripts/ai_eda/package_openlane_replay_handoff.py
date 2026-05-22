@@ -14,7 +14,7 @@ import argparse
 import hashlib
 import json
 import tarfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -253,7 +253,7 @@ def render_command_script(
         )
     lines.extend(
         [
-            f'BASELINE_EXECUTION_JSON=${{BASELINE_EXECUTION_JSON:-build/ai_eda/openlane_replay_execution/{handoff_run_id}-baseline/openlane_replay_execution.json}}',
+            f"BASELINE_EXECUTION_JSON=${{BASELINE_EXECUTION_JSON:-build/ai_eda/openlane_replay_execution/{handoff_run_id}-baseline/openlane_replay_execution.json}}",
             'if [ -n "$CANDIDATE_EXECUTION_JSON" ]; then',
             "  python3 scripts/ai_eda/capture_openlane_replay_comparison.py "
             f"--run-id {handoff_run_id} "
@@ -274,7 +274,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--replay-plan", type=Path)
     parser.add_argument("--replay-queue", type=Path)
     parser.add_argument("--replay-preflight", type=Path)
-    parser.add_argument("--openlane-config", type=Path, default=ROOT / "pd/openlane/config.sky130.json")
+    parser.add_argument(
+        "--openlane-config", type=Path, default=ROOT / "pd/openlane/config.sky130.json"
+    )
     parser.add_argument("--limit", type=int, default=8)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
@@ -290,7 +292,8 @@ def main() -> int:
         ROOT / f"build/ai_eda/macro_placement_replay_queue/{args.run_id}/replay_queue.json"
     )
     replay_preflight_path = args.replay_preflight or (
-        ROOT / f"build/ai_eda/macro_placement_replay_preflight/{args.run_id}/replay_preflight_report.json"
+        ROOT
+        / f"build/ai_eda/macro_placement_replay_preflight/{args.run_id}/replay_preflight_report.json"
     )
     out_dir = args.out_root / handoff_run_id
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -351,11 +354,28 @@ def main() -> int:
         )
         prefix = f"candidate_{index}"
         add_artifact(package_items, f"{prefix}_manifest", plan.get("candidate_path"), "candidate")
-        add_artifact(package_items, f"{prefix}_placement_case", plan.get("placement_case_path"), "placement_case")
+        add_artifact(
+            package_items,
+            f"{prefix}_placement_case",
+            plan.get("placement_case_path"),
+            "placement_case",
+        )
         artifacts = plan.get("artifacts", {}) if isinstance(plan.get("artifacts"), dict) else {}
-        add_artifact(package_items, f"{prefix}_macro_cfg", artifacts.get("macro_placement_cfg"), "macro_placement_cfg")
-        add_artifact(package_items, f"{prefix}_overrides", artifacts.get("placement_overrides"), "placement_overrides")
-        add_artifact(package_items, f"{prefix}_tool_action", plan.get("tool_action_manifest"), "tool_action")
+        add_artifact(
+            package_items,
+            f"{prefix}_macro_cfg",
+            artifacts.get("macro_placement_cfg"),
+            "macro_placement_cfg",
+        )
+        add_artifact(
+            package_items,
+            f"{prefix}_overrides",
+            artifacts.get("placement_overrides"),
+            "placement_overrides",
+        )
+        add_artifact(
+            package_items, f"{prefix}_tool_action", plan.get("tool_action_manifest"), "tool_action"
+        )
         candidates.append(
             {
                 "queue_rank": queue_rank.get(candidate_id),
@@ -365,7 +385,8 @@ def main() -> int:
                 "design_bundle_id": plan.get("design_bundle_id"),
                 "macro_placement_cfg": artifacts.get("macro_placement_cfg"),
                 "openlane_replay_command": deterministic.get(
-                    "placement_case_replay_command", "openlane --config pd/openlane/config.sky130.json"
+                    "placement_case_replay_command",
+                    "openlane --config pd/openlane/config.sky130.json",
                 ),
                 "capture_execution_command": capture_command(
                     handoff_run_id,
@@ -413,7 +434,7 @@ def main() -> int:
     status = "HANDOFF_READY_FOR_PD_HOST" if not blockers else "BLOCKED_HANDOFF"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": handoff_run_id,
         "source_run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,

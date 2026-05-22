@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/openlane_replay_handoff/validation/openlane_replay_handoff.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/openlane_replay_handoff/validation/openlane_replay_handoff.json"
+)
 EXPECTED_SCHEMA = "eliza.ai_eda.openlane_replay_handoff.v1"
 EXPECTED_CLAIM_BOUNDARY = "openlane_replay_handoff_only_no_openlane_execution_or_release_claim"
 REQUIRED_ARTIFACTS = {
@@ -87,7 +89,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("ready handoff must not list blockers")
     if report.get("status") == "BLOCKED_HANDOFF" and not report.get("blockers"):
         errors.append("blocked handoff must list blockers")
-    if not isinstance(report.get("ready_candidate_count"), int) or report["ready_candidate_count"] < 1:
+    if (
+        not isinstance(report.get("ready_candidate_count"), int)
+        or report["ready_candidate_count"] < 1
+    ):
         errors.append("ready_candidate_count must be at least one")
     for field in ("pd_host_runbook", "pd_host_command_script"):
         value = report.get(field)
@@ -122,7 +127,10 @@ def validate(report: dict[str, Any]) -> list[str]:
             if not isinstance(candidate.get("candidate_id"), str) or not candidate["candidate_id"]:
                 errors.append(f"ready_candidates[{index}].candidate_id missing")
             command = candidate.get("capture_execution_command")
-            if not isinstance(command, str) or "capture_openlane_replay_execution.py" not in command:
+            if (
+                not isinstance(command, str)
+                or "capture_openlane_replay_execution.py" not in command
+            ):
                 errors.append(f"ready_candidates[{index}] missing execution capture command")
             elif "--replay-handoff" not in command:
                 errors.append(
@@ -131,7 +139,10 @@ def validate(report: dict[str, Any]) -> list[str]:
             openlane_command = candidate.get("openlane_replay_command")
             if not isinstance(openlane_command, str) or "openlane" not in openlane_command:
                 errors.append(f"ready_candidates[{index}] missing OpenLane command template")
-            if not isinstance(candidate.get("macro_placement_cfg"), str) or not candidate["macro_placement_cfg"]:
+            if (
+                not isinstance(candidate.get("macro_placement_cfg"), str)
+                or not candidate["macro_placement_cfg"]
+            ):
                 errors.append(f"ready_candidates[{index}].macro_placement_cfg missing")
     artifacts = report.get("artifacts")
     if not isinstance(artifacts, dict) or not artifacts:

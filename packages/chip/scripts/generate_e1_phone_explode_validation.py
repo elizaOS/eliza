@@ -25,6 +25,7 @@ import math
 import os
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import trimesh
@@ -47,10 +48,10 @@ OVERLAP_TOL_MM3 = 0.05
 SAMPLES = 21  # trajectory fractions f in [0, 1]
 
 
-def load_parts() -> tuple[trimesh.Scene, list[dict]]:
-    scene = trimesh.load(str(ASM_GLB), force="scene")
+def load_parts() -> tuple[trimesh.Scene, list[dict[str, Any]]]:
+    scene = cast(trimesh.Scene, trimesh.load(str(ASM_GLB), force="scene"))
     manifest = json.loads(MANIFEST.read_text())
-    parts: list[dict] = []
+    parts: list[dict[str, Any]] = []
     for entry in manifest:
         name = entry["name"]
         if name not in scene.geometry:

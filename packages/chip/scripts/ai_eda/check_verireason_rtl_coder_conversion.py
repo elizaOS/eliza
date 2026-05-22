@@ -12,9 +12,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/verireason_rtl_coder/validation/conversion_report.json"
-CLAIM_BOUNDARY = (
-    "verireason_rtl_coder_text_sample_only_no_training_inference_e1_or_release_claim"
-)
+CLAIM_BOUNDARY = "verireason_rtl_coder_text_sample_only_no_training_inference_e1_or_release_claim"
 EXPECTED_ASSETS = {
     "verireason-rtl-coder-small",
     "verireason-rtl-coder-reasoning-simple",

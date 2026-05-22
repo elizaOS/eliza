@@ -111,7 +111,9 @@ def main() -> int:
             elif not (ROOT / path_text).is_file():
                 fail(errors, f"missing E1 context input: {path_text}")
         quarantine = set(
-            require_list(policy.get("artifact_quarantine_roots"), "artifact_quarantine_roots", errors)
+            require_list(
+                policy.get("artifact_quarantine_roots"), "artifact_quarantine_roots", errors
+            )
         )
         if "build/ai_eda/analog_mixed_signal/" not in quarantine:
             fail(
@@ -122,9 +124,7 @@ def main() -> int:
     if errors:
         print("\n".join(errors))
         return 1
-    print(
-        "STATUS: PASS analog_automation_policy docs/spec-db/e1-analog-automation-policy.yaml"
-    )
+    print("STATUS: PASS analog_automation_policy docs/spec-db/e1-analog-automation-policy.yaml")
     return 0
 
 

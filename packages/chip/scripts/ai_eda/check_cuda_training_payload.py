@@ -692,7 +692,13 @@ def validate_plan(plan: dict[str, Any], members: set[str], lock_ids: set[str]) -
         errors.append("run plan selected_assets must be non-empty")
         selected_ids: set[str] = set()
     else:
-        selected_ids = {asset.get("id") for asset in selected_assets if isinstance(asset, dict)}
+        selected_ids = {
+            asset_id
+            for asset in selected_assets
+            if isinstance(asset, dict)
+            for asset_id in [asset.get("id")]
+            if isinstance(asset_id, str)
+        }
         unknown = sorted(asset_id for asset_id in selected_ids if asset_id not in lock_ids)
         if unknown:
             errors.append(f"selected_assets contain unknown ids: {', '.join(unknown)}")

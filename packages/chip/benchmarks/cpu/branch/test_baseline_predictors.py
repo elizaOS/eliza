@@ -108,7 +108,11 @@ def test_score_helper_reports_both_predictors_on_same_denominator():
     row = _score(events, len(events) * 5)
     assert row["instruction_count"] == len(events) * 5
     assert "e1_mpki" in row and "cva6_mpki" in row
-    assert row["e1_mpki"] <= row["cva6_mpki"] + 1e-9
+    e1_mpki = row["e1_mpki"]
+    cva6_mpki = row["cva6_mpki"]
+    assert isinstance(e1_mpki, (int, float))
+    assert isinstance(cva6_mpki, (int, float))
+    assert e1_mpki <= cva6_mpki + 1e-9
 
 
 def test_cva6_ras_depth_two_mispredicts_deep_returns():

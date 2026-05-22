@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -195,7 +195,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
     flow_id = f"chipbench-d-{case_id}-flow-run"
     lef_files = sorted(lef_dir.glob("*.lef"))
     lib_files = sorted(lib_dir.glob("*.lib")) if lib_dir.exists() else []
-    design_bundle = {
+    design_bundle: dict[str, Any] = {
         "schema": "eda.design_bundle.v1",
         "id": design_id,
         "claim_boundary": CLAIM_BOUNDARY,
@@ -223,7 +223,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             "flow": "ChiPBench-D/OpenROAD Hier-RTLMP macro placement",
         },
     }
-    placement_case = {
+    placement_case: dict[str, Any] = {
         "schema": "eda.placement_case.v1",
         "id": placement_id,
         "design_bundle_id": design_id,
@@ -250,7 +250,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             "expected_report": "build/ai_eda/chipbench_d/<run-id>/conversion_report.json",
         },
     }
-    flow_run = {
+    flow_run: dict[str, Any] = {
         "schema": "eda.flow_run.v1",
         "id": flow_id,
         "design_bundle_id": design_id,
@@ -282,8 +282,9 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             ],
         },
     }
-    paths = []
-    for record in (design_bundle, placement_case, flow_run):
+    records: list[dict[str, Any]] = [design_bundle, placement_case, flow_run]
+    paths: list[Path] = []
+    for record in records:
         path = out_dir / f"{record['id']}.json"
         path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         paths.append(path)
@@ -295,7 +296,7 @@ def convert_case(case_dir: Path, out_dir: Path, payload: Path) -> list[dict[str,
             "macro_count": len(movable),
             "target_count": flow_run["metrics"]["macro_target_count"],
         }
-        for record, path in zip((design_bundle, placement_case, flow_run), paths)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -339,13 +340,17 @@ def main() -> int:
         converted.extend(convert_case(case_dir, out_dir, args.payload))
     report = {
         "schema": "eliza.ai_eda.chipbench_d_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "payload": rel(args.payload),
         "available_case_count": len(available),
         "converted_case_count": len(selected),
-        "conversion_mode": "all_records" if args.all_records and not args.case else "case_filter" if args.case else "sample_limit",
+        "conversion_mode": "all_records"
+        if args.all_records and not args.case
+        else "case_filter"
+        if args.case
+        else "sample_limit",
         "sample_limit": None if args.all_records or args.case else args.sample_limit,
         "record_count": len(converted),
         "converted": converted,

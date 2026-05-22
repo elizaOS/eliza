@@ -246,6 +246,7 @@ def report_paths(report_dir: Path, aggregate: Path, explicit: Iterable[str]) -> 
 
 
 def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
+    report: dict[str, Any]
     aggregate = aggregate_path(args.aggregate)
     missing = [path for path in (aggregate, Path(args.report_dir)) if not path.exists()]
     if missing:
@@ -334,7 +335,8 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         mismatched_reports = [
             source
             for source in matches
-            if source not in matching_blocker_reports and not status_is_nonpass(report_statuses[source])
+            if source not in matching_blocker_reports
+            and not status_is_nonpass(report_statuses[source])
         ]
         coverage = {
             "name": gate.get("name"),

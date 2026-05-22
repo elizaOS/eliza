@@ -1590,7 +1590,9 @@ def golden_gemm_s4(a, b):
         for row in matrix:
             for value in row:
                 if not -8 <= value <= 7:
-                    raise ValueError(f"golden_gemm_s4 {name} value {value} outside signed INT4 range")
+                    raise ValueError(
+                        f"golden_gemm_s4 {name} value {value} outside signed INT4 range"
+                    )
     return golden_gemm_s8(a, b)
 
 

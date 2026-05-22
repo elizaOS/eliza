@@ -153,7 +153,9 @@ def build_acoustic_model(params: dict[str, Any], envelope_mm: list[float]) -> di
             "module_displaced_volume_mm3": round(speaker_module_volume_mm3, 1),
             "target_rear_back_volume_cc": target_back_volume_cc,
             "target_rear_back_volume_mm3": target_back_volume_mm3,
-            "rear_chamber_depth_budget_mm": round(device_thickness_mm - speaker["envelope_mm"][2], 2),
+            "rear_chamber_depth_budget_mm": round(
+                device_thickness_mm - speaker["envelope_mm"][2], 2
+            ),
             "vented_grille_port_mm": {
                 "width": port_width_mm,
                 "height": port_height_mm,

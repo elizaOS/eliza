@@ -120,9 +120,7 @@ def check_rail_groups(
         fail(errors, "pinout rail pins not assigned to a rail_group: " + ", ".join(uncovered))
 
 
-def check_diff_pairs(
-    intent: dict[str, Any], signal_pins: set[str], errors: list[str]
-) -> set[str]:
+def check_diff_pairs(intent: dict[str, Any], signal_pins: set[str], errors: list[str]) -> set[str]:
     members: set[str] = set()
     for pair in require_list(intent.get("diff_pairs"), "diff_pairs", errors):
         pmap = require_mapping(pair, "diff_pairs[]", errors)

@@ -239,9 +239,7 @@ class Cva6BaselinePredictor:
 
     def _step(self, event: BranchEvent) -> None:
         pred_taken, pred_target = self._predict(event)
-        misp = (pred_taken != event.taken) or (
-            event.taken and pred_target != event.target
-        )
+        misp = (pred_taken != event.taken) or (event.taken and pred_target != event.target)
 
         self.counters["pred"] += 1
         if event.kind == BR_COND:

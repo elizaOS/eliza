@@ -6,7 +6,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-
 from check_open_core_comparison import COMPARISON_PATH, check
 
 ROOT = Path(__file__).resolve().parents[1]

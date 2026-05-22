@@ -14,7 +14,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -130,16 +130,18 @@ def main() -> int:
     tools = {name: tool_entry(name) for name in OPTIONAL_TOOLS}
     blockers: list[str] = []
 
-    missing_artifacts = [
-        name for name, entry in artifacts.items() if entry["status"] != "PRESENT"
-    ]
+    missing_artifacts = [name for name, entry in artifacts.items() if entry["status"] != "PRESENT"]
     if missing_artifacts:
         blockers.append(f"formal prerequisite artifacts missing: {', '.join(missing_artifacts)}")
     if tools["sby"]["status"] != "PRESENT":
         blockers.append("SymbiYosys is not available; strict formal execution is blocked")
     if tools["yosys"]["status"] != "PRESENT":
         blockers.append("Yosys is not available; fallback structural formal is blocked")
-    if tools["z3"]["status"] != "PRESENT" and tools["boolector"]["status"] != "PRESENT" and tools["bitwuzla"]["status"] != "PRESENT":
+    if (
+        tools["z3"]["status"] != "PRESENT"
+        and tools["boolector"]["status"] != "PRESENT"
+        and tools["bitwuzla"]["status"] != "PRESENT"
+    ):
         blockers.append("no SMT solver was detected for SymbiYosys/yosys-smtbmc replay")
 
     strict_ready = not blockers
@@ -147,7 +149,7 @@ def main() -> int:
     status = "READY_FOR_STRICT_FORMAL_HOST" if strict_ready else "BLOCKED_FORMAL_PREREQUISITES"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

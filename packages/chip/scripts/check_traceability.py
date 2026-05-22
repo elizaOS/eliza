@@ -65,9 +65,7 @@ def check_links(req: dict[str, Any], errors: list[str]) -> dict[str, Any]:
             if (ROOT / path_text).is_file():
                 ok += 1
             else:
-                errors.append(
-                    f"{req['id']}: dangling {kind} link -> {path_text} (file missing)"
-                )
+                errors.append(f"{req['id']}: dangling {kind} link -> {path_text} (file missing)")
         resolved[kind] = ok
     return {"declared": declared, "resolved": resolved}
 

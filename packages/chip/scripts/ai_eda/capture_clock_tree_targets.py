@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 import shutil
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -174,7 +174,7 @@ def clock_artifacts(run_dir: Path | None) -> list[dict[str, Any]]:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     return parser.parse_args()
 
@@ -186,7 +186,7 @@ def main() -> int:
     report = {
         "schema": "eliza.ai_eda.clock_tree_targets.v1",
         "run_id": args.run_id,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_CTS_OR_CLOCKING_CHANGE",
         "claim_boundary": CLAIM_BOUNDARY,

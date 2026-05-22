@@ -108,7 +108,11 @@ def _load_pure():
     return _Key, _verify
 
 
-for _name, _loader in (("cryptography", _load_cryptography), ("nacl", _load_nacl), ("pure", _load_pure)):
+for _name, _loader in (
+    ("cryptography", _load_cryptography),
+    ("nacl", _load_nacl),
+    ("pure", _load_pure),
+):
     try:
         Ed25519PrivateKey, ed25519_verify_raw = _loader()
         _BACKEND = _name

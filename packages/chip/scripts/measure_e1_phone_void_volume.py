@@ -106,15 +106,21 @@ def main() -> None:
         if hi_z <= back_inner_z or lo_z >= cover_inner_z:
             continue
         filled_cm3 += vol
-        fill_parts.append({"name": name, "role": role, "volume_cm3": round(vol, 4),
-                           "z": [round(lo_z, 3), round(hi_z, 3)]})
+        fill_parts.append(
+            {
+                "name": name,
+                "role": role,
+                "volume_cm3": round(vol, 4),
+                "z": [round(lo_z, 3), round(hi_z, 3)],
+            }
+        )
 
     void_cm3 = cavity_cm3 - filled_cm3
     void_pct = 100.0 * void_cm3 / cavity_cm3 if cavity_cm3 else 0.0
 
     # Regional breakdown by Z band + named voids.
-    cover_z = cover_inner_z          # +5.65
-    lcm_top = by_name["display_lcm"]["bounds_mm"][1][2]      # display module top
+    cover_z = cover_inner_z  # +5.65
+    lcm_top = by_name["display_lcm"]["bounds_mm"][1][2]  # display module top
     pcb_bottom = by_name["main_pcb"]["bounds_mm"][0][2]
 
     def slab_void_cm3(z_lo: float, z_hi: float) -> float:
@@ -198,8 +204,10 @@ def main() -> None:
     md.append("")
     (REVIEW_DIR / "void-volume.md").write_text("\n".join(md))
 
-    print(f"cavity={cavity_cm3:.2f} cm3  filled={filled_cm3:.2f} cm3  "
-          f"void={void_cm3:.2f} cm3 ({void_pct:.1f}%)")
+    print(
+        f"cavity={cavity_cm3:.2f} cm3  filled={filled_cm3:.2f} cm3  "
+        f"void={void_cm3:.2f} cm3 ({void_pct:.1f}%)"
+    )
     for rname, r in regions.items():
         print(f"  {rname}: {r['void_cm3']} cm3  Z{r['z']}")
 

@@ -40,7 +40,9 @@ DROOP_REPORT_PATH = ROOT / "build" / "reports" / "pdn_package_droop.json"
 SCHEMA = "eliza.pdn_activity_model.v1"
 DROOP_SCHEMA_ID = "eliza.pdn_package_droop.v1"
 CLAIM_BOUNDARY = "vectorless_dynamic_ir_planning_budget_no_vcd_or_silicon_claim"
-DROOP_CLAIM_BOUNDARY = "first_order_package_droop_planning_estimate_no_extracted_pdn_or_silicon_claim"
+DROOP_CLAIM_BOUNDARY = (
+    "first_order_package_droop_planning_estimate_no_extracted_pdn_or_silicon_claim"
+)
 
 
 @dataclass(frozen=True)
@@ -194,7 +196,9 @@ def build_droop() -> tuple[dict[str, object], list[str]]:
     if schema_doc.get("schema") != DROOP_SCHEMA_ID:
         blockers.append(f"{DROOP_SCHEMA.relative_to(ROOT)} schema must be {DROOP_SCHEMA_ID}")
     if schema_doc.get("release_use") != "prohibited_until_external_review":
-        blockers.append("package-droop schema release_use must stay prohibited_until_external_review")
+        blockers.append(
+            "package-droop schema release_use must stay prohibited_until_external_review"
+        )
 
     par = schema_doc.get("parasitic_assumptions") or {}
     bga_l_ph = float(par.get("bga_ball_loop_l_ph_per_rail", 0))
@@ -230,21 +234,25 @@ def build_droop() -> tuple[dict[str, object], list[str]]:
         rv = voltages.get(rail)
         dec = decoupling.get(rail)
         if di is None:
-            blockers.append(f"{scen.get('id')}: rail {rail} has no dynamic-current step in activity budget")
+            blockers.append(
+                f"{scen.get('id')}: rail {rail} has no dynamic-current step in activity budget"
+            )
             continue
         if rv is None:
             blockers.append(f"{scen.get('id')}: rail {rail} not found in rail-plan voltages")
             continue
         if dec is None or dec["on_die_nf"] <= 0:
-            blockers.append(f"{scen.get('id')}: rail {rail} has no on-die decap target in rail plan")
+            blockers.append(
+                f"{scen.get('id')}: rail {rail} has no on-die decap target in rail plan"
+            )
             continue
         if edge_ns <= 0:
             blockers.append(f"{scen.get('id')}: edge_time_ns must be > 0")
             continue
         c_on_die_f = dec["on_die_nf"] * 1e-9
-        z0 = (loop_l_h / c_on_die_f) ** 0.5        # ohm, sqrt(L/C) tank impedance
-        v_inductive = di * z0                       # V, characteristic-impedance droop
-        v_resistive = di * (esr_pkg_mohm * 1e-3)    # V
+        z0 = (loop_l_h / c_on_die_f) ** 0.5  # ohm, sqrt(L/C) tank impedance
+        v_inductive = di * z0  # V, characteristic-impedance droop
+        v_resistive = di * (esr_pkg_mohm * 1e-3)  # V
         v_droop = v_inductive + v_resistive
         nominal_v = rv["nominal_v"]
         dvfs_min_v = rv["dvfs_min_v"]
@@ -334,7 +342,9 @@ def main(argv: list[str]) -> int:
     report, blockers = build_budget()
 
     args.report_path.parent.mkdir(parents=True, exist_ok=True)
-    args.report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    args.report_path.write_text(
+        json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     if blockers:
         print("pdn_activity_model FAILED:", file=sys.stderr)

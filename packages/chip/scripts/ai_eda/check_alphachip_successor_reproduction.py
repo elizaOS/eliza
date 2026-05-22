@@ -99,7 +99,9 @@ def validate(report: dict[str, Any]) -> list[str]:
         if ready:
             if observed.get("training_device") != "cuda":
                 errors.append("ready report must have CUDA training")
-            if int(observed.get("training_epochs", 0)) < int(report.get("minimum_cuda_epochs", 200)):
+            if int(observed.get("training_epochs", 0)) < int(
+                report.get("minimum_cuda_epochs", 200)
+            ):
                 errors.append("ready report training_epochs is below threshold")
             if observed.get("inference_device") != "cuda":
                 errors.append("ready report must have CUDA inference")
@@ -112,7 +114,9 @@ def validate(report: dict[str, Any]) -> list[str]:
             if observed.get("replay_comparison_status") != "COMPARISON_READY":
                 errors.append("ready report must have replay comparison ready")
         modes = observed.get("full_dataset_conversion_modes")
-        if ready and (not isinstance(modes, dict) or not modes or not all(v is True for v in modes.values())):
+        if ready and (
+            not isinstance(modes, dict) or not modes or not all(v is True for v in modes.values())
+        ):
             errors.append("ready report must have all full-dataset conversion modes")
 
     artifacts = report.get("input_artifacts")
@@ -162,7 +166,9 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     if not args.report.is_file():
-        print(f"STATUS: FAIL ai_eda.alphachip_successor_reproduction missing_report {rel(args.report)}")
+        print(
+            f"STATUS: FAIL ai_eda.alphachip_successor_reproduction missing_report {rel(args.report)}"
+        )
         return 1
     try:
         report = load_json(args.report)

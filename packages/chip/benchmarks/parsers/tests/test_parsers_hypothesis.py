@@ -31,6 +31,7 @@ try:
     HYPOTHESIS_AVAILABLE = True
 except ImportError:  # pragma: no cover - skip when hypothesis is absent
     HYPOTHESIS_AVAILABLE = False
+    raise unittest.SkipTest("hypothesis is not installed") from None
 
 from benchmarks.parsers import (  # noqa: E402
     ParseError,

@@ -182,8 +182,12 @@ def print_summary(report: dict[str, Any]) -> None:
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--apk", default=str(DEFAULT_APK), help=f"APK path (default: {rel(DEFAULT_APK)})")
-    parser.add_argument("--report", default=str(REPORT), help=f"report path (default: {rel(REPORT)})")
+    parser.add_argument(
+        "--apk", default=str(DEFAULT_APK), help=f"APK path (default: {rel(DEFAULT_APK)})"
+    )
+    parser.add_argument(
+        "--report", default=str(REPORT), help=f"report path (default: {rel(REPORT)})"
+    )
     parser.add_argument("--allow-missing-aapt", action="store_true")
     parser.add_argument("--json-only", action="store_true")
     return parser.parse_args(list(argv))

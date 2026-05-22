@@ -69,8 +69,11 @@ module sc
         logic signed [SC_CTR_W+2:0] total;
         total = '0;
         for (int unsigned t = 0; t < SC_TABLES; t++) begin
-            total = total + $signed({{3{storage_q[t][sc_idx(t, pc, hist)][SC_CTR_W-1]}},
-                                      storage_q[t][sc_idx(t, pc, hist)]});
+            logic [SC_IDX_W-1:0] idx;
+            sc_ctr_t ctr;
+            idx = sc_idx(t, pc, hist);
+            ctr = storage_q[t][idx];
+            total = total + $signed({{3{ctr[SC_CTR_W-1]}}, ctr});
         end
         sc_sum = total;
     endfunction
@@ -103,11 +106,7 @@ module sc
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned t = 0; t < SC_TABLES; t++) begin
-                for (int unsigned e = 0; e < SC_ENTRIES_TABLE; e++) begin
-                    storage_q[t][e] <= '0;
-                end
-            end
+            storage_q <= '{default: '{default: '0}};
             threshold_q <= $signed(SC_THRESH_INIT[7:0]);
             threshold_ctrl_q <= '0;
         end else if (upd_valid && upd_tage_lowconf) begin

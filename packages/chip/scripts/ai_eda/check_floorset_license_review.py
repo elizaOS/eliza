@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_REPORT = ROOT / "build/ai_eda/floorset_license_review/validation/license_review.json"
 EXPECTED_SCHEMA = "eliza.ai_eda.floorset_license_review.v1"
 EXPECTED_CLAIM_BOUNDARY = "floorset_license_review_training_only_no_release_or_legal_advice_claim"
+DECLARED_EVIDENCE_STATUSES = {
+    "DECLARED_IN_REVIEWED_INTAKE",
+    "RECORDED_IN_REVIEWED_INTAKE",
+}
 
 
 def rel(path: Path) -> str:
@@ -42,14 +46,23 @@ def load_json(path: Path) -> dict[str, Any]:
     return data
 
 
-def validate_artifact(item: Any, label: str) -> list[str]:
+def validate_artifact(item: Any, label: str, *, allow_declared: bool = False) -> list[str]:
     if not isinstance(item, dict):
         return [f"{label} must be a mapping"]
-    if item.get("status") != "PRESENT":
-        return [f"{label}.status must be PRESENT"]
+    status = item.get("status")
     path_value = item.get("path")
     if not isinstance(path_value, str) or not path_value:
         return [f"{label}.path must be present"]
+    if allow_declared and status in DECLARED_EVIDENCE_STATUSES:
+        source = item.get("source")
+        if not isinstance(source, str) or not source:
+            return [f"{label}.source must name the reviewed intake metadata"]
+        if item.get("sha256") is not None or item.get("size_bytes") is not None:
+            return [f"{label} declared external evidence must not pretend to hash ignored payloads"]
+        return []
+    if status != "PRESENT":
+        expected = "PRESENT or reviewed-intake declaration" if allow_declared else "PRESENT"
+        return [f"{label}.status must be {expected}"]
     path = repo_path(path_value)
     if not path.is_file():
         return [f"{label}.path missing on disk"]
@@ -104,9 +117,14 @@ def validate(report: dict[str, Any]) -> list[str]:
             "root_readme",
             "contest_readme",
             "contest_spec_pdf",
+            "fetch_verification_report",
+        ):
+            errors.extend(
+                validate_artifact(evidence.get(field), f"evidence.{field}", allow_declared=True)
+            )
+        for field in (
             "intake_manifest",
             "source_lock",
-            "fetch_verification_report",
         ):
             errors.extend(validate_artifact(evidence.get(field), f"evidence.{field}"))
     controls = report.get("required_controls")

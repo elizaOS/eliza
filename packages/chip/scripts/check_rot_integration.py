@@ -60,26 +60,41 @@ MISSING_OT_DEP = (
     "Verilator-elaborable filelist for this block"
 )
 BLOCKS = [
-    {"name": "ibex_rv32imc", "real": True,
-     "detail": "lowRISC ibex_top from the FuseSoC-staged tree "
-               "(external/ibex/ibex/build, shared with the PMC lane); "
-               "elaborated under E1_ROT_INSTANTIATE_IBEX."},
-    {"name": "rot_sram_maskrom", "real": True,
-     "detail": "E1 behavioral RoT instruction/data SRAM + mask-ROM region in "
-               "e1_rot_top.sv."},
-    {"name": "e1_otp_map", "real": True,
-     "detail": "W4 OTP controller (rtl/security/otp/e1_otp_map.sv), "
-               "instantiated for real with 2-of-3 majority + parity fault."},
-    {"name": "e1_rot_mailbox", "real": True,
-     "detail": "AP<->RoT TL-UL mailbox; round-trip + AP-isolation proven by "
-               "cocotb."},
-    {"name": "e1_rot_reset_seq", "real": True,
-     "detail": "Cold-boot reset sequencer; fail-closed reset-release proven by "
-               "cocotb."},
-    {"name": "e1_lc_ctrl", "real": True,
-     "detail": "W5 lifecycle binding: the OTP lifecycle one-hot drives the "
-               "reset-release SCRAP gating directly; the W5 controller binds by "
-               "name under E1_ROT_HAVE_LC_CTRL when present."},
+    {
+        "name": "ibex_rv32imc",
+        "real": True,
+        "detail": "lowRISC ibex_top from the FuseSoC-staged tree "
+        "(external/ibex/ibex/build, shared with the PMC lane); "
+        "elaborated under E1_ROT_INSTANTIATE_IBEX.",
+    },
+    {
+        "name": "rot_sram_maskrom",
+        "real": True,
+        "detail": "E1 behavioral RoT instruction/data SRAM + mask-ROM region in e1_rot_top.sv.",
+    },
+    {
+        "name": "e1_otp_map",
+        "real": True,
+        "detail": "W4 OTP controller (rtl/security/otp/e1_otp_map.sv), "
+        "instantiated for real with 2-of-3 majority + parity fault.",
+    },
+    {
+        "name": "e1_rot_mailbox",
+        "real": True,
+        "detail": "AP<->RoT TL-UL mailbox; round-trip + AP-isolation proven by cocotb.",
+    },
+    {
+        "name": "e1_rot_reset_seq",
+        "real": True,
+        "detail": "Cold-boot reset sequencer; fail-closed reset-release proven by cocotb.",
+    },
+    {
+        "name": "e1_lc_ctrl",
+        "real": True,
+        "detail": "W5 lifecycle binding: the OTP lifecycle one-hot drives the "
+        "reset-release SCRAP gating directly; the W5 controller binds by "
+        "name under E1_ROT_HAVE_LC_CTRL when present.",
+    },
     {"name": "rom_ctrl", "real": False, "missing": MISSING_OT_DEP},
     {"name": "keymgr", "real": False, "missing": MISSING_OT_DEP},
     {"name": "kmac", "real": False, "missing": MISSING_OT_DEP},
@@ -116,99 +131,164 @@ def _now() -> str:
 def check_pin() -> dict:
     """Resolve the OpenTitan pin manifest: checkout present and HEAD == pin."""
     if not OT_MANIFEST.is_file():
-        return {"id": "opentitan_pin", "status": "blocked",
-                "detail": f"manifest missing: {OT_MANIFEST.relative_to(ROOT)}"}
+        return {
+            "id": "opentitan_pin",
+            "status": "blocked",
+            "detail": f"manifest missing: {OT_MANIFEST.relative_to(ROOT)}",
+        }
     manifest = json.loads(OT_MANIFEST.read_text())
     if manifest.get("license") != "Apache-2.0":
-        return {"id": "opentitan_pin", "status": "fail",
-                "detail": "OpenTitan license must be Apache-2.0"}
+        return {
+            "id": "opentitan_pin",
+            "status": "fail",
+            "detail": "OpenTitan license must be Apache-2.0",
+        }
     if not OT_CHECKOUT.is_dir():
-        return {"id": "opentitan_pin", "status": "blocked",
-                "detail": "external/opentitan/opentitan absent; run "
-                          "scripts/bootstrap_opentitan.sh"}
+        return {
+            "id": "opentitan_pin",
+            "status": "blocked",
+            "detail": "external/opentitan/opentitan absent; run scripts/bootstrap_opentitan.sh",
+        }
     try:
         head = subprocess.check_output(
-            ["git", "-C", str(OT_CHECKOUT), "rev-parse", "HEAD"],
-            text=True, stderr=subprocess.PIPE).strip()
+            ["git", "-C", str(OT_CHECKOUT), "rev-parse", "HEAD"], text=True, stderr=subprocess.PIPE
+        ).strip()
     except subprocess.CalledProcessError as exc:
-        return {"id": "opentitan_pin", "status": "blocked",
-                "detail": f"rev-parse failed: {exc.stderr.strip()}"}
+        return {
+            "id": "opentitan_pin",
+            "status": "blocked",
+            "detail": f"rev-parse failed: {exc.stderr.strip()}",
+        }
     pin = manifest.get("upstream_commit_pinned", "")
     if head != pin:
-        return {"id": "opentitan_pin", "status": "fail",
-                "detail": f"HEAD={head[:12]} != pin={pin[:12]}"}
+        return {
+            "id": "opentitan_pin",
+            "status": "fail",
+            "detail": f"HEAD={head[:12]} != pin={pin[:12]}",
+        }
     for rel in manifest.get("minimum_required_files", []):
         if not (ROOT / rel).is_file():
-            return {"id": "opentitan_pin", "status": "blocked",
-                    "detail": f"missing required file {rel}"}
-    return {"id": "opentitan_pin", "status": "pass",
-            "detail": f"HEAD={head[:12]} matches pin ({manifest['upstream_tag_pinned']})"}
+            return {
+                "id": "opentitan_pin",
+                "status": "blocked",
+                "detail": f"missing required file {rel}",
+            }
+    return {
+        "id": "opentitan_pin",
+        "status": "pass",
+        "detail": f"HEAD={head[:12]} matches pin ({manifest['upstream_tag_pinned']})",
+    }
 
 
 def _lint(verilator: str, sources: list[str], extra: list[str]) -> tuple[bool, str]:
-    cmd = [verilator, "--lint-only", "-Wall", "-Wno-DECLFILENAME",
-           "-Wno-UNUSEDPARAM", *extra,
-           *[str(ROOT / s) for s in sources], "--top-module", "e1_rot_top"]
+    cmd = [
+        verilator,
+        "--lint-only",
+        "-Wall",
+        "-Wno-DECLFILENAME",
+        "-Wno-UNUSEDPARAM",
+        *extra,
+        *[str(ROOT / s) for s in sources],
+        "--top-module",
+        "e1_rot_top",
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    warns = [ln for ln in proc.stderr.splitlines()
-             if "%Warning" in ln or "%Error" in ln]
+    warns = [ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln]
     return (proc.returncode == 0 and not warns), "\n".join(warns[:8])
 
 
 def check_elaborate_spine(verilator: str) -> dict:
     ok, msg = _lint(verilator, SPINE_SOURCES, [])
     if ok:
-        return {"id": "elaborate_spine", "status": "pass",
-                "detail": "e1_rot_top spine (Ibex undefined) lints clean"}
-    return {"id": "elaborate_spine", "status": "fail",
-            "detail": f"spine lint failed: {msg}"}
+        return {
+            "id": "elaborate_spine",
+            "status": "pass",
+            "detail": "e1_rot_top spine (Ibex undefined) lints clean",
+        }
+    return {"id": "elaborate_spine", "status": "fail", "detail": f"spine lint failed: {msg}"}
 
 
 def check_elaborate_ibex(verilator: str) -> dict:
     if not IBEX_FLIST.is_file():
-        return {"id": "elaborate_ibex", "status": "blocked",
-                "detail": f"{IBEX_FLIST.relative_to(ROOT)} missing; run "
-                          "scripts/bootstrap_ibex.sh"}
+        return {
+            "id": "elaborate_ibex",
+            "status": "blocked",
+            "detail": f"{IBEX_FLIST.relative_to(ROOT)} missing; run scripts/bootstrap_ibex.sh",
+        }
     incdirs, ibex_src = [], []
     for line in IBEX_FLIST.read_text().splitlines():
         line = line.strip()
         if line.startswith("+incdir+"):
-            incdirs.append("+incdir+" + str(ROOT / line[len("+incdir+"):]))
+            incdirs.append("+incdir+" + str(ROOT / line[len("+incdir+") :]))
         elif line and not line.startswith(("#", "+")):
             ibex_src.append(str(ROOT / line))
     missing = [p for p in ibex_src if not Path(p).is_file()]
     if missing:
-        return {"id": "elaborate_ibex", "status": "blocked",
-                "detail": f"{len(missing)} staged Ibex source(s) absent; run "
-                          "scripts/bootstrap_ibex.sh (e.g. {})".format(
-                              Path(missing[0]).name)}
-    waivers = ["-Wno-PINMISSING", "-Wno-WIDTHTRUNC", "-Wno-WIDTHEXPAND",
-               "-Wno-CASEINCOMPLETE", "-Wno-LATCH", "-Wno-ASCRANGE",
-               "-Wno-MULTIDRIVEN", "-Wno-CMPCONST", "-Wno-UNUSEDGENVAR",
-               "-Wno-CONSTRAINTIGN", "-Wno-UNUSEDSIGNAL", "-Wno-UNOPTFLAT",
-               "-Wno-SYNCASYNCNET", "-Wno-PINCONNECTEMPTY", "-Wno-TIMESCALEMOD",
-               "+define+E1_ROT_INSTANTIATE_IBEX", "+define+SYNTHESIS",
-               *incdirs]
-    cmd = [verilator, "--lint-only", "-Wno-fatal", "-Wall", *waivers,
-           *ibex_src, *[str(ROOT / s) for s in SPINE_SOURCES],
-           "--top-module", "e1_rot_top"]
+        return {
+            "id": "elaborate_ibex",
+            "status": "blocked",
+            "detail": f"{len(missing)} staged Ibex source(s) absent; run "
+            "scripts/bootstrap_ibex.sh (e.g. {})".format(Path(missing[0]).name),
+        }
+    waivers = [
+        "-Wno-PINMISSING",
+        "-Wno-WIDTHTRUNC",
+        "-Wno-WIDTHEXPAND",
+        "-Wno-CASEINCOMPLETE",
+        "-Wno-LATCH",
+        "-Wno-ASCRANGE",
+        "-Wno-MULTIDRIVEN",
+        "-Wno-CMPCONST",
+        "-Wno-UNUSEDGENVAR",
+        "-Wno-CONSTRAINTIGN",
+        "-Wno-UNUSEDSIGNAL",
+        "-Wno-UNOPTFLAT",
+        "-Wno-SYNCASYNCNET",
+        "-Wno-PINCONNECTEMPTY",
+        "-Wno-TIMESCALEMOD",
+        "+define+E1_ROT_INSTANTIATE_IBEX",
+        "+define+SYNTHESIS",
+        *incdirs,
+    ]
+    cmd = [
+        verilator,
+        "--lint-only",
+        "-Wno-fatal",
+        "-Wall",
+        *waivers,
+        *ibex_src,
+        *[str(ROOT / s) for s in SPINE_SOURCES],
+        "--top-module",
+        "e1_rot_top",
+    ]
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
     bad = [ln for ln in proc.stderr.splitlines() if "%Error" in ln]
     if proc.returncode == 0 and not bad:
-        return {"id": "elaborate_ibex", "status": "pass",
-                "detail": f"e1_rot_top + real Ibex ({len(ibex_src)} src) "
-                          "elaborates clean (upstream lint waivers applied)"}
-    return {"id": "elaborate_ibex", "status": "fail",
-            "detail": "Ibex-build elaboration failed: " + "\n".join(bad[:6])}
+        return {
+            "id": "elaborate_ibex",
+            "status": "pass",
+            "detail": f"e1_rot_top + real Ibex ({len(ibex_src)} src) "
+            "elaborates clean (upstream lint waivers applied)",
+        }
+    return {
+        "id": "elaborate_ibex",
+        "status": "fail",
+        "detail": "Ibex-build elaboration failed: " + "\n".join(bad[:6]),
+    }
 
 
 def check_cocotb() -> dict:
-    rc = subprocess.run(["make", "-C", str(ROOT / "verify/cocotb/rot")],
-                        capture_output=True, text=True, cwd=ROOT)
+    rc = subprocess.run(
+        ["make", "-C", str(ROOT / "verify/cocotb/rot")], capture_output=True, text=True, cwd=ROOT
+    )
     if not COCOTB_RESULTS.is_file():
-        return {"id": "cocotb_reset_release_mailbox", "status": "blocked",
-                "detail": "no results.xml; cocotb/verilator unavailable. "
-                          + rc.stderr.splitlines()[-1] if rc.stderr else ""}
+        return {
+            "id": "cocotb_reset_release_mailbox",
+            "status": "blocked",
+            "detail": "no results.xml; cocotb/verilator unavailable. " + rc.stderr.splitlines()[-1]
+            if rc.stderr
+            else "",
+        }
     tree = ET.parse(COCOTB_RESULTS)
     seen, failed = set(), []
     for tc in tree.iter("testcase"):
@@ -218,11 +298,16 @@ def check_cocotb() -> dict:
             failed.append(name)
     missing = [t for t in EXPECTED_COCOTB_TESTS if t not in seen]
     if failed or missing:
-        return {"id": "cocotb_reset_release_mailbox", "status": "fail",
-                "detail": f"failed={failed} missing={missing}"}
-    return {"id": "cocotb_reset_release_mailbox", "status": "pass",
-            "detail": f"{len(EXPECTED_COCOTB_TESTS)} reset-release + mailbox "
-                      "tests passed"}
+        return {
+            "id": "cocotb_reset_release_mailbox",
+            "status": "fail",
+            "detail": f"failed={failed} missing={missing}",
+        }
+    return {
+        "id": "cocotb_reset_release_mailbox",
+        "status": "pass",
+        "detail": f"{len(EXPECTED_COCOTB_TESTS)} reset-release + mailbox tests passed",
+    }
 
 
 def main() -> int:
@@ -231,18 +316,27 @@ def main() -> int:
 
     verilator = _verilator()
     if verilator is None:
-        checks.append({"id": "elaborate_spine", "status": "blocked",
-                       "detail": "verilator not found; install oss-cad-suite"})
-        checks.append({"id": "elaborate_ibex", "status": "blocked",
-                       "detail": "verilator not found"})
+        checks.append(
+            {
+                "id": "elaborate_spine",
+                "status": "blocked",
+                "detail": "verilator not found; install oss-cad-suite",
+            }
+        )
+        checks.append(
+            {"id": "elaborate_ibex", "status": "blocked", "detail": "verilator not found"}
+        )
     else:
         checks.append(check_elaborate_spine(verilator))
         checks.append(check_elaborate_ibex(verilator))
     checks.append(check_cocotb())
 
-    real_blocks = [b["name"] for b in BLOCKS if b["real"]]
-    shimmed = [{"block": b["name"], "missing_dependency": b["missing"]}
-               for b in BLOCKS if not b["real"]]
+    real_blocks: list[str] = [str(b["name"]) for b in BLOCKS if b["real"]]
+    shimmed: list[dict[str, str]] = [
+        {"block": str(b["name"]), "missing_dependency": str(b["missing"])}
+        for b in BLOCKS
+        if not b["real"]
+    ]
 
     # Gate verdict. Fail-closed: any non-pass check, or any shimmed security
     # block, prevents a PASS. Shimmed blocks downgrade the gate to BLOCKED with
@@ -252,21 +346,27 @@ def main() -> int:
     has_block = any(c["status"] == "blocked" for c in checks)
 
     if has_fail:
-        status, blocker_id, blocker_reason = "FAIL", "rot_check_failure", \
-            "; ".join(f"{c['id']}: {c['detail']}"
-                      for c in checks if c["status"] == "fail")
+        status, blocker_id, blocker_reason = (
+            "FAIL",
+            "rot_check_failure",
+            "; ".join(f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "fail"),
+        )
     elif has_block:
         status, blocker_id = "BLOCKED", "rot_dependency_missing"
-        blocker_reason = "; ".join(f"{c['id']}: {c['detail']}"
-                                   for c in checks if c["status"] == "blocked")
+        blocker_reason = "; ".join(
+            f"{c['id']}: {c['detail']}" for c in checks if c["status"] == "blocked"
+        )
     elif shimmed:
         status, blocker_id = "BLOCKED", "rot_crypto_blocks_shimmed"
         blocker_reason = (
             "Integration spine (Ibex + OTP + lifecycle + mailbox + reset "
             "sequencer) is REAL and elaborates/tests clean, but the following "
             "OpenTitan crypto/security blocks are fail-closed SHIMS, not "
-            "integrated: " + ", ".join(s["block"] for s in shimmed) +
-            ". Missing dependency: " + MISSING_OT_DEP)
+            "integrated: "
+            + ", ".join(s["block"] for s in shimmed)
+            + ". Missing dependency: "
+            + MISSING_OT_DEP
+        )
     else:
         status, blocker_id, blocker_reason = "PASS", None, None
 
@@ -319,8 +419,7 @@ def main() -> int:
     for c in checks:
         print(f"  [{c['status'].upper():7}] {c['id']}: {c['detail']}")
     print(f"  real blocks   ({len(real_blocks)}): {', '.join(real_blocks)}")
-    print(f"  shimmed blocks({len(shimmed)}): "
-          f"{', '.join(s['block'] for s in shimmed)}")
+    print(f"  shimmed blocks({len(shimmed)}): {', '.join(s['block'] for s in shimmed)}")
     if blocker_reason:
         print(f"  blocker: {blocker_reason}")
 

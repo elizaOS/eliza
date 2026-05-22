@@ -13,14 +13,15 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/objective_readiness"
 DEFAULT_RESEARCH_DOC = (
-    ROOT / "research/alpha_chip_macro_placement/08_full_stack_ai_chip_optimization_plan_2026-05-20.md"
+    ROOT
+    / "research/alpha_chip_macro_placement/08_full_stack_ai_chip_optimization_plan_2026-05-20.md"
 )
 SCHEMA = "eliza.ai_eda.objective_readiness.v1"
 CLAIM_BOUNDARY = "objective_readiness_audit_only_no_completion_or_release_claim"
@@ -184,8 +185,7 @@ def main() -> int:
     full_training_matrix_run_id = args.full_training_matrix_run_id or readiness_run_id
 
     readiness_path = (
-        ROOT
-        / f"build/ai_eda/cuda_readiness_audit/{readiness_run_id}/cuda_readiness_audit.json"
+        ROOT / f"build/ai_eda/cuda_readiness_audit/{readiness_run_id}/cuda_readiness_audit.json"
     )
     evidence_bundle_path = (
         ROOT
@@ -253,7 +253,9 @@ def main() -> int:
 
     readiness = load_json(readiness_path)
     bundle = load_json(evidence_bundle_path)
-    research_doc_text = args.research_doc.read_text(encoding="utf-8") if args.research_doc.is_file() else ""
+    research_doc_text = (
+        args.research_doc.read_text(encoding="utf-8") if args.research_doc.is_file() else ""
+    )
     training = load_json(torch_training_path)
     inference = load_json(torch_inference_path)
     replay_queue = load_json(replay_queue_path)
@@ -271,30 +273,44 @@ def main() -> int:
         requirement(
             "research_doc",
             "Detailed current research plan and TODO backlog",
-            "PROVEN" if len(research_doc_text) > 50_000 and "TODO" in research_doc_text else "INCOMPLETE",
+            "PROVEN"
+            if len(research_doc_text) > 50_000 and "TODO" in research_doc_text
+            else "INCOMPLETE",
             [args.research_doc],
             "Research document must be substantial and carry implementation TODOs.",
-            [] if len(research_doc_text) > 50_000 and "TODO" in research_doc_text else ["research doc is missing, short, or lacks TODO markers"],
+            []
+            if len(research_doc_text) > 50_000 and "TODO" in research_doc_text
+            else ["research doc is missing, short, or lacks TODO markers"],
         )
     )
     requirements.append(
         requirement(
             "current_research_watchlist",
             "Latest/current AI-EDA research watchlist captured",
-            "PROVEN" if capability(readiness, "current_research_watchlist_captured") or present(research_watchlist_path) else "INCOMPLETE",
+            "PROVEN"
+            if capability(readiness, "current_research_watchlist_captured")
+            or present(research_watchlist_path)
+            else "INCOMPLETE",
             [research_watchlist_path, readiness_path],
             "Current research watchlist must be captured as a machine-readable target report.",
-            [] if capability(readiness, "current_research_watchlist_captured") or present(research_watchlist_path) else ["current research watchlist evidence is missing"],
+            []
+            if capability(readiness, "current_research_watchlist_captured")
+            or present(research_watchlist_path)
+            else ["current research watchlist evidence is missing"],
         )
     )
     requirements.append(
         requirement(
             "training_data_handoff",
             "Training data and external benchmark intake prepared for CUDA host",
-            "PROVEN" if present(training_corpus_path) and capability(readiness, "payload_handoff_ready") else "INCOMPLETE",
+            "PROVEN"
+            if present(training_corpus_path) and capability(readiness, "payload_handoff_ready")
+            else "INCOMPLETE",
             [training_corpus_path, readiness_path, evidence_bundle_path],
             "Training corpus manifest and CUDA payload/evidence bundle must be present.",
-            [] if present(training_corpus_path) and capability(readiness, "payload_handoff_ready") else ["training corpus manifest or CUDA payload readiness is missing"],
+            []
+            if present(training_corpus_path) and capability(readiness, "payload_handoff_ready")
+            else ["training corpus manifest or CUDA payload readiness is missing"],
         )
     )
     torch_ok = (
@@ -310,7 +326,9 @@ def main() -> int:
             "PROVEN" if torch_ok else "INCOMPLETE",
             [torch_training_path, torch_inference_path, readiness_path],
             "Torch training and inference artifacts must both validate with non-empty samples/candidates.",
-            [] if torch_ok else ["torch training or inference validation is missing for the selected handoff run"],
+            []
+            if torch_ok
+            else ["torch training or inference validation is missing for the selected handoff run"],
         )
     )
     cuda_ok = (
@@ -356,15 +374,11 @@ def main() -> int:
     alphachip_ok = capability(readiness, "alphachip_checkpoint_available") or (
         alphachip is not None and alphachip.get("status") == "PASS_AVAILABLE"
     )
-    alphachip_successor_validated = capability(
-        readiness, "alphachip_successor_plan_validated"
-    ) or (
+    alphachip_successor_validated = capability(readiness, "alphachip_successor_plan_validated") or (
         alphachip_successor is not None
         and alphachip_successor.get("schema") == "eliza.ai_eda.alphachip_successor_plan.v1"
     )
-    alphachip_successor_reproduced = capability(
-        readiness, "alphachip_successor_reproduced"
-    ) or (
+    alphachip_successor_reproduced = capability(readiness, "alphachip_successor_reproduced") or (
         alphachip_successor_reproduction is not None
         and alphachip_successor_reproduction.get("schema")
         == "eliza.ai_eda.alphachip_successor_reproduction.v1"
@@ -411,7 +425,9 @@ def main() -> int:
         requirement(
             "candidate_replay_queue",
             "Ranked candidates are packaged for deterministic replay",
-            "PROVEN" if replay_queue_ok and replay_queue is not None and replay_handoff_ok else "INCOMPLETE",
+            "PROVEN"
+            if replay_queue_ok and replay_queue is not None and replay_handoff_ok
+            else "INCOMPLETE",
             [full_replay_path, replay_queue_path, replay_handoff_path, readiness_path],
             "Full replay plan, replay queue, and PD-host handoff package must validate before any PD execution.",
             []
@@ -430,7 +446,9 @@ def main() -> int:
             "PROVEN" if prereq_ready else "BLOCKED",
             [replay_prerequisites_path, readiness_path],
             "Replay host must have tools, PDK, fresh run tree, and a ready queue item.",
-            [] if prereq_ready else ["OpenLane/OpenROAD/PDK/replay queue prerequisites are blocked"],
+            []
+            if prereq_ready
+            else ["OpenLane/OpenROAD/PDK/replay queue prerequisites are blocked"],
         )
     )
     replay_ready = capability(readiness, "e1_openlane_replay_ready") and (
@@ -492,7 +510,9 @@ def main() -> int:
                 capability(readiness, "strict_formal_execution_ready")
                 or capability(readiness, "formal_fallback_execution_captured")
             )
-            else ["target captures, CUDA run-plan coverage, formal prerequisites, or formal execution evidence is incomplete"],
+            else [
+                "target captures, CUDA run-plan coverage, formal prerequisites, or formal execution evidence is incomplete"
+            ],
         )
     )
 
@@ -505,7 +525,7 @@ def main() -> int:
     status = "COMPLETE_READY" if proven_count == len(requirements) else "INCOMPLETE_WITH_BLOCKERS"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

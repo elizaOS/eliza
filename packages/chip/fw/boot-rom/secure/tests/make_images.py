@@ -26,8 +26,8 @@ import struct
 import sys
 from pathlib import Path
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 HEADER_LEN = 256
 SIG_LEN = 96
@@ -48,9 +48,7 @@ def key_from_seed(seed: int) -> Ed25519PrivateKey:
 
 
 def pub_raw(key: Ed25519PrivateKey) -> bytes:
-    return key.public_key().public_bytes(
-        serialization.Encoding.Raw, serialization.PublicFormat.Raw
-    )
+    return key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
 def build_header(

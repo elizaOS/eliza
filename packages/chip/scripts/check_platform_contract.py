@@ -191,9 +191,7 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
             errors,
         )
 
-    require(
-        "mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors
-    )
+    require("mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors)
     unmapped = f"{h(contract['e1_chip']['unmapped_read_value']):08X}"
     rtl_unmapped_values = {
         value.replace("_", "").upper() for value in re.findall(r"32'h([0-9A-Fa-f_]+)", top)

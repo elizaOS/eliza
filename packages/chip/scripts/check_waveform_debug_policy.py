@@ -119,7 +119,9 @@ def check_allowlists(policy: dict[str, Any], errors: list[str]) -> None:
             fail(errors, "signal_allowlists[] requires non-empty id")
             continue
         seen_ids.add(entry_id)
-        signals = require_list(entry_map.get("signals"), f"signal_allowlists[{entry_id}].signals", errors)
+        signals = require_list(
+            entry_map.get("signals"), f"signal_allowlists[{entry_id}].signals", errors
+        )
         if len(signals) < 3:
             fail(errors, f"signal_allowlists[{entry_id}].signals must contain at least 3 entries")
         window = entry_map.get("max_time_window_cycles")
@@ -225,7 +227,9 @@ def main(argv: list[str] | None = None) -> int:
     if missing_blocked:
         fail(errors, f"blocked_tasks missing: {', '.join(missing_blocked)}")
 
-    evidence = set(require_list(policy.get("evidence_requirements"), "evidence_requirements", errors))
+    evidence = set(
+        require_list(policy.get("evidence_requirements"), "evidence_requirements", errors)
+    )
     missing_evidence = sorted(REQUIRED_EVIDENCE_FIELDS - evidence)
     if missing_evidence:
         fail(errors, f"evidence_requirements missing: {', '.join(missing_evidence)}")

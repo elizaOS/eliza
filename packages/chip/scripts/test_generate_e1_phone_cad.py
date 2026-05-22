@@ -895,9 +895,7 @@ def test_evt0_phone_engineering_validation_plan_tracks_evt_risks(tmp_path, monke
     assert (tmp_path / "engineering-validation.md").is_file()
 
 
-def test_evt0_phone_battery_swell_management_models_back_void_foam(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_battery_swell_management_models_back_void_foam(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     checks = cad.run_checks(params, parts)

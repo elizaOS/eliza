@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -135,7 +135,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             nodes.append({"id": entity_id, "node_type": "vhdl_entity", "name": name})
             edges.append({"src": source_id, "dst": entity_id, "edge_type": "defines_entity"})
     if not edges and len(nodes) > 1:
-        for src, dst in zip(nodes, nodes[1:]):
+        for src, dst in zip(nodes, nodes[1:], strict=False):
             edges.append(
                 {"src": src["id"], "dst": dst["id"], "edge_type": "source_sequence_fallback"}
             )
@@ -232,7 +232,7 @@ def convert_design(design_dir: Path, out_dir: Path) -> list[dict[str, Any]]:
             "graph_node_count": metrics["graph_node_count"],
             "graph_edge_count": metrics["graph_edge_count"],
         }
-        for record, path in zip(records, paths)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -240,7 +240,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--design-root", type=Path, default=DEFAULT_DESIGN_ROOT)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=8)
     parser.add_argument(
         "--all-records",
@@ -271,7 +271,7 @@ def main() -> int:
         converted.extend(convert_design(design_dir, out_dir))
     report = {
         "schema": "eliza.ai_eda.edalearn_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "design_root": rel(args.design_root),

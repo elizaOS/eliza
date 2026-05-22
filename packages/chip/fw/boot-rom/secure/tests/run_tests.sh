@@ -11,13 +11,22 @@ work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
 CC="${CC:-gcc}"
-CFLAGS="-std=c11 -O2 -Wall -Wextra -Wno-unused-parameter -Werror -I$secure -I$work"
+CFLAGS=(
+    -std=c11
+    -O2
+    -Wall
+    -Wextra
+    -Wno-unused-parameter
+    -Werror
+    "-I$secure"
+    "-I$work"
+)
 
 echo "[1/3] generating OPNPHN01 test images"
 python3 "$here/make_images.py" "$work"
 
 echo "[2/3] compiling KAT harness with $CC"
-"$CC" $CFLAGS \
+"$CC" "${CFLAGS[@]}" \
     "$here/test_kat.c" \
     "$secure/sha256.c" \
     "$secure/ed25519_ct.c" \
