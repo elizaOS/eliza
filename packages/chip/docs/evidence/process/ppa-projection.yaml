@@ -15,7 +15,7 @@ claim_boundary:
 
 projection_pipeline:
   inputs:
-    - open_pdk_run: pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json
+    - open_pdk_run: pd/openlane/runs/RUN_2026-05-21_10-19-23/final/metrics.json
     - asap7_shape: docs/evidence/process/asap7/*.json   # produced by pd/asap7/Makefile
   generator: scripts/project_ppa_to_n2p.py
   output: docs/evidence/process/ppa-projection.json

@@ -114,6 +114,27 @@ components:
     step_path: .tools/kicad-local/usr/share/kicad/3dmodels/Connector_FFC-FPC.3dshapes/Hirose_FH12-40S-0.5SH_1x40-1MP_P0.50mm_Horizontal.step
     status: matched
     match_scope: mating_fpc_connector_on_mainboard_only
+    alternate_display_branch_policy:
+      branch_count: 2
+      branches:
+        - source_id: display_alternate_alibaba_meta_055wu01
+          candidate: 055WU01
+          footprint_status: candidate_40pin_fpc_connector_only_not_panel_footprint
+          required_before_assignment:
+            - signed 2D drawing with FPC exit, pin-1 datum, and cover-lens datum
+            - exact 40-pin FPC pinout, mating connector MPN, and recommended land pattern
+            - supplier STEP or B-rep model for display stack, connector, FPC tail, and stiffener
+            - promotion review before replacing CH550FH01A-CT symbol, footprint, or enclosure branch
+          kicad_assignment_allowed: false
+        - source_id: display_alternate_made_in_china_e549_amoled
+          candidate: E549-HC01_RM67191_AMOLED_class
+          footprint_status: supplier_defined_amoled_connector_touch_stack_and_panel_geometry_required
+          required_before_assignment:
+            - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, and touch-stack datum
+            - exact AMOLED FPC pinout, mating connector MPN, and recommended land pattern
+            - supplier STEP or B-rep model for AMOLED stack, connector, FPC tail, and stiffener
+            - RM67191 power-sequence and GT1151 touch configuration review before footprint or enclosure branch release
+          kicad_assignment_allowed: false
     notes: >
       The display MODULE itself is supplier-custom (no catalog footprint). What IS matchable
       is the 40-pin 0.5 mm horizontal FPC RECEPTACLE on the mainboard that mates the display
@@ -341,6 +362,7 @@ summary:
 cross_checks:
   exact_usb_c_footprint_and_step_available_locally: true
   display_fpc_connector_candidate_footprint_and_step_available_locally: true
+  alternate_display_branches_are_not_footprint_released: true
   side_button_and_mems_microphone_footprints_available_but_3d_models_missing: true
   module_soc_memory_pmic_and_wireless_land_patterns_remain_supplier_defined: true
   local_map_assigns_no_footprints_to_kicad_pcb: true
@@ -348,6 +370,7 @@ cross_checks:
 
 release_blockers:
   - local catalog matches do not replace supplier pinouts, signed drawings, land patterns, or sample inspection
+  - parseable 055WU01 and E549/RM67191 display alternates still require supplier connector, land-pattern, STEP/B-rep, sample, and promotion evidence before KiCad assignment
   - side-button and MEMS microphone 3D bodies are missing from the local KiCad model subset
   - SoC, memory, PMIC, cellular, Wi-Fi/Bluetooth, battery, cameras, audio, and interconnect footprints remain supplier-defined
   - no local library match has been assigned to the production schematic or PCB

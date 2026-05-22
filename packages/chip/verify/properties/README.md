@@ -49,6 +49,12 @@ Both tasks define `AXIL_PROTO_ASSUME_LIVENESS` so the downstream memory
 liveness is assumed rather than asserted; the DMA master is then required
 to keep VALID stable, drive legal responses, and never see spurious B/R.
 
+`npu_axil_bind.sv` binds the same pack to the `e1_npu` descriptor-engine
+master port (`MAX_OUTST(1)`, `MAX_STALL(64)`). It is compiled by the NPU
+formal proof `verify/formal/e1_npu.sby` alongside the NPU harness (top
+`e1_npu_formal`) with `AXIL_PROTO_ASSUME_LIVENESS` for the master-side proof;
+there is no standalone `.sby` for it.
+
 Tracked under
 `verify/rtl_gap_work_order.yaml#areas.interconnect.critical_gaps.interconnect-axi-lite-proof-coverage`
 and `dma-proof-depth-and-protocol`.

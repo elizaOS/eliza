@@ -23,10 +23,12 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cache/compression/e1_bdi_compress.sv \
 	$(REPO)/rtl/cache/compression/e1_bdi_decompress.sv \
 	$(REPO)/rtl/cache/coherence/tl_c_to_chi_bridge.sv \
+	$(REPO)/rtl/cache/coherence/e1_coherence_dir.sv \
 	$(PWD)/e1_l2_tb.sv \
 	$(PWD)/e1_l3_tb.sv \
 	$(PWD)/e1_slc_tb.sv \
-	$(PWD)/e1_mockingjay_prod_tb.sv
+	$(PWD)/e1_mockingjay_prod_tb.sv \
+	$(PWD)/e1_coherence_smp_tb.sv
 
 TOPLEVEL ?= e1_l1i_cache
 MODULE   ?= test_l1i_basic

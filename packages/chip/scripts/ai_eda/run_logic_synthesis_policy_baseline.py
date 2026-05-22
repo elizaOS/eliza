@@ -119,10 +119,18 @@ def run_equivalence(
     equiv_line = f"equiv_opt -async2sync -assert {head}"
     if tail:
         equiv_line += "; " + "; ".join(tail)
+    # Lower inferred memories and drop dangling nets before equiv_opt. Modules
+    # that infer a memory array (e.g. the NPU scratch RAM) otherwise leave
+    # mem2reg-derived undriven wires that trip equiv_opt's internal
+    # `check -assert` with hundreds of spurious problems before the SAT proof
+    # ever runs. Both passes are no-ops for memory-free modules, so the DMA
+    # proof is unaffected.
     lines = [
         *rtl_reads,
         f"hierarchy -top {target['top']}",
         "proc",
+        "memory",
+        "opt_clean",
         equiv_line,
     ]
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")

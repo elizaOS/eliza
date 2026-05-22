@@ -36,6 +36,21 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(categories["todo"], 1)
         self.assertEqual(categories["implementation_missing"], 1)
         self.assertEqual(categories["deferred_blocked"], 1)
+        self.assertEqual(
+            report["scan_root_summary"],
+            [
+                {
+                    "root": "packages/chip/sw",
+                    "findings": 3,
+                    "paths_with_findings": 1,
+                    "categories": {
+                        "deferred_blocked": 1,
+                        "implementation_missing": 1,
+                        "todo": 1,
+                    },
+                }
+            ],
+        )
         paths = {finding["path"] for finding in report["findings"]}
         self.assertEqual(paths, {"packages/chip/sw/boot.sh"})
 
@@ -51,6 +66,25 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
+        self.assertEqual(report["scan_root_summary"], [])
+
+    def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
+        expected = {
+            "packages/chip/sw",
+            "packages/os/linux/elizaos/scripts",
+            "packages/os/linux/agent",
+            "packages/os/linux/crates/elizad",
+            "packages/os/android/vendor/eliza",
+            "packages/os/android/scripts",
+            "packages/os/android/installer/manifests",
+            "packages/os/android/installer/scripts",
+            "packages/os/android/system-ui/native",
+            "packages/os/android/system-ui/src",
+            "packages/app/android/app/src/main",
+            "packages/app/src",
+            "packages/app/scripts",
+        }
+        self.assertTrue(expected.issubset(set(inv.DEFAULT_SCAN_ROOTS)))
 
 
 if __name__ == "__main__":

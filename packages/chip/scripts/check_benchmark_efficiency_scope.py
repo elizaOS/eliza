@@ -68,6 +68,42 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    blocked_until_real_evidence: list[str], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in blocked_until_real_evidence:
+        findings.append(
+            {
+                "code": f"benchmark_efficiency_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "blocked_until_real_evidence",
+                "next_step": "Capture calibrated target benchmark evidence before allowing efficiency, TOPS/W, joules-per-inference, or phone comparison claims.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"benchmark_efficiency_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the benchmark efficiency scope contract before using this report as runtime optimization evidence.",
+            }
+        )
+    return findings
+
+
 def mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -239,6 +275,18 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(MAKEFILE),
         },
     ]
+    blocked_until_real_evidence = [
+        "prototype-silicon or complete-phone target identity, board serial, SoC revision, and OS/BSP build ID",
+        "schema-valid benchmark report generated with dry_run false and claim level L5 or L6 as appropriate",
+        "calibrated clock-source records with SHA-256 artifact hashes for every passing result",
+        "calibrated power-meter records, raw power traces, and integration-window metadata",
+        "thermal traces aligned to the benchmark window with die/package/ambient readings and throttle state",
+        "memory configuration and bandwidth/latency metadata from the target, not simulator defaults",
+        "raw benchmark stdout/log/report artifacts with SHA-256 hashes and parser-derived metrics",
+        "NPU NNAPI proof showing e1-npu selection, zero unsupported ops, and zero CPU fallback",
+        "reviewer confirmation that simulator wall-clock, host-smoke tools, and FPGA power are excluded from phone efficiency comparisons",
+    ]
+    findings = structured_findings(blocked_until_real_evidence, checks)
     return {
         "schema": "eliza.benchmark_efficiency_scope.v1",
         "status": "benchmark_efficiency_scope_release_blocked",
@@ -256,17 +304,8 @@ def build_report() -> dict[str, Any]:
             "calibration_regression_test": rel(CALIBRATION_TEST),
             "parser_regression_test": rel(PARSER_TEST),
         },
-        "blocked_until_real_evidence": [
-            "prototype-silicon or complete-phone target identity, board serial, SoC revision, and OS/BSP build ID",
-            "schema-valid benchmark report generated with dry_run false and claim level L5 or L6 as appropriate",
-            "calibrated clock-source records with SHA-256 artifact hashes for every passing result",
-            "calibrated power-meter records, raw power traces, and integration-window metadata",
-            "thermal traces aligned to the benchmark window with die/package/ambient readings and throttle state",
-            "memory configuration and bandwidth/latency metadata from the target, not simulator defaults",
-            "raw benchmark stdout/log/report artifacts with SHA-256 hashes and parser-derived metrics",
-            "NPU NNAPI proof showing e1-npu selection, zero unsupported ops, and zero CPU fallback",
-            "reviewer confirmation that simulator wall-clock, host-smoke tools, and FPGA power are excluded from phone efficiency comparisons",
-        ],
+        "blocked_until_real_evidence": blocked_until_real_evidence,
+        "findings": findings,
         "checks": checks,
         "summary": {
             "check_count": len(checks),
@@ -317,6 +356,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 8:
         errors.append("benchmark efficiency scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured benchmark efficiency blockers")
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

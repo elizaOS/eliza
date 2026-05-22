@@ -33,6 +33,10 @@ def main() -> int:
     assert data["summary"]["ready_for_sota_claim"] is False
     assert data["summary"]["blocked_domain_count"] == data["summary"]["domain_count"]
     domain_ids = {domain["id"] for domain in data["parity_domains"]}
+    findings = data.get("findings")
+    assert isinstance(findings, list)
+    assert len(findings) == data["summary"]["blocked_domain_count"]
+    finding_codes = {finding["code"] for finding in findings}
     for domain_id in {
         "cpu_ap",
         "npu",
@@ -47,6 +51,7 @@ def main() -> int:
         "manufacturing_tapeout",
     }:
         assert domain_id in domain_ids
+        assert f"sota_parity_domain_blocked_{domain_id}" in finding_codes
 
     strict = run_audit("--strict")
     assert strict.returncode == 2, strict.stdout[-4000:]

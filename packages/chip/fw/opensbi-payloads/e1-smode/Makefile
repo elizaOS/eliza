@@ -1,8 +1,13 @@
 # Tier 1 OpenSBI S-mode payload.
 
-CROSS    ?= riscv64-elf-
+CROSS    ?= riscv64-unknown-elf-
 CC       := $(CROSS)gcc
 OBJCOPY  := $(CROSS)objcopy
+
+# S-mode link address.  Default matches the QEMU-virt FW_JUMP_ADDR
+# (0x80200000); the CVA6 Verilator boot overrides it with a compact address so
+# the whole boot image fits in the DRAM-controller preload window.
+PAYLOAD_LINK_ADDR ?= 0x80200000
 
 # UART MMIO base. Defaults to the canonical e1-chip-variant address
 # (e1_chip_cpu_variant.uart.base in sw/platform/e1_platform_contract.json).
@@ -14,7 +19,8 @@ CFLAGS   := -nostdlib -nostartfiles -ffreestanding -fno-pic \
             -mcmodel=medany -march=rv64imac_zicsr -mabi=lp64 \
             -DUART0_BASE=$(UART0_BASE) \
             -O2 -Wall -Wextra -g
-LDFLAGS  := -Wl,-T,linker.ld -Wl,--no-warn-rwx-segments
+LDFLAGS  := -Wl,-T,linker.ld -Wl,--no-warn-rwx-segments \
+            -Wl,--defsym,PAYLOAD_LINK_ADDR=$(PAYLOAD_LINK_ADDR)
 
 OBJS := reset.o e1.o
 TARGET := e1

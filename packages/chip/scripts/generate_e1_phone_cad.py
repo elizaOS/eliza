@@ -48,6 +48,8 @@ CAMERA = [0.02, 0.02, 0.025, 1.0]
 ADHESIVE = [0.02, 0.02, 0.02, 0.55]
 TOOLING = [0.16, 0.35, 0.95, 0.38]
 FPC_AMBER = [0.95, 0.58, 0.10, 0.72]
+IC_PACKAGE = [0.015, 0.018, 0.019, 1.0]
+MODULE_SHIELD = [0.62, 0.64, 0.66, 1.0]
 
 
 @dataclass(frozen=True)
@@ -1267,6 +1269,90 @@ def advanced_phone_parts(params: dict[str, Any]) -> list[Part]:
             METAL,
             "EMI shield",
             "stamped radio shield can",
+        ),
+        box(
+            "cellular_lga_module_keepout",
+            radio.get("cellular", {}).get("envelope_mm", [29.0, 32.0, 2.4]),
+            [-15.5, 45.0, -0.45],
+            MODULE_SHIELD,
+            "cellular module",
+            radio.get("cellular", {}).get(
+                "candidate", "Quectel RG255C-class 5G RedCap LGA module envelope"
+            ),
+        ),
+        box(
+            "wifi_bt_module_keepout",
+            radio.get("wifi_bt", {}).get("envelope_mm", [12.5, 9.4, 1.2]),
+            [20.0, 42.0, -1.0],
+            MODULE_SHIELD,
+            "Wi-Fi/Bluetooth module",
+            radio.get("wifi_bt", {}).get(
+                "candidate", "Murata LBEE5XV2EA-802 Type 2EA Wi-Fi 6E/Bluetooth module"
+            ),
+        ),
+        box(
+            "soc_package_marker",
+            [13.0, 13.0, 0.24],
+            [-7.0, 55.0, -0.06],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for application processor package under SoC shield",
+        ),
+        box(
+            "dram_package_marker",
+            [9.5, 8.0, 0.22],
+            [-7.0, 68.0, -0.07],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for LPDDR memory package near SoC",
+        ),
+        box(
+            "storage_package_marker",
+            [11.5, 9.0, 0.22],
+            [11.0, 68.0, -0.07],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for eMMC/UFS storage package",
+        ),
+        box(
+            "pmic_package_marker",
+            [7.0, 7.0, 0.22],
+            [12.5, 55.0, -0.07],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for PMIC package under power shield",
+        ),
+        box(
+            "rf_transceiver_package_marker",
+            [7.5, 7.5, 0.22],
+            [-22.0, 55.0, -0.07],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for RF transceiver/front-end package under radio shield",
+        ),
+        box(
+            "gnss_lna_package_marker",
+            [3.0, 2.5, 0.2],
+            [-30.0, 62.5, -1.2],
+            IC_PACKAGE,
+            "PCB component marker",
+            "visual marker for GNSS/RF low-noise amplifier placement",
+        ),
+        box(
+            "wifi_bt_rf_feed_coax_stub",
+            [10.0, 0.45, 0.35],
+            [28.5, 42.0, -1.0],
+            METAL,
+            "RF feed",
+            "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+        ),
+        box(
+            "cellular_rf_feed_coax_stub",
+            [0.45, 15.0, 0.35],
+            [-30.0, 61.0, -1.0],
+            METAL,
+            "RF feed",
+            "concept coax/feed stub from cellular module toward top antenna keepout",
         ),
         box(
             "haptic_lra",
@@ -2854,6 +2940,80 @@ def write_solid_cad_handoff_artifacts(
             "stamped radio shield can",
         ),
         (
+            "cellular_lga_module_keepout",
+            params["radio"]["cellular"].get("envelope_mm", [29.0, 32.0, 2.4]),
+            [-15.5, 45.0, -0.45],
+            "cellular module",
+            params["radio"]["cellular"].get(
+                "candidate", "Quectel RG255C-class 5G RedCap LGA module envelope"
+            ),
+        ),
+        (
+            "wifi_bt_module_keepout",
+            params["radio"]["wifi_bt"].get("envelope_mm", [12.5, 9.4, 1.2]),
+            [20.0, 42.0, -1.0],
+            "Wi-Fi/Bluetooth module",
+            params["radio"]["wifi_bt"].get(
+                "candidate", "Murata LBEE5XV2EA-802 Type 2EA Wi-Fi 6E/Bluetooth module"
+            ),
+        ),
+        (
+            "soc_package_marker",
+            [13.0, 13.0, 0.24],
+            [-7.0, 55.0, -0.06],
+            "PCB component marker",
+            "visual marker for application processor package under SoC shield",
+        ),
+        (
+            "dram_package_marker",
+            [9.5, 8.0, 0.22],
+            [-7.0, 68.0, -0.07],
+            "PCB component marker",
+            "visual marker for LPDDR memory package near SoC",
+        ),
+        (
+            "storage_package_marker",
+            [11.5, 9.0, 0.22],
+            [11.0, 68.0, -0.07],
+            "PCB component marker",
+            "visual marker for eMMC/UFS storage package",
+        ),
+        (
+            "pmic_package_marker",
+            [7.0, 7.0, 0.22],
+            [12.5, 55.0, -0.07],
+            "PCB component marker",
+            "visual marker for PMIC package under power shield",
+        ),
+        (
+            "rf_transceiver_package_marker",
+            [7.5, 7.5, 0.22],
+            [-22.0, 55.0, -0.07],
+            "PCB component marker",
+            "visual marker for RF transceiver/front-end package under radio shield",
+        ),
+        (
+            "gnss_lna_package_marker",
+            [3.0, 2.5, 0.2],
+            [-30.0, 62.5, -1.2],
+            "PCB component marker",
+            "visual marker for GNSS/RF low-noise amplifier placement",
+        ),
+        (
+            "wifi_bt_rf_feed_coax_stub",
+            [10.0, 0.45, 0.35],
+            [28.5, 42.0, -1.0],
+            "RF feed",
+            "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+        ),
+        (
+            "cellular_rf_feed_coax_stub",
+            [0.45, 15.0, 0.35],
+            [-30.0, 61.0, -1.0],
+            "RF feed",
+            "concept coax/feed stub from cellular module toward top antenna keepout",
+        ),
+        (
             "sim_tray_keepout",
             comp["sim_tray"]["keepout_mm"],
             [width / 2 - 7.2, -18.0, -0.8],
@@ -2865,7 +3025,15 @@ def write_solid_cad_handoff_artifacts(
             {
                 "name": name,
                 "shape": cq_box(size, center),
-                "color": metal if role == "EMI shield" else keepout_color,
+                "color": (
+                    metal
+                    if role in {"EMI shield", "RF feed"}
+                    else cq.Color(0.62, 0.64, 0.66, 1.0)
+                    if role in {"cellular module", "Wi-Fi/Bluetooth module"}
+                    else cq.Color(0.015, 0.018, 0.019, 1.0)
+                    if role == "PCB component marker"
+                    else keepout_color
+                ),
                 "role": role,
                 "material": material,
             }
@@ -2983,6 +3151,16 @@ def write_solid_cad_handoff_artifacts(
         "cellular_top_antenna_keepout",
         "cellular_bottom_antenna_keepout",
         "wifi_bt_side_antenna_keepout",
+        "cellular_lga_module_keepout",
+        "wifi_bt_module_keepout",
+        "soc_package_marker",
+        "dram_package_marker",
+        "storage_package_marker",
+        "pmic_package_marker",
+        "rf_transceiver_package_marker",
+        "gnss_lna_package_marker",
+        "wifi_bt_rf_feed_coax_stub",
+        "cellular_rf_feed_coax_stub",
         "soc_shield_can",
         "pmic_shield_can",
         "radio_shield_can",
@@ -4387,6 +4565,10 @@ def is_mass_placeholder(part: Part) -> bool:
         "service_label_recess",
         "lens_window",
         "under_glass",
+        "sight_tunnel",
+        "module_keepout",
+        "package_marker",
+        "rf_feed_coax_stub",
     )
     return part.role in {"tooling", "tooling clearance", "review"} or any(
         fragment in part.name for fragment in placeholder_fragments
@@ -16028,7 +16210,23 @@ def main() -> int:
     component_parts = [
         p
         for p in parts
-        if p.role in {"PCB", "camera", "audio", "I/O", "button", "battery", "connector"}
+        if p.role
+        in {
+            "PCB",
+            "camera",
+            "audio",
+            "I/O",
+            "button",
+            "battery",
+            "connector",
+            "cellular module",
+            "Wi-Fi/Bluetooth module",
+            "PCB component marker",
+            "RF feed",
+            "RF tuner",
+            "RF keepout",
+            "EMI shield",
+        }
     ]
     render(component_parts, render_paths[7], "E1 phone component placement", 74, -88)
     width, height, depth = params["device"]["envelope_mm"]

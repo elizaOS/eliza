@@ -272,6 +272,20 @@
             "reset": "0x00000000"
           },
           {
+            "offset": "0x34",
+            "name": "SEC_OWNER_CFG",
+            "access": "RW",
+            "reset": "0x00000000",
+            "description": "Confidential-I/O ownership config (monitor-programmed): [19:0] owning domain ID, [30] perf-lock policy, [31] owned-private. Writable only while SEC_LOCK is clear. Read returns {owned, perf_lock, 10'h0, owner}."
+          },
+          {
+            "offset": "0x3C",
+            "name": "SEC_STATUS",
+            "access": "RO",
+            "reset": "0x00000400",
+            "description": "Confidential-I/O status: [31:8] fixed NPU AXI source ID (0x000004), [3] sec_lock, [2] sec_perf_lock, [1] perf_hidden, [0] sec_owned. Not perf-gated (policy state, not a timing side channel)."
+          },
+          {
             "offset": "0x40",
             "name": "DESC_BASE",
             "access": "RW",

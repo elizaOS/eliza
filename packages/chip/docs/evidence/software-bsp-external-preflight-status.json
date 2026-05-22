@@ -1,162 +1,168 @@
 {
   "claim_boundary": "environment_preflight_only_not_external_build_boot_or_runtime_evidence",
-  "generated_utc": "2026-05-19T02:33:54Z",
+  "generated_utc": "2026-05-21T22:15:29Z",
   "host": {
-    "cwd": "/Users/shawwalters/Desktop/npu_experiment",
-    "platform": "darwin"
+    "cwd": "/home/shaw/milady/eliza/packages/chip",
+    "platform": "linux"
   },
   "schema": "eliza.software_bsp_external_preflight.v1",
   "status": "BLOCKED",
   "targets": [
     {
       "blockers": [
-        "BUILDROOT_TREE not supplied and no local Buildroot checkout was discovered",
-        "missing /Users/shawwalters/Desktop/npu_experiment/sw/linux-external.tar.xz; Buildroot defconfig cannot consume a BSP kernel source archive",
-        "GNU Make 3.81; Buildroot requires GNU Make >= 3.82"
+        "missing /home/shaw/milady/eliza/packages/chip/sw/linux-external.tar.xz; Buildroot defconfig cannot consume a BSP kernel source archive"
       ],
       "checks": [
         {
+          "name": "Buildroot Makefile",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11/Makefile",
+          "status": "PASS"
+        },
+        {
+          "name": "Buildroot configs directory",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11/configs",
+          "status": "PASS"
+        },
+        {
+          "name": "Buildroot output/images directory",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11/output/images",
+          "status": "PASS"
+        },
+        {
           "name": "external Linux tarball for Buildroot",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/sw/linux-external.tar.xz",
+          "path": "/home/shaw/milady/eliza/packages/chip/sw/linux-external.tar.xz",
           "status": "BLOCKED"
         },
         {
-          "detail": "GNU Make 3.81",
+          "detail": "GNU Make 4.3",
           "name": "GNU Make version",
-          "status": "BLOCKED"
+          "status": "PASS"
         }
       ],
       "commands": [
-        "sw/buildroot/scripts/import-buildroot-external.sh --check /path/to/buildroot",
-        "sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot defconfig",
-        "sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot image-manifest",
-        "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot smoke",
-        "E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke",
+        "sw/buildroot/scripts/import-buildroot-external.sh --check /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11",
+        "sw/buildroot/scripts/capture-buildroot-evidence.sh /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11 defconfig",
+        "sw/buildroot/scripts/capture-buildroot-evidence.sh /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11 image-manifest",
+        "E1_SMOKE_CMD='ssh TARGET /usr/bin/e1-mmio-smoke' sw/buildroot/scripts/capture-buildroot-evidence.sh /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11 smoke",
+        "E1_NPU_ML_SMOKE_CMD='ssh TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11 ml-smoke",
         "python3 scripts/check_software_bsp.py buildroot --require-evidence"
       ],
       "status": "BLOCKED",
       "target": "buildroot",
-      "tree": "/path/to/buildroot"
+      "tree": "/home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11"
     },
     {
       "blockers": [
-        "external Linux .config missing CONFIG_ELIZA_E1_NPU; run eliza_e1.config olddefconfig after import",
-        "external Linux .config missing CONFIG_ELIZA_E1_DMA; run eliza_e1.config olddefconfig after import",
-        "missing executable riscv64-linux-gnu-gcc; set CROSS_COMPILE to a usable RISC-V Linux toolchain prefix",
-        "GNU Make 3.81; Linux requires GNU Make >= 3.82"
+        "missing Linux Kconfig: /home/shaw/milady/eliza/packages/chip/external/linux/Kconfig",
+        "missing Linux drivers directory: /home/shaw/milady/eliza/packages/chip/external/linux/drivers",
+        "missing Linux arch directory: /home/shaw/milady/eliza/packages/chip/external/linux/arch",
+        "missing imported Eliza Linux driver Kconfig: /home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/Kconfig",
+        "missing imported Eliza DTS: /home/shaw/milady/eliza/packages/chip/external/linux/arch/riscv/boot/dts/eliza/eliza-e1.dts",
+        "missing imported Eliza DT schema: /home/shaw/milady/eliza/packages/chip/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-npu.yaml",
+        "missing external Linux .config: /home/shaw/milady/eliza/packages/chip/external/linux/.config"
       ],
       "checks": [
         {
           "name": "Linux Kconfig",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/Kconfig",
-          "status": "PASS"
-        },
-        {
-          "name": "Linux drivers directory",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/drivers",
-          "status": "PASS"
-        },
-        {
-          "name": "Linux arch directory",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/arch",
-          "status": "PASS"
-        },
-        {
-          "name": "imported Eliza Linux driver Kconfig",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/drivers/misc/eliza-e1/Kconfig",
-          "status": "PASS"
-        },
-        {
-          "name": "imported Eliza DTS",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/arch/riscv/boot/dts/eliza/eliza-e1.dts",
-          "status": "PASS"
-        },
-        {
-          "name": "imported Eliza DT schema",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-npu.yaml",
-          "status": "PASS"
-        },
-        {
-          "name": "external Linux .config",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/linux/.config",
-          "status": "PASS"
-        },
-        {
-          "name": "CONFIG_ELIZA_E1_NPU configured",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/Kconfig",
           "status": "BLOCKED"
         },
         {
-          "name": "CONFIG_ELIZA_E1_DMA configured",
+          "name": "Linux drivers directory",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers",
+          "status": "BLOCKED"
+        },
+        {
+          "name": "Linux arch directory",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/arch",
+          "status": "BLOCKED"
+        },
+        {
+          "name": "imported Eliza Linux driver Kconfig",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/drivers/misc/eliza-e1/Kconfig",
+          "status": "BLOCKED"
+        },
+        {
+          "name": "imported Eliza DTS",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/arch/riscv/boot/dts/eliza/eliza-e1.dts",
+          "status": "BLOCKED"
+        },
+        {
+          "name": "imported Eliza DT schema",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/Documentation/devicetree/bindings/eliza/eliza,e1-npu.yaml",
+          "status": "BLOCKED"
+        },
+        {
+          "name": "external Linux .config",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/linux/.config",
           "status": "BLOCKED"
         },
         {
           "command": "riscv64-linux-gnu-gcc",
           "name": "RISC-V Linux cross compiler on PATH",
-          "status": "BLOCKED"
+          "status": "PASS"
         },
         {
-          "detail": "GNU Make 3.81",
+          "detail": "GNU Make 4.3",
           "name": "GNU Make version",
-          "status": "BLOCKED"
+          "status": "PASS"
         }
       ],
       "commands": [
-        "sw/linux/scripts/import-linux-bsp.sh --check /Users/shawwalters/Desktop/npu_experiment/external/linux",
-        "sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/Desktop/npu_experiment/external/linux kernel-build",
-        "sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/Desktop/npu_experiment/external/linux dtb-check",
-        "E1_SMOKE_CMD='ssh root@TARGET /tmp/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/Desktop/npu_experiment/external/linux smoke",
+        "sw/linux/scripts/import-linux-bsp.sh --check /home/shaw/milady/eliza/packages/chip/external/linux",
+        "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux kernel-build",
+        "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux dtb-check",
+        "E1_SMOKE_CMD='ssh TARGET /tmp/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux smoke",
         "python3 scripts/check_software_bsp.py linux --require-evidence"
       ],
       "status": "BLOCKED",
       "target": "linux",
-      "tree": "/Users/shawwalters/Desktop/npu_experiment/external/linux"
+      "tree": "/home/shaw/milady/eliza/packages/chip/external/linux"
     },
     {
       "blockers": [
-        "missing riscv64-unknown-elf-gcc or riscv64-linux-gnu-gcc on PATH",
-        "GNU Make 3.81; OpenSBI requires GNU Make >= 3.82",
-        "ELIZA_OPENSBI_HANDOFF_CMD is not supplied; handoff capture needs the exact QEMU/Renode/board command"
+        "Eliza OpenSBI platform is not imported; copy sw/opensbi/platform/eliza to platform/eliza if building PLATFORM=eliza"
       ],
       "checks": [
         {
           "name": "OpenSBI Makefile",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/opensbi/Makefile",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi/Makefile",
           "status": "PASS"
         },
         {
           "name": "OpenSBI lib directory",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/opensbi/lib",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi/lib",
           "status": "PASS"
         },
         {
           "name": "OpenSBI fw_dynamic source",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/opensbi/firmware/fw_dynamic.S",
+          "path": "/home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi/firmware/fw_dynamic.S",
           "status": "PASS"
         },
         {
           "name": "optional imported Eliza OpenSBI platform",
-          "path": "/Users/shawwalters/Desktop/npu_experiment/external/opensbi/platform/eliza/config.mk",
-          "status": "PASS"
+          "path": "/home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi/platform/eliza/config.mk",
+          "status": "BLOCKED"
         },
         {
           "name": "RISC-V OpenSBI cross compiler on PATH",
-          "status": "BLOCKED"
+          "status": "PASS"
         },
         {
-          "detail": "GNU Make 3.81",
+          "detail": "GNU Make 4.3",
           "name": "GNU Make version",
-          "status": "BLOCKED"
+          "status": "PASS"
         }
       ],
       "commands": [
-        "sw/opensbi/scripts/import-opensbi-platform.sh --check /Users/shawwalters/Desktop/npu_experiment/external/opensbi",
-        "ELIZA_OPENSBI_CMD='make PLATFORM=generic FW_DYNAMIC=y' docs/sw/opensbi/capture-opensbi-evidence.sh /Users/shawwalters/Desktop/npu_experiment/external/opensbi build",
-        "ELIZA_OPENSBI_HANDOFF_CMD='/exact/qemu-or-renode fw_dynamic handoff command' docs/sw/opensbi/capture-opensbi-evidence.sh /Users/shawwalters/Desktop/npu_experiment/external/opensbi handoff",
+        "sw/opensbi/scripts/import-opensbi-platform.sh --check /home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi",
+        "ELIZA_OPENSBI_CMD='make PLATFORM=generic FW_DYNAMIC=y' docs/sw/opensbi/capture-opensbi-evidence.sh /home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi build",
+        "ELIZA_OPENSBI_HANDOFF_CMD='/tmp/e1_opensbi_handoff_boot.sh /home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.bin /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11/output/images/Image /home/shaw/milady/eliza/packages/chip/external/buildroot-2024.11/output/images/rootfs.cpio 45' docs/sw/opensbi/capture-opensbi-evidence.sh /home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi handoff",
         "python3 scripts/check_software_bsp.py opensbi --require-evidence"
       ],
       "status": "BLOCKED",
       "target": "opensbi",
-      "tree": "/Users/shawwalters/Desktop/npu_experiment/external/opensbi"
+      "tree": "/home/shaw/milady/eliza/packages/chip/external/opensbi/opensbi"
     },
     {
       "blockers": [

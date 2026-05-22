@@ -11,7 +11,7 @@
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "7d2efa738bb30bf8e02d4850e19d015b2ff2cd93380fc95cf31599563a7bc825"
+      "sha256": "29019f2ce0373f49f8f7009bdb861ab55ea3743d7c2bce9122a4ad0b538db2ed"
     },
     "rtl": {
       "command": "make mpki-eval-rtl",
@@ -19,7 +19,7 @@
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "5b0f206c7f998e7050da01367fe0b7d7c16815733c8bac311aebda4568f1fe6f"
+      "sha256": "e5d58b6a0d9c8c76f6ed96b92f746449bfbe58c945c288ac4a5bf3295bd25345"
     },
     "spec2017_claim": false,
     "v8_claim": false
@@ -32,13 +32,16 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-21T16:08:59.150725+00:00",
+  "generated_at_utc": "2026-05-22T20:54:32.840736+00:00",
   "parameters": {
+    "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
     "FTB_ENTRIES": 4096,
+    "FTB_TARGET_CONF_W": 2,
     "FTB_WAYS": 4,
     "FTQ_ENTRIES": 64,
+    "ITTAGE_CTR_W": 3,
     "ITTAGE_ENTRIES": [
       512,
       512,
@@ -48,16 +51,30 @@
     ],
     "ITTAGE_HIST_LEN": [
       4,
-      8,
-      13,
-      16,
-      32
+      10,
+      20,
+      40,
+      80
     ],
+    "ITTAGE_PATH_HISTORY_BITS": 0,
+    "ITTAGE_PATH_HISTORY_SHIFT": 2,
+    "ITTAGE_PATH_HISTORY_TOKEN_BITS": 6,
+    "ITTAGE_REPLACE_MIN_PROVIDER": 4,
+    "ITTAGE_REPLACE_WEAK_CTR": 3,
     "ITTAGE_TABLES": 5,
+    "ITTAGE_TAG_W": 9,
+    "ITTAGE_TARGET_HISTORY_BITS": 64,
+    "ITTAGE_TARGET_HISTORY_SHIFT": 8,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
+    "ITTAGE_USEFUL_RESET_PERIOD": 100000,
+    "ITTAGE_USEFUL_W": 2,
+    "LOOP_CONF_W": 3,
+    "LOOP_CTR_W": 14,
     "LOOP_ENTRIES": 64,
     "MAX_BR_PER_BLOCK": 2,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
+    "SC_CTR_W": 6,
     "SC_ENTRIES_TABLE": 512,
     "SC_HIST_LEN": [
       0,
@@ -65,7 +82,13 @@
       10,
       16
     ],
+    "SC_LOCAL_HISTORY_BITS": 8,
+    "SC_LOCAL_HISTORY_ENTRIES": 1024,
     "SC_TABLES": 4,
+    "SC_THRESH_INIT": 8,
+    "SC_THRESH_MAX": 31,
+    "SC_THRESH_MIN": 4,
+    "TAGE_CTR_W": 3,
     "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_HIST_LEN": [
       8,
@@ -74,16 +97,21 @@
       90,
       195
     ],
-    "TAGE_HIST_LEN_MAX": 195,
     "TAGE_TABLES": 5,
-    "UFTB_ENTRIES": 512
+    "TAGE_TAG_W": 8,
+    "TAGE_USEFUL_RESET_PERIOD": 100000,
+    "TAGE_USEFUL_W": 2,
+    "TAGE_USE_ALT_ON_NA": 0,
+    "UFTB_ENTRIES": 512,
+    "UFTB_STEER_CONF_MIN": 2,
+    "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "e34e96b6048285ee63fde43158335f2da546fff5",
+  "source_revision": "fd8c39201d268f454f2b62fccaaa52854b7a73fe",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "60a957e4c1bc46e67ab03c145f95281c487b5f284e2fe6807b068c909698d586"
+      "sha256": "dc7eb5ef7d6c804e548c15dd17bdd3ab29b25f60012ebc613329ab97623b22cf"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -91,11 +119,11 @@
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "b2f8cbb0c0c2cbc08b4bfea0114bdefd3f1159336b8830f9222860185190eac7"
+      "sha256": "e0fbfda17fe030e7415dbac6fe820ea1d701f9b1806aa36dac0c974b80bbc925"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "a064aefac83b1a544789626d98d04f4580f6872446a6b2f5704b7cf9dbd884e9"
+      "sha256": "1497c01143ba7b657204aed930c98ddc8c0976226fb4b106dadeb0c6a4e00fe0"
     }
   },
   "status": "clean",
@@ -108,7 +136,7 @@
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "af33f28d906190f56bba67254d2152c5354e535060aed72db70e97feef7fa1b0",
+    "sha256": "aa43a594eb3dbfec9ba8eac2f76085609a76bd567d92d970770dc16bc41371d9",
     "spec2017_claim": false,
     "trace_class": "synthetic_planning_only"
   },
@@ -119,16 +147,21 @@
     "FTB_WAYS": 4,
     "FTQ_ENTRIES": 32,
     "ITTAGE_TABLES": 5,
+    "ITTAGE_TARGET_HISTORY_BITS": 64,
+    "ITTAGE_TARGET_HISTORY_SHIFT": 8,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
     "LOOP_ENTRIES": 32,
-    "MAX_BR_PER_BLOCK": 1,
+    "MAX_BR_PER_BLOCK": 2,
     "RAS_ARCH_ENTRIES": 16,
     "RAS_SPEC_ENTRIES": 32,
     "SC_ENTRIES_TABLE": 512,
+    "SC_LOCAL_HISTORY_BITS": 8,
+    "SC_LOCAL_HISTORY_ENTRIES": 1024,
     "SC_TABLES": 4,
     "TAGE_ENTRIES_TABLE": 4096,
-    "TAGE_HIST_LEN_MAX": 100,
     "TAGE_TABLES": 4,
-    "UFTB_ENTRIES": 256
+    "UFTB_ENTRIES": 256,
+    "UFTB_STEER_CONF_MIN": 2
   },
   "tool_versions": {
     "cocotb": "cocotb 1.9.2",

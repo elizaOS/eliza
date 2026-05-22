@@ -18,6 +18,11 @@ source_artifacts:
   - board/kicad/e1-phone/module-host-integration-acceptance-checklist.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - mechanical/e1-phone/review/board-step-readiness.json
   - mechanical/e1-phone/review/routed-board-clearance.json
 upstream_status:
@@ -29,6 +34,7 @@ upstream_status:
   routing_acceptance_status: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
   power_bringup_acceptance_status: blocked_power_bringup_acceptance_requires_routed_schematic_first_power_charge_thermal_and_factory_evidence
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  supplier_rfq_response_normalization_status: blocked_response_normalization_ready_no_supplier_responses_received
   board_step_readiness_status: blocked_concept_pcb_no_routed_step
   routed_board_clearance_status: blocked_waiting_for_routed_board_step
   module_host_acceptance_status: blocked_module_host_integration_requires_supplier_pinouts_routed_host_buses_firmware_identity_and_factory_evidence
@@ -242,6 +248,137 @@ execution_domains:
       - routed board STEP acoustic and split-interconnect clearance report
       - audio functional, haptic current, interconnect continuity, and fixture logs
       - assembly drawing for flex mating sequence, strain relief, and inspection
+selected_supplier_response_enclosure_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_enclosure_geometry_and_clearance_datums
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_enclosure_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  enclosure_inputs_blocked:
+    - display and camera STEP/B-rep models, optical/FPC datums, connector heights, and cover-glass clearances
+    - USB-C shell/aperture/load-path geometry and side-key actuator force/travel datums
+    - cellular and Wi-Fi/Bluetooth module STEP, shield/keepout volumes, antenna plastic, and regulatory/SAR keepouts
+    - supplier land patterns, courtyards, and mated connector heights needed before routed-board STEP export
+    - sample inspection and physical fit records needed before enclosure-first-article release
+  all_selected_supplier_response_packs_absent: true
+  enclosure_clearance_allowed_without_selected_supplier_packs: false
+selected_hardware_enclosure_clearance_gate:
+  status: blocked_until_selected_hardware_supplier_step_routed_board_clearance_and_physical_fit_evidence_exist
+  function_count: 5
+  functions:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      execution_domain: display_touch_stack
+      placement_refs: [J_DISPLAY_TOUCH]
+      required_height_models: [display_fpc_connector]
+      required_clearance_cases: [front_camera_to_earpiece]
+      required_release_outputs:
+        - board/kicad/e1-phone/production/step/display-touch-stack.step
+        - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+        - mechanical/e1-phone/review/routed-board-clearance.json
+        - mechanical/e1-phone/review/full-cad-boolean-interference.json
+      unresolved_geometry_inputs:
+        - signed display/touch supplier STEP and FPC bend datum
+        - routed display FPC connector height and cover-lens datum clearance
+      alternate_display_enclosure_branches:
+        - source_id: display_alternate_alibaba_meta_055wu01
+          candidate: 055WU01
+          source_gate: component_height_step_integration.alternate_display_height_step_gate
+          required_enclosure_evidence:
+            - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, stiffener, and mated connector height
+            - exact 40-pin FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
+            - display/touch/backlight/bias bring-up data, sample inspection, and promotion review against CH550FH01A-CT
+            - routed board STEP clearance rerun and physical fit report against the selected enclosure
+          enclosure_clearance_allowed: false
+        - source_id: display_alternate_made_in_china_e549_amoled
+          candidate: E549-HC01_RM67191_AMOLED_class
+          source_gate: component_height_step_integration.alternate_display_height_step_gate
+          required_enclosure_evidence:
+            - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and mated connector height
+            - exact AMOLED FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
+            - RM67191 power sequence, GT1151 touch data, burn-in/luminance/sample evidence, and promotion review
+            - routed board STEP clearance rerun and physical fit report against the selected enclosure
+          enclosure_clearance_allowed: false
+      status: blocked_display_touch_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      execution_domain: front_rear_camera_stack
+      placement_refs: [J_CAM0_CAM1]
+      required_height_models: [rear_camera_module, front_camera_module]
+      required_clearance_cases: [front_camera_to_earpiece, rear_camera_to_battery]
+      required_release_outputs:
+        - board/kicad/e1-phone/production/step/rear-camera-module.step
+        - board/kicad/e1-phone/production/step/front-camera-module.step
+        - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+        - mechanical/e1-phone/review/routed-board-clearance.json
+        - mechanical/e1-phone/review/full-cad-boolean-interference.json
+      unresolved_geometry_inputs:
+        - rear/front module STEP, optical-axis datums, and mating connector heights
+        - routed camera connector placement and lens-window clearance
+      status: blocked_camera_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
+    - function: usb_c_power_sidekeys
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      execution_domain: usb_c_side_buttons_bottom_io
+      placement_refs: [J_USB_C, SW_POWER_VOL]
+      required_height_models: [usb_c_receptacle]
+      required_clearance_cases: [usb_shell_to_external_aperture, bottom_mic_to_usb, usb_to_bottom_speaker]
+      required_release_outputs:
+        - board/kicad/e1-phone/production/sourcing/usb-c-signed-drawing.pdf
+        - board/kicad/e1-phone/production/sourcing/side-key-signed-drawing.pdf
+        - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+        - mechanical/e1-phone/review/routed-board-clearance.json
+        - mechanical/e1-phone/review/full-cad-boolean-interference.json
+      unresolved_geometry_inputs:
+        - USB-C shell, aperture, plug sweep, and side-key actuator stack drawings
+        - routed USB-C connector land pattern, shell path, and button force-travel clearance
+      status: blocked_usb_power_sidekey_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      execution_domain: radios_antennas_modules
+      placement_refs: [U_CELL]
+      required_height_models: [radio_shield_can]
+      required_clearance_cases: [split_interconnect_connectors_on_pcb_islands, split_interconnect_flex_within_side_rail]
+      required_release_outputs:
+        - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+        - mechanical/e1-phone/review/routed-board-clearance.json
+        - mechanical/e1-phone/review/full-cad-boolean-interference.json
+        - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+      unresolved_geometry_inputs:
+        - cellular module STEP, shield-can height, antenna plastic, and SAR keepout
+        - routed RF feed, SIM/eSIM path, and module-to-midframe clearance
+      status: blocked_cellular_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      execution_domain: radios_antennas_modules
+      placement_refs: [U_WIFI_BT]
+      required_height_models: [radio_shield_can]
+      required_clearance_cases: [split_interconnect_connectors_on_pcb_islands, split_interconnect_flex_within_side_rail]
+      required_release_outputs:
+        - board/kicad/e1-phone/production/step/e1-phone-mainboard-routed.step
+        - mechanical/e1-phone/review/routed-board-clearance.json
+        - mechanical/e1-phone/review/full-cad-boolean-interference.json
+        - board/kicad/e1-phone/production/reports/rf/conducted-cellular-wifi-bt.json
+      unresolved_geometry_inputs:
+        - Wi-Fi/Bluetooth module STEP, shield-can height, antenna plastic, and regulatory keepout
+        - routed PCIe/SDIO/UART host path, RF feed, and module-to-midframe clearance
+      status: blocked_wifi_bt_selected_hardware_missing_supplier_step_routed_clearance_and_physical_fit
 required_release_outputs:
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   - board/kicad/e1-phone/production/reports/drc.json
@@ -257,11 +394,17 @@ cross_checks:
   current_board_not_routed: true
   footprint_capture_blocks_enclosure_release: true
   ready_for_enclosure_policy_is_false: true
+  selected_supplier_response_enclosure_gate_blocks_clearance_release: true
+  selected_hardware_enclosure_clearance_gate_blocks_final_readiness: true
+  alternate_display_enclosure_branches_fail_closed: true
 release_blockers:
   - routed KiCad PCB and DRC report are missing
+  - selected supplier response packs with enclosure datums and STEP/B-rep geometry for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - supplier STEP or B-rep models for height-critical parts are missing
   - routed board STEP has not been exported or imported into enclosure CAD
   - routed-board clearance, boolean interference, and physical fit results are missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth supplier geometry has not passed routed enclosure clearance
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter enclosure clearance until supplier geometry, connector, touch/power, sample, promotion review, routed STEP, and physical fit evidence exist
   - display, USB-C, side-key, camera, radio, battery, acoustic, and interconnect functional evidence is missing
 forbidden_claims:
   - enclosure_ready

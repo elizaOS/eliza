@@ -1,0 +1,92 @@
+{
+  "aggregate": {
+    "branch_count": 708158,
+    "instruction_count": 5532238,
+    "misprediction_count": 143692,
+    "mpki": 25.973575
+  },
+  "claim_policy": {
+    "android_claim": false,
+    "cbp5_claim": false,
+    "evidence_class": "qemu_rv64_workload",
+    "reason": "Real QEMU-RV64 duty-cycle workload MPKI measured on the BPU RTL via the cocotb harness, over the same .btrace.json traces the behavioural model uses. Instruction counts are the true retired counts decoded from the QEMU execlog, so MPKI is comparable to the E1-model MPKI in bpu-vs-cva6-mpki.json. These are the E1's own agent-loop / IO duty-cycle workloads; they are not SPEC2017, AOSP, or JS-engine traces.",
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "evidence_class": "qemu_rv64_workload",
+  "generated_at_utc": "2026-05-22T19:02:01.833123+00:00",
+  "harness": "cocotb-rtl-bpu_top",
+  "instructions_per_branch_assumption": null,
+  "rtl_top": "bpu_top",
+  "schema": "eliza.bpu_mpki.v1",
+  "workloads": {
+    "audio_frames": {
+      "branch_count": 432230,
+      "indirect_misp_count": 1083,
+      "indirect_misp_count_harness_observed": 1083,
+      "instruction_count": 2890947,
+      "misprediction_count": 110304,
+      "misprediction_count_harness_observed": 110304,
+      "mpki": 38.154971,
+      "mpki_harness_observed": 38.154971,
+      "pmu_counters_delta": {
+        "br_call": 3666,
+        "br_cond": 426070,
+        "br_cond_misp": 107310,
+        "br_ind": 1743,
+        "br_ind_misp": 1083,
+        "br_misp": 110304,
+        "br_pred": 432230,
+        "br_ret": 202,
+        "br_ret_misp": 1911,
+        "br_taken": 393549,
+        "ftb_miss": 549,
+        "loop_hit": 116984,
+        "ras_overflow": 0,
+        "ras_underflow": 188,
+        "sc_override": 135868,
+        "tage_alloc": 15141,
+        "uftb_hit": 413994
+      },
+      "ras_misp_count": 1911,
+      "ras_misp_count_harness_observed": 1911,
+      "taken_branch_throughput": 0.805983,
+      "trace_class": "qemu_rv64_workload",
+      "workload": "audio_frames"
+    },
+    "video_blocks": {
+      "branch_count": 275928,
+      "indirect_misp_count": 1917,
+      "indirect_misp_count_harness_observed": 1917,
+      "instruction_count": 2641291,
+      "misprediction_count": 33388,
+      "misprediction_count_harness_observed": 33388,
+      "mpki": 12.640788,
+      "mpki_harness_observed": 12.640788,
+      "pmu_counters_delta": {
+        "br_call": 1968,
+        "br_cond": 271484,
+        "br_cond_misp": 29558,
+        "br_ind": 1743,
+        "br_ind_misp": 1917,
+        "br_misp": 33388,
+        "br_pred": 275928,
+        "br_ret": 187,
+        "br_ret_misp": 1913,
+        "br_taken": 241639,
+        "ftb_miss": 546,
+        "loop_hit": 204673,
+        "ras_overflow": 0,
+        "ras_underflow": 138,
+        "sc_override": 32489,
+        "tage_alloc": 3316,
+        "uftb_hit": 261193
+      },
+      "ras_misp_count": 1913,
+      "ras_misp_count_harness_observed": 1913,
+      "taken_branch_throughput": 0.838875,
+      "trace_class": "qemu_rv64_workload",
+      "workload": "video_blocks"
+    }
+  }
+}

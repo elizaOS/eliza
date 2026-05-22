@@ -138,6 +138,40 @@ nebius profile list
 nebius compute instance list --parent-id project-e00kfz6cpr00q21z892vec
 ```
 
+## Fully autonomous run (private-IP H200, self-shutdown)
+
+Public-IP quota is exhausted, so the box runs with a private IP only and returns
+results via a Nebius S3 bucket. The full lifecycle is scripted:
+
+```sh
+# 1. Prepare benchmark from the routed SoC DEF (pass the SRAM macro LEF).
+ALPHACHIP_BENCH_DIR=/tmp/e1-alphachip/e1_softmacro_full \
+  scripts/alphachip/prepare_e1_softmacro_benchmark.sh \
+    --def <routed.def> --cols 16 --rows 16 \
+    --lef external/pdks/volare/sky130/versions/<ver>/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+
+# 2. Package the self-contained payload (CT source + lawful plc + benchmark).
+ALPHACHIP_BENCH_DIR=/tmp/e1-alphachip/e1_softmacro_full \
+  scripts/alphachip/package_nebius_autonomous_payload.sh
+
+# 3. Credentials in /tmp/nebius_ppo_creds.env (bucket, access key, endpoint).
+#    Launch: uploads payload, generates cloud-init, creates disk + private-IP VM.
+ALPHACHIP_PAYLOAD_TAR=$PWD/build/alphachip/nebius/e1_ppo_autonomous_payload.tar.gz \
+  scripts/alphachip/launch_nebius_ppo.sh   # records id to /tmp/nebius_ppo_instance_id
+
+# 4. Poll for results (DONE marker + tarball), then validate.
+scripts/alphachip/fetch_nebius_ppo_results.sh
+
+# 5. Delete instance + boot disk + access key + bucket; verify NotFound.
+scripts/alphachip/teardown_nebius_ppo.sh
+```
+
+The cloud-init bakes in TWO self-destruct backstops: `shutdown -h +600` at boot
+(10h hard cap) and an explicit `poweroff` at the end of the on-box job script.
+The on-box job (`run_autonomous_h200_job.sh`) builds the CUDA image, runs the
+OpenROAD proxy baseline, trains PPO from random init (no pretrained checkpoint),
+re-runs the comparison, uploads the result tarball, and powers off.
+
 For larger runs, either keep the integrated runner or split jobs manually:
 `ppo_reverb_server` on the Reverb host, many `ppo_collect` jobs on CPU hosts,
 `train_ppo --use_gpu` on the H200 host, and `learning.eval` pointed at the same

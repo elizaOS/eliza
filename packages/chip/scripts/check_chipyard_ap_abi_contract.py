@@ -4,6 +4,12 @@
 The generated Chipyard AP can be useful boot collateral, but it must not be
 treated as e1 chip Linux/AOSP evidence unless its device tree matches the e1
 Linux-capable SoC projection consumed by the kernel and Android HAL paths.
+
+This gate reads the conformed e1 ABI view (``eliza-e1.contract.dts``, emitted by
+``scripts/conform_chipyard_ap_dts.py`` from the platform contract), not the
+faithful generated ``eliza-e1.dts`` that the Verilator sim boots. The faithful
+DTS keeps its real Rocket identity for the generated-Linux contract; this gate
+asserts the e1 ABI projection against the separate conformed artifact.
 """
 
 from __future__ import annotations
@@ -19,7 +25,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "build/chipyard/eliza_rocket"
-GENERATED_DTS = BUILD / "eliza-e1.dts"
+GENERATED_DTS = BUILD / "eliza-e1.contract.dts"
 GENERATED_SOURCE_DTS = BUILD / "generated-src/chipyard.harness.TestHarness.ElizaRocketConfig.dts"
 IMPORT_MANIFEST = BUILD / "ElizaRocketConfig.manifest.json"
 PLATFORM_CONTRACT = ROOT / "sw/platform/e1_platform_contract.json"
@@ -154,7 +160,6 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         return payload(findings, {})
 
     generated_dts = read_text(GENERATED_DTS)
-    source_dts = read_text(GENERATED_SOURCE_DTS)
     static_e1_dts = read_text(STATIC_E1_DTS)
     manifest = read_json(IMPORT_MANIFEST)
     contract = read_json(PLATFORM_CONTRACT)
@@ -188,11 +193,11 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        "ucb-bar,chipyard" in generated_dts or "ucb-bar,chipyard" in source_dts,
+        "ucb-bar,chipyard" in generated_dts,
         "generated_ap_dts_identifies_chipyard_not_e1",
-        "generated AP DTS identifies as Chipyard/UC Berkeley rather than the e1 chip ABI",
+        "conformed AP ABI DTS identifies as Chipyard/UC Berkeley rather than the e1 chip ABI",
         "found ucb-bar,chipyard compatible/model strings",
-        "Regenerate or wrap the AP DTS so the booted target records an explicit e1-compatible ABI boundary.",
+        "Regenerate the conformed e1 ABI DTS so the booted target records an explicit e1-compatible ABI boundary.",
     )
     add_if(
         findings,

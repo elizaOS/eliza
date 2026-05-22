@@ -11,6 +11,8 @@ artifacts:
 - `pd/sf2p-stub/access-gate.yaml` — Samsung SF2P procurement gate
 - `docs/spec-db/process-14a-effects.yaml` — fail-closed effects + claim contract
 - `docs/evidence/process/pdk-access-gate.yaml` — top-level procurement evidence
+- `docs/evidence/process/multi-pdk-closure.yaml` — per-lane closure roll-up
+  (gated by `scripts/check_multi_pdk_closure.py`)
 
 ## 1. Decision
 
@@ -115,7 +117,7 @@ HD SRAM macro):
 
 | Block | N2-class area | Source |
 |---|---|---|
-| Ultra CPU (Ascalon-D8-class P-core + L2) | 2.0-3.5 mm² each | A19 Pro P-core 2.97 mm² at N3P × 1/1.45 density-scale |
+| Ultra CPU (Kunminghu V3 8-wide-class P-core + L2) | 2.0-3.5 mm² each | A19 Pro P-core 2.97 mm² at N3P × 1/1.45 density-scale |
 | Premium mid-core | 0.85 mm² each | scaled C1-Premium |
 | Pro little-core | 0.25 mm² each | scaled C1-Pro |
 | L3 cluster cache 8-16 MB | 4-8 mm² | 38.1 Mb/mm² assumption |
@@ -150,6 +152,49 @@ Real, manufacturable proof of methodology lives on three open PDKs:
 
 These are real, fabbable, and run end-to-end through OpenLane 2. They prove
 methodology portability but do not produce flagship-frequency numbers.
+
+### 6.1 Selected primary prototype PDK
+
+**Sky130A is the selected primary prototype PDK.** It is distinct from the
+production-node *decision* in section 1 (TSMC N2P): N2P is the 2028 production
+target and is procurement-blocked, whereas Sky130A is the PDK the flow is
+actively exercised on today to prove the PD methodology produces real signoff
+artifacts. Sky130A wins the prototype slot because it has the most mature open
+OpenLane 2 support, the broadest open standard-cell + SRAM (OpenRAM) ecosystem,
+and a proven shuttle path (SkyWater MPW, Tiny Tapeout).
+
+Active proof: `e1_pd_smoke_top` closes clean end-to-end on Sky130A at 20 ns
+(50 MHz) — DRC clean (magic + klayout), LVS clean, route DRC-free, setup and
+hold met, zero slew/cap/fanout/antenna violations. Artifact:
+`pd/openlane/runs/RUN_2026-05-21_10-19-23/final/metrics.json`, recorded in
+`docs/evidence/process/multi-pdk-closure.yaml` and gated by
+`scripts/check_multi_pdk_closure.py`. GF180MCU and IHP SG13G2 are the secondary
+open lanes (configured, run-pending). Reproduce or re-prove the Sky130A flow
+with `scripts/run_openlane.sh --smoke` (full release lane:
+`scripts/run_openlane.sh --release`).
+
+### 6.2 Per-foundry readiness tier
+
+Two tiers, set by the fail-closed law. Open PDKs are *exercisable* with real
+data; advanced nodes are *framework-ready, fail-closed* — wired the moment a
+real NDA-gated PDK lands, with no real or faked signoff numbers in this repo.
+
+| node_id | foundry | tier | status | what is real today |
+|---|---|---|---|---|
+| sky130 | SkyWater | open / exercisable | open_fabricable | **primary prototype**; e1_pd_smoke_top clean closure |
+| gf180 | GlobalFoundries | open / exercisable | open_fabricable | configured lane, run-pending |
+| ihp-sg13g2 | IHP | open / exercisable | open_fabricable | configured lane, run-pending (Linux-capable demonstrator) |
+| asap7 | ASU (predictive) | predictive / shape-only | predictive_shape_only | FinFET PPA shapes only; never signoff, not fabricable |
+| tsmc-n2p | TSMC | advanced / framework-ready | blocked_until_foundry_agreement | profile + access-gate + corner/library manifests; adapter null |
+| tsmc-a14 | TSMC | advanced / framework-ready | blocked_until_foundry_agreement | profile + access-gate + corner/library manifests; adapter null |
+| intel-14a | Intel | advanced / framework-ready | blocked_until_foundry_agreement | profile + access-gate + corner/library manifests; adapter null |
+| samsung-sf2p | Samsung | advanced / framework-ready | blocked_until_foundry_agreement | profile + access-gate + corner/library manifests; adapter null |
+
+Tier invariants are enforced by `scripts/check_node_profile.py` (fail-closed
+law over node profiles), `scripts/check_pdk_portability.py` (portability index),
+and `scripts/check_multi_pdk_closure.py` (closure-evidence consistency). An
+advanced node is promoted out of the framework-ready tier only by the
+section 8 quarterly decision tree, never by editing a status field directly.
 
 ## 7. Failure modes and contingencies
 

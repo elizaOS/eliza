@@ -69,6 +69,33 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
+def test_placeholder_non_secret_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    del mutated["current_scaffold"]["placeholder_non_secret"]
+    expect_error(mutated, "placeholder_non_secret")
+    print("PASS placeholder_non_secret label removal rejected")
+
+
+def test_placeholder_non_secret_fuses_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    mutated["current_scaffold"]["placeholder_non_secret_fuses"] = []
+    expect_error(mutated, "placeholder_non_secret fuse fields")
+    print("PASS placeholder_non_secret fuse enumeration removal rejected")
+
+
+def test_structured_findings_cover_security_blockers() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    findings = report.get("findings")
+    if not isinstance(findings, list) or not findings:
+        raise AssertionError("security lifecycle findings missing")
+    codes = [str(finding.get("code", "")) for finding in findings if isinstance(finding, dict)]
+    if not any(code.startswith("security_lifecycle_missing_real_evidence_") for code in codes):
+        raise AssertionError(codes)
+    print("PASS structured security lifecycle findings cover blocked real evidence")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
@@ -76,6 +103,9 @@ def main() -> None:
     test_signed_auth_status_removal_fails()
     test_synthetic_otp_placeholder_marker_removal_fails()
     test_blocker_removal_fails()
+    test_placeholder_non_secret_removal_fails()
+    test_placeholder_non_secret_fuses_removal_fails()
+    test_structured_findings_cover_security_blockers()
 
 
 if __name__ == "__main__":

@@ -1,0 +1,14 @@
+include common.mk
+
+VERILOG_SOURCES := \
+	$(REPO)/rtl/interrupts/e1_clint.sv
+
+TOPLEVEL ?= e1_clint
+MODULE   ?= test_clint_timer_irq
+
+# Two harts in the testbench to exercise per-hart isolation; the elaborated
+# top is parameterized with NUM_HARTS=2.
+EXTRA_ARGS += -GNUM_HARTS=2
+EXTRA_ARGS += -Wno-DECLFILENAME
+
+include $(COCOTB_SIM_MK)

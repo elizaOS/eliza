@@ -11,6 +11,7 @@ source_artifacts:
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/procurement-readiness.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/enclosure-placement-closure.yaml
   - board/kicad/e1-phone/power-thermal-budget.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
@@ -31,7 +32,40 @@ current_board_state:
 supplier_data_context:
   pinout_status: blocked_pinout_footprint_freeze_missing_supplier_evidence
   procurement_status: blocked_preliminary_bom_not_avl_or_purchase_order
+  supplier_rfq_response_normalization_status: blocked_response_normalization_ready_no_supplier_responses_received
   display_fit_status: missing
+selected_supplier_response_release_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_unlock_routed_release_outputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_release_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  routed_release_outputs_blocked_until_selected_response_packs:
+    - schematic_erc_report
+    - pcb_drc_report
+    - routed_kicad_pcb
+    - production_bom_avl
+    - board_step_with_supplier_models
+    - enclosure_clearance_report_using_routed_step
+    - si_pi_reports
+    - rf_reports
+    - power_thermal_measurements
+    - factory_test_limits
+    - first_article_traveler
+  all_selected_supplier_response_packs_absent: true
+  release_allowed_without_selected_supplier_packs: false
 required_release_output_manifest:
   schematic_erc_report:
     owner: ee

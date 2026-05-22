@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import re
 import sys
 from argparse import ArgumentParser
@@ -9,6 +10,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 CFG = ROOT / "board/fpga/e1_demo_fpga.yaml"
 MANIFEST = ROOT / "board/fpga/artifact-manifest.yaml"
+REPORT = ROOT / "build/reports/fpga_release.json"
+SCHEMA = "eliza.fpga_release.v1"
+CLAIM_BOUNDARY = "fpga_release_validation_only_not_board_fabrication_evidence"
 
 REQUIRED_RELEASE_EVIDENCE = {
     "bitstream": ["board/fpga/build/**/*.bit", "board/fpga/build/**/*.svf"],
@@ -30,6 +34,39 @@ REQUIRED_RELEASE_EVIDENCE = {
     ],
 }
 REQUIRED_CLI_COMMANDS = {"synth", "place_route", "pack"}
+
+
+def write_report(status: str, findings: list[str], release: bool) -> None:
+    payload = {
+        "schema": SCHEMA,
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "mode": "release" if release else "preflight",
+        "inputs": {
+            "target": CFG.relative_to(ROOT).as_posix(),
+            "manifest": MANIFEST.relative_to(ROOT).as_posix(),
+        },
+        "summary": {
+            "release_ready": status == "pass" and release,
+            "blockers": len(findings) if status == "blocked" else 0,
+            "failures": len(findings) if status == "fail" else 0,
+        },
+        "findings": [
+            {
+                "code": f"fpga_release_{status}_{index}",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": finding,
+                "evidence": CFG.relative_to(ROOT).as_posix(),
+                "next_step": (
+                    "Assign all FPGA pins and archive bitstream, timing, route, "
+                    "pack, and tool-version release evidence."
+                ),
+            }
+            for index, finding in enumerate(findings, start=1)
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def vector_widths_from_pinout(path: Path) -> dict[str, int]:
@@ -173,17 +210,21 @@ def main() -> int:
             blockers.append(f"missing FPGA release evidence: {label}")
 
     if failures:
+        write_report("fail", failures, args.release)
         print("FPGA release manifest check failed:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
     if blockers:
+        write_report("blocked", blockers, args.release)
+        print("STATUS: BLOCKED FPGA release check")
         print("FPGA release check failed:" if args.release else "FPGA release blockers:")
         for blocker in blockers:
             print(f"  - {blocker}")
         return 1 if args.release else 0
 
+    write_report("pass", [], args.release)
     print("FPGA release check passed.")
     return 0
 

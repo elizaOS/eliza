@@ -29,6 +29,11 @@ REQUIRED_ARTIFACTS = {
     "tool_versions": ".txt",
 }
 
+ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "build/reports/pd_signoff.json"
+SCHEMA = "eliza.pd_signoff.v1"
+CLAIM_BOUNDARY = "pd_signoff_artifact_validation_only_not_tapeout_release_evidence"
+
 ARTIFACT_LABELS = {
     "run_manifest": "run manifest",
     "gds": "GDS layout",
@@ -162,6 +167,40 @@ RELEASE_FAIL_CLOSED_KEYS = {
     "QUIT_ON_LVS_ERROR",
     "QUIT_ON_SLEW_VIOLATIONS",
 }
+
+
+def write_report(status: str, mode: str, manifest: Path, findings: list[str]) -> None:
+    try:
+        evidence = manifest.relative_to(ROOT).as_posix()
+    except ValueError:
+        evidence = str(manifest)
+    payload = {
+        "schema": SCHEMA,
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "mode": mode,
+        "manifest": evidence,
+        "summary": {
+            "release_ready": status == "pass" and mode == "artifacts",
+            "blockers": len(findings) if status == "blocked" else 0,
+            "failures": len(findings) if status == "fail" else 0,
+        },
+        "findings": [
+            {
+                "code": f"pd_signoff_{status}_{index}",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": finding,
+                "evidence": evidence,
+                "next_step": (
+                    "Archive a complete PD signoff run with clean or formally waived "
+                    "DRC, LVS, antenna, STA, IR, EM, density, and tool-version evidence."
+                ),
+            }
+            for index, finding in enumerate(findings, start=1)
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def as_list(value: object) -> list[str]:
@@ -848,6 +887,7 @@ def main() -> int:
     manifest_text = manifest_path.read_text()
     duplicate_key_failures = validate_no_duplicate_yaml_keys(manifest_text)
     if duplicate_key_failures:
+        write_report("fail", "manifest", manifest_path, duplicate_key_failures)
         print("PD signoff artifact check failed:")
         for failure in duplicate_key_failures:
             print(f"  - {failure}")
@@ -855,6 +895,7 @@ def main() -> int:
 
     manifest = yaml.safe_load(manifest_text)
     if not isinstance(manifest, dict):
+        write_report("fail", "manifest", manifest_path, ["manifest must be a YAML mapping"])
         print("PD signoff artifact check failed:")
         print("  - manifest must be a YAML mapping")
         return 1
@@ -866,10 +907,12 @@ def main() -> int:
 
     if args.manifest_only or failures:
         if failures:
+            write_report("fail", "manifest", manifest_path, failures)
             print("PD signoff artifact check failed:")
             for failure in failures:
                 print(f"  - {failure}")
             return 1
+        write_report("pass", "manifest", manifest_path, [])
         print("PD signoff manifest check ok")
         return 0
 
@@ -921,12 +964,15 @@ def main() -> int:
             failures.append(f"signoff report missing required clean marker: {report_path}")
 
     if failures:
+        write_report("blocked", "artifacts", manifest_path, failures)
+        print("STATUS: BLOCKED PD signoff artifact check")
         print("PD signoff artifact check failed:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
     mode = "manifest" if args.manifest_only else "artifacts"
+    write_report("pass", mode, manifest_path, [])
     print(f"PD signoff {mode} check ok")
     return 0
 

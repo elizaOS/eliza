@@ -57,7 +57,24 @@ def test_cva6_converges_on_strongly_biased_not_taken_trace():
 #     E1's history-indexed ITTAGE settles slower than CVA6's "overwrite the BTB
 #     target on every resolution" — a real, narrow microarchitectural edge for a
 #     last-target BTB that does not generalise to history-rich real workloads.
-_E1_NOT_FAVOURED_SYNTHETIC = {"always_not_taken", "always_taken", "jit_dispatch_warmup"}
+#   * dual_branch_fetch_block: intentionally models a front-end bandwidth gap
+#     where one E1 fetch block carries a guard plus a taken redirect. The CVA6
+#     baseline predictor is branch-serial here, so it is not a fair comparison.
+#   * alias_thrash: intentionally collides low index bits across many PCs to
+#     expose direct-map alias pressure. This is a stress diagnostic, not a fair
+#     head-to-head geometry comparison.
+#   * btb_confidence_churn: intentionally exceeds uBTB capacity with many
+#     cold-ish guards and phase-flipping indirect exits; it is a confidence and
+#     replacement stress diagnostic, not a trace E1 should be required to beat
+#     with every cold-start policy.
+_E1_NOT_FAVOURED_SYNTHETIC = {
+    "always_not_taken",
+    "always_taken",
+    "alias_thrash",
+    "btb_confidence_churn",
+    "jit_dispatch_warmup",
+    "dual_branch_fetch_block",
+}
 
 
 def test_e1_no_worse_than_cva6_on_history_rich_synthetic_traces():

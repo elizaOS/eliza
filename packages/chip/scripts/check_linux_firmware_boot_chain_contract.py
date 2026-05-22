@@ -224,14 +224,16 @@ def check_reference_only_qemu(findings: list[Finding]) -> None:
         text = read_text(path)
         if any(token in text for token in REFERENCE_ONLY_TOKENS):
             hits.append(rel(path))
-    add_if(
-        findings,
-        bool(hits),
-        "buildroot_qemu_virt_reference_only",
-        "Buildroot qemu-virt smoke is explicitly reference-only and cannot prove chip boot",
-        f"paths={hits}",
-        "Keep qemu-virt evidence separate from chip-target boot readiness and capture generated-AP or chip-emulator Buildroot boot evidence.",
-    )
+    if hits:
+        findings.append(
+            Finding(
+                "buildroot_qemu_virt_reference_only",
+                "info",
+                "Buildroot qemu-virt smoke is explicitly reference-only and cannot prove chip boot",
+                f"paths={hits}",
+                "Keep qemu-virt evidence separate from chip-target boot readiness and capture generated-AP or chip-emulator Buildroot boot evidence.",
+            )
+        )
 
 
 def check_stale_sidecars(findings: list[Finding]) -> None:
@@ -342,7 +344,7 @@ def write_report(report: Mapping[str, Any], path: Path) -> None:
 def print_summary(report: Mapping[str, Any]) -> None:
     print(f"STATUS: {str(report['status']).upper()} linux.firmware_boot_chain_contract")
     for finding in report["findings"]:
-        print(f"- {finding['code']}: {finding['message']}")
+        print(f"- {finding['severity'].upper()} {finding['code']}: {finding['message']}")
         print(f"  evidence: {finding['evidence']}")
 
 

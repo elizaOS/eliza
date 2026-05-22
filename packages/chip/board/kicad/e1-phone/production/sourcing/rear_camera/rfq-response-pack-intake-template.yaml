@@ -1,0 +1,35 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_template.v1
+status: outbound_template_not_supplier_evidence
+date: 2026-05-22
+lane: rear_camera
+maps_to_gap_map_function: rear_camera
+selected_hardware: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+package_binding: package/camera/oem-mipi-csi-modules.yaml
+expected_return_archive: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+required_supplier_returns:
+  - exact selected module MPN, signed 2D drawing, lens-axis datum, barrel height, FPC tail geometry, stiffener, and keepout
+  - CSI lane order, MCLK, I2C, reset, PWDN, AF, AVDD, DVDD, IOVDD, grounds, and mating connector MPN
+  - recommended connector footprint, camera FPC bend keepout, and rear lens window tolerance stack
+  - autofocus VCM data, register or driver pack, image sample, and incoming dimensional inspection report
+  - STEP or B-rep model including lens barrel, FPC tail, stiffener, connector, and maximum z-height
+intake_fields:
+  supplier_legal_name: ""
+  supplier_contact: ""
+  orderable_mpn: ""
+  quote_quantities: [10, 100, 1000]
+  sample_lot_quantity: 5
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  lifecycle_stock_quote_path: ""
+  sample_lot_tracking_path: ""
+  incoming_inspection_path: ""
+release_flags:
+  supplier_response_received: false
+  signed_drawing_received: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false

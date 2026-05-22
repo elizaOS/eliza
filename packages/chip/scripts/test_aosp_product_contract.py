@@ -37,6 +37,11 @@ class AospProductContractTests(unittest.TestCase):
             "aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}\n"
             "aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}\n",
         )
+        capture_script = write(
+            chip / "capture-aosp-evidence.sh",
+            "aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}\n"
+            "aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}\n",
+        )
         local_manifest = write(
             chip / "local_manifests/eliza.xml",
             """<manifest>
@@ -91,6 +96,7 @@ class AospProductContractTests(unittest.TestCase):
             mock.patch.object(gate, "OS_VENDOR", vendor),
             mock.patch.object(gate, "BUILD_SCRIPT", build_script),
             mock.patch.object(gate, "BOOT_SCRIPT", boot_script),
+            mock.patch.object(gate, "CAPTURE_SCRIPT", capture_script),
             mock.patch.object(gate, "LOCAL_MANIFEST", local_manifest),
             mock.patch.object(gate, "CHIP_PRODUCT", chip_product),
             mock.patch.object(gate, "CHIP_DEVICE_MK", chip_device_mk),
@@ -112,6 +118,8 @@ class AospProductContractTests(unittest.TestCase):
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("aosp_build_default_not_fused_eliza_chip_product", codes)
         self.assertIn("aosp_boot_flow_not_selecting_fused_product", codes)
+        self.assertIn("aosp_capture_default_not_fused_eliza_product", codes)
+        self.assertIn("aosp_capture_cuttlefish_default_not_eliza_product", codes)
         self.assertIn("chip_product_missing_eliza_vendor_layer", codes)
         self.assertIn("chip_product_missing_eliza_privapp_packages", codes)
         self.assertIn("local_manifest_does_not_project_os_vendor_layer", codes)
@@ -131,6 +139,11 @@ class AospProductContractTests(unittest.TestCase):
                 gate.BOOT_SCRIPT.write_text(
                     "aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}\n"
                     "aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}\n",
+                    encoding="utf-8",
+                )
+                gate.CAPTURE_SCRIPT.write_text(
+                    "aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}\n"
+                    "aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_cf_riscv64_phone-trunk_staging-userdebug}\n",
                     encoding="utf-8",
                 )
                 gate.CHIP_PRODUCT.write_text(

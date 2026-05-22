@@ -59,7 +59,7 @@ static struct aclint_mtimer_data mtimer = {
 	.mtimecmp_size = ACLINT_DEFAULT_MTIMECMP_SIZE,
 	.first_hartid = 0,
 	.hart_count = ELIZA_HART_COUNT,
-	.has_64bit_mmio = TRUE,
+	.has_64bit_mmio = true,
 };
 
 static struct aclint_mswi_data mswi = {
@@ -71,6 +71,20 @@ static struct aclint_mswi_data mswi = {
 
 static int eliza_early_init(bool cold_boot)
 {
+	/*
+	 * OpenSBI v1.8.x removed the dedicated .console_init op; a fixed
+	 * platform registers its console serial device during cold early-init.
+	 * uart8250_init now takes (base, in_freq, baud, reg_shift, reg_width,
+	 * reg_offset, caps).
+	 */
+	if (cold_boot)
+		return uart8250_init(ELIZA_UART_ADDR,
+				     ELIZA_UART_FREQ,
+				     ELIZA_UART_BAUD,
+				     ELIZA_UART_REG_SHIFT,
+				     ELIZA_UART_REG_WIDTH,
+				     0,   /* reg_offset */
+				     0);  /* caps */
 	return 0;
 }
 
@@ -79,59 +93,35 @@ static int eliza_final_init(bool cold_boot)
 	return 0;
 }
 
-static int eliza_console_init(void)
-{
-	return uart8250_init(ELIZA_UART_ADDR,
-			     ELIZA_UART_FREQ,
-			     ELIZA_UART_BAUD,
-			     ELIZA_UART_REG_SHIFT,
-			     ELIZA_UART_REG_WIDTH,
-			     0);
-}
-
-static int eliza_irqchip_init(bool cold_boot)
+/*
+ * OpenSBI v1.8.x driver model: the cold-init call registers the device with
+ * the core, which then performs per-hart warm init automatically.  The ops
+ * are therefore single-shot (no cold_boot argument), and there is no separate
+ * .ipi_init member — the ACLINT MSWI (software-interrupt half of the CLINT) is
+ * registered alongside the PLIC in irqchip_init.
+ */
+static int eliza_irqchip_init(void)
 {
 	int ret;
 
-	if (cold_boot) {
-		ret = plic_cold_irqchip_init(&plic);
-		if (ret)
-			return ret;
-	}
-	/* hart 0: M-mode context 0, S-mode context 1 */
-	return plic_warm_irqchip_init(&plic, 0, 1);
+	ret = plic_cold_irqchip_init(&plic);
+	if (ret)
+		return ret;
+
+	/* Register the ACLINT MSWI (CLINT software-interrupt half) for IPIs. */
+	return aclint_mswi_cold_init(&mswi);
 }
 
-static int eliza_ipi_init(bool cold_boot)
+static int eliza_timer_init(void)
 {
-	int ret;
-
-	if (cold_boot) {
-		ret = aclint_mswi_cold_init(&mswi);
-		if (ret)
-			return ret;
-	}
-	return aclint_mswi_warm_init();
-}
-
-static int eliza_timer_init(bool cold_boot)
-{
-	int ret;
-
-	if (cold_boot) {
-		ret = aclint_mtimer_cold_init(&mtimer, NULL);
-		if (ret)
-			return ret;
-	}
-	return aclint_mtimer_warm_init();
+	/* The ACLINT MTIMER (CLINT timer half) drives the SBI timer. */
+	return aclint_mtimer_cold_init(&mtimer, NULL);
 }
 
 const struct sbi_platform_operations platform_ops = {
 	.early_init        = eliza_early_init,
 	.final_init        = eliza_final_init,
-	.console_init      = eliza_console_init,
 	.irqchip_init      = eliza_irqchip_init,
-	.ipi_init          = eliza_ipi_init,
 	.timer_init        = eliza_timer_init,
 };
 
@@ -142,5 +132,12 @@ const struct sbi_platform platform = {
 	.features          = SBI_PLATFORM_DEFAULT_FEATURES,
 	.hart_count        = ELIZA_HART_COUNT,
 	.hart_stack_size   = ELIZA_HART_STACK_SIZE,
+	/*
+	 * Heap size MUST be non-zero: sbi_init -> sbi_heap_init fails closed
+	 * (SBI_EINVAL -> sbi_hart_hang) on a zero/misaligned heap, hanging the
+	 * boot before the console comes up.  Use the default sizing for the
+	 * hart count, as the fixed (non-FDT) template platform does.
+	 */
+	.heap_size         = SBI_PLATFORM_DEFAULT_HEAP_SIZE(ELIZA_HART_COUNT),
 	.platform_ops_addr = (unsigned long)&platform_ops,
 };

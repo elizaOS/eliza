@@ -24,8 +24,24 @@ EOF
     exit 0
 }
 
-if [ ! -d "${ROOT}/external/v8-riscv64" ] && [ ! -d "${ROOT}/external/hermes-riscv64" ]; then
-    write_blocked "no JS engine RISC-V build available (need v8-riscv64 or hermes-riscv64)"
+find_engine() {
+    if [ -n "${E1_JETSTREAM_ENGINE_BIN:-}" ]; then
+        [ -x "${E1_JETSTREAM_ENGINE_BIN}" ] && return 0
+        write_blocked "E1_JETSTREAM_ENGINE_BIN is set but not executable: ${E1_JETSTREAM_ENGINE_BIN}"
+    fi
+    for candidate in \
+        "${ROOT}/external/v8-riscv64/d8" \
+        "${ROOT}/external/v8-riscv64/out/riscv64.release/d8" \
+        "${ROOT}/external/v8-riscv64/out/riscv64.release/v8_shell" \
+        "${ROOT}/external/hermes-riscv64/hermes" \
+        "${ROOT}/external/hermes-riscv64/build/bin/hermes"; do
+        [ -x "${candidate}" ] && return 0
+    done
+    return 1
+}
+
+if ! find_engine; then
+    write_blocked "no executable JS engine RISC-V build available (set E1_JETSTREAM_ENGINE_BIN, or provide v8-riscv64 d8/v8_shell or hermes-riscv64 hermes)"
 fi
 
 DUT="${E1_JETSTREAM_DUT:-}"

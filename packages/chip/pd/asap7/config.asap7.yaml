@@ -41,7 +41,7 @@ blocks:
         microcontroller stub representing a big-core shell leaf (RISC-V
         decoder + ALU + 32-entry x 64-bit architectural register file + AXI4
         -Lite master FSM). Used as the representative big-core leaf shape
-        until the upstream Ascalon / Kunminghu V3 wrapper lands.
+        until the upstream Kunminghu V3 wrapper lands.
       - >
         Storage is mapped as flat flip-flops (no SRAM macro replacement).
         Real N2P implementation will replace the architectural RF with a

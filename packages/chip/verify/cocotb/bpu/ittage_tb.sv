@@ -15,6 +15,7 @@ module ittage_tb (
     input  logic [TAGE_HIST_LEN_MAX-1:0] lkp_hist,
     output logic                lkp_hit,
     output logic [VADDR_W-1:0]  lkp_target,
+    output logic [ITTAGE_CTR_W-1:0] lkp_ctr,
     output logic [$clog2(ITTAGE_TABLES+1)-1:0] lkp_provider,
 
     input  logic                upd_valid,

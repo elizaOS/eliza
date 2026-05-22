@@ -1,6 +1,6 @@
 # E1 Phone STEP Validation
 
-Status: pass; re-imported 132 part STEP files.
+Status: pass; re-imported 142 part STEP files.
 
 ## Cases
 
@@ -135,4 +135,14 @@ Status: pass; re-imported 132 part STEP files.
 - PASS: `soc_shield_can` max span error 0.0 mm
 - PASS: `pmic_shield_can` max span error 0.0 mm
 - PASS: `radio_shield_can` max span error 0.0 mm
+- PASS: `cellular_lga_module_keepout` max span error 0.0 mm
+- PASS: `wifi_bt_module_keepout` max span error 0.0 mm
+- PASS: `soc_package_marker` max span error 0.0 mm
+- PASS: `dram_package_marker` max span error 0.0 mm
+- PASS: `storage_package_marker` max span error 0.0 mm
+- PASS: `pmic_package_marker` max span error 0.0 mm
+- PASS: `rf_transceiver_package_marker` max span error 0.0 mm
+- PASS: `gnss_lna_package_marker` max span error 0.0 mm
+- PASS: `wifi_bt_rf_feed_coax_stub` max span error 0.0 mm
+- PASS: `cellular_rf_feed_coax_stub` max span error 0.0 mm
 - PASS: `sim_tray_keepout` max span error 0.0 mm

@@ -254,6 +254,16 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        "ELIZA_BUN_RISCV64_REQUIRED" in android_stage
+        and "Skipping ABI" in android_stage
+        and "no ELIZA_BUN_RISCV64_FILE/URL is set" in android_stage,
+        "android_riscv64_agent_payload_can_soft_skip",
+        "Android agent staging can silently skip the riscv64 runtime lane unless ELIZA_BUN_RISCV64_REQUIRED=1 is set",
+        rel(ANDROID_STAGE),
+        "Make riscv64 staging fail-closed for AOSP/chip objective builds and record the Bun riscv64 artifact SHA in the build provenance.",
+    )
+    add_if(
+        findings,
         "riscv64" not in android_stage or "/api/health" not in android_service,
         "android_agent_payload_contract_incomplete",
         "Android agent staging/service does not expose the expected riscv64 payload plus /api/health contract",
@@ -276,6 +286,17 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Linux RV64 variant still carries a STATUS_LATER marker instead of installing the agent",
         rel(OS_RV64),
         "Remove the marker only when /opt/elizaos/bin/elizaos is installed and verified executable in the image.",
+    )
+    add_if(
+        findings,
+        "install_fallback_payload" in linux_agent_hook
+        or "fallback_agent.py" in linux_agent_hook
+        or "elizaos-fallback" in linux_agent_hook
+        or "fallback_agent.py" in linux_agent_runner,
+        "linux_rv64_fallback_agent_can_satisfy_health",
+        "Linux RV64 image hook can install a fallback HTTP agent that satisfies /api/health without the shared Eliza payload",
+        rel(LINUX_AGENT_HOOK),
+        "Make objective builds fail when real agent artifacts are missing, and require /api/health evidence to identify the full Eliza agent bundle rather than a fallback responder.",
     )
     add_if(
         findings,

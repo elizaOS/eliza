@@ -259,6 +259,42 @@ needs:
   attestation lane and validated against the agent shape by
   `scripts/check_tee_attestation_evidence.py`.
 
+### 5.1 Evidence cert format: emit standard X.509 + DiceTcbInfo (agent-lane recommendation)
+
+Real RISC-V CoVE TSMs emit attestation evidence as a standard **X.509 DER
+certificate carrying a TCG DICE `DiceTcbInfo` extension** (OID `2.23.133.5.4`),
+not a bespoke serialization. Verified against the Salus M-mode TSM (its `rice`
+DICE crate) booted on the chip's `qemu-system-riscv64` (`-M virt -smp 1`,
+COVH/COVG flow): the guest's `get_evidence(DiceTcbInfo)` returns a 963-byte
+Ed25519 X.509 leaf whose `DiceTcbInfo` holds eight SHA-384 FWID measurement
+registers (OID `2.16.840.1.101.3.4.2.2`, 48-byte digests), one per TCG PCR
+slot — the TVM-page, TVM-config, and runtime-PCR registers carrying real
+measurements and unused slots left all-zero. The cert is signed by the TSM
+DeviceID/layer key, which is the out-of-band trust anchor (a CoVE leaf is
+signed by, but does not contain, its issuer key).
+
+The agent verifier now accepts this standard format directly:
+`verifyCoveX509Chain(derChain, { trustedRotPublicKey })` in
+`packages/agent/src/services/cove-quote-x509.ts` (re-exported from
+`cove-quote.ts`) walks an X.509 DER chain with real `node:crypto` Ed25519
+checks, anchors `chain[0]` in the trusted RoT public key, enforces validity
+windows, and extracts the `DiceTcbInfo` FWIDs/SVN via a minimal ASN.1 reader;
+`coveX509ToTeeEvidence(...)` maps the verified chain into the §6 `TeeEvidence`
+shape. The existing canonical-JSON path (`verifyCoveQuote`) stays as the
+freestanding reference; X.509+DiceTcbInfo is an additional accepted format.
+
+**Recommendation for the E1 M-mode TSM:** emit **standard X.509 DICE
+(Ed25519 + `DiceTcbInfo`, SHA-384 FWIDs)**, not bespoke canonical JSON, for
+interoperability with the CoVE/TCG-DICE ecosystem and any standards-conformant
+relying party. Root the leaf in the OTP/PUF-derived RoT anchor (§4–§5: the
+DeviceID key chained from `CreatorRootKey` + device-unique UID) and bind the
+live channel with an **Alias-key body signature over the `CoveQuoteBody`**
+(measurements ‖ `reportData` ‖ freshness) so the standard-format cert chain and
+the freshness/report-data binding the agent already checks are both present.
+This keeps the silicon emitting a format off-the-shelf verifiers accept while
+preserving the RoT-anchored, anti-rollback, channel-bound guarantees this lane
+specifies.
+
 ---
 
 ## 6. `TeeEvidence` population contract

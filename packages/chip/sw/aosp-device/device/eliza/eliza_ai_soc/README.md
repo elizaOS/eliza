@@ -47,7 +47,10 @@ external-tree integration once the matching generated HIDL package is added.
 
 This device does NOT provide and MUST NOT advertise:
 
-- Audio (no audio HAL, no AudioFlinger config, no microphone, no speaker).
+- Audio on the bare `eliza_ai_soc` vendorimage is intentionally omitted in v0:
+  the on-silicon product has no packaged audio stack yet. Simulated microphone
+  and speaker evidence is captured against the Cuttlefish phone product plus
+  the `cuttlefish_e1` overlay, not this fail-closed hardware product.
 - Camera (no camera HAL, no camera2 metadata, no CTS camera result).
 - Cellular modem / telephony / RIL / IMS / eSIM.
 - Bluetooth (no HCI transport, no bluedroid config, no LE).

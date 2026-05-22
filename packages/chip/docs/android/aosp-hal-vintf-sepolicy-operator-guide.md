@@ -1,8 +1,8 @@
-# AOSP HAL + VINTF + SELinux + CVD HAL-smoke operator guide
+# AOSP HAL + VINTF + SELinux + HAL-liveness operator guide
 
 End-to-end recipe to take the AOSP build tree produced by
 [Cuttlefish riscv64 AOSP build pipeline](cuttlefish-riscv64-bringup.md)
-(Task 28) and capture the four HAL evidence logs that close Task 31:
+(Task 28) and capture the HAL evidence logs that close Task 31:
 
 | Log | Marker added |
 |---|---|
@@ -10,6 +10,7 @@ End-to-end recipe to take the AOSP build tree produced by
 | `docs/evidence/android/eliza_ai_soc_sepolicy_build.log` | `SEPOLICY_BUILD=ok` |
 | `docs/evidence/android/eliza_ai_soc_selinux_neverallow.log` | `SEPOLICY_NEVERALLOW=ok` |
 | `docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log` | `HAL_REGISTERED=true`, `INTERFACE_AVAILABLE=true` |
+| `docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log` | `DEVICE_NODE_PRESENT=true`, `DEVICE_NODE_LABEL=e1_npu_device`, `HAL_REGISTERED=true`, `INTERFACE_AVAILABLE=true` |
 
 All commands run from the chip-package working directory
 (`packages/chip`). Replace `/path/to/aosp` with the AOSP workspace
@@ -132,13 +133,46 @@ Result: `docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log` with
 `INTERFACE_AVAILABLE=true`, and the literal service name on a
 `HAL_LINE=` row.
 
-## 5. Validate all four logs against the strict gate
+## 5. Booted selected-target e1 NPU HAL liveness
+
+Run this after the selected chip Android target is already booted and
+reachable over `adb`:
+
+```sh
+sw/aosp-device/capture-e1-npu-hal-liveness.sh
+```
+
+Optional serial selection:
+
+```sh
+AOSP_ADB_SERIAL=<serial> sw/aosp-device/capture-e1-npu-hal-liveness.sh
+```
+
+The liveness driver:
+
+- waits for `sys.boot_completed=1`;
+- requires `vendor.e1_npu.ready=1`;
+- requires `/dev/e1-npu` to exist and carry the `e1_npu_device` SELinux
+  label;
+- requires `pidof vendor.eliza.e1_npu@1.0-service` to return a process;
+- runs `adb shell lshal -i` and asserts
+  `vendor.eliza.e1_npu@1.0::IE1Npu/default` is registered and not
+  `[N/A]`;
+- archives the final logcat tail for `e1_npu` diagnostics.
+
+Result: `docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log`
+with `eliza-evidence: status=PASS`, `RESULT=0`,
+`SYS_BOOT_COMPLETED=1`, `VENDOR_E1_NPU_READY=1`,
+`DEVICE_NODE_PRESENT=true`, `DEVICE_NODE_LABEL=e1_npu_device`,
+`HAL_REGISTERED=true`, and `INTERFACE_AVAILABLE=true`.
+
+## 6. Validate the logs against the strict gate
 
 ```sh
 python3 scripts/check_software_bsp.py aosp --require-evidence
 ```
 
-This re-reads the four logs above plus the rest of the AOSP evidence
+This re-reads the logs above plus the rest of the AOSP evidence
 slate, applies `docs/android/bsp-log-evidence-manifest.json`, and
 returns non-zero if any marker is missing or any forbidden string is
 present.
@@ -170,7 +204,7 @@ The build half of this work is owned by
 targets for the HAL surface are:
 
 - `vendor.eliza.e1_npu@1.0` (HIDL package, generated from
-  `device/eliza/eliza_ai_soc/hal/e1_npu/IE1Npu.hal`)
+  `device/eliza/eliza_ai_soc/hal/e1_npu/1.0/IE1Npu.hal`)
 - `vendor.eliza.e1_npu@1.0-service` (real HAL, on-silicon path)
 - `vendor.eliza.e1_npu@1.0-service.sim` (simulator HAL, Cuttlefish path)
 - `hwcomposer.eliza_ai_soc` (framebuffer HWC stub)

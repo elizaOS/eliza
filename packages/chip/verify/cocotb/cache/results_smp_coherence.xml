@@ -1,0 +1,11 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1779412057" />
+    <testcase name="test_write_propagation" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="131" time="0.0031740665435791016" sim_time_ns="250.001" ratio_time="78763.62910718846" />
+    <testcase name="test_swmr_single_writer" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="152" time="0.002563953399658203" sim_time_ns="280.001" ratio_time="109206.74300762506" />
+    <testcase name="test_no_two_modified_invariant" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="185" time="0.006771564483642578" sim_time_ns="860.001" ratio_time="127001.81798126892" />
+    <testcase name="test_message_passing_litmus" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="208" time="0.0035026073455810547" sim_time_ns="450.001" ratio_time="128476.00533006602" />
+    <testcase name="test_dirty_writeback_ordering" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="239" time="0.0031156539916992188" sim_time_ns="380.0010000000002" ratio_time="121965.08373921036" />
+    <testcase name="test_domain_flush_partition" classname="test_smp_coherence" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/cache/test_smp_coherence.py" lineno="280" time="0.00634765625" sim_time_ns="950.0009999999997" ratio_time="149661.69599999997" />
+  </testsuite>
+</testsuites>

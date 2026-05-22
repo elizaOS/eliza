@@ -16,6 +16,10 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+  - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
@@ -87,10 +91,20 @@ current_browser_refresh:
       observed_result: Made-in-China listing still exposes CH550FH01A-CT, 5.5 inch 1080x1920, MIPI, 77.1 x 151.77 x 3.39 mm outline, and 68.04 x 120.96 mm active area.
     - id: display_alternate_alibaba_meta_055wu01
       observed_result: Alibaba listing exposes 055WU01, 5.5 inch 1080x1920, MIPI 4-lane, 40-pin signal interface, 1000 nit brightness, and 68.04 x 120.96 mm active area.
+    - id: display_alternate_made_in_china_e549_amoled
+      observed_result: Made-in-China listing exposes E549/RM67191 AMOLED class, 5.49 inch 1080x1920, 70.66 x 128.36 x 0.82 mm outline, and 68.299 x 121.421 mm active area.
     - id: rear_camera_primary_sincere_first_ov13855
       observed_result: Made-in-China Sincere First listing exposes OV13855/OV13850 class, 13MP, autofocus, MIPI CSI, and 24/30-pin camera module class.
     - id: front_camera_primary_sincere_first_gc5035
       observed_result: Made-in-China Sincere First listing remains the primary GC5035 5MP MIPI fixed-focus class in the package sources; exact variant pack still required.
+    - id: usb_evt0_gct_usb4105
+      observed_result: GCT public PDF source still exposes USB4105 USB2 Type-C receptacle class, 16 active contacts, 24-position shell/mechanical footprint class, VBUS 5 A collective rating, and -40 C to 85 C operating class.
+    - id: side_switch_primary_panasonic_evq_p7
+      observed_result: Panasonic public source still exposes EVQ-P7/EVQ-P3/EVQ-9P7 side-push tactile family, 3.5 x 2.9 x 1.35 mm envelope class, 0.2 mm travel, and mobile phone application class.
+    - id: cellular_primary_quectel_rg255c_vendor_page
+      observed_result: Quectel public source still exposes RG255C 5G RedCap LGA class with USB 2.0, PCIe 2.0, UART, optional GNSS, Linux/Android support, and regional SKU families requiring supplier design-pack confirmation.
+    - id: wifi_bluetooth_primary_murata_type_2ea_vendor_page
+      observed_result: Murata public source still exposes LBEE5XV2EA-802 Type 2EA, Infineon CYW55573, Wi-Fi 6E 2x2, Bluetooth 5.3, 12.5 x 9.4 x 1.2 mm package, and Linux/Android support signals.
   use_limit: browser-visible marketplace fields seed response normalization only; they do not replace supplier-returned packs.
 
 response_records:
@@ -103,6 +117,7 @@ response_records:
       - display_primary_chenghao_ch550fh01a_ct
       - display_primary_chenghao_ch550fh01a_ct_public_pdf
       - display_alternate_alibaba_meta_055wu01
+      - display_alternate_made_in_china_e549_amoled
     expected_supplier_return:
       exact_fpc_pin_count_required: true
       display_cover_lens_datums_required: true
@@ -110,6 +125,7 @@ response_records:
       panel_init_sequence_required: true
       ctp_driver_and_i2c_address_required: true
       display_stack_step_required: true
+      alternate_display_promotion_review_required: true
     routing_unlocks_blocked:
       - DSI lane order and polarity
       - touch I2C/reset/IRQ assignment
@@ -296,6 +312,226 @@ response_records:
       - routed STEP and enclosure flex bend clearance
     status: blocked_waiting_supplier_response_normalized_pack
 
+selected_display_camera_oem_response_gate:
+  status: blocked_until_selected_display_camera_oem_response_packs_are_returned_normalized_and_reviewed
+  source_artifact: board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  function_count: 3
+  functions:
+    - function: display_touch
+      selected_candidate: CH550FH01A-CT
+      response_record: display_touch
+      rfq_readiness_key: display_touch
+      primary_source_id: display_primary_chenghao_ch550fh01a_ct
+      supplemental_source_ids: [display_primary_chenghao_ch550fh01a_ct_public_pdf, display_alternate_alibaba_meta_055wu01, display_alternate_made_in_china_e549_amoled]
+      marketplace_channels: [Made-in-China, Alibaba]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - signed_2d_drawing_path
+        - pinout_or_pad_map_path
+        - mating_connector_mpn
+        - recommended_land_pattern_path
+        - step_or_brep_model_path
+        - panel_init_sequence_required
+        - ctp_driver_and_i2c_address_required
+        - alternate_display_promotion_review_required
+        - enclosure_datums_and_keepouts_path
+        - sample_lot_tracking
+      blocked_downstream:
+        - J_DISPLAY_TOUCH symbol, footprint, and pad numbering
+        - DSI lane polarity, touch I2C, backlight, reset, and bias route unlock
+        - display FPC bend, cover-lens datum, and enclosure clearance rerun
+        - 055WU01 and E549/RM67191 alternate-display promotion review before symbol, footprint, or enclosure branch release
+      status: blocked_selected_display_oem_response_pack_missing
+    - function: rear_camera
+      selected_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+      response_record: rear_camera
+      rfq_readiness_key: rear_camera
+      primary_source_id: rear_camera_primary_sincere_first_ov13855
+      supplemental_source_ids: [rear_camera_primary_sincere_first_ov13850_30pin, rear_camera_alternate_alibaba_ov13855_mipi]
+      marketplace_channels: [Made-in-China, Alibaba]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - signed_2d_drawing_path
+        - pinout_or_pad_map_path
+        - mating_connector_mpn
+        - recommended_land_pattern_path
+        - step_or_brep_model_path
+        - register_pack_or_driver_notes_required
+        - image_sample_required
+        - enclosure_datums_and_keepouts_path
+        - sample_lot_tracking
+      blocked_downstream:
+        - J_CAM0 symbol, footprint, pad numbering, and lens-axis datum
+        - CSI0 lane polarity, AF/VCM rail, reset, and power sequencing route unlock
+        - rear camera bump, cover-glass, battery-edge, and routed enclosure clearance rerun
+      status: blocked_selected_rear_camera_oem_response_pack_missing
+    - function: front_camera
+      selected_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+      response_record: front_camera
+      rfq_readiness_key: front_camera
+      primary_source_id: front_camera_primary_sincere_first_gc5035
+      supplemental_source_ids: [front_camera_alternate_made_in_china_gc5035_mipi, front_camera_alternate_alibaba_junde_imx219]
+      marketplace_channels: [Made-in-China, Alibaba]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - signed_2d_drawing_path
+        - pinout_or_pad_map_path
+        - mating_connector_mpn
+        - recommended_land_pattern_path
+        - step_or_brep_model_path
+        - driver_notes_required
+        - image_sample_required
+        - enclosure_datums_and_keepouts_path
+        - sample_lot_tracking
+      blocked_downstream:
+        - J_CAM1 symbol, footprint, pad numbering, and lens-height datum
+        - CSI1 lane polarity, reset, power sequencing, and front-camera route unlock
+        - earpiece, cover-glass, dust-gasket, and routed enclosure clearance rerun
+      rejected_alibaba_alternate_remains_blocked: front_camera_alternate_alibaba_junde_imx219
+      status: blocked_selected_front_camera_oem_response_pack_missing
+  all_selected_display_camera_response_packs_absent: true
+  public_sources_are_rfq_seeds_not_release_evidence: true
+selected_usb_sidekey_oem_response_gate:
+  status: blocked_until_selected_usb_sidekey_oem_response_packs_are_returned_normalized_and_reviewed
+  source_artifact: board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
+  selected_stack_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  function_count: 2
+  functions:
+    - function: usb_c_receptacle_evt0
+      selected_candidate: GCT_USB4105
+      selected_stack_path: selected_hardware_stack.usb_c_evt0_connector
+      response_record: usb_c_receptacle_evt0
+      primary_source_id: usb_evt0_gct_usb4105
+      alternate_source_ids: [usb_production_molex_port_on_waterproof]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - signed_2d_drawing_path
+        - pinout_or_pad_map_path
+        - recommended_land_pattern_path
+        - step_or_brep_model_path
+        - exact_connector_variant_required
+        - shell_stake_drawing_required
+        - insertion_force_required
+        - enclosure_aperture_guidance_required
+        - sample_lot_tracking
+      blocked_downstream:
+        - J_USB_C symbol, shell pins, pad numbering, courtyard, and STEP binding
+        - CC/VBUS/USB2/ESD route unlock, PD attach, and charger handoff
+        - USB-C shell load path, plug sweep, aperture, and routed enclosure clearance rerun
+      conditional_alternate_remains_blocked: usb_production_molex_port_on_waterproof
+      status: blocked_selected_usb_c_oem_response_pack_missing
+    - function: side_buttons
+      selected_candidate: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      selected_stack_path: selected_hardware_stack.side_key_primary
+      response_record: side_buttons
+      primary_source_id: side_switch_primary_panasonic_evq_p7
+      alternate_source_ids: [side_switch_alternate_ck_kmr2]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - signed_2d_drawing_path
+        - pinout_or_pad_map_path
+        - recommended_land_pattern_path
+        - step_or_brep_model_path
+        - switch_or_flex_drawing_required
+        - force_travel_curve_required
+        - bend_radius_required
+        - life_cycle_test_required
+        - sample_lot_tracking
+      blocked_downstream:
+        - SW_POWER_VOL symbol, flex or switch footprint, pad numbering, and STEP binding
+        - PWR_KEY_N, VOL_UP_N, VOL_DOWN_N, debounce, ESD, and recovery-combo route unlock
+        - side plunger datum, force-travel stack, solder-load path, and routed enclosure clearance rerun
+      conditional_alternate_remains_blocked: side_switch_alternate_ck_kmr2
+      status: blocked_selected_side_button_oem_response_pack_missing
+  all_selected_usb_sidekey_response_packs_absent: true
+  public_sources_are_rfq_seeds_not_release_evidence: true
+selected_wireless_module_oem_response_gate:
+  status: blocked_until_selected_wireless_module_response_packs_are_returned_normalized_and_reviewed
+  source_artifact: board/kicad/e1-phone/radio-module-source-revalidation.yaml
+  selected_stack_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  function_count: 2
+  functions:
+    - function: cellular
+      selected_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+      selected_stack_path: selected_wireless_stack.cellular_performance_reference
+      response_record: cellular
+      primary_source_id: cellular_primary_quectel_rg255c_vendor_page
+      supplemental_source_ids: [cellular_quectel_2026_product_brochure]
+      compact_branch_required: quectel_eg915q_na_or_eg915u_class
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - region_sku_band_matrix_required
+        - compact_lte_cat1_bis_alternate_quote_required
+        - hardware_design_guide_required
+        - lga_pad_map_required
+        - reference_layout_required
+        - step_or_brep_model_path
+        - firmware_driver_scope_required
+        - regulatory_or_modular_grant_scope
+        - enclosure_datums_and_keepouts_path
+        - sample_lot_tracking
+      blocked_downstream:
+        - U_CELL symbol, LGA pad map, land pattern, RF keepouts, and STEP binding
+        - cellular branch decision between RG255C repack and compact LTE Cat 1 bis alternate
+        - USB2/PCIe/SIM/eSIM host route, RF feed/matching route, antenna tuning, and SAR/carrier scope
+        - routed enclosure clearance for module, shield, antenna plastics, and midframe keepouts
+      unresolved_fit_blocker: selected RG255C LGA does not fit current 14 x 14 mm U_CELL region
+      status: blocked_selected_cellular_response_pack_missing
+    - function: wifi_bluetooth
+      selected_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+      selected_stack_path: selected_wireless_stack.wifi_bluetooth_primary
+      response_record: wifi_bluetooth
+      primary_source_id: wifi_bluetooth_primary_murata_type_2ea_vendor_page
+      supplemental_source_ids: [wifi_bluetooth_murata_type_2ea_product_brief]
+      required_supplier_pack_fields:
+        - orderable_manufacturer_part_number
+        - lifecycle_status
+        - unit_price_10
+        - unit_price_100
+        - unit_price_1000
+        - module_datasheet_required
+        - hardware_design_guide_required
+        - reference_layout_required
+        - step_or_brep_model_path
+        - firmware_nvram_clm_required
+        - certified_antenna_rules_required
+        - modular_grant_scope_required
+        - regulatory_or_modular_grant_scope
+        - enclosure_datums_and_keepouts_path
+        - sample_lot_tracking
+      blocked_downstream:
+        - U_WIFI_BT symbol, module land pattern, reference-layout keepouts, and STEP binding
+        - PCIe/SDIO/UART host routing, RF feed/matching route, antenna rules, and country-code firmware
+        - modular approval scope, conducted RF limits, coexistence, and factory MAC/BT identity programming
+        - routed enclosure clearance for shield can, antenna plastic, and midframe keepouts
+      fit_gate: selected Type 2EA fits current U_WIFI_BT region but still requires supplier reference layout and STEP
+      status: blocked_selected_wifi_bluetooth_response_pack_missing
+  all_selected_wireless_response_packs_absent: true
+  public_sources_are_rfq_seeds_not_release_evidence: true
 normalization_outputs:
   expected_response_pack_count: 10
   present_response_pack_count: 0
@@ -317,10 +553,16 @@ cross_checks:
   no_planned_response_pack_present: true
   public_sources_not_used_as_release_evidence: true
   routing_and_enclosure_unlocks_defined_per_function: true
+  selected_display_camera_oem_response_gate_fail_closed: true
+  selected_usb_sidekey_oem_response_gate_fail_closed: true
+  selected_wireless_module_oem_response_gate_fail_closed: true
 
 release_blockers:
   - no supplier RFQ has been sent or returned as production evidence
   - normalized response packs for all 10 supplier functions are missing
+  - selected display and camera OEM response packs have not been returned, normalized, or reviewed
+  - selected USB-C and side-key OEM response packs have not been returned, normalized, or reviewed
+  - selected cellular and Wi-Fi/Bluetooth module response packs have not been returned, normalized, or reviewed
   - orderable MPNs, signed drawings, pinouts, land patterns, STEP models, samples, lifecycle, lead time, and price breaks are missing
   - schematic capture, routing, factory release, and enclosure fit must remain blocked until response packs and reviews close
 

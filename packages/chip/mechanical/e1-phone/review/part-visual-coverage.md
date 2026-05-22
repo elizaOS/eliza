@@ -133,6 +133,16 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `soc_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
 - PASS: `pmic_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
 - PASS: `radio_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `cellular_lga_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `dram_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `storage_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pmic_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rf_transceiver_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `gnss_lna_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf_feed_coax_stub` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_rf_feed_coax_stub` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_lra` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component-review-io-buttons.png`, `component_stack.png`
 - PASS: `sim_tray_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
 - PASS: `sim_tray_outline` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`

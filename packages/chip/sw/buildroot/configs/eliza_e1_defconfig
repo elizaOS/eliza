@@ -14,6 +14,11 @@ BR2_RISCV_ISA_RVD=y
 BR2_RISCV_ISA_RVF=y
 BR2_RISCV_ABI_LP64D=y
 BR2_TOOLCHAIN_BUILDROOT_GLIBC=y
+# Pin the toolchain kernel-headers series to the newest release Buildroot
+# 2024.11 recognises. The e1 kernel below is a custom 6.12.x build, which is
+# newer than this series, so the headers version check runs in loose mode
+# (BR2_KERNEL_HEADERS_LATEST) instead of failing the strict equality test.
+BR2_KERNEL_HEADERS_6_11=y
 BR2_INIT_BUSYBOX=y
 BR2_SYSTEM_DHCP="eth0"
 BR2_TARGET_GENERIC_HOSTNAME="eliza-e1"
@@ -25,7 +30,7 @@ BR2_LINUX_KERNEL_CUSTOM_VERSION_VALUE="6.12.90"
 BR2_LINUX_KERNEL_USE_CUSTOM_CONFIG=y
 BR2_LINUX_KERNEL_CUSTOM_CONFIG_FILE="$(BR2_EXTERNAL_ELIZA_E1_PATH)/board/eliza/e1/linux.fragment"
 BR2_LINUX_KERNEL_DTS_SUPPORT=y
-BR2_LINUX_KERNEL_INTREE_DTS_NAME="eliza-e1"
+BR2_LINUX_KERNEL_CUSTOM_DTS_PATH="$(BR2_EXTERNAL_ELIZA_E1_PATH)/../linux/dts/eliza-e1.dts"
 BR2_TARGET_ROOTFS_CPIO=y
 BR2_TARGET_ROOTFS_CPIO_GZIP=y
 BR2_PACKAGE_ELIZA_E1_BSP=y

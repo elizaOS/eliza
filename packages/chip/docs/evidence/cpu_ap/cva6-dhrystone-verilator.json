@@ -6,13 +6,24 @@
   "target_config": "cv64a6_imafdc_sv39",
   "isa": "rv64gc",
   "mabi": "lp64d",
-  "status": "blocked",
+  "status": "passed",
   "claim_level": "L1_RTL_FULL_SOC",
   "provenance": "simulator",
-  "result_recorded_at": "2026-05-21T16:13:05Z",
-  "dmips_per_mhz_formula": "(1e6 / cycles_per_dhrystone) / 1757",
-  "reason": "verilate failed",
-  "missing_dependency": "external/cva6/cva6 verilate",
-  "next_command": "cd external/cva6/cva6 && make verilate target=cv64a6_imafdc_sv39",
-  "metrics": {"total_cycles": null, "retired_instructions": null, "cpi": null, "dhrystone_runs": null, "cycles_per_dhrystone": null, "dmips_per_mhz": null}
+  "flow": "cva6 veri-testharness (verif/regress/dhrystone.sh build flags)",
+  "result_recorded_at": "2026-05-22T17:48:57Z",
+  "tools": {
+    "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)",
+    "gcc": "15.2.0 (xpack riscv-none-elf)"
+  },
+  "dmips_per_mhz_formula": "dhrystones_per_second / 1757; Dhrystone HZ=1e6 so microseconds_per_run equals cycles_per_dhrystone at 1 MHz",
+  "metrics": {
+    "total_cycles": 140996,
+    "retired_instructions": 57890,
+    "cpi": 2.4356,
+    "dhrystone_runs": 50,
+    "cycles_per_dhrystone": 487,
+    "dhrystones_per_second": 2049,
+    "dmips_per_mhz": 1.1662
+  },
+  "run_command": "external/cva6/cva6/work-ver/Variane_testharness /home/shaw/milady/eliza/packages/chip/build/cva6-verilator/dhrystone.cva6.rv64gc.elf +elf_file=/home/shaw/milady/eliza/packages/chip/build/cva6-verilator/dhrystone.cva6.rv64gc.elf +e1_disable_iti_trace"
 }

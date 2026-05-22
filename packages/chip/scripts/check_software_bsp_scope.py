@@ -87,8 +87,90 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
 def target_reports() -> list[dict[str, Any]]:
     return [check_software_bsp.target_report(name) for name in sorted(REQUIRED_TARGETS)]
+
+
+def structured_findings(
+    reports: list[dict[str, Any]], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"software_bsp_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the software BSP scope contract before using this report as release evidence.",
+            }
+        )
+    for report in reports:
+        target = str(report.get("target", "target"))
+        if report.get("scaffold_status") != "PASS":
+            findings.append(
+                {
+                    "code": f"software_bsp_scaffold_not_pass_{code_from_text(target, 'target')}",
+                    "severity": "blocker",
+                    "message": f"{target} scaffold status is {report.get('scaffold_status')}",
+                    "evidence": "targets[].scaffold_status",
+                    "next_step": "Repair the scaffold contract before using this target for BSP release evidence.",
+                }
+            )
+        if report.get("evidence_status") == "PASS":
+            continue
+        for item in list_values(report.get("missing_evidence")):
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("blocker_code") or code_from_text(str(item.get("path")), "missing"))
+            findings.append(
+                {
+                    "code": f"software_bsp_missing_evidence_{code}",
+                    "severity": "blocker",
+                    "message": f"{target} missing {item.get('artifact') or item.get('path')}",
+                    "evidence": str(item.get("path", "")),
+                    "next_step": str(item.get("capture_command") or item.get("validation_command") or ""),
+                }
+            )
+        for item in list_values(report.get("invalid_evidence")):
+            if not isinstance(item, dict):
+                continue
+            path = str(item.get("path", "evidence"))
+            for problem in list_values(item.get("problems")):
+                text = str(problem)
+                findings.append(
+                    {
+                        "code": (
+                            "software_bsp_invalid_evidence_"
+                            f"{code_from_text(path + '_' + text, 'invalid')}"
+                        ),
+                        "severity": "blocker",
+                        "message": text,
+                        "evidence": path,
+                        "next_step": f"Regenerate {path} with PASS markers, then run python3 scripts/check_software_bsp.py {target} --require-evidence.",
+                    }
+                )
+        for error in list_values(report.get("errors")):
+            text = str(error)
+            findings.append(
+                {
+                    "code": f"software_bsp_error_{code_from_text(target + '_' + text, 'error')}",
+                    "severity": "blocker",
+                    "message": text,
+                    "evidence": target,
+                    "next_step": f"Fix the {target} BSP scaffold and rerun python3 scripts/check_software_bsp.py {target} --require-evidence.",
+                }
+            )
+    return findings
 
 
 def evidence_paths_for_target(manifest: dict[str, Any], target: str) -> set[str]:
@@ -262,6 +344,7 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(ARTIFACT_MANIFEST),
         },
     ]
+    findings = structured_findings(reports, checks)
     return {
         "schema": "eliza.software_bsp_scope.v1",
         "status": "software_bsp_scope_release_blocked",
@@ -282,6 +365,7 @@ def build_report() -> dict[str, Any]:
             "nnapi_proof_template": rel(NNAPI_PROOF_TEMPLATE),
         },
         "targets": reports,
+        "findings": findings,
         "blocked_until_real_evidence": [
             "external Buildroot defconfig transcript and image manifest with PASS provenance markers",
             "Buildroot target runtime MMIO and e1-npu ML smoke transcripts from the built image",
@@ -347,8 +431,11 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         != REQUIRED_TARGETS
     ):
         errors.append("targets must cover buildroot, linux, opensbi, and aosp")
-    elif any(isinstance(item, dict) and item.get("evidence_status") == "PASS" for item in targets):
-        errors.append("software BSP target evidence must remain blocked until external logs pass")
+    elif all(isinstance(item, dict) and item.get("evidence_status") == "PASS" for item in targets):
+        errors.append("software BSP target evidence must not all pass while release_claim_allowed is false")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured software BSP blockers")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         errors.append("checks must be a non-empty list")
@@ -357,8 +444,8 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         if not isinstance(check, dict):
             errors.append("checks entries must be mappings")
             continue
-        if check.get("status") != "pass":
-            errors.append(f"{check.get('id')}: must pass structural scope check")
+        if check.get("status") not in {"pass", "fail"}:
+            errors.append(f"{check.get('id')}: status must be pass or fail")
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 9:
         errors.append("software BSP scope must enumerate blocked real-evidence items")

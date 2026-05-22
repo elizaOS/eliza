@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -99,6 +100,54 @@ def work_order_capture_ids(work_order: dict[str, Any]) -> set[str]:
         for order in list_values(work_order.get("evidence_capture_work_orders"))
         if isinstance(order, dict) and order.get("id")
     }
+
+
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def structured_findings(
+    blocked_until_real_evidence: list[str], checks: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for item in blocked_until_real_evidence:
+        findings.append(
+            {
+                "code": (
+                    "manufacturing_tapeout_missing_real_evidence_"
+                    f"{code_from_text(item, 'evidence')}"
+                ),
+                "severity": "blocker",
+                "message": item,
+                "evidence": "blocked_until_real_evidence",
+                "next_step": (
+                    "Archive the named production PDK, signoff, package, board, "
+                    "lab, or first-article evidence before allowing tapeout, "
+                    "board fabrication, or no-issues runtime claims."
+                ),
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        check_id = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": (
+                    "manufacturing_tapeout_scope_check_failed_"
+                    f"{code_from_text(check_id, 'scope_check')}"
+                ),
+                "severity": "blocker",
+                "message": f"{check_id} structural scope check is {check.get('status')}",
+                "evidence": check.get("evidence"),
+                "next_step": (
+                    "Repair the manufacturing/tapeout scope contract before "
+                    "using it as release or runtime readiness evidence."
+                ),
+            }
+        )
+    return findings
 
 
 def build_report() -> dict[str, Any]:
@@ -227,6 +276,15 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(MANUFACTURING_ARTIFACT_CHECKER),
         },
     ]
+    blocked_until_real_evidence = [
+        "selected production PDK, standard-cell, SRAM, IO, ESD, and hard-IP release package",
+        "complete routed GDS/DEF/netlist/SPEF/SDF/corner manifest and reproducible run manifest",
+        "clean or formally waived DRC, KLayout DRC, LVS, antenna, STA, congestion, utilization, and density/fill reports",
+        "IR-drop, EM, PDN/current budget, workload activity, voltage, temperature, and reliability signoff reports",
+        "foundry padframe, package vendor drawing, land pattern, bond diagram, and package model approval",
+        "board ERC/DRC/Gerber/drill/BOM/position/DFM/SI/PI/current-limit/thermal release package",
+        "first-article lab bring-up, current, thermal, boot, and manufacturing evidence with source checksums",
+    ]
     return {
         "schema": "eliza.manufacturing_tapeout_scope.v1",
         "status": "manufacturing_tapeout_scope_release_blocked",
@@ -244,16 +302,9 @@ def build_report() -> dict[str, Any]:
             "tapeout_readiness_aggregator": rel(TAPEOUT_AGGREGATOR),
             "manufacturing_artifact_checker": rel(MANUFACTURING_ARTIFACT_CHECKER),
         },
-        "blocked_until_real_evidence": [
-            "selected production PDK, standard-cell, SRAM, IO, ESD, and hard-IP release package",
-            "complete routed GDS/DEF/netlist/SPEF/SDF/corner manifest and reproducible run manifest",
-            "clean or formally waived DRC, KLayout DRC, LVS, antenna, STA, congestion, utilization, and density/fill reports",
-            "IR-drop, EM, PDN/current budget, workload activity, voltage, temperature, and reliability signoff reports",
-            "foundry padframe, package vendor drawing, land pattern, bond diagram, and package model approval",
-            "board ERC/DRC/Gerber/drill/BOM/position/DFM/SI/PI/current-limit/thermal release package",
-            "first-article lab bring-up, current, thermal, boot, and manufacturing evidence with source checksums",
-        ],
+        "blocked_until_real_evidence": blocked_until_real_evidence,
         "checks": checks,
+        "findings": structured_findings(blocked_until_real_evidence, checks),
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
@@ -310,6 +361,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 7:
         errors.append("manufacturing/tapeout scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured manufacturing/tapeout blockers")
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

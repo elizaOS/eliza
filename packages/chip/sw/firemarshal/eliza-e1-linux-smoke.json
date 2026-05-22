@@ -1,0 +1,13 @@
+{
+  "name": "eliza-e1-linux-smoke",
+  "base": "br-base.json",
+  "linux-config": "eliza-e1-linux-smoke-kfrag",
+  "overlay": "eliza-e1-linux-smoke-overlay",
+  "files": [
+    ["eliza-e1-linux-smoke.sh", "/usr/bin/eliza-e1-linux-smoke"]
+  ],
+  "command": "/usr/bin/eliza-e1-linux-smoke",
+  "firmware": {
+    "opensbi-build-args": "FW_OPTIONS=1"
+  }
+}

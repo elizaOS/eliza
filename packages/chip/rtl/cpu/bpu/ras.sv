@@ -52,6 +52,8 @@ module e1_bpu_ras (
     // Speculative-state restore on misprediction.
     input  logic                   restore_valid,
     input  logic [RAS_IDX_W:0]     restore_top,
+    input  logic                   restore_entry_valid,
+    input  logic [VADDR_W-1:0]     restore_entry_addr,
 
     // PMU strobes
     output logic                   pmu_overflow,
@@ -95,6 +97,7 @@ module e1_bpu_ras (
     ras_entry_t spec_push_entry_n;
     ras_entry_t spec_pop_entry_n;
     ras_entry_t spec_pop_ovf_entry_n;
+    ras_entry_t spec_restore_entry_n;
     ras_entry_t arch_push_entry_n;
     ras_entry_t arch_pop_entry_n;
 
@@ -113,6 +116,11 @@ module e1_bpu_ras (
         spec_pop_ovf_entry_n     = spec_top_entry;
         spec_pop_ovf_entry_n.ovf = (spec_top_entry.ovf != '0)
                                     ? (spec_top_entry.ovf - 1'b1) : '0;
+
+        spec_restore_entry_n       = '0;
+        spec_restore_entry_n.addr  = restore_entry_addr;
+        spec_restore_entry_n.ovf   = '0;
+        spec_restore_entry_n.valid = restore_entry_valid;
 
         arch_push_entry_n        = '0;
         arch_push_entry_n.addr   = commit_push_addr;
@@ -155,6 +163,10 @@ module e1_bpu_ras (
             // a misprediction implies the speculative state was wrong.
             if (restore_valid) begin
                 spec_sp_q <= restore_top;
+                if (restore_top != '0 && restore_entry_valid) begin
+                    spec_stack_q[restore_top[RAS_IDX_W-1:0] - 1'b1] <=
+                        spec_restore_entry_n;
+                end
             end else begin
                 // Push and pop are mutually exclusive in a single cycle for a
                 // single fetch block under the MVP geometry.

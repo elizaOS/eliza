@@ -55,6 +55,7 @@ rfq_lines:
     marketplace_or_vendor_basis:
       - Made-in-China Chenghao 5.5 inch 1080x1920 MIPI CTP listing
       - Alibaba 5.5 inch 1080x1920 MIPI alternates
+      - Made-in-China E549/RM67191 5.49 inch AMOLED thin-display alternate
     board_dependency:
       - J_DISPLAY_TOUCH exact FPC pinout
       - 77.1 x 151.77 x 3.39 mm display stack clearance

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -244,6 +245,43 @@ def spec_summaries() -> dict[str, Any]:
     }
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def structured_findings(domains: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for domain in domains:
+        if domain.get("status") != "blocked":
+            continue
+        domain_id = str(domain.get("id", "domain"))
+        blockers = domain.get("blockers")
+        criteria = domain.get("closure_criteria")
+        evidence = domain.get("evidence_sources")
+        findings.append(
+            {
+                "code": f"sota_parity_domain_blocked_{code_from_text(domain_id, 'domain')}",
+                "severity": "blocker",
+                "message": (
+                    f"{domain_id} blocks SOTA/no-issues runtime parity: "
+                    + "; ".join(str(blocker) for blocker in blockers if blocker)
+                    if isinstance(blockers, list)
+                    else f"{domain_id} blocks SOTA/no-issues runtime parity"
+                ),
+                "evidence": evidence if isinstance(evidence, list) else [],
+                "next_step": (
+                    "Close the domain gate with measured phone-class target "
+                    "evidence covering: "
+                    + "; ".join(str(item) for item in criteria if item)
+                    if isinstance(criteria, list)
+                    else "Close the domain gate with measured phone-class target evidence."
+                ),
+            }
+        )
+    return findings
+
+
 def build_report() -> dict[str, Any]:
     mvp = run_json([sys.executable, "scripts/check_mvp_status.py", "--json"])
     if not isinstance(mvp, list):
@@ -301,6 +339,7 @@ def build_report() -> dict[str, Any]:
         "mvp_blocked_subsystems": blocked_mvp,
         "product_release_blocker_count": len(product_blockers),
         "parity_domains": domains,
+        "findings": structured_findings(domains),
         "summary": {
             "domain_count": len(domains),
             "blocked_domain_count": len([d for d in domains if d["status"] == "blocked"]),
@@ -349,6 +388,9 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         errors.append("summary must be an object")
     elif summary.get("ready_for_sota_claim") is not False:
         errors.append("ready_for_sota_claim must be false for current evidence")
+    findings = report.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured SOTA parity blockers")
     return errors
 
 

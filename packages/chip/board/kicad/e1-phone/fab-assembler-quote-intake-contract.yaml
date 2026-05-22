@@ -1,0 +1,188 @@
+schema: eliza.e1_phone_fab_assembler_quote_intake_contract.v1
+status: blocked_fab_assembler_quote_intake_requires_routed_outputs_stackup_dfa_fixture_enclosure_and_commercial_response
+date: 2026-05-21
+claim_boundary: >
+  Fabricator and assembler quote intake contract for the E1 phone EVT1 routed
+  first-article package. This defines the exact quote, stackup, DFM/DFA, fixture,
+  enclosure, and commercial response fields required before fabrication,
+  assembly, factory-test, or enclosure-ready claims can unlock. It is not a fab
+  quote, not a selected vendor record, not a DFM/DFA approval, not a released
+  stackup, and not authorization to fabricate.
+
+source_artifacts:
+  - board/kicad/e1-phone/production-readiness.yaml
+  - board/kicad/e1-phone/manufacturing-closure.yaml
+  - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml
+  - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+
+upstream_status:
+  production_readiness: blocked_requires_routed_board_supplier_data_and_factory_quotes
+  manufacturing_closure: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
+  routed_release_plan: blocked_routed_release_requires_real_route_and_supplier_outputs
+  evt1_stackup_impedance_coupon_plan: blocked_evt1_stackup_coupon_plan_requires_fabricator_field_solver_quote_and_trial_route
+  factory_production_acceptance: blocked_factory_production_acceptance_requires_routed_outputs_fixture_limits_quotes_and_first_article
+  production_factory_release_execution: blocked_requires_routed_release_supplier_packs_fab_assembly_fixture_and_first_article
+  routed_pcb_implementation_execution: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  post_route_validation_binding: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+  production_enclosure_first_article_release_execution: blocked_production_enclosure_first_article_release_requires_routed_outputs_factory_limits_traceability_clearance_physical_fit_and_signed_traveler
+  end_to_end_readiness: blocked_not_end_to_end_ready_or_enclosure_ready
+
+quote_intake_policy:
+  release_revision: EVT1-routed-first-article
+  required_quote_output: board/kicad/e1-phone/production/fab-quote
+  required_stackup_output: board/kicad/e1-phone/production/stackup
+  required_dfm_dfa_output: board/kicad/e1-phone/production/dfm
+  required_fixture_quote_output: board/kicad/e1-phone/production/test/fixture-quote
+  required_enclosure_dfa_output: board/kicad/e1-phone/production/reports/enclosure-dfa
+  required_quote_package_count: 5
+  present_quote_package_count: 0
+  quote_release_allowed: false
+  fabrication_release_allowed_without_fabricator_quote: false
+  assembly_release_allowed_without_assembler_dfa: false
+  factory_test_release_allowed_without_fixture_quote: false
+  enclosure_release_allowed_without_routed_step_dfa: false
+  commercial_response_counts_without_routed_outputs: false
+
+required_quote_fields:
+  - vendor_legal_name
+  - vendor_site_and_contact
+  - quote_revision
+  - quote_expiration_date
+  - target_board_revision
+  - accepted_input_package_hashes
+  - layer_count_and_finished_thickness
+  - hdi_microvia_via_in_pad_capability
+  - controlled_impedance_table
+  - impedance_coupon_geometry_and_panel_location
+  - minimum_trace_space_drill_annular_ring_mask_web
+  - copper_weight_finish_stackup_materials_and_warpage_limits
+  - panelization_array_breakaway_and_tooling_holes
+  - assembly_line_capability_for_fine_pitch_connectors_modules_and_shields
+  - stencil_thickness_aperture_exceptions_and_rework_limits
+  - dfa_findings_with_owner_and_disposition
+  - dfm_findings_with_owner_and_disposition
+  - fixture_probe_access_and_bed_of_nails_limits
+  - rf_shield_box_and_calibration_fixture_scope
+  - enclosure_dfa_constraints_from_routed_step
+  - unit_price_10
+  - unit_price_100
+  - unit_price_1000
+  - setup_nre_fixture_and_tooling_costs
+  - lead_time_days_10
+  - lead_time_days_100
+  - lead_time_days_1000
+  - first_article_traveler_template
+  - change_control_and_requote_triggers
+  - approved_by_ee
+  - approved_by_me
+  - approved_by_ops
+
+quote_packages:
+  - package: fabricator_stackup_impedance_coupon_quote
+    required_acceptance_item: fabricator_stackup_impedance_and_coupon_quote
+    required_release_outputs:
+      - stackup_impedance_report
+      - fab_assembler_quote
+    required_return_artifacts:
+      - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+      - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+      - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+      - board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    status: blocked_missing_fabricator_stackup_impedance_coupon_and_commercial_quote
+    release_allowed: false
+  - package: pcb_fabrication_output_quote
+    required_acceptance_item: fabrication_outputs_gerber_ipc_drill
+    required_release_outputs:
+      - gerber_x2
+      - ipc_2581_or_odbpp
+      - nc_drill_slots
+      - fab_assembler_quote
+    required_return_artifacts:
+      - board/kicad/e1-phone/production/fab-quote/fabrication-capability-review.pdf
+      - board/kicad/e1-phone/production/fab-quote/panelization-and-tooling.pdf
+      - board/kicad/e1-phone/production/fab-quote/fabrication-dfm-findings.yaml
+    status: blocked_missing_routed_fabrication_package_and_fabricator_dfr_quote
+    release_allowed: false
+  - package: assembler_smt_dfa_quote
+    required_acceptance_item: assembly_outputs_bom_pnp_drawings_stencil
+    required_release_outputs:
+      - position_file
+      - production_bom_avl
+      - assembly_drawing
+      - split_interconnect_assembly_drawing
+      - fab_assembler_quote
+    required_return_artifacts:
+      - board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+      - board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+      - board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    status: blocked_missing_assembler_dfa_stencil_bom_pnp_and_commercial_quote
+    release_allowed: false
+  - package: factory_fixture_test_quote
+    required_acceptance_item: fixture_probe_coordinates_and_accessibility
+    required_release_outputs:
+      - factory_test_limits
+      - first_article_traveler
+      - fab_assembler_quote
+    required_return_artifacts:
+      - board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+      - board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+      - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    status: blocked_missing_fixture_probe_rf_calibration_traceability_and_first_article_quote
+    release_allowed: false
+  - package: routed_step_enclosure_dfa_quote
+    required_acceptance_item: routed_board_step_dfa_enclosure_and_dfm_quote
+    required_release_outputs:
+      - board_step_with_supplier_models
+      - enclosure_clearance_report_using_routed_step
+      - fab_assembler_quote
+    required_return_artifacts:
+      - board/kicad/e1-phone/production/reports/enclosure-dfa/routed-step-dfa.pdf
+      - board/kicad/e1-phone/production/reports/enclosure-dfa/keepout-and-mating-risk-register.yaml
+      - board/kicad/e1-phone/production/reports/enclosure-dfa/rework-and-insertion-clearance-review.pdf
+    status: blocked_missing_routed_step_enclosure_dfa_and_mating_clearance_quote
+    release_allowed: false
+
+required_absent_outputs:
+  - board/kicad/e1-phone/production/fab-quote
+  - board/kicad/e1-phone/production/stackup
+  - board/kicad/e1-phone/production/dfm
+  - board/kicad/e1-phone/production/test/fixture-quote
+  - board/kicad/e1-phone/production/reports/enclosure-dfa
+
+cross_checks:
+  quote_packages_match_factory_acceptance_quote_items: true
+  quote_packages_reference_release_output_manifest: true
+  fabricator_stackup_quote_matches_evt1_coupon_plan: true
+  quote_intake_blocks_fab_assembler_quote_release_output: true
+  quote_intake_blocks_dfm_dfa_manufacturing_output: true
+  quote_intake_blocks_factory_fixture_release: true
+  quote_intake_blocks_routed_step_enclosure_release: true
+  all_quote_outputs_absent: true
+  all_quote_packages_fail_closed: true
+
+release_blockers:
+  - routed KiCad PCB, Gerbers, IPC-2581 or ODB++, drill files, BOM/AVL, and placement files are missing
+  - fabricator stackup, field-solved impedance table, coupon geometry, and commercial quote are missing
+  - assembler DFM/DFA, stencil review, line capability review, and assembly quote are missing
+  - fixture quote, probe accessibility review, RF calibration fixture scope, and traceability flow are missing
+  - routed STEP enclosure DFM/DFA, mating clearance review, and rework access review are missing
+  - EE, ME, and Ops quote approvals are missing
+
+forbidden_claims:
+  - fab_quote_ready
+  - selected_fabricator_ready
+  - selected_assembler_ready
+  - stackup_approved
+  - impedance_closed
+  - dfa_approved
+  - fabrication_ready
+  - assembly_ready
+  - factory_test_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

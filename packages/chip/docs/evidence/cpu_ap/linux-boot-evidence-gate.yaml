@@ -4,8 +4,8 @@ claim_boundary: >
   Linux boot evidence gate for the e1 CPU AP. The current local DUT cannot
   satisfy this gate; the gate ingests a transcript captured by
   scripts/run_linux_smoke.sh against the Chipyard-generated Rocket
-  Verilator binary (or, when later DUTs exist, against the Kunminghu /
-  Ascalon wrappers).
+  Verilator binary (or, when later DUTs exist, against the Kunminghu
+  big/mid wrappers).
 target_dut_path: generators/chipyard/eliza-rocket-manifest.json
 target_dut_fallback: |
   When the big-core or mid-core wrappers exist, the same gate validates

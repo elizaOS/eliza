@@ -230,6 +230,7 @@ radio:
     antenna_keepout_mm: [62.0, 6.0, 2.0]
   wifi_bt:
     candidate: Murata Type 2EA Wi-Fi 6E + Bluetooth module
+    envelope_mm: [12.5, 9.4, 1.2]
     source_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
     antenna_keepout_mm: [34.0, 5.0, 2.0]
   antenna_feeds:

@@ -39,13 +39,20 @@ fi
 if ! command -v sby >/dev/null 2>&1; then
     echo "BLOCKED: SymbiYosys (sby) missing; CDC/RDC bound-property formal cannot run."
     echo "Install oss-cad-suite or add sby to PATH. No Yosys fallback is offered for CDC/RDC."
-    SBY_MISSING=1 MANIFEST="$manifest" TASKS="$tasks" python3 - <<'PY'
+SBY_MISSING=1 MANIFEST="$manifest" TASKS="$tasks" python3 - <<'PY'
 import json, os
 from pathlib import Path
+
+
+def code_from_text(text):
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return "_".join(part for part in cleaned.split("_") if part) or "cdc_formal_blocker"
+
+
 manifest = Path(os.environ["MANIFEST"])
 tasks = {}
 for spec in os.environ["TASKS"].split():
-    name, sby, mod, pack = spec.split(":")
+    name, sby, mod, pack, _needs_sv_pkg = spec.split(":")
     tasks[name] = {
         "status": "blocked_requires_sby",
         "sby": f"verify/properties/{sby}",
@@ -53,12 +60,28 @@ for spec in os.environ["TASKS"].split():
         "property_pack": f"verify/properties/{pack}",
         "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
     }
+findings = [
+    {
+        "code": f"cdc_formal_{code_from_text(name)}_requires_sby",
+        "severity": "blocker",
+        "message": f"{name} CDC/RDC formal task cannot run because SymbiYosys is missing",
+        "evidence": {
+            "sby": task["sby"],
+            "bound_module": task["bound_module"],
+            "property_pack": task["property_pack"],
+            "claim_boundary": task["claim_boundary"],
+        },
+        "next_step": "Install oss-cad-suite or otherwise put sby on PATH, then rerun scripts/run_cdc_formal.sh.",
+    }
+    for name, task in sorted(tasks.items())
+]
 manifest.write_text(json.dumps({
     "schema": "eliza.cdc_formal_evidence.v1",
     "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
     "status": "blocked",
     "blocked_reason": "SymbiYosys missing; install sby to produce bound-property evidence",
     "tasks": tasks,
+    "findings": findings,
 }, indent=2, sort_keys=True) + "\n")
 print(f"CDC formal manifest (blocked): {manifest}")
 PY
@@ -112,6 +135,50 @@ done
 MANIFEST="$manifest" STATUS_LINES="$status_lines" FAIL="$fail" python3 - <<'PY'
 import json, os
 from pathlib import Path
+
+
+def code_from_text(text):
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return "_".join(part for part in cleaned.split("_") if part) or "cdc_formal_blocker"
+
+
+def finding_for_task(name, task):
+    status = task["status"]
+    if status == "pass":
+        return None
+    if status == "blocked_requires_sv2v":
+        message = (
+            f"{name} CDC/RDC formal task requires sv2v before yosys can parse "
+            f"the {task['bound_module']} SystemVerilog package import"
+        )
+        next_step = (
+            "Install sv2v, lower the package-import RTL as described by the script output, "
+            "then rerun scripts/run_cdc_formal.sh."
+        )
+    elif status == "missing_sby":
+        message = f"{name} CDC/RDC formal task is missing its .sby spec"
+        next_step = "Add the missing .sby task file under verify/properties and rerun scripts/run_cdc_formal.sh."
+    elif status == "fail":
+        message = f"{name} CDC/RDC formal task failed"
+        next_step = "Inspect verify/formal/cdc_* logs, fix the bound property or RTL issue, and rerun scripts/run_cdc_formal.sh."
+    else:
+        message = f"{name} CDC/RDC formal task is {status}"
+        next_step = "Resolve the task status and rerun scripts/run_cdc_formal.sh."
+    return {
+        "code": f"cdc_formal_{code_from_text(name)}_{code_from_text(status)}",
+        "severity": "blocker",
+        "message": message,
+        "evidence": {
+            "status": status,
+            "sby": task["sby"],
+            "bound_module": task["bound_module"],
+            "property_pack": task["property_pack"],
+            "claim_boundary": task["claim_boundary"],
+        },
+        "next_step": next_step,
+    }
+
+
 manifest = Path(os.environ["MANIFEST"])
 tasks = {}
 for entry in os.environ["STATUS_LINES"].split():
@@ -130,11 +197,18 @@ elif any(s.startswith("blocked") for s in statuses):
     overall = "blocked"
 else:
     overall = "passed"
+findings = [
+    finding
+    for name, task in sorted(tasks.items())
+    for finding in [finding_for_task(name, task)]
+    if finding is not None
+]
 manifest.write_text(json.dumps({
     "schema": "eliza.cdc_formal_evidence.v1",
     "claim_boundary": "intent_manifest_only_not_cdc_rdc_signoff",
     "status": overall,
     "tasks": tasks,
+    "findings": findings,
 }, indent=2, sort_keys=True) + "\n")
 print(f"CDC formal manifest: {manifest} ({overall})")
 PY

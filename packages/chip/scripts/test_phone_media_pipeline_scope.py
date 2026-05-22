@@ -61,12 +61,26 @@ def test_camera_blocker_removal_fails() -> None:
     print("PASS camera blocker removal rejected")
 
 
+def test_structured_findings_cover_display_and_camera_blockers() -> None:
+    report = check_phone_media_pipeline_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("phone media pipeline report must expose structured findings")
+    codes = {str(item.get("code", "")) for item in findings}
+    if not any(code.startswith("media_display_missing_real_evidence_") for code in codes):
+        raise AssertionError(f"media findings must include display blockers: {findings}")
+    if not any(code.startswith("media_camera_missing_real_evidence_") for code in codes):
+        raise AssertionError(f"media findings must include camera blockers: {findings}")
+    print("PASS structured media findings cover display and camera blockers")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
     test_display_blocker_removal_fails()
     test_camera_blocker_removal_fails()
+    test_structured_findings_cover_display_and_camera_blockers()
 
 
 if __name__ == "__main__":

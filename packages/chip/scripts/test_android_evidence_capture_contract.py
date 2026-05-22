@@ -93,6 +93,8 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
         self.assertIn("android_capture_defaults_agent_package_mismatch", codes)
         self.assertIn("android_capture_defaults_agent_service_mismatch", codes)
         self.assertIn("cuttlefish_boot_gate_missing_launcher_agent_checks", codes)
+        self.assertIn("cuttlefish_boot_gate_launcher_evidence_boundary_mismatch", codes)
+        self.assertIn("cuttlefish_boot_gate_launcher_json_shape_mismatch", codes)
         self.assertIn("android_sim_boot_gate_missing_launcher_evidence_check", codes)
         self.assertIn("aosp_completion_gate_missing_launcher_runtime_evidence", codes)
         self.assertIn("aosp_completion_gate_uses_legacy_agent_markers", codes)
@@ -128,6 +130,47 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                     "adb shell pidof ai.elizaos.app\n"
                     "curl http://127.0.0.1:31337/api/health\n"
                     "adb shell logcat -d | grep -Ei 'fatal|avc'\n",
+                    encoding="utf-8",
+                )
+                gate.BOOT_GATE.write_text(
+                    gate.BOOT_GATE.read_text(encoding="utf-8")
+                    + "\n"
+                    + json.dumps(
+                        {
+                            "schema": gate.EXPECTED_LAUNCHER_SCHEMA,
+                            "claim_boundary": gate.EXPECTED_LAUNCHER_CLAIM_BOUNDARY,
+                            "device": {
+                                "sys_boot_completed": "1",
+                                "cpu_abi": "riscv64",
+                            },
+                            "app": {
+                                "package_name": "ai.elizaos.app",
+                                "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
+                                "role_holders": {
+                                    "android.app.role.HOME": ["ai.elizaos.app"]
+                                },
+                                "home_resolve_activity": "ai.elizaos.app/.MainActivity",
+                                "foreground_activity": "ai.elizaos.app/.MainActivity",
+                                "service_component": "ai.elizaos.app/.ElizaAgentService",
+                                "service_pid": 31337,
+                            },
+                            "agent": {
+                                "health_url": "http://127.0.0.1:31337/api/health",
+                                "health_http": 200,
+                                "health_ready": True,
+                            },
+                            "logs": {
+                                "logcat_path": "docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+                                "fatal_crash_count": 0,
+                                "avc_denial_count": 0,
+                            },
+                            "artifacts": {
+                                "transcript_path": "docs/evidence/android/eliza_launcher_runtime_transcript.log"
+                            },
+                        },
+                        indent=2,
+                    )
+                    + "\n",
                     encoding="utf-8",
                 )
                 gate.ANDROID_SIM_BOOT.write_text(

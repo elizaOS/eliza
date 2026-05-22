@@ -49,14 +49,19 @@ sustained low-power workloads.
 
 | Role | Count | ISA | Decode | Issue | ROB | PRF INT/FP+V | Vec | L1I/L1D | L2 | Clock (GHz) | IPC SPEC2017 int target |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| e1-ultra (big) | 1 | RVA23 + V + Zfh + Zvfh + Zvbb + Zvkt + Zicboz + Zicbom + Ztso + Sv57 + Smaia + Zicfilp + Zicfiss + Zacas | 8 native + 2 fused = 10 | 8 | 512 | 400/400 | 2× 256b RVV 1.0 | 64K/64K | 1 MB priv | 4.0-4.3 burst | ≥ 9 |
+| e1-ultra (big) | 1 | RV64GCB + V + H + Smaia + Ssaia + Sv48 | 8 | 8 | 512 | 256/256 | 1× 128b RVV 1.0 | 64K/64K | 1 MB priv | 3.2-3.4 burst | ≥ 6.5 |
 | e1-premium (mid) | 3 | RV64GCB + V + H + Smaia + Ssaia | 6 | 6 | 256 | 192/192 | 1× 128b RVV 1.0 | 32K/32K | 512 KB priv | 3.0-3.4 | ≥ 5.5 |
 | e1-pro (little) | 4 | RV64GC + S-mode | 1 | 1 | 0 (in-order) | n/a | none | 32K/32K | 256 KB shared cluster | 1.8-2.2 | ~1.6 |
 | mgmt-hart | 1 | RV32IMC (Ibex) | 1 | 1 | 0 | n/a | none | 4K/4K | n/a | 200-400 MHz | n/a |
 
-The big-core slot is BLOCKED on Tenstorrent Ascalon-D8 license closure.
-Mid-core slot is selected as XiangShan Kunminghu V2/V3; little-core slot
-is selected as OpenHW CVA6; bootstrap path is Chipyard Rocket.
+The big-core slot is the open XiangShan Kunminghu V3 scale-up (8-wide /
+ROB 512); the upstream commit is pinned and requires no vendor IP license,
+but the external XiangShan checkout and the 8-wide scale-up microbench are
+still tracked-not-integrated. Mid-core slot is selected as XiangShan
+Kunminghu V2/V3; little-core slot is selected as OpenHW CVA6; bootstrap
+path is Chipyard Rocket. Tenstorrent Ascalon-D8 was surveyed as the
+leading commercial flagship-class core but rejected: its mobile-volume IP
+license terms are not published.
 
 ## Cluster RTL boundary (`rtl/cpu/cluster/e1_cluster_top.sv`)
 
@@ -228,8 +233,8 @@ boundary but unconsumed; the gate at
 Per docs/architecture-optimization/sota-2028/ooo-execution.md Section F.
 Schedule risk:
 
-- 2026 Q4: pick big-core decision (Ascalon-D8 license closes OR commit to
-  Kunminghu scale-up fork).
+- 2026 Q4: confirm big-core path (open Kunminghu V3 8-wide scale-up fork)
+  against the 8-wide scale-up microbench.
 - 2027 Q1-Q4: integration + verification, FireSim full-system Linux.
 - 2027 Q4: RTL freeze.
 - 2028 H1: dev-board silicon tapeout.

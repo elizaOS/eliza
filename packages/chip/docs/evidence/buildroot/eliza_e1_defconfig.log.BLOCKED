@@ -1,5 +1,0 @@
-reason: no external Buildroot checkout has consumed sw/buildroot as BR2_EXTERNAL
-required: `cd /path/to/buildroot && make BR2_EXTERNAL=$REPO/sw/buildroot openphone_hello_defconfig | tee $REPO/docs/evidence/buildroot/openphone_hello_defconfig.log`
-host: Linux build host (Buildroot does not support macOS as a build host). Buildroot 2024.02 LTS recommended.
-attempt: see docs/evidence/linux/build-attempt-2026-05-18.md
-audit: docs/android/bsp-critical-gap-audit-2026-05-17.md

@@ -24,7 +24,7 @@ REQUIRED_DTS_TOKENS = {
     "cpu": "cpu@0",
     "mmu": "riscv,sv39",
     "memory": "memory@80000000",
-    "uart": "serial@10020000",
+    "uart": "serial@10001000",
     "plic": "interrupt-controller@c000000",
 }
 

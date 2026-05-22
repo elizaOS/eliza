@@ -25,6 +25,7 @@ die() {
 # shellcheck disable=SC1091
 . "$here/probe-common.sh"
 require_adb_device
+require_android_boot_completed
 
 emit "COMPONENT=${component}"
 

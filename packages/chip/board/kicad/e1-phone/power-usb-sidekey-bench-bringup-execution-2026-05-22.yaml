@@ -1,0 +1,333 @@
+schema: eliza.e1_phone_power_usb_sidekey_bench_bringup_execution.v1
+status: blocked_power_usb_sidekey_bench_execution_requires_routed_board_fixtures_supplier_evidence_and_real_logs
+date: 2026-05-22
+claim_boundary: >
+  Bench execution plan for the remaining E1 phone USB-C, USB-PD, charger,
+  battery, power-key, and volume-key bring-up blockers. This turns the
+  remaining work into ordered fixture steps, required logs, and pass/fail gates.
+  It is not a passed bench report, not a PD configuration archive, not a
+  charger safety signoff, not a battery approval, not side-key firmware
+  validation, not routed-board evidence, and not a release artifact.
+
+source_artifacts:
+  - board/kicad/e1-phone/usb-power-sidekey-public-source-refresh-2026-05-22.yaml
+  - board/kicad/e1-phone/usb-pd-controller-lifecycle-replacement-gate-2026-05-22.yaml
+  - board/kicad/e1-phone/usb-power-sidekey-release-execution.yaml
+  - board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml
+  - board/kicad/e1-phone/power-sequence-bringup-closure.yaml
+  - board/kicad/e1-phone/power-bringup-acceptance-checklist.yaml
+  - board/kicad/e1-phone/core-power-compute-schematic-net-binding.yaml
+  - package/usb-pd/tps65987.yaml
+  - package/charger/max77860.yaml
+  - package/battery/e1-phone-17p3wh-pack.yaml
+
+execution_policy:
+  execution_revision: EVT1_power_usb_sidekey_bench_plan
+  owner: power_firmware_validation
+  selected_usb_c: GCT_USB4105
+  selected_pd_controller_recorded: TPS65987DDH
+  pd_lifecycle_decision_closed: false
+  selected_charger: MAX77860
+  selected_battery_pack_class: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+  selected_side_key_family: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+  release_allowed: false
+  bench_execution_allowed_without_current_limited_supply_and_interlocks: false
+  charge_current_above_500ma_allowed_without_supplier_pack_rating: false
+  pd_controller_production_release_allowed_without_lifecycle_decision: false
+  any_pass_gate_can_close_without_real_log_file: false
+
+required_bench_fixtures:
+  - id: current_limited_input_fixture
+    purpose: first_power_and_dead_battery_protection
+    required_capabilities:
+      - bench_supply_current_limit_100ma_initial
+      - programmable_vbus_5v_9v_12v_with_inline_current_measurement
+      - emergency_power_cutoff
+    required_logs:
+      - board/kicad/e1-phone/production/reports/first-power-current-limit-log.json
+    status: blocked_missing_fixture_and_log
+  - id: usb_c_pd_fixture
+    purpose: cc_attach_pd_policy_dead_battery_and_usb2_validation
+    required_capabilities:
+      - plug_flip_a_and_b_cc_orientation_capture
+      - pd_source_profile_offer_5v_3a_9v_3a_12v_2p25a
+      - protocol_analyzer_or_kernel_typec_trace
+      - adb_and_fastboot_host
+    required_logs:
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    status: blocked_missing_pd_fixture_usb2_fixture_and_logs
+  - id: charger_battery_fixture
+    purpose: charger_cc_cv_jeita_current_limit_thermal_and_pack_safety
+    required_capabilities:
+      - instrumented_battery_pack_or_cell_simulator
+      - battery_ntc_and_id_injection
+      - thermal_camera_or_logged_thermocouples
+      - charge_current_and_vbat_logging
+    required_logs:
+      - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+      - board/kicad/e1-phone/production/reports/battery-ntc-id-pcm-log.json
+      - board/kicad/e1-phone/production/reports/power-thermal/charger-current-limit-and-soak.json
+    status: blocked_missing_charger_battery_fixture_and_logs
+  - id: side_key_fixture
+    purpose: aon_power_key_wake_volume_recovery_and_debounce_validation
+    required_capabilities:
+      - actuator_force_travel_capture_or_known_fixture_stops
+      - pogo_or_flex_access_to_PWR_KEY_N_VOL_UP_N_VOL_DOWN_N_AON_1V8_GND
+      - kernel_or_bootloader_key_event_trace
+      - suspend_resume_wake_trace
+    required_logs:
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+    status: blocked_missing_side_key_fixture_and_logs
+
+bench_execution_steps:
+  - id: pd_lifecycle_decision
+    objective: close_the_tps65987ddh_keep_or_replace_decision_before_routed_release
+    prerequisites:
+      - usb-pd-controller-lifecycle-replacement-gate-2026-05-22 remains open
+      - TI or distributor lifecycle guidance for the exact TPS65987DDH orderable part
+      - feature-gap review for TPS25751 or any alternate controller if replacement is pursued
+    actions:
+      - record whether TPS65987DDH is EVT-only with signed lifecycle waiver or replaced before EVT1 route
+      - preserve TPS25751 as candidate only until package, firmware, charger, dead-battery, and Linux/Android impacts are reviewed
+      - rerun all PD, charger, dead-battery, and USB2 tests after any controller replacement
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/pd-controller-lifecycle-decision.yaml
+      - board/kicad/e1-phone/production/firmware/usb-pd-controller-feature-gap-review.yaml
+    pass_gate: blocked_missing_signed_lifecycle_or_replacement_decision
+    release_allowed: false
+  - id: pd_config_and_provisioning
+    objective: prove_the_selected_pd_controller_policy_image_and_host_control_path
+    prerequisites:
+      - exact PD controller branch selected
+      - reviewed symbol, footprint, reset, IRQ, I2C, VBUS, CC, and programming access
+      - current-limited first power complete
+    actions:
+      - archive PD configuration image or OTP/SPI provisioning package
+      - capture provisioning transcript and readback hash
+      - verify USBPD_I2C_SCL, USBPD_I2C_SDA, USBPD_IRQ_N, USBPD_RESET, USB_CC1, USB_CC2, and VBUS visibility
+      - verify Linux or Android Type-C class enumeration path
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/firmware/usb-pd-policy-image.bin
+      - board/kicad/e1-phone/production/reports/usb-pd-provisioning-transcript.json
+      - board/kicad/e1-phone/production/reports/typec-class-probe-log.json
+    pass_gate: blocked_missing_pd_policy_image_provisioning_readback_and_typec_log
+    release_allowed: false
+  - id: cc_attach_and_dead_battery
+    objective: prove_safe_usb_c_attach_on_both_orientations_and_boot_from_empty_or_absent_pack_conditions
+    prerequisites:
+      - PD policy provisioned
+      - current_limited_input_fixture present
+      - charger CE and OTG controls default safe
+    actions:
+      - attach approved PD source in plug orientation A and B
+      - capture CC orientation, Rd/Rp interpretation, VBUS rise, negotiated sink profile, and current limit
+      - run dead-battery boot with discharged pack or cell simulator at approved precharge voltage
+      - verify no uncontrolled SYS rise, latchup, or overcurrent during attach
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/dead-battery-boot-current-limit-log.json
+      - board/kicad/e1-phone/production/reports/vbus-cc-scope-captures/
+    pass_gate: blocked_missing_cc_attach_both_flips_dead_battery_and_scope_logs
+    release_allowed: false
+  - id: charger_cc_cv_jeita_current_limit_thermal
+    objective: prove_MAX77860_charge_control_pack_safety_and_thermal_behavior
+    prerequisites:
+      - supplier battery pack rating or instrumented cell simulator
+      - MAX77860 I2C readback
+      - VBUS, VBAT, SYS, CHG_TS, BAT_NTC, BAT_ID, CHG_IRQ_N, CHG_CE_N, and CHG_OTG_EN accessible
+    actions:
+      - log charger register defaults, IRQ/fault state, and input current limit
+      - run precharge, constant-current, constant-voltage, termination, recharge, and fault recovery captures
+      - run JEITA cold, warm, hot, and overtemperature cases through NTC injection or environmental fixture
+      - run charger plus system-load and charger plus modem-burst thermal soaks
+      - verify charge current never exceeds supplier pack rating or thermal derating table
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/charger-i2c-readback.json
+      - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+      - board/kicad/e1-phone/production/reports/charger-jeita-hot-cold-log.json
+      - board/kicad/e1-phone/production/reports/charger-input-current-limit-log.json
+      - board/kicad/e1-phone/production/reports/power-thermal/charger-current-limit-and-soak.json
+    pass_gate: blocked_missing_charger_i2c_cc_cv_jeita_current_limit_and_thermal_logs
+    release_allowed: false
+  - id: battery_ntc_id_pcm_and_connector
+    objective: prove_pack_identification_thermistor_pcm_connector_polarity_and_service_safety
+    prerequisites:
+      - dimensioned supplier pack drawing
+      - connector pinout and mating part
+      - NTC curve, ID policy, PCM spec, UN38.3 summary, and MSDS
+    actions:
+      - verify VBAT, GND, BAT_NTC, and BAT_ID pin order against board and fixture
+      - measure NTC curve or injected resistance table at cold, room, warm, and hot points
+      - verify pack ID resistor or selected identification policy
+      - record PCM overvoltage, undervoltage, overcurrent, short-circuit, and recovery behavior from supplier or bench fixture
+      - verify pack insertion, retention, swelling allowance, and no reverse-polarity path
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/sourcing/battery-pack-signed-drawing.pdf
+      - board/kicad/e1-phone/production/sourcing/battery-pack-ntc-id-pcm-spec.yaml
+      - board/kicad/e1-phone/production/reports/battery-ntc-id-pcm-log.json
+      - board/kicad/e1-phone/production/reports/battery-connector-polarity-inspection.json
+    pass_gate: blocked_missing_supplier_pack_safety_docs_ntc_id_pcm_and_connector_logs
+    release_allowed: false
+  - id: aon_power_key_wake
+    objective: prove_PWR_KEY_N_can_wake_AON_domain_without_false_wake_or_leakage
+    prerequisites:
+      - AON_1V8 rail scoped and stable
+      - PWR_KEY_N pull policy, debounce, ESD, and fixture access reviewed
+      - side-key actuator load path does not stress switch solder joints
+    actions:
+      - capture PWR_KEY_N idle level, press waveform, release waveform, debounce, and leakage against AON_1V8
+      - verify wake from off, sleep, and suspend states
+      - verify long-press power-off and forced-reset behavior if assigned in firmware
+      - verify no false wake under plug attach, charge start, and thermal soak
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/aon-power-key-wake-log.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - board/kicad/e1-phone/production/reports/pwr-key-debounce-scope-captures/
+    pass_gate: blocked_missing_power_key_wake_suspend_resume_debounce_and_load_path_logs
+    release_allowed: false
+  - id: volume_recovery_combos
+    objective: prove_volume_keys_support_expected_recovery_bootloader_and_factory_combinations
+    prerequisites:
+      - VOL_UP_N and VOL_DOWN_N routed to AON_or_boot_sampled_inputs
+      - bootloader combo policy documented
+      - side-key fixture can press single and combined keys repeatably
+    actions:
+      - capture volume-up, volume-down, power-plus-volume-up, and power-plus-volume-down events at bootloader and OS levels
+      - verify recovery, fastboot, factory, or diagnostic modes only enter on documented combos
+      - verify combo timing windows, debounce, stuck-key handling, and exit recovery path
+      - verify no accidental recovery entry during normal wake, charge, or cable attach
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+      - board/kicad/e1-phone/production/reports/bootloader-key-combo-transcript.json
+      - board/kicad/e1-phone/production/firmware/boot-key-combo-policy.yaml
+    pass_gate: blocked_missing_volume_combo_recovery_fastboot_factory_and_stuck_key_logs
+    release_allowed: false
+  - id: usb2_adb_fastboot
+    objective: prove_USB2_data_path_debug_modes_and_recovery_are_stable_through_the_selected_USB_C_port
+    prerequisites:
+      - USB_DP and USB_DN routed as controlled USB2 pair with ESD review
+      - PD attach and VBUS current limit are stable
+      - bootloader exposes approved debug modes
+    actions:
+      - enumerate ADB in normal OS on both plug flips
+      - enumerate fastboot or bootloader recovery mode on both plug flips
+      - run reconnect, suspend/resume, reboot-to-bootloader, and cable-retention tests
+      - verify debug access lock or production fuse policy is documented separately before release
+    required_logs_or_artifacts:
+      - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+      - board/kicad/e1-phone/production/reports/usb2-reconnect-suspend-resume-log.json
+      - board/kicad/e1-phone/production/firmware/debug-access-production-policy.yaml
+    pass_gate: blocked_missing_usb2_adb_fastboot_both_flips_reconnect_and_debug_policy_logs
+    release_allowed: false
+
+pass_fail_gate_matrix:
+  pd_lifecycle_decision_closed:
+    required_before: schematic_or_route_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/pd-controller-lifecycle-decision.yaml
+  pd_config_provisioned_and_read_back:
+    required_before: usb_pd_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/usb-pd-provisioning-transcript.json
+  cc_attach_both_flips_and_dead_battery_safe:
+    required_before: charger_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/dead-battery-boot-current-limit-log.json
+  charger_cc_cv_jeita_current_limit_thermal_passed:
+    required_before: charge_current_above_500ma_or_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  battery_ntc_id_pcm_and_connector_approved:
+    required_before: real_pack_charge_or_enclosure_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/battery-ntc-id-pcm-log.json
+  power_key_wake_and_volume_recovery_passed:
+    required_before: first_article_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+  usb2_adb_fastboot_passed:
+    required_before: debug_and_recovery_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+  fixture_and_first_article_transcript_complete:
+    required_before: production_release
+    current_state: blocked
+    pass_evidence: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+
+required_log_index:
+  pd:
+    - board/kicad/e1-phone/production/reports/pd-controller-lifecycle-decision.yaml
+    - board/kicad/e1-phone/production/firmware/usb-pd-policy-image.bin
+    - board/kicad/e1-phone/production/reports/usb-pd-provisioning-transcript.json
+    - board/kicad/e1-phone/production/reports/typec-class-probe-log.json
+    - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    - board/kicad/e1-phone/production/reports/dead-battery-boot-current-limit-log.json
+  charger_and_battery:
+    - board/kicad/e1-phone/production/reports/charger-i2c-readback.json
+    - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    - board/kicad/e1-phone/production/reports/charger-jeita-hot-cold-log.json
+    - board/kicad/e1-phone/production/reports/charger-input-current-limit-log.json
+    - board/kicad/e1-phone/production/reports/battery-ntc-id-pcm-log.json
+    - board/kicad/e1-phone/production/reports/battery-connector-polarity-inspection.json
+    - board/kicad/e1-phone/production/reports/power-thermal/charger-current-limit-and-soak.json
+  side_keys:
+    - board/kicad/e1-phone/production/reports/aon-power-key-wake-log.json
+    - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    - board/kicad/e1-phone/production/reports/button-wake-recovery-log.json
+    - board/kicad/e1-phone/production/reports/bootloader-key-combo-transcript.json
+  usb2_debug:
+    - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    - board/kicad/e1-phone/production/reports/usb2-reconnect-suspend-resume-log.json
+  fixture_and_release:
+    - board/kicad/e1-phone/production/reports/first-power-current-limit-log.json
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+
+cross_checks:
+  references_2026_05_22_public_source_refresh: true
+  references_pd_lifecycle_replacement_gate: true
+  references_usb_power_sidekey_release_execution: true
+  references_usb_sidekey_acceptance_checklist: true
+  references_power_sequence_and_power_acceptance: true
+  references_core_power_compute_net_binding: true
+  references_required_usb_pd_charger_and_battery_packages: true
+  covers_pd_lifecycle_decision: true
+  covers_pd_config_provisioning_cc_attach_and_dead_battery: true
+  covers_charger_cc_cv_jeita_current_limit_and_thermal: true
+  covers_battery_ntc_id_pcm_and_connector: true
+  covers_aon_power_key_wake_and_volume_recovery_combos: true
+  covers_usb2_adb_fastboot: true
+  all_steps_require_real_logs_or_supplier_artifacts: true
+  all_pass_fail_gates_currently_blocked: true
+  no_release_gate_closes_from_plan_text_alone: true
+
+release_blockers:
+  - PD controller lifecycle branch is not closed and TPS65987DDH remains blocked for production use
+  - PD policy image, provisioning transcript, Type-C class log, CC attach logs, and dead-battery boot logs are missing
+  - MAX77860 I2C, CC/CV, JEITA, input-current-limit, charger thermal, and fault logs are missing
+  - battery pack signed drawing, connector pinout, NTC curve, ID policy, PCM spec, UN38.3 summary, MSDS, and bench validation logs are missing
+  - AON power-key wake, volume recovery combos, debounce, stuck-key, and side-key load-path logs are missing
+  - USB2 ADB, fastboot, reconnect, suspend/resume, and debug access policy logs are missing
+  - routed PCB, ERC, DRC, USB2 SI, power PI, routed STEP, enclosure load path, fixtures, and first-article transcript are missing
+
+forbidden_claims:
+  - power_usb_sidekey_bench_passed
+  - pd_controller_lifecycle_closed
+  - tps65987ddh_production_ready
+  - pd_policy_provisioned
+  - pd_ready
+  - cc_attach_validated
+  - dead_battery_validated
+  - charging_ready
+  - charger_safety_validated
+  - battery_safe
+  - battery_pack_ready
+  - power_key_wake_ready
+  - recovery_key_combo_ready
+  - side_buttons_ready
+  - usb2_adb_fastboot_ready
+  - first_article_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

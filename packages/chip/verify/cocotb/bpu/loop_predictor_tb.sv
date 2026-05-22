@@ -16,6 +16,7 @@ module loop_predictor_tb (
     output logic               pmu_hit,
     input  logic               upd_valid,
     input  logic [VADDR_W-1:0] upd_pc,
+    input  logic [VADDR_W-1:0] upd_target,
     input  logic               upd_taken
 );
     loop_predictor u_loop (.*);

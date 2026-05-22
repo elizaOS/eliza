@@ -42,10 +42,14 @@ def stale_contract() -> dict:
 def ready_contract() -> dict:
     return {
         "e1_chip": {
-            "has_cpu": True,
+            "has_cpu": False,
             "boot_rom": {
-                "words": [{"offset": "0x0c", "name": "reset_handoff_vector", "value": "0x80000000"}]
+                "words": [{"offset": "0x0c", "name": "boot_vector_placeholder", "value": "0x1000"}]
             },
+        },
+        "e1_chip_cpu_variant": {
+            "has_cpu": True,
+            "boot": {"reset_vector": "0x1000"},
         }
     }
 
@@ -133,7 +137,7 @@ class BootSecurityChainContractTests(unittest.TestCase):
             with PatchStack(self._patch_tree(tmp)):
                 write_json(gate.PLATFORM_CONTRACT, ready_contract())
                 gate.BOOTROM_RTL.write_text(
-                    'initial $readmemh("build/boot-rom/e1_reset_rom.hex", rom);\n',
+                    'initial $readmemh("build/boot-rom/e1_secure_boot_rom.hex", rom);\n',
                     encoding="utf-8",
                 )
                 gate.RESET_ROM.write_text(

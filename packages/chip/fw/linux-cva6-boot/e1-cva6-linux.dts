@@ -1,0 +1,116 @@
+/dts-v1/;
+
+/*
+ * Device tree for the OpenSBI -> Linux boot of the E1 SoC on the real CVA6
+ * (e1_cva6_dram_boot_top) under Verilator.
+ *
+ * Mirrors fw/opensbi-cva6-boot/e1-cva6-boot.dts (the same RTL decode: CLINT
+ * @0x02000000, PLIC @0x0C000000, ns16550a UART @0x10001000, DRAM @0x80000000),
+ * with the additions Linux needs:
+ *   - a memory node large enough for the kernel image + its runtime
+ *     (the boot top's e1_dram_ctrl advertises 2 GiB; the DRAM decode mask in
+ *     the boot top is widened to back the kernel window),
+ *   - /chosen bootargs (console=ttyS0 + earlycon on the ns16550a) and the
+ *     initramfs (linux,initrd-start / -end) so /init runs without a block dev.
+ *
+ * initrd-start/-end are filled in by build_linux_boot_image.py (the addresses
+ * depend on the assembled image layout), so this DTS is a template: the builder
+ * patches the /chosen initrd properties after `dtc`.
+ */
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+	compatible = "eliza,e1-cva6";
+	model = "eliza-e1-cva6-linux-boot";
+
+	chosen {
+		stdout-path = "/soc/serial@10001000";
+		bootargs = "console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init lpj=10000";
+		/*
+		 * No linux,initrd-start/-end: the trimmed kernel carries the
+		 * initramfs as a builtin archive (CONFIG_INITRAMFS_SOURCE), so
+		 * there is no separate initrd load step and no DRAM window to
+		 * advertise — the kernel unpacks its builtin cpio and runs /init
+		 * directly, which is the shortest path to userland.
+		 */
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <10000000>;
+
+		cpu@0 {
+			device_type = "cpu";
+			reg = <0>;
+			status = "okay";
+			compatible = "riscv";
+			riscv,isa = "rv64gc";
+			mmu-type = "riscv,sv39";
+			cpu0_intc: interrupt-controller {
+				#interrupt-cells = <1>;
+				interrupt-controller;
+				compatible = "riscv,cpu-intc";
+			};
+		};
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		/*
+		 * 32 MiB.  The boot top's fabric decodes 256 MiB and the
+		 * e1_dram_ctrl advertises 2 GiB capacity, both of which cover this
+		 * window; advertising only 32 MiB to Linux is the smallest size a
+		 * 2 MiB kernel + builtin initramfs boots in, and it minimises the
+		 * page-struct / memmap init the kernel walks during mem_init — the
+		 * cycle-dominant, output-silent phase on the behavioural DRAM model.
+		 * Fewer advertised pages -> far fewer DRAM accesses -> the bounded
+		 * Verilator run reaches userland in a tractable cycle count.  This
+		 * is a sim boot-functionality config, not the board memory map.
+		 */
+		reg = <0x0 0x80000000 0x0 0x02000000>;
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		clint@2000000 {
+			compatible = "sifive,clint0", "riscv,clint0";
+			reg = <0x0 0x02000000 0x0 0x00010000>;
+			interrupts-extended = <&cpu0_intc 3>, <&cpu0_intc 7>;
+		};
+
+		plic: plic@c000000 {
+			compatible = "sifive,plic-1.0.0", "riscv,plic0";
+			reg = <0x0 0x0C000000 0x0 0x04000000>;
+			#interrupt-cells = <1>;
+			interrupt-controller;
+			interrupts-extended = <&cpu0_intc 11>, <&cpu0_intc 9>;
+			riscv,ndev = <32>;
+		};
+
+		uart0: serial@10001000 {
+			compatible = "ns16550a";
+			reg = <0x0 0x10001000 0x0 0x00001000>;
+			clock-frequency = <50000000>;
+			current-speed = <115200>;
+			reg-shift = <0>;
+			/*
+			 * No `interrupts` property: drive the 8250 console in POLLED
+			 * TX mode.  The behavioural ns16550a model (e1_uart_ns16550.sv)
+			 * holds LSR.THRE|TEMT permanently set but does NOT raise a UART
+			 * TX interrupt to the PLIC.  With an interrupt declared, the
+			 * 8250 driver switches to IRQ-driven buffered TX after the
+			 * console handover and wedges PID-1's write() waiting for a
+			 * TX-empty IRQ that never arrives (the kernel earlycon + the
+			 * first post-handover write drain, then the next write blocks).
+			 * Polled mode makes every write() drain against the always-ready
+			 * THRE bit, so /init's userland marker reaches the UART.
+			 */
+		};
+	};
+};
