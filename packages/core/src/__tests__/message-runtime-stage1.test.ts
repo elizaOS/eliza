@@ -2100,6 +2100,98 @@ android smoke model works`,
 		);
 	});
 
+	it("keeps speaker names on structured prior dialogue", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I see the prior chat context.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		const state: State = {
+			values: {
+				availableContexts: "simple, general",
+			},
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nprovider text should not render",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000bb01" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000bb11" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 1,
+									content: {
+										text: "Hey, nice to meet shebotdick.",
+										source: "discord",
+									},
+									metadata: {
+										type: "message",
+										sender: {
+											id: "discord-botdick",
+											name: "botdick",
+											username: "botdick",
+										},
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000bb02" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000bb12" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 2,
+									content: {
+										text: "i was asking about shedick",
+										source: "discord",
+									},
+									metadata: {
+										type: "message",
+										sender: {
+											id: "discord-1gig",
+											name: "1gig",
+											username: "1gig",
+										},
+									},
+								},
+							],
+						},
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "fallback text should not be needed",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "whats the compatibility between her and botdick",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		expect(userContent).not.toContain("# Conversation Messages");
+		expect(userContent).not.toContain("provider text should not render");
+		expect(userContent).toContain(
+			"prior_message:user:\nbotdick: Hey, nice to meet shebotdick.",
+		);
+		expect(userContent).toContain(
+			"prior_message:user:\n1gig: i was asking about shedick",
+		);
+		expect(userContent).toContain(
+			"message:user:\nwhats the compatibility between her and botdick",
+		);
+	});
+
 	it("recomposes planner state with selected context providers but excludes catalogs", async () => {
 		const runtime = makeRuntime([
 			stage1Response({

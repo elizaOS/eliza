@@ -1599,6 +1599,61 @@ function asProviderRecord(value: unknown):
 	};
 }
 
+function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as Record<string, unknown>;
+}
+
+function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().split(/\s+/).join(" ");
+	if (!normalized) return undefined;
+	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+}
+
+function senderIdentityName(value: unknown): string | undefined {
+	const record = asPlainRecord(value);
+	if (!record) return undefined;
+	return (
+		cleanPriorDialogueSpeakerName(record.name) ??
+		cleanPriorDialogueSpeakerName(record.username) ??
+		cleanPriorDialogueSpeakerName(record.tag)
+	);
+}
+
+function priorDialogueSpeakerName(memory: Memory): string | undefined {
+	const metadata = asPlainRecord(memory.metadata);
+	const content = asPlainRecord(memory.content);
+	const contentMetadata = asPlainRecord(content?.metadata);
+	const sender =
+		senderIdentityName(metadata?.sender) ??
+		senderIdentityName(contentMetadata?.sender);
+	if (sender) return sender;
+	for (const record of [metadata, contentMetadata, content]) {
+		const name =
+			cleanPriorDialogueSpeakerName(record?.entityName) ??
+			cleanPriorDialogueSpeakerName(record?.senderName) ??
+			cleanPriorDialogueSpeakerName(record?.authorName) ??
+			cleanPriorDialogueSpeakerName(record?.displayName) ??
+			cleanPriorDialogueSpeakerName(record?.userName) ??
+			cleanPriorDialogueSpeakerName(record?.username) ??
+			cleanPriorDialogueSpeakerName(record?.name);
+		if (name) return name;
+	}
+	return undefined;
+}
+
+function priorDialogueContent(text: string, speaker?: string): string {
+	if (!speaker) return text;
+	const trimmedStart = text.trimStart();
+	if (trimmedStart.toLowerCase().startsWith(`${speaker.toLowerCase()}:`)) {
+		return text;
+	}
+	return `${speaker}: ${text}`;
+}
+
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -1657,6 +1712,7 @@ function appendPriorDialogueEvents(
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
+		const speakerName = priorDialogueSpeakerName(memory);
 		events.push({
 			id: `history:${memory.id}`,
 			type: "segment",
@@ -1665,11 +1721,12 @@ function appendPriorDialogueEvents(
 			segment: {
 				id: `history:${memory.id}`,
 				label: "prior_message:user",
-				content: text,
+				content: priorDialogueContent(text, speakerName),
 				stable: false,
 				metadata: {
 					roomId: memory.roomId,
 					entityId: memory.entityId,
+					...(speakerName ? { speakerName } : {}),
 				},
 			},
 		});
