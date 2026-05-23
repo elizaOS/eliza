@@ -1,6 +1,9 @@
 node_modules
 /out
 
+# E2E recording output — videos, traces, contact sheets (generated locally)
+/e2e-recordings/
+
 .next/
 **/.next/**
 

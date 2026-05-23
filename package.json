@@ -130,6 +130,8 @@
     "migrate": "turbo run migrate --filter=./plugins/plugin-sql --force",
     "migrate:generate": "turbo run migrate:generate --filter=./plugins/plugin-sql",
     "test": "node packages/scripts/run-all-tests.mjs --only=test --no-cloud",
+    "test:e2e:record": "node scripts/e2e-recordings/run-all.mjs",
+    "test:e2e:record:sheets": "node scripts/e2e-recordings/generate-contact-sheets.mjs && node scripts/e2e-recordings/generate-viewer.mjs",
     "test:all": "node packages/scripts/run-all-tests.mjs --all",
     "test:release:contract": "bun run audit:apple-store-sandbox && bun run test:apple-entitlements && node packages/app-core/scripts/run-release-contract-suite.mjs",
     "test:regression-matrix:release": "node packages/app-core/scripts/validate-regression-matrix.mjs --workflow release",

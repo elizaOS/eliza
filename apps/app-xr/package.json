@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check src",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "connect": "bunx localtunnel --port 2138 --print-requests & node scripts/qr-connect.mjs",
     "qr": "node scripts/qr-connect.mjs"
   },

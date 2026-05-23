@@ -16,10 +16,13 @@ const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
 const chromiumExecutablePath =
   process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
+const recording = !!process.env.E2E_RECORD;
 const videoMode =
   process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
     ? "off"
-    : "retain-on-failure";
+    : recording
+      ? "on"
+      : "retain-on-failure";
 
 // Keep the app's API port env aligned with the live stack when the suite runs
 // on non-default ports.
@@ -37,11 +40,14 @@ export default defineConfig({
   retries: 0,
   workers: 1,
   reporter: "list",
+  outputDir: recording
+    ? path.resolve(appDir, "../../e2e-recordings/app/test-results")
+    : "./test-results",
   use: {
     baseURL: `http://127.0.0.1:${uiSmokePort}`,
-    trace: "retain-on-failure",
+    trace: recording ? "on" : "retain-on-failure",
     video: videoMode,
-    screenshot: "only-on-failure",
+    screenshot: recording ? "on" : "only-on-failure",
   },
   projects: [
     {
