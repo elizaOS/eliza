@@ -2238,7 +2238,6 @@ function preferredFinalMessageFromToolOrModel(
 	return (
 		singleVerifiedUserFacingToolResultText(trajectory) ??
 		getNonEmptyString(modelMessage) ??
-		singleSuccessfulUserFacingToolResultText(trajectory) ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);
