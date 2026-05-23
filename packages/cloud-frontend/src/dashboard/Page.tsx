@@ -153,7 +153,7 @@ export default function DashboardPage() {
   }
 
   const agents = dashboard.data?.agents ?? [];
-  const userName = dashboard.data?.user.name ?? null;
+  const userName = dashboard.data?.user?.name ?? null;
   const creditBalance =
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
   const formattedBalance = formatBalance(creditBalance);

@@ -99,12 +99,28 @@ test("cross-page hover audit — no orange↔black, no blue", async ({
     "utf8",
   ).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
   const syntheticToken = `${header}.${payload}.audit-fake-signature`;
+  await context.addCookies([
+    {
+      name: "eliza-test-auth",
+      value: "1",
+      domain: "127.0.0.1",
+      path: "/",
+      httpOnly: false,
+      secure: false,
+      sameSite: "Lax",
+    },
+  ]);
   await context.addInitScript((t: string) => {
     window.localStorage.setItem("steward_session_token", t);
   }, syntheticToken);
   // Generic empty mock — every dashboard fetch returns an empty list.
   await context.route(/\/api\//, (route) => {
     const url = route.request().url();
+    if (/\/api\/v1\/dashboard\b/.test(url))
+      return route.fulfill({
+        json: { user: { name: "Test User" }, agents: [] },
+        headers: { "content-type": "application/json" },
+      });
     if (url.includes("/api/v1/user")) {
       return route.fulfill({
         json: {
