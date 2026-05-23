@@ -2,9 +2,14 @@
 /**
  * generate-viewer.mjs
  *
- * Reads e2e-recordings/manifest.json and generates e2e-recordings/index.html —
- * a self-contained dark-themed viewer with package filter tabs, search,
- * and test cards linking to contact sheets and videos.
+ * Reads e2e-recordings/manifest.json and writes e2e-recordings/index.html —
+ * ONE self-contained dark-themed page showing every test as a card with:
+ *   - a horizontal filmstrip of all real frames (lazy-loaded)
+ *   - a full-screen lightbox on frame click (← → Esc navigation)
+ *   - a video link when a recording exists
+ *   - package filter tabs + search
+ *
+ * No per-test contact-sheet.html files are linked or generated.
  *
  * Usage:
  *   node scripts/e2e-recordings/generate-viewer.mjs
@@ -22,7 +27,6 @@ const RECORDINGS_DIR = path.join(REPO_ROOT, 'e2e-recordings');
 const MANIFEST_PATH = path.join(RECORDINGS_DIR, 'manifest.json');
 const OUTPUT_PATH = path.join(RECORDINGS_DIR, 'index.html');
 
-/** Minimal HTML entity escaping. */
 function esc(str) {
   return String(str ?? '')
     .replace(/&/g, '&amp;')
@@ -31,7 +35,6 @@ function esc(str) {
     .replace(/"/g, '&quot;');
 }
 
-/** Build a JSON-safe string for inline embedding. */
 function jsonStr(obj) {
   return JSON.stringify(obj).replace(/<\//g, '<\\/');
 }
@@ -40,16 +43,13 @@ function buildHtml(manifest) {
   const packages = manifest.packages ?? {};
   const packageNames = Object.keys(packages).sort();
 
-  // Flatten all tests into a single array with package info attached
   const allTests = [];
   for (const pkgName of packageNames) {
-    const tests = packages[pkgName]?.tests ?? [];
-    for (const test of tests) {
+    for (const test of packages[pkgName]?.tests ?? []) {
       allTests.push({ ...test, package: test.package ?? pkgName });
     }
   }
 
-  // Inline all test data as JSON for the client-side JS
   const testsJson = jsonStr(allTests);
   const packageNamesJson = jsonStr(packageNames);
 
@@ -58,7 +58,7 @@ function buildHtml(manifest) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>E2E Recordings — Index</title>
+<title>E2E Recordings</title>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -68,11 +68,9 @@ function buildHtml(manifest) {
     --surface2: #1e1e1e;
     --border: #2a2a2a;
     --text: #e0e0e0;
-    --text-muted: #888;
+    --muted: #888;
     --accent: #ff6600;
-    --accent-dark: #cc5200;
-    --pass: #2ecc71;
-    --fail: #e74c3c;
+    --accent-dk: #cc5200;
     --radius: 8px;
   }
 
@@ -83,14 +81,13 @@ function buildHtml(manifest) {
     min-height: 100vh;
   }
 
-  /* ─── Layout ─────────────────────────────────────────────── */
+  /* ── Header ── */
   .page-header {
-    padding: 28px 32px 0;
+    padding: 24px 32px 0;
     border-bottom: 1px solid var(--border);
-    margin-bottom: 0;
   }
   .page-header h1 {
-    font-size: 1.4rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: #fff;
     display: flex;
@@ -98,97 +95,75 @@ function buildHtml(manifest) {
     gap: 10px;
   }
   .page-header h1 .logo {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
+    width: 16px; height: 16px;
     background: var(--accent);
     border-radius: 3px;
+    flex-shrink: 0;
   }
   .page-header .meta {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-top: 6px;
-    margin-bottom: 16px;
+    font-size: 0.75rem;
+    color: var(--muted);
+    margin: 6px 0 16px;
   }
 
+  /* ── Toolbar ── */
   .toolbar {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
     flex-wrap: wrap;
-    padding: 16px 32px;
+    padding: 14px 32px;
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     position: sticky;
     top: 0;
     z-index: 10;
   }
-
-  /* ─── Filter Tabs ─────────────────────────────────────────── */
-  .filter-tabs {
-    display: flex;
-    gap: 4px;
-    flex-wrap: wrap;
-  }
+  .filter-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
   .tab-btn {
     background: none;
     border: 1px solid var(--border);
-    color: var(--text-muted);
-    padding: 5px 14px;
+    color: var(--muted);
+    padding: 4px 13px;
     border-radius: 20px;
-    font-size: 0.78rem;
+    font-size: 0.75rem;
     cursor: pointer;
-    transition: all 0.15s;
+    transition: all 0.12s;
     white-space: nowrap;
   }
   .tab-btn:hover { border-color: var(--accent); color: var(--text); }
-  .tab-btn.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #fff;
-    font-weight: 600;
-  }
-
-  /* ─── Search ──────────────────────────────────────────────── */
-  .search-wrap { flex: 1; min-width: 160px; max-width: 360px; }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .search-wrap { flex: 1; min-width: 150px; max-width: 340px; }
   .search-input {
     width: 100%;
     background: var(--surface2);
     border: 1px solid var(--border);
     color: var(--text);
-    padding: 7px 12px;
+    padding: 6px 11px;
     border-radius: 6px;
-    font-size: 0.82rem;
+    font-size: 0.8rem;
     outline: none;
   }
   .search-input:focus { border-color: var(--accent); }
-  .search-input::placeholder { color: var(--text-muted); }
+  .search-input::placeholder { color: var(--muted); }
+  .result-count { font-size: 0.75rem; color: var(--muted); margin-left: auto; white-space: nowrap; }
 
-  /* ─── Count ───────────────────────────────────────────────── */
-  .result-count {
-    font-size: 0.78rem;
-    color: var(--text-muted);
-    margin-left: auto;
-    white-space: nowrap;
-  }
-
-  /* ─── Main Grid ───────────────────────────────────────────── */
-  .grid-wrapper { padding: 24px 32px; }
+  /* ── Grid ── */
+  .grid-wrapper { padding: 20px 32px 40px; }
   .tests-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 16px;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
   }
-
   .empty-state {
     grid-column: 1 / -1;
     text-align: center;
     padding: 80px 0;
-    color: var(--text-muted);
+    color: var(--muted);
     font-size: 0.9rem;
   }
 
-  /* ─── Test Card ───────────────────────────────────────────── */
+  /* ── Card ── */
   .test-card {
     background: var(--surface);
     border: 1px solid var(--border);
@@ -196,113 +171,143 @@ function buildHtml(manifest) {
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    transition: border-color 0.15s, transform 0.1s;
+    transition: border-color 0.12s;
   }
-  .test-card:hover {
-    border-color: #3a3a3a;
-    transform: translateY(-1px);
-  }
+  .test-card:hover { border-color: #3a3a3a; }
 
-  .card-thumb {
+  /* ── Filmstrip ── */
+  .filmstrip-wrap {
     width: 100%;
-    aspect-ratio: 16/9;
-    object-fit: cover;
+    overflow-x: auto;
     background: #111;
-    display: block;
+    scrollbar-width: thin;
+    scrollbar-color: #333 #111;
   }
-  .card-thumb-placeholder {
+  .filmstrip-wrap::-webkit-scrollbar { height: 4px; }
+  .filmstrip-wrap::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  .filmstrip {
+    display: flex;
+    gap: 3px;
+    padding: 6px;
+    min-height: 90px;
+    align-items: center;
+  }
+  .filmstrip-empty {
     width: 100%;
-    aspect-ratio: 16/9;
-    background: #111;
+    min-height: 90px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #333;
+    background: #111;
   }
-
-  .card-body { padding: 12px; flex: 1; }
-  .card-top {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    margin-bottom: 8px;
+  .frame-thumb {
+    flex-shrink: 0;
+    height: 78px;
+    width: auto;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: border-color 0.1s, transform 0.1s;
+    display: block;
+    background: #0a0a0a;
   }
+  .frame-thumb:hover { border-color: var(--accent); transform: scale(1.04); }
+  .frame-thumb:first-child { border-color: #2ecc71; }
+  .frame-thumb:last-child:not(:first-child) { border-color: #e74c3c; }
 
+  /* ── Card body ── */
+  .card-body { padding: 10px 12px; flex: 1; }
+  .card-top { display: flex; align-items: flex-start; gap: 7px; margin-bottom: 6px; }
   .pkg-badge {
     flex-shrink: 0;
-    display: inline-block;
     background: var(--accent);
     color: #fff;
-    font-size: 0.65rem;
+    font-size: 0.62rem;
     font-weight: 700;
-    padding: 2px 7px;
+    padding: 2px 6px;
     border-radius: 4px;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-top: 2px;
+    letter-spacing: 0.04em;
+    margin-top: 1px;
   }
-
-  .card-name {
-    font-size: 0.82rem;
-    font-weight: 500;
-    color: #ddd;
-    line-height: 1.4;
-    word-break: break-word;
-  }
-
-  .card-meta {
-    font-size: 0.72rem;
-    color: var(--text-muted);
-    margin-bottom: 10px;
-  }
-
-  .card-actions {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-  }
+  .card-name { font-size: 0.8rem; font-weight: 500; color: #ddd; line-height: 1.35; word-break: break-word; }
+  .card-meta { font-size: 0.7rem; color: var(--muted); margin-bottom: 8px; }
+  .card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
   .card-link {
-    font-size: 0.72rem;
-    padding: 4px 10px;
+    font-size: 0.7rem;
+    padding: 3px 9px;
     border-radius: 4px;
     text-decoration: none;
     font-weight: 500;
-    border: 1px solid transparent;
-    transition: background 0.12s;
-  }
-  .card-link.primary {
-    background: var(--accent);
-    color: #fff;
-  }
-  .card-link.primary:hover { background: var(--accent-dark); }
-  .card-link.secondary {
+    border: 1px solid var(--border);
     background: var(--surface2);
-    border-color: var(--border);
     color: var(--text);
+    transition: border-color 0.1s, color 0.1s;
   }
-  .card-link.secondary:hover { border-color: var(--accent); color: var(--accent); }
-  .card-link.na {
-    background: none;
-    border-color: #333;
-    color: #444;
-    cursor: default;
-  }
+  .card-link:hover { border-color: var(--accent); color: var(--accent); }
+  .card-link.na { color: #444; border-color: #222; pointer-events: none; }
 
-  .status-badge {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 700;
-    padding: 2px 7px;
-    border-radius: 4px;
-    letter-spacing: 0.03em;
+  /* ── Lightbox ── */
+  #lb {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.92);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
   }
-  .status-pass { background: #1a3d2a; color: var(--pass); }
-  .status-fail { background: #3d1a1a; color: var(--fail); }
+  #lb.open { display: flex; }
+  #lb-img {
+    max-width: 92vw;
+    max-height: 82vh;
+    border-radius: 6px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.8);
+    display: block;
+  }
+  #lb-caption {
+    margin-top: 10px;
+    font-size: 0.75rem;
+    color: #888;
+  }
+  #lb-close {
+    position: fixed;
+    top: 18px; right: 22px;
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.6rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 4px;
+  }
+  #lb-close:hover { color: #fff; }
+  .lb-arrow {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.12);
+    color: #ccc;
+    font-size: 1.4rem;
+    padding: 12px 16px;
+    cursor: pointer;
+    border-radius: 6px;
+    user-select: none;
+    transition: background 0.1s;
+  }
+  .lb-arrow:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  #lb-prev { left: 16px; }
+  #lb-next { right: 16px; }
 
   @media (max-width: 640px) {
-    .page-header, .toolbar, .grid-wrapper { padding-left: 16px; padding-right: 16px; }
+    .page-header, .toolbar, .grid-wrapper { padding-left: 14px; padding-right: 14px; }
     .tests-grid { grid-template-columns: 1fr; }
+    #lb-prev { left: 6px; }
+    #lb-next { right: 6px; }
   }
 </style>
 </head>
@@ -328,15 +333,67 @@ function buildHtml(manifest) {
   <div class="tests-grid" id="testsGrid"></div>
 </div>
 
+<!-- Lightbox -->
+<div id="lb" role="dialog" aria-modal="true">
+  <button id="lb-close" aria-label="Close">&times;</button>
+  <button class="lb-arrow" id="lb-prev" aria-label="Previous">&#8592;</button>
+  <img id="lb-img" src="" alt="">
+  <div id="lb-caption"></div>
+  <button class="lb-arrow" id="lb-next" aria-label="Next">&#8594;</button>
+</div>
+
 <script>
 (function () {
   const ALL_TESTS = ${testsJson};
-  const PACKAGE_NAMES = ${packageNamesJson};
 
+  // ── Lightbox state ─────────────────────────────────────────
+  let lbFrames = [];
+  let lbIdx = 0;
+
+  const lb = document.getElementById('lb');
+  const lbImg = document.getElementById('lb-img');
+  const lbCap = document.getElementById('lb-caption');
+
+  function openLightbox(frames, idx) {
+    lbFrames = frames;
+    lbIdx = idx;
+    showLbFrame();
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeLightbox() {
+    lb.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  function showLbFrame() {
+    lbImg.src = lbFrames[lbIdx] ?? '';
+    lbCap.textContent = 'Frame ' + (lbIdx + 1) + ' / ' + lbFrames.length;
+  }
+
+  document.getElementById('lb-close').addEventListener('click', closeLightbox);
+  document.getElementById('lb-prev').addEventListener('click', () => {
+    if (lbFrames.length === 0) return;
+    lbIdx = (lbIdx - 1 + lbFrames.length) % lbFrames.length;
+    showLbFrame();
+  });
+  document.getElementById('lb-next').addEventListener('click', () => {
+    if (lbFrames.length === 0) return;
+    lbIdx = (lbIdx + 1) % lbFrames.length;
+    showLbFrame();
+  });
+  lb.addEventListener('click', (e) => { if (e.target === lb) closeLightbox(); });
+  document.addEventListener('keydown', (e) => {
+    if (!lb.classList.contains('open')) return;
+    if (e.key === 'Escape') closeLightbox();
+    if (e.key === 'ArrowLeft') { lbIdx = (lbIdx - 1 + lbFrames.length) % lbFrames.length; showLbFrame(); }
+    if (e.key === 'ArrowRight') { lbIdx = (lbIdx + 1) % lbFrames.length; showLbFrame(); }
+  });
+
+  // ── Filtering ───────────────────────────────────────────────
   let activePackage = '__all__';
   let searchQuery = '';
 
-  function getFilteredTests() {
+  function getFiltered() {
     return ALL_TESTS.filter((t) => {
       if (activePackage !== '__all__' && t.package !== activePackage) return false;
       if (searchQuery) {
@@ -349,57 +406,57 @@ function buildHtml(manifest) {
 
   function renderGrid() {
     const grid = document.getElementById('testsGrid');
-    const count = document.getElementById('resultCount');
-    const tests = getFilteredTests();
-
-    count.textContent = tests.length + ' test' + (tests.length !== 1 ? 's' : '');
-
+    const countEl = document.getElementById('resultCount');
+    const tests = getFiltered();
+    countEl.textContent = tests.length + ' test' + (tests.length !== 1 ? 's' : '');
     if (tests.length === 0) {
       grid.innerHTML = '<div class="empty-state">No tests match the current filter.</div>';
       return;
     }
-
-    grid.innerHTML = tests.map((t) => buildCard(t)).join('');
+    grid.innerHTML = tests.map(buildCard).join('');
+    // Wire up filmstrip click handlers
+    grid.querySelectorAll('.frame-thumb').forEach((img) => {
+      img.addEventListener('click', () => {
+        const frames = JSON.parse(img.closest('.test-card').dataset.frames);
+        const idx = parseInt(img.dataset.idx, 10);
+        openLightbox(frames, idx);
+      });
+    });
   }
 
   function buildCard(t) {
-    const thumbHtml = t.firstFrame
-      ? \`<img class="card-thumb" src="\${esc(t.firstFrame)}" alt="" loading="lazy">\`
-      : \`<div class="card-thumb-placeholder">no screenshot</div>\`;
-
-    const contactSheetLink = t.contactSheet
-      ? \`<a class="card-link primary" href="\${esc(t.contactSheet)}">Contact Sheet</a>\`
-      : \`<span class="card-link na">no contact sheet</span>\`;
+    const frames = t.frames ?? [];
+    let filmstrip;
+    if (frames.length === 0) {
+      filmstrip = '<div class="filmstrip-empty">no frames</div>';
+    } else {
+      const thumbs = frames.map((src, i) =>
+        '<img class="frame-thumb" src="' + esc(src) + '" loading="lazy" data-idx="' + i + '" alt="frame ' + (i+1) + '">'
+      ).join('');
+      filmstrip = '<div class="filmstrip-wrap"><div class="filmstrip">' + thumbs + '</div></div>';
+    }
 
     const videoLink = t.video
-      ? \`<a class="card-link secondary" href="\${esc(t.video)}">Video</a>\`
-      : \`<span class="card-link na">no video</span>\`;
+      ? '<a class="card-link" href="' + esc(t.video) + '" target="_blank">Video</a>'
+      : '<span class="card-link na">no video</span>';
 
-    const statusBadge = t.status === 'pass'
-      ? \`<span class="status-badge status-pass">PASS</span> \`
-      : t.status === 'fail'
-      ? \`<span class="status-badge status-fail">FAIL</span> \`
+    const framesMeta = t.frameCount != null
+      ? t.frameCount + ' frame' + (t.frameCount !== 1 ? 's' : '')
       : '';
 
-    const frameMeta = t.frameCount != null
-      ? \`\${t.frameCount} frame\${t.frameCount !== 1 ? 's' : ''}\`
-      : '';
-
-    return \`
-<div class="test-card" data-pkg="\${esc(t.package)}" data-name="\${esc(t.name.toLowerCase())}">
-  \${thumbHtml}
-  <div class="card-body">
-    <div class="card-top">
-      <span class="pkg-badge">\${esc(t.package)}</span>
-      <span class="card-name">\${esc(t.name)}</span>
-    </div>
-    <div class="card-meta">\${statusBadge}\${frameMeta}</div>
-    <div class="card-actions">
-      \${contactSheetLink}
-      \${videoLink}
-    </div>
-  </div>
-</div>\`;
+    return (
+      '<div class="test-card" data-pkg="' + esc(t.package) + '" data-frames=\'' + escAttr(JSON.stringify(frames)) + '\'>' +
+      filmstrip +
+      '<div class="card-body">' +
+        '<div class="card-top">' +
+          '<span class="pkg-badge">' + esc(t.package) + '</span>' +
+          '<span class="card-name">' + esc(t.name) + '</span>' +
+        '</div>' +
+        '<div class="card-meta">' + esc(framesMeta) + '</div>' +
+        '<div class="card-actions">' + videoLink + '</div>' +
+      '</div>' +
+      '</div>'
+    );
   }
 
   function esc(str) {
@@ -409,8 +466,14 @@ function buildHtml(manifest) {
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+  function escAttr(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/'/g, '&#39;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
 
-  // Tabs
   document.getElementById('filterTabs').addEventListener('click', (e) => {
     const btn = e.target.closest('.tab-btn');
     if (!btn) return;
@@ -420,13 +483,11 @@ function buildHtml(manifest) {
     renderGrid();
   });
 
-  // Search
   document.getElementById('searchInput').addEventListener('input', (e) => {
     searchQuery = e.target.value.trim();
     renderGrid();
   });
 
-  // Initial render
   renderGrid();
 })();
 </script>
@@ -455,7 +516,7 @@ function main() {
 
   const totalTests = Object.values(manifest.packages ?? {}).reduce(
     (sum, pkg) => sum + (pkg.tests?.length ?? 0),
-    0
+    0,
   );
   console.log(`Indexed ${totalTests} test(s) across ${Object.keys(manifest.packages ?? {}).length} package(s).`);
 }
