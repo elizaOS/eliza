@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
 import {
   checkProvisioningWorkerHealth,
-  publishProvisioningWorkerHeartbeat,
   PROVISIONING_WORKER_HEARTBEAT_KEY,
+  publishProvisioningWorkerHeartbeat,
 } from "./provisioning-worker-health";
 
 const TEST_ENV = {
@@ -12,10 +12,7 @@ const TEST_ENV = {
   MOCK_REDIS: "1",
 };
 
-async function withEnv<T>(
-  extra: Record<string, string>,
-  fn: () => Promise<T>,
-): Promise<T> {
+async function withEnv<T>(extra: Record<string, string>, fn: () => Promise<T>): Promise<T> {
   return runWithCloudBindingsAsync({ ...TEST_ENV, ...extra }, fn);
 }
 
@@ -33,9 +30,7 @@ describe("provisioning worker health (Redis heartbeat)", () => {
   });
 
   it("returns unhealthy when no heartbeat has been published", async () => {
-    const result = await withEnv({}, () =>
-      checkProvisioningWorkerHealth(),
-    );
+    const result = await withEnv({}, () => checkProvisioningWorkerHealth());
     expect(result.ok).toBe(false);
     if (result.ok === false) {
       expect(result.code).toBe("PROVISIONING_WORKER_UNHEALTHY");
@@ -67,16 +62,13 @@ describe("provisioning worker health (Redis heartbeat)", () => {
   });
 
   it("publish returns false when redis is not configured", async () => {
-    const wrote = await runWithCloudBindingsAsync(
-      { NODE_ENV: "production" },
-      () => publishProvisioningWorkerHeartbeat(),
+    const wrote = await runWithCloudBindingsAsync({ NODE_ENV: "production" }, () =>
+      publishProvisioningWorkerHeartbeat(),
     );
     expect(wrote).toBe(false);
   });
 
   it("uses a stable redis key for observability", () => {
-    expect(PROVISIONING_WORKER_HEARTBEAT_KEY).toBe(
-      "provisioning_worker:health",
-    );
+    expect(PROVISIONING_WORKER_HEARTBEAT_KEY).toBe("provisioning_worker:health");
   });
 });

@@ -14,8 +14,7 @@ import { getCloudAwareEnv } from "../runtime/cloud-bindings";
  * share an Upstash/Redis instance via `buildRedisClient`, so this is
  * cheaper than a Neon round-trip and gives self-healing via TTL.
  */
-export const PROVISIONING_WORKER_HEARTBEAT_KEY =
-  "provisioning_worker:health";
+export const PROVISIONING_WORKER_HEARTBEAT_KEY = "provisioning_worker:health";
 
 /**
  * How long a single heartbeat is valid. The daemon refreshes every ~15s
@@ -73,9 +72,7 @@ export async function checkProvisioningWorkerHealth(): Promise<ProvisioningWorke
 
   let raw: string | null;
   try {
-    raw = (await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY)) as
-      | string
-      | null;
+    raw = (await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY)) as string | null;
   } catch (error) {
     return {
       ok: false,
@@ -95,8 +92,7 @@ export async function checkProvisioningWorkerHealth(): Promise<ProvisioningWorke
       required: true,
       status: 503,
       code: "PROVISIONING_WORKER_UNHEALTHY",
-      error:
-        "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
+      error: "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
     };
   }
 

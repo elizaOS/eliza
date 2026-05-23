@@ -286,7 +286,10 @@ async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
   // Scale down path. Drain only the first candidate per cycle to avoid
   // draining the whole pool on a single cron tick if multiple nodes show
   // up as idle simultaneously.
-  const target = decision.shouldScaleDownNodeIds[0]!;
+  const target = decision.shouldScaleDownNodeIds[0];
+  if (!target) {
+    return { action: "noop" };
+  }
   try {
     await autoscaler.drainNode(target, { deprovision: true });
     return { action: "scale_down", detail: target };
