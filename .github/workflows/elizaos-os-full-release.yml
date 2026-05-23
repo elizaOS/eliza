@@ -106,7 +106,7 @@ jobs:
       # contents: write — required by softprops/action-gh-release to
       #   attach SHA256SUMS to the release asset list.
       # id-token: write + attestations: write — required by
-      #   actions/attest-build-provenance@v4 to mint a Sigstore-signed
+      #   actions/attest-build-provenance@v2 to mint a Sigstore-signed
       #   SLSA provenance attestation over SHA256SUMS via GitHub OIDC.
       contents: write
       id-token: write
@@ -197,7 +197,7 @@ jobs:
         #
         #   gh attestation verify SHA256SUMS --owner elizaOS
         #   sha256sum -c SHA256SUMS --ignore-missing
-        uses: actions/attest-build-provenance@v4
+        uses: actions/attest-build-provenance@v2
         with:
           subject-path: ./_artifacts/SHA256SUMS
 
