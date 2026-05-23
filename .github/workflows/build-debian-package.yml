@@ -81,6 +81,38 @@ jobs:
           echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
           echo "Found .deb: $DEB ($DEB_SIZE bytes)"
 
+      - name: Lint .deb with lintian
+        # lintian is installed in the "Install Debian build tools" step
+        # above but currently never invoked. Run it on the produced .deb
+        # and surface findings as GitHub annotations. Findings do NOT
+        # fail the build — this is a visibility step, not a gate. A
+        # follow-up PR can flip to fail-on-error once the noise level
+        # is acceptable.
+        if: steps.find_deb.outputs.deb_path != ''
+        run: |
+          set +e
+          lintian -i -I --pedantic "${{ steps.find_deb.outputs.deb_path }}" > lintian.log 2>&1
+          LINTIAN_EXIT=$?
+          set -e
+          while IFS= read -r line; do
+            case "$line" in
+              E:*) echo "::warning::lintian (error): $line" ;;
+              W:*) echo "::warning::lintian (warning): $line" ;;
+              I:*) echo "::notice::lintian (info): $line" ;;
+              P:*) echo "::notice::lintian (pedantic): $line" ;;
+            esac
+          done < lintian.log
+          echo "lintian exit code: $LINTIAN_EXIT (annotations only; not failing build)"
+
+      - name: Upload lintian log
+        if: always() && steps.find_deb.outputs.deb_path != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: elizaos-debian-lintian-log
+          path: lintian.log
+          if-no-files-found: ignore
+          retention-days: 30
+
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
         with:
