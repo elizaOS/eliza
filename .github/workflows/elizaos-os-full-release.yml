@@ -102,6 +102,15 @@ jobs:
     needs: [verify-artifacts]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      # id-token + attestations required by
+      # actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      # SLSA provenance attestation over the SHA256SUMS file via
+      # GitHub OIDC. contents: read is sufficient — this job does not
+      # push to the release directly.
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -175,6 +184,24 @@ jobs:
           name: elizaos-os-release-manifest-published
           path: packages/os/release/beta-2026-05-16/manifest.json
           retention-days: 90
+
+      - name: Attest SLSA build provenance over SHA256SUMS
+        # Mints a single Sigstore-signed in-toto/SLSA provenance
+        # attestation that covers every release artifact via its hash,
+        # by attesting the canonical SHA256SUMS manifest produced in
+        # the SHA256SUMS-aggregation PR. Users verify with:
+        #
+        #   gh attestation verify SHA256SUMS --owner elizaOS
+        #   gpg --verify SHA256SUMS.asc SHA256SUMS  # once GPG signing lands
+        #   sha256sum -c SHA256SUMS --ignore-missing
+        #
+        # DEPENDENCY: requires the SHA256SUMS-aggregation PR to be
+        # merged first. If this PR lands first, the action errors on
+        # missing subject-path — that's the correct signal that the
+        # PRs were taken out of order.
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ./_artifacts/SHA256SUMS
 
   publish-apt:
     needs: [prepare, trigger-debian-package, verify-artifacts]
