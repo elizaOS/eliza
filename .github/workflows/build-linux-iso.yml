@@ -79,6 +79,12 @@ jobs:
 
       - name: Locate and rename ISO
         id: iso
+        env:
+          # Fail closed if the ISO exceeds this budget. Current amd64 builds
+          # land around 1.9 GB, so 3 GiB leaves ~50% headroom without letting
+          # a silent regression bloat the image. Override via env if a build
+          # intentionally needs more room.
+          ISO_MAX_BYTES: ${{ env.ELIZAOS_ISO_MAX_BYTES || '3221225472' }}
         run: |
           set -euo pipefail
           ISO=$(find "${VARIANT_DIR}/out" -name "elizaos-linux-${{ matrix.arch }}-*.iso" | sort | tail -1)
@@ -89,12 +95,17 @@ jobs:
           DATE=$(date +%Y.%m.%d)
           DEST="elizaos-linux-${CHANNEL}-${DATE}-${{ matrix.arch }}.iso"
           cp "$ISO" "$DEST"
+          SIZE=$(stat --format=%s "$DEST")
+          if [ "$SIZE" -gt "$ISO_MAX_BYTES" ]; then
+            echo "::error::ISO above size budget: ${SIZE} bytes > ${ISO_MAX_BYTES} bytes. Set ELIZAOS_ISO_MAX_BYTES if the increase is intentional."
+            exit 1
+          fi
           sha256sum "$DEST" > "$DEST.sha256"
           {
             echo "path=$DEST"
             echo "filename=$DEST"
             echo "sha256=$(sha256sum "$DEST" | cut -d' ' -f1)"
-            echo "size=$(stat --format=%s "$DEST")"
+            echo "size=$SIZE"
           } >> "$GITHUB_OUTPUT"
 
       - name: Smoke test ISO (headless QEMU, amd64 only)
