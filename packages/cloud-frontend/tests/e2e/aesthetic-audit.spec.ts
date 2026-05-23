@@ -521,6 +521,37 @@ async function captureAuditedScreenshot(
   return screenshotQualityIssues(label, quality);
 }
 
+function reportBlockingIssues(report: PageReport): string[] {
+  const issues: string[] = [];
+  if (!report.loadOk) {
+    issues.push(
+      `load failed for ${report.viewport}/${report.slug}: ${report.loadError ?? "unknown error"}`,
+    );
+  }
+  for (const error of report.consoleErrors) {
+    issues.push(`console error for ${report.viewport}/${report.slug}: ${error}`);
+  }
+  for (const failed of report.failedRequests) {
+    issues.push(
+      `failed request for ${report.viewport}/${report.slug}: ${failed.status} ${failed.url}`,
+    );
+  }
+  for (const violation of report.paletteViolations) {
+    issues.push(
+      `palette violation for ${report.viewport}/${report.slug}: ${violation}`,
+    );
+  }
+  for (const violation of report.radiusViolations) {
+    issues.push(
+      `radius violation for ${report.viewport}/${report.slug}: ${violation.selector} ${violation.borderRadius} ${violation.classes}`,
+    );
+  }
+  for (const issue of report.screenshotIssues) {
+    issues.push(`screenshot issue for ${report.viewport}/${report.slug}: ${issue}`);
+  }
+  return issues;
+}
+
 async function auditPage(
   page: Page,
   _route: string,
@@ -1359,8 +1390,9 @@ for (const viewport of VIEWPORTS) {
         }
 
         persistReport(report);
-        if (report.screenshotIssues.length > 0) {
-          throw new Error(report.screenshotIssues.join("\n"));
+        const blockingIssues = reportBlockingIssues(report);
+        if (blockingIssues.length > 0) {
+          throw new Error(blockingIssues.join("\n"));
         }
       });
     }

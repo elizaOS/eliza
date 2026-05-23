@@ -20,11 +20,18 @@ For a published release, the GitHub Release page contains:
 
 | File | What it is | Required? |
 | --- | --- | --- |
-| `*.iso`, `*.deb`, `*.ova`, `*.qcow2` | Release artifacts | yes |
-| `*.sha256` | Per-artifact SHA-256 (legacy convenience) | yes |
-| `SHA256SUMS` | Canonical aggregated checksums file | once landed |
-| `*.spdx.json` | SPDX SBOM (Linux ISO only, today) | once landed |
+| `*.raw.img.zst`, `*.qcow2.zst`, `*.utm.zip`, `*-android-*.zip` | Release artifacts | yes |
+| `SHA256SUMS` | Canonical aggregated checksums file | yes |
+| `*.spdx.json` | SPDX SBOM (Linux image only, today) | once landed |
 | `SHA256SUMS.asc` _(future)_ | Detached GPG signature on `SHA256SUMS` | once the signing-key RFC lands |
+
+Artifact filenames follow the pattern:
+
+```
+elizaos-{channel}-{date}-{platform}-{arch}.{ext}
+```
+
+For example: `elizaos-beta-2026.05.16-linux-x86_64.raw.img.zst`
 
 Per-artifact GitHub artifact attestations (SLSA build provenance via
 Sigstore) live in GitHub, not the release tarball. Verify them with the
@@ -36,15 +43,20 @@ The cheapest, most universal check. Available on any Unix.
 
 ```sh
 cd path/to/your/downloads
+
+# Linux (coreutils):
 sha256sum -c SHA256SUMS --ignore-missing
+
+# macOS:
+shasum -a 256 -c SHA256SUMS --ignore-missing
 ```
 
-Expected output:
+Expected output (one line per artifact present in the directory):
 
 ```
-elizaos-linux-stable-2026.05.23-amd64.iso: OK
-elizaos_2.0.1_amd64.deb: OK
-elizaos-vm-2026.05.23.ova: OK
+elizaos-beta-2026.05.16-linux-x86_64.raw.img.zst: OK
+elizaos-beta-2026.05.16-vm-linux-x86_64.qcow2.zst: OK
+elizaos-beta-2026.05.16-vm-macos-silicon.utm.zip: OK
 ```
 
 If any line says `FAILED`, the artifact has been modified in transit
@@ -52,20 +64,20 @@ If any line says `FAILED`, the artifact has been modified in transit
 
 ## Layer 2 — GitHub artifact attestations (RECOMMENDED)
 
-Each release artifact (ISO, .deb, .ova) carries a Sigstore-signed SLSA
-build provenance attestation, minted at build time via GitHub OIDC.
-Verify with the [`gh` CLI](https://cli.github.com/):
+Each release artifact carries a Sigstore-signed SLSA build provenance
+attestation, minted at build time via GitHub OIDC. Verify with the
+[`gh` CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify elizaos-linux-stable-2026.05.23-amd64.iso --owner elizaOS
-gh attestation verify elizaos_2.0.1_amd64.deb                    --owner elizaOS
-gh attestation verify elizaos-vm-2026.05.23.ova                  --owner elizaOS
-gh attestation verify SHA256SUMS                                  --owner elizaOS
+gh attestation verify elizaos-beta-2026.05.16-linux-x86_64.raw.img.zst --owner elizaOS
+gh attestation verify elizaos-beta-2026.05.16-vm-linux-x86_64.qcow2.zst --owner elizaOS
+gh attestation verify SHA256SUMS                                           --owner elizaOS
 ```
 
-Each command will report the signing identity, the workflow that
-produced the artifact, the source commit, and the Sigstore Rekor entry.
-A passing verification means:
+Replace the date and channel with the actual release values. Each command
+will report the signing identity, the workflow that produced the artifact,
+the source commit, and the Sigstore Rekor entry. A passing verification
+means:
 
 - the artifact was built by the elizaOS GitHub repository
 - the build used the workflow source code at the recorded commit
@@ -93,17 +105,17 @@ helper will print a `[--]` notice and skip it.
 
 ## Layer 4 — SBOM inspection (OPTIONAL)
 
-Each ISO release ships an SPDX-JSON SBOM enumerating every Debian
-package in the live image. Get a quick package count with:
+Each Linux image release ships an SPDX-JSON SBOM enumerating every
+package in the image. Get a quick package count with:
 
 ```sh
-jq '.packages | length' elizaos-linux-stable-2026.05.23-amd64.spdx.json
+jq '.packages | length' elizaos-beta-2026.05.16-linux-x86_64.spdx.json
 ```
 
 For vulnerability scanning, feed the SBOM into [Grype](https://github.com/anchore/grype):
 
 ```sh
-grype sbom:elizaos-linux-stable-2026.05.23-amd64.spdx.json
+grype sbom:elizaos-beta-2026.05.16-linux-x86_64.spdx.json
 ```
 
 ## The one-command runner
@@ -117,9 +129,9 @@ It exits:
 | `1` | `SHA256SUMS` missing or roundtrip failed |
 | `2` | an optional layer ran and failed (invalid attestation, bad GPG sig) |
 
-It depends only on coreutils for the required layer. `gh`, `gpg`, and
-`jq` enable the optional layers and produce notices when missing rather
-than failing.
+It depends only on `sha256sum` (Linux) or `shasum` (macOS) for the
+required layer. `gh`, `gpg`, and `jq` enable the optional layers and
+produce notices when missing rather than failing.
 
 ## Reporting verification problems
 
