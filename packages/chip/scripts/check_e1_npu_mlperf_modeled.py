@@ -56,7 +56,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         problems.append("missing fidelity block")
     else:
         not_implemented = fidelity.get("not_implemented")
-        if not isinstance(not_implemented, list) or "official MLCommons C++ LoadGen" not in not_implemented:
+        if (
+            not isinstance(not_implemented, list)
+            or "official MLCommons C++ LoadGen" not in not_implemented
+        ):
             problems.append("fidelity block must explicitly reject official MLCommons claims")
         if "Linux /dev/e1-npu target execution" not in not_implemented:
             problems.append("fidelity block must separate modeled harness from Linux target proof")
@@ -68,9 +71,7 @@ def validate(report: dict[str, Any]) -> list[str]:
         if workload.get("npu_ops_per_inference") != ["GEMM_S8", "GEMM_S8"]:
             problems.append("workload must issue two GEMM_S8 NPU ops per inference")
         if workload.get("macs_per_inference") != MACS_PER_INFERENCE:
-            problems.append(
-                f"workload macs_per_inference must stay pinned at {MACS_PER_INFERENCE}"
-            )
+            problems.append(f"workload macs_per_inference must stay pinned at {MACS_PER_INFERENCE}")
 
     dataset = report.get("dataset")
     if not isinstance(dataset, dict):

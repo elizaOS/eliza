@@ -121,9 +121,7 @@ def check_lint(verilator: str) -> dict:
         ]
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    diags = [
-        ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln
-    ]
+    diags = [ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln]
     if proc.returncode == 0 and not diags:
         return {
             "id": "verilator_lint",

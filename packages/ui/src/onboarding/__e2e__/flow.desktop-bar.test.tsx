@@ -34,6 +34,28 @@ describe("CompanionBar — desktop tray behaviour", () => {
     expect(onExpandChange).toHaveBeenLastCalledWith(false);
   });
 
+  it("clicking the pill opens and closes the chat input", () => {
+    const onExpandChange = vi.fn();
+    render(<CompanionBar hooks={{ onExpandChange }} />);
+    const pill = screen.getByRole("button", { name: /elizaos companion/i });
+
+    act(() => {
+      fireEvent.click(pill);
+    });
+
+    expect(pill.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByLabelText(/message eliza/i)).toBeTruthy();
+    expect(onExpandChange).toHaveBeenLastCalledWith(true);
+
+    act(() => {
+      fireEvent.click(pill);
+    });
+
+    expect(pill.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText(/message eliza/i)).toBeNull();
+    expect(onExpandChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("spacebar inside the expanded composer fires push-to-talk down + up", () => {
     const onPushToTalkDown = vi.fn();
     const onPushToTalkUp = vi.fn();

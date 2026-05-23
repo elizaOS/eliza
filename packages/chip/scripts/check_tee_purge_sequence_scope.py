@@ -99,8 +99,7 @@ def structured_findings(
         findings.append(
             {
                 "code": (
-                    "tee_purge_missing_real_evidence_"
-                    f"{code_from_text(claim, 'purge_evidence')}"
+                    f"tee_purge_missing_real_evidence_{code_from_text(claim, 'purge_evidence')}"
                 ),
                 "severity": "blocker",
                 "message": (

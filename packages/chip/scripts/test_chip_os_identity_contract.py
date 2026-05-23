@@ -19,11 +19,14 @@ class ChipOsIdentityContractTests(unittest.TestCase):
 
     def test_script_default_parses_shell_and_python_defaults(self) -> None:
         self.assertEqual(
-            ident.script_default('pkg=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}', "AOSP_AGENT_PACKAGE"),
+            ident.script_default("pkg=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}", "AOSP_AGENT_PACKAGE"),
             "ai.elizaos.app",
         )
         self.assertEqual(
-            ident.script_default('env("AOSP_AGENT_SERVICE", "ai.elizaos.app/.ElizaAgentService")', "AOSP_AGENT_SERVICE"),
+            ident.script_default(
+                'env("AOSP_AGENT_SERVICE", "ai.elizaos.app/.ElizaAgentService")',
+                "AOSP_AGENT_SERVICE",
+            ),
             "ai.elizaos.app/.ElizaAgentService",
         )
         self.assertEqual(
@@ -31,7 +34,9 @@ class ChipOsIdentityContractTests(unittest.TestCase):
             "ai.elizaos.app",
         )
         self.assertEqual(
-            ident.script_default('agent_service="ai.elizaos.app/.ElizaAgentService"', "AOSP_AGENT_SERVICE"),
+            ident.script_default(
+                'agent_service="ai.elizaos.app/.ElizaAgentService"', "AOSP_AGENT_SERVICE"
+            ),
             "ai.elizaos.app/.ElizaAgentService",
         )
 
@@ -53,7 +58,9 @@ class ChipOsIdentityContractTests(unittest.TestCase):
         )
 
     def test_identity_inputs_include_release_and_plugin_manifest_surfaces(self) -> None:
-        self.assertTrue(ident.APP_AGENT_PLUGIN_MANIFEST.as_posix().endswith("plugins-manifest.json"))
+        self.assertTrue(
+            ident.APP_AGENT_PLUGIN_MANIFEST.as_posix().endswith("plugins-manifest.json")
+        )
         self.assertGreaterEqual(len(ident.ANDROID_RELEASE_MANIFESTS), 2)
 
     def test_release_validation_tokens_extracts_launcher_agent_contract(self) -> None:

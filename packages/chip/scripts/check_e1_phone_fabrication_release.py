@@ -11,8 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE_PATH = (
-    ROOT
-    / "board/kicad/e1-phone/production/readiness/"
+    ROOT / "board/kicad/e1-phone/production/readiness/"
     "fabrication-enclosure-e2e-release-gate-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_fabrication_enclosure_e2e_release_gate.v1"

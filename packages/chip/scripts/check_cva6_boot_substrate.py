@@ -29,7 +29,6 @@ import json
 import os
 import shutil
 import subprocess
-import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -46,11 +45,16 @@ SUBSYSTEM = "cpu_ap"
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+    return _dt.datetime.now(_dt.UTC).isoformat()
 
 
-def _write(status: str, blocker_id: str | None, reason: str | None,
-           evidence: list[str], extra: dict | None = None) -> None:
+def _write(
+    status: str,
+    blocker_id: str | None,
+    reason: str | None,
+    evidence: list[str],
+    extra: dict | None = None,
+) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": "eliza.gate_status.v1",
@@ -71,11 +75,11 @@ def _tool_on_path(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-def _run(cmd: list[str], cwd: Path, env: dict, log: Path,
-         timeout: int) -> tuple[int, str]:
+def _run(cmd: list[str], cwd: Path, env: dict, log: Path, timeout: int) -> tuple[int, str]:
     with log.open("w", encoding="utf-8") as fh:
-        proc = subprocess.run(cmd, cwd=str(cwd), env=env, stdout=fh,
-                              stderr=subprocess.STDOUT, timeout=timeout)
+        proc = subprocess.run(
+            cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
+        )
     return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
 
 
@@ -130,9 +134,12 @@ def main() -> int:
     # Toolchain gate (fail-closed): native Verilator + RISC-V gcc required.
     for tool in ("verilator", "riscv64-unknown-elf-gcc"):
         if not _tool_on_path(tool):
-            _write("BLOCKED", "toolchain-missing",
-                   f"{tool} not on PATH — run `source tools/env.sh` first",
-                   evidence)
+            _write(
+                "BLOCKED",
+                "toolchain-missing",
+                f"{tool} not on PATH — run `source tools/env.sh` first",
+                evidence,
+            )
             print(f"BLOCKED: {tool} not on PATH (source tools/env.sh)")
             return 1
 
@@ -150,7 +157,9 @@ def main() -> int:
         RESULTS_XML.unlink()
     sim_log = ROOT / "build/reports/cva6_boot_substrate.sim.log"
     cmd = [
-        "make", "-f", str(MAKEFILE),
+        "make",
+        "-f",
+        str(MAKEFILE),
         "SIM_BUILD=sim_build_cva6_dram_boot",
         "MODULE=test_cva6_dram_boot",
         f"PLUSARGS=+E1_DRAM_PRELOAD_HEX={FW_HEX}",
@@ -158,38 +167,59 @@ def main() -> int:
     try:
         rc, out = _run(cmd, COCOTB_DIR, env, sim_log, timeout=1800)
     except subprocess.TimeoutExpired:
-        _write("BLOCKED", "sim-timeout",
-               "cocotb sim exceeded 1800s (elaboration or run hang)", evidence)
+        _write(
+            "BLOCKED",
+            "sim-timeout",
+            "cocotb sim exceeded 1800s (elaboration or run hang)",
+            evidence,
+        )
         print("BLOCKED: cocotb sim timed out")
         return 1
 
     # Distinguish an elaboration failure from a runtime assertion failure.
     if rc != 0 and not RESULTS_XML.exists():
         tail = "\n".join(out.splitlines()[-25:])
-        _write("FAIL", "elaboration-or-build",
-               f"Verilator build/elaboration of e1_cva6_dram_boot_top failed; "
-               f"see {sim_log}", evidence, extra={"log_tail": tail})
+        _write(
+            "FAIL",
+            "elaboration-or-build",
+            f"Verilator build/elaboration of e1_cva6_dram_boot_top failed; see {sim_log}",
+            evidence,
+            extra={"log_tail": tail},
+        )
         print(f"FAIL: elaboration/build failed; see {sim_log}")
         return 1
 
     passed, reason = _parse_results()
     if not passed:
-        _write("FAIL", "execution-proof",
-               f"CVA6 execution proof failed: {reason}", evidence,
-               extra={"sim_log": str(sim_log.relative_to(ROOT))})
+        _write(
+            "FAIL",
+            "execution-proof",
+            f"CVA6 execution proof failed: {reason}",
+            evidence,
+            extra={"sim_log": str(sim_log.relative_to(ROOT))},
+        )
         print(f"FAIL: {reason}")
         return 1
 
-    _write("PASS", None, None, evidence + [
-        "verify/cocotb/integration/Makefile.cva6-dram-boot",
-        "build/reports/cva6_boot_substrate.sim.log",
-    ], extra={
-        "proof": "CVA6 elaborated + bare-metal image executed from real DRAM "
-                 "(markers + timer trap asserted)",
-    })
-    print("PASS: CVA6 elaborated and the bare-metal image provably executed "
-          "from the real DRAM controller (DRAM markers + CLINT timer trap "
-          "asserted).")
+    _write(
+        "PASS",
+        None,
+        None,
+        evidence
+        + [
+            "verify/cocotb/integration/Makefile.cva6-dram-boot",
+            "build/reports/cva6_boot_substrate.sim.log",
+        ],
+        extra={
+            "proof": "CVA6 elaborated + bare-metal image executed from real DRAM "
+            "(markers + timer trap asserted)",
+        },
+    )
+    print(
+        "PASS: CVA6 elaborated and the bare-metal image provably executed "
+        "from the real DRAM controller (DRAM markers + CLINT timer trap "
+        "asserted)."
+    )
     return 0
 
 

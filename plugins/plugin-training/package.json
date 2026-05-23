@@ -24,6 +24,7 @@
   },
   "scripts": {
     "train": "bun run src/cli/train.ts",
+    "collect": "bun run src/core/cli.ts run-collection",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "bun run build:js && bun run build:views && bun run build:types",
@@ -48,7 +49,27 @@
   },
   "elizaos": {
     "app": {
-      "heroImage": "assets/hero.png"
+      "displayName": "Fine Tuning",
+      "category": "tool",
+      "launchType": "internal-tab",
+      "icon": "BrainCircuit",
+      "heroImage": "assets/hero.png",
+      "capabilities": [
+        "training",
+        "fine-tuning",
+        "trajectories",
+        "datasets",
+        "models",
+        "evals",
+        "benchmarks",
+        "analysis",
+        "data-collection"
+      ],
+      "uiExtension": {
+        "detailPanelId": "plugin-dash-fine-tuning"
+      },
+      "developerOnly": true,
+      "visibleInAppStore": true
     }
   },
   "publishConfig": {

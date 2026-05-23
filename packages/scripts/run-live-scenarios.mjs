@@ -19,12 +19,14 @@
  *     to the CLI via LIFEOPS_LIVE_JUDGE_MIN_SCORE.
  *   - SCENARIO_FILTER: comma-separated scenario IDs (forwards as --scenario).
  *   - SCENARIO_ROOT: scenario directory, relative to repo root or absolute
- *     (default: plugins/app-lifeops/test/scenarios).
+ *     (default: packages/test/scenarios).
  *   - SCENARIO_INCLUDE_PENDING=1: include scenarios marked status="pending".
  *   - SCENARIO_ENFORCE_GATE=0: keep the workflow green while still writing
  *     the report when scenario assertions fail.
  *   - SKIP_REASON: required when any scenario is intentionally skipped.
  *   - REPORT_PATH: where to write the JSON report (default: artifacts/lifeops-scenario-report.json).
+ *   - RUN_DIR: where to save trajectories, matrix.json, and viewer/ (default: artifacts/scenario-runs/live).
+ *   - EXPORT_NATIVE_PATH: optional eliza_native_v1 JSONL export path.
  *
  * Usage:
  *   node packages/scripts/run-live-scenarios.mjs [--list] [--scenario id1,id2] [--report path]
@@ -47,10 +49,9 @@ const SCENARIO_CLI = path.join(
   "src",
   "cli.ts",
 );
-const LIFEOPS_SCENARIO_ROOT = path.join(
+const DEFAULT_SCENARIO_ROOT = path.join(
   REPO_ROOT,
-  "plugins",
-  "app-lifeops",
+  "packages",
   "test",
   "scenarios",
 );
@@ -58,7 +59,7 @@ const scenarioRootInput = (process.env.SCENARIO_ROOT ?? "").trim();
 const scenarioRoot =
   scenarioRootInput.length > 0
     ? path.resolve(REPO_ROOT, scenarioRootInput)
-    : LIFEOPS_SCENARIO_ROOT;
+    : DEFAULT_SCENARIO_ROOT;
 
 if (!existsSync(SCENARIO_CLI)) {
   console.error(
@@ -93,6 +94,10 @@ const reportPath =
   process.env.REPORT_PATH ??
   path.join(REPO_ROOT, "artifacts", "lifeops-scenario-report.json");
 mkdirSync(path.dirname(reportPath), { recursive: true });
+const runDir =
+  process.env.RUN_DIR ??
+  path.join(REPO_ROOT, "artifacts", "scenario-runs", "live");
+mkdirSync(runDir, { recursive: true });
 
 const args = [
   "--import",
@@ -102,8 +107,17 @@ const args = [
   scenarioRoot,
   "--report",
   reportPath,
-  ...process.argv.slice(2),
+  "--run-dir",
+  runDir,
 ];
+const exportNativePath = (process.env.EXPORT_NATIVE_PATH ?? "").trim();
+if (exportNativePath.length > 0) {
+  mkdirSync(path.dirname(path.resolve(REPO_ROOT, exportNativePath)), {
+    recursive: true,
+  });
+  args.push("--export-native", exportNativePath);
+}
+args.push(...process.argv.slice(2));
 const filter = (process.env.SCENARIO_FILTER ?? "").trim();
 if (filter.length > 0) {
   args.push("--scenario", filter);
@@ -121,7 +135,7 @@ const env = {
 };
 
 console.log(
-  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} report=${reportPath} args=${args.slice(2).join(" ")}`,
+  `[run-live-scenarios] threshold=${judgeThreshold} enforce=${enforceGate ? "yes" : "no"} pending=${env.SCENARIO_INCLUDE_PENDING === "1" ? "included" : "excluded"} report=${reportPath} runDir=${runDir} args=${args.slice(2).join(" ")}`,
 );
 
 const child = spawn(process.execPath, args, {

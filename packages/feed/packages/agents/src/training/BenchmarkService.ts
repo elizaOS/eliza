@@ -177,7 +177,47 @@ export class BenchmarkService {
       "BenchmarkService",
     );
 
-    const { BenchmarkRunner } = await import("../benchmark/BenchmarkRunner");
+    const importBenchmarkRunner = new Function(
+      "specifier",
+      "return import(specifier)",
+    ) as (specifier: string) => Promise<{
+      BenchmarkRunner: {
+        runSingle(options: {
+          benchmarkPath: string;
+          agentRuntime: unknown;
+          agentUserId: string;
+          saveTrajectory: boolean;
+          outputDir: string;
+          forceModel: string;
+        }): Promise<{
+          metrics: {
+            totalPnl: number;
+            predictionMetrics: {
+              accuracy: number;
+              correctPredictions: number;
+              totalPositions: number;
+            };
+            optimalityScore: number;
+            optimalityScoreSource?: string;
+            perpMetrics: { totalTrades: number };
+          };
+        }>;
+      };
+    }>;
+    let BenchmarkRunner: Awaited<
+      ReturnType<typeof importBenchmarkRunner>
+    >["BenchmarkRunner"];
+    try {
+      ({ BenchmarkRunner } = await importBenchmarkRunner(
+        "../benchmark/BenchmarkRunner",
+      ));
+    } catch (err) {
+      throw new Error(
+        `Feed benchmark runner is unavailable. Generate benchmark matrix/eval artifacts through plugin-training or restore packages/feed/packages/agents/src/benchmark/BenchmarkRunner. ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
     const result = await BenchmarkRunner.runSingle({
       benchmarkPath: bmPath,
       agentRuntime: runtime,

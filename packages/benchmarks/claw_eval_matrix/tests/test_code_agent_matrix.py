@@ -14,15 +14,24 @@ from benchmarks.claw_eval_matrix.code_agent_matrix import (
 def test_load_tasks_selects_deterministic_coding_slice() -> None:
     tasks = load_tasks()
 
-    assert [task["task_id"] for task in tasks] == [
+    assert len(tasks) >= 5
+    assert {
         "T068zh_llama_w8a8_cuda_bug",
         "T070zh_js_async_generator_trace",
-    ]
-    assert all(task["category"] == "coding" for task in tasks)
+    }.issubset({task["task_id"] for task in tasks})
+    assert all(
+        ((component or {}).get("check") or {}).get("type") != "llm_judge"
+        for task in tasks
+        for component in task.get("scoring_components") or []
+    )
 
 
 def test_score_task_uses_yaml_keyword_components() -> None:
-    task = load_tasks(max_tasks=1)[0]
+    task = next(
+        task
+        for task in load_tasks()
+        if task["task_id"] == "T068zh_llama_w8a8_cuda_bug"
+    )
     result = score_task(
         task,
         {
@@ -71,3 +80,21 @@ def test_mock_run_writes_normalized_result(tmp_path: Path) -> None:
     assert result["summary"]["resolved"] == 1
     json.dumps(result)
 
+
+def test_mock_run_expands_to_requested_task_count_with_trajectories(tmp_path: Path) -> None:
+    result = run_claw_eval_matrix(
+        task_agent="elizaos",
+        model_provider="cerebras",
+        model="gpt-oss-120b",
+        output_dir=tmp_path / "out",
+        trajectory_dir=tmp_path / "traj",
+        max_tasks=5,
+        command_template="",
+        timeout_seconds=120,
+        mock=True,
+    )
+
+    assert result["summary"]["total_instances"] == 5
+    assert result["summary"]["resolved"] == 5
+    assert len(result["results"]) == 5
+    assert all(Path(item["trajectory_path"]).exists() for item in result["results"])

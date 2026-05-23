@@ -346,7 +346,10 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                     "reason": "metric must be numeric",
                 }
             )
-    if isinstance(metrics.get("attempted_misses"), int | float) and metrics["attempted_misses"] <= 0:
+    if (
+        isinstance(metrics.get("attempted_misses"), int | float)
+        and metrics["attempted_misses"] <= 0
+    ):
         findings.append(
             {
                 "name": "attempted_misses",
@@ -355,9 +358,10 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "pressure harness must attempt at least one miss",
             }
         )
-    if isinstance(metrics.get("max_in_flight_misses"), int | float) and metrics[
-        "max_in_flight_misses"
-    ] < 2:
+    if (
+        isinstance(metrics.get("max_in_flight_misses"), int | float)
+        and metrics["max_in_flight_misses"] < 2
+    ):
         findings.append(
             {
                 "name": "max_in_flight_misses",
@@ -366,9 +370,10 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "current hierarchy did not sustain multiple in-flight misses",
             }
         )
-    if isinstance(metrics.get("display_service_window_violations"), int | float) and metrics[
-        "display_service_window_violations"
-    ] > 0:
+    if (
+        isinstance(metrics.get("display_service_window_violations"), int | float)
+        and metrics["display_service_window_violations"] > 0
+    ):
         findings.append(
             {
                 "name": "display_service_window_violations",

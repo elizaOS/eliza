@@ -101,9 +101,7 @@ def check_run_artifact(lane: dict[str, Any], errors: list[str]) -> None:
         errors.append(f"{lane.get('id', '<no_id>')}: last_run_artifact must be a string or null")
         return
     if not (ROOT / artifact).exists():
-        errors.append(
-            f"{lane.get('id', '<no_id>')}: last_run_artifact missing on disk: {artifact}"
-        )
+        errors.append(f"{lane.get('id', '<no_id>')}: last_run_artifact missing on disk: {artifact}")
 
 
 def main() -> int:

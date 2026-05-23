@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 BURNDOWN = ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml"
@@ -113,7 +111,11 @@ def main() -> int:
         if not isinstance(handoff_outputs, list):
             raise ValueError("handoff required_handoff_outputs must be a list")
         handoff_present = present_count(
-            [str(path) for path in handoff_outputs if str(path).startswith(("board/", "mechanical/"))]
+            [
+                str(path)
+                for path in handoff_outputs
+                if str(path).startswith(("board/", "mechanical/"))
+            ]
         )
 
         production_step_files = board_step.get("production_step_files")
@@ -134,8 +136,12 @@ def main() -> int:
             or row.get("interference_count") not in (0, "0")
         ]
 
-        supplier_blocked = sum(1 for row in supplier_families if row.get("release_allowed") is not True)
-        interface_blocked = sum(1 for row in physical_interfaces if row.get("release_allowed") is not True)
+        supplier_blocked = sum(
+            1 for row in supplier_families if row.get("release_allowed") is not True
+        )
+        interface_blocked = sum(
+            1 for row in physical_interfaces if row.get("release_allowed") is not True
+        )
         blockers = burndown.get("release_blockers")
         if not isinstance(blockers, list):
             raise ValueError("release_blockers must be a list")

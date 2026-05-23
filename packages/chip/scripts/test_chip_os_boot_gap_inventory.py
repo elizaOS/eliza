@@ -168,9 +168,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     "reason": "AOSP_DIR unset",
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 1)
@@ -201,9 +199,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     "subsystem": "pd",
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)
@@ -238,9 +234,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     ],
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertIn("failure_cpu_ap_linux_evidence", report["detailed_blocker_codes"])
@@ -294,9 +288,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                 report_dir / "chip-os-optimization-gap-inventory.json",
                 {
                     "status": "blocked",
-                    "findings": [
-                        {"code": "optimization_artifact_not_pass", "severity": "blocker"}
-                    ],
+                    "findings": [{"code": "optimization_artifact_not_pass", "severity": "blocker"}],
                 },
             )
             write_json(

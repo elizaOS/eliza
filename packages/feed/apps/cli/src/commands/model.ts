@@ -23,9 +23,187 @@ import {
   trainedModels,
   trajectories,
 } from "@feed/db";
-import { HuggingFaceModelUploader } from "@feed/training";
 import { getFlag, getOption, parseArgs, wantsHelp } from "../lib/args.js";
 import { logger } from "../lib/logger.js";
+
+type HuggingFaceUploadOptions = {
+  modelId: string;
+  modelName: string;
+  description: string;
+  private: boolean;
+  includeWeights: boolean;
+};
+
+type HuggingFaceUploadResult = {
+  success: boolean;
+  modelUrl?: string;
+  error?: string;
+};
+
+class HuggingFaceModelUploader {
+  private readonly apiUrl = "https://huggingface.co/api";
+
+  async uploadModel(
+    options: HuggingFaceUploadOptions,
+  ): Promise<HuggingFaceUploadResult> {
+    const token = process.env.HUGGING_FACE_TOKEN || process.env.HF_TOKEN;
+    if (!token) {
+      return { success: false, error: "Missing Hugging Face token" };
+    }
+
+    const repoName = options.modelName;
+    const createRepo = await fetch(`${this.apiUrl}/repos/create`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        name: repoName.split("/").pop(),
+        organization: repoName.includes("/") ? repoName.split("/")[0] : undefined,
+        type: "model",
+        private: options.private,
+      }),
+    });
+
+    if (!createRepo.ok && createRepo.status !== 409) {
+      return {
+        success: false,
+        error: `Failed to create repository: ${await createRepo.text()}`,
+      };
+    }
+
+    const readme = [
+      "---",
+      "library_name: elizaos",
+      "tags:",
+      "- elizaos",
+      "- feed",
+      "- reinforcement-learning",
+      "---",
+      "",
+      `# ${repoName}`,
+      "",
+      options.description,
+      "",
+      `Source model id: \`${options.modelId}\``,
+      "",
+      "Uploaded by `feed model upload`.",
+      "",
+    ].join("\n");
+
+    const readmeUpload = await this.uploadFile({
+      repoName,
+      token,
+      remotePath: "README.md",
+      body: readme,
+      contentType: "text/markdown",
+    });
+    if (!readmeUpload.ok) {
+      return {
+        success: false,
+        error: `Failed to upload README.md: ${await readmeUpload.text()}`,
+      };
+    }
+
+    if (options.includeWeights) {
+      const modelRows = await db
+        .select()
+        .from(trainedModels)
+        .where(eq(trainedModels.modelId, options.modelId))
+        .limit(1);
+      const model = modelRows[0];
+      if (!model) {
+        return { success: false, error: `Model not found: ${options.modelId}` };
+      }
+
+      const weightUpload = await this.uploadModelWeights({
+        repoName,
+        token,
+        storagePath: model.storagePath,
+      });
+      if (!weightUpload.success) {
+        return weightUpload;
+      }
+    }
+
+    return {
+      success: true,
+      modelUrl: `https://huggingface.co/${repoName}`,
+    };
+  }
+
+  private async uploadModelWeights(options: {
+    repoName: string;
+    token: string;
+    storagePath: string;
+  }): Promise<HuggingFaceUploadResult> {
+    const source = options.storagePath;
+    const remotePath = /^https?:\/\//.test(source)
+      ? path.basename(new URL(source).pathname) || "model.bin"
+      : path.basename(source) || "model.bin";
+    let body: Blob | Buffer;
+
+    if (/^https?:\/\//.test(source)) {
+      const response = await fetch(source);
+      if (!response.ok) {
+        return {
+          success: false,
+          error: `Failed to fetch model weights from ${source}: ${await response.text()}`,
+        };
+      }
+      body = new Blob([await response.arrayBuffer()]);
+    } else {
+      try {
+        body = await fs.readFile(source);
+      } catch (err) {
+        return {
+          success: false,
+          error: `Failed to read model weights from ${source}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        };
+      }
+    }
+
+    const upload = await this.uploadFile({
+      repoName: options.repoName,
+      token: options.token,
+      remotePath,
+      body,
+      contentType: "application/octet-stream",
+    });
+
+    if (!upload.ok) {
+      return {
+        success: false,
+        error: `Failed to upload ${remotePath}: ${await upload.text()}`,
+      };
+    }
+
+    return { success: true };
+  }
+
+  private uploadFile(options: {
+    repoName: string;
+    token: string;
+    remotePath: string;
+    body: BodyInit;
+    contentType: string;
+  }): Promise<Response> {
+    return fetch(
+      `https://huggingface.co/${options.repoName}/upload/main/${encodeURIComponent(options.remotePath)}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${options.token}`,
+          "Content-Type": options.contentType,
+        },
+        body: options.body,
+      },
+    );
+  }
+}
 
 function printHelp(): void {
   console.log(`

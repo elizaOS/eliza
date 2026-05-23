@@ -153,6 +153,7 @@ BSP="${CVA6}/verif/tests/custom/common"
 LINK="${CVA6}/config/gen_from_riscv_config/linker/link.ld"
 ELF="${BUILD}/coremark.cva6.rv64gc.elf"
 GCC_FLAGS="-O3 -g -march=rv64gc -mabi=lp64d -static -mcmodel=medany -fvisibility=hidden -nostdlib -nostartfiles -fno-tree-loop-distribute-patterns -funroll-all-loops -ffunction-sections -fdata-sections -Wl,-gc-sections -falign-jumps=4 -falign-functions=16"
+# shellcheck disable=SC2086 # GCC_FLAGS is an intentional list of compiler flags.
 "${GCC}" ${GCC_FLAGS} \
     -I"${CM}" -I"${BSP}" -I"${CVA6}/verif/tests/custom/env" \
     -T"${LINK}" \

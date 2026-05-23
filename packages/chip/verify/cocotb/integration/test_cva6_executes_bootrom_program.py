@@ -207,7 +207,6 @@ async def test_cva6_executes_four_instructions(dut):
             f"0x{expected_insn:08x}, got 0x{got_insn:08x}."
         )
         assert got_pc == expected_pc, (
-            f"RVFI retired PC {idx} mismatch: expected 0x{expected_pc:016x}, "
-            f"got 0x{got_pc:016x}."
+            f"RVFI retired PC {idx} mismatch: expected 0x{expected_pc:016x}, got 0x{got_pc:016x}."
         )
         assert got_trap == 0, f"RVFI retired instruction {idx} with trap=1."

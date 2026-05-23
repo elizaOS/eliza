@@ -39,9 +39,12 @@ def test_agentbench_matrix_cli_mock_outputs_summary(tmp_path: Path) -> None:
     payload = json.loads(completed.stdout)
     assert payload["benchmark"] == "agentbench"
     assert payload["adapter"] == "opencode"
-    assert payload["summary"]["total_instances"] == 3
-    assert payload["summary"]["resolved"] == 3.0
+    assert payload["summary"]["total_instances"] == 5
+    assert payload["summary"]["resolved"] == 4.0
+    assert payload["summary"]["resolve_rate"] == 0.8
     assert set(payload["environment_reports"]) == {
+        "database",
+        "knowledge_graph",
         "operating_system",
         "web_browsing",
         "web_shopping",

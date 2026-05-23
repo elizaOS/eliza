@@ -74,28 +74,31 @@ jobs:
         shard:
           - name: messaging
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/messaging.*/**/*.scenario.ts"
+            globs: "packages/test/scenarios/messaging.*/**/*.scenario.ts"
           - name: messaging-apple
             runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "eliza/test/scenarios/messaging.imessage/**/*.scenario.ts eliza/test/scenarios/messaging.signal/**/*.scenario.ts"
+            globs: "packages/test/scenarios/messaging.imessage/**/*.scenario.ts packages/test/scenarios/messaging.signal/**/*.scenario.ts"
           - name: todos-reminders
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/todos/**/*.scenario.ts eliza/test/scenarios/reminders/**/*.scenario.ts"
+            globs: "packages/test/scenarios/todos/**/*.scenario.ts packages/test/scenarios/reminders/**/*.scenario.ts"
           - name: calendar
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/calendar/**/*.scenario.ts"
+            globs: "packages/test/scenarios/calendar/**/*.scenario.ts"
           - name: relationships
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/relationships/**/*.scenario.ts"
+            globs: "packages/test/scenarios/relationships/**/*.scenario.ts"
           - name: selfcontrol-activity
             runs-on: [self-hosted, eliza-e2e-macos]
-            globs: "eliza/test/scenarios/selfcontrol/**/*.scenario.ts eliza/test/scenarios/activity/**/*.scenario.ts"
+            globs: "packages/test/scenarios/selfcontrol/**/*.scenario.ts packages/test/scenarios/activity/**/*.scenario.ts"
           - name: browser-social
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/browser.*/**/*.scenario.ts eliza/test/scenarios/social.*/**/*.scenario.ts"
+            globs: "packages/test/scenarios/browser.*/**/*.scenario.ts packages/test/scenarios/social.*/**/*.scenario.ts"
+          - name: personality-payments
+            runs-on: ubuntu-24.04
+            globs: "packages/test/scenarios/personality/**/*.scenario.ts packages/test/scenarios/payments/*.scenario.ts packages/test/scenarios/payments/**/*.scenario.ts packages/test/scenarios/lifeops.payments/*.scenario.ts packages/test/scenarios/lifeops.payments/**/*.scenario.ts packages/test/scenarios/lifeops.morning-brief/*.scenario.ts"
           - name: cross-cutting-gateway
             runs-on: ubuntu-24.04
-            globs: "eliza/test/scenarios/cross-cutting/**/*.scenario.ts eliza/test/scenarios/gateway/**/*.scenario.ts eliza/test/scenarios/remote/**/*.scenario.ts eliza/test/scenarios/lifeops.*/**/*.scenario.ts eliza/test/scenarios/goals/**/*.scenario.ts eliza/test/scenarios/convo/**/*.scenario.ts"
+            globs: "packages/test/scenarios/cross-cutting/**/*.scenario.ts packages/test/scenarios/gateway/**/*.scenario.ts packages/test/scenarios/remote/**/*.scenario.ts packages/test/scenarios/lifeops.*/**/*.scenario.ts packages/test/scenarios/goals/**/*.scenario.ts packages/test/scenarios/convo/**/*.scenario.ts"
           - name: lifeops-app
             runs-on: ubuntu-24.04
             root: plugins/plugin-lifeops/test/scenarios
@@ -226,8 +229,9 @@ jobs:
         run: |
           set -f
           bun packages/scenario-runner/bin/eliza-scenarios run \
-            ${{ matrix.shard.root || 'eliza/test/scenarios' }} \
+            ${{ matrix.shard.root || 'packages/test/scenarios' }} \
             --report-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
+            --run-dir reports/scenarios/${{ github.run_id }}-${{ matrix.shard.name }} \
             --runId "${{ github.run_id }}-${{ matrix.shard.name }}" \
             ${{ matrix.shard.globs }}
         continue-on-error: false

@@ -12,7 +12,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG = ROOT / "pd/openlane/config.sky130.json"
 MACRO_MANIFEST = ROOT / "pd/macros/manifest.yaml"
@@ -152,7 +151,10 @@ def top_level_ports(path: Path) -> set[str]:
     text = path.read_text(encoding="utf-8")
     header = text.split(");", 1)[0]
     ports: set[str] = set()
-    for match in re.finditer(r"\b(?:input|output|inout)\s+(?:wire|logic)?\s*(?:\[[^\]]+\]\s*)?([A-Za-z_][A-Za-z0-9_]*)", header):
+    for match in re.finditer(
+        r"\b(?:input|output|inout)\s+(?:wire|logic)?\s*(?:\[[^\]]+\]\s*)?([A-Za-z_][A-Za-z0-9_]*)",
+        header,
+    ):
         ports.add(match.group(1))
     return ports
 
@@ -183,7 +185,9 @@ def blackbox_ports(path: Path) -> set[str]:
     ports: set[str] = set()
     for line in text.splitlines():
         code = line.split("//", 1)[0].strip()
-        match = re.match(r"(?:input|output|inout)\s+(?:\[[^\]]+\]\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*;", code)
+        match = re.match(
+            r"(?:input|output|inout)\s+(?:\[[^\]]+\]\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*;", code
+        )
         if match:
             ports.add(match.group(1))
     return ports
@@ -252,9 +256,7 @@ def build_report() -> dict[str, Any]:
     verilog_files = listed_verilog_files(config)
     missing_verilog_entries = [path for path in REQUIRED_RTL if path not in verilog_files]
     nonexistent_verilog = [path for path in verilog_files if not (ROOT / path).exists()]
-    frontend_rows = [
-        row for path in verilog_files for row in frontend_blockers(ROOT / path)
-    ]
+    frontend_rows = [row for path in verilog_files for row in frontend_blockers(ROOT / path)]
 
     macro_cfg = config["MACROS"].get(TARGET_MACRO, {})
     expected_refs = {
@@ -311,14 +313,17 @@ def build_report() -> dict[str, Any]:
             continue
         for value in values:
             if not isinstance(value, str) or not value.startswith("dir::"):
-                macro_ref_set_failures.append({"kind": key, "value": value, "reason": "invalid_dir_ref"})
+                macro_ref_set_failures.append(
+                    {"kind": key, "value": value, "reason": "invalid_dir_ref"}
+                )
             elif not resolve_dir_ref(value, config_base).exists():
-                macro_ref_set_failures.append({"kind": key, "value": value, "reason": "missing_file"})
+                macro_ref_set_failures.append(
+                    {"kind": key, "value": value, "reason": "missing_file"}
+                )
 
     sram_rtl = (ROOT / "rtl/memory/e1_weight_buffer_sram.sv").read_text(encoding="utf-8")
     hard_sram_block_present = (
-        "`ifdef E1_HAVE_HARD_SRAM" in sram_rtl
-        and f"{TARGET_MACRO} u_sram" in sram_rtl
+        "`ifdef E1_HAVE_HARD_SRAM" in sram_rtl and f"{TARGET_MACRO} u_sram" in sram_rtl
     )
     instance_paths = sorted((macro_cfg.get("instances") or {}).keys())
     duplicate_verilog_files = sorted(
@@ -331,7 +336,9 @@ def build_report() -> dict[str, Any]:
         flag for flag in REQUIRED_RELEASE_FLAGS if config.get(flag) is not True
     ]
     define_failures = [
-        define for define in ["E1_HAVE_HARD_SRAM"] if define not in config.get("VERILOG_DEFINES", [])
+        define
+        for define in ["E1_HAVE_HARD_SRAM"]
+        if define not in config.get("VERILOG_DEFINES", [])
     ]
     sdc_refs = {
         "PNR_SDC_FILE": config.get("PNR_SDC_FILE"),
@@ -348,11 +355,19 @@ def build_report() -> dict[str, Any]:
     sdc_semantic_failures: list[dict[str, Any]] = []
     if clock_port != config.get("CLOCK_PORT"):
         sdc_semantic_failures.append(
-            {"id": "clock_port_mismatch", "expected": config.get("CLOCK_PORT"), "actual": clock_port}
+            {
+                "id": "clock_port_mismatch",
+                "expected": config.get("CLOCK_PORT"),
+                "actual": clock_port,
+            }
         )
     if clock_period != float(config.get("CLOCK_PERIOD")):
         sdc_semantic_failures.append(
-            {"id": "clock_period_mismatch", "expected": config.get("CLOCK_PERIOD"), "actual": clock_period}
+            {
+                "id": "clock_period_mismatch",
+                "expected": config.get("CLOCK_PERIOD"),
+                "actual": clock_period,
+            }
         )
     for port in sorted(sdc_ports):
         if port and port not in top_ports:
@@ -363,7 +378,11 @@ def build_report() -> dict[str, Any]:
         if isinstance(io_pin_order_ref, str)
         else None
     )
-    io_pin_order_text = io_pin_order_path.read_text(encoding="utf-8") if io_pin_order_path and io_pin_order_path.exists() else ""
+    io_pin_order_text = (
+        io_pin_order_path.read_text(encoding="utf-8")
+        if io_pin_order_path and io_pin_order_path.exists()
+        else ""
+    )
     io_pin_order_failures: list[dict[str, Any]] = []
     if io_pin_order_path is None or not io_pin_order_path.exists():
         io_pin_order_failures.append({"id": "io_pin_order_missing", "path": io_pin_order_ref})
@@ -382,7 +401,7 @@ def build_report() -> dict[str, Any]:
                 "actual": sorted(bb_ports),
             }
         )
-    if not EXPECTED_SRAM_PORTS <= mapped_ports:
+    if not mapped_ports >= EXPECTED_SRAM_PORTS:
         port_compat_failures.append(
             {
                 "id": "wrapper_port_map_missing_ports",
@@ -576,7 +595,9 @@ def main() -> int:
     report = build_report()
     check_failures = check_report(report)
     if check_failures:
-        raise SystemExit("E1 SoC PD input contract report self-check failed: " + ", ".join(check_failures))
+        raise SystemExit(
+            "E1 SoC PD input contract report self-check failed: " + ", ".join(check_failures)
+        )
     output = yaml.dump(report, Dumper=NoAliasDumper, sort_keys=False, width=100)
     if args.write_report:
         args.output.parent.mkdir(parents=True, exist_ok=True)

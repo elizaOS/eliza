@@ -10,8 +10,15 @@ from benchmarks.qwen_claw_bench_matrix.code_agent_matrix import (
 )
 
 
-def test_load_tasks_selects_automated_slice() -> None:
+def test_load_tasks_selects_supported_slice_by_default() -> None:
     tasks = load_tasks(max_tasks=5)
+
+    assert len(tasks) == 5
+    assert all(task.grading_type in {"automated", "hybrid"} for task in tasks)
+
+
+def test_load_tasks_can_select_automated_slice() -> None:
+    tasks = load_tasks(max_tasks=5, grading_scope="automated")
 
     assert [task.task_id for task in tasks] == [
         "task_00036_find_largest_file_in_downloads_directory"
@@ -46,6 +53,9 @@ def test_mock_run_writes_normalized_result(tmp_path: Path) -> None:
         command_template="",
         timeout_seconds=120,
         mock=True,
+        grading_scope="automated",
+        judge_model="gpt-oss-120b",
+        judge_timeout_seconds=120,
     )
 
     assert result["benchmark"] == "qwen_claw_bench"
@@ -55,3 +65,25 @@ def test_mock_run_writes_normalized_result(tmp_path: Path) -> None:
     assert result["results"][0]["task"] == "task_00036_find_largest_file_in_downloads_directory"
     json.dumps(result)
 
+
+def test_mock_run_expands_to_requested_task_count_with_trajectories(tmp_path: Path) -> None:
+    result = run_qwen_claw_bench_matrix(
+        task_agent="opencode",
+        model_provider="cerebras",
+        model="gpt-oss-120b",
+        output_dir=tmp_path / "out",
+        trajectory_dir=tmp_path / "traj",
+        dataset="qwenclawbench-v1.1-100",
+        max_tasks=5,
+        command_template="",
+        timeout_seconds=120,
+        mock=True,
+        grading_scope="supported",
+        judge_model="gpt-oss-120b",
+        judge_timeout_seconds=120,
+    )
+
+    assert result["summary"]["total_instances"] == 5
+    assert result["summary"]["resolved"] == 5
+    assert len(result["results"]) == 5
+    assert all(Path(item["trajectory_path"]).exists() for item in result["results"])

@@ -50,8 +50,29 @@ def test_dry_run_uses_synthetic_task_and_restores_sleep(tmp_path, monkeypatch) -
     assert summary["harness"] == "eliza"
     assert summary["run_mode"] == "smoke_dry_run"
     assert summary["smoke"] is True
-    assert summary["results"][0]["task_id"] == "osworld_eliza_dry_run"
+    assert summary["results"][0]["task_id"] == "osworld_eliza_dry_run_1"
     assert lib_run_single.time.sleep is original_sleep
+
+
+def test_dry_run_honors_max_tasks(tmp_path, monkeypatch) -> None:
+    def fail_load_tasks(_args):
+        raise AssertionError("dry-run must not load real OSWorld benchmark tasks")
+
+    monkeypatch.setattr(run_multienv_eliza, "load_tasks", fail_load_tasks)
+    args = _dry_args(tmp_path)
+    args.max_tasks = 5
+
+    summary = run_multienv_eliza.run_benchmark(args)
+
+    assert summary["total_tasks"] == 5
+    assert summary["passed_tasks"] == 5
+    assert [result["task_id"] for result in summary["results"]] == [
+        "osworld_eliza_dry_run_1",
+        "osworld_eliza_dry_run_2",
+        "osworld_eliza_dry_run_3",
+        "osworld_eliza_dry_run_4",
+        "osworld_eliza_dry_run_5",
+    ]
 
 
 def test_delegate_harness_does_not_start_eliza_server(monkeypatch) -> None:

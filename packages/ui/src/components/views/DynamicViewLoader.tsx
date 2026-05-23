@@ -195,8 +195,43 @@ const STANDARD_CAPABILITIES = new Set([
   "get-state",
   "refresh",
   "focus-element",
+  "click-element",
+  "fill-input",
   "get-text",
 ]);
+
+function resolveInteractTarget(
+  containerEl: HTMLElement | null,
+  params: Record<string, unknown> | undefined,
+): { target: HTMLElement | null; selector: string | null } {
+  const selector =
+    typeof params?.selector === "string" ? params.selector : null;
+  const name = typeof params?.name === "string" ? params.name : null;
+  const target =
+    (selector && containerEl?.querySelector<HTMLElement>(selector)) ||
+    (name &&
+      containerEl?.querySelector<HTMLElement>(
+        `[name="${CSS.escape(name)}"]`,
+      )) ||
+    null;
+  return { target, selector: selector ?? name };
+}
+
+function setNativeInputValue(
+  target: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement,
+  value: string,
+): void {
+  const prototype =
+    target instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : target instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+  const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
+  setter?.call(target, value);
+  target.dispatchEvent(new Event("input", { bubbles: true }));
+  target.dispatchEvent(new Event("change", { bubbles: true }));
+}
 
 /**
  * Handle a standard capability on the view container element.
@@ -208,6 +243,7 @@ async function handleStandardCapability(
   params: Record<string, unknown> | undefined,
   containerEl: HTMLElement | null,
   setReloadKey: (fn: (k: number) => number) => void,
+  cacheKey: string,
 ): Promise<unknown> {
   switch (capability) {
     case "get-text":
@@ -226,25 +262,46 @@ async function handleStandardCapability(
     }
 
     case "refresh":
+      bundleModuleCache.delete(cacheKey);
       setReloadKey((k) => k + 1);
       return { refreshed: true };
 
     case "focus-element": {
-      const selector =
-        typeof params?.selector === "string" ? params.selector : null;
-      const name = typeof params?.name === "string" ? params.name : null;
-      const target =
-        (selector && containerEl?.querySelector<HTMLElement>(selector)) ||
-        (name &&
-          containerEl?.querySelector<HTMLElement>(
-            `[name="${CSS.escape(name)}"]`,
-          )) ||
-        null;
+      const { target, selector } = resolveInteractTarget(containerEl, params);
       if (target) {
         target.focus();
-        return { focused: true, selector: selector ?? name };
+        return { focused: true, selector };
       }
       return { focused: false, reason: "element not found" };
+    }
+
+    case "click-element": {
+      const { target, selector } = resolveInteractTarget(containerEl, params);
+      if (target) {
+        target.click();
+        return { clicked: true, selector };
+      }
+      return { clicked: false, reason: "element not found" };
+    }
+
+    case "fill-input": {
+      const { target, selector } = resolveInteractTarget(containerEl, params);
+      const value = typeof params?.value === "string" ? params.value : null;
+      if (!target) {
+        return { filled: false, reason: "element not found" };
+      }
+      if (value === null) {
+        return { filled: false, reason: "value must be a string" };
+      }
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement
+      ) {
+        setNativeInputValue(target, value);
+        return { filled: true, selector, value };
+      }
+      return { filled: false, reason: "element is not fillable" };
     }
 
     default:
@@ -389,6 +446,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
             params,
             containerRef.current,
             setReloadKey,
+            `${bundleUrl}::${componentExport}`,
           );
         }
         // Delegate to the module's interact export if present.
@@ -402,7 +460,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     );
 
     return unregister;
-  }, [bundle, viewId, viewType]);
+  }, [bundle, bundleUrl, componentExport, viewId, viewType]);
 
   // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
   // ETag changes the bundle has been rebuilt — evict the cache entry and bump

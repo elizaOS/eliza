@@ -375,9 +375,7 @@ def chip_evidence_is_qemu_reference(evidence: dict[str, object]) -> bool:
 def chip_evidence_has_chip_provenance(evidence: dict[str, object]) -> bool:
     provenance = str(evidence.get("provenance", "")).lower()
     boundary = str(evidence.get("claim_boundary", "")).lower()
-    return any(
-        marker in provenance or marker in boundary for marker in CHIP_PROVENANCE_MARKERS
-    )
+    return any(marker in provenance or marker in boundary for marker in CHIP_PROVENANCE_MARKERS)
 
 
 def run_check(args: argparse.Namespace) -> dict[str, object]:
@@ -550,7 +548,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     agent_evidence_path_display = rel(DEFAULT_AGENT_LIVE_EVIDENCE)
     agent_evidence: dict[str, object] | None = None
     agent_transcript = ""
-    agent_transcript_source = f"missing generated-AP agent-live evidence {agent_evidence_path_display}"
+    agent_transcript_source = (
+        f"missing generated-AP agent-live evidence {agent_evidence_path_display}"
+    )
     if agent_row is None:
         findings.append(
             Finding(

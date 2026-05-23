@@ -24,6 +24,7 @@ silicon performance claim — QEMU does not model the e1 vector datapath timing.
 Invoked by scripts/run_e1_rvv_vector.sh, which owns tool discovery and the
 fail-closed evidence emission.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -63,9 +64,16 @@ def _mnemonic(disasm: str) -> str:
 
 def build(gcc: Path, march: str, kernel: str, driver: Path, kernels: Path, out: Path) -> None:
     cmd = [
-        str(gcc), "-O3", f"-march={march}", "-mabi=lp64d",
+        str(gcc),
+        "-O3",
+        f"-march={march}",
+        "-mabi=lp64d",
         f"-DKERNEL_{kernel}=1",
-        str(driver), str(kernels), "-lm", "-o", str(out),
+        str(driver),
+        str(kernels),
+        "-lm",
+        "-o",
+        str(out),
     ]
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
@@ -77,7 +85,8 @@ def run_execlog(qemu: Path, cpu: str, plugin: Path, elf: Path, log: Path) -> int
     with log.open("wb") as fh:
         proc = subprocess.run(
             [str(qemu), "-cpu", cpu, "-plugin", str(plugin), "-d", "plugin", str(elf)],
-            stdout=subprocess.DEVNULL, stderr=fh,
+            stdout=subprocess.DEVNULL,
+            stderr=fh,
         )
     return proc.returncode
 
@@ -146,10 +155,7 @@ def main() -> int:
     # Kernels the driver wraps (driver.c uses -DKERNEL_<name>). 2D / collision
     # kernels (conv2d, rope, histogram, trmv) are out of this functional sweep.
     driver_src = args.driver.read_text()
-    wrapped = {
-        k["name"] for k in spec["kernels"]
-        if f"KERNEL_{k['name']}" in driver_src
-    }
+    wrapped = {k["name"] for k in spec["kernels"] if f"KERNEL_{k['name']}" in driver_src}
 
     results = []
     for entry in spec["kernels"]:
@@ -175,26 +181,32 @@ def main() -> int:
         s_total, s_vec, _ = measure_region(s_log, s_begin, s_end)
 
         reduction = round(s_total / v_total, 3) if v_total else None
-        results.append({
-            "kernel": name,
-            "group": entry.get("group"),
-            "elem_type": entry.get("elem_type"),
-            "expected_vectorized": entry.get("expected_vectorized"),
-            "scalar_dynamic_insns": s_total,
-            "vector_dynamic_insns": v_total,
-            "vector_dynamic_vec_ops": v_vec,
-            "scalar_dynamic_vec_ops": s_vec,
-            "dynamic_insn_reduction_x": reduction,
-            "autovectorized": v_vec > 0,
-            "result_checksum_match": v_exit == s_exit,
-            "vector_op_histogram": dict(sorted(v_hist.items(), key=lambda kv: -kv[1])),
-        })
-        print(f"  {name:28s} scalar={s_total:>9d}  vector={v_total:>9d}  "
-              f"reduction={reduction}x  vec_ops={v_vec}", file=sys.stderr)
+        results.append(
+            {
+                "kernel": name,
+                "group": entry.get("group"),
+                "elem_type": entry.get("elem_type"),
+                "expected_vectorized": entry.get("expected_vectorized"),
+                "scalar_dynamic_insns": s_total,
+                "vector_dynamic_insns": v_total,
+                "vector_dynamic_vec_ops": v_vec,
+                "scalar_dynamic_vec_ops": s_vec,
+                "dynamic_insn_reduction_x": reduction,
+                "autovectorized": v_vec > 0,
+                "result_checksum_match": v_exit == s_exit,
+                "vector_op_histogram": dict(sorted(v_hist.items(), key=lambda kv: -kv[1])),
+            }
+        )
+        print(
+            f"  {name:28s} scalar={s_total:>9d}  vector={v_total:>9d}  "
+            f"reduction={reduction}x  vec_ops={v_vec}",
+            file=sys.stderr,
+        )
 
     vectorized = [r for r in results if r["autovectorized"]]
-    reductions = [r["dynamic_insn_reduction_x"] for r in vectorized
-                  if r["dynamic_insn_reduction_x"]]
+    reductions = [
+        r["dynamic_insn_reduction_x"] for r in vectorized if r["dynamic_insn_reduction_x"]
+    ]
     geomean = None
     if reductions:
         prod = 1.0
@@ -227,8 +239,7 @@ def main() -> int:
         "metric": "dynamic_instruction_count (kernel region, execlog-windowed)",
         "kernel_count": len(results),
         "autovectorized_count": len(vectorized),
-        "checksum_mismatches": [r["kernel"] for r in results
-                                if not r["result_checksum_match"]],
+        "checksum_mismatches": [r["kernel"] for r in results if not r["result_checksum_match"]],
         "checksum_note": (
             "A mismatch on a floating-point reduction kernel (e.g. "
             "dot_product_f32_unrolled4) is expected: vectorized reductions "

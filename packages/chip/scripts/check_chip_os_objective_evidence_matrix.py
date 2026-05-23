@@ -430,7 +430,11 @@ def report_findings(data: dict[str, Any]) -> list[str]:
             code: str | None = None
             if isinstance(value, dict):
                 raw_code = value.get("code")
-                code = raw_code if isinstance(raw_code, str) and raw_code else code_from_struct(kind, value)
+                code = (
+                    raw_code
+                    if isinstance(raw_code, str) and raw_code
+                    else code_from_struct(kind, value)
+                )
             elif isinstance(value, str) and value.strip():
                 code = code_from_text(value, kind)
             if code and code not in seen:

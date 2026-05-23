@@ -42,7 +42,7 @@ fi
 # 2. boot disk (deleting the instance detaches it; delete explicitly)
 if [ -n "$DISK_ID" ]; then
     echo "[td] deleting boot disk $DISK_ID"
-    for i in 1 2 3; do
+    for _ in 1 2 3; do
         OUT="$(nebius compute disk delete --id "$DISK_ID" 2>&1 | strip)"
         echo "$OUT" | tail -2
         echo "$OUT" | grep -qiE 'not.?found' && break

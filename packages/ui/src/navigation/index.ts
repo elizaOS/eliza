@@ -410,8 +410,8 @@ const APPS_SUB_TABS: Record<string, Tab> = {
 export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   const normalized = normalizePathForLookup(pathname, basePath);
   // The root path "/" lands on the discovered main-tab app. Reads the
-  // cached apps catalog synchronously and falls back to the legacy
-  // chat tab when no app declares elizaos.app.mainTab=true.
+  // cached apps catalog synchronously and falls back to the assistant home
+  // launcher when no app declares elizaos.app.mainTab=true.
   if (normalized === "/") return resolveDefaultLandingTab();
 
   if (

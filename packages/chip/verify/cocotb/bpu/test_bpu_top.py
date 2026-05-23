@@ -136,9 +136,7 @@ def ftb_same_set_pc(pc, salt):
     pressure low enough that a four-way uFTB keeps the original entry.
     """
     bit = salt % FTB_IDX_W
-    return pc ^ (1 << (FETCH_BLOCK_OFF_W + bit)) ^ (
-        1 << (FETCH_BLOCK_OFF_W + FTB_TAG_W + bit)
-    )
+    return pc ^ (1 << (FETCH_BLOCK_OFF_W + bit)) ^ (1 << (FETCH_BLOCK_OFF_W + FTB_TAG_W + bit))
 
 
 async def evict_ftb_entry(dut, pc, base_target):
@@ -278,7 +276,7 @@ async def bpu_mispredict_restores_ras_from_resolved_checkpoint(dut):
     call_b_target = 0x8000_4000
     ret_pc = 0x8000_5000
     return_a = call_a_pc + 4
-    return_b = call_b_pc + 4
+    call_b_pc + 4
 
     # Train the FTB entries so later predictions speculatively push/pop RAS.
     await resolve(dut, call_a_pc, call_a_target, taken=True, kind=BR_CALL, misp=False)

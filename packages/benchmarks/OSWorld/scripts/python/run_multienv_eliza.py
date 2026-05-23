@@ -229,12 +229,17 @@ def load_tasks(args: argparse.Namespace) -> list[dict[str, object]]:
 def load_tasks_for_run(args: argparse.Namespace) -> list[dict[str, object]]:
     """Load benchmark tasks, or a synthetic task for dry-run smoke tests."""
     if args.dry_run:
+        total = max(1, int(args.max_tasks or 1))
         return [
             {
-                "id": "osworld_eliza_dry_run",
+                "id": f"osworld_eliza_dry_run_{index + 1}",
                 "snapshot": "dry_run",
-                "instruction": "Dry-run smoke task for OSWorld harness wiring.",
+                "instruction": (
+                    "Dry-run smoke task for OSWorld harness wiring "
+                    f"({index + 1}/{total})."
+                ),
             }
+            for index in range(total)
         ]
     return load_tasks(args)
 

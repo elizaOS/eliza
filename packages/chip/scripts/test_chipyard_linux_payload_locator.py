@@ -132,9 +132,7 @@ def test_locator_can_require_preferred_linux_smoke_payload() -> None:
             raise AssertionError(result.stdout)
         if manifest["selected_payload_preferred_for_linux_smoke"]:
             raise AssertionError(result.stdout)
-        if "Preferred eliza-e1-linux-smoke nodisk payload" not in "\n".join(
-            manifest["errors"]
-        ):
+        if "Preferred eliza-e1-linux-smoke nodisk payload" not in "\n".join(manifest["errors"]):
             raise AssertionError(result.stdout)
 
 

@@ -41,11 +41,11 @@ from __future__ import annotations
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import Protocol
 
 
-class Scenario(str, Enum):
+class Scenario(StrEnum):
     SINGLE_STREAM = "SingleStream"
     OFFLINE = "Offline"
 
@@ -137,9 +137,7 @@ def run_loadgen(sut: SystemUnderTest, config: LoadGenConfig) -> LoadGenResult:
             batch_response = sut.issue_query([sample])
             issue_end = time.perf_counter_ns()
             if len(batch_response) != 1:
-                raise ValueError(
-                    "SingleStream SUT must return exactly one response per query"
-                )
+                raise ValueError("SingleStream SUT must return exactly one response per query")
             responses.append(batch_response[0])
             latencies_ns.append(issue_end - issue_start)
         wall_time_ns = time.perf_counter_ns() - wall_start
@@ -162,9 +160,7 @@ def run_loadgen(sut: SystemUnderTest, config: LoadGenConfig) -> LoadGenResult:
         batch_response = sut.issue_query(samples)
         wall_time_ns = time.perf_counter_ns() - wall_start
         if len(batch_response) != config.query_count:
-            raise ValueError(
-                "Offline SUT must return one response per submitted sample"
-            )
+            raise ValueError("Offline SUT must return one response per submitted sample")
         # Offline reports throughput, not per-query latency, but we still
         # capture the batch wall time so the throughput is auditable.
         throughput = config.query_count / (wall_time_ns / 1e9) if wall_time_ns else 0.0

@@ -138,9 +138,7 @@ def check_lint(verilator: str) -> dict:
         + ["--top-module", "e1_soc_top"]
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    diags = [
-        ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln
-    ]
+    diags = [ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln]
     if proc.returncode == 0 and not diags:
         return {
             "id": "verilator_elaborate_integrated",
@@ -217,9 +215,7 @@ def main() -> int:
                 "detail": "verilator not found; source tools/env.sh / install oss-cad-suite",
             }
         )
-        checks.append(
-            {"id": SMOKE["id"], "status": "blocked", "detail": "verilator not found"}
-        )
+        checks.append({"id": SMOKE["id"], "status": "blocked", "detail": "verilator not found"})
     else:
         checks.append(check_lint(verilator))
         checks.append(run_cocotb(verilator))

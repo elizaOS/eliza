@@ -10,7 +10,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BOARD_ROOT = ROOT / "board/kicad/e1-phone"
 MECH_REVIEW = ROOT / "mechanical/e1-phone/review"
@@ -93,7 +92,9 @@ def gate_row(
     }
 
 
-def source_blocker(source: str, metric: str, value: Any, required: Any, reason: str) -> dict[str, Any]:
+def source_blocker(
+    source: str, metric: str, value: Any, required: Any, reason: str
+) -> dict[str, Any]:
     return {
         "source": source,
         "metric": metric,

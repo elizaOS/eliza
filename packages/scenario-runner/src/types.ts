@@ -60,6 +60,14 @@ export interface AggregateReport {
   startedAtIso: string;
   completedAtIso: string;
   providerName: string | null;
+  artifactPaths?: {
+    runDir?: string;
+    matrixJson?: string;
+    viewerIndex?: string;
+    viewerData?: string;
+    nativeJsonl?: string;
+    nativeManifest?: string;
+  };
   scenarios: ScenarioReport[];
   totals: {
     passed: number;

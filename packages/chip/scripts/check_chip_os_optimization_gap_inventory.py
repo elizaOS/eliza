@@ -29,7 +29,9 @@ WEAK_SCOPE_RE = re.compile(
     r"(release[_ -]?blocked|reference[_ -]?only|model(?:ed)?|simulator|not[_ -]?(?:phone|runtime|silicon|hardware|android|nnapi|boot)|no[_ -]?(?:measured|silicon|runtime|release))",
     re.I,
 )
-BLOCKED_TEXT_RE = re.compile(r"\b(blocked|placeholder|not yet|not measured|missing|timeout)\b", re.I)
+BLOCKED_TEXT_RE = re.compile(
+    r"\b(blocked|placeholder|not yet|not measured|missing|timeout)\b", re.I
+)
 
 
 @dataclass(frozen=True)

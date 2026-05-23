@@ -3,7 +3,7 @@ import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
 import { seedCheckinDefinition } from "../_helpers/lifeops-seeds.ts";
 
 function scenarioNow(ctx: { now?: string | Date }): Date {

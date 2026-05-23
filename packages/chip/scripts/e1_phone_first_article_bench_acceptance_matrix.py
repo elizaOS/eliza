@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 CHIP_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = CHIP_ROOT.parents[1]
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
@@ -18,18 +17,13 @@ REPORT_DATE = "2026-05-22"
 DEFAULT_TEMPLATE_MANIFEST = (
     BOARD_ROOT / "production/test/bench-first-article-template-manifest-2026-05-22.yaml"
 )
-DEFAULT_SELECTED_HARDWARE_EXECUTION = (
-    BOARD_ROOT / "selected-hardware-first-article-execution.yaml"
-)
+DEFAULT_SELECTED_HARDWARE_EXECUTION = BOARD_ROOT / "selected-hardware-first-article-execution.yaml"
 DEFAULT_ENCLOSURE_EXECUTION = (
     BOARD_ROOT / "production-enclosure-first-article-release-execution.yaml"
 )
-DEFAULT_FACTORY_BURNDOWN = (
-    BOARD_ROOT / "production-factory-output-burndown-2026-05-22.yaml"
-)
+DEFAULT_FACTORY_BURNDOWN = BOARD_ROOT / "production-factory-output-burndown-2026-05-22.yaml"
 DEFAULT_REPORT = (
-    BOARD_ROOT
-    / "production/test/readiness/"
+    BOARD_ROOT / "production/test/readiness/"
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 
@@ -142,7 +136,9 @@ def required_action(kind: str, path_text: str) -> str:
     return actions.get(kind, actions["release_evidence"])
 
 
-def ensure_row(rows: dict[str, dict[str, Any]], path_text: str, source_field: str) -> dict[str, Any]:
+def ensure_row(
+    rows: dict[str, dict[str, Any]], path_text: str, source_field: str
+) -> dict[str, Any]:
     resolved = resolve_repo_path(path_text)
     present = resolved.exists()
     if resolved.is_dir():
@@ -254,7 +250,11 @@ def collect_enclosure_rows(rows: dict[str, dict[str, Any]], enclosure: dict[str,
     for path in as_list(enclosure.get("required_absent_outputs")):
         if isinstance(path, str):
             row = ensure_row(rows, path, "required_absent_outputs")
-            add_source(row, "production_enclosure_first_article_release_execution", "required_absent_outputs")
+            add_source(
+                row,
+                "production_enclosure_first_article_release_execution",
+                "required_absent_outputs",
+            )
 
 
 def collect_burndown_rows(rows: dict[str, dict[str, Any]], burndown: dict[str, Any]) -> None:
@@ -263,7 +263,11 @@ def collect_burndown_rows(rows: dict[str, dict[str, Any]], burndown: dict[str, A
             continue
         item_id = str(item.get("id", "unknown_burndown_item"))
         owner = str(item.get("owner", ""))
-        for field in ("required_outputs", "required_common_outputs", "required_functional_transcripts"):
+        for field in (
+            "required_outputs",
+            "required_common_outputs",
+            "required_functional_transcripts",
+        ):
             for path in as_list(item.get(field)):
                 if isinstance(path, str):
                     row = ensure_row(rows, path, field)

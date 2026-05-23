@@ -68,7 +68,9 @@ def modeled_energy_joules_per_inference(config: NpuScaleConfig) -> float:
     return energy_nj / 1e9
 
 
-def energy_block(config: NpuScaleConfig, integration_window_seconds: float, sample_count: int) -> dict[str, Any]:
+def energy_block(
+    config: NpuScaleConfig, integration_window_seconds: float, sample_count: int
+) -> dict[str, Any]:
     """Build the schema ``energy_joules_per_inference`` object (G-7).
 
     Matches ``docs/benchmarks/report-schema.yaml`` field-for-field:

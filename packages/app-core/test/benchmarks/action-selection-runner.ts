@@ -128,6 +128,64 @@ export interface ActionBenchmarkReport {
   results: ActionBenchmarkResult[];
 }
 
+export const ACTION_BENCHMARK_REPORT_SCHEMA =
+  "eliza_action_selection_benchmark_report" as const;
+export const ACTION_BENCHMARK_REPORT_VERSION = 1 as const;
+
+export interface ActionBenchmarkReportArtifact {
+  schema: typeof ACTION_BENCHMARK_REPORT_SCHEMA;
+  schemaVersion: typeof ACTION_BENCHMARK_REPORT_VERSION;
+  generatedAt: string;
+  source: {
+    kind: "app_core_action_selection_benchmark";
+    trajectoryDir?: string;
+    reportMarkdownPath?: string;
+  };
+  summary: {
+    total: number;
+    passed: number;
+    failed: number;
+    accuracy: number;
+    plannerAccuracy: number;
+    executionAccuracy: number;
+    latency: ActionBenchmarkLatencyStats;
+    cache?: ActionBenchmarkCacheStats;
+    runsPerCase?: number;
+  };
+  byTag: Record<string, ActionBenchmarkTagStats>;
+  failureModes: Record<ActionFailureMode, number>;
+  reliability?: CaseReliability[];
+  failures: ActionBenchmarkResultArtifact[];
+  results: ActionBenchmarkResultArtifact[];
+}
+
+export interface ActionBenchmarkResultArtifact {
+  caseId: string;
+  prompt: string;
+  expectedAction: string | null;
+  acceptableActions?: string[];
+  tags: string[];
+  plannerPass?: boolean;
+  plannedAction?: string | null;
+  plannedActions?: string[];
+  startedAction?: string | null;
+  completedAction?: string | null;
+  actualAction: string | null;
+  selectionPass?: boolean;
+  executionPass?: boolean;
+  pass: boolean;
+  latencyMs: number;
+  failureMode?: ActionFailureMode;
+  error?: string;
+  trajectoryPath?: string;
+  runIndex?: number;
+  runsPerCase?: number;
+  filteredActions?: string[];
+  availableActions?: string[];
+  registeredActions?: string[];
+  responseText?: string;
+}
+
 export interface ActionBenchmarkRunOptions {
   runtime?: AgentRuntime;
   createCaseRuntime?: () => Promise<{
@@ -2060,4 +2118,98 @@ export function formatBenchmarkReportMarkdown(
   }
 
   return lines.join("\n");
+}
+
+function countFailureModes(
+  report: ActionBenchmarkReport,
+): Record<ActionFailureMode, number> {
+  const modeCounts: Record<ActionFailureMode, number> = {
+    passed: 0,
+    validate_filtered: 0,
+    llm_chose_reply: 0,
+    llm_chose_other_action: 0,
+    no_response: 0,
+    error: 0,
+  };
+  for (const result of report.results) {
+    const mode: ActionFailureMode =
+      result.failureMode ?? (result.pass ? "passed" : "error");
+    modeCounts[mode] += 1;
+  }
+  return modeCounts;
+}
+
+function toResultArtifact(
+  result: ActionBenchmarkResult,
+): ActionBenchmarkResultArtifact {
+  return {
+    caseId: result.case.id,
+    prompt: result.case.userMessage,
+    expectedAction: result.case.expectedAction,
+    acceptableActions: result.case.acceptableActions,
+    tags: result.case.tags,
+    plannerPass: result.plannerPass,
+    plannedAction: result.plannedAction,
+    plannedActions: result.plannedActions,
+    startedAction: result.startedAction,
+    completedAction: result.completedAction,
+    actualAction: result.actualAction,
+    selectionPass: result.selectionPass,
+    executionPass: result.executionPass,
+    pass: result.pass,
+    latencyMs: result.latencyMs,
+    failureMode: result.failureMode,
+    error: result.error,
+    trajectoryPath: result.trajectoryPath,
+    runIndex: result.runIndex,
+    runsPerCase: result.runsPerCase,
+    filteredActions: result.filteredActions,
+    availableActions: result.availableActions,
+    registeredActions: result.registeredActions,
+    responseText: result.responseText,
+  };
+}
+
+export function buildBenchmarkReportArtifact(
+  report: ActionBenchmarkReport,
+  options: {
+    generatedAt?: string;
+    trajectoryDir?: string;
+    reportMarkdownPath?: string;
+  } = {},
+): ActionBenchmarkReportArtifact {
+  const plannerPassed = report.results.filter(
+    (result) => result.plannerPass,
+  ).length;
+  const executionPassed = report.results.filter(
+    (result) => result.executionPass,
+  ).length;
+  return {
+    schema: ACTION_BENCHMARK_REPORT_SCHEMA,
+    schemaVersion: ACTION_BENCHMARK_REPORT_VERSION,
+    generatedAt: options.generatedAt ?? new Date().toISOString(),
+    source: {
+      kind: "app_core_action_selection_benchmark",
+      trajectoryDir: options.trajectoryDir,
+      reportMarkdownPath: options.reportMarkdownPath,
+    },
+    summary: {
+      total: report.total,
+      passed: report.passed,
+      failed: report.failed,
+      accuracy: report.accuracy,
+      plannerAccuracy:
+        report.total === 0 ? 0 : plannerPassed / report.total,
+      executionAccuracy:
+        report.total === 0 ? 0 : executionPassed / report.total,
+      latency: report.latency,
+      cache: report.cache,
+      runsPerCase: report.runsPerCase,
+    },
+    byTag: report.byTag,
+    failureModes: countFailureModes(report),
+    reliability: report.reliability,
+    failures: report.failures.map(toResultArtifact),
+    results: report.results.map(toResultArtifact),
+  };
 }

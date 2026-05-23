@@ -14,6 +14,7 @@ import {
 } from "./trajectory-hf-upload.js";
 import {
   exportTrajectoryTaskDatasets,
+  type ElizaNativeTrainingExample,
   type TrajectoryTaskDatasetExport,
   type TrajectoryTrainingTask,
 } from "./trajectory-task-datasets.js";
@@ -65,6 +66,7 @@ export interface TrajectoryExportBundleManifest {
   paths: {
     bundleDir: string;
     manifestPath: string;
+    viewerHtmlPath?: string;
     rawJsonlPath?: string;
     sanitizedJsonlPath?: string;
     taskDatasetDir?: string;
@@ -157,6 +159,294 @@ function countJsonlRows(payload: string): number {
     .filter(Boolean).length;
 }
 
+function parseJsonlRows(text: string | null): unknown[] {
+  if (!text) return [];
+  const rows: unknown[] = [];
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      rows.push(JSON.parse(trimmed));
+    } catch {
+      rows.push({ parseError: true, line: trimmed });
+    }
+  }
+  return rows;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function escapeScriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function buildViewerHtml(input: {
+  manifest: TrajectoryExportBundleManifest;
+  sanitizedTrajectories: unknown[];
+  taskExamples: Record<TrajectoryTrainingTask, ElizaNativeTrainingExample[]>;
+}): string {
+  const data = {
+    manifest: input.manifest,
+    sanitizedTrajectories: input.sanitizedTrajectories,
+    taskExamples: input.taskExamples,
+  };
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Eliza Trajectory Export Viewer</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f7f4ee;
+      --ink: #161514;
+      --muted: #69635a;
+      --line: #d8d0c4;
+      --panel: #fffdfa;
+      --accent: #b7431f;
+      --accent-ink: #fff7f2;
+      --code: #22201d;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #161514;
+        --ink: #f5efe6;
+        --muted: #bdb3a5;
+        --line: #3a352f;
+        --panel: #201e1b;
+        --accent: #e66d37;
+        --accent-ink: #21120b;
+        --code: #f8efe3;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.45;
+    }
+    header {
+      border-bottom: 1px solid var(--line);
+      padding: 24px clamp(16px, 4vw, 48px) 18px;
+    }
+    h1 {
+      font-size: clamp(24px, 4vw, 42px);
+      margin: 0 0 8px;
+      letter-spacing: 0;
+    }
+    .meta {
+      color: var(--muted);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      font-size: 14px;
+    }
+    main {
+      padding: 18px clamp(16px, 4vw, 48px) 48px;
+    }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      border-radius: 6px;
+      padding: 9px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    button[aria-selected="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: var(--accent-ink);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .metric, .row {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 24px;
+    }
+    .metric span, .label {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .split {
+      display: grid;
+      grid-template-columns: minmax(220px, 320px) 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .list {
+      display: grid;
+      gap: 8px;
+      max-height: 70vh;
+      overflow: auto;
+    }
+    .row {
+      text-align: left;
+      width: 100%;
+    }
+    .row.active {
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      color: var(--code);
+      padding: 14px;
+      max-height: 76vh;
+      overflow: auto;
+      font-size: 12px;
+    }
+    .hidden { display: none; }
+    @media (max-width: 760px) {
+      .split { grid-template-columns: 1fr; }
+      pre { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Eliza Trajectory Export</h1>
+    <div class="meta">
+      <span>Generated ${escapeHtml(input.manifest.generatedAt)}</span>
+      <span>Source ${escapeHtml(input.manifest.source.kind)}</span>
+      <span>Run ${escapeHtml(input.manifest.runId ?? "mixed")}</span>
+      <span>${input.manifest.counts.sanitizedTrajectoryRows} sanitized trajectories</span>
+      <span>${input.manifest.counts.taskExamples} task examples</span>
+    </div>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="Viewer sections">
+      <button type="button" data-tab="overview" aria-selected="true">Overview</button>
+      <button type="button" data-tab="trajectories" aria-selected="false">Trajectories</button>
+      <button type="button" data-tab="tasks" aria-selected="false">Task Datasets</button>
+      <button type="button" data-tab="manifest" aria-selected="false">Manifest</button>
+    </nav>
+    <section id="overview"></section>
+    <section id="trajectories" class="hidden"></section>
+    <section id="tasks" class="hidden"></section>
+    <section id="manifest" class="hidden"></section>
+  </main>
+  <script type="application/json" id="viewer-data">${escapeScriptJson(data)}</script>
+  <script>
+    const data = JSON.parse(document.getElementById("viewer-data").textContent);
+    const tasks = ["should_respond", "context_routing", "action_planner", "response", "media_description"];
+    const pretty = (value) => JSON.stringify(value, null, 2);
+    const metric = (label, value) => '<div class="metric"><strong>' + value + '</strong><span>' + label + '</span></div>';
+    function renderOverview() {
+      const m = data.manifest;
+      const target = document.getElementById("overview");
+      target.innerHTML =
+        '<div class="grid">' +
+        metric("Input trajectories", m.source.inputTrajectoryCount) +
+        metric("Sanitized trajectories", m.source.sanitizedTrajectoryCount) +
+        metric("Dropped trajectories", m.source.droppedTrajectoryCount) +
+        metric("LLM calls", m.counts.llmCalls ?? "n/a") +
+        metric("Task files", m.counts.taskFiles) +
+        metric("Task examples", m.counts.taskExamples) +
+        '</div><pre></pre>';
+      target.querySelector("pre").textContent = pretty({
+          paths: m.paths,
+          taskRows: m.counts.taskRows,
+          privacy: m.privacy,
+          cloudUpload: m.cloudUpload
+        });
+    }
+    function renderSelectable(targetId, rows, labelFor) {
+      const target = document.getElementById(targetId);
+      if (rows.length === 0) {
+        target.innerHTML = '<pre>No rows were exported for this section.</pre>';
+        return;
+      }
+      target.innerHTML = '<div class="split"><div class="list"></div><pre></pre></div>';
+      const list = target.querySelector(".list");
+      const detail = target.querySelector("pre");
+      rows.forEach((row, index) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "row" + (index === 0 ? " active" : "");
+        const label = document.createElement("div");
+        label.className = "label";
+        label.textContent = String(index + 1);
+        const title = document.createElement("strong");
+        title.textContent = String(labelFor(row, index));
+        button.append(label, title);
+        button.addEventListener("click", () => {
+          for (const item of list.querySelectorAll(".row")) item.classList.remove("active");
+          button.classList.add("active");
+          detail.textContent = pretty(row);
+        });
+        list.appendChild(button);
+      });
+      detail.textContent = pretty(rows[0]);
+    }
+    function renderTrajectories() {
+      renderSelectable("trajectories", data.sanitizedTrajectories, (row, index) =>
+        row.trajectoryId || row.id || row.callId || "trajectory-" + (index + 1)
+      );
+    }
+    function renderTasks() {
+      const rows = tasks.flatMap((task) => (data.taskExamples[task] || []).map((example) => ({ task, example })));
+      renderSelectable("tasks", rows, (row, index) =>
+        row.task + " / " + (row.example.trajectoryId || row.example.callId || index + 1)
+      );
+    }
+    function renderManifest() {
+      const target = document.getElementById("manifest");
+      target.innerHTML = '<pre></pre>';
+      target.querySelector("pre").textContent = pretty(data.manifest);
+    }
+    renderOverview();
+    renderTrajectories();
+    renderTasks();
+    renderManifest();
+    for (const button of document.querySelectorAll("[data-tab]")) {
+      button.addEventListener("click", () => {
+        const selected = button.dataset.tab;
+        for (const tab of document.querySelectorAll("[data-tab]")) {
+          tab.setAttribute("aria-selected", String(tab === button));
+        }
+        for (const section of document.querySelectorAll("main > section")) {
+          section.classList.toggle("hidden", section.id !== selected);
+        }
+      });
+    }
+  </script>
+</body>
+</html>
+`;
+}
+
 function normalizePrivacyStats(
   privacyResult: FilterResult<ExportableTrajectory> | null,
   explicitStats: TrajectoryExportBundlePrivacyStats | undefined,
@@ -210,6 +500,19 @@ function emptyTaskCounts(): Record<TrajectoryTrainingTask, number> {
     action_planner: 0,
     response: 0,
     media_description: 0,
+  };
+}
+
+function emptyTaskExamples(): Record<
+  TrajectoryTrainingTask,
+  ElizaNativeTrainingExample[]
+> {
+  return {
+    should_respond: [],
+    context_routing: [],
+    action_planner: [],
+    response: [],
+    media_description: [],
   };
 }
 
@@ -383,6 +686,7 @@ export async function buildTrajectoryExportBundle(
   );
   const taskCounts = taskDataset?.counts ?? emptyTaskCounts();
   const manifestPath = join(options.outputDir, "manifest.json");
+  const viewerHtmlPath = join(options.outputDir, "index.html");
   const generatedAt = (options.now?.() ?? new Date()).toISOString();
   const runLineage = resolveBundleRunIds(options.source, [
     ...inputTrajectories,
@@ -407,6 +711,7 @@ export async function buildTrajectoryExportBundle(
     paths: {
       bundleDir: options.outputDir,
       manifestPath,
+      viewerHtmlPath,
       rawJsonlPath,
       sanitizedJsonlPath,
       taskDatasetDir: taskDataset
@@ -428,6 +733,17 @@ export async function buildTrajectoryExportBundle(
     cloudUpload,
   };
 
+  await writeFile(
+    viewerHtmlPath,
+    buildViewerHtml({
+      manifest,
+      sanitizedTrajectories:
+        sanitizedJsonlText !== null
+          ? parseJsonlRows(sanitizedJsonlText)
+          : sanitizedTrajectories,
+      taskExamples: taskDataset?.examples ?? emptyTaskExamples(),
+    }),
+  );
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   return {

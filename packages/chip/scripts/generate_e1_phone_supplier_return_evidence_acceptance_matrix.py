@@ -14,22 +14,17 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
 REPORT_DATE = "2026-05-22"
 
 DEFAULT_OUTBOUND_MANIFEST = (
-    ROOT
-    / "board/kicad/e1-phone/production/sourcing/"
+    ROOT / "board/kicad/e1-phone/production/sourcing/"
     "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
 )
-DEFAULT_GAP_MAP = (
-    ROOT / "board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml"
-)
+DEFAULT_GAP_MAP = ROOT / "board/kicad/e1-phone/supplier-evidence-drawing-gap-map-2026-05-22.yaml"
 DEFAULT_REPORT = (
-    ROOT
-    / "board/kicad/e1-phone/production/sourcing/readiness/"
+    ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
     "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_MARKDOWN_REPORT = DEFAULT_REPORT.with_suffix(".md")
@@ -378,8 +373,7 @@ def build_report(
         },
         "acceptance_matrix": matrix_rows,
         "forbidden_claims": sorted(
-            set(outbound.get("forbidden_claims", []))
-            | set(gap_map.get("forbidden_claims", []))
+            set(outbound.get("forbidden_claims", [])) | set(gap_map.get("forbidden_claims", []))
         ),
     }
 

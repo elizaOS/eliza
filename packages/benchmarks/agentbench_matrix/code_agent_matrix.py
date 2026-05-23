@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 
-DATASET_VERSION = "agentbench-os-webshop-mind2web-fixture-v1"
-DEFAULT_ENVS = ("os", "webshop", "web_browsing")
+DATASET_VERSION = "agentbench-five-env-fixture-v1"
+DEFAULT_ENVS = ("os", "webshop", "web_browsing", "database", "knowledge_graph")
 
 
 def _repo_root() -> Path:
@@ -70,6 +70,10 @@ def _env_map() -> dict[str, Any]:
     from elizaos_agentbench.types import AgentBenchEnvironment
 
     return {
+        "database": AgentBenchEnvironment.DATABASE,
+        "db": AgentBenchEnvironment.DATABASE,
+        "knowledge_graph": AgentBenchEnvironment.KNOWLEDGE_GRAPH,
+        "kg": AgentBenchEnvironment.KNOWLEDGE_GRAPH,
         "os": AgentBenchEnvironment.OS,
         "webshop": AgentBenchEnvironment.WEB_SHOPPING,
         "web_shopping": AgentBenchEnvironment.WEB_SHOPPING,

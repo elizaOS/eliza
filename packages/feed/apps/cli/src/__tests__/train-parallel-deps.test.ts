@@ -7,15 +7,25 @@ const autonomousCoordinator = {
   executeAutonomousTick: mock(async () => ({ success: true })),
 };
 
-mock.module("@feed/training/rubrics/index", () => ({
+mock.module("@feed/agents/rubrics/index", () => ({
   getAvailableArchetypes: () => ["trader"],
   getPriorityMetrics: () => [],
   getRubric: () => "rubric",
   hasCustomRubric: () => true,
+  sanitizeArchetype: (archetype: string) => archetype,
 }));
 
-mock.module("@feed/training", () => ({
+mock.module("@feed/agents/dependencies", () => ({
   configureTrainingDependencies,
+  getAgentRuntimeManager: () => agentRuntimeManager,
+  getAgentService: () => agentService,
+  getAutonomousCoordinator: () => autonomousCoordinator,
+  getToTrainingMessages: () => () => [],
+}));
+
+mock.module("@feed/agents/training", () => ({
+  archetypeScoringService: {},
+  trajectoryMetricsExtractor: {},
 }));
 
 mock.module("@feed/agents", () => ({

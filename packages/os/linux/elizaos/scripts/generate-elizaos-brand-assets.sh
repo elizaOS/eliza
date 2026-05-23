@@ -8,7 +8,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-WORDMARK_WHITE_SVG="${ROOT}/assets/elizaos_logotext.svg"
+WORDMARK_WHITE_SVG="${ROOT}/assets/eliza_text_white.svg"
 LOGO_BLUEBG_SVG="${ROOT}/assets/logo_white_bluebg.svg"
 LOGO_NOBG_SVG="${ROOT}/assets/logo_white_nobg.svg"
 

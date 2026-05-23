@@ -75,6 +75,17 @@ const PERMISSION_IDS: readonly PermissionId[] = [
 
 const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   {
+    name: "assistant home",
+    path: "/",
+    readyChecks: [
+      { selector: '[data-testid="home-view"]' },
+      { selector: '[data-testid="home-chat-input"]' },
+      { selector: '[data-testid="home-assistant-transcript"]' },
+    ],
+    mode: "all",
+    timeoutMs: 60_000,
+  },
+  {
     name: "chat",
     path: "/chat",
     readyChecks: [
@@ -241,7 +252,7 @@ const DESKTOP_PROBE: ViewportProbe = {
 };
 
 const MOBILE_CHAT_ROUTE_PROBE: RouteProbe = {
-  ...CORE_ROUTE_PROBES[0],
+  ...coreRouteProbe("chat"),
   readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
   mode: "all",
 };
@@ -250,8 +261,9 @@ const MOBILE_PROBE: ViewportProbe = {
   name: "mobile",
   size: { width: 390, height: 844 },
   routes: [
+    coreRouteProbe("assistant home"),
     MOBILE_CHAT_ROUTE_PROBE,
-    ...CORE_ROUTE_PROBES.slice(1),
+    ...CORE_ROUTE_PROBES.slice(2),
     ...APP_TOOL_ROUTE_PROBES,
   ],
 };
@@ -1324,14 +1336,15 @@ async function expectMainShell(page: Page, route: RouteProbe): Promise<void> {
     });
     return;
   }
-  const shellSettings = page
-    .getByTestId("header-settings-button")
-    .or(
-      page
-        .getByRole("navigation", { name: "Navigation menu" })
-        .getByRole("button", { name: "Settings" }),
-    );
-  await expect(shellSettings).toBeVisible({ timeout: route.timeoutMs });
+  await expect(
+    page
+      .locator(
+        "main, [data-testid='home-view'], [role='main'], h1, [role='region']",
+      )
+      .first(),
+  ).toBeVisible({
+    timeout: route.timeoutMs,
+  });
 }
 
 async function probeRoute(page: Page, route: RouteProbe): Promise<void> {

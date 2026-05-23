@@ -3,17 +3,14 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = (
-    ROOT
-    / "board/kicad/e1-phone/production/readiness/"
+    ROOT / "board/kicad/e1-phone/production/readiness/"
     "release-evidence-content-contract-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_release_evidence_content_contract.v1"

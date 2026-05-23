@@ -9,27 +9,23 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BOARD_ROOT = ROOT / "board/kicad/e1-phone"
 REPORT_DATE = "2026-05-22"
 
 DEFAULT_SUPPLIER_MATRIX = (
-    BOARD_ROOT
-    / "production/sourcing/readiness/"
+    BOARD_ROOT / "production/sourcing/readiness/"
     "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_ROUTED_MATRIX = (
-    BOARD_ROOT
-    / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
+    BOARD_ROOT / "production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_FIRST_ARTICLE_MATRIX = (
     BOARD_ROOT
     / "production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_PRODUCTION_PRESENCE = (
-    BOARD_ROOT
-    / "production/readiness/"
+    BOARD_ROOT / "production/readiness/"
     "production-factory-required-output-presence-inventory-2026-05-22.yaml"
 )
 DEFAULT_MECHANICAL_CAD = (
@@ -482,9 +478,7 @@ def build_report(
             "supplier_return_evidence_acceptance_matrix": rel(supplier_path),
             "routed_board_release_acceptance_matrix": rel(routed_path),
             "first_article_bench_acceptance_matrix": rel(first_article_path),
-            "production_factory_required_output_presence_inventory": rel(
-                production_presence_path
-            ),
+            "production_factory_required_output_presence_inventory": rel(production_presence_path),
             "mechanical_cad_evidence_inventory": rel(mechanical_cad_path),
             "report_path": rel(report_path),
         },
@@ -493,18 +487,16 @@ def build_report(
             "supplier_required_evidence_count": supplier["summary"][
                 "required_supplier_return_evidence_count"
             ],
-            "routed_required_output_path_count": routed["summary"][
-                "required_output_path_count"
-            ],
+            "routed_required_output_path_count": routed["summary"]["required_output_path_count"],
             "production_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
             "first_article_required_non_template_row_count": first_article["summary"][
                 "required_non_template_row_count"
             ],
-            "mechanical_missing_release_ready_evidence_count": mechanical_cad[
-                "release_readiness"
-            ]["missing_required_evidence_count"],
+            "mechanical_missing_release_ready_evidence_count": mechanical_cad["release_readiness"][
+                "missing_required_evidence_count"
+            ],
             "artifact_content_requirement_count": len(artifact_rows),
             "template_content_requirement_count": len(template_rows),
             "validated_artifact_content_requirement_count": 0,

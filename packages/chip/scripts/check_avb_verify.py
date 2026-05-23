@@ -134,18 +134,22 @@ def main() -> int:
 
     checks = []
     host_ok, host_detail = run_host_test()
-    checks.append({
-        "id": "host_vbmeta_kat_and_negative_suite",
-        "status": "pass" if host_ok else "fail",
-        "detail": host_detail,
-    })
+    checks.append(
+        {
+            "id": "host_vbmeta_kat_and_negative_suite",
+            "status": "pass" if host_ok else "fail",
+            "detail": host_detail,
+        }
+    )
 
     target_ok, target_detail = run_target_build()
-    checks.append({
-        "id": "riscv64_freestanding_build",
-        "status": "pass" if target_ok else "fail",
-        "detail": target_detail,
-    })
+    checks.append(
+        {
+            "id": "riscv64_freestanding_build",
+            "status": "pass" if target_ok else "fail",
+            "detail": target_detail,
+        }
+    )
 
     failures = [c["id"] for c in checks if c["status"] != "pass"]
     passed = not failures

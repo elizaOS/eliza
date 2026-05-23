@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/test/readiness/"
+    ROOT / "board/kicad/e1-phone/production/test/readiness/"
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_first_article_bench_acceptance_matrix.v1"
@@ -143,7 +140,9 @@ def content_failures(path_text: str, evidence_kind: str) -> list[str]:
     failures: list[str] = []
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml", ".json"}:
-        failures.extend(f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS))
+        failures.extend(
+            f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
+        )
         failures.extend(
             f"missing_first_article_field:{field}"
             for field in missing_fields(parsed, FIRST_ARTICLE_FIELDS)

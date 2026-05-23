@@ -5,14 +5,235 @@
  * This is the proper way to generate training data at scale.
  */
 
-import { closeDatabase, db, eq, users } from "@feed/db";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { closeDatabase, db, eq, inArray, trajectories, users } from "@feed/db";
 import {
-  ArchetypeConfigService,
-  createParallelGenerator,
-  type ParallelGenerationConfig,
-} from "@feed/training";
+  getAgentRuntimeManager,
+  getAgentService,
+  getAutonomousCoordinator,
+} from "@feed/agents/dependencies";
+import { getAvailableArchetypes } from "@feed/agents/rubrics/index";
 import { getFlag, getOption, type parseArgs, wantsHelp } from "../lib/args.js";
 import { logger } from "../lib/logger.js";
+import { writeFeedParallelGenerationManifest } from "../lib/training-artifacts.js";
+
+interface ParallelGenerationConfig {
+  archetypes: string[];
+  agentsPerArchetype: number;
+  ticksPerAgent: number;
+  parallelAgents: number;
+  recordTrajectories: boolean;
+  managerId: string;
+}
+
+interface ParallelGenerator {
+  generate(): Promise<{
+    agentsCreated: string[];
+    trajectoryIds: string[];
+    totalTicks: number;
+    duration: number;
+    archetypeStats: Record<
+      string,
+      { agents: number; trajectories: number; avgTicksPerAgent: number }
+    >;
+    errors: string[];
+  }>;
+  cleanup(): Promise<void>;
+}
+
+type CreatedAgent = {
+  id: string;
+  archetype: string;
+};
+
+function parseJsonOrFallback(value: string | null | undefined, fallback: unknown): unknown {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return fallback;
+  }
+}
+
+async function exportGeneratedTrajectories(
+  trajectoryIds: readonly string[],
+  outputDir: string,
+): Promise<string | null> {
+  if (trajectoryIds.length === 0) return null;
+  const rows = await db
+    .select({
+      trajectoryId: trajectories.trajectoryId,
+      agentId: trajectories.agentId,
+      archetype: trajectories.archetype,
+      stepsJson: trajectories.stepsJson,
+      aiJudgeReward: trajectories.aiJudgeReward,
+      aiJudgeReasoning: trajectories.aiJudgeReasoning,
+      scenarioId: trajectories.scenarioId,
+      finalPnL: trajectories.finalPnL,
+      metricsJson: trajectories.metricsJson,
+    })
+    .from(trajectories)
+    .where(inArray(trajectories.trajectoryId, [...trajectoryIds]));
+  const byId = new Map(rows.map((row) => [row.trajectoryId, row]));
+  const records = trajectoryIds
+    .map((id) => byId.get(id))
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
+    .map((trajectory) => ({
+      trajectory_id: trajectory.trajectoryId,
+      agent_id: trajectory.agentId,
+      archetype: trajectory.archetype,
+      score: trajectory.aiJudgeReward,
+      reasoning: trajectory.aiJudgeReasoning,
+      scenario_id: trajectory.scenarioId,
+      final_pnl: trajectory.finalPnL,
+      steps: parseJsonOrFallback(trajectory.stepsJson, []),
+      metrics: parseJsonOrFallback(trajectory.metricsJson, {}),
+    }));
+  if (records.length === 0) return null;
+  const exportPath = join(outputDir, "feed-generated-trajectories.jsonl");
+  await writeFile(
+    exportPath,
+    `${records.map((record) => JSON.stringify(record)).join("\n")}\n`,
+    "utf8",
+  );
+  return exportPath;
+}
+
+function safeUsername(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 14);
+}
+
+async function runLimited<T>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
+  for (let index = 0; index < items.length; index += limit) {
+    await Promise.all(items.slice(index, index + limit).map(fn));
+  }
+}
+
+function createParallelGenerator(config: ParallelGenerationConfig): ParallelGenerator {
+  const agentService = getAgentService();
+  const runtimeManager = getAgentRuntimeManager();
+  const autonomousCoordinator = getAutonomousCoordinator();
+  const createdAgents: CreatedAgent[] = [];
+
+  return {
+    async generate() {
+      const startedAt = Date.now();
+      const trajectoryIds: string[] = [];
+      const errors: string[] = [];
+      const archetypeTrajectoryIds: Record<string, Set<string>> = {};
+      const archetypeStats: Record<
+        string,
+        { agents: number; trajectories: number; avgTicksPerAgent: number }
+      > = {};
+
+      for (const archetype of config.archetypes) {
+        archetypeStats[archetype] = {
+          agents: config.agentsPerArchetype,
+            trajectories: 0,
+            avgTicksPerAgent: config.ticksPerAgent,
+          };
+        archetypeTrajectoryIds[archetype] = new Set();
+        for (let index = 0; index < config.agentsPerArchetype; index += 1) {
+          try {
+            const suffix = `${Date.now()}_${index}`;
+            const agent = await agentService.createAgent({
+              userId: config.managerId,
+              name: `Training ${archetype} ${index + 1}`,
+              username: `train_${safeUsername(archetype)}_${suffix}`.slice(0, 20),
+              description: `Feed training data generator for ${archetype}`,
+              system: `You are a ${archetype} feed simulation agent generating trajectories for training.`,
+              bio: [`${archetype} training trajectory generator`],
+              personality: archetype,
+              tradingStrategy: archetype,
+              initialDeposit: 0,
+            });
+            createdAgents.push({ id: agent.id, archetype });
+          } catch (err) {
+            errors.push(
+              `create ${archetype}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+      }
+
+      let totalTicks = 0;
+      await runLimited(
+        createdAgents,
+        Math.max(1, config.parallelAgents),
+        async (agent) => {
+          let runtime: Awaited<ReturnType<typeof runtimeManager.getRuntime>>;
+          try {
+            runtime = await runtimeManager.getRuntime(agent.id);
+          } catch (err) {
+            errors.push(
+              `runtime ${agent.id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+            return;
+          }
+
+          for (let tick = 0; tick < config.ticksPerAgent; tick += 1) {
+            try {
+              const result = await autonomousCoordinator.executeAutonomousTick(
+                agent.id,
+                runtime,
+                config.recordTrajectories,
+              );
+              totalTicks += 1;
+              if (result.trajectoryId) {
+                trajectoryIds.push(result.trajectoryId);
+                archetypeTrajectoryIds[agent.archetype]?.add(
+                  result.trajectoryId,
+                );
+                const stats = archetypeStats[agent.archetype];
+                const ids = archetypeTrajectoryIds[agent.archetype];
+                if (stats && ids) stats.trajectories = ids.size;
+              }
+              if (!result.success && result.error) {
+                errors.push(`tick ${agent.id}: ${result.error}`);
+              }
+            } catch (err) {
+              errors.push(
+                `tick ${agent.id}: ${
+                  err instanceof Error ? err.message : String(err)
+                }`,
+              );
+            }
+          }
+        },
+      );
+
+      return {
+        agentsCreated: createdAgents.map((agent) => agent.id),
+        trajectoryIds: [...new Set(trajectoryIds)],
+        totalTicks,
+        duration: Date.now() - startedAt,
+        archetypeStats,
+        errors,
+      };
+    },
+
+    async cleanup() {
+      const maybeDelete = agentService.deleteAgent;
+      if (!maybeDelete) return;
+      await Promise.all(
+        createdAgents.map((agent) => maybeDelete(agent.id, config.managerId)),
+      );
+    },
+  };
+}
 
 function printHelp(): void {
   console.log(`
@@ -32,10 +253,11 @@ OPTIONS:
   -p, --parallel      Max agents running simultaneously (default: 5, max: 10)
   --manager-id        Manager user ID (uses first admin if not provided)
   --cleanup           Delete created agents after generation
+  --output-dir        Directory for generation manifest (default: training-data/feed-parallel)
   --dry-run           Show what would be generated
 
 AVAILABLE ARCHETYPES:
-${ArchetypeConfigService.getAvailableArchetypes()
+${getAvailableArchetypes()
   .map((a) => `  - ${a}`)
   .join("\n")}
 
@@ -65,7 +287,7 @@ export async function runParallelGeneration(
   const archetypesArg = getOption(parsed, "archetypes", "a") || "trader";
   const archetypes =
     archetypesArg === "all"
-      ? ArchetypeConfigService.getAvailableArchetypes()
+      ? getAvailableArchetypes()
       : archetypesArg.split(",").map((a) => a.trim());
 
   const numAgents = parseInt(getOption(parsed, "num-agents", "n") || "2", 10);
@@ -74,6 +296,7 @@ export async function runParallelGeneration(
   const cleanup = getFlag(parsed, "cleanup");
   const dryRun = getFlag(parsed, "dry-run");
   const providedManagerId = getOption(parsed, "manager-id");
+  const outputDir = getOption(parsed, "output-dir") || "training-data/feed-parallel";
 
   logger.header("Parallel Training Data Generation");
 
@@ -88,6 +311,7 @@ export async function runParallelGeneration(
     `  Expected trajectories: ~${archetypes.length * numAgents * ticks}`,
   );
   console.log(`  Cleanup after: ${cleanup ? "Yes" : "No"}`);
+  console.log(`  Manifest output: ${outputDir}`);
   console.log();
 
   if (dryRun) {
@@ -97,6 +321,7 @@ export async function runParallelGeneration(
       `  Running in ${Math.ceil((archetypes.length * numAgents) / parallel)} parallel batches`,
     );
     console.log(`  ~${archetypes.length * numAgents * ticks} trajectories`);
+    console.log(`  Manifest output: ${outputDir}`);
     console.log();
 
     // Calculate time estimate
@@ -153,6 +378,22 @@ export async function runParallelGeneration(
   console.log();
 
   const result = await generator.generate();
+  const exportPath = await exportGeneratedTrajectories(
+    result.trajectoryIds,
+    outputDir,
+  );
+  const manifest = await writeFeedParallelGenerationManifest({
+    outputDir,
+    exportPath,
+    archetypes,
+    agentsCreated: result.agentsCreated,
+    trajectoryIds: result.trajectoryIds,
+    totalTicks: result.totalTicks,
+    durationMs: result.duration,
+    archetypeStats: result.archetypeStats,
+    errors: result.errors,
+    cleanup,
+  });
 
   // Display results
   logger.header("Generation Complete");
@@ -162,6 +403,8 @@ export async function runParallelGeneration(
   console.log(`  Trajectories generated: ${result.trajectoryIds.length}`);
   console.log(`  Total ticks executed: ${result.totalTicks}`);
   console.log(`  Duration: ${(result.duration / 1000).toFixed(1)} seconds`);
+  if (exportPath) console.log(`  Export: ${exportPath}`);
+  console.log(`  Manifest: ${manifest.manifestPath}`);
 
   if (result.errors.length > 0) {
     console.log(`  Errors: ${result.errors.length}`);

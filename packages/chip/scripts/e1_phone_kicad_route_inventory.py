@@ -15,7 +15,6 @@ from typing import Any
 
 import yaml
 
-
 REPO_REL_E1_DIR = Path("packages/chip/board/kicad/e1-phone")
 DEFAULT_BOARD = REPO_REL_E1_DIR / "pcb/e1-phone-mainboard-concept.kicad_pcb"
 DEFAULT_BURNDOWN = REPO_REL_E1_DIR / "routed-layout-si-drc-burndown-2026-05-22.yaml"
@@ -88,8 +87,8 @@ def board_inventory(board_text: str) -> dict[str, Any]:
     net_classes = re.findall(r'^\s*\(net_class\s+"([^"]+)"', board_text, re.MULTILINE)
     layers = re.findall(r'^\s*\(\d+\s+"([^"]+)"\s+([^)]+)\)', board_text, re.MULTILINE)
     footprints = extract_blocks(board_text, "footprint ")
-    segments = re.findall(r'^\s*\(segment\b', board_text, re.MULTILINE)
-    vias = re.findall(r'^\s*\(via\b', board_text, re.MULTILINE)
+    segments = re.findall(r"^\s*\(segment\b", board_text, re.MULTILINE)
+    vias = re.findall(r"^\s*\(via\b", board_text, re.MULTILINE)
     zones = extract_blocks(board_text, "zone ")
 
     placeholder_refs: list[dict[str, str | None]] = []
@@ -204,7 +203,9 @@ def resolve_repo_path(root: Path, e1_dir: Path, rel_path: str) -> Path:
     return e1_dir / path
 
 
-def build_report(root: Path, board_path: Path, burndown_path: Path, report_path: Path) -> dict[str, Any]:
+def build_report(
+    root: Path, board_path: Path, burndown_path: Path, report_path: Path
+) -> dict[str, Any]:
     board_text = read_text(board_path)
     burndown = yaml.safe_load(read_text(burndown_path))
     board = board_inventory(board_text)
@@ -260,13 +261,7 @@ def build_report(root: Path, board_path: Path, burndown_path: Path, report_path:
                 )
             ),
             "unique_burndown_exact_nets_missing_from_board_count": len(
-                sorted(
-                    set(
-                        net
-                        for domain in domains
-                        for net in domain["missing_exact_nets"]
-                    )
-                )
+                sorted(set(net for domain in domains for net in domain["missing_exact_nets"]))
             ),
             "domains_with_missing_exact_nets": unresolved_domain_count,
         },

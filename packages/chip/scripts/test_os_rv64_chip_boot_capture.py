@@ -81,10 +81,7 @@ def test_capture_helper_rejects_qemu_reference_transcript_without_outputs() -> N
         tmp = Path(tmpdir)
         transcript = tmp / "qemu-reference.log"
         transcript.write_text(
-            "OpenSBI\n"
-            "Linux version\n"
-            "qemu-system-riscv64 -M virt\n"
-            "provenance=qemu_virt\n",
+            "OpenSBI\nLinux version\nqemu-system-riscv64 -M virt\nprovenance=qemu_virt\n",
             encoding="utf-8",
         )
         boot_json = tmp / "boot.json"
@@ -108,7 +105,9 @@ def test_capture_helper_rejects_qemu_reference_transcript_without_outputs() -> N
             raise AssertionError(result.stdout + result.stderr)
         assert_contains(result.stderr, "STATUS: BLOCKED os_rv64.chip_boot_evidence_capture")
         assert_contains(result.stderr, "boot transcript is qemu-virt reference evidence")
-        assert_contains(result.stderr, "boot transcript missing marker group: elizaos-firstboot-ready")
+        assert_contains(
+            result.stderr, "boot transcript missing marker group: elizaos-firstboot-ready"
+        )
         if boot_json.exists() or agent_json.exists():
             raise AssertionError("blocked qemu reference capture must not write evidence JSON")
 

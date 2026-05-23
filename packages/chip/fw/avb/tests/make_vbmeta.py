@@ -66,9 +66,7 @@ def key_from_seed(seed: int) -> Ed25519PrivateKey:
 
 
 def pub_raw(key: Ed25519PrivateKey) -> bytes:
-    return key.public_key().public_bytes(
-        serialization.Encoding.Raw, serialization.PublicFormat.Raw
-    )
+    return key.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
 
 
 def _pad8(b: bytes) -> bytes:
@@ -83,53 +81,54 @@ def descriptor(tag: int, body: bytes) -> bytes:
     return struct.pack(">QQ", tag, len(body)) + body
 
 
-def hash_descriptor(partition: bytes, image: bytes, salt: bytes,
-                    digest: bytes | None = None) -> bytes:
+def hash_descriptor(
+    partition: bytes, image: bytes, salt: bytes, digest: bytes | None = None
+) -> bytes:
     if digest is None:
         digest = hashlib.sha256(salt + image).digest()
     hash_algorithm = b"sha256".ljust(32, b"\x00")
-    body = struct.pack(">Q", len(image))          # image_size
-    body += hash_algorithm                          # hash_algorithm[32]
-    body += struct.pack(">I", len(partition))      # partition_name_len
-    body += struct.pack(">I", len(salt))           # salt_len
-    body += struct.pack(">I", len(digest))         # digest_len
-    body += struct.pack(">I", 0)                   # flags
-    body += b"\x00" * 60                            # reserved
+    body = struct.pack(">Q", len(image))  # image_size
+    body += hash_algorithm  # hash_algorithm[32]
+    body += struct.pack(">I", len(partition))  # partition_name_len
+    body += struct.pack(">I", len(salt))  # salt_len
+    body += struct.pack(">I", len(digest))  # digest_len
+    body += struct.pack(">I", 0)  # flags
+    body += b"\x00" * 60  # reserved
     assert len(body) == 0x74
     body += partition + salt + digest
     return descriptor(TAG_HASH, body)
 
 
-def hashtree_descriptor(partition: bytes, image_size: int, salt: bytes,
-                        root_digest: bytes) -> bytes:
+def hashtree_descriptor(
+    partition: bytes, image_size: int, salt: bytes, root_digest: bytes
+) -> bytes:
     hash_algorithm = b"sha256".ljust(32, b"\x00")
-    body = struct.pack(">I", 1)                    # dm_verity_version
-    body += struct.pack(">Q", image_size)          # image_size
-    body += struct.pack(">Q", image_size)          # tree_offset
-    body += struct.pack(">Q", 4096)                # tree_size
-    body += struct.pack(">I", 4096)                # data_block_size
-    body += struct.pack(">I", 4096)                # hash_block_size
-    body += struct.pack(">I", 0)                   # fec_num_roots
-    body += struct.pack(">Q", 0)                   # fec_offset
-    body += struct.pack(">Q", 0)                   # fec_size
-    body += hash_algorithm                          # hash_algorithm[32]
-    body += struct.pack(">I", len(partition))      # partition_name_len
-    body += struct.pack(">I", len(salt))           # salt_len
-    body += struct.pack(">I", len(root_digest))    # root_digest_len
-    body += struct.pack(">I", 0)                   # flags
-    body += b"\x00" * 60                            # reserved
+    body = struct.pack(">I", 1)  # dm_verity_version
+    body += struct.pack(">Q", image_size)  # image_size
+    body += struct.pack(">Q", image_size)  # tree_offset
+    body += struct.pack(">Q", 4096)  # tree_size
+    body += struct.pack(">I", 4096)  # data_block_size
+    body += struct.pack(">I", 4096)  # hash_block_size
+    body += struct.pack(">I", 0)  # fec_num_roots
+    body += struct.pack(">Q", 0)  # fec_offset
+    body += struct.pack(">Q", 0)  # fec_size
+    body += hash_algorithm  # hash_algorithm[32]
+    body += struct.pack(">I", len(partition))  # partition_name_len
+    body += struct.pack(">I", len(salt))  # salt_len
+    body += struct.pack(">I", len(root_digest))  # root_digest_len
+    body += struct.pack(">I", 0)  # flags
+    body += b"\x00" * 60  # reserved
     assert len(body) == 0xA4
     body += partition + salt + root_digest
     return descriptor(TAG_HASHTREE, body)
 
 
-def chain_descriptor(partition: bytes, rollback_index_location: int,
-                    public_key: bytes) -> bytes:
+def chain_descriptor(partition: bytes, rollback_index_location: int, public_key: bytes) -> bytes:
     body = struct.pack(">I", rollback_index_location)
     body += struct.pack(">I", len(partition))
     body += struct.pack(">I", len(public_key))
-    body += struct.pack(">I", 0)                   # flags
-    body += b"\x00" * 60                            # reserved
+    body += struct.pack(">I", 0)  # flags
+    body += b"\x00" * 60  # reserved
     assert len(body) == 0x4C
     body += partition + public_key
     return descriptor(TAG_CHAIN_PARTITION, body)
@@ -165,8 +164,8 @@ def build_vbmeta(
 
     header = bytearray(HEADER_LEN)
     header[0x00:0x04] = MAGIC
-    struct.pack_into(">I", header, 0x04, 1)                 # required major
-    struct.pack_into(">I", header, 0x08, 0)                 # required minor
+    struct.pack_into(">I", header, 0x04, 1)  # required major
+    struct.pack_into(">I", header, 0x08, 0)  # required minor
     struct.pack_into(">Q", header, 0x0C, auth_size)
     struct.pack_into(">Q", header, 0x14, aux_size)
     struct.pack_into(">I", header, 0x1C, algorithm_type)
@@ -176,14 +175,14 @@ def build_vbmeta(
     struct.pack_into(">Q", header, 0x38, SIG_LEN)
     struct.pack_into(">Q", header, 0x40, pk_off)
     struct.pack_into(">Q", header, 0x48, len(pubkey))
-    struct.pack_into(">Q", header, 0x50, 0)                 # pk metadata off
-    struct.pack_into(">Q", header, 0x58, 0)                 # pk metadata size
+    struct.pack_into(">Q", header, 0x50, 0)  # pk metadata off
+    struct.pack_into(">Q", header, 0x58, 0)  # pk metadata size
     struct.pack_into(">Q", header, 0x60, desc_off)
     struct.pack_into(">Q", header, 0x68, len(descriptors))
     struct.pack_into(">Q", header, 0x70, rollback_index)
     struct.pack_into(">I", header, 0x78, flags)
     struct.pack_into(">I", header, 0x7C, rollback_index_location)
-    header[0x80:0x80 + 14] = b"e1-avb-1.0\x00\x00\x00\x00"
+    header[0x80 : 0x80 + 14] = b"e1-avb-1.0\x00\x00\x00\x00"
     # 0xB0..0x100 padding stays zero.
 
     auth_hash = hashlib.sha256(bytes(header) + aux).digest()
@@ -199,11 +198,13 @@ def standard_descriptors(chain_pubkey: bytes) -> bytes:
     chain (vendor_boot), property."""
     d = b""
     d += hash_descriptor(b"boot", BOOT_IMAGE, BOOT_SALT)
-    d += hashtree_descriptor(b"system", 0x4000, BOOT_SALT[:8],
-                            hashlib.sha256(b"system-root").digest())
+    d += hashtree_descriptor(
+        b"system", 0x4000, BOOT_SALT[:8], hashlib.sha256(b"system-root").digest()
+    )
     d += chain_descriptor(b"vendor_boot", 4, chain_pubkey)
-    d += property_descriptor(b"com.android.build.boot.fingerprint",
-                            b"eliza/e1/e1:14/UQ1A/userdebug")
+    d += property_descriptor(
+        b"com.android.build.boot.fingerprint", b"eliza/e1/e1:14/UQ1A/userdebug"
+    )
     return d
 
 
@@ -211,9 +212,9 @@ def main() -> int:
     out = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(__file__).parent
     out.mkdir(parents=True, exist_ok=True)
 
-    avb_key_a = key_from_seed(1)          # E1 AVB key A (pinned by boot stage)
+    avb_key_a = key_from_seed(1)  # E1 AVB key A (pinned by boot stage)
     attacker_key = key_from_seed(99)
-    chain_key = key_from_seed(2)          # vendor_boot vbmeta key (chained)
+    chain_key = key_from_seed(2)  # vendor_boot vbmeta key (chained)
 
     pinned_hash = hashlib.sha256(pub_raw(avb_key_a)).digest()
     descs = standard_descriptors(pub_raw(chain_key))
@@ -253,8 +254,9 @@ def main() -> int:
     bad_digest[0] ^= 0xFF
     descs_bad = b""
     descs_bad += hash_descriptor(b"boot", BOOT_IMAGE, BOOT_SALT, bytes(bad_digest))
-    descs_bad += hashtree_descriptor(b"system", 0x4000, BOOT_SALT[:8],
-                                    hashlib.sha256(b"system-root").digest())
+    descs_bad += hashtree_descriptor(
+        b"system", 0x4000, BOOT_SALT[:8], hashlib.sha256(b"system-root").digest()
+    )
     descs_bad += chain_descriptor(b"vendor_boot", 4, pub_raw(chain_key))
     (out / "bad_hash_descriptor.bin").write_bytes(build_vbmeta(avb_key_a, descs_bad))
 

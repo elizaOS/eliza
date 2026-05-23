@@ -11,6 +11,7 @@ from typing import Any
 
 
 DATASET_VERSION = "openclaw-benchmark-execution-v1"
+DEFAULT_MOCK_SCENARIOS = ("setup", "implementation", "testing")
 
 
 def _repo_root() -> Path:
@@ -28,16 +29,25 @@ def _benchmark_root() -> Path:
 def _add_paths() -> Path:
     root = _repo_root()
     for relative in (
-        "packages",
-        "packages/benchmarks/eliza-adapter",
-        "packages/benchmarks/hermes-adapter",
-        "packages/benchmarks/openclaw-adapter",
         "packages/benchmarks/openclaw-benchmark",
+        "packages/benchmarks/openclaw-adapter",
+        "packages/benchmarks/hermes-adapter",
+        "packages/benchmarks/eliza-adapter",
+        "packages",
     ):
         path = str(root / relative)
-        if path not in sys.path:
-            sys.path.insert(0, path)
+        while path in sys.path:
+            sys.path.remove(path)
+        sys.path.insert(0, path)
     return root
+
+
+def available_scenario_names() -> list[str]:
+    _add_paths()
+    from openclaw.runner import BenchmarkRunner
+
+    runner = BenchmarkRunner(model="dummy", api_key="dummy", use_docker=False)
+    return list(runner._ordered_scenarios())
 
 
 def _configure_agent_env(task_agent: str, model_provider: str, model: str, timeout_seconds: int) -> None:
@@ -92,6 +102,11 @@ class MatrixOpenClawRunner:
     ) -> None:
         _add_paths()
         _configure_agent_env(task_agent, model_provider, model, timeout_seconds)
+
+        loaded_adapter = sys.modules.get("eliza_adapter")
+        loaded_adapter_path = str(getattr(loaded_adapter, "__file__", ""))
+        if loaded_adapter is not None and "benchmarks/openclaw-benchmark/eliza_adapter.py" in loaded_adapter_path:
+            del sys.modules["eliza_adapter"]
 
         from eliza_adapter import ElizaClient, ElizaServerManager
         from openclaw.runner import BenchmarkRunner
@@ -206,6 +221,7 @@ def _task_results(raw: dict[str, Any]) -> list[dict[str, Any]]:
                 "error": str(payload.get("error") or ""),
                 "duration_ms": payload.get("duration_ms"),
                 "steps": payload.get("steps"),
+                "trajectory_path": payload.get("trajectory_path"),
                 "tool_call_count": len(payload.get("tool_calls", []))
                 if isinstance(payload.get("tool_calls"), list)
                 else None,
@@ -225,6 +241,7 @@ def _normalize_result(
     results = _task_results(raw)
     total = len(results)
     resolved = sum(float(item.get("score") or 0.0) for item in results)
+    available = len(available_scenario_names())
     return {
         "benchmark": "openclaw_benchmark",
         "adapter": task_agent,
@@ -232,6 +249,10 @@ def _normalize_result(
         "model": model,
         "mode": mode,
         "dataset_version": DATASET_VERSION,
+        "available_task_count": available,
+        "coverage_note": (
+            f"local OpenCLAW benchmark exposes {available} ordered scenarios"
+        ),
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -265,6 +286,88 @@ def _mock_result(task_agent: str, model_provider: str, model: str, scenario: str
     )
 
 
+def _write_mock_trajectory(
+    trajectory_dir: Path | None,
+    *,
+    scenario: str,
+    task_agent: str,
+) -> str:
+    if trajectory_dir is None:
+        return ""
+    trajectory_dir.mkdir(parents=True, exist_ok=True)
+    path = trajectory_dir / f"trajectory-{scenario}.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "scenario": scenario,
+                "task_agent": task_agent,
+                "messages": [
+                    {"role": "user", "content": f"Run OpenClaw scenario {scenario}."},
+                    {"role": "assistant", "content": f"Mock OpenClaw response for {scenario}."},
+                ],
+                "usage": {},
+                "agent_status": "mock",
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    return str(path)
+
+
+def _mock_selected_result(
+    task_agent: str,
+    model_provider: str,
+    model: str,
+    *,
+    scenario: str,
+    max_tasks: int | None,
+    trajectory_dir: Path | None,
+) -> dict[str, Any]:
+    if scenario != "all":
+        scenarios = [scenario]
+    else:
+        available = available_scenario_names()
+        total = max_tasks if max_tasks is not None else len(available)
+        scenarios = [
+            (
+                available[index]
+                if index < len(available)
+                else f"{available[index % len(available)]}__mock_{index + 1}"
+            )
+            for index in range(total)
+        ]
+    raw = {
+        "benchmark": "openclaw_benchmark",
+        "scoring_type": "execution_validation_mock",
+        "tasks": {
+            item: {
+                "scenario": item,
+                "score": {"score": 1.0, "passed": 1, "total_checks": 1},
+                "duration_ms": 0,
+                "steps": 1,
+                "tool_calls": [],
+                "trajectory_path": _write_mock_trajectory(
+                    trajectory_dir,
+                    scenario=item,
+                    task_agent=task_agent,
+                ),
+            }
+            for item in scenarios
+        },
+        "overall_score": 1.0 if scenarios else 0.0,
+        "tasks_completed": len(scenarios),
+    }
+    return _normalize_result(
+        raw=raw,
+        task_agent=task_agent,
+        model_provider=model_provider,
+        model=model,
+        mode="mock",
+    )
+
+
 def run_openclaw_benchmark(
     *,
     task_agent: str,
@@ -284,8 +387,14 @@ def run_openclaw_benchmark(
         os.environ["BENCHMARK_RUN_DIR"] = str(trajectory_dir)
         os.environ["BENCHMARK_TELEMETRY_JSONL"] = str(trajectory_dir / "telemetry.jsonl")
     if mock:
-        mock_scenario = "setup" if scenario == "all" and max_tasks == 1 else scenario
-        return _mock_result(task_agent, model_provider, model, mock_scenario)
+        return _mock_selected_result(
+            task_agent,
+            model_provider,
+            model,
+            scenario=scenario,
+            max_tasks=max_tasks,
+            trajectory_dir=trajectory_dir,
+        )
 
     runner = MatrixOpenClawRunner(
         task_agent=task_agent,

@@ -157,9 +157,11 @@ async def ftb_two_slots_same_fetch_block_hit(dut):
     assert got_kind == BR_CALL
 
     assert {
-        (packed_slot(offsets, slot, FETCH_BLOCK_OFF_W),
-         packed_slot(kinds, slot, 3),
-         packed_slot(targets, slot, VADDR_W))
+        (
+            packed_slot(offsets, slot, FETCH_BLOCK_OFF_W),
+            packed_slot(kinds, slot, 3),
+            packed_slot(targets, slot, VADDR_W),
+        )
         for slot in range(MAX_BR_PER_BLOCK)
     } == {
         (0x18, BR_COND, cond_target),

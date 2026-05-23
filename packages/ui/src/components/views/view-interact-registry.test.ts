@@ -64,4 +64,121 @@ describe("view-interact-registry", () => {
       result: { surface: "gui" },
     });
   });
+
+  it("returns a failure result when no handler is registered", async () => {
+    const { dispatchViewInteract } = await import("./view-interact-registry");
+
+    await dispatchViewInteract(
+      "missing-view",
+      "gui",
+      "get-state",
+      undefined,
+      "req-missing",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-missing",
+      success: false,
+      error:
+        'No interact handler registered for gui view "missing-view" - view may not be mounted',
+    });
+  });
+
+  it("returns a failure result when a handler throws", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+
+    registerViewInteractHandler("broken-view", "gui", async () => {
+      throw new Error("interact failed");
+    });
+
+    await dispatchViewInteract(
+      "broken-view",
+      "gui",
+      "refresh",
+      undefined,
+      "req-error",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-error",
+      success: false,
+      error: "interact failed",
+    });
+  });
+
+  it("stringifies non-Error handler failures", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+
+    registerViewInteractHandler("string-failure", "gui", async () => {
+      throw "plain failure";
+    });
+
+    await dispatchViewInteract(
+      "string-failure",
+      "gui",
+      "refresh",
+      undefined,
+      "req-string-error",
+    );
+
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-string-error",
+      success: false,
+      error: "plain failure",
+    });
+  });
+
+  it("unregisters handlers and does not remove a newer replacement handler", async () => {
+    const { dispatchViewInteract, registerViewInteractHandler } = await import(
+      "./view-interact-registry"
+    );
+    const firstUnregister = registerViewInteractHandler(
+      "replaceable",
+      "gui",
+      async () => ({ version: 1 }),
+    );
+    const secondUnregister = registerViewInteractHandler(
+      "replaceable",
+      "gui",
+      async () => ({ version: 2 }),
+    );
+
+    firstUnregister();
+    await dispatchViewInteract(
+      "replaceable",
+      "gui",
+      "get-state",
+      undefined,
+      "req-replaced",
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith({
+      type: "view:interact:result",
+      requestId: "req-replaced",
+      success: true,
+      result: { version: 2 },
+    });
+
+    sendWsMessage.mockClear();
+    secondUnregister();
+    await dispatchViewInteract(
+      "replaceable",
+      "gui",
+      "get-state",
+      undefined,
+      "req-unregistered",
+    );
+    expect(sendWsMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestId: "req-unregistered",
+        success: false,
+      }),
+    );
+  });
 });

@@ -18,8 +18,15 @@ import {
 } from "../helpers/live-provider.ts";
 import type { RealTestRuntimeResult } from "../helpers/real-runtime.ts";
 
-const BENCHMARK_REPORT_PATH = "action-benchmark-report.md";
-const BENCHMARK_TRAJECTORY_DIR = "action-benchmark-report";
+const BENCHMARK_REPORT_PATH =
+  process.env.ELIZA_ACTION_BENCHMARK_REPORT_PATH ??
+  "action-benchmark-report.md";
+const BENCHMARK_REPORT_JSON_PATH =
+  process.env.ELIZA_ACTION_BENCHMARK_REPORT_JSON_PATH ??
+  "action-benchmark-report.json";
+const BENCHMARK_TRAJECTORY_DIR =
+  process.env.ELIZA_ACTION_BENCHMARK_TRAJECTORY_DIR ??
+  "action-benchmark-report";
 const mockRuntimeModuleUrl = new URL(
   "../../../../test/mocks/helpers/mock-runtime.ts",
   import.meta.url,
@@ -143,7 +150,11 @@ describe("action selection benchmark", () => {
       const [
         fs,
         { ACTION_BENCHMARK_CASES },
-        { formatBenchmarkReportMarkdown, runActionSelectionBenchmark },
+        {
+          buildBenchmarkReportArtifact,
+          formatBenchmarkReportMarkdown,
+          runActionSelectionBenchmark,
+        },
       ] = await Promise.all([
         import("node:fs/promises"),
         import("./action-selection-cases.ts"),
@@ -176,6 +187,18 @@ describe("action selection benchmark", () => {
         // eslint-disable-next-line no-console
         console.log(md);
         await fs.writeFile(BENCHMARK_REPORT_PATH, md, "utf8");
+        await fs.writeFile(
+          BENCHMARK_REPORT_JSON_PATH,
+          `${JSON.stringify(
+            buildBenchmarkReportArtifact(report, {
+              trajectoryDir: BENCHMARK_TRAJECTORY_DIR,
+              reportMarkdownPath: BENCHMARK_REPORT_PATH,
+            }),
+            null,
+            2,
+          )}\n`,
+          "utf8",
+        );
 
         // Benchmark is informational — accuracy is the metric, not the
         // pass/fail criterion. Only assert the report is structurally valid.

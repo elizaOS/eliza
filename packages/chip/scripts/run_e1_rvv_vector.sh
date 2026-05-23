@@ -19,7 +19,7 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 AUTOVEC="${ROOT}/benchmarks/compiler/autovec"
 BUILD_DIR="${ROOT}/build/reports/compiler/rvv-vector"
 EVIDENCE="${ROOT}/docs/evidence/cpu_ap/e1-rvv-vector.json"

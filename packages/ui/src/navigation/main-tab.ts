@@ -66,7 +66,7 @@ export function getMainTabApp(apps: RegistryAppInfo[]): MainTabApp | null {
  * Reads the cached apps catalog (`readAppsCache()`) synchronously and
  * runs `getMainTabApp()` against it. Used at boot before the apps API
  * call has resolved, so the shell can pick a landing tab without
- * waiting on the network. Falls back to `MAIN_TAB_FALLBACK` ("chat")
+ * waiting on the network. Falls back to `MAIN_TAB_FALLBACK` ("home")
  * when:
  *   - the cache is empty (first run), or
  *   - no app declares `mainTab: true`.

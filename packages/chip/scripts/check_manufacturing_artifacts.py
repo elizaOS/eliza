@@ -58,6 +58,8 @@ def write_report(status: str, mode: str, manifests: list[str], findings: list[st
     }
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+
+
 REQUIRED_KICAD_COMMANDS = {"erc", "drc", "gerbers", "drill", "bom", "position"}
 REQUIRED_FPGA_COMMANDS = {"synth", "place_route", "pack"}
 ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_release"}

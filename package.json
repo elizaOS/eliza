@@ -192,6 +192,8 @@
     "bench:voice-speaker": "python3 -m pytest packages/benchmarks/voice-speaker-validation/tests/ -v --tb=short",
     "bench:voice-speaker:smoke": "python3 -m pytest packages/benchmarks/voice-speaker-validation/tests/test_diarization.py::TestDiarization::test_single_speaker_control -v",
     "bench:three-agent:smoke": "bun run --cwd packages/benchmarks/three-agent-dialogue bench:smoke",
+    "bench:analysis:build": "node packages/scripts/build-benchmark-analysis-reports.mjs",
+    "bench:analysis:verify": "node packages/scripts/verify-benchmark-analysis-reports.mjs",
     "test:plugin": "node packages/scripts/run-all-tests.mjs --only=e2e --pattern",
     "test:lint:no-vi-mocks": "node packages/scripts/lint-no-vi-mocks.mjs",
     "test:lint:lane-coverage": "node packages/scripts/lint-lane-coverage.mjs",

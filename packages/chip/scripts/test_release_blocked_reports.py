@@ -45,8 +45,7 @@ def assert_blocked_report(
     result = run(command)
     if result.returncode not in expected_codes:
         raise AssertionError(
-            f"{name}: exit {result.returncode} not in {sorted(expected_codes)}\n"
-            f"{result.stdout}"
+            f"{name}: exit {result.returncode} not in {sorted(expected_codes)}\n{result.stdout}"
         )
     load_report(report_path)
     print(f"PASS {name} writes {report_path}")

@@ -989,8 +989,8 @@ export function RuntimeGate() {
     persistMobileRuntimeModeForServerTarget("local");
     setState("onboardingServerTarget", "local");
     startupCoordinator.dispatch({ type: "SPLASH_CONTINUE" });
-    // Always land on chat. The composer lock + "Set up an LLM provider"
-    // placeholder handles the missing-provider case.
+    // Finish onboarding into the default assistant launcher. The home composer
+    // and runtime gates handle any missing-provider follow-up.
     completeOnboarding();
   }, [completeOnboarding, setState, startupCoordinator]);
 
@@ -998,7 +998,7 @@ export function RuntimeGate() {
   // default — the only legitimate way to see it is `?runtime=picker`, set
   // by Settings ▸ Runtime when the user explicitly wants to switch
   // runtimes. As soon as the on-device agent's `/api/health` responds we
-  // finish onboarding as local and the user lands in chat.
+  // finish onboarding as local and the user lands in the assistant launcher.
   //
   // Pre-seed (in `apps/app/src/main.tsx` via `preSeedAndroidLocalRuntimeIfFresh`)
   // already ensures the persisted mode + active server look like "local" by

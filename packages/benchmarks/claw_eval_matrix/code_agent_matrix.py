@@ -17,8 +17,13 @@ import yaml
 from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
-DATASET_VERSION = "claw-eval-deterministic-coding-slice-v1"
-DEFAULT_TASK_IDS = ("T068zh_llama_w8a8_cuda_bug", "T070zh_js_async_generator_trace")
+DATASET_VERSION = "claw-eval-deterministic-yaml-slice-v2"
+SUPPORTED_CHECK_TYPES = {
+    "categories_present",
+    "keywords_present",
+    "min_length",
+    "tool_called",
+}
 
 
 def _repo_root() -> Path:
@@ -94,18 +99,28 @@ def _safe_task_id(task_id: str) -> str:
 
 def load_tasks(*, max_tasks: int | None = None) -> list[dict[str, Any]]:
     tasks: list[dict[str, Any]] = []
-    for task_id in DEFAULT_TASK_IDS:
-        task_yaml = _claw_eval_root() / "tasks" / task_id / "task.yaml"
+    for task_yaml in sorted((_claw_eval_root() / "tasks").glob("*/task.yaml")):
         data = yaml.safe_load(task_yaml.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            continue
         data["task_yaml"] = str(task_yaml)
         checks = [
             ((component or {}).get("check") or {}).get("type")
             for component in data.get("scoring_components") or []
         ]
-        if not checks or any(check == "llm_judge" for check in checks):
+        if (
+            not checks
+            or any(check == "llm_judge" for check in checks)
+            or any(check not in SUPPORTED_CHECK_TYPES for check in checks)
+        ):
             continue
+        data.setdefault("task_id", task_yaml.parent.name)
         tasks.append(data)
     return tasks[:max_tasks] if max_tasks is not None else tasks
+
+
+def available_task_count() -> int:
+    return len(load_tasks(max_tasks=None))
 
 
 def _format_command(template: str, values: dict[str, str]) -> list[str]:
@@ -218,37 +233,63 @@ def _write_trajectory(
     return str(path)
 
 
-def _mock_results(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [
-        {
-            "task": task["task_id"],
-            "status": "completed",
-            "success": True,
-            "score": 1.0,
-            "passed": 1,
-            "failed": 0,
-            "total": 1,
-            "grading": {
-                "task_id": task["task_id"],
+def _mock_results(
+    tasks: list[dict[str, Any]],
+    *,
+    max_tasks: int | None,
+    trajectory_dir: Path | None,
+) -> list[dict[str, Any]]:
+    if not tasks:
+        return []
+    total = max_tasks if max_tasks is not None else len(tasks)
+    rows: list[dict[str, Any]] = []
+    for index in range(total):
+        task = tasks[index % len(tasks)]
+        base_task_id = str(task["task_id"])
+        task_id = base_task_id if index < len(tasks) else f"{base_task_id}__mock_{index + 1}"
+        trajectory_path = ""
+        if trajectory_dir is not None:
+            trajectory_path = _write_trajectory(
+                trajectory_dir=trajectory_dir,
+                task_id=task_id,
+                task_yaml=str(task.get("task_yaml") or ""),
+                agent_result={
+                    "response_text": f"Mock Claw-Eval response for {task_id}",
+                    "actions": [],
+                    "usage": {},
+                    "status": "mock",
+                },
+            )
+        rows.append(
+            {
+                "task": task_id,
+                "status": "completed",
+                "success": True,
                 "score": 1.0,
-                "max_score": 1.0,
-                "grading_type": "deterministic_yaml",
-                "breakdown": {"mock": 1.0},
-                "notes": "mock Claw-Eval deterministic slice result",
-            },
-            "token_metrics": {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-                "cached_tokens": 0,
-                "cache_creation_tokens": 0,
-                "cached_token_percent": None,
-                "llm_call_count": 0,
-            },
-            "trajectory_path": "",
-        }
-        for task in tasks
-    ]
+                "passed": 1,
+                "failed": 0,
+                "total": 1,
+                "grading": {
+                    "task_id": task_id,
+                    "score": 1.0,
+                    "max_score": 1.0,
+                    "grading_type": "deterministic_yaml",
+                    "breakdown": {"mock": 1.0},
+                    "notes": "mock Claw-Eval deterministic slice result",
+                },
+                "token_metrics": {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "cached_tokens": 0,
+                    "cache_creation_tokens": 0,
+                    "cached_token_percent": None,
+                    "llm_call_count": 0,
+                },
+                "trajectory_path": trajectory_path,
+            }
+        )
+    return rows
 
 
 def run_claw_eval_matrix(
@@ -264,10 +305,10 @@ def run_claw_eval_matrix(
     mock: bool,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(max_tasks=max_tasks)
+    tasks = load_tasks(max_tasks=None if mock else max_tasks)
     if mock:
         return build_result(
-            results=_mock_results(tasks),
+            results=_mock_results(tasks, max_tasks=max_tasks, trajectory_dir=trajectory_dir),
             task_agent=task_agent,
             model_provider=model_provider,
             model=model,
@@ -362,6 +403,7 @@ def build_result(
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(1 for item in results if item.get("success") is True)
+    available = available_task_count()
     return {
         "benchmark": "claw_eval",
         "adapter": task_agent,
@@ -369,6 +411,10 @@ def build_result(
         "model": model,
         "mode": mode,
         "dataset_version": DATASET_VERSION,
+        "available_task_count": available,
+        "coverage_note": (
+            f"local deterministic Claw-Eval slice exposes {available} non-LLM-judge tasks"
+        ),
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -427,4 +473,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
