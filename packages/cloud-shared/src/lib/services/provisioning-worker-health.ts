@@ -1,16 +1,34 @@
+import {
+  buildRedisClient,
+  type CompatibleRedis,
+  type RedisFactoryEnv,
+} from "../cache/redis-factory";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 
-const CONTROL_PLANE_URL_KEYS = [
-  "CONTAINER_CONTROL_PLANE_URL",
-  "CONTAINER_SIDECAR_URL",
-  "HETZNER_CONTAINER_CONTROL_PLANE_URL",
-] as const;
+/**
+ * Redis key the provisioning-worker daemon SETs with a short TTL every
+ * cycle. When the key is missing the daemon is considered unhealthy
+ * (either down or paused).
+ *
+ * The daemon writes; the cloud-api Worker reads. Both processes already
+ * share an Upstash/Redis instance via `buildRedisClient`, so this is
+ * cheaper than a Neon round-trip and gives self-healing via TTL.
+ */
+export const PROVISIONING_WORKER_HEARTBEAT_KEY = "provisioning_worker:health";
+
+/**
+ * How long a single heartbeat is valid. The daemon refreshes every ~15s
+ * (cycle interval), so 60s leaves room for 4 missed cycles before the
+ * gate trips. Keep in sync with `PROVISIONING_WORKER_HEARTBEAT_TTL_S` on
+ * the daemon side.
+ */
+export const PROVISIONING_WORKER_HEARTBEAT_TTL_S = 60;
 
 export type ProvisioningWorkerHealth =
   | {
       ok: true;
       required: boolean;
-      url?: string;
+      lastHeartbeatAt?: string;
     }
   | {
       ok: false;
@@ -23,67 +41,38 @@ export type ProvisioningWorkerHealth =
       error: string;
     };
 
-function readEnvValue(keys: readonly string[]): string | undefined {
-  const env = getCloudAwareEnv();
-  for (const key of keys) {
-    const value = env[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return undefined;
-}
-
 function isProvisioningWorkerRequired(): boolean {
   const env = getCloudAwareEnv();
   return env.NODE_ENV === "production" || env.REQUIRE_PROVISIONING_WORKER === "true";
 }
 
-function healthUrlFor(baseUrl: string): string {
-  const url = new URL(baseUrl);
-  url.pathname = "/health";
-  url.search = "";
-  return url.toString();
+function getRedis(): CompatibleRedis | null {
+  const env = getCloudAwareEnv() as unknown as RedisFactoryEnv;
+  return buildRedisClient(env);
 }
 
-export async function checkProvisioningWorkerHealth(
-  timeoutMs = 3000,
-): Promise<ProvisioningWorkerHealth> {
+export async function checkProvisioningWorkerHealth(): Promise<ProvisioningWorkerHealth> {
   const required = isProvisioningWorkerRequired();
-  const baseUrl = readEnvValue(CONTROL_PLANE_URL_KEYS);
+  const redis = getRedis();
 
   if (!required) {
-    return { ok: true, required: false, ...(baseUrl ? { url: baseUrl } : {}) };
+    return { ok: true, required: false };
   }
 
-  if (!baseUrl) {
+  if (!redis) {
     return {
       ok: false,
       required: true,
       status: 503,
       code: "PROVISIONING_WORKER_NOT_CONFIGURED",
       error:
-        "Agent provisioning worker is not configured. Set CONTAINER_CONTROL_PLANE_URL before accepting provisioning requests.",
+        "Redis is not configured. Set REDIS_URL or KV_REST_API_URL/KV_REST_API_TOKEN so the provisioning worker can publish heartbeats.",
     };
   }
 
-  const headers = new Headers({ Accept: "application/json" });
-  const token = readEnvValue(["CONTAINER_CONTROL_PLANE_TOKEN"]);
-  if (token) headers.set("x-container-control-plane-token", token);
-
+  let raw: string | null;
   try {
-    const response = await fetch(healthUrlFor(baseUrl), {
-      headers,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) {
-      return {
-        ok: false,
-        required: true,
-        status: 503,
-        code: "PROVISIONING_WORKER_UNHEALTHY",
-        error: `Agent provisioning worker health check failed with HTTP ${response.status}.`,
-      };
-    }
-    return { ok: true, required, url: baseUrl };
+    raw = (await redis.get(PROVISIONING_WORKER_HEARTBEAT_KEY)) as string | null;
   } catch (error) {
     return {
       ok: false,
@@ -92,10 +81,22 @@ export async function checkProvisioningWorkerHealth(
       code: "PROVISIONING_WORKER_UNREACHABLE",
       error:
         error instanceof Error
-          ? `Agent provisioning worker is unreachable: ${error.message}`
-          : "Agent provisioning worker is unreachable.",
+          ? `Failed to read provisioning worker heartbeat from Redis: ${error.message}`
+          : "Failed to read provisioning worker heartbeat from Redis.",
     };
   }
+
+  if (!raw) {
+    return {
+      ok: false,
+      required: true,
+      status: 503,
+      code: "PROVISIONING_WORKER_UNHEALTHY",
+      error: "Provisioning worker has not reported a heartbeat in the last 60 seconds.",
+    };
+  }
+
+  return { ok: true, required: true, lastHeartbeatAt: raw };
 }
 
 export function provisioningWorkerFailureBody(
@@ -107,4 +108,23 @@ export function provisioningWorkerFailureBody(
     error: health.error,
     retryable: true,
   };
+}
+
+/**
+ * Called by the provisioning-worker daemon (Bun on the orchestrator VM)
+ * at the start of every poll cycle. Stores `now` in Redis with a 60s
+ * TTL so `checkProvisioningWorkerHealth()` reads a fresh value.
+ *
+ * Returns true if the heartbeat was written; false if Redis is not
+ * configured. Surface failures via the returned promise — the daemon
+ * decides whether to log loudly or swallow.
+ */
+export async function publishProvisioningWorkerHeartbeat(): Promise<boolean> {
+  const redis = getRedis();
+  if (!redis) return false;
+  const timestamp = new Date().toISOString();
+  await redis.set(PROVISIONING_WORKER_HEARTBEAT_KEY, timestamp, {
+    ex: PROVISIONING_WORKER_HEARTBEAT_TTL_S,
+  });
+  return true;
 }
