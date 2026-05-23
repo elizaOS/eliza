@@ -37,7 +37,7 @@ button.active { border-color: #f80; color: #f80; background: #1a1408; }
   <h2>Layers</h2>
   <div class="row"><input type="checkbox" id="showAsimov" checked> <label>ASIMOV-1 modified (STL)</label></div>
   <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="asimovOpacity" min="0" max="100" value="85"> <span class="val" id="asimovOpacityVal">85</span></div>
-  <div class="row"><input type="checkbox" id="showOrig"> <label>ASIMOV-1 original (ghost)</label></div>
+  <div class="row"><input type="checkbox" id="showOrig" checked> <label>ASIMOV-1 original (ghost)</label></div>
   <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="origOpacity" min="0" max="100" value="18"> <span class="val" id="origOpacityVal">18</span></div>
   <div class="row"><input type="checkbox" id="showGLB" checked> <label>Saffron Sentinel (GLB)</label></div>
   <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="glbOpacity" min="0" max="100" value="40"> <span class="val" id="glbOpacityVal">40</span></div>
@@ -144,9 +144,8 @@ setView('front');
 
 // ── Groups ────────────────────────────────────────────────────────
 const asimovGroup   = new THREE.Group();  // modified
-const origGroup     = new THREE.Group();  // original (for comparison, hidden by default)
+const origGroup     = new THREE.Group();  // original (for comparison)
 const glbGroup      = new THREE.Group();  // Saffron Sentinel GLB
-origGroup.visible = false;
 scene.add(origGroup);
 scene.add(asimovGroup);
 scene.add(glbGroup);
@@ -247,25 +246,20 @@ fetch('./kinematic_tree.json')
     }
   });
 
-// ── Load Original ASIMOV-1 (for comparison) ───────────────────────
-let origLoadedCount = 0;
+// ── Load Original ASIMOV-1 (for comparison ghost) ─────────────────
+let origOkCount = 0, origFailCount = 0;
 fetch('./kinematic_tree.json')
   .then(r => r.json())
   .then(tree => {
-    for (const link of tree.links) {
-      if (!link.stl) continue;
-      const origUrl = './cad/asimov-feminine/originals/' + link.stl;
-      const group = PART_GROUP[link.stl] || 'leg';
+    const origLinks = tree.links.filter(l => l.stl);
+    for (const link of origLinks) {
+      const origUrl = './originals/' + link.stl;
       stlLoader.load(origUrl, (geometry) => {
         try { geometry = mergeVertices(geometry, 1e-4); } catch(e) {}
         geometry.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          roughness: 0.8,
-          metalness: 0.1,
-          transparent: true,
-          opacity: 0.18,
-          depthWrite: false,
+          color: 0xffffff, roughness: 0.8, metalness: 0.1,
+          transparent: true, opacity: 0.18, depthWrite: false,
         });
         const mesh = new THREE.Mesh(geometry, mat);
         const pos = link.world_pos;
@@ -277,6 +271,19 @@ fetch('./kinematic_tree.json')
           mesh.setRotationFromMatrix(m4);
         }
         origGroup.add(mesh);
+        origOkCount++;
+      }, undefined, () => {
+        origFailCount++;
+        if (origFailCount === 1) {
+          const warn = document.createElement('div');
+          warn.style.cssText = 'color:#f44;font-size:9px;margin:4px 0';
+          warn.textContent = `⚠ Original ghost: ${origFailCount} part(s) missing — check cad/asimov-feminine/originals/`;
+          warn.id = 'origWarn';
+          linkListEl.parentNode.insertBefore(warn, linkListEl);
+        } else {
+          const w = document.getElementById('origWarn');
+          if (w) w.textContent = `⚠ Original ghost: ${origFailCount} part(s) missing — check cad/asimov-feminine/originals/`;
+        }
       });
     }
   });
@@ -313,10 +320,10 @@ gltfLoader.load('./saffron_sentinel.glb', (gltf) => {
     }
   });
 
-  // GLB is Y-up, character faces -Z (glTF convention).
-  // Three.js XYZ Euler = Rx*Ry*Rz, so to map Y→Z and -Z→+X we need:
-  //   rotation.y = -PI/2, rotation.z = -PI/2  (rotation.x = 0)
-  glbModel.rotation.set(0, -Math.PI / 2, -Math.PI / 2);
+  // GLB is Y-up, character faces +Z (Meshy export convention, not standard glTF -Z).
+  // Three.js XYZ Euler = Rx*Ry*Rz:
+  //   rotation.set(0, PI/2, PI/2) maps Y→+Z (upright) and +Z→+X (ASIMOV forward)
+  glbModel.rotation.set(0, Math.PI / 2, Math.PI / 2);
 
   // Compute GLB bounding box
   const box = new THREE.Box3().setFromObject(glbModel);
