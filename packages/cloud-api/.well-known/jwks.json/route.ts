@@ -4,17 +4,27 @@
  */
 
 import { Hono } from "hono";
+import {
+  getAgentTokenJWKS,
+  isAgentTokenSigningConfigured,
+} from "@/lib/auth/agent-token";
 import { getJWKS, isJWKSConfigured } from "@/lib/auth/jwks";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
 app.get("/", async (c) => {
-  if (!isJWKSConfigured()) {
+  const keys = [];
+  if (isJWKSConfigured()) {
+    keys.push(...(await getJWKS()).keys);
+  }
+  if (isAgentTokenSigningConfigured()) {
+    keys.push(...(await getAgentTokenJWKS()).keys);
+  }
+  if (keys.length === 0) {
     return c.json({ error: "JWKS not configured" }, 503);
   }
-  const jwks = await getJWKS();
-  return c.json(jwks, 200, {
+  return c.json({ keys }, 200, {
     "Cache-Control": "public, max-age=300",
     "Content-Type": "application/json",
   });

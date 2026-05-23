@@ -49,6 +49,7 @@ const publicPathPrefixes = [
   "/api/v1/models",
   "/api/v1/pricing/summary",
   "/api/v1/agents/by-token",
+  "/api/v1/agent-tokens",
   "/api/v1/credits/topup",
   "/api/v1/topup",
   "/api/v1/x402",
