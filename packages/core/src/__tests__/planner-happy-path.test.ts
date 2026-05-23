@@ -474,6 +474,10 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 				text: "raw shell output with exact paths and metrics",
 				userFacingText:
 					"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/example/.bun (19G).",
+				// Marks userFacingText as canonical so the planner-loop will not
+				// fall back to the evaluator's paraphrase (which can hallucinate
+				// paths/numbers in this kind of structured output).
+				verifiedUserFacing: true,
 				data: { actionName: "CHECK_RUNTIME" },
 			}),
 		});

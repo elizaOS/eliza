@@ -2178,7 +2178,16 @@ function latestToolResultText(
 	return undefined;
 }
 
-function singleSuccessfulUserFacingToolResultText(
+/**
+ * Returns a single successful tool's `userFacingText` ONLY when the tool
+ * explicitly opted in to canonical-output via `verifiedUserFacing: true`.
+ *
+ * Tools that emit structured data the evaluator could easily paraphrase
+ * incorrectly (paths, ids, counts, numeric metrics) set the flag so the
+ * framework echoes their output verbatim instead of trusting the
+ * evaluator's rewording.
+ */
+function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
 	const toolResultSteps = trajectory.steps.filter(
@@ -2187,6 +2196,7 @@ function singleSuccessfulUserFacingToolResultText(
 	if (toolResultSteps.length !== 1) return undefined;
 	const result = toolResultSteps[0]?.result;
 	if (result?.success !== true) return undefined;
+	if (result.verifiedUserFacing !== true) return undefined;
 	const text = result.userFacingText?.trim();
 	return text || undefined;
 }
@@ -2196,8 +2206,27 @@ function preferredFinalMessageFromToolOrModel(
 	modelMessage?: unknown,
 	fallback?: unknown,
 ): string | undefined {
+	// Precedence:
+	//   1. A single successful tool whose result was explicitly marked
+	//      `verifiedUserFacing: true` — used for structured outputs
+	//      (paths, ids, counts) where evaluator paraphrase risks
+	//      hallucinating a value.
+	//   2. The model/evaluator's explicit `messageToUser` — authoritative
+	//      by default; the evaluator has seen the full trajectory and
+	//      chose what the user should read.
+	//   3. The most recent tool's `userFacingText` — fallback when neither
+	//      the model nor any verified tool provided a clean reply.
+	//   4. An explicit caller-provided fallback (e.g. failed-tool message).
+	//
+	// Regression coverage:
+	//   - `planner-loop-user-facing-text.test.ts` → "does not regress
+	//     evaluator's explicit messageToUser path" — evaluator wins when
+	//     no tool sets `verifiedUserFacing`.
+	//   - `planner-happy-path.test.ts` → "prefers a single tool's verified
+	//     user-facing text over evaluator paraphrase" — tool wins when it
+	//     opts in via `verifiedUserFacing: true`.
 	return (
-		singleSuccessfulUserFacingToolResultText(trajectory) ??
+		singleVerifiedUserFacingToolResultText(trajectory) ??
 		getNonEmptyString(modelMessage) ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
@@ -2460,6 +2489,7 @@ export function actionResultToPlannerToolResult(
 		success: result.success,
 		text: result.text,
 		userFacingText: result.userFacingText,
+		verifiedUserFacing: result.verifiedUserFacing,
 		data: Object.keys(data).length > 0 ? data : undefined,
 		error: result.error,
 		continueChain: result.continueChain,

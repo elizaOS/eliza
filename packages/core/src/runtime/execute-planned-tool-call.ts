@@ -359,6 +359,7 @@ function actionResultToStreamingResult(
 		success: result.success,
 		text: result.text,
 		userFacingText: result.userFacingText,
+		verifiedUserFacing: result.verifiedUserFacing,
 		error: result.error ? stringifyError(result.error) : undefined,
 		data: result.data,
 		values: result.values,
