@@ -14,7 +14,7 @@ import argparse
 import json
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -100,7 +100,7 @@ HANDOFF_TARGETS = (
 
 
 def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
-    started = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    started = datetime.now(UTC).replace(microsecond=0).isoformat()
     try:
         result = subprocess.run(
             command,
@@ -113,7 +113,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": result.returncode,
             "stdout_tail": result.stdout[-8000:],
             "stderr_tail": result.stderr[-8000:],
@@ -122,7 +122,7 @@ def run(command: list[str], timeout_seconds: int) -> dict[str, Any]:
         return {
             "command": command,
             "started_at_utc": started,
-            "finished_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "finished_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "returncode": 124,
             "stdout_tail": (exc.stdout or "")[-8000:] if isinstance(exc.stdout, str) else "",
             "stderr_tail": (exc.stderr or "")[-8000:] if isinstance(exc.stderr, str) else "",
@@ -150,7 +150,9 @@ def step_key(step: dict[str, Any]) -> tuple[Any, ...]:
     return (step.get("kind"), tuple(step.get("command") or []))
 
 
-def load_resume_steps(report_path: Path) -> tuple[dict[tuple[Any, ...], dict[str, Any]], list[dict[str, Any]]]:
+def load_resume_steps(
+    report_path: Path,
+) -> tuple[dict[tuple[Any, ...], dict[str, Any]], list[dict[str, Any]]]:
     if not report_path.is_file():
         return {}, []
     data = json.loads(report_path.read_text(encoding="utf-8"))
@@ -198,7 +200,7 @@ def build_report(
 ) -> dict[str, Any]:
     return {
         "schema": "eliza.ai_eda.bootstrap_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "profile": args.profile,
         "status": status,
@@ -324,7 +326,9 @@ def main() -> int:
 
     steps: list[dict[str, Any]] = []
     overall_rc = 0
-    resume_successes, superseded_failures = load_resume_steps(report_path) if args.resume else ({}, [])
+    resume_successes, superseded_failures = (
+        load_resume_steps(report_path) if args.resume else ({}, [])
+    )
     args.superseded_failed_steps = superseded_failures
 
     preflight_command = [

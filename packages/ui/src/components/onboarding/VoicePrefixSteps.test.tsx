@@ -42,12 +42,14 @@ describe("VoicePrefixSteps", () => {
       />,
     );
     expect(screen.getByTestId("voice-prefix-welcome")).toBeTruthy();
+    // The onboarding surface uses the StartupShell blue (#0B35F1) on white
+    // (#FFFFFF) palette, not the older `--onboarding-text-*` / accent token
+    // system. Source-of-truth lives in VoicePrefixSteps.tsx and matches
+    // StartupShell.tsx.
     expect(screen.getByTestId("voice-prefix-steps").className).toContain(
       "text-[#0B35F1]",
     );
-    expect(container.querySelector("main")?.className).toContain(
-      "bg-[#FFFFFF]",
-    );
+    expect(container.querySelector("main")?.className).toContain("bg-[#FFFFFF]");
     expect(
       screen.getByTestId("voice-prefix-welcome-request-mic").className,
     ).toContain("bg-[#0B35F1]");

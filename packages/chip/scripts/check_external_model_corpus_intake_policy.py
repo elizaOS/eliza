@@ -11,9 +11,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = ROOT / "docs/spec-db/e1-external-model-corpus-intake-policy.yaml"
 EXPECTED_SCHEMA = "eliza.external_model_corpus_intake_policy.v1"
-EXPECTED_CLAIM_BOUNDARY = (
-    "intake_policy_only_no_download_training_inference_or_release_use"
-)
+EXPECTED_CLAIM_BOUNDARY = "intake_policy_only_no_download_training_inference_or_release_use"
 
 REQUIRED_BLOCKED_ACTIONS = {
     "download_model_weights",
@@ -62,8 +60,7 @@ REQUIRED_GATES = {
     "python3 scripts/check_external_model_corpus_intake_policy.py",
     "make external-model-corpus-intake-policy-check",
     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
-    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py "
-    "--run-id validation",
+    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
     "make no-hardware-action-check",
     "make docs-check",
 }
@@ -87,9 +84,7 @@ def require_list(value: Any, label: str, errors: list[str]) -> list[Any]:
     return value
 
 
-def require_set(
-    values: Any, label: str, required: set[str], errors: list[str]
-) -> None:
+def require_set(values: Any, label: str, required: set[str], errors: list[str]) -> None:
     have = set(require_list(values, label, errors))
     missing = sorted(required - have)
     if missing:
@@ -145,9 +140,7 @@ def main() -> int:
         errors,
     )
 
-    quarantine_roots = set(
-        require_list(policy.get("quarantine_roots"), "quarantine_roots", errors)
-    )
+    quarantine_roots = set(require_list(policy.get("quarantine_roots"), "quarantine_roots", errors))
     if "build/ai_eda/external_assets/" not in quarantine_roots:
         fail(errors, "quarantine_roots must include build/ai_eda/external_assets/")
 

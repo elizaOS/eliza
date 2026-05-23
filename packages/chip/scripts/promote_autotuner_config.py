@@ -30,7 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -84,9 +84,7 @@ def main() -> int:
     parser.add_argument("--node-id", required=True)
     parser.add_argument("--design", default="e1_chip_top")
     parser.add_argument("--baseline-config", default=None)
-    parser.add_argument(
-        "--objective", choices=["drc_tns_wl", "wl", "tns"], default="drc_tns_wl"
-    )
+    parser.add_argument("--objective", choices=["drc_tns_wl", "wl", "tns"], default="drc_tns_wl")
     parser.add_argument(
         "--record",
         action="store_true",
@@ -141,7 +139,7 @@ def main() -> int:
             "timing__setup__tns": best.get("setup_tns"),
             "route__drc_errors": best.get("drc_errors"),
         },
-        "promoted_at": datetime.now(timezone.utc).isoformat(),
+        "promoted_at": datetime.now(UTC).isoformat(),
         "release_use_allowed": False,
         "claim_boundary": "autotuner_overlay_not_signoff",
     }

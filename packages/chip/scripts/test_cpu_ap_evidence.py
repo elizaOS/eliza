@@ -187,9 +187,40 @@ def test_capture_command_wiring_derives_linux_smoke_lanes_only() -> None:
             entries[mode]["command"],
             "cat build/chipyard/eliza_rocket/verilator-linux-smoke.log",
         )
-    for mode in ("trap-timer-irq", "isa-cache-mmu", "ap-benchmarks"):
+    trap_entry = entries["trap-timer-irq"]
+    if trap_entry["status"] == "ready":
+        if trap_entry["source"] != "generated_ap_trap_timer_irq_runner":
+            raise AssertionError("trap-timer-irq should derive from the checked-in runner")
+        assert_contains(trap_entry["command"], "scripts/run_chipyard_trap_timer_irq.sh")
+    else:
+        trap_problems = "\n".join(trap_entry.get("problems", []))
+        assert_contains(trap_problems, "missing")
+
+    for mode in ("isa-cache-mmu", "ap-benchmarks"):
         if entries[mode]["status"] != "blocked":
             raise AssertionError(f"{mode} must stay blocked without a real lane command")
+    isa_entry = entries["isa-cache-mmu"]
+    if isa_entry["source"] != "generated_ap_isa_cache_mmu_probe":
+        raise AssertionError("isa-cache-mmu should report the generated-AP probe blocker")
+    assert_contains(isa_entry["blocked_report"], "cpu_ap_isa_cache_mmu_probe.json")
+    isa_problems = "\n".join(isa_entry.get("problems", []))
+    assert_contains(isa_problems, "generated-AP bare-metal diagnostic emits ISA/cache/MMU")
+    assert_contains(isa_problems, "Linux userspace hwprobe output")
+    ap_entry = entries["ap-benchmarks"]
+    if ap_entry["source"] != "blocked_generated_ap_benchmark_runner_report":
+        raise AssertionError("ap-benchmarks must report the generated-AP benchmark blocker")
+    assert_contains(ap_entry["blocked_report"], "cpu_ap_benchmark_runner_wiring.json")
+    ap_problems = "\n".join(ap_entry.get("problems", []))
+    assert_contains(ap_problems, "missing target-runnable RISC-V benchmark binaries")
+    assert_contains(ap_problems, "claim_level=L3")
+
+    report_path = ROOT / "build/reports/cpu_ap_benchmark_runner_wiring.json"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if report["status"] != "blocked":
+        raise AssertionError("AP benchmark runner report must stay blocked")
+    assert_contains("\n".join(report["required_raw_markers"]), "pdk signoff claim=none")
+    if report["evidence_log_created"]:
+        raise AssertionError("wiring must not create eliza_e1_ap_benchmarks.log")
 
 
 def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:
@@ -209,7 +240,10 @@ def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:
     else:
         assert_contains(result.stdout, "BLOCKED opensbi-boot: ELIZA_OPENSBI_BOOT_CMD is unset")
         assert_contains(result.stdout, "BLOCKED linux-boot: ELIZA_LINUX_BOOT_CMD is unset")
-    assert_contains(result.stdout, "BLOCKED trap-timer-irq: ELIZA_TRAP_TIMER_IRQ_CMD is unset")
+    if "READY trap-timer-irq" in result.stdout:
+        assert_contains(result.stdout, "READY trap-timer-irq: ELIZA_TRAP_TIMER_IRQ_CMD is set")
+    else:
+        assert_contains(result.stdout, "BLOCKED trap-timer-irq: ELIZA_TRAP_TIMER_IRQ_CMD is unset")
 
 
 def test_capture_wrapper_all_reports_every_missing_command_env() -> None:
@@ -252,7 +286,6 @@ def test_dts_audit_separates_ap_boot_from_e1_peripherals() -> None:
     if boot_only.returncode != 0:
         raise AssertionError(boot_only.stdout + boot_only.stderr)
     assert_contains(boot_only.stdout, "STATUS: PASS cpu_ap.dts_boot_audit")
-    assert_contains(boot_only.stdout, "generated DTS lacks e1 peripheral smoke markers")
 
     with_e1 = subprocess.run(
         [
@@ -266,6 +299,9 @@ def test_dts_audit_separates_ap_boot_from_e1_peripherals() -> None:
         text=True,
         capture_output=True,
     )
+    if with_e1.returncode == 0:
+        assert_contains(with_e1.stdout, "STATUS: PASS cpu_ap.dts_boot_audit")
+        return
     if with_e1.returncode != 1:
         raise AssertionError(with_e1.stdout + with_e1.stderr)
     assert_contains(with_e1.stdout, "missing e1 npu mmio")

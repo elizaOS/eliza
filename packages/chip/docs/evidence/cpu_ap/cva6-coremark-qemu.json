@@ -1,0 +1,41 @@
+{
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "benchmark": "coremark",
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "note": "E1's little core (e1-pro) IS the CVA6 RV64GC core (docs/evidence/cpu_ap/core-selection.json). This is a FUNCTIONAL software-model run for an instruction-count anchor only; the cycle-accurate CVA6 Verilator number is now recorded in cva6-coremark-verilator.json.",
+  "status": "passed",
+  "claim_level": "functional",
+  "claim_level_note": "QEMU user-mode TCG is a functional ISA model, NOT cycle-accurate RTL. Per docs/benchmarks/claim-ladder.md this supports functional correctness and a dynamic instruction count ONLY. It does NOT support CoreMark/MHz, CPI, IPC, frequency, power, or any hardware performance claim. 'Iterations/Sec' below is QEMU host wall-clock and is explicitly NOT a CoreMark score for this core.",
+  "provenance": "simulator",
+  "substrate": "qemu-riscv64 user-mode (TCG), functional ISA model",
+  "result_recorded_at": "2026-05-21T14:06:14Z",
+  "isa": "rv64gc",
+  "mabi": "lp64d",
+  "tools": {
+    "qemu": "qemu-riscv64 version 10.1.5 (v10.1.5) (external/qemu-build/bin/qemu-riscv64)",
+    "instruction_count_plugin": "external/qemu-src/build/tests/tcg/plugins/libinsn.so (-plugin ... -d plugin)",
+    "gcc": "riscv64-buildroot-linux-gnu-gcc 13.3.0 (external/buildroot-2024.11/output/host/bin) \u2014 self-contained static rv64gc linux toolchain; chosen over the xpack 15.2.0 bare-metal newlib gcc because QEMU user-mode requires a Linux-syscall libc, while xpack newlib targets HTIF semihosting used by the (blocked) Verilator path",
+    "gcc_flags": "-O3 -march=rv64gc -mabi=lp64d -static -funroll-loops -finline-functions -falign-functions=16 -falign-jumps=4"
+  },
+  "coremark": {
+    "version": "EEMBC CoreMark v1.0.2 (external/coremark, posix port)",
+    "iterations": 6000,
+    "iterations_define": 4000,
+    "iterations_note": "CoreMark posix port auto-scaled the run to 6000 iterations (>10s on the QEMU host); CRC self-validation passed.",
+    "crc_validated": true,
+    "crcfinal": "0xa14c",
+    "seedcrc": "0xe9f5"
+  },
+  "metrics": {
+    "dynamic_instructions_total": 2438740559,
+    "dynamic_instructions_per_iteration": 406456.76,
+    "coremark_per_mhz": null,
+    "cpi": null,
+    "total_cycles": null
+  },
+  "run_command": "external/qemu-build/bin/qemu-riscv64 -plugin external/qemu-src/build/tests/tcg/plugins/libinsn.so -d plugin build/cva6-verilator/coremark-qemu/coremark.rv64gc.elf",
+  "raw_coremark_stdout": "2K performance run parameters for coremark.\nCoreMark Size    : 666\nTotal ticks      : 15072\nTotal time (secs): 15.072000\nIterations/Sec   : 398.089172\nIterations       : 6000\nCompiler version : GCC13.3.0\nCompiler flags   : -O3 -march=rv64gc -mabi=lp64d -funroll-loops\nMemory location  : Please put data memory location here\n\t\t\t(e.g. code in flash, data on heap etc)\nseedcrc          : 0xe9f5\n[0]crclist       : 0xe714\n[0]crcmatrix     : 0x1fd7\n[0]crcstate      : 0x8e3a\n[0]crcfinal      : 0xa14c\nCorrect operation validated. See README.md for run and reporting rules.\nCoreMark 1.0 : 398.089172 / GCC13.3.0 -O3 -march=rv64gc -mabi=lp64d -funroll-loops / Heap\n",
+  "raw_insn_plugin_output": "cpu 0 insns: 2438740559\ntotal insns: 2438740559",
+  "next_step_for_phone_claim": "Run the benchmark on L5/L6 phone or prototype silicon with real target metadata, calibration, and raw-output hashes. The CVA6 Verilator result supports only L1_RTL_FULL_SOC."
+}

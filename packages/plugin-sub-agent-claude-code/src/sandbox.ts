@@ -95,12 +95,16 @@ export function resolveSafeCwd(
     throw new SubAgentCwdError(`cwd must be absolute: ${cwd}`);
   }
   if (!existsSync(cwd) || !statSync(cwd).isDirectory()) {
-    throw new SubAgentCwdError(`cwd does not exist or is not a directory: ${cwd}`);
+    throw new SubAgentCwdError(
+      `cwd does not exist or is not a directory: ${cwd}`,
+    );
   }
   const real = realpathSync(cwd);
   const tmpReal = realpathSync(tmpdir());
   const candidates = [...workspaceRoots, tmpReal]
-    .filter((root): root is string => typeof root === "string" && root.length > 0)
+    .filter(
+      (root): root is string => typeof root === "string" && root.length > 0,
+    )
     .map((root) => {
       try {
         return realpathSync(root);
@@ -179,7 +183,9 @@ export function resolveSafeBinary(
   }
   const real = realpathSync(resolved);
   const realDir = dirname(real);
-  if (!candidateDirs.some((d) => realDir === d || realDir.startsWith(d + sep))) {
+  if (
+    !candidateDirs.some((d) => realDir === d || realDir.startsWith(d + sep))
+  ) {
     throw new SubAgentBinaryError(
       `Resolved binary ${real} is not under a whitelisted dir`,
     );

@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_REPORT = ROOT / "build/ai_eda/r_zoo_rectilinear_floorplan_splits/validation/split_manifest.json"
+DEFAULT_REPORT = (
+    ROOT / "build/ai_eda/r_zoo_rectilinear_floorplan_splits/validation/split_manifest.json"
+)
 EXPECTED_SCHEMA = "eliza.ai_eda.r_zoo_rectilinear_floorplan_split_manifest.v1"
 EXPECTED_CLAIM_BOUNDARY = "r_zoo_split_manifest_training_only_no_e1_signoff_or_release_claim"
 REQUIRED_SPLITS = {"train", "val", "test"}

@@ -2,7 +2,7 @@
 //
 // Topology mirrors `docs/arch/ooo-cluster.md`:
 //
-//     1 x e1-ultra  (big core, target Ascalon-D8 fork or scaled XiangShan)
+//     1 x e1-ultra  (big core, target scaled XiangShan Kunminghu V3)
 //   + 3 x e1-premium (mid core, target XiangShan Kunminghu V3 6-wide)
 //   + 4 x e1-pro    (little core, OpenHW CVA6 RV64GC in-order)
 //
@@ -23,8 +23,7 @@
 // boundary and lets the rest of the SoC compile.
 //
 // Compile knobs (set at simulator/yosys/openlane invocation):
-//   +define+E1_HAVE_ASCALON   - instantiate Ascalon big core stub
-//   +define+E1_HAVE_KUNMINGHU - instantiate XiangShan mid core stub
+//   +define+E1_HAVE_KUNMINGHU - instantiate XiangShan big/mid core stub
 //   +define+E1_HAVE_BOOM      - instantiate BOOM mid-fallback core stub
 //   +define+E1_HAVE_CVA6      - instantiate CVA6 little cores
 //   +define+E1_CLUSTER_LITE   - synthesize 1-core lite variant for cocotb

@@ -196,7 +196,7 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </activity>
-    
+
         <receiver
             android:name="ai.elizaos.app.ElizaBootReceiver"
             android:directBootAware="true"
@@ -340,8 +340,6 @@
         </activity>
     </application>
 
-    <!-- Permissions -->
-
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -356,10 +354,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <!--
-        ElizaVoiceCaptureService runs continuous-chat background mic capture
-        (R10 §6.2). Required on API 34+ alongside RECORD_AUDIO.
-    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission

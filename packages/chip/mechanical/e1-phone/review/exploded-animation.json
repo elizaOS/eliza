@@ -1,8 +1,8 @@
 {
   "glb": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.glb",
-  "glb_size_bytes": 236020,
+  "glb_size_bytes": 258668,
   "mp4": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded.mp4",
-  "mp4_size_bytes": 918317,
+  "mp4_size_bytes": 914974,
   "frames_dir": "/home/shaw/milady/eliza/packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames",
   "frame_count": 360,
   "keyframe_count": 24,
@@ -19,10 +19,10 @@
     "turntable_total": 12.0
   },
   "fps": 30,
-  "part_count": 123,
+  "part_count": 132,
   "ring_offset_mm": 25.0,
   "renderer": "pyrender-egl + ffmpeg/libx264",
-  "render_seconds": 59.59,
+  "render_seconds": 88.82,
   "render_command": "ffmpeg -framerate 30 -i frame_%04d.png -c:v libx264 -pix_fmt yuv420p -crf 20 e1-phone-exploded.mp4",
   "axis_decisions": {
     "screen_front_stack": "+Z",

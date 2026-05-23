@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_PATH = ROOT / "sw/platform/e1_platform_contract.json"
 GENERATED_HEADER = ROOT / "sw/platform/generated/e1_platform_contract.h"
 LINUX_DRIVER_HEADER = ROOT / "sw/linux/drivers/e1/e1_platform_contract.h"
+REPORT = ROOT / "build/reports/platform_contract.json"
 
 
 REGION_RTL_NAMES = {
@@ -153,6 +154,11 @@ def check_bootrom_against_rtl(contract: dict, errors: list[str]) -> None:
         else:
             resolved = -1
         rtl_words[int(index, 16) * 4] = resolved
+    for index, value in re.findall(
+        r"\bmem\[(\d+)\]\s*=\s*32'h([0-9A-Fa-f_]+)",
+        rtl,
+    ):
+        rtl_words[int(index, 10) * 4] = h(value)
     for word in contract["e1_chip"]["boot_rom"]["words"]:
         offset = h(word["offset"])
         expected = h(word["value"])
@@ -191,9 +197,7 @@ def check_decode_against_rtl(contract: dict, errors: list[str]) -> None:
             errors,
         )
 
-    require(
-        "mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors
-    )
+    require("mmio_addr[11:8] == 4'h0" in decode, "RTL implemented-window decode changed", errors)
     unmapped = f"{h(contract['e1_chip']['unmapped_read_value']):08X}"
     rtl_unmapped_values = {
         value.replace("_", "").upper() for value in re.findall(r"32'h([0-9A-Fa-f_]+)", top)
@@ -387,6 +391,33 @@ def check_cpu_variant_consumers(contract: dict, errors: list[str]) -> None:
                 )
 
 
+def code_from_text(text: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return "_".join(part for part in cleaned.split("_") if part)[:96] or "platform_contract_failure"
+
+
+def write_report(errors: list[str]) -> None:
+    findings = [
+        {
+            "code": code_from_text(error),
+            "severity": "fail",
+            "message": error,
+            "evidence": "sw/platform/e1_platform_contract.json",
+            "next_step": "Regenerate or repair the platform contract, generated artifacts, RTL consumers, and OS DTS consumers until they agree.",
+        }
+        for error in errors
+    ]
+    report = {
+        "schema": "eliza.platform_contract.v1",
+        "status": "fail" if errors else "pass",
+        "claim_boundary": "static_platform_contract_consistency_only_not_linux_or_aosp_boot_evidence",
+        "summary": {"findings": len(findings)},
+        "findings": findings,
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--print-generated-header", action="store_true")
@@ -398,6 +429,7 @@ def main() -> int:
         return 0
 
     errors = check_contract(contract)
+    write_report(errors)
     if errors:
         print("Platform contract check failed:")
         for error in errors:

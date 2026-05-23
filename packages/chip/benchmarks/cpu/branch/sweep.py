@@ -41,7 +41,7 @@ from benchmarks.cpu.branch.bpu_model import (  # noqa: E402
     BPUSimulator,
     BranchEvent,
 )
-from benchmarks.cpu.branch.traces import read_cbp5_with_count  # noqa: E402
+from benchmarks.cpu.branch.traces import SYNTHETIC_GENERATORS, read_cbp5_with_count  # noqa: E402
 from benchmarks.cpu.branch.workload_trace import read_workload_trace  # noqa: E402
 
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
@@ -67,6 +67,29 @@ WORKLOAD_NAMES = (
     "audio_frames",
 )
 
+SYNTHETIC_SWEEP_WORKLOADS = (
+    "always_taken",
+    "always_not_taken",
+    "alternating",
+    "loop_with_known_trip",
+    "deep_recursion",
+    "v8_indirect_dispatch",
+    "mixed_workload",
+    "jit_dispatch_warmup",
+    "gpu_tile_kernel",
+    "gpu_warp_divergence",
+    "gpu_command_processor",
+    "dual_branch_fetch_block",
+    "nested_imli_loop",
+    "correlated_xor_branches",
+    "vtable_path_correlated",
+    "interpreter_dispatch_mixed",
+    "phase_change_server",
+    "alias_thrash",
+    "gpu_occupancy_phase",
+    "return_mismatch_exceptions",
+)
+
 # Default per-trace weights for the aggregate objective: the E1's own workloads
 # are the optimisation target, so they outweigh the championship references.
 DEFAULT_WEIGHTS = {
@@ -77,6 +100,29 @@ DEFAULT_WEIGHTS = {
     "file_tlv": 1.5,
     "video_blocks": 1.5,
     "audio_frames": 1.5,
+    # Synthetic traces keep the objective honest around known hard shapes.
+    # GPU-oriented traces get enough weight to steer tie-breaks without
+    # overpowering the real RV64 and CBP-5 references.
+    "synthetic:always_taken": 0.25,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:alternating": 0.35,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:gpu_command_processor": 1.0,
+    "synthetic:dual_branch_fetch_block": 0.75,
+    "synthetic:nested_imli_loop": 0.75,
+    "synthetic:correlated_xor_branches": 0.75,
+    "synthetic:vtable_path_correlated": 0.75,
+    "synthetic:interpreter_dispatch_mixed": 0.75,
+    "synthetic:phase_change_server": 0.75,
+    "synthetic:alias_thrash": 0.5,
+    "synthetic:gpu_occupancy_phase": 0.75,
+    "synthetic:return_mismatch_exceptions": 0.35,
     "cbp5:sample_int_trace": 1.0,
     "cbp5:sample_fp_trace": 1.0,
 }
@@ -88,10 +134,31 @@ def _geo(**overrides) -> dict:
     return g
 
 
+PRE_OPT_R8_GEOMETRY = _geo(
+    TAGE_ALLOC_DECREMENT=False,
+    TAGE_UBIT_RESET_PERIOD=262_144,
+    TAGE_HIST_LEN=(8, 13, 32, 64, 119),
+    TAGE_ENTRIES_TABLE=4096,
+    SC_ADAPTIVE=False,
+)
+
+PRE_TARGET_HISTORY_GEOMETRY = _geo(
+    SC_THRESH_INIT=6,
+    ITTAGE_TARGET_HISTORY_BITS=0,
+)
+
+PRE_ITTAGE_HIST_LONG_GEOMETRY = _geo(
+    ITTAGE_HIST_LEN=(4, 8, 13, 16, 32),
+)
+
+
 # Candidate configurations. Each knob is a real bpu_pkg.sv parameter; lists
 # that change a table count carry a matching-length history schedule.
 CONFIGS: dict[str, dict] = {
     "baseline": _geo(),
+    "pre_ittage_hist_long": PRE_ITTAGE_HIST_LONG_GEOMETRY,
+    "pre_opt_r8": PRE_OPT_R8_GEOMETRY,
+    "pre_target_history": PRE_TARGET_HISTORY_GEOMETRY,
     # ---- TAGE direction: history reach + capacity ----
     "tage_reach_long": _geo(TAGE_HIST_LEN=(8, 16, 44, 90, 195)),
     "tage_reach_xlong": _geo(TAGE_HIST_LEN=(10, 20, 50, 120, 260)),
@@ -101,20 +168,71 @@ CONFIGS: dict[str, dict] = {
     "bim_big": _geo(BIM_ENTRIES=32768),
     # ---- Statistical corrector ----
     "sc_thresh_low": _geo(SC_THRESH_INIT=4),
+    "sc_thresh_mid": _geo(SC_THRESH_INIT=6),
     "sc_thresh_high": _geo(SC_THRESH_INIT=8),
+    "sc_thresh_xhigh": _geo(SC_THRESH_INIT=10),
+    "sc_thresh_12": _geo(SC_THRESH_INIT=12),
     "sc_adaptive": _geo(SC_ADAPTIVE=True),
+    "sc_no_local_hist": _geo(SC_LOCAL_HISTORY_BITS=0),
+    "sc_local_hist8": _geo(SC_LOCAL_HISTORY_BITS=8),
+    "sc_local_hist12": _geo(SC_LOCAL_HISTORY_BITS=12),
+    "sc_local_hist8_big": _geo(SC_LOCAL_HISTORY_BITS=8, SC_LOCAL_HISTORY_ENTRIES=2048),
     "sc_wide": _geo(
         SC_TABLES=6,
         SC_ENTRIES_TABLE=1024,
         SC_HIST_LEN=(0, 4, 10, 16, 27, 44),
     ),
+    "sc_wide_thresh6": _geo(
+        SC_TABLES=6,
+        SC_ENTRIES_TABLE=1024,
+        SC_HIST_LEN=(0, 4, 10, 16, 27, 44),
+        SC_THRESH_INIT=6,
+    ),
+    "sc_wide_long": _geo(
+        SC_TABLES=8,
+        SC_ENTRIES_TABLE=1024,
+        SC_HIST_LEN=(0, 4, 10, 16, 27, 44, 72, 119),
+    ),
     # ---- Loop predictor ----
     "loop_big": _geo(LOOP_ENTRIES=128),
+    # ---- Fetch block front-end bandwidth ----
+    "fetch_block_dual_branch": _geo(FETCH_BLOCK_BRANCH_SLOTS=2),
     # ---- TAGE allocation/aging policy (algorithmic, not just geometry) ----
     "tage_alloc_decr": _geo(TAGE_ALLOC_DECREMENT=True),
     "tage_ubit_reset": _geo(TAGE_UBIT_RESET_PERIOD=100_000),
     "tage_ubit_reset_fast": _geo(TAGE_UBIT_RESET_PERIOD=20_000),
+    "tage_ubit_reset_slow": _geo(TAGE_UBIT_RESET_PERIOD=500_000),
     "tage_alloc_aging": _geo(TAGE_ALLOC_DECREMENT=True, TAGE_UBIT_RESET_PERIOD=100_000),
+    "tage_alloc_rtl_aging": _geo(TAGE_ALLOC_DECREMENT=True),
+    "tage_use_alt_on_na": _geo(TAGE_USE_ALT_ON_NA=1),
+    # ---- ITTAGE target-history ablations ----
+    "ittage_no_target_hist": _geo(ITTAGE_TARGET_HISTORY_BITS=0),
+    "ittage_target_hist32": _geo(ITTAGE_TARGET_HISTORY_BITS=32),
+    "ittage_target_hist96": _geo(ITTAGE_TARGET_HISTORY_BITS=96),
+    "ittage_target_hist128": _geo(ITTAGE_TARGET_HISTORY_BITS=128),
+    "ittage_target_token5": _geo(ITTAGE_TARGET_HISTORY_TOKEN_BITS=5),
+    "ittage_target_token9": _geo(ITTAGE_TARGET_HISTORY_TOKEN_BITS=9),
+    "ittage_target_shift2": _geo(ITTAGE_TARGET_HISTORY_SHIFT=2),
+    "ittage_target_shift5": _geo(ITTAGE_TARGET_HISTORY_SHIFT=5),
+    "ittage_target_shift8": _geo(ITTAGE_TARGET_HISTORY_SHIFT=8),
+    "ittage_path_hist32": _geo(ITTAGE_PATH_HISTORY_BITS=32),
+    "ittage_path_hist64": _geo(ITTAGE_PATH_HISTORY_BITS=64),
+    "ittage_path_token4": _geo(ITTAGE_PATH_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_TOKEN_BITS=4),
+    "ittage_path_token8": _geo(ITTAGE_PATH_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_TOKEN_BITS=8),
+    "ittage_target_path": _geo(ITTAGE_TARGET_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_BITS=64),
+    "ittage_big": _geo(ITTAGE_ENTRIES=(1024, 1024, 2048, 2048, 2048)),
+    "ittage_tag11": _geo(ITTAGE_TAG_W=11),
+    "ittage_hist_long": _geo(ITTAGE_HIST_LEN=(4, 10, 20, 40, 80)),
+    "ittage6_tables": _geo(
+        ITTAGE_TABLES=6,
+        ITTAGE_ENTRIES=(512, 512, 1024, 1024, 1024, 1024),
+        ITTAGE_HIST_LEN=(4, 8, 13, 20, 32, 64),
+    ),
+    "ittage_no_weak_replace": _geo(ITTAGE_REPLACE_WEAK_CTR=0),
+    "ittage_weak_replace2": _geo(ITTAGE_REPLACE_WEAK_CTR=2),
+    "ittage_replace_all_providers": _geo(ITTAGE_REPLACE_MIN_PROVIDER=1),
+    "ittage_replace_provider5": _geo(ITTAGE_REPLACE_MIN_PROVIDER=5),
+    "ittage_weak_replace4": _geo(ITTAGE_REPLACE_WEAK_CTR=4),
     # ---- Promising combination (TAGE reach + adaptive SC + bigger tables) ----
     "combo_a": _geo(
         TAGE_HIST_LEN=(8, 16, 44, 90, 195),
@@ -141,6 +259,14 @@ CONFIGS: dict[str, dict] = {
         TAGE_HIST_LEN=(8, 16, 44, 90, 195),
         TAGE_ENTRIES_TABLE=8192,
         SC_ADAPTIVE=True,
+    ),
+    "combo_algo_geo_dual_fetch": _geo(
+        TAGE_ALLOC_DECREMENT=True,
+        TAGE_UBIT_RESET_PERIOD=100_000,
+        TAGE_HIST_LEN=(8, 16, 44, 90, 195),
+        TAGE_ENTRIES_TABLE=8192,
+        SC_ADAPTIVE=True,
+        FETCH_BLOCK_BRANCH_SLOTS=2,
     ),
 }
 
@@ -169,6 +295,11 @@ def load_traces(max_branches: int, weights: dict[str, float]) -> list[LoadedTrac
         events, inst = read_workload_trace(p)
         events, inst = _cap(events, inst, max_branches)
         traces.append(LoadedTrace(name, events, inst, weights.get(name, 1.0)))
+    for name in SYNTHETIC_SWEEP_WORKLOADS:
+        events = list(SYNTHETIC_GENERATORS[name]())
+        events, inst = _cap(events, len(events) * 5, max_branches)
+        key = f"synthetic:{name}"
+        traces.append(LoadedTrace(key, events, inst, weights.get(key, 0.5)))
     for p in sorted(CBP5_DIR.glob("*.gz")):
         events, stats = read_cbp5_with_count(p)
         events, inst = _cap(events, stats.instruction_count, max_branches)
@@ -202,7 +333,9 @@ def _eval_config(item: tuple[str, dict]) -> tuple[str, dict]:
             "weight": tr.weight,
         }
     wsum = sum(tr.weight for tr in _WORKER_TRACES)
-    weighted = sum(per_trace[tr.name]["mpki"] * tr.weight for tr in _WORKER_TRACES) / max(wsum, 1e-9)
+    weighted = sum(per_trace[tr.name]["mpki"] * tr.weight for tr in _WORKER_TRACES) / max(
+        wsum, 1e-9
+    )
     return name, {"weighted_mpki": round(weighted, 6), "per_trace": per_trace}
 
 
@@ -295,6 +428,25 @@ def write_leaderboard(
     LEADERBOARD_MD.write_text("\n".join(lines) + "\n")
 
 
+def _print_summary(results: dict[str, dict], ranking: list[str]) -> None:
+    base = results["baseline"]
+    base_weighted = base["weighted_mpki"]
+    print("\neliza-bpu-sweep: top candidates")
+    for name in ranking[:10]:
+        r = results[name]
+        regressions = []
+        for trace, values in r["per_trace"].items():
+            delta = values["mpki"] - base["per_trace"][trace]["mpki"]
+            if delta > 0:
+                regressions.append((trace, delta))
+        worst = sorted(regressions, key=lambda x: x[1], reverse=True)[:3]
+        worst_text = ", ".join(f"{trace} +{delta:.4f}" for trace, delta in worst) or "none"
+        print(
+            f"  {name:24s} weighted={r['weighted_mpki']:.4f} "
+            f"delta={r['weighted_mpki'] - base_weighted:+.4f} regressions={worst_text}"
+        )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -309,6 +461,11 @@ def main() -> int:
         nargs="*",
         default=list(CONFIGS.keys()),
         help="subset of config names to run (default: all)",
+    )
+    ap.add_argument(
+        "--print-only",
+        action="store_true",
+        help="do not write evidence or leaderboard files",
     )
     args = ap.parse_args()
 
@@ -336,11 +493,21 @@ def main() -> int:
     best = ranking[0]
     envelope = {
         "schema": "eliza.bpu_sweep.v1",
+        "status": "pass",
+        "claim_boundary": (
+            "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload "
+            "MPKI claims remain blocked until those trace sets are captured"
+        ),
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "harness": "behavioural-bpu-model",
         "max_branches_per_trace": args.max_branches,
         "trace_set": [
-            {"name": t.name, "branches": len(t.events), "instructions": t.inst_count, "weight": t.weight}
+            {
+                "name": t.name,
+                "branches": len(t.events),
+                "instructions": t.inst_count,
+                "weight": t.weight,
+            }
             for t in traces
         ],
         "weights": DEFAULT_WEIGHTS,
@@ -353,15 +520,20 @@ def main() -> int:
         "ranking": ranking,
         "results": results,
     }
-    EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-    SWEEP_JSON.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
-    write_leaderboard(results, traces, ranking, args.max_branches)
+    if not args.print_only:
+        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
+        SWEEP_JSON.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+        write_leaderboard(results, traces, ranking, args.max_branches)
 
     print("\neliza-bpu-sweep: ranking (weighted MPKI)")
     for i, name in enumerate(ranking, 1):
         r = results[name]
         print(f"  {i:2d}. {name:18s} {r['weighted_mpki']:.4f}  ({r['weighted_mpki'] - base:+.4f})")
-    print(f"\neliza-bpu-sweep: status=PASS best={best} -> {SWEEP_JSON.relative_to(ROOT)}")
+    _print_summary(results, ranking)
+    if args.print_only:
+        print(f"\neliza-bpu-sweep: status=PASS best={best} (print-only)")
+    else:
+        print(f"\neliza-bpu-sweep: status=PASS best={best} -> {SWEEP_JSON.relative_to(ROOT)}")
     return 0
 
 

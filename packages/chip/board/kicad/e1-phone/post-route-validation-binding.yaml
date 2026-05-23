@@ -16,8 +16,14 @@ source_artifacts:
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
   - board/kicad/e1-phone/routed-board-step-export-contract.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/pcb-implementation-audit.yaml
 
 upstream_status:
@@ -30,6 +36,7 @@ upstream_status:
   first_article_route_execution_order: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
   routed_board_step_export: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
   enclosure_fit_execution: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
   pcb_implementation_audit: blocked_live_kicad_pcb_scaffold_audited_not_routed
 
 live_pcb_validation_state:
@@ -97,6 +104,175 @@ validation_domains:
     required_outputs: [routed_board_step, routed_clearance_release]
     status: blocked_missing_routed_step_supplier_models_and_enclosure_clearance_release
 
+selected_supplier_response_validation_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_post_route_validation_baselines
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_validation_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  post_route_baselines_blocked:
+    - display and camera pinouts, lane order, connector MPNs, and STEP datums
+    - USB-C shell pins, CC/VBUS/USB2 route baseline, insertion-load path, and aperture datums
+    - side-key force/travel, flex or switch drawing, wake/recovery behavior, and actuator datums
+    - cellular LGA or compact branch footprint, RF reference layout, firmware, regulatory scope, and STEP
+    - Wi-Fi/Bluetooth reference layout, firmware/NVRAM/CLM, modular approval scope, antenna rules, and STEP
+  selected_response_pack_count: 7
+  all_selected_supplier_response_packs_absent: true
+  validation_allowed_without_selected_supplier_packs: false
+
+selected_hardware_validation_matrix:
+  - function: display_touch
+    selected_hardware: CH550FH01A-CT
+    source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+    validation_domain: high_speed_si_pi
+    required_outputs:
+      - si_pi_report_directory
+      - routed_courtyard_utilization
+      - routed_board_step
+      - routed_clearance_release
+    required_evidence:
+      - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json
+      - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_display_mipi_bringup_and_routed_clearance_evidence
+  - function: rear_front_cameras
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+    validation_domain: high_speed_si_pi
+    required_outputs:
+      - si_pi_report_directory
+      - routed_courtyard_utilization
+      - routed_board_step
+      - routed_clearance_release
+    required_evidence:
+      - board/kicad/e1-phone/production/reports/si-pi/camera-csi.json
+      - board/kicad/e1-phone/production/reports/camera-capture-log.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_camera_csi_capture_and_routed_clearance_evidence
+  - function: usb_c_power_sidekeys
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    validation_domain: power_thermal
+    required_outputs:
+      - usb_pd_attach_log
+      - charger_cycle_log
+      - power_thermal_report_directory
+      - routed_board_step
+      - routed_clearance_release
+    required_evidence:
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    status: blocked_missing_usb_pd_charge_sidekey_and_routed_clearance_evidence
+  - function: cellular
+    selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+    source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    validation_domain: rf_wireless
+    required_outputs:
+      - rf_report_directory
+      - vna_report
+      - radio_coexistence_matrix
+      - rf_calibration_procedure
+      - routed_board_step
+      - routed_clearance_release
+    required_evidence:
+      - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+      - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+      - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+      - board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json
+    status: blocked_missing_cellular_route_rf_firmware_carrier_and_sar_evidence
+  - function: wifi_bluetooth
+    selected_hardware: Murata_LBEE5XV2EA-802
+    source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+    validation_domain: rf_wireless
+    required_outputs:
+      - rf_report_directory
+      - vna_report
+      - radio_coexistence_matrix
+      - rf_calibration_procedure
+      - routed_board_step
+      - routed_clearance_release
+    required_evidence:
+      - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+      - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+      - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+      - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    status: blocked_missing_wifi_bt_route_rf_firmware_identity_and_coexistence_evidence
+
+alternate_display_post_route_validation_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/component-height-step-integration.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  status: blocked_until_alternate_display_routed_validation_step_and_enclosure_evidence_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_validation_outputs:
+        - si_pi_report_directory
+        - routed_courtyard_utilization
+        - escape_density_via_count
+        - routed_board_step
+        - routed_clearance_release
+      required_branch_evidence:
+        - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi-055wu01.json
+        - board/kicad/e1-phone/production/reports/display-touch-bringup-055wu01.json
+        - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+        - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      validation_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_validation_outputs:
+        - si_pi_report_directory
+        - routed_courtyard_utilization
+        - escape_density_via_count
+        - power_thermal_report_directory
+        - routed_board_step
+        - routed_clearance_release
+      required_branch_evidence:
+        - board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi-e549-rm67191.json
+        - board/kicad/e1-phone/production/reports/display-touch-bringup-e549-rm67191.json
+        - board/kicad/e1-phone/production/reports/power-thermal/display-amoled-e549-rm67191.json
+        - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      validation_allowed: false
+
+route_to_enclosure_validation_handoff:
+  status: blocked_until_route_validation_outputs_and_routed_step_clearance_release_exist
+  source_execution_order: board/kicad/e1-phone/first-article-route-execution-order.yaml
+  route_handoff_status: blocked_until_routed_pcb_drc_step_supplier_models_and_clearance_release_exist
+  validation_allowed_before_handoff_complete: false
+  required_output_keys:
+    - routed_kicad_pcb
+    - pcb_drc_report
+    - zone_fill_report
+    - routed_board_step
+    - routed_clearance_release
+  required_output_paths:
+    routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    pcb_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    zone_fill_report: board/kicad/e1-phone/production/reports/zone-fill.json
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  present_output_count: 0
+  missing_output_count: 5
+  enclosure_release_blocked: true
+  fabrication_release_blocked: true
+  factory_release_blocked: true
+
 release_coupling:
   blocks_ready_to_fabricate: true
   blocks_ready_for_enclosure: true
@@ -112,6 +288,9 @@ cross_checks:
   validation_domains_all_blocked: true
   routed_release_outputs_still_blocked: true
   routed_layout_ready_flags_remain_false: true
+  selected_supplier_response_validation_gate_blocks_post_route_validation: true
+  selected_hardware_validation_matrix_fail_closed: true
+  alternate_display_post_route_validation_gate_fail_closed: true
   factory_and_enclosure_coupling_remains_fail_closed: true
 
 release_blockers:
@@ -120,6 +299,9 @@ release_blockers:
   - RF VNA, conducted, coexistence, regulatory, SAR, and factory RF calibration evidence is missing
   - USB-C PD, charger, battery, PMIC, rail sequencing, thermal soak, and power factory limits are missing
   - factory probe coordinates, test limits, first-article transcript, and traveler are missing
+  - selected supplier RFQ response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth validation evidence is missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot pass post-route validation until branch SI/PI, DRC, STEP/B-rep, bring-up, promotion review, and enclosure clearance evidence exist
   - routed board STEP, supplier models, and enclosure clearance release evidence are missing
 
 forbidden_claims:

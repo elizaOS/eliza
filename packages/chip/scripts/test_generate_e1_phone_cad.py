@@ -179,6 +179,16 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "cellular_top_antenna_keepout",
         "cellular_bottom_antenna_keepout",
         "wifi_bt_side_antenna_keepout",
+        "cellular_lga_module_keepout",
+        "wifi_bt_module_keepout",
+        "soc_package_marker",
+        "dram_package_marker",
+        "storage_package_marker",
+        "pmic_package_marker",
+        "rf_transceiver_package_marker",
+        "gnss_lna_package_marker",
+        "wifi_bt_rf_feed_coax_stub",
+        "cellular_rf_feed_coax_stub",
         "soc_shield_can",
         "pmic_shield_can",
         "radio_shield_can",
@@ -895,9 +905,7 @@ def test_evt0_phone_engineering_validation_plan_tracks_evt_risks(tmp_path, monke
     assert (tmp_path / "engineering-validation.md").is_file()
 
 
-def test_evt0_phone_battery_swell_management_models_back_void_foam(
-    tmp_path, monkeypatch
-) -> None:
+def test_evt0_phone_battery_swell_management_models_back_void_foam(tmp_path, monkeypatch) -> None:
     params = cad.load_params()
     parts = cad.build_parts(params)
     checks = cad.run_checks(params, parts)
@@ -2738,6 +2746,7 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
 
     checker = Path("scripts/check_e1_phone_boolean_interference.py").read_text()
     assert "rear_camera_back_shell_hole_check" in checker
+    assert "rear_camera_optical_sightline_check" in checker
     assert "rear_flash_back_shell_hole_check" in checker
     assert "handset_cover_glass_slot_check" in checker
     assert "screen_cover_glass_collision_check" in checker
@@ -2745,6 +2754,7 @@ def test_evt0_phone_cad_make_target_runs_strict_boolean_checker() -> None:
     assert '"rear_camera_cover_glass"' in checker
     assert '"rear_camera_lens_window"' in checker
     assert '"rear_camera_module"' in checker
+    assert '"rear_camera_optical_sight_tunnel"' in checker
     assert '"rear_flash_shell_aperture"' in checker
     assert '"rear_flash_led_window"' in checker
     assert '"handset_acoustic_slot"' in checker

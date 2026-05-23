@@ -8,6 +8,8 @@ source_artifacts:
   - docs/board/e1-phone-mainboard-metrics.yaml
   - board/kicad/e1-phone/layout-utilization.yaml
   - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
   - board/kicad/e1-phone/routing-constraints.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
@@ -51,6 +53,30 @@ scorecard:
       width_clearance_mm: 0.9
       height_clearance_mm: 1.83
     blocker_to_release: supplier_signed_display_drawing_fpc_exit_and_step_model_missing
+  alternate_display_optimization_branches:
+    status: blocked_alternates_are_candidate_only_until_supplier_route_step_and_enclosure_evidence_exist
+    branch_count: 2
+    branches:
+      - source_id: display_alternate_alibaba_meta_055wu01
+        candidate: 055WU01
+        fit_class: parseable_5p5_1080x1920_mipi_40pin_brightness_candidate
+        optimization_use: possible_display_connector_and_brightness_branch_not_size_release
+        required_before_size_or_layout_rebaseline:
+          - signed 2D drawing, 40-pin pinout, mating connector, land pattern, and STEP/B-rep models
+          - routed DSI/touch/backlight/bias branch with DRC, SI/PI, courtyard utilization, and bring-up evidence
+          - routed board STEP clearance rerun and physical fit report against selected enclosure
+          - promotion review proving better size/supply/performance tradeoff than CH550FH01A-CT
+        optimization_rebaseline_allowed: false
+      - source_id: display_alternate_made_in_china_e549_amoled
+        candidate: E549-HC01_RM67191_AMOLED_class
+        fit_class: parseable_5p49_amoled_thin_display_candidate
+        optimization_use: possible_thinner_display_stack_branch_not_size_release
+        required_before_size_or_layout_rebaseline:
+          - signed AMOLED drawing, FPC pinout, mating connector, land pattern, and STEP/B-rep models
+          - routed MIPI/touch/power branch with DRC, SI/PI, power/thermal, courtyard utilization, and RM67191/GT1151 bring-up evidence
+          - routed board STEP clearance rerun and physical fit report against selected enclosure
+          - promotion review proving better size/thickness/supply/power tradeoff than CH550FH01A-CT
+        optimization_rebaseline_allowed: false
   board_size:
     status: pass_for_concept
     pcb_area_of_bbox_pct: 33.3
@@ -159,6 +185,7 @@ required_release_outputs:
   - mechanical/e1-phone/review/routed-board-clearance.json
 cross_checks:
   display_fit_matches_primary_display: true
+  alternate_display_optimization_branches_fail_closed: true
   board_bbox_matches_metrics_layout_and_route_density: true
   wasted_space_matches_metrics_and_layout_utilization: true
   route_density_counts_match_route_feasibility: true
@@ -172,6 +199,7 @@ release_blockers:
   - routed-courtyard utilization and escape-density reports are missing
   - SI/PI, power efficiency, thermal soak, RF, coexistence, and SAR evidence are missing
   - routed board STEP and formal enclosure tolerance stack are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot rebaseline size or layout optimization until supplier, routed validation, STEP, enclosure, and promotion evidence exist
   - factory probe coordinates, limits, and first-article transcript are missing
 forbidden_claims:
   - board_size_optimized_final

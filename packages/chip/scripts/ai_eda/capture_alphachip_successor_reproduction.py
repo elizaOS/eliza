@@ -12,7 +12,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -76,7 +76,9 @@ def all_full_dataset_modes(matrix: dict[str, Any] | None) -> bool:
     if not isinstance(matrix, dict):
         return False
     modes = matrix.get("full_dataset_conversion_modes")
-    return isinstance(modes, dict) and bool(modes) and all(value is True for value in modes.values())
+    return (
+        isinstance(modes, dict) and bool(modes) and all(value is True for value in modes.values())
+    )
 
 
 def queue_ready_count(queue: dict[str, Any] | None) -> int:
@@ -88,7 +90,9 @@ def queue_ready_count(queue: dict[str, Any] | None) -> int:
     items = queue.get("queue")
     if not isinstance(items, list):
         return 0
-    return sum(1 for item in items if isinstance(item, dict) and item.get("ready_for_execution") is True)
+    return sum(
+        1 for item in items if isinstance(item, dict) and item.get("ready_for_execution") is True
+    )
 
 
 def candidate_artifacts(inference: dict[str, Any] | None) -> list[dict[str, Any]]:
@@ -145,7 +149,8 @@ def main() -> int:
         / f"build/ai_eda/macro_placement_torch_inference/{training_handoff_run_id}/torch_inference_run.json"
     )
     replay_queue_path = (
-        ROOT / f"build/ai_eda/macro_placement_replay_queue/{training_handoff_run_id}/replay_queue.json"
+        ROOT
+        / f"build/ai_eda/macro_placement_replay_queue/{training_handoff_run_id}/replay_queue.json"
     )
     full_matrix_path = (
         ROOT
@@ -171,7 +176,9 @@ def main() -> int:
         blockers.append("successor torch training report is missing or has wrong schema")
     else:
         if training.get("device") != "cuda":
-            blockers.append(f"successor training was not run on CUDA: device={training.get('device')}")
+            blockers.append(
+                f"successor training was not run on CUDA: device={training.get('device')}"
+            )
         if int(training.get("epochs", 0)) < MIN_CUDA_EPOCHS:
             blockers.append(
                 f"successor training epochs below CUDA-scale threshold: epochs={training.get('epochs')}"
@@ -188,7 +195,9 @@ def main() -> int:
         blockers.append("successor torch inference report is missing or has wrong schema")
     else:
         if inference.get("device") != "cuda":
-            blockers.append(f"successor inference was not run on CUDA: device={inference.get('device')}")
+            blockers.append(
+                f"successor inference was not run on CUDA: device={inference.get('device')}"
+            )
         if int(inference.get("candidate_count", 0)) <= 0:
             blockers.append("successor inference produced no candidates")
         if candidate_hashes and any(item.get("status") != "PRESENT" for item in candidate_hashes):
@@ -209,20 +218,24 @@ def main() -> int:
         if not all_full_dataset_modes(full_matrix):
             blockers.append("full CUDA training matrix lacks all full-dataset conversion modes")
         if full_matrix.get("status") != "MATRIX_READY_FOR_CUDA_HOST":
-            blockers.append(f"full CUDA training matrix is not ready: status={full_matrix.get('status')}")
+            blockers.append(
+                f"full CUDA training matrix is not ready: status={full_matrix.get('status')}"
+            )
 
     if not replay_comparison or replay_comparison.get("schema") != REPLAY_COMPARISON_SCHEMA:
         blockers.append("OpenLane replay comparison evidence is missing or has wrong schema")
     else:
         if replay_comparison.get("status") != "COMPARISON_READY":
-            blockers.append(f"OpenLane replay comparison is not ready: status={replay_comparison.get('status')}")
+            blockers.append(
+                f"OpenLane replay comparison is not ready: status={replay_comparison.get('status')}"
+            )
         if replay_comparison.get("optimization_claim_allowed") is not True:
             blockers.append("OpenLane replay comparison does not allow an optimization claim")
 
     status = "SUCCESSOR_REPRODUCTION_READY" if not blockers else "BLOCKED_REPRODUCTION_EVIDENCE"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
@@ -238,14 +251,26 @@ def main() -> int:
         "observed": {
             "training_device": training.get("device") if isinstance(training, dict) else None,
             "training_epochs": training.get("epochs") if isinstance(training, dict) else None,
-            "train_sample_count": training.get("train_sample_count") if isinstance(training, dict) else None,
-            "val_sample_count": training.get("val_sample_count") if isinstance(training, dict) else None,
-            "test_sample_count": training.get("test_sample_count") if isinstance(training, dict) else None,
+            "train_sample_count": training.get("train_sample_count")
+            if isinstance(training, dict)
+            else None,
+            "val_sample_count": training.get("val_sample_count")
+            if isinstance(training, dict)
+            else None,
+            "test_sample_count": training.get("test_sample_count")
+            if isinstance(training, dict)
+            else None,
             "inference_device": inference.get("device") if isinstance(inference, dict) else None,
-            "candidate_count": inference.get("candidate_count") if isinstance(inference, dict) else None,
-            "replay_queue_count": replay_queue.get("queue_count") if isinstance(replay_queue, dict) else None,
+            "candidate_count": inference.get("candidate_count")
+            if isinstance(inference, dict)
+            else None,
+            "replay_queue_count": replay_queue.get("queue_count")
+            if isinstance(replay_queue, dict)
+            else None,
             "replay_queue_ready_count": ready_count,
-            "full_training_matrix_status": full_matrix.get("status") if isinstance(full_matrix, dict) else None,
+            "full_training_matrix_status": full_matrix.get("status")
+            if isinstance(full_matrix, dict)
+            else None,
             "full_dataset_conversion_modes": full_matrix.get("full_dataset_conversion_modes")
             if isinstance(full_matrix, dict)
             else None,

@@ -8,6 +8,7 @@
 
       Reference: packages/modules/Permission/PermissionController/res/xml/roles.xml
     -->
+    <string name="config_defaultHome" translatable="false">ai.elizaos.app</string>
     <string name="config_defaultDialer" translatable="false">ai.elizaos.app</string>
     <string name="config_defaultSms" translatable="false">ai.elizaos.app</string>
     <string name="config_defaultAssistant" translatable="false">ai.elizaos.app</string>

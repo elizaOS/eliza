@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
 	OPTIMIZED_PROMPT_SERVICE,
 	type OptimizedPromptArtifact,
@@ -135,5 +135,28 @@ describe("AutonomyService optimized prompt integration", () => {
 			cacheHits: 1,
 			lastSourceCount: 8,
 		});
+	});
+
+	test("does not scan every participant room without explicit autonomy opt-in", async () => {
+		const service = new AutonomyService();
+		const getRoomsForParticipant = vi.fn(async () => {
+			throw new Error("should not enumerate rooms by default");
+		});
+		(service as unknown as { runtime: IAgentRuntime }).runtime = {
+			agentId: "00000000-0000-0000-0000-000000000020" as UUID,
+			getSetting: () => null,
+			getRoomsForParticipant,
+			getMemories: async () => [],
+		} as unknown as IAgentRuntime;
+
+		const output = await (
+			service as unknown as {
+				getTargetRoomContextText: () => Promise<string>;
+			}
+		).getTargetRoomContextText();
+
+		expect(getRoomsForParticipant).not.toHaveBeenCalled();
+		expect(output).toContain("no AUTONOMY_TARGET_ROOM_ID configured");
+		expect(output).toContain("Autonomous thoughts: (none)");
 	});
 });

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,7 @@ MANIFEST = ROOT / "docs/manufacturing/product-feature-evidence-manifest.yaml"
 GAPS = ROOT / "docs/manufacturing/real-world-verification-gaps.yaml"
 SECURITY_SCOPE_REPORT = ROOT / "build/reports/security_lifecycle_scope.json"
 SECURITY_SCOPE_CHECK = ROOT / "scripts/check_security_lifecycle_scope.py"
+REPORT = ROOT / "build/reports/product_feature_gates.json"
 
 REQUIRED_DOMAINS = {
     "modem_radio",
@@ -355,6 +357,35 @@ def check_security_scope_gate(failures: list[str]) -> None:
             failures.append(f"security lifecycle scope report missing term: {term}")
 
 
+def code_from_text(text: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return (
+        "_".join(part for part in cleaned.split("_") if part)[:96] or "product_feature_gate_failure"
+    )
+
+
+def write_report(failures: list[str]) -> None:
+    findings = [
+        {
+            "code": code_from_text(failure),
+            "severity": "fail",
+            "message": failure,
+            "evidence": rel(MANIFEST),
+            "next_step": "Fix the product feature evidence manifest or referenced fail-closed scope report before using product feature evidence as readiness support.",
+        }
+        for failure in failures
+    ]
+    report = {
+        "schema": "eliza.product_feature_gates.v1",
+        "status": "fail" if failures else "pass",
+        "claim_boundary": "product_feature_manifest_check_only_not_runtime_or_release_evidence",
+        "summary": {"findings": len(findings)},
+        "findings": findings,
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     failures: list[str] = []
     data = load_yaml(MANIFEST, failures)
@@ -368,6 +399,7 @@ def main() -> int:
     if data:
         check_manifest(data, gap_ids, failures)
     check_security_scope_gate(failures)
+    write_report(failures)
 
     if failures:
         print("Product feature evidence gate check failed:")

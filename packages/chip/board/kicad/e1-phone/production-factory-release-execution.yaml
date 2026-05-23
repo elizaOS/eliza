@@ -10,8 +10,14 @@ source_artifacts:
   - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/factory-probe-map.yaml
+  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
 upstream_status:
   production_readiness_status: blocked_requires_routed_board_supplier_data_and_factory_quotes
   manufacturing_status: blocked_manufacturing_requires_routed_pcb_and_fab_outputs
@@ -189,6 +195,99 @@ factory_fixture_execution:
     - split_board_interconnect
     - buttons_sensors_nfc
     - compute_storage_debug
+selected_hardware_release_coupling:
+  status: blocked_until_selected_hardware_identity_avl_fixture_and_first_article_evidence_exist
+  function_count: 5
+  functions:
+    - function: display_touch
+      selected_hardware: CH550FH01A-CT
+      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
+      required_release_outputs: [production_bom_avl, assembly_drawing, position_file, factory_test_limits, first_article_traveler]
+      required_fixture_domains: [display_touch]
+      required_traceability:
+        - display supplier lot and signed drawing revision
+        - display/touch FPC connector MPN and pinout review ID
+        - display bring-up result tied to board serial
+      status: blocked_missing_selected_display_avl_fixture_and_first_article_evidence
+    - function: rear_front_cameras
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
+      required_release_outputs: [production_bom_avl, assembly_drawing, position_file, factory_test_limits, first_article_traveler]
+      required_fixture_domains: [cameras]
+      required_traceability:
+        - rear and front camera supplier lots and signed drawing revisions
+        - camera FPC connector MPNs and pinout review IDs
+        - camera capture and calibration result tied to board serial
+      status: blocked_missing_selected_camera_avl_fixture_and_first_article_evidence
+    - function: usb_c_power_sidekeys
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+      required_release_outputs: [production_bom_avl, assembly_drawing, position_file, factory_test_limits, first_article_traveler]
+      required_fixture_domains: [usb_c, buttons_sensors_nfc, power_rails]
+      required_traceability:
+        - USB-C connector, USB-PD controller, charger, and side-key exact MPN AVL rows
+        - USB-C shell/load-path inspection and side-key force-travel fixture result
+        - PD attach, charger CC/CV, wake, and recovery-combo logs tied to board serial
+      status: blocked_missing_selected_usb_power_sidekey_avl_fixture_and_first_article_evidence
+    - function: cellular
+      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_release_outputs: [production_bom_avl, assembly_drawing, position_file, rf_reports, factory_test_limits, first_article_traveler]
+      required_fixture_domains: [radios]
+      required_traceability:
+        - cellular regional SKU, IMEI/modem identifier, firmware, carrier scope, and module lot
+        - RF calibration, conducted test, VNA, coexistence, and SAR pre-scan references
+        - SIM/eSIM provisioning and factory identity result tied to board serial
+      status: blocked_missing_selected_cellular_avl_rf_fixture_and_first_article_evidence
+    - function: wifi_bluetooth
+      selected_hardware: Murata_LBEE5XV2EA-802
+      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+      required_release_outputs: [production_bom_avl, assembly_drawing, position_file, rf_reports, factory_test_limits, first_article_traveler]
+      required_fixture_domains: [radios]
+      required_traceability:
+        - Murata module MPN, firmware/NVRAM/CLM/license, regulatory scope, and module lot
+        - Wi-Fi/Bluetooth MAC provisioning, RF calibration, conducted test, and coexistence result
+        - factory identity result tied to board serial and test software revision
+      status: blocked_missing_selected_wifi_bt_avl_rf_fixture_and_first_article_evidence
+alternate_display_production_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/display-envelope-downselect.yaml
+  status: blocked_until_alternate_display_bom_avl_fixture_limits_and_first_article_traceability_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_release_outputs:
+        - production_bom_avl
+        - assembly_drawing
+        - position_file
+        - factory_test_limits
+        - first_article_traveler
+      required_fixture_domains:
+        - display_touch
+      required_traceability:
+        - display branch supplier lot, signed drawing revision, 40-pin pinout review, and connector MPN
+        - AVL row proving lifecycle, MOQ, lead time, sample lot, and approved substitution policy
+        - pick-and-place, assembly drawing, fixture limits, and display/touch bring-up tied to board serial
+        - promotion review proving production supply and factory risk before replacing CH550FH01A-CT
+      production_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_release_outputs:
+        - production_bom_avl
+        - assembly_drawing
+        - position_file
+        - factory_test_limits
+        - first_article_traveler
+      required_fixture_domains:
+        - display_touch
+      required_traceability:
+        - AMOLED branch supplier lot, signed drawing revision, FPC pinout review, connector MPN, and RM67191/GT1151 firmware data
+        - AVL row proving lifecycle, MOQ, lead time, sample lot, burn-in/luminance data, and approved substitution policy
+        - pick-and-place, assembly drawing, fixture limits, power/thermal log, and display/touch bring-up tied to board serial
+        - promotion review proving production supply, power/thermal, and factory risk before replacing CH550FH01A-CT
+      production_release_allowed: false
 cross_checks:
   all_routed_release_outputs_tracked: true
   all_manufacturing_outputs_mapped_to_release_outputs: true
@@ -196,12 +295,16 @@ cross_checks:
   fixture_outputs_match_factory_probe_policy: true
   output_presence_matches_routed_release_plan: true
   no_output_marked_present_before_real_artifact: true
+  selected_hardware_release_coupling_fail_closed: true
+  alternate_display_production_release_gate_fail_closed: true
   ready_flags_remain_false: true
 release_blockers:
   - routed KiCad PCB, ERC, DRC, zones, and route reports are missing
   - supplier response packs, signed drawings, pinouts, footprints, STEP models, and AVL are missing
   - fabrication, assembly, stackup, impedance, DFM/DFA, and quote outputs are missing
   - fixture coordinates, factory limits, RF calibration procedure, and first-article transcript are missing
+  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth production traceability evidence is missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter production release until BOM/AVL, assembly, fixture limits, first-article traceability, and promotion evidence exist
   - routed board STEP and enclosure clearance rerun are missing
 forbidden_claims:
   - production_factory_release_ready

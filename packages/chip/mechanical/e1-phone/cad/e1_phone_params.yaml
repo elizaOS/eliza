@@ -8,6 +8,7 @@ device:
   back_face: fully flush flat back; no camera bump, no protruding lens ring; rear camera and torch buried under flat back wall behind flush internal windows
   target_mass_g: 185
   ship_target_mass_g: 168
+  max_mass_g: 200
   design_language: hard orange phone-like slab with teenage-engineering/rabbit-r1 influence
 
 display:
@@ -229,6 +230,7 @@ radio:
     antenna_keepout_mm: [62.0, 6.0, 2.0]
   wifi_bt:
     candidate: Murata Type 2EA Wi-Fi 6E + Bluetooth module
+    envelope_mm: [12.5, 9.4, 1.2]
     source_url: https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea
     antenna_keepout_mm: [34.0, 5.0, 2.0]
   antenna_feeds:

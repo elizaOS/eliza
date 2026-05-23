@@ -12,6 +12,8 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from conform_chipyard_ap_dts import conform as conform_ap_dts
+
 ROOT = Path(__file__).resolve().parents[1]
 CHECKOUT = Path(os.environ.get("CHIPYARD_CHECKOUT", ROOT / "external/chipyard"))
 CHIPYARD_GEN = (
@@ -22,6 +24,7 @@ IMPORTED_GEN = OUT / "generated-src"
 FIRTOOL_OUT = OUT / "firtool-out/eliza_rocket_ap.sv"
 VERILOG = OUT / "eliza_rocket_ap.v"
 DTS = OUT / "eliza-e1.dts"
+CONTRACT_DTS = OUT / "eliza-e1.contract.dts"
 SIMULATOR_DIR = OUT / "simulator"
 CHIPYARD_SIMULATOR = CHECKOUT / "sims/verilator/simulator-chipyard.harness-ElizaRocketConfig"
 MANIFEST = OUT / "ElizaRocketConfig.manifest.json"
@@ -217,6 +220,7 @@ def write_manifest(env: dict[str, str]) -> None:
             "generated_src_tree_sha256": sha256_tree(IMPORTED_GEN),
             "verilog_sha256": sha256_file(VERILOG),
             "dts_sha256": sha256_file(DTS),
+            "contract_dts_sha256": sha256_file(CONTRACT_DTS),
             "simulator_sha256": sha256_tree(SIMULATOR_DIR),
         },
         "evidence": evidence,
@@ -242,8 +246,8 @@ def main() -> int:
     run_generator(env)
     import_artifacts(env)
     require_simulator_executable()
+    conform_ap_dts(DTS, ROOT / "sw/platform/e1_platform_contract.json", CONTRACT_DTS)
     write_manifest(env)
-    run([sys.executable, "scripts/conform_chipyard_ap_dts.py"], env=env)
     print(f"STATUS: PASS chipyard.eliza_generate - wrote {rel(MANIFEST)}")
     return 0
 

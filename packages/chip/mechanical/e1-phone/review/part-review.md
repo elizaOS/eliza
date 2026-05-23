@@ -7,7 +7,7 @@ Status: generated part index and contact sheet for every assembly part.
 
 ## Parts
 
-- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
+- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell with real rear camera and flash holes
 - `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.05] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
 - `display_lcm`: role `screen`, span [70.78, 129.17, 3.39] mm, material bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)
@@ -38,6 +38,7 @@ Status: generated part index and contact sheet for every assembly part.
 - `orange_rear_flash_bezel_left`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/left land
 - `orange_rear_flash_bezel_right`: role `molded enclosure`, span [0.45, 2.2, 0.12] mm, material integral orange flash aperture bevel/right land
 - `rear_camera_lens_window`: role `camera`, span [6.8, 6.8, 0.55] mm, material flush internal lens window, coplanar with flat back
+- `rear_camera_optical_sight_tunnel`: role `camera optical clearance`, span [7.1, 7.1, 1.6] mm, material clear rear-camera sight tunnel from exterior through the back-shell aperture to the module
 - `rear_flash_led`: role `camera`, span [1.0, 1.0, 0.7] mm, material single rear torch/flash LED, buried
 - `rear_flash_led_window`: role `camera`, span [1.6, 1.6, 0.55] mm, material flush internal torch light pipe window, coplanar with flat back
 - `front_camera_module`: role `camera`, span [6.5, 6.5, 3.2] mm, material front MIPI camera
@@ -49,6 +50,14 @@ Status: generated part index and contact sheet for every assembly part.
 - `rear_camera_light_baffle_top`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `rear_camera_light_baffle_bottom`: role `camera seal`, span [8.3, 0.35, 0.55] mm, material black molded rear camera anti-dust light baffle
 - `front_camera_black_mask_window`: role `camera seal`, span [5.0, 5.0, 0.08] mm, material black printed mask datum around front under-glass camera
+- `rear_flash_window_adhesive_top`: role `camera seal`, span [2.5, 0.45, 0.16] mm, material black PSA gasket above rear flash light-pipe window
+- `rear_flash_window_adhesive_bottom`: role `camera seal`, span [2.5, 0.45, 0.16] mm, material black PSA gasket below rear flash light-pipe window
+- `rear_flash_window_adhesive_left`: role `camera seal`, span [0.45, 1.6, 0.16] mm, material black PSA gasket left of rear flash light-pipe window
+- `rear_flash_window_adhesive_right`: role `camera seal`, span [0.45, 1.6, 0.16] mm, material black PSA gasket right of rear flash light-pipe window
+- `front_camera_under_glass_adhesive_top`: role `camera seal`, span [4.2, 0.4, 0.08] mm, material optically-black PSA bond ring above front under-glass camera window
+- `front_camera_under_glass_adhesive_bottom`: role `camera seal`, span [4.2, 0.4, 0.08] mm, material optically-black PSA bond ring below front under-glass camera window
+- `front_camera_under_glass_adhesive_left`: role `camera seal`, span [0.4, 3.4, 0.08] mm, material optically-black PSA bond ring left of front under-glass camera window
+- `front_camera_under_glass_adhesive_right`: role `camera seal`, span [0.4, 3.4, 0.08] mm, material optically-black PSA bond ring right of front under-glass camera window
 - `rear_flash_camera_septum`: role `camera seal`, span [0.6, 8.3, 2.1] mm, material opaque PC stray-light septum between rear flash light-pipe and rear camera baffle column, molded to the back shell inner wall
 - `power_button_cap`: role `button`, span [2.0, 12.0, 1.1] mm, material orange molded cap
 - `volume_button_cap`: role `button`, span [2.0, 21.0, 1.1] mm, material orange molded cap
@@ -125,6 +134,16 @@ Status: generated part index and contact sheet for every assembly part.
 - `soc_shield_can`: role `EMI shield`, span [18.0, 16.0, 1.2] mm, material stamped RF/SoC shield can
 - `pmic_shield_can`: role `EMI shield`, span [11.0, 10.0, 1.1] mm, material stamped PMIC shield can
 - `radio_shield_can`: role `EMI shield`, span [18.0, 20.0, 1.2] mm, material stamped radio shield can
+- `cellular_lga_module_keepout`: role `cellular module`, span [29.0, 32.0, 2.4] mm, material Quectel RG255C RedCap LGA module
+- `wifi_bt_module_keepout`: role `Wi-Fi/Bluetooth module`, span [12.5, 9.4, 1.2] mm, material Murata Type 2EA Wi-Fi 6E + Bluetooth module
+- `soc_package_marker`: role `PCB component marker`, span [13.0, 13.0, 0.24] mm, material visual marker for application processor package under SoC shield
+- `dram_package_marker`: role `PCB component marker`, span [9.5, 8.0, 0.22] mm, material visual marker for LPDDR memory package near SoC
+- `storage_package_marker`: role `PCB component marker`, span [11.5, 9.0, 0.22] mm, material visual marker for eMMC/UFS storage package
+- `pmic_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for PMIC package under power shield
+- `rf_transceiver_package_marker`: role `PCB component marker`, span [7.5, 7.5, 0.22] mm, material visual marker for RF transceiver/front-end package under radio shield
+- `gnss_lna_package_marker`: role `PCB component marker`, span [3.0, 2.5, 0.2] mm, material visual marker for GNSS/RF low-noise amplifier placement
+- `wifi_bt_rf_feed_coax_stub`: role `RF feed`, span [10.0, 0.45, 0.35] mm, material concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout
+- `cellular_rf_feed_coax_stub`: role `RF feed`, span [0.45, 15.0, 0.35] mm, material concept coax/feed stub from cellular module toward top antenna keepout
 - `haptic_lra`: role `haptics`, span [6.0, 12.0, 2.5] mm, material compact 0612 X-axis linear resonant actuator
 - `sim_tray_keepout`: role `service`, span [14.5, 22.0, 2.0] mm, material side SIM tray keepout
 - `sim_tray_outline`: role `service`, span [0.8, 18.0, 4.0] mm, material orange side service tray outline

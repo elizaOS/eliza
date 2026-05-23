@@ -14,7 +14,9 @@ DEFAULT_REPORT = (
     ROOT / "build/ai_eda/alphachip_successor_plan/validation/alphachip_successor_plan.json"
 )
 EXPECTED_SCHEMA = "eliza.ai_eda.alphachip_successor_plan.v1"
-EXPECTED_CLAIM_BOUNDARY = "alphachip_successor_plan_only_no_checkpoint_reproduction_or_release_claim"
+EXPECTED_CLAIM_BOUNDARY = (
+    "alphachip_successor_plan_only_no_checkpoint_reproduction_or_release_claim"
+)
 REQUIRED_TORCH_COMMANDS = {
     "python3 scripts/ai_eda/build_training_corpus_manifest.py --run-id <cuda-host>",
     "python3 scripts/ai_eda/build_macro_placement_supervised_dataset.py --run-id <cuda-host>",

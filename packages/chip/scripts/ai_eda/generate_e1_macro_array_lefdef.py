@@ -81,9 +81,7 @@ def parse_bank_instances(rtl_text: str) -> list[str]:
     ``E1_BANK*`` macro-call expansion so the count is not hard-coded here.
     """
 
-    indices = sorted(
-        {int(match) for match in re.findall(r"`E1_BANK(?:_P)?\((\d+)\)", rtl_text)}
-    )
+    indices = sorted({int(match) for match in re.findall(r"`E1_BANK(?:_P)?\((\d+)\)", rtl_text)})
     if not indices:
         # Fall back to NUM_BANKS localparam if the macro form changes.
         num_match = re.search(r"NUM_BANKS\s*=\s*(\d+)", rtl_text)
@@ -102,9 +100,7 @@ def parse_lef_macro_size(lef_text: str, macro_name: str) -> tuple[float, float]:
     )
     if not macro_match:
         raise ValueError(f"macro {macro_name} not found in LEF")
-    size_match = re.search(
-        r"SIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)\s*;", macro_match.group(1)
-    )
+    size_match = re.search(r"SIZE\s+([0-9.]+)\s+BY\s+([0-9.]+)\s*;", macro_match.group(1))
     if not size_match:
         raise ValueError(f"SIZE not found for macro {macro_name}")
     return float(size_match.group(1)), float(size_match.group(2))
@@ -126,8 +122,7 @@ def parse_placement_cfg(path: Path, expected: list[str]) -> list[tuple[str, floa
     extra = sorted(placed - set(expected))
     if missing or extra:
         raise ValueError(
-            f"{path}: placement instances do not match RTL "
-            f"(missing={missing}, extra={extra})"
+            f"{path}: placement instances do not match RTL (missing={missing}, extra={extra})"
         )
     return placements
 
@@ -207,7 +202,9 @@ def main() -> int:
             blockers.append(f"placement cfg missing for variant {variant}: {rel(cfg)}")
     if blockers:
         path = write_blocked(out_dir, blockers, inputs)
-        print(f"STATUS: PASS_BLOCKED ai_eda.e1_macro_array_lefdef blockers={len(blockers)} {rel(path)}")
+        print(
+            f"STATUS: PASS_BLOCKED ai_eda.e1_macro_array_lefdef blockers={len(blockers)} {rel(path)}"
+        )
         return 0
 
     instances = parse_bank_instances(ARRAY_RTL.read_text(encoding="utf-8"))
@@ -215,7 +212,9 @@ def main() -> int:
         path = write_blocked(out_dir, ["could not recover macro instances from RTL"], inputs)
         print(f"STATUS: PASS_BLOCKED ai_eda.e1_macro_array_lefdef {rel(path)}")
         return 0
-    width_um, height_um = parse_lef_macro_size(SRAM_LEF.read_text(encoding="utf-8"), SRAM_MACRO_NAME)
+    width_um, height_um = parse_lef_macro_size(
+        SRAM_LEF.read_text(encoding="utf-8"), SRAM_MACRO_NAME
+    )
 
     def_dir = out_dir / "def"
     def_dir.mkdir(parents=True, exist_ok=True)
@@ -259,7 +258,9 @@ def main() -> int:
         "release_use_allowed": False,
     }
     manifest_path = out_dir / "lefdef_manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(
         "STATUS: PASS ai_eda.e1_macro_array_lefdef "
         f"macros={len(instances)} size={width_um}x{height_um}um "

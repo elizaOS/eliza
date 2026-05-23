@@ -1,0 +1,29 @@
+{
+  "schema": "eliza.cpu_benchmark_measured.v1",
+  "benchmark": "dhrystone",
+  "core": "cva6",
+  "core_role": "little_core_e1_pro",
+  "target_config": "cv64a6_imafdc_sv39",
+  "isa": "rv64gc",
+  "mabi": "lp64d",
+  "status": "passed",
+  "claim_level": "L1_RTL_FULL_SOC",
+  "provenance": "simulator",
+  "flow": "cva6 veri-testharness (verif/regress/dhrystone.sh build flags)",
+  "result_recorded_at": "2026-05-22T17:48:57Z",
+  "tools": {
+    "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)",
+    "gcc": "15.2.0 (xpack riscv-none-elf)"
+  },
+  "dmips_per_mhz_formula": "dhrystones_per_second / 1757; Dhrystone HZ=1e6 so microseconds_per_run equals cycles_per_dhrystone at 1 MHz",
+  "metrics": {
+    "total_cycles": 140996,
+    "retired_instructions": 57890,
+    "cpi": 2.4356,
+    "dhrystone_runs": 50,
+    "cycles_per_dhrystone": 487,
+    "dhrystones_per_second": 2049,
+    "dmips_per_mhz": 1.1662
+  },
+  "run_command": "external/cva6/cva6/work-ver/Variane_testharness /home/shaw/milady/eliza/packages/chip/build/cva6-verilator/dhrystone.cva6.rv64gc.elf +elf_file=/home/shaw/milady/eliza/packages/chip/build/cva6-verilator/dhrystone.cva6.rv64gc.elf +e1_disable_iti_trace"
+}

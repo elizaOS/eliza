@@ -55,8 +55,7 @@ export function requireApiKeyPermission(
         result: "denied",
         resource: { type: "permission", id: permission },
         org_id: user?.organization_id ?? undefined,
-        ip:
-          c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
+        ip: c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? undefined,
         user_agent: c.req.header("user-agent") ?? undefined,
         request_id: c.get("requestId"),
         metadata: {

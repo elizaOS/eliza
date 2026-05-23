@@ -744,21 +744,33 @@ def render_footprint(
     s = []
     s.append(f'  (footprint "E1PhoneDemo:{ref}" (layer "F.Cu")')
     s.append(f'    (tstamp "{fp_uuid}")')
-    s.append(f'    (at {cx:.3f} {cy:.3f})')
-    s.append(f'    (descr "DEMO placeholder footprint - non_release_routing_demonstration - {desc}")')
+    s.append(f"    (at {cx:.3f} {cy:.3f})")
+    s.append(
+        f'    (descr "DEMO placeholder footprint - non_release_routing_demonstration - {desc}")'
+    )
     s.append('    (tags "E1_PHONE_DEMO NON_RELEASE_ROUTING_DEMONSTRATION")')
-    s.append('    (attr smd exclude_from_pos_files exclude_from_bom)')
-    s.append(f'    (fp_text reference "{ref}" (at 0 {-half_h-1.2:.3f} 0) (layer "F.SilkS") (tstamp "{det_uuid(f"ref:{ref}")}")')
-    s.append('      (effects (font (size 0.8 0.8) (thickness 0.12)))')
-    s.append('    )')
-    s.append(f'    (fp_text value "DEMO" (at 0 {half_h+1.2:.3f} 0) (layer "F.Fab") (tstamp "{det_uuid(f"val:{ref}")}")')
-    s.append('      (effects (font (size 0.6 0.6) (thickness 0.1)))')
-    s.append('    )')
-    s.append(f'    (fp_rect (start {-half_w:.3f} {-half_h:.3f}) (end {half_w:.3f} {half_h:.3f}) (stroke (width 0.1) (type solid)) (fill none) (layer "F.Fab") (tstamp "{det_uuid(f"fab:{ref}")}"))')
-    s.append(f'    (fp_rect (start {-half_w-0.25:.3f} {-half_h-0.25:.3f}) (end {half_w+0.25:.3f} {half_h+0.25:.3f}) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd") (tstamp "{det_uuid(f"crt:{ref}")}"))')
-    s.append(f'    (fp_text user "NON-RELEASE-DEMO" (at 0 0 0) (layer "F.SilkS") (tstamp "{det_uuid(f"banner:{ref}")}")')
-    s.append('      (effects (font (size 0.6 0.6) (thickness 0.1)))')
-    s.append('    )')
+    s.append("    (attr smd exclude_from_pos_files exclude_from_bom)")
+    s.append(
+        f'    (fp_text reference "{ref}" (at 0 {-half_h - 1.2:.3f} 0) (layer "F.SilkS") (tstamp "{det_uuid(f"ref:{ref}")}")'
+    )
+    s.append("      (effects (font (size 0.8 0.8) (thickness 0.12)))")
+    s.append("    )")
+    s.append(
+        f'    (fp_text value "DEMO" (at 0 {half_h + 1.2:.3f} 0) (layer "F.Fab") (tstamp "{det_uuid(f"val:{ref}")}")'
+    )
+    s.append("      (effects (font (size 0.6 0.6) (thickness 0.1)))")
+    s.append("    )")
+    s.append(
+        f'    (fp_rect (start {-half_w:.3f} {-half_h:.3f}) (end {half_w:.3f} {half_h:.3f}) (stroke (width 0.1) (type solid)) (fill none) (layer "F.Fab") (tstamp "{det_uuid(f"fab:{ref}")}"))'
+    )
+    s.append(
+        f'    (fp_rect (start {-half_w - 0.25:.3f} {-half_h - 0.25:.3f}) (end {half_w + 0.25:.3f} {half_h + 0.25:.3f}) (stroke (width 0.05) (type dash)) (fill none) (layer "F.CrtYd") (tstamp "{det_uuid(f"crt:{ref}")}"))'
+    )
+    s.append(
+        f'    (fp_text user "NON-RELEASE-DEMO" (at 0 0 0) (layer "F.SilkS") (tstamp "{det_uuid(f"banner:{ref}")}")'
+    )
+    s.append("      (effects (font (size 0.6 0.6) (thickness 0.1)))")
+    s.append("    )")
     # Lay pads around the perimeter
     pad_size = 0.5
     if pins <= 4:

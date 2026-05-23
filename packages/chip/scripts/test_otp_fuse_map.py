@@ -53,9 +53,7 @@ def test_secret_readable_in_production_rejected() -> None:
 
 def test_missing_rollback_index_rejected() -> None:
     fuse_map = copy.deepcopy(_fuse_map())
-    fuse_map["partitions"] = [
-        p for p in fuse_map["partitions"] if p["id"] != "rollback_index"
-    ]
+    fuse_map["partitions"] = [p for p in fuse_map["partitions"] if p["id"] != "rollback_index"]
     errors = check_otp.validate(fuse_map)
     if not any("rollback_index" in error for error in errors):
         raise AssertionError(f"expected rollback_index rejection, got {errors}")

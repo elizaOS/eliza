@@ -37,6 +37,7 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `orange_rear_flash_bezel_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
 - PASS: `orange_rear_flash_bezel_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_front_iso.png`, `full_back_iso.png`, `exploded_iso.png`
 - PASS: `rear_camera_lens_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
+- PASS: `rear_camera_optical_sight_tunnel` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `rear_flash_led` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
 - PASS: `rear_flash_led_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`, `component_stack.png`
 - PASS: `front_camera_module` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_top_down.png`, `component-review-optical.png`, `component_stack.png`
@@ -48,6 +49,14 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `rear_camera_light_baffle_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
 - PASS: `rear_camera_light_baffle_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
 - PASS: `front_camera_black_mask_window` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `rear_flash_window_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_top` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_bottom` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_left` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
+- PASS: `front_camera_under_glass_adhesive_right` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
 - PASS: `rear_flash_camera_septum` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component-review-optical.png`
 - PASS: `power_button_cap` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
 - PASS: `volume_button_cap` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `full_left_side.png`, `component-review-io-buttons.png`, `component_stack.png`
@@ -124,6 +133,16 @@ This gate maps each CAD part to generated review views and the per-part contact 
 - PASS: `soc_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
 - PASS: `pmic_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
 - PASS: `radio_shield_can` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component_stack.png`, `exploded_iso.png`
+- PASS: `cellular_lga_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_module_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `soc_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `dram_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `storage_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `pmic_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `rf_transceiver_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `gnss_lna_package_marker` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `wifi_bt_rf_feed_coax_stub` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
+- PASS: `cellular_rf_feed_coax_stub` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`
 - PASS: `haptic_lra` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `component-review-io-buttons.png`, `component_stack.png`
 - PASS: `sim_tray_keepout` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`
 - PASS: `sim_tray_outline` -> `part-review-contact-sheet.png`, `part-explode-contact-sheet.png`, `rear_feature_detail.png`, `component_stack.png`

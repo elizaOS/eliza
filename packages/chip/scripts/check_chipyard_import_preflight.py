@@ -75,6 +75,15 @@ def submodule_problem_details(lines: list[str]) -> dict[str, list[str]]:
     return {"missing": missing, "drifted": drifted, "conflicts": conflicts}
 
 
+def scala_class_body(text: str, class_name: str) -> str:
+    marker = f"class {class_name}"
+    start = text.find(marker)
+    if start < 0:
+        return ""
+    next_class = text.find("\nclass ", start + len(marker))
+    return text[start:] if next_class < 0 else text[start:next_class]
+
+
 def validate_config_sources(
     selected: dict,
     checkout: Path,
@@ -88,6 +97,7 @@ def validate_config_sources(
         return
 
     source_checks: list[dict[str, object]] = []
+    saw_config_class = False
     for entry in sources:
         if not isinstance(entry, dict):
             errors.append("selected_path.config_sources entries must be objects")
@@ -112,10 +122,36 @@ def validate_config_sources(
         text = source_path.read_text(encoding="utf-8", errors="ignore")
         if "package eliza" not in text:
             errors.append(f"{source} must declare package eliza")
-        if "class ElizaRocketConfig" not in text:
+        is_config_source = source_path.name == "ElizaRocketConfig.scala"
+        if "class ElizaRocketConfig" in text:
+            saw_config_class = True
+        if is_config_source and "class ElizaRocketConfig" not in text:
             errors.append(f"{source} must define class ElizaRocketConfig")
-        if "WithNHugeCores(1)" not in text:
+        if is_config_source and "WithNHugeCores(1)" not in text:
             errors.append(f"{source} must select one Rocket hart for initial Linux bring-up")
+        if is_config_source:
+            default_body = scala_class_body(text, "ElizaRocketConfig")
+            if "chipyard.config.AbstractConfig" not in default_body:
+                errors.append(
+                    f"{source} default ElizaRocketConfig must extend "
+                    "chipyard.config.AbstractConfig so it keeps Chipyard's "
+                    "WithBlackBoxSimMem/SimDRAM Linux boot path"
+                )
+            if "WithSimAXIMem" in default_body:
+                errors.append(
+                    f"{source} default ElizaRocketConfig must not use WithSimAXIMem; "
+                    "that AXI4RAM fast-memory path has no checked +loadmem/load_elf "
+                    "preload support and is not generated-AP Linux proof yet"
+                )
+        if is_config_source and (
+            "class ElizaRocketFastSimConfig" not in text or "WithSimAXIMem" not in text
+        ):
+            errors.append(
+                f"{source} must keep ElizaRocketFastSimConfig as the explicitly named "
+                "experimental SimAXIMem harness target so no one swaps the default "
+                "ElizaRocketConfig Linux boot path while investigating a faster "
+                "no-DRAMSim memory model"
+            )
         if checkout.is_dir() and not destination_path.is_file():
             blockers.append(
                 "ElizaRocketConfig overlay is not installed in checkout; run "
@@ -126,10 +162,12 @@ def validate_config_sources(
             installed = destination_path.read_text(encoding="utf-8", errors="ignore")
             if installed != text:
                 errors.append(
-                    "installed ElizaRocketConfig overlay differs from repo source: "
+                    "installed Chipyard overlay differs from repo source: "
                     f"external/chipyard/{destination}"
                 )
     checks["config_sources"] = source_checks
+    if not saw_config_class:
+        errors.append("selected_path.config_sources must include the ElizaRocketConfig overlay")
 
 
 def main() -> int:

@@ -7,7 +7,7 @@ Chipyard/Rocket subsystem exists and `sw/platform/e1_platform_contract.json`
 has RAM, UART, timer, interrupt-controller, and boot-handoff entries for a
 CPU-capable target.
 
-Repo-local command and expected fail-closed output:
+Repo-local command and expected output for the fail-closed scaffold:
 [../bsp-scaffold-expected-output.md](../bsp-scaffold-expected-output.md).
 
 Dependency blocker: a real OpenSBI build requires a CPU-capable SoC integration

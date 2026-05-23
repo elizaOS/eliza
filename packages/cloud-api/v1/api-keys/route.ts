@@ -7,14 +7,14 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
+import { requireApiKeyPermission } from "@/api-app/middleware/auth";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
-import { requireApiKeyPermission } from "@/api-app/middleware/auth";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import { apiKeysService } from "@/lib/services/api-keys";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -96,7 +96,11 @@ app.post("/", async (c) => {
         resource: { type: "api_key", id: apiKey.id },
         org_id: user.organization_id,
         request_id: c.get("requestId"),
-        metadata: { key_id: apiKey.id, name: apiKey.name, scopes: apiKey.permissions ?? [] },
+        metadata: {
+          key_id: apiKey.id,
+          name: apiKey.name,
+          scopes: apiKey.permissions ?? [],
+        },
       })
       .catch((err: unknown) => {
         logger.warn("[API Keys] create audit emit failed", {

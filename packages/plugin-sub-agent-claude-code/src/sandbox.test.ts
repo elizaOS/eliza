@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { mkdtempSync, realpathSync, writeFileSync, chmodSync } from "node:fs";
+import { chmodSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,7 +15,11 @@ import {
 describe("filterEnv", () => {
   it("only forwards allowlisted keys", () => {
     const result = filterEnv(
-      { PATH: "/usr/bin", HOME: "/h", SOMETHING_ELSE: "x" } as NodeJS.ProcessEnv,
+      {
+        PATH: "/usr/bin",
+        HOME: "/h",
+        SOMETHING_ELSE: "x",
+      } as NodeJS.ProcessEnv,
       SAFE_ENV_KEYS,
     );
     expect(result.PATH).toBe("/usr/bin");
@@ -73,7 +77,9 @@ describe("resolveSafeCwd", () => {
 
 describe("resolveSafeBinary", () => {
   it("rejects relative paths with slashes", () => {
-    expect(() => resolveSafeBinary("./bin/claude")).toThrow(SubAgentBinaryError);
+    expect(() => resolveSafeBinary("./bin/claude")).toThrow(
+      SubAgentBinaryError,
+    );
   });
 
   it("rejects absolute paths outside the whitelist", () => {

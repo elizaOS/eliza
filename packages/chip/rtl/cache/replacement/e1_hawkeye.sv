@@ -71,11 +71,8 @@ module e1_hawkeye #(
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++)
-                for (int s = 0; s < SETS; s++)
-                    rrpv[w][s] <= 3'b111;
-            for (int i = 0; i < PRED_ENTRIES; i++)
-                pred_table[i] <= 3'd4;
+            rrpv       <= '{default: '{default: 3'b111}};
+            pred_table <= '{default: 3'd4};
         end else begin
             if (acc_valid) begin
                 logic [PRED_IDX_W-1:0] pidx;

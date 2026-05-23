@@ -4,6 +4,7 @@
   "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
   "STD_CELL_LIBRARY_OPT": "sky130_fd_sc_hd",
   "VERILOG_FILES": [
+    "dir::../../rtl/top/e1_soc_pkg.sv",
     "dir::../../rtl/top/e1_chip_top.sv",
     "dir::../../rtl/top/e1_soc_top.sv",
     "dir::../../rtl/clock/e1_reset_sync.sv",
@@ -17,7 +18,7 @@
     "dir::../../rtl/interconnect/e1_axi_lite_interconnect.sv",
     "dir::../../rtl/interrupts/e1_interrupt_controller.sv",
     "dir::../../rtl/memory/e1_axi_lite_dram.sv",
-    "dir::../../rtl/security/e1_lifecycle.sv"
+    "dir::../../rtl/security/lc/e1_lc_ctrl.sv"
   ],
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_NET": "CLK_IN",

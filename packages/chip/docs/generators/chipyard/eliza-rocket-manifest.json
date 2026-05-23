@@ -24,6 +24,10 @@
       {
         "source": "docs/generators/chipyard/eliza/src/main/scala/eliza/ElizaRocketConfig.scala",
         "checkout_destination": "generators/chipyard/src/main/scala/eliza/ElizaRocketConfig.scala"
+      },
+      {
+        "source": "docs/generators/chipyard/eliza/src/main/scala/eliza/ElizaE1Periphery.scala",
+        "checkout_destination": "generators/chipyard/src/main/scala/eliza/ElizaE1Periphery.scala"
       }
     ],
     "claim_level": "initial_linux_bringup_only",

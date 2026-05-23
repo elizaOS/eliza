@@ -80,6 +80,23 @@ The full edit loop gate is:
 python3 packages/robot/scripts/validate_asimov1_cad_edit_loop.py
 ```
 
+Promotion reports include source/destination hashes for MJCF, URDF, manifest,
+and mesh copies. Validate a workspace promotion plan before applying it:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_workspace_promotion.py \
+  --workspace /tmp/asimov-edit-workspace
+```
+
+After running `promote_asimov1_workspace(..., dry_run=False)` or
+`promote_asimov1_workspace.py --apply`, require destination hashes to match:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_workspace_promotion.py \
+  --workspace /tmp/asimov-edit-workspace \
+  --require-applied
+```
+
 ## Simulation And Training
 
 Run the profile simulation gate:
@@ -107,13 +124,21 @@ The exported `run_full_training.sh` embeds the robot package root at generation
 time, so it can be launched from another working directory. `--check` validates
 the package and installed training dependencies. `--train` starts the real
 Brax/MJX PPO path and then runs `verify_brax_text_policy.py`,
-`eval_text_policy.py --backend mjx`, and `sim_validation_gate.py` against the
-produced checkpoint. Keep production-scale runs off local developer machines;
-use a GPU training host and keep checkpoints out of git.
+`validate_asimov1_production_checkpoint.py` with the job's training-step
+target, `eval_text_policy.py --backend mjx`, and `sim_validation_gate.py`
+against the produced checkpoint. Keep production-scale runs off local
+developer machines; use a GPU training host and keep checkpoints out of git.
 
 Smoke checkpoints from `rl/text_conditioned/train.py` are deterministic
 contract artifacts. They verify bridge and policy plumbing but are not walking
 policies.
+
+The MJX training environment preserves the Menlo actor observation contract:
+45 proprioceptive values plus the text embedding. The proprioceptive joint
+position and velocity slices are selected from configurable left/right leg
+history buffers (`observation_delay_steps`) so training can model the staggered
+bus timing described in Menlo's walking writeup without changing the actor
+shape.
 
 For a bounded proof of the real Brax/MJX trainer entrypoint, create a tiny
 non-production job first:
@@ -208,6 +233,84 @@ python3 packages/robot/scripts/validate_asimov1_real_telemetry_probe.py \
 The probe connects to the LiveKit room and waits for one `EdgeTelemetry` frame.
 It publishes zero `CloudCommand` messages.
 
+After telemetry is healthy and the robot is physically safe to command, the
+staged command probe sends only DAMP by default:
+
+```bash
+ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
+python3 packages/robot/scripts/validate_asimov1_real_command_probe.py \
+  --timeout 15
+```
+
+STAND and zero-velocity are opt-in:
+
+```bash
+ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
+python3 packages/robot/scripts/validate_asimov1_real_command_probe.py \
+  --timeout 15 \
+  --allow-stand \
+  --allow-zero-velocity
+```
+
+For production evidence on a hardware host, collect preflight, telemetry, and
+the staged command probe into one JSON report:
+
+```bash
+ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
+python3 packages/robot/scripts/collect_asimov1_real_hardware_evidence.py \
+  --timeout 15 \
+  --require-modules \
+  --out /tmp/asimov-real-hardware/
+```
+
+By default this evidence runner stops after a failed strict preflight and, if
+preflight passes, sends only the DAMP command after telemetry is healthy. Add
+`--allow-stand --allow-zero-velocity` only when the robot is physically ready
+for those command stages.
+
+Validate a captured report before treating it as real-hardware evidence:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_real_hardware_evidence.py \
+  /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
+```
+
+Validate the real-agent command and policy-loop contract before enabling a
+physical robot:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_real_agent_readiness.py \
+  --max-steps 2
+```
+
+When production checkpoint and hardware evidence are available, require both:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_real_agent_readiness.py \
+  --checkpoint /path/to/asimov-production-checkpoint \
+  --production-min-steps 150000000 \
+  --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json \
+  --require-production \
+  --require-hardware
+```
+
+The guarded real-agent runner prints a no-motion launch plan unless
+`--allow-motion` is supplied. Use it only after production checkpoint and
+hardware evidence validation pass:
+
+```bash
+ASIMOV_LIVEKIT_URL=wss://... ASIMOV_LIVEKIT_TOKEN=... \
+python3 packages/robot/scripts/run_asimov1_real_agent.py \
+  --checkpoint /path/to/asimov-production-checkpoint \
+  --production-min-steps 150000000 \
+  --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json \
+  --task walk_forward \
+  --max-steps 100
+```
+
+To actually connect and command hardware, add `--allow-motion`; without that
+flag the script does not connect to LiveKit or publish commands.
+
 ## End-To-End Gate
 
 Run the full integration gate:
@@ -221,5 +324,66 @@ python3 packages/robot/scripts/validate_asimov1_e2e.py \
 This covers source inventory, generated assets, CAD edit regeneration, smoke
 policy contract, full-training readiness, exported runner checks, the tiny
 Brax/MJX trainer validation package, MuJoCo/MJX gates, bridge targets,
-real-mode dry-run/preflight, and the live audit for released ASIMOV model
-artifacts.
+real-agent readiness, real-mode dry-run/preflight, and the live audit for
+released ASIMOV model artifacts.
+
+The tiny Brax/MJX job proves integration only; it is not production walking
+evidence. Once a real training run has produced `policy_brax.pkl`,
+`manifest.json`, `metrics.json`, and `config.json`, validate the checkpoint
+package with an explicit training-step threshold:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_production_checkpoint.py \
+  /path/to/asimov-production-checkpoint \
+  --min-steps 150000000
+```
+
+When a hardware-host report exists, include it in the gate:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_e2e.py \
+  --out /tmp/asimov-e2e \
+  --steps 2 \
+  --real-hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
+```
+
+When both production training and hardware evidence exist, include both:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_e2e.py \
+  --out /tmp/asimov-e2e \
+  --steps 2 \
+  --production-checkpoint /path/to/asimov-production-checkpoint \
+  --production-min-steps 150000000 \
+  --real-hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
+```
+
+To include CAD/MJCF promotion evidence in the same gate, add the workspace:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_e2e.py \
+  --out /tmp/asimov-e2e \
+  --steps 2 \
+  --workspace-promotion /tmp/asimov-edit-workspace
+```
+
+Use `--require-promotion-applied` when the modified workspace has been copied
+into `assets/profiles/asimov-1/` and the destination hashes must match the
+workspace outputs.
+
+The strict completion gate requires an E2E report that already included the
+same production checkpoint and hardware evidence, confirms the parsed real
+agent readiness report was `production_ready`, then validates the artifacts
+again:
+
+```bash
+python3 packages/robot/scripts/validate_asimov1_completion.py \
+  --e2e-report /tmp/asimov-e2e/asimov1_e2e_report.json \
+  --production-checkpoint /path/to/asimov-production-checkpoint \
+  --production-min-steps 150000000 \
+  --hardware-evidence /tmp/asimov-real-hardware/asimov1_real_hardware_evidence.json
+```
+
+This command is intentionally strict: it fails unless the final E2E run,
+real-agent readiness report, production training artifact, and hardware
+evidence all refer to the same ASIMOV-1 integration state.

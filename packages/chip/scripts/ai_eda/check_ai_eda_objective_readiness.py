@@ -82,7 +82,10 @@ def validate(report: dict[str, Any]) -> list[str]:
         errors.append("release_use_allowed must be false")
     if report.get("status") not in {"COMPLETE_READY", "INCOMPLETE_WITH_BLOCKERS"}:
         errors.append("unsupported status")
-    if report.get("status") != "COMPLETE_READY" and report.get("completion_claim_allowed") is not False:
+    if (
+        report.get("status") != "COMPLETE_READY"
+        and report.get("completion_claim_allowed") is not False
+    ):
         errors.append("completion_claim_allowed must be false unless status is COMPLETE_READY")
 
     evidence_run_ids = report.get("evidence_run_ids")
@@ -97,6 +100,7 @@ def validate(report: dict[str, Any]) -> list[str]:
             "research",
             "replay_prerequisites",
             "replay_preflight",
+            "replay_handoff",
             "replay_execution",
             "replay_comparison",
             "alphachip",
@@ -140,7 +144,9 @@ def validate(report: dict[str, Any]) -> list[str]:
                 if not isinstance(artifact, dict):
                     errors.append(f"{req.get('id')}.evidence[{artifact_index}] must be a mapping")
                     continue
-                errors.extend(validate_artifact(artifact, f"{req.get('id')}.evidence[{artifact_index}]"))
+                errors.extend(
+                    validate_artifact(artifact, f"{req.get('id')}.evidence[{artifact_index}]")
+                )
     summary = report.get("summary")
     if not isinstance(summary, dict):
         errors.append("summary must be a mapping")

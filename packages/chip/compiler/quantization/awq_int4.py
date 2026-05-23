@@ -58,9 +58,7 @@ class AwqInt4Calibrator:
     def record_weight_group_scales(self, name: str, group_scales: Sequence[float]) -> None:
         if not group_scales:
             raise ValueError(f"weight {name} has zero groups")
-        self._weight_scales[name] = [
-            (v / 7.0) if v > 0 else MIN_SCALE for v in group_scales
-        ]
+        self._weight_scales[name] = [(v / 7.0) if v > 0 else MIN_SCALE for v in group_scales]
 
     def build_manifest(self) -> AwqInt4Manifest:
         return AwqInt4Manifest(

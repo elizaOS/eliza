@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -439,7 +439,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.tilos_macroplacement_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "asset_id": "tilos-macroplacement",
         "source_revision": git_revision(payload) if payload.exists() else None,

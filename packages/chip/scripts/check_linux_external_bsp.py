@@ -48,14 +48,27 @@ def is_linux_tree(path: Path) -> bool:
 
 
 def tool_status() -> dict[str, Any]:
+    repo_tool_bins = [
+        ROOT / "tools/bin",
+        ROOT / "external/riscv64-linux-gnu/usr/bin",
+        ROOT / "external/deb-tools/dtc/usr/bin",
+    ]
+    search_path = os.pathsep.join(
+        [str(path) for path in repo_tool_bins if path.is_dir()]
+        + [os.environ.get("PATH", "")]
+    )
+
+    def which(name: str) -> str:
+        return shutil.which(name, path=search_path) or ""
+
     compilers = [
         os.environ.get("CROSS_COMPILE", "") + "gcc" if os.environ.get("CROSS_COMPILE") else "",
         "riscv64-linux-gnu-gcc",
         "riscv64-unknown-linux-gnu-gcc",
         "riscv64-unknown-elf-gcc",
     ]
-    found_compiler = next((tool for tool in compilers if tool and shutil.which(tool)), "")
-    make_path = shutil.which("make") or ""
+    found_compiler = next((tool for tool in compilers if tool and which(tool)), "")
+    make_path = which("make")
     make_version = ""
     make_ok = False
     if make_path:
@@ -77,9 +90,11 @@ def tool_status() -> dict[str, Any]:
         "make": make_path,
         "make_version": make_version,
         "make_version_ok": make_ok,
-        "dtc": shutil.which("dtc") or "",
+        "dtc": which("dtc"),
         "riscv_compiler": found_compiler,
+        "riscv_compiler_path": which(found_compiler) if found_compiler else "",
         "cross_compile": os.environ.get("CROSS_COMPILE", ""),
+        "search_path_prefix": os.pathsep.join(str(path) for path in repo_tool_bins if path.is_dir()),
     }
 
 
@@ -91,8 +106,8 @@ def imported_state(linux: Path) -> dict[str, Any]:
     required = {
         "driver_kconfig": linux / "drivers/misc/eliza-e1/Kconfig",
         "driver_makefile": linux / "drivers/misc/eliza-e1/Makefile",
-        "npu_driver": linux / "drivers/misc/eliza-e1/e1-npu.c",
-        "dma_driver": linux / "drivers/misc/eliza-e1/e1-dma.c",
+        "npu_driver": linux / "drivers/misc/eliza-e1/eliza-e1-npu.c",
+        "dma_driver": linux / "drivers/misc/eliza-e1/eliza-e1-dma.c",
         "platform_header": linux / "drivers/misc/eliza-e1/e1_platform_contract.h",
         "board_dts": linux / "arch/riscv/boot/dts/eliza/eliza-e1.dts",
     }
@@ -220,16 +235,24 @@ def main(argv: list[str]) -> int:
     parser.add_argument("linux_tree", nargs="?")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--require-pass", action="store_true")
+    parser.add_argument(
+        "--report",
+        default=str(REPORT),
+        help=f"status report path (default: {rel(REPORT)})",
+    )
     args = parser.parse_args(argv)
 
+    report_path = Path(args.report).expanduser()
+    if not report_path.is_absolute():
+        report_path = ROOT / report_path
     report = build_report(candidate_linux_tree(args.linux_tree))
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
     else:
         print(f"STATUS: {report['status'].upper()} linux.external_bsp_status")
-        print(f"  report: {rel(REPORT)}")
+        print(f"  report: {rel(report_path)}")
         for key, value in report["producer_commands"].items():
             print(f"  command.{key}: {value}")
         for blocker in report["blockers"]:

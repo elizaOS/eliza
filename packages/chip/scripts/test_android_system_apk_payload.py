@@ -46,7 +46,9 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
 
     def test_complete_static_payload_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
-            apk = make_apk(Path(tmpdir) / "Eliza.apk", list(gate.REQUIRED_ENTRIES) + [gate.PROVENANCE_ENTRY])
+            apk = make_apk(
+                Path(tmpdir) / "Eliza.apk", list(gate.REQUIRED_ENTRIES) + [gate.PROVENANCE_ENTRY]
+            )
             report = gate.run_check(
                 Namespace(apk=str(apk), allow_missing_aapt=True),
             )

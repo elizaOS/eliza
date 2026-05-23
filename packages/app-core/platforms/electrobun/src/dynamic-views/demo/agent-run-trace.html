@@ -103,7 +103,7 @@
         try {
           append(
             "runtime.status",
-            await request("carrotInvokeWorker", {
+            await request("remotePluginInvokeWorker", {
               id: "eliza.runtime",
               method: "runtime.status",
             }),
@@ -115,7 +115,7 @@
 
       document.getElementById("tail").addEventListener("click", async () => {
         try {
-          const result = await request("carrotTailWorkerEvents", {
+          const result = await request("remotePluginTailWorkerEvents", {
             id: "eliza.runtime",
             afterSequence: lastRuntimeSequence,
             limit: 100,

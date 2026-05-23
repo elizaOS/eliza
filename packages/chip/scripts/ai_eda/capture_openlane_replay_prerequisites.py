@@ -14,7 +14,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +26,7 @@ DEFAULT_OPENLANE_CONFIGS = (
     ROOT / "pd/openlane/config.sky130.json",
     ROOT / "pd/openlane/config.gf180.json",
     ROOT / "pd/openlane/config.ihp-sg13g2.json",
-    ROOT / "pd/openlane/config.asap7.yaml",
+    ROOT / "pd/asap7/config.asap7.yaml",
 )
 SCHEMA = "eliza.ai_eda.openlane_replay_prerequisites.v1"
 CLAIM_BOUNDARY = "openlane_replay_prerequisites_only_no_openlane_execution_or_release_claim"
@@ -186,7 +186,7 @@ def main() -> int:
     status = "READY_FOR_REPLAY_PREREQUISITES" if not blockers else "BLOCKED_PREREQUISITES"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,

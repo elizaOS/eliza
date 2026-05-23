@@ -1,161 +1,599 @@
 {
   "ok": true,
-  "releaseManifestPath": "/tmp/eliza-tee-full-stack-dnM3kn/release-manifest.json",
+  "topologies": [
+    {
+      "topology": "local-only",
+      "kmsProvider": "eliza-e1-verifier",
+      "keyId": "model-key",
+      "golden": {
+        "trusted": true,
+        "reason": "allowed",
+        "evidence": {
+          "kind": "cove",
+          "provider": "eliza-vault",
+          "securityVersion": 7,
+          "measurements": {
+            "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+            "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+            "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+            "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+            "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+            "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+            "npuFirmware": "sha256:af664a053f9bc83caf0d400a0cb9b344f0f26b9ba18b8eb7e8497abd82995ad2"
+          },
+          "claims": {
+            "debugDisabled": true,
+            "productionLifecycle": true,
+            "secureBoot": true,
+            "memoryEncrypted": true,
+            "ioProtected": true,
+            "npuProtected": true
+          }
+        }
+      },
+      "keyMaterialSha256": "4c51170b62806b9a0970c5fc1499b64c6a34d5df153fcfc50c13cd464802b413",
+      "ok": true
+    },
+    {
+      "topology": "desktop",
+      "kmsProvider": "dstack",
+      "keyId": "agent-session",
+      "golden": {
+        "trusted": true,
+        "reason": "allowed",
+        "evidence": {
+          "kind": "dstack",
+          "provider": "dstack",
+          "securityVersion": 5,
+          "measurements": {
+            "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+            "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+            "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+            "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+            "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+            "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54"
+          },
+          "claims": {
+            "debugDisabled": true,
+            "productionLifecycle": true,
+            "secureBoot": true,
+            "memoryEncrypted": true,
+            "ioProtected": true,
+            "npuProtected": true
+          }
+        }
+      },
+      "keyMaterialSha256": "600666d621d54b6206a090ff677be79b84f66f6de96423c421c9c3eab57271f5",
+      "ok": true
+    },
+    {
+      "topology": "cloud-routed",
+      "kmsProvider": "eliza-cloud-kms",
+      "keyId": "remote-signing",
+      "golden": {
+        "trusted": true,
+        "reason": "allowed",
+        "evidence": {
+          "kind": "tdx",
+          "provider": "eliza-cloud-kms",
+          "securityVersion": 9,
+          "measurements": {
+            "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+            "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+            "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+            "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+            "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+            "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+            "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+          },
+          "claims": {
+            "debugDisabled": true,
+            "productionLifecycle": true,
+            "secureBoot": true,
+            "memoryEncrypted": true,
+            "ioProtected": true,
+            "gpuProtected": true
+          }
+        }
+      },
+      "keyMaterialSha256": "430b5698869620e5155b77848028446e90bac6e3c84a885b8dbaa6ad1befc8e7",
+      "ok": true
+    }
+  ],
+  "decisionReasonMatrix": {
+    "coverageOk": true,
+    "reasonsCovered": 18,
+    "reasonsExpected": 18,
+    "results": [
+      {
+        "reason": "no-policy",
+        "expectedTrusted": true,
+        "decision": {
+          "trusted": true,
+          "reason": "no-policy"
+        },
+        "ok": true
+      },
+      {
+        "reason": "not-required",
+        "expectedTrusted": true,
+        "decision": {
+          "trusted": true,
+          "reason": "not-required"
+        },
+        "ok": true
+      },
+      {
+        "reason": "allowed",
+        "expectedTrusted": true,
+        "decision": {
+          "trusted": true,
+          "reason": "allowed",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "missing-evidence",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "missing-evidence"
+        },
+        "ok": true
+      },
+      {
+        "reason": "invalid-evidence",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "invalid-evidence",
+          "detail": "TEE evidence field \"kind\" is required."
+        },
+        "ok": true
+      },
+      {
+        "reason": "simulated-evidence-rejected",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "simulated-evidence-rejected",
+          "detail": "TEE hardwareVendor \"mock-macos\" indicates a non-production attestation.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "kind-not-allowed",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "kind-not-allowed",
+          "detail": "TEE kind \"sev-snp\" is not allowed.",
+          "evidence": {
+            "kind": "sev-snp",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "provider-not-allowed",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "provider-not-allowed",
+          "detail": "TEE provider \"rogue-kms\" is not allowed.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "rogue-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "measurement-mismatch",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "measurement-mismatch",
+          "detail": "TEE measurement \"agent\" does not match policy.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "measurement-revoked",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "measurement-revoked",
+          "detail": "TEE measurement \"agent\" has been revoked by policy.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "security-version-too-low",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "security-version-too-low",
+          "detail": "TEE security version 1 is below 9.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 1,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "security-version-revoked",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "security-version-revoked",
+          "detail": "TEE security version 9 has been revoked by policy.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "missing-nonce",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "missing-nonce",
+          "detail": "TEE evidence does not include a freshness nonce.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "nonce-mismatch",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "nonce-mismatch",
+          "detail": "TEE evidence nonce does not match policy.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "missing-timestamp",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "missing-timestamp",
+          "detail": "TEE evidence does not include a freshness timestamp.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "timestamp-invalid",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "timestamp-invalid",
+          "detail": "TEE evidence timestamp is not parseable.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "timestamp-stale",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "timestamp-stale",
+          "detail": "TEE evidence timestamp is outside the allowed freshness window.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": true
+            }
+          }
+        },
+        "ok": true
+      },
+      {
+        "reason": "claim-mismatch",
+        "expectedTrusted": false,
+        "decision": {
+          "trusted": false,
+          "reason": "claim-mismatch",
+          "detail": "TEE claim \"gpuProtected\" does not match policy.",
+          "evidence": {
+            "kind": "tdx",
+            "provider": "eliza-cloud-kms",
+            "securityVersion": 9,
+            "measurements": {
+              "boot": "sha256:b83e13cf5f0b3cc9715dda1b57b6d39da191ee473b00fb00412e3ea91b087285",
+              "os": "sha256:950b01b791a68df93118cde39ceaea3130daeb0f55d957c0d4f23d0f6c43246f",
+              "agent": "sha256:a04cae7fbdcf198b3d39813ef030e39e477b130d2e157e4e0cb0e0db14e83bb9",
+              "policy": "sha256:269a00ed7acfe89afe82958f79ff13915e88a3a92d715c3a8ea3df712c124b68",
+              "device": "sha256:0ffd2b0bb698345d3f46ee8a948ac1e3ff3ca23fca9471b23269c20bbc776a79",
+              "container": "sha256:4d1f028236eb2d1d39d2ed6e2baa68aeb300f7c25bff0e93536771a22d3b5f54",
+              "gpuFirmware": "sha256:31f0a31c90f7859e0ee269b9173433b0e2e3573055de2bbea4dd5fa40c29aa6c"
+            },
+            "claims": {
+              "debugDisabled": true,
+              "productionLifecycle": true,
+              "secureBoot": true,
+              "memoryEncrypted": true,
+              "ioProtected": true,
+              "gpuProtected": false
+            }
+          }
+        },
+        "ok": true
+      }
+    ]
+  },
   "modelKeyUnseal": {
     "happyPath": true,
     "deniedPath": true,
     "weightsSha256": "296354e866c2ffa4fc2243c3fdb4e760b4c6acd61855c0ec705b373c4ed4a2e8"
-  },
-  "accepted": {
-    "trusted": true,
-    "reason": "allowed",
-    "evidence": {
-      "kind": "dstack",
-      "provider": "dstack",
-      "securityVersion": 1,
-      "measurements": {
-        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
-        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
-        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
-        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
-        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
-        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
-      },
-      "claims": {
-        "debugDisabled": true,
-        "secureBoot": true,
-        "memoryEncrypted": true,
-        "ioProtected": true,
-        "npuProtected": true
-      }
-    }
-  },
-  "runtimeAccepted": {
-    "trusted": true,
-    "reason": "allowed",
-    "evidence": {
-      "kind": "dstack",
-      "provider": "dstack",
-      "securityVersion": 1,
-      "measurements": {
-        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
-        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
-        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
-        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
-        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
-        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
-      },
-      "claims": {
-        "debugDisabled": true,
-        "secureBoot": true,
-        "memoryEncrypted": true,
-        "ioProtected": true,
-        "npuProtected": true
-      }
-    }
-  },
-  "rejected": {
-    "trusted": false,
-    "reason": "measurement-mismatch",
-    "detail": "TEE measurement \"agent\" does not match policy.",
-    "evidence": {
-      "kind": "dstack",
-      "provider": "dstack",
-      "securityVersion": 1,
-      "measurements": {
-        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
-        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
-        "agent": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
-        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
-        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
-        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
-      },
-      "claims": {
-        "debugDisabled": true,
-        "secureBoot": true,
-        "memoryEncrypted": true,
-        "ioProtected": true,
-        "npuProtected": true
-      }
-    }
-  },
-  "revoked": {
-    "trusted": false,
-    "reason": "measurement-revoked",
-    "detail": "TEE measurement \"agent\" has been revoked by policy.",
-    "evidence": {
-      "kind": "dstack",
-      "provider": "dstack",
-      "securityVersion": 1,
-      "measurements": {
-        "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
-        "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
-        "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
-        "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
-        "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
-        "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
-      },
-      "claims": {
-        "debugDisabled": true,
-        "secureBoot": true,
-        "memoryEncrypted": true,
-        "ioProtected": true,
-        "npuProtected": true
-      }
-    }
-  },
-  "keyRelease": {
-    "keyId": "full-stack-agent-session",
-    "keyMaterialSha256": "aaf8783ef1d8045237fb878927262e9d787c945f9d677f16ba7f9d0203c88718",
-    "decision": {
-      "trusted": true,
-      "reason": "allowed",
-      "evidence": {
-        "kind": "dstack",
-        "provider": "dstack",
-        "securityVersion": 1,
-        "measurements": {
-          "boot": "sha256:6725dfba4689bd5633aeb6375b9cba89633867184648d22bf27d958c7e72c41c",
-          "os": "sha256:22e759db3b2dac8abc8ba803311b6763923de4d5d481632eda727015ec1cc078",
-          "agent": "sha256:64c94605e3257b191c6097bbc748f79bdad91fb7a202365d0f1407b7c89c2e92",
-          "policy": "sha256:5d6d7b27593dfe45b82d46fbab45cae3a1f99ece54818924d0c438db04a7ba39",
-          "container": "sha256:b0fdc98b0397c1e9198c4fb7006651f14f6fe3f28b5f869cd4f51bf2aff38aef",
-          "npuFirmware": "sha256:8581dcdc8015615a83f27cbd253ab184931097aecddebbccbb500f1d80983fc4"
-        },
-        "claims": {
-          "debugDisabled": true,
-          "secureBoot": true,
-          "memoryEncrypted": true,
-          "ioProtected": true,
-          "npuProtected": true
-        }
-      }
-    }
-  },
-  "chipEvidenceDecision": {
-    "trusted": true,
-    "reason": "allowed",
-    "evidence": {
-      "kind": "cove",
-      "provider": "eliza-riscv",
-      "securityVersion": 1,
-      "measurements": {
-        "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        "monitor": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
-        "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-        "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-        "device": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
-        "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-      },
-      "claims": {
-        "debugDisabled": true,
-        "productionLifecycle": true,
-        "secureBoot": true,
-        "memoryEncrypted": true,
-        "ioProtected": true,
-        "npuProtected": true
-      }
-    }
   }
 }

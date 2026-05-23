@@ -9,10 +9,16 @@ gap coverage grows.
 """
 
 import random
+import sys
+from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from common import read_reg, write_reg  # noqa: E402
+from common import reset as _reset  # noqa: E402
 
 SRC_REG = 0x00
 DST_REG = 0x01
@@ -23,44 +29,9 @@ BYTES_DONE_REG = 0x05
 
 
 async def reset(dut):
-    dut.rst_n.value = 0
-    dut.valid.value = 0
-    dut.write.value = 0
-    dut.addr.value = 0
-    dut.wdata.value = 0
-    dut.m_axil_awready.value = 1
-    dut.m_axil_wready.value = 1
-    dut.m_axil_bvalid.value = 0
-    dut.m_axil_bresp.value = 0
-    dut.m_axil_arready.value = 1
-    dut.m_axil_rvalid.value = 0
-    dut.m_axil_rdata.value = 0
-    dut.m_axil_rresp.value = 0
-    for _ in range(4):
-        await RisingEdge(dut.clk)
-    dut.rst_n.value = 1
-    await RisingEdge(dut.clk)
-
-
-async def write_reg(dut, addr, data):
-    dut.addr.value = addr
-    dut.wdata.value = data
-    dut.write.value = 1
-    dut.valid.value = 1
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    dut.write.value = 0
-
-
-async def read_reg(dut, addr):
-    dut.addr.value = addr
-    dut.write.value = 0
-    dut.valid.value = 1
-    await Timer(1, units="ns")
-    value = int(dut.rdata.value)
-    await RisingEdge(dut.clk)
-    dut.valid.value = 0
-    return value
+    # DMA long-transfer models an always-ready slave, so hold the AXI-Lite
+    # ready lines high through reset (axil_ready=1).
+    await _reset(dut, axil_ready=1)
 
 
 async def axil_memory(dut, mem, rng, error_addrs=frozenset()):

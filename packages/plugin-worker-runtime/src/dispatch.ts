@@ -96,7 +96,10 @@ export function createWorkerRpcDispatcher(
 
     // SOC2 A-5: permission enforcement.
     if (context.permissions) {
-      const denial = checkPermission(message.surface, context.permissions.granted);
+      const denial = checkPermission(
+        message.surface,
+        context.permissions.granted,
+      );
       if (denial) {
         if (context.permissions.auditDispatcher) {
           try {
@@ -329,7 +332,11 @@ function checkPermission(
   if (surface === "tests") return null;
   // Treat any surface as allowed when the grant is empty/absent. The
   // tighter mapping below applies once any grants are set.
-  if (!granted || (Object.keys(granted.bun ?? {}).length === 0 && Object.keys(granted.host ?? {}).length === 0)) {
+  if (
+    !granted ||
+    (Object.keys(granted.bun ?? {}).length === 0 &&
+      Object.keys(granted.host ?? {}).length === 0)
+  ) {
     return null;
   }
   // Surfaces that touch host services need bun:run OR a host:* grant.

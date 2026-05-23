@@ -116,9 +116,23 @@ export class TaskDrain {
 		}
 		const agentId = runtime.agentId;
 		const existing = await runtime.getTasksByName(this.taskName);
-		const mine = existing.find((t) => this.matchesTask(t, String(agentId)));
+		const matchingTasks = existing.filter((t) =>
+			this.matchesTask(t, String(agentId)),
+		);
+		const mine = matchingTasks[0];
 		if (mine?.id) {
 			this.taskId = mine.id;
+			if (
+				matchingTasks.length > 1 &&
+				typeof runtime.deleteTask === "function"
+			) {
+				await Promise.allSettled(
+					matchingTasks
+						.slice(1)
+						.filter((task): task is Task & { id: UUID } => Boolean(task.id))
+						.map((task) => runtime.deleteTask(task.id)),
+				);
+			}
 			// Reconcile DB interval/metadata with this drain’s configured interval (stale rows after restart).
 			if (
 				typeof runtime.getTask === "function" &&

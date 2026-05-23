@@ -249,9 +249,7 @@ def main() -> int:
     if not report_path.is_absolute():
         report_path = (ROOT / args.report).resolve()
     try:
-        payload = normalize_file(
-            report_path, source_tool=args.source_tool, scenario=args.scenario
-        )
+        payload = normalize_file(report_path, source_tool=args.source_tool, scenario=args.scenario)
     except FileNotFoundError as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1

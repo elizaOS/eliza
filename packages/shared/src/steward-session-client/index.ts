@@ -325,7 +325,8 @@ export interface ExchangeStewardCodeOpts extends SyncOpts {
  * POSTs the one-time OAuth code to the cloud-api nonce-exchange endpoint.
  * The route calls Steward `POST /auth/oauth/exchange` server-side, sets the
  * HttpOnly steward-token + steward-refresh-token cookies, and returns the
- * Eliza Cloud user id. Throws `StewardSessionError` on non-2xx.
+ * Eliza Cloud user id. Some cross-origin checkout callers may also receive a
+ * browser bearer token. Throws `StewardSessionError` on non-2xx.
  */
 export async function exchangeStewardCode(
   code: string,

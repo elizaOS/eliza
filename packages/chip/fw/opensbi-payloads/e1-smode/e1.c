@@ -44,7 +44,12 @@ static void uart_puts(const char *s) {
 }
 
 void main(void) {
-    uart_puts("E1 from S-mode\n");
+    /*
+     * Distinct, greppable S-mode handoff marker.  Its appearance on the
+     * console AFTER the OpenSBI banner is the executable proof that OpenSBI
+     * completed the M->S transition and jumped into this S-mode payload.
+     */
+    uart_puts("S-MODE-OK: E1 reached supervisor mode\n");
     for (;;) {
         __asm__ volatile ("wfi");
     }

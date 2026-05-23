@@ -31,6 +31,7 @@ ANDROID_AGENT_SERVICE = (
 )
 LINUX_AGENT_HOOK = OS_RV64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 LINUX_AGENT_UNIT = OS_RV64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
+LINUX_AGENT_RUNNER = OS_RV64 / "config/includes.chroot/usr/lib/elizaos/run-agent.sh"
 LINUX_HEALTH_HELPER = OS_RV64 / "config/includes.chroot/usr/lib/elizaos/wait-agent-health.sh"
 LINUX_TUI_SMOKE_UNIT = (
     OS_RV64 / "config/includes.chroot/etc/systemd/system/elizaos-terminal-tui-smoke.service"
@@ -163,6 +164,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         ANDROID_AGENT_SERVICE,
         LINUX_AGENT_HOOK,
         LINUX_AGENT_UNIT,
+        LINUX_AGENT_RUNNER,
         LINUX_HEALTH_HELPER,
         LINUX_TUI_SMOKE_UNIT,
     )
@@ -195,6 +197,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     android_service = read_text(ANDROID_AGENT_SERVICE)
     linux_agent_hook = read_text(LINUX_AGENT_HOOK)
     linux_agent_unit = read_text(LINUX_AGENT_UNIT)
+    linux_agent_runner = read_text(LINUX_AGENT_RUNNER)
     linux_health_helper = read_text(LINUX_HEALTH_HELPER)
     linux_tui_smoke_unit = read_text(LINUX_TUI_SMOKE_UNIT)
 
@@ -251,6 +254,16 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        "ELIZA_BUN_RISCV64_REQUIRED" in android_stage
+        and "Skipping ABI" in android_stage
+        and "no ELIZA_BUN_RISCV64_FILE/URL is set" in android_stage,
+        "android_riscv64_agent_payload_can_soft_skip",
+        "Android agent staging can silently skip the riscv64 runtime lane unless ELIZA_BUN_RISCV64_REQUIRED=1 is set",
+        rel(ANDROID_STAGE),
+        "Make riscv64 staging fail-closed for AOSP/chip objective builds and record the Bun riscv64 artifact SHA in the build provenance.",
+    )
+    add_if(
+        findings,
         "riscv64" not in android_stage or "/api/health" not in android_service,
         "android_agent_payload_contract_incomplete",
         "Android agent staging/service does not expose the expected riscv64 payload plus /api/health contract",
@@ -276,13 +289,26 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        "install_fallback_payload" in linux_agent_hook
+        or "fallback_agent.py" in linux_agent_hook
+        or "elizaos-fallback" in linux_agent_hook
+        or "fallback_agent.py" in linux_agent_runner,
+        "linux_rv64_fallback_agent_can_satisfy_health",
+        "Linux RV64 image hook can install a fallback HTTP agent that satisfies /api/health without the shared Eliza payload",
+        rel(LINUX_AGENT_HOOK),
+        "Make objective builds fail when real agent artifacts are missing, and require /api/health evidence to identify the full Eliza agent bundle rather than a fallback responder.",
+    )
+    add_if(
+        findings,
         not execstart
         or not (
             "/opt/elizaos/bin/elizaos" in execstart
             or (
-                "/opt/elizaos/bin/bun" in execstart
-                and "/opt/elizaos/app/server.js" in execstart
+                execstart == "/usr/lib/elizaos/run-agent.sh"
+                and "/opt/elizaos/app/agent-bundle.js" in linux_agent_runner
+                and "/opt/elizaos/app/server.js" in linux_agent_runner
             )
+            or ("/opt/elizaos/bin/bun" in execstart and "/opt/elizaos/app/server.js" in execstart)
         ),
         "linux_rv64_agent_execstart_not_canonical",
         "Linux RV64 agent service does not start the canonical packaged agent binary",
@@ -341,6 +367,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "artifact_filename": artifact_filename,
         "artifact_layout": artifact_layout,
         "linux_agent_execstart": execstart,
+        "linux_agent_runner": rel(LINUX_AGENT_RUNNER),
         "linux_manifest_evidence_ids": sorted(linux_evidence_ids),
         "linux_manifest_path": rel(linux_manifest_path) if linux_manifest_path else None,
         "linux_mentions_shared_bun_payload": shared_bun_in_linux,

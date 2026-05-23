@@ -111,9 +111,8 @@ summary: PASS=37 FAIL=0 BLOCKED=10  release_blocker=False  strict=False
 as `FAIL` — every problem the aggregator surfaces is a planning-state
 `BLOCKED` row, not a regression.
 
-The ten `BLOCKED` rows are:
+Representative `BLOCKED` rows are:
 
-- `cpu/core-selection-check` — Ascalon-D8 big-core license/procurement gap.
 - `cpu/cpu-ap-completion-gate` — no real RV64GC Linux AP completion claim.
 - `cpu/rva23-compliance` — `rva23.aosp_branch_pin` pending.
 - `memory/memory-uma-claim-gate` — real LPDDR/UMA/IOMMU/QoS evidence

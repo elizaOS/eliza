@@ -99,11 +99,11 @@ Gap to A19 Pro / Oryon Gen 3 / C1-Ultra:
 
 ### Open-source path recommendation (ranked)
 
-1. **Fork Tenstorrent Ascalon-D8** — Apache-licensed IP, 8-wide OoO RVA23 + 256-bit RVV, LLVM upstream support (Jim Keller / Apple-Tesla-AMD-Arm alumni). Highest-confidence flagship-class numbers if licensing terms work for mobile SKU. **Primary path.**
-2. **Fork XiangShan Kunminghu V3** — Mulan PSL v2 (Apache-compatible-ish), 6-wide, "8% behind Neoverse N2", scalable 7/12/28 nm. Best fully-open. **Mid core.**
-3. **SonicBOOM (BOOMv3)** — UCB BSD, 2-4-wide configurable, 6.2 CoreMarks/MHz. Academic exploration / mid-core fallback.
-4. SiFive P870 — commercial license; macro-op fusion; not open RTL.
-5. Veyron V2 — datacenter-focused; not licensable for mobile.
+1. **Fork XiangShan Kunminghu V3, scaled to 8-wide** — Mulan PSL v2 (Apache-compatible-ish), 6-wide native scaling toward 8-wide / ROB 512, "8% behind Neoverse N2", scalable 7/12/28 nm. Best fully-open with no vendor license. **Primary big-core path and mid core.**
+2. **SonicBOOM (BOOMv3)** — UCB BSD, 2-4-wide configurable, 6.2 CoreMarks/MHz. Academic exploration / mid-core fallback.
+3. ~~Tenstorrent Ascalon-D8~~ — 8-wide OoO RVA23 + 256-bit RVV, LLVM upstream. Surveyed as the leading commercial flagship-class core but **rejected**: mobile-volume IP license terms are not published and the closed RTL channel conflicts with the open-chip charter.
+4. SiFive P870 — commercial license; macro-op fusion; not open RTL. Rejected.
+5. Veyron V2 — datacenter-focused; not licensable for mobile. Rejected.
 
 ## D. Benchmarks / Eval / Testing
 
@@ -176,14 +176,14 @@ Required infrastructure:
 ## F. Risks and open questions
 
 ### Licensing
-- **Ascalon-D8**: Tenstorrent IP licensing for mobile SKUs not published. LLVM merges upstream, but RTL is commercial IP. Mobile-volume per-unit royalty may be equivalent to Cortex-X licensing.
+- **Ascalon-D8 (rejected)**: Tenstorrent IP licensing for mobile SKUs is not published. LLVM merges upstream, but the RTL is commercial IP. The unpublished mobile-volume terms and closed RTL channel are why Ascalon was surveyed but rejected; the selected big core is the open Kunminghu V3 scale-up.
 - **Kunminghu V3**: Mulan PSL v2 GPL-3-like with copyleft. Combining with proprietary Android BSP at link time murky. Cooley LLP / RISC-V International legal review required.
 - **CVA6**: Solderpad / Apache-2.0; integration risk low, but in-order so 2028 flagship impossible from CVA6 alone.
 - **BOOM**: BSD; cleanest legally, but research-grade RTL.
 
 ### RTL maturity
-- Tenstorrent Ascalon silicon-proven. ✓
-- XiangShan Kunminghu V3 taped out at academic node (28 nm), not flagship 3 nm. Verification gap to 3 nm large.
+- Tenstorrent Ascalon silicon-proven (surveyed, not selected — RTL not licensable for our open mobile SKU).
+- XiangShan Kunminghu V3 (selected, big + mid) taped out at academic node (28 nm), not flagship 3 nm. Verification gap to 3 nm large; the 8-wide big-core scale-up is additionally unmeasured.
 - BOOM has FPGA evidence (Zynq, AWS F1) but no commercial ASIC tapeout.
 - All open OoO RISC-V cores lack validated PPA on N3P/N3B.
 
@@ -211,7 +211,7 @@ Required infrastructure:
 
 ## Summary recommendation
 
-1. **Big core**: 8-wide decode, ~512 ROB, ~400+400 PRF, 6 ALU + 4 AGU + 4 FP/V (2× 256-bit RVV), distributed schedulers, RVA23+V+Ztso+Sv57, 4.0-4.3 GHz, ~2 mm² 3 nm, IPC ≥9 SPEC2017int. Primary path: **fork Tenstorrent Ascalon-D8**. Fallback: scale up XiangShan Kunminghu V3 to 8-wide.
+1. **Big core**: 8-wide decode, ~512 ROB, ~256+256 PRF, distributed schedulers, RV64GCB+V+H+Sv48, ~3.4 GHz, ~2 mm² 3 nm. Selected path: **scale up the open XiangShan Kunminghu V3 to 8-wide** (Mulan PSL v2, no vendor license). Tenstorrent Ascalon-D8 was surveyed but rejected (unpublished mobile IP license).
 2. **Mid core**: XiangShan Kunminghu V3 6-wide, ~256 ROB, 3.2 GHz, ~0.85 mm². 3 instances.
 3. **Little core**: CVA6 6-stage in-order, 2.0 GHz, ~0.25 mm². 4 instances.
 4. **Topology**: 1+3+4 matching D9500 / Apple; CHI-coherent DSU with 8 MB L3 + 16 MB SLC; Ibex mgmt hart.

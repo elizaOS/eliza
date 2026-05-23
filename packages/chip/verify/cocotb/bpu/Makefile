@@ -1,8 +1,4 @@
-TOPLEVEL_LANG ?= verilog
-SIM ?= verilator
-
-PWD := $(shell pwd)
-REPO := $(abspath ../../..)
+include ../common.mk
 
 # All BPU RTL is included on every test so the cocotb makefile does not need
 # per-test source lists. The top-level wrapper drives the chosen TOPLEVEL.
@@ -34,13 +30,23 @@ WRAPPERS := \
 
 VERILOG_SOURCES := $(COMMON_SOURCES) $(WRAPPERS)
 
+ifeq ($(TOPLEVEL),e1_bpu_l1i_frontend_tb)
+VERILOG_SOURCES += \
+	$(REPO)/rtl/cache/cache_pkg.sv \
+	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
+	$(REPO)/rtl/cache/prefetch/e1_fdip_l1i_prefetcher.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \
+	$(REPO)/verify/cocotb/bpu/e1_bpu_l1i_frontend_tb.sv
+EXTRA_ARGS += -Wno-DECLFILENAME
+endif
+
 TOPLEVEL ?= bpu_top_tb
 MODULE ?= test_bpu_top
-PYTHON ?= python3
 
-# Verilator: keep linting on but suppress warnings about unused package
-# parameters (e.g. RAS-only test sees the full bpu_pkg) and unused signals
-# in the verification-only flatten wrappers. Errors still surface as errors.
-EXTRA_ARGS += -Wall -Wno-UNUSEDPARAM -Wno-UNUSEDSIGNAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-MULTIDRIVEN -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-LATCH -Wno-IMPORTSTAR
+# Verilator: suppress warnings about unused package parameters (e.g. a
+# RAS-only test sees the full bpu_pkg) and unused signals in the
+# verification-only flatten wrappers. Errors still surface as errors.
+EXTRA_ARGS += -Wno-UNUSEDPARAM -Wno-UNUSEDSIGNAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-MULTIDRIVEN -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-LATCH -Wno-IMPORTSTAR
 
-include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim
+include $(COCOTB_SIM_MK)

@@ -43,9 +43,7 @@ CDC_SCHEMA = "eliza.cdc_formal_evidence.v1"
 
 def load_object(path: Path, expected_schema: str, errors: list[str]) -> dict[str, Any]:
     if not path.is_file():
-        errors.append(
-            f"missing {rel(path)}; required input is absent (run the producer first)"
-        )
+        errors.append(f"missing {rel(path)}; required input is absent (run the producer first)")
         return {}
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
@@ -57,8 +55,7 @@ def load_object(path: Path, expected_schema: str, errors: list[str]) -> dict[str
         return {}
     if payload.get("schema") != expected_schema:
         errors.append(
-            f"{rel(path)}: unexpected schema {payload.get('schema')!r} "
-            f"(want {expected_schema!r})"
+            f"{rel(path)}: unexpected schema {payload.get('schema')!r} (want {expected_schema!r})"
         )
         return {}
     return payload
@@ -136,7 +133,9 @@ def build_report(
     for name in block_names:
         cocotb_entry = cocotb_blocks.get(name)
         formal_entry = formal_blocks.get(name)
-        sources = [s for s, present in (("cocotb", cocotb_entry), ("formal", formal_entry)) if present]
+        sources = [
+            s for s, present in (("cocotb", cocotb_entry), ("formal", formal_entry)) if present
+        ]
         if not sources:
             block_errors.append(f"block {name} has no cocotb or formal evidence")
         merged_blocks[name] = {

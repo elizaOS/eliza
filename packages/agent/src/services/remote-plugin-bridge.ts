@@ -165,6 +165,18 @@ export class RemotePluginBridge {
       plugin.dependencies = (descriptor.dependencies as string[]) ?? [];
     }
 
+    this.attachFunctionContributions(plugin, descriptor);
+    this.attachServiceContributions(plugin, descriptor);
+    this.attachRouteContributions(plugin, descriptor);
+    this.attachViewContributions(plugin, descriptor);
+
+    return plugin;
+  }
+
+  private attachFunctionContributions(
+    plugin: Plugin,
+    descriptor: JsonObject,
+  ): void {
     const actions = descriptor.actions as
       | Array<JsonObject & { name: string; handler: RemoteFunctionRef }>
       | undefined;
@@ -206,7 +218,12 @@ export class RemotePluginBridge {
       }
       plugin.models = modelMap;
     }
+  }
 
+  private attachServiceContributions(
+    plugin: Plugin,
+    descriptor: JsonObject,
+  ): void {
     // Services: opt-in via `static rpcMethods`. The descriptor carries
     // one entry per service with the methods list and per-method rpc
     // ids; we synthesise a ServiceClass with dynamic methods.
@@ -224,7 +241,12 @@ export class RemotePluginBridge {
         this.makeServiceClassStub(svc),
       ) as Plugin["services"];
     }
+  }
 
+  private attachRouteContributions(
+    plugin: Plugin,
+    descriptor: JsonObject,
+  ): void {
     // Routes: the agent's existing plugin-route lifecycle will pick
     // these up. Each routeHandler is wrapped to forward
     // RouteHandlerContext via worker-rpc and return RouteHandlerResult.
@@ -236,7 +258,12 @@ export class RemotePluginBridge {
         .map((r) => this.makeRouteStub(r))
         .filter((r): r is NonNullable<Plugin["routes"]>[number] => r !== null);
     }
+  }
 
+  private attachViewContributions(
+    plugin: Plugin,
+    descriptor: JsonObject,
+  ): void {
     // Views/widgets/componentTypes are pure JSON metadata; pass them
     // through unchanged so the existing view registry serves the
     // remote plugin's bundle the same way it does direct plugins'.
@@ -248,8 +275,6 @@ export class RemotePluginBridge {
       plugin.componentTypes =
         descriptor.componentTypes as unknown as Plugin["componentTypes"];
     }
-
-    return plugin;
   }
 
   private makeActionStub(
@@ -386,11 +411,11 @@ export class RemotePluginBridge {
       static readonly serviceType = serviceType;
       static readonly capabilityDescription = description;
       readonly capabilityDescription = description;
-      static async start(runtime: IAgentRuntime): Promise<RemoteServiceProxy> {
-        const instance = new RemoteServiceProxy(runtime);
+      static async start(): Promise<RemoteServiceProxy> {
+        const instance = new RemoteServiceProxy();
         return instance;
       }
-      constructor(_runtime: IAgentRuntime) {
+      constructor() {
         for (const method of descriptor.rpcMethods) {
           const id = methodIdMap.get(method);
           if (!id) continue;

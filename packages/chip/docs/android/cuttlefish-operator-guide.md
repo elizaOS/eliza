@@ -187,6 +187,35 @@ A FAIL transcript stays archived. The checker continues to BLOCK on it,
 which is the desired behavior: failed boots must be triaged and reproduced
 to a passing state, not hidden.
 
+## Runtime launcher, bridge, and peripheral evidence
+
+After a CVD is booted and `cuttlefish-boot-gate.sh` has promoted
+`docs/evidence/android/eliza_launcher_runtime_evidence.json`, collect the
+remaining interactive phone-surface evidence from the same boot:
+
+```sh
+python3 "$REPO/scripts/android/capture_system_bridge_runtime_evidence.py" \
+  --adb-serial "${AOSP_ADB_SERIAL:-}"
+
+python3 "$REPO/scripts/android/capture_simulated_peripheral_evidence.py"
+```
+
+The system-bridge capture writes
+`docs/evidence/android/system_bridge_runtime_evidence.json` and blocks unless
+ADB proves boot completion, the privileged bridge package is installed, the
+bridge service is registered, required privapp permissions are granted, the
+launcher binds the JS bridge, live system state reaches the launcher, mock
+fallback markers are absent, and logcat has no fatal crash or SELinux denial
+markers.
+
+The peripheral capture writes one log per phone surface under
+`docs/evidence/android/peripherals/`. Each probe must come from ADB-backed
+runtime commands after `sys.boot_completed=1` and preserve command provenance,
+`RESULT=0`, and `eliza-evidence: status=PASS`; blocked or failed probe logs
+remain visible to the gate until a real passing run replaces them. A device
+that is merely visible in `adb devices` is not enough for phone peripheral
+evidence.
+
 ## References
 
 - `sw/aosp-device/launch-cuttlefish-riscv64.sh`

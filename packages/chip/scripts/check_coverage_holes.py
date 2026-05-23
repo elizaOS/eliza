@@ -176,7 +176,9 @@ def main(argv: list[str] | None = None) -> int:
         for error in errors:
             print(f"FAIL: {error}")
         for hole in holes:
-            print(f"FAIL: coverage hole for {hole['requirement_id']}: {', '.join(hole['unmet_evidence'])}")
+            print(
+                f"FAIL: coverage hole for {hole['requirement_id']}: {', '.join(hole['unmet_evidence'])}"
+            )
         print(f"report written: {rel(args.out)}")
         return 1
     print(f"PASS: coverage holes: {len(covered)} requirement(s) covered, {rel(args.out)}")

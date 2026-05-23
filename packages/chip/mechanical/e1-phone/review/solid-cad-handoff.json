@@ -4,8 +4,8 @@
   "tool": "cadquery",
   "tool_available": true,
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 2744715,
-  "part_count": 123,
+  "assembly_step_bytes": 3069504,
+  "part_count": 142,
   "parts": [
     {
       "name": "orange_back_shell",
@@ -896,6 +896,30 @@
       }
     },
     {
+      "name": "rear_camera_optical_sight_tunnel",
+      "role": "camera optical clearance",
+      "material": "clear rear-camera sight tunnel from exterior through back-shell aperture to module",
+      "step": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.step",
+      "bytes": 5669,
+      "bbox_mm": {
+        "min": [
+          17.45,
+          54.25,
+          -5.9
+        ],
+        "max": [
+          24.55,
+          61.35,
+          -4.3
+        ],
+        "span": [
+          7.1,
+          7.1,
+          1.6
+        ]
+      }
+    },
+    {
       "name": "front_camera_under_glass",
       "role": "camera",
       "material": "front under-glass optical aperture envelope",
@@ -1083,6 +1107,198 @@
         "span": [
           5.0,
           5.0,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "rear_flash_window_adhesive_top",
+      "role": "camera seal",
+      "material": "black PSA gasket above rear flash light-pipe window",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_top.step",
+      "bytes": 15610,
+      "bbox_mm": {
+        "min": [
+          11.65,
+          58.65,
+          -5.35
+        ],
+        "max": [
+          14.15,
+          59.1,
+          -5.19
+        ],
+        "span": [
+          2.5,
+          0.45,
+          0.16
+        ]
+      }
+    },
+    {
+      "name": "rear_flash_window_adhesive_bottom",
+      "role": "camera seal",
+      "material": "black PSA gasket below rear flash light-pipe window",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_bottom.step",
+      "bytes": 15602,
+      "bbox_mm": {
+        "min": [
+          11.65,
+          56.5,
+          -5.35
+        ],
+        "max": [
+          14.15,
+          56.95,
+          -5.19
+        ],
+        "span": [
+          2.5,
+          0.45,
+          0.16
+        ]
+      }
+    },
+    {
+      "name": "rear_flash_window_adhesive_left",
+      "role": "camera seal",
+      "material": "black PSA gasket left of rear flash light-pipe window",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_left.step",
+      "bytes": 15559,
+      "bbox_mm": {
+        "min": [
+          11.6,
+          57.0,
+          -5.35
+        ],
+        "max": [
+          12.05,
+          58.6,
+          -5.19
+        ],
+        "span": [
+          0.45,
+          1.6,
+          0.16
+        ]
+      }
+    },
+    {
+      "name": "rear_flash_window_adhesive_right",
+      "role": "camera seal",
+      "material": "black PSA gasket right of rear flash light-pipe window",
+      "step": "mechanical/e1-phone/out/rear_flash_window_adhesive_right.step",
+      "bytes": 15567,
+      "bbox_mm": {
+        "min": [
+          13.75,
+          57.0,
+          -5.35
+        ],
+        "max": [
+          14.2,
+          58.6,
+          -5.19
+        ],
+        "span": [
+          0.45,
+          1.6,
+          0.16
+        ]
+      }
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_top",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring above front under-glass camera window",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_top.step",
+      "bytes": 15597,
+      "bbox_mm": {
+        "min": [
+          -21.1,
+          69.55,
+          5.08
+        ],
+        "max": [
+          -16.9,
+          69.95,
+          5.16
+        ],
+        "span": [
+          4.2,
+          0.4,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_bottom",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring below front under-glass camera window",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_bottom.step",
+      "bytes": 15597,
+      "bbox_mm": {
+        "min": [
+          -21.1,
+          65.65,
+          5.08
+        ],
+        "max": [
+          -16.9,
+          66.05,
+          5.16
+        ],
+        "span": [
+          4.2,
+          0.4,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_left",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring left of front under-glass camera window",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_left.step",
+      "bytes": 15597,
+      "bbox_mm": {
+        "min": [
+          -21.15,
+          66.1,
+          5.08
+        ],
+        "max": [
+          -20.75,
+          69.5,
+          5.16
+        ],
+        "span": [
+          0.4,
+          3.4,
+          0.08
+        ]
+      }
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_right",
+      "role": "camera seal",
+      "material": "optically-black PSA bond ring right of front under-glass camera window",
+      "step": "mechanical/e1-phone/out/front_camera_under_glass_adhesive_right.step",
+      "bytes": 15597,
+      "bbox_mm": {
+        "min": [
+          -17.25,
+          66.1,
+          5.08
+        ],
+        "max": [
+          -16.85,
+          69.5,
+          5.16
+        ],
+        "span": [
+          0.4,
+          3.4,
           0.08
         ]
       }
@@ -2172,7 +2388,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_6.step",
-      "bytes": 32042,
+      "bytes": 32044,
       "bbox_mm": {
         "min": [
           26.9,
@@ -2196,7 +2412,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_7.step",
-      "bytes": 32142,
+      "bytes": 32144,
       "bbox_mm": {
         "min": [
           -31.1,
@@ -2220,7 +2436,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_8.step",
-      "bytes": 32092,
+      "bytes": 32094,
       "bbox_mm": {
         "min": [
           26.9,
@@ -2244,7 +2460,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_9.step",
-      "bytes": 31998,
+      "bytes": 32000,
       "bbox_mm": {
         "min": [
           -31.1,
@@ -2268,7 +2484,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS screw boss envelope",
       "step": "mechanical/e1-phone/out/orange_screw_boss_10.step",
-      "bytes": 31948,
+      "bytes": 31950,
       "bbox_mm": {
         "min": [
           26.9,
@@ -2292,7 +2508,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1.step",
-      "bytes": 15512,
+      "bytes": 15514,
       "bbox_mm": {
         "min": [
           -36.0,
@@ -2316,7 +2532,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_1_leg.step",
-      "bytes": 15520,
+      "bytes": 15522,
       "bbox_mm": {
         "min": [
           -29.9,
@@ -2340,7 +2556,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2.step",
-      "bytes": 15486,
+      "bytes": 15488,
       "bbox_mm": {
         "min": [
           29.0,
@@ -2364,7 +2580,7 @@
       "role": "molded enclosure",
       "material": "PC+ABS corner gusset envelope",
       "step": "mechanical/e1-phone/out/orange_corner_rib_2_leg.step",
-      "bytes": 15486,
+      "bytes": 15488,
       "bbox_mm": {
         "min": [
           29.0,
@@ -2936,6 +3152,246 @@
       }
     },
     {
+      "name": "cellular_lga_module_keepout",
+      "role": "cellular module",
+      "material": "Quectel RG255C RedCap LGA module",
+      "step": "mechanical/e1-phone/out/cellular_lga_module_keepout.step",
+      "bytes": 15517,
+      "bbox_mm": {
+        "min": [
+          -30.0,
+          29.0,
+          -1.65
+        ],
+        "max": [
+          -1.0,
+          61.0,
+          0.75
+        ],
+        "span": [
+          29.0,
+          32.0,
+          2.4
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_module_keepout",
+      "role": "Wi-Fi/Bluetooth module",
+      "material": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+      "step": "mechanical/e1-phone/out/wifi_bt_module_keepout.step",
+      "bytes": 15565,
+      "bbox_mm": {
+        "min": [
+          13.75,
+          37.3,
+          -1.6
+        ],
+        "max": [
+          26.25,
+          46.7,
+          -0.4
+        ],
+        "span": [
+          12.5,
+          9.4,
+          1.2
+        ]
+      }
+    },
+    {
+      "name": "soc_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for application processor package under SoC shield",
+      "step": "mechanical/e1-phone/out/soc_package_marker.step",
+      "bytes": 15591,
+      "bbox_mm": {
+        "min": [
+          -13.5,
+          48.5,
+          -0.18
+        ],
+        "max": [
+          -0.5,
+          61.5,
+          0.06
+        ],
+        "span": [
+          13.0,
+          13.0,
+          0.24
+        ]
+      }
+    },
+    {
+      "name": "dram_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for LPDDR memory package near SoC",
+      "step": "mechanical/e1-phone/out/dram_package_marker.step",
+      "bytes": 15587,
+      "bbox_mm": {
+        "min": [
+          -11.75,
+          64.0,
+          -0.18
+        ],
+        "max": [
+          -2.25,
+          72.0,
+          0.04
+        ],
+        "span": [
+          9.5,
+          8.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "storage_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for eMMC/UFS storage package",
+      "step": "mechanical/e1-phone/out/storage_package_marker.step",
+      "bytes": 15583,
+      "bbox_mm": {
+        "min": [
+          5.25,
+          63.5,
+          -0.18
+        ],
+        "max": [
+          16.75,
+          72.5,
+          0.04
+        ],
+        "span": [
+          11.5,
+          9.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "pmic_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for PMIC package under power shield",
+      "step": "mechanical/e1-phone/out/pmic_package_marker.step",
+      "bytes": 15523,
+      "bbox_mm": {
+        "min": [
+          9.0,
+          51.5,
+          -0.18
+        ],
+        "max": [
+          16.0,
+          58.5,
+          0.04
+        ],
+        "span": [
+          7.0,
+          7.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "rf_transceiver_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for RF transceiver/front-end package under radio shield",
+      "step": "mechanical/e1-phone/out/rf_transceiver_package_marker.step",
+      "bytes": 15652,
+      "bbox_mm": {
+        "min": [
+          -25.75,
+          51.25,
+          -0.18
+        ],
+        "max": [
+          -18.25,
+          58.75,
+          0.04
+        ],
+        "span": [
+          7.5,
+          7.5,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "gnss_lna_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for GNSS/RF low-noise amplifier placement",
+      "step": "mechanical/e1-phone/out/gnss_lna_package_marker.step",
+      "bytes": 15583,
+      "bbox_mm": {
+        "min": [
+          -31.5,
+          61.25,
+          -1.3
+        ],
+        "max": [
+          -28.5,
+          63.75,
+          -1.1
+        ],
+        "span": [
+          3.0,
+          2.5,
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+      "step": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.step",
+      "bytes": 15647,
+      "bbox_mm": {
+        "min": [
+          23.5,
+          41.775,
+          -1.175
+        ],
+        "max": [
+          33.5,
+          42.225,
+          -0.825
+        ],
+        "span": [
+          10.0,
+          0.45,
+          0.35
+        ]
+      }
+    },
+    {
+      "name": "cellular_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from cellular module toward top antenna keepout",
+      "step": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.step",
+      "bytes": 15673,
+      "bbox_mm": {
+        "min": [
+          -30.225,
+          53.5,
+          -1.175
+        ],
+        "max": [
+          -29.775,
+          68.5,
+          -0.825
+        ],
+        "span": [
+          0.45,
+          15.0,
+          0.35
+        ]
+      }
+    },
+    {
       "name": "sim_tray_keepout",
       "role": "service",
       "material": "side SIM tray keepout",
@@ -2996,6 +3452,7 @@
     "orange_rear_camera_bezel_right": true,
     "rear_camera_cover_glass": true,
     "rear_camera_lens_window": true,
+    "rear_camera_optical_sight_tunnel": true,
     "rear_flash_led": true,
     "rear_flash_shell_aperture": true,
     "orange_rear_flash_bezel_top": true,
@@ -3009,10 +3466,18 @@
     "rear_camera_cover_adhesive_right": true,
     "rear_camera_light_baffle_top": true,
     "rear_camera_light_baffle_bottom": true,
+    "rear_flash_window_adhesive_top": true,
+    "rear_flash_window_adhesive_bottom": true,
+    "rear_flash_window_adhesive_left": true,
+    "rear_flash_window_adhesive_right": true,
     "rear_flash_camera_septum": true,
     "front_camera_module": true,
     "front_camera_under_glass": true,
     "front_camera_black_mask_window": true,
+    "front_camera_under_glass_adhesive_top": true,
+    "front_camera_under_glass_adhesive_bottom": true,
+    "front_camera_under_glass_adhesive_left": true,
+    "front_camera_under_glass_adhesive_right": true,
     "power_button_cap": true,
     "volume_button_cap": true,
     "power_button_elastomer_gasket": true,
@@ -3032,6 +3497,16 @@
     "cellular_top_antenna_keepout": true,
     "cellular_bottom_antenna_keepout": true,
     "wifi_bt_side_antenna_keepout": true,
+    "cellular_lga_module_keepout": true,
+    "wifi_bt_module_keepout": true,
+    "soc_package_marker": true,
+    "dram_package_marker": true,
+    "storage_package_marker": true,
+    "pmic_package_marker": true,
+    "rf_transceiver_package_marker": true,
+    "gnss_lna_package_marker": true,
+    "wifi_bt_rf_feed_coax_stub": true,
+    "cellular_rf_feed_coax_stub": true,
     "soc_shield_can": true,
     "pmic_shield_can": true,
     "radio_shield_can": true,

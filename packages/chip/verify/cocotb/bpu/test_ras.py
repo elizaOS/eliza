@@ -23,6 +23,8 @@ async def reset(dut):
     dut.commit_pop.value = 0
     dut.restore_valid.value = 0
     dut.restore_top.value = 0
+    dut.restore_entry_valid.value = 0
+    dut.restore_entry_addr.value = 0
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -119,3 +121,31 @@ async def ras_restore_truncates_speculative_top(dut):
     await RisingEdge(dut.clk)
     await RisingEdge(dut.clk)
     assert int(dut.spec_top_addr.value) == 0x80000040
+
+
+@cocotb.test()
+async def ras_restore_reinstates_popped_top_entry(dut):
+    """A redirect after a speculative return must restore stack contents,
+    not only the speculative pointer."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    await push(dut, 0x80000010)
+    await push(dut, 0x80000020)
+    snapshot_idx = int(dut.spec_top_idx.value)
+    snapshot_addr = int(dut.spec_top_addr.value)
+
+    await pop(dut)
+    assert int(dut.spec_top_addr.value) == 0x80000010
+
+    dut.restore_valid.value = 1
+    dut.restore_top.value = snapshot_idx
+    dut.restore_entry_valid.value = 1
+    dut.restore_entry_addr.value = snapshot_addr
+    await RisingEdge(dut.clk)
+    dut.restore_valid.value = 0
+    dut.restore_entry_valid.value = 0
+    await RisingEdge(dut.clk)
+
+    assert int(dut.spec_top_valid.value) == 1
+    assert int(dut.spec_top_addr.value) == snapshot_addr

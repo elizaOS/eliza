@@ -250,6 +250,29 @@ type ConnectorPostToThreadParams = MessageConnectorPostToThreadParams & {
 	accountId?: string;
 };
 
+function discordReplyReferenceFromContent(
+	content: Content,
+): string | undefined {
+	const record = content as Record<string, unknown>;
+	const metadata =
+		record.metadata && typeof record.metadata === "object"
+			? (record.metadata as Record<string, unknown>)
+			: undefined;
+	const candidates = [
+		record.replyToExternalMessageId,
+		record.inReplyTo,
+		metadata?.originConnectorMessageId,
+		metadata?.replyToExternalMessageId,
+		metadata?.platformMessageId,
+	];
+	for (const candidate of candidates) {
+		if (typeof candidate === "string" && /^\d{16,22}$/.test(candidate)) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
 type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
 	listServers?: (context: MessageConnectorQueryContext) => Promise<World[]>;
 	fetchMessages?: (
@@ -1451,29 +1474,61 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 
 					const textContent = normalizeDiscordMessageText(content.text);
+					const outboundReplyToMessageId =
+						discordReplyReferenceFromContent(content);
 					if (textContent || files.length > 0) {
 						if (textContent) {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
 								for (let i = 0; i < chunks.length - 1; i++) {
-									const sent = await targetChannel.send(chunks[i]);
+									const sent = await targetChannel.send({
+										content: chunks[i],
+										...(outboundReplyToMessageId && i === 0
+											? {
+													reply: {
+														messageReference: outboundReplyToMessageId,
+													},
+												}
+											: {}),
+									});
 									sentMessages.push(sent);
 								}
 								const sent = await targetChannel.send({
 									content: chunks[chunks.length - 1],
 									files: files.length > 0 ? files : undefined,
+									...(outboundReplyToMessageId && chunks.length === 1
+										? {
+												reply: {
+													messageReference: outboundReplyToMessageId,
+												},
+											}
+										: {}),
 								});
 								sentMessages.push(sent);
 							} else {
 								const sent = await targetChannel.send({
 									content: chunks[0],
 									files: files.length > 0 ? files : undefined,
+									...(outboundReplyToMessageId
+										? {
+												reply: {
+													messageReference: outboundReplyToMessageId,
+												},
+											}
+										: {}),
 								});
 								sentMessages.push(sent);
 							}
 						} else {
 							const sent = await targetChannel.send({
 								files,
+								...(outboundReplyToMessageId
+									? {
+											reply: {
+												messageReference: outboundReplyToMessageId,
+											},
+										}
+									: {}),
 							});
 							sentMessages.push(sent);
 						}
@@ -1526,6 +1581,14 @@ export class DiscordService extends Service implements IDiscordService {
 									text: sentMsg.content || textContent || " ",
 									url: sentMsg.url,
 									channelType,
+									...(outboundReplyToMessageId
+										? {
+												inReplyTo: createUniqueUuid(
+													runtime,
+													outboundReplyToMessageId,
+												),
+											}
+										: {}),
 									...(hasAttachments && content.attachments
 										? { attachments: content.attachments }
 										: {}),

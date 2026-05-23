@@ -170,7 +170,38 @@ describe("subAgentCompletionResponseEvaluator", () => {
       setContexts: [SIMPLE_CONTEXT_ID],
       clearCandidateActions: true,
       clearParentActionHints: true,
-      reply: "https://example.test/apps/nebula/",
+      reply:
+        "The app is live at https://example.test/apps/nebula/. Let me know if you'd like tweaks.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("keeps clean completion prose after stripped tool output when it cites a verified URL", async () => {
+    const context = makeContext({
+      text: "[sub-agent: nebula app (opencode) — task_complete]\n[tool output: find files]\n/home/user/project/.git/config\n/home/user/project/data/apps/nebula/index.html\n[/tool output]\nBuilt Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
+      metadata: {
+        subAgentVerifiedUrls: ["https://example.test/apps/nebula/"],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "https://example.test/apps/nebula/",
+          requiresTool: true,
+          candidateActions: ["SHELL"],
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Built Nebula Garden with product cards and a waitlist CTA.\nLive URL: https://example.test/apps/nebula/.",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
       ],
@@ -202,6 +233,105 @@ describe("subAgentCompletionResponseEvaluator", () => {
       clearCandidateActions: true,
       clearParentActionHints: true,
       reply: "https://example.test/apps/random-tweet/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("keeps a clean synthesized reply when bare completion URLs are verified", async () => {
+    const context = makeContext({
+      text: "[sub-agent: permit garden (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/permit-garden/\nhttps://example.test/apps/permit-garden/",
+      metadata: {
+        subAgentVerifiedUrls: [
+          "http://127.0.0.1:6900/apps/permit-garden/",
+          "https://example.test/apps/permit-garden/",
+        ],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply:
+            "✅ Built Permit Garden as a fictional bureaucratic zine and sticker landing page. It has product cards, pricing, and a waitlist CTA: https://example.test/apps/permit-garden/",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Built Permit Garden as a fictional bureaucratic zine and sticker landing page. It has product cards, pricing, and a waitlist CTA: https://example.test/apps/permit-garden/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("removes loopback route aliases from verified app completion replies", async () => {
+    const context = makeContext({
+      text: "[sub-agent: civic vitrine (opencode) — task_complete]\nBuilt Civic Vitrine.\n- URL: http://127.0.0.1:6900/apps/civic-vitrine/\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
+      metadata: {
+        subAgentVerifiedUrls: [
+          "http://127.0.0.1:6900/apps/civic-vitrine/",
+          "https://example.test/apps/civic-vitrine/",
+        ],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply:
+            "✅ Civic Vitrine site built. You can view it locally at http://127.0.0.1:6900/apps/civic-vitrine/ and publicly at https://example.test/apps/civic-vitrine/.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "Built Civic Vitrine.\n- Public URL: https://example.test/apps/civic-vitrine/\n- Waitlist form: local submit handler.",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("appends the public verified URL to a clean synthesized reply that omits it", async () => {
+    const context = makeContext({
+      text: "[sub-agent: queue cathedral (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/queue-cathedral/\nhttps://example.test/apps/queue-cathedral/",
+      metadata: {
+        subAgentVerifiedUrls: [
+          "http://127.0.0.1:6900/apps/queue-cathedral/",
+          "https://example.test/apps/queue-cathedral/",
+        ],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["simple"],
+          reply:
+            "The Queue Cathedral site is live with product cards, prices, and a waitlist CTA.",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply:
+        "The Queue Cathedral site is live with product cards, prices, and a waitlist CTA.\nhttps://example.test/apps/queue-cathedral/",
       debug: [
         "verified sub-agent completion has no concrete follow-up action; using direct reply",
       ],

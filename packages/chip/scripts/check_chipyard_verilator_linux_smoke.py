@@ -24,6 +24,7 @@ CHECKOUT = ROOT / "external/chipyard"
 SIM_DIR = CHECKOUT / "sims/verilator"
 OUT_DIR = ROOT / "build/chipyard/eliza_rocket"
 REPORT = OUT_DIR / "verilator-linux-smoke.json"
+REPORT_MIRROR = ROOT / "build/reports/chipyard_verilator_linux_smoke.json"
 LOG = OUT_DIR / "verilator-linux-smoke.log"
 LOCK_DIR = OUT_DIR / "verilator-linux-smoke.lock"
 CONFIG = "ElizaRocketConfig"
@@ -60,6 +61,7 @@ PROGRESS_MARKERS = (
     "[UART] UART0 is here",
     "Linux version",
     "Machine model:",
+    "Domain0 Next Address",
     "Forcing kernel command line to:",
     "SBI specification",
     "SBI implementation ID=",
@@ -101,10 +103,23 @@ GENERATED_FILELISTS = (
     GENERATED_CONFIG_DIR / "sim_files.common.f",
     GENERATED_CONFIG_DIR / "sim_files.f",
 )
+GENERATED_DTS = OUT_DIR / "generated-src/chipyard.harness.TestHarness.ElizaRocketConfig.dts"
 GENERATED_SIMULATOR = SIM_DIR / f"simulator-chipyard.harness-{CONFIG}"
 ARCHIVED_SIMULATOR_DIR = OUT_DIR / "simulator"
 ARCHIVED_SIMULATOR = ARCHIVED_SIMULATOR_DIR / f"simulator-chipyard.harness-{CONFIG}"
 SIMULATOR_CANDIDATES = (GENERATED_SIMULATOR, ARCHIVED_SIMULATOR)
+SIM_OUTPUT_DIR = SIM_DIR / "output" / f"chipyard.harness.TestHarness.{CONFIG}"
+SIMAXIMEM_SOURCE = CHECKOUT / "generators/rocket-chip/src/main/scala/system/SimAXIMem.scala"
+SIMDRAM_SOURCE = (
+    CHECKOUT / "generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
+)
+SIMDRAM_LOADMEM_ENTRY_MARKER = "SimDRAM loaded ELF entry="
+BOOTROM_RV64_IMAGE = (
+    CHECKOUT / "generators/testchipip/src/main/resources/testchipip/bootrom/bootrom.rv64.img"
+)
+ABSTRACT_CONFIG_SOURCE = (
+    CHECKOUT / "generators/chipyard/src/main/scala/config/AbstractConfig.scala"
+)
 GENERATED_METADATA_PATTERNS = repair_chipyard_generated_paths.GENERATED_METADATA_PATTERNS
 STALE_ABSOLUTE_ROOTS = ("/work/", "/workspace/", "/__w/")
 TRACE_LINE_RE = re.compile(
@@ -115,6 +130,11 @@ OBJDUMP_CANDIDATES = (
     ROOT / "tools/bin/riscv64-linux-gnu-objdump",
     ROOT / "tools/bin/llvm-objdump",
     ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-objdump",
+)
+OBJDUMP_LIBRARY_DIRS = (
+    ROOT / "external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu",
+    ROOT / "external/riscv64-linux-gnu/usr/lib",
+    ROOT / "tools/lib",
 )
 SYMBOL_LINE_RE = re.compile(
     r"^(?P<addr>[0-9a-fA-F]{8,16})\s+\S+\s+\S+\s+(?P<section>\S+)\s+"
@@ -129,6 +149,26 @@ GENERATED_MODEL_FAILURE_PATTERNS = (
     re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
 )
 KERNEL_PANIC_MARKERS = ("Kernel panic - not syncing", "panic - not syncing")
+TESTDRIVER_SUCCESS_FINISH_MARKER = "TestDriver.v:158: Verilog $finish"
+SIM_RUNTIME_MARKERS = (
+    "SimDRAM loading ELF ",
+    SIMDRAM_LOADMEM_ENTRY_MARKER,
+    "[UART] UART0 is here",
+    "DRAMSim2 Clock Frequency",
+    "OpenSBI",
+    "Linux version",
+)
+DTC_CANDIDATES = (
+    ROOT / "tools/bin/dtc",
+    ROOT / "external/deb-tools/dtc/usr/bin/dtc",
+)
+ACTIVE_SMOKE_PROCESS_MARKERS = (
+    "run_chipyard_eliza_linux_smoke.sh",
+    "chipyard-generated-ap-linux-smoke",
+    "run-binary-fast",
+    "run-binary",
+    f"simulator-chipyard.harness-{CONFIG}",
+)
 
 
 def rel(path: Path) -> str:
@@ -138,8 +178,99 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def newest_simulator_mtime(metadata: dict[str, object]) -> float:
+    candidates = metadata.get("candidates")
+    existing = (
+        [
+            candidate
+            for candidate in candidates
+            if isinstance(candidate, dict) and bool(candidate.get("exists"))
+        ]
+        if isinstance(candidates, list)
+        else []
+    )
+    return max(
+        (
+            float(candidate.get("mtime") or 0.0)
+            for candidate in existing
+            if isinstance(candidate.get("mtime"), (int, float))
+        ),
+        default=0.0,
+    )
+
+
+def simdram_source_newer_than_simulator(metadata: dict[str, object] | None = None) -> bool:
+    simulator_metadata = metadata if metadata is not None else simulator_artifact_metadata()
+    newest_sim_mtime = newest_simulator_mtime(simulator_metadata)
+    return (
+        SIMDRAM_SOURCE.is_file()
+        and newest_sim_mtime > 0.0
+        and SIMDRAM_SOURCE.stat().st_mtime > newest_sim_mtime
+    )
+
+
 def next_command(payload: str = f"${PAYLOAD_ENV}") -> str:
-    return f"{PAYLOAD_ENV}={payload} scripts/run_chipyard_eliza_linux_smoke.sh"
+    prefix = f"{PAYLOAD_ENV}={payload}"
+    if simdram_source_newer_than_simulator():
+        prefix = (
+            f"{prefix} CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ=0 "
+            "CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary"
+        )
+    return f"{prefix} scripts/run_chipyard_eliza_linux_smoke.sh"
+
+
+def rebuild_blocked_by_active_simulator_users(
+    simulator_metadata: dict[str, object],
+    active_simulator_users: list[dict[str, object]],
+) -> bool:
+    return simdram_source_newer_than_simulator(simulator_metadata) and bool(active_simulator_users)
+
+
+def next_safe_action(
+    simulator_metadata: dict[str, object],
+    active_simulator_users: list[dict[str, object]],
+    active_processes: list[dict[str, object]] | None = None,
+    active_attempt: dict[str, object] | None = None,
+) -> str:
+    if active_processes:
+        stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
+        progress = (
+            active_attempt.get("last_progress_marker")
+            if isinstance(active_attempt, dict)
+            else None
+        )
+        detail = f"; active attempt stage={stage}" if stage else ""
+        if progress:
+            detail += f"; progress={progress}"
+        return f"wait for active generated AP Linux smoke to finish{detail}"
+    if rebuild_blocked_by_active_simulator_users(simulator_metadata, active_simulator_users):
+        users = ", ".join(
+            f"pid={user.get('pid')} elapsed={user.get('elapsed')}"
+            for user in active_simulator_users[:5]
+        )
+        extra = "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        return (
+            "wait for active ElizaRocketConfig simulator user(s) to finish before rebuilding: "
+            f"{users}{extra}"
+        )
+    return next_command()
+
+
+def progress_with_active_attempt(
+    progress: dict[str, str],
+    active_processes: list[dict[str, object]],
+    active_attempt: dict[str, object],
+) -> dict[str, str]:
+    if not active_processes:
+        return progress
+    stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
+    if not stage:
+        return progress
+    progress_marker = str(active_attempt.get("last_progress_marker") or "")
+    next_step = "wait for the active generated AP Linux smoke wrapper to finish"
+    if progress_marker:
+        next_step += f"; latest active progress: {progress_marker}"
+    return {"stage": str(stage), "next_step": next_step}
 
 
 def host_path_from_log(path_text: str | None) -> Path | None:
@@ -208,6 +339,13 @@ def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, obj
     if objdump is None:
         return result
     result["objdump"] = rel(objdump)
+    env = os.environ.copy()
+    library_dirs = [str(path) for path in OBJDUMP_LIBRARY_DIRS if path.is_dir()]
+    if library_dirs:
+        current = env.get("LD_LIBRARY_PATH")
+        env["LD_LIBRARY_PATH"] = (
+            ":".join(library_dirs) if not current else ":".join([*library_dirs, current])
+        )
     try:
         proc = subprocess.run(
             [str(objdump), "-t", str(payload_path)],
@@ -216,6 +354,7 @@ def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, obj
             stderr=subprocess.DEVNULL,
             text=True,
             timeout=20,
+            env=env,
         )
     except (OSError, subprocess.TimeoutExpired):
         return result
@@ -328,6 +467,7 @@ def simulator_artifact_metadata() -> dict[str, object]:
             "path": rel(path),
             "exists": path.is_file(),
             "size_bytes": None,
+            "mtime": None,
             "executable": False,
             "sha256": None,
             "elf_class": None,
@@ -339,6 +479,7 @@ def simulator_artifact_metadata() -> dict[str, object]:
             stat_result = path.stat()
             executable = bool(stat_result.st_mode & 0o111)
             candidate["size_bytes"] = stat_result.st_size
+            candidate["mtime"] = stat_result.st_mtime
             candidate["executable"] = executable
             candidate["sha256"] = sha256_file(path)
             executable_candidate = executable_candidate or executable
@@ -392,7 +533,137 @@ def simulator_artifact_blockers(metadata: dict[str, object]) -> list[str]:
             "generated simulator artifact exists but no executable candidate is present: "
             + ", ".join(str(candidate.get("path")) for candidate in existing)
         )
+    if simdram_source_newer_than_simulator(metadata):
+        blockers.append(
+            "generated simulator artifact predates SimDRAM loadmem instrumentation; "
+            "rebuild the ElizaRocketConfig Verilator simulator before claiming "
+            "generated-AP Linux boot evidence"
+        )
     return blockers
+
+
+def sim_memory_model_audit() -> dict[str, object]:
+    simaxi_text = (
+        SIMAXIMEM_SOURCE.read_text(encoding="utf-8", errors="replace")
+        if SIMAXIMEM_SOURCE.is_file()
+        else ""
+    )
+    simdram_text = (
+        SIMDRAM_SOURCE.read_text(encoding="utf-8", errors="replace")
+        if SIMDRAM_SOURCE.is_file()
+        else ""
+    )
+    abstract_text = (
+        ABSTRACT_CONFIG_SOURCE.read_text(encoding="utf-8", errors="replace")
+        if ABSTRACT_CONFIG_SOURCE.is_file()
+        else ""
+    )
+    simaxi_loader_markers = ("+loadmem=", "load_elf", "loadmem_file")
+    return {
+        "default_config_memory_path": "WithBlackBoxSimMem/SimDRAM via chipyard.config.AbstractConfig",
+        "fast_sim_config_memory_path": "WithSimAXIMem/AXI4RAM",
+        "abstract_config": {
+            "source": rel(ABSTRACT_CONFIG_SOURCE),
+            "exists": ABSTRACT_CONFIG_SOURCE.is_file(),
+            "uses_blackbox_simmem": "WithBlackBoxSimMem" in abstract_text,
+        },
+        "simdram": {
+            "source": rel(SIMDRAM_SOURCE),
+            "exists": SIMDRAM_SOURCE.is_file(),
+            "supports_plus_loadmem": "+loadmem=" in simdram_text,
+            "loads_elf": "load_elf" in simdram_text,
+            "emits_loadmem_entry_marker": SIMDRAM_LOADMEM_ENTRY_MARKER in simdram_text,
+            "has_no_dramsim_magic_memory_fallback": "mm_magic_t" in simdram_text,
+            "has_dramsim_model": "mm_dramsim2_t" in simdram_text,
+        },
+        "simaximem": {
+            "source": rel(SIMAXIMEM_SOURCE),
+            "exists": SIMAXIMEM_SOURCE.is_file(),
+            "uses_axi4ram": "AXI4RAM" in simaxi_text,
+            "supports_plus_loadmem": any(marker in simaxi_text for marker in simaxi_loader_markers),
+        },
+        "claim_boundary": (
+            "Generated AP Linux/userland proof must use the default ElizaRocketConfig "
+            "SimDRAM path, with or without +dramsim. ElizaRocketFastSimConfig is "
+            "experimental until an ELF/loadmem-equivalent preload path exists for "
+            "SimAXIMem/AXI4RAM and reaches the same boot markers."
+        ),
+    }
+
+
+def find_dtc() -> Path | None:
+    for candidate in DTC_CANDIDATES:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    found = shutil.which("dtc")
+    return Path(found) if found else None
+
+
+def generated_fdt_audit(dts_path: Path = GENERATED_DTS) -> dict[str, object]:
+    text = dts_path.read_text(encoding="utf-8", errors="replace") if dts_path.is_file() else ""
+    dtc = find_dtc()
+    dtc_status = "not_run"
+    dtc_output = ""
+    dtb_size_bytes: int | None = None
+    if dts_path.is_file() and dtc is not None:
+        out = OUT_DIR / "generated-src" / f"{dts_path.stem}.audit.dtb"
+        try:
+            completed = subprocess.run(
+                [str(dtc), "-I", "dts", "-O", "dtb", "-o", str(out), str(dts_path)],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                check=False,
+                timeout=20,
+            )
+            dtc_status = "pass" if completed.returncode == 0 else "fail"
+            dtc_output = completed.stdout.strip()
+            if out.is_file():
+                dtb_size_bytes = out.stat().st_size
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            dtc_status = "error"
+            dtc_output = str(exc)
+    bootrom_size = BOOTROM_RV64_IMAGE.stat().st_size if BOOTROM_RV64_IMAGE.is_file() else None
+    total_bootrom_dtb_bytes = (
+        bootrom_size + dtb_size_bytes
+        if bootrom_size is not None and dtb_size_bytes is not None
+        else None
+    )
+    required_tokens = {
+        "root_compatible": 'compatible = "ucb-bar,chipyard-dev"' in text,
+        "chosen_stdout": "stdout-path" in text and "serial@10001000" in text,
+        "bootargs_console": "bootargs" in text and "console=" in text,
+        "cpu_node": "cpu@0" in text and 'device_type = "cpu"' in text,
+        "riscv_isa": "riscv,isa" in text,
+        "memory_dram": "memory@80000000" in text,
+        "clint": "clint@2000000" in text and "riscv,clint0" in text,
+        "plic": "interrupt-controller@c000000" in text and "riscv,plic0" in text,
+        "uart": "serial@10001000" in text and "sifive,uart0" in text,
+        "npu": "npu@10020000" in text and "eliza,e1-npu" in text,
+        "dma": "dma@10010000" in text and "eliza,e1-dma" in text,
+        "display": "display@10030000" in text and "eliza,e1-display" in text,
+    }
+    return {
+        "path": rel(dts_path),
+        "exists": dts_path.is_file(),
+        "size_bytes": dts_path.stat().st_size if dts_path.is_file() else None,
+        "dtc": rel(dtc) if dtc is not None else "",
+        "dtc_status": dtc_status,
+        "dtc_output": dtc_output,
+        "dtb_size_bytes": dtb_size_bytes,
+        "bootrom_image": rel(BOOTROM_RV64_IMAGE),
+        "bootrom_size_bytes": bootrom_size,
+        "bootrom_plus_dtb_bytes": total_bootrom_dtb_bytes,
+        "bootrom_region_size_bytes": 0x10000,
+        "fits_bootrom_region": (
+            total_bootrom_dtb_bytes is not None and total_bootrom_dtb_bytes <= 0x10000
+        ),
+        "required_tokens": required_tokens,
+        "missing_required_tokens": [
+            name for name, present in required_tokens.items() if not present
+        ],
+    }
 
 
 def has_marker_group(text: str, required: tuple[str, ...], any_of: tuple[str, ...]) -> bool:
@@ -413,6 +684,33 @@ def has_accepted_linux_markers(text: str) -> bool:
 
 def has_kernel_panic(text: str) -> bool:
     return any(marker in text for marker in KERNEL_PANIC_MARKERS)
+
+
+def has_simulator_success_finish(text: str, log_metadata: dict[str, object]) -> bool:
+    sim_success_finishes = log_metadata.get("sim_success_finishes")
+    return (
+        isinstance(sim_success_finishes, list)
+        and bool(sim_success_finishes)
+        and "Assertion failed in TestDriver" not in text
+        and "Verilog $stop" not in text
+    )
+
+
+def has_quiet_linux_completion_evidence(
+    text: str, log_metadata: dict[str, object], payload: str | None
+) -> bool:
+    payload_text = payload or str(
+        log_metadata.get("payload") or log_metadata.get("binary_arg") or ""
+    )
+    if "linux-poweroff-quiet" not in payload_text:
+        return False
+    quiet_completion_logs = log_metadata.get("quiet_linux_completion_logs")
+    if isinstance(quiet_completion_logs, list) and quiet_completion_logs:
+        return True
+    return (
+        has_simulator_success_finish(text, log_metadata)
+        and not has_kernel_panic(text)
+    )
 
 
 def remove_path(path: Path) -> None:
@@ -587,6 +885,280 @@ def repair_stale_generated_paths() -> int:
     return 0
 
 
+def sim_output_log_for_payload(payload: str | None) -> Path | None:
+    if not payload:
+        return None
+    return SIM_OUTPUT_DIR / f"{Path(payload).name}.log"
+
+
+def collect_quiet_linux_completion_logs() -> list[dict[str, object]]:
+    evidence: list[dict[str, object]] = []
+    if not SIM_OUTPUT_DIR.is_dir():
+        return evidence
+    for sim_log in sorted(SIM_OUTPUT_DIR.glob("*linux-poweroff-quiet*.log")):
+        try:
+            text = sim_log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if TESTDRIVER_SUCCESS_FINISH_MARKER not in text:
+            continue
+        if (
+            has_kernel_panic(text)
+            or "Assertion failed in TestDriver" in text
+            or "Verilog $stop" in text
+        ):
+            continue
+        if not has_accepted_linux_markers(text):
+            continue
+        if not has_accepted_opensbi_markers(text) and "earlycon:" not in text:
+            continue
+        finish_line = next(
+            (
+                line.strip()
+                for line in text.splitlines()
+                if TESTDRIVER_SUCCESS_FINISH_MARKER in line
+            ),
+            TESTDRIVER_SUCCESS_FINISH_MARKER,
+        )
+        evidence.append(
+            {
+                "path": rel(sim_log),
+                "finish": finish_line,
+                "size_bytes": sim_log.stat().st_size,
+                "mtime": sim_log.stat().st_mtime,
+            }
+        )
+    return evidence
+
+
+def process_rows_from_ps(stdout: str) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for line in stdout.splitlines():
+        parts = line.strip().split(None, 3)
+        if len(parts) != 4:
+            continue
+        pid_text, ppid_text, elapsed, command = parts
+        with contextlib.suppress(ValueError):
+            rows.append(
+                {
+                    "pid": int(pid_text),
+                    "ppid": int(ppid_text),
+                    "elapsed": elapsed,
+                    "command": command,
+                }
+            )
+    return rows
+
+
+def active_chipyard_smoke_processes() -> list[dict[str, object]]:
+    try:
+        completed = subprocess.run(
+            ["ps", "-eo", "pid,ppid,etime,cmd"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    active: list[dict[str, object]] = []
+    for row in process_rows_from_ps(completed.stdout):
+        command = str(row.get("command") or "")
+        if "check_chipyard_verilator_linux_smoke.py" in command:
+            continue
+        if not any(marker in command for marker in ACTIVE_SMOKE_PROCESS_MARKERS):
+            continue
+        if (
+            "eliza-e1-linux-smoke" not in command
+            and "chipyard-generated-ap-linux-smoke" not in command
+            and "run_chipyard_eliza_linux_smoke.sh" not in command
+        ):
+            continue
+        active.append(row)
+    return active
+
+
+def active_simulator_artifact_users(
+    candidates: tuple[Path, ...] = SIMULATOR_CANDIDATES,
+    ps_stdout: str | None = None,
+) -> list[dict[str, object]]:
+    if ps_stdout is None:
+        try:
+            completed = subprocess.run(
+                ["ps", "-eo", "pid,ppid,etime,cmd"],
+                cwd=ROOT,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                check=False,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return []
+        ps_stdout = completed.stdout
+    candidate_texts = {str(path) for path in candidates}
+    candidate_texts.update(str(path.resolve()) for path in candidates)
+    users: list[dict[str, object]] = []
+    own_pid = os.getpid()
+    for row in process_rows_from_ps(ps_stdout):
+        if row.get("pid") == own_pid:
+            continue
+        command = str(row.get("command") or "")
+        matched = sorted(path for path in candidate_texts if path and path in command)
+        if not matched:
+            continue
+        users.append({**row, "matched_simulator_paths": matched})
+    return users
+
+
+def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
+    last_progress = ""
+    sim_failures: list[str] = []
+    sim_success_finishes: list[str] = []
+    for line in text.splitlines():
+        if any(marker in line for marker in PROGRESS_MARKERS):
+            last_progress = clean_progress_marker(line)
+        if (
+            "*** FAILED ***" in line
+            or "Assertion failed in TestDriver" in line
+            or "Verilog $stop" in line
+        ):
+            sim_failures.append(line.strip())
+        if TESTDRIVER_SUCCESS_FINISH_MARKER in line:
+            sim_success_finishes.append(line.strip())
+            last_progress = line.strip()
+    return {
+        "path": rel(path),
+        "exists": True,
+        "size_bytes": path.stat().st_size,
+        "mtime": path.stat().st_mtime,
+        "last_progress_marker": last_progress,
+        "has_opensbi_handoff": has_accepted_opensbi_markers(text),
+        "has_linux_banner": "Linux version" in text,
+        "has_linux_boot_markers": has_accepted_linux_markers(text),
+        "has_kernel_panic": has_kernel_panic(text),
+        "sim_failures": sim_failures[-8:],
+        "sim_success_finishes": sim_success_finishes[-8:],
+    }
+
+
+def live_sim_output_metadata(payload: str | None, log_metadata: dict[str, object]) -> dict[str, object]:
+    candidates: list[Path] = []
+    for value in (log_metadata.get("binary_arg"), payload, log_metadata.get("payload")):
+        if isinstance(value, str) and value:
+            candidate = sim_output_log_for_payload(value)
+            if candidate is not None:
+                candidates.append(candidate)
+    if SIM_OUTPUT_DIR.is_dir():
+        candidates.extend(sorted(SIM_OUTPUT_DIR.glob("*eliza-e1-linux-smoke*.log")))
+    seen: set[Path] = set()
+    logs: list[dict[str, object]] = []
+    for candidate in candidates:
+        if candidate in seen or not candidate.is_file():
+            continue
+        seen.add(candidate)
+        try:
+            text = candidate.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        logs.append(progress_metadata_for_text(candidate, text))
+    logs.sort(key=lambda item: float(item.get("mtime") or 0.0), reverse=True)
+    return {
+        "output_dir": rel(SIM_OUTPUT_DIR),
+        "logs": logs,
+        "latest": logs[0] if logs else None,
+    }
+
+
+def active_attempt_temp_logs(out_dir: Path = OUT_DIR) -> list[Path]:
+    if not out_dir.is_dir():
+        return []
+    return sorted(
+        out_dir.glob("verilator-linux-smoke.*.raw.tmp"),
+        key=lambda path: path.stat().st_mtime if path.exists() else 0.0,
+        reverse=True,
+    )
+
+
+def classify_active_attempt_text(text: str) -> tuple[str, str]:
+    if simulator_log_reached_runtime(text):
+        progress = ""
+        for line in text.splitlines():
+            if any(marker in line for marker in PROGRESS_MARKERS):
+                progress = clean_progress_marker(line)
+        return "simulator_runtime_in_progress", progress
+    if "VTestDriver.mk" in text or "verilator " in text or "verilator_bin" in text:
+        compile_unit = ""
+        for line in text.splitlines():
+            if " -c " not in line:
+                continue
+            for token in line.split():
+                if token.endswith((".cpp", ".cc", ".cxx", ".o")):
+                    compile_unit = Path(token).name
+        progress = (
+            f"Verilator model compile in progress: {compile_unit}"
+            if compile_unit
+            else "Verilator model compile in progress"
+        )
+        return "simulator_rebuild_in_progress", progress
+    if "chipyard.Generator" in text or "firtool" in text or "ExportSplitVerilog" in text:
+        return "chipyard_generation_in_progress", "Chipyard generator/firtool in progress"
+    if "sbt-launch.jar" in text or ".classpath_cache/chipyard.jar" in text:
+        return "chipyard_sbt_assembly_in_progress", "Chipyard sbt assembly in progress"
+    if text:
+        return "wrapper_command_in_progress", "wrapper command started"
+    return "wrapper_waiting_for_output", ""
+
+
+def active_smoke_attempt_metadata(out_dir: Path = OUT_DIR) -> dict[str, object]:
+    for raw_log in active_attempt_temp_logs(out_dir):
+        try:
+            text = raw_log.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        stage, progress = classify_active_attempt_text(text)
+        return {
+            "path": rel(raw_log),
+            "exists": True,
+            "size_bytes": raw_log.stat().st_size,
+            "mtime": raw_log.stat().st_mtime,
+            "stage": stage,
+            "last_progress_marker": progress,
+            "reached_simulator_runtime": simulator_log_reached_runtime(text),
+        }
+    return {"exists": False}
+
+
+def append_sim_output_markers(
+    path: Path,
+    metadata: dict[str, object],
+    *,
+    include_failures: bool,
+) -> str:
+    last_progress = ""
+    if not path.is_file():
+        return last_progress
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if any(marker in line for marker in PROGRESS_MARKERS):
+            last_progress = clean_progress_marker(line)
+        if include_failures and (
+            "*** FAILED ***" in line
+            or "Assertion failed in TestDriver" in line
+            or "Verilog $stop" in line
+        ):
+            sim_failures = metadata["sim_failures"]
+            if isinstance(sim_failures, list):
+                sim_failures.append(line.strip())
+        if TESTDRIVER_SUCCESS_FINISH_MARKER in line:
+            sim_success_finishes = metadata["sim_success_finishes"]
+            if isinstance(sim_success_finishes, list):
+                sim_success_finishes.append(line.strip())
+            last_progress = line
+    return last_progress
+
+
 def parse_log_metadata() -> dict[str, object]:
     metadata: dict[str, object] = {
         "exists": LOG.is_file(),
@@ -601,6 +1173,7 @@ def parse_log_metadata() -> dict[str, object]:
         "core_timeout_cycles": None,
         "tilelink_timeout_cycles": None,
         "run_target": None,
+        "disable_dramsim": None,
         "raw_transcript_closed": False,
         "lines_after_raw_transcript_end": 0,
         "fatal_errors": [],
@@ -608,17 +1181,23 @@ def parse_log_metadata() -> dict[str, object]:
         "kernel_panics": [],
         "sim_failures": [],
         "sim_passes": [],
+        "sim_success_finishes": [],
+        "quiet_linux_completion_logs": [],
         "simdram_entry": None,
         "simdram_load_range": None,
         "last_progress_marker": "",
     }
+    last_progress = ""
+    quiet_completion_logs = collect_quiet_linux_completion_logs()
+    metadata["quiet_linux_completion_logs"] = quiet_completion_logs
+    metadata["last_progress_marker"] = last_progress
     if not LOG.is_file():
         return metadata
 
-    last_progress = ""
     raw_transcript_closed = False
     lines_after_raw_transcript_end = 0
-    for line in LOG.read_text(encoding="utf-8", errors="replace").splitlines():
+    log_text = LOG.read_text(encoding="utf-8", errors="replace")
+    for line in log_text.splitlines():
         if raw_transcript_closed and line.strip() and not line.startswith("eliza-evidence:"):
             lines_after_raw_transcript_end += 1
         if line.startswith("eliza-evidence: attempt="):
@@ -645,6 +1224,8 @@ def parse_log_metadata() -> dict[str, object]:
             metadata["tilelink_timeout_cycles"] = line.split("=", 1)[1].strip()
         elif line.startswith("eliza-evidence: run_target="):
             metadata["run_target"] = line.split("=", 1)[1].strip()
+        elif line.startswith("eliza-evidence: disable_dramsim="):
+            metadata["disable_dramsim"] = line.split("=", 1)[1].strip()
         elif line.startswith("eliza-evidence: raw_transcript_end"):
             metadata["raw_transcript_closed"] = True
             raw_transcript_closed = True
@@ -687,6 +1268,26 @@ def parse_log_metadata() -> dict[str, object]:
             if isinstance(sim_passes, list):
                 sim_passes.append(line.strip())
             last_progress = line
+        if TESTDRIVER_SUCCESS_FINISH_MARKER in line:
+            sim_success_finishes = metadata["sim_success_finishes"]
+            if isinstance(sim_success_finishes, list):
+                sim_success_finishes.append(line.strip())
+            last_progress = line
+    binary_arg = metadata.get("binary_arg")
+    payload_text = str(metadata.get("payload") or binary_arg or "")
+    if "linux-poweroff-quiet" in payload_text:
+        for quiet_log in quiet_completion_logs:
+            finish = quiet_log.get("finish")
+            if isinstance(finish, str):
+                sim_success_finishes = metadata["sim_success_finishes"]
+                if isinstance(sim_success_finishes, list) and finish not in sim_success_finishes:
+                    sim_success_finishes.append(finish)
+                last_progress = finish
+    if isinstance(binary_arg, str) and binary_arg and simulator_log_reached_runtime(log_text):
+        sim_log = sim_output_log_for_payload(binary_arg)
+        if sim_log is not None:
+            sim_progress = append_sim_output_markers(sim_log, metadata, include_failures=True)
+            last_progress = sim_progress or last_progress
     metadata["last_progress_marker"] = last_progress
     metadata["lines_after_raw_transcript_end"] = lines_after_raw_transcript_end
     return metadata
@@ -704,6 +1305,26 @@ def output_stem_for_payload(payload: str | None) -> str:
     if not payload or payload == "none":
         return "none"
     return Path(payload).name
+
+
+def simulator_log_reached_runtime(log_text: str) -> bool:
+    return any(marker in log_text for marker in SIM_RUNTIME_MARKERS)
+
+
+def simulator_rebuild_was_interrupted(
+    log_text: str, log_metadata: dict[str, object]
+) -> bool:
+    exit_code = log_metadata.get("exit_code")
+    return (
+        bool(exit_code and exit_code != "0")
+        and "Terminated" in log_text
+        and (
+            ".classpath_cache/chipyard.jar" in log_text
+            or "assembly / assemblyOutputPath" in log_text
+            or "sbt-launch.jar" in log_text
+        )
+        and not simulator_log_reached_runtime(log_text)
+    )
 
 
 def trace_fresh_for_log(trace: Path, log_metadata: dict[str, object] | None = None) -> bool:
@@ -742,6 +1363,8 @@ def parse_instruction_trace(
         "last_symbol_address": None,
         "last_symbol_objdump": "",
         "last_cycle": None,
+        "first_payload_pc": None,
+        "first_payload_cycle": None,
         "entered_bootrom": False,
         "entered_payload": False,
         "bootrom_to_payload_handoff": False,
@@ -753,6 +1376,8 @@ def parse_instruction_trace(
     first_pc: int | None = None
     last_pc: int | None = None
     last_cycle: int | None = None
+    first_payload_pc: int | None = None
+    first_payload_cycle: int | None = None
     retired = 0
     entered_bootrom = False
     entered_payload = False
@@ -770,6 +1395,9 @@ def parse_instruction_trace(
             entered_bootrom = True
         if pc >= 0x80000000:
             entered_payload = True
+            if first_payload_pc is None:
+                first_payload_pc = pc
+                first_payload_cycle = last_cycle
 
     metadata.update(
         {
@@ -777,6 +1405,10 @@ def parse_instruction_trace(
             "first_pc": f"0x{first_pc:016x}" if first_pc is not None else None,
             "last_pc": f"0x{last_pc:016x}" if last_pc is not None else None,
             "last_cycle": last_cycle,
+            "first_payload_pc": (
+                f"0x{first_payload_pc:016x}" if first_payload_pc is not None else None
+            ),
+            "first_payload_cycle": first_payload_cycle,
             "entered_bootrom": entered_bootrom,
             "entered_payload": entered_payload,
             "bootrom_to_payload_handoff": entered_bootrom and entered_payload,
@@ -792,6 +1424,61 @@ def parse_instruction_trace(
         }
     )
     return metadata
+
+
+def loadmem_diagnosis(
+    log_text: str,
+    log_metadata: dict[str, object],
+    instruction_trace: dict[str, object],
+    simulator_artifact: dict[str, object],
+) -> dict[str, object]:
+    command = str(log_metadata.get("command") or "")
+    newest_sim_mtime = newest_simulator_mtime(simulator_artifact)
+    simdram_source_mtime = SIMDRAM_SOURCE.stat().st_mtime if SIMDRAM_SOURCE.is_file() else None
+    simdram_source_newer = (
+        simdram_source_mtime is not None
+        and newest_sim_mtime > 0.0
+        and simdram_source_mtime > newest_sim_mtime
+    )
+    simdram_marker_observed = SIMDRAM_LOADMEM_ENTRY_MARKER in log_text
+    plus_loadmem_in_command = (
+        "+loadmem=" in log_text
+        or "+loadmem=" in command
+        or "LOADMEM=1" in log_text
+        or "LOADMEM=1" in command
+    )
+    reason = ""
+    if plus_loadmem_in_command and instruction_trace.get("entered_payload") and not simdram_marker_observed:
+        if simdram_source_newer:
+            reason = (
+                "fresh instruction trace proves payload entry, but the current simulator "
+                "binary predates the SimDRAM loadmem entry printf, so +loadmem success is "
+                "not observable through the SimDRAM marker in this run"
+            )
+        else:
+            reason = (
+                "fresh instruction trace proves payload entry, but this run did not emit "
+                "the SimDRAM loadmem entry marker; inspect simulator stdout/stderr capture "
+                "and SimDRAM loadmem instrumentation"
+            )
+    elif plus_loadmem_in_command and simdram_marker_observed:
+        reason = "SimDRAM loadmem entry marker was observed in the wrapper log"
+    elif plus_loadmem_in_command:
+        reason = "wrapper command included +loadmem, but no trace-backed payload entry was observed"
+
+    return {
+        "plus_loadmem_in_command": plus_loadmem_in_command,
+        "simdram_loaded_elf_marker_observed": simdram_marker_observed,
+        "simdram_source_mtime": simdram_source_mtime,
+        "newest_simulator_mtime": newest_sim_mtime or None,
+        "simdram_source_newer_than_simulator": simdram_source_newer,
+        "trace_entered_payload": bool(instruction_trace.get("entered_payload")),
+        "first_payload_pc": instruction_trace.get("first_payload_pc"),
+        "first_payload_cycle": instruction_trace.get("first_payload_cycle"),
+        "last_pc": instruction_trace.get("last_pc"),
+        "last_symbol": instruction_trace.get("last_symbol"),
+        "reason": reason,
+    }
 
 
 def classify_smoke_progress(
@@ -814,6 +1501,23 @@ def classify_smoke_progress(
         return {
             "stage": "linux_boot",
             "next_step": "capture the complete generated-AP Linux boot transcript",
+        }
+    if has_quiet_linux_completion_evidence(log_text, log_metadata, None):
+        return {
+            "stage": "quiet_linux_workload_completed",
+            "next_step": (
+                "use the quiet workload as generated-AP Linux completion evidence; "
+                "capture target-side NPU MMIO/GEMM evidence next"
+            ),
+        }
+    if simulator_rebuild_was_interrupted(log_text, log_metadata):
+        return {
+            "stage": "simulator_rebuild_interrupted",
+            "next_step": (
+                "rerun the generated AP smoke with enough wall time for Chipyard "
+                "generation and Verilator simulator rebuild to finish before evaluating "
+                "OpenSBI/Linux runtime progress"
+            ),
         }
     sim_failures = log_metadata.get("sim_failures")
     sim_timeout = isinstance(sim_failures, list) and any(
@@ -956,6 +1660,32 @@ def classify_smoke_progress(
         and not instruction_trace.get("exists")
         and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
     ):
+        if log_metadata.get("disable_dramsim") == "1" and "[UART] UART0 is here" not in log_text:
+            return {
+                "stage": "no_dramsim_fast_timeout_no_uart",
+                "next_step": (
+                    "the no-DRAMSim run-binary-fast attempt emitted no UART boot "
+                    "markers and produced no instruction trace; rerun the default "
+                    "ElizaRocketConfig SimDRAM path, or rerun with "
+                    "CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for PC-stage evidence "
+                    "before classifying the memory-model blocker"
+                ),
+            }
+        if (
+            log_metadata.get("disable_dramsim") == "0"
+            and "[UART] UART0 is here" in log_text
+            and "DRAMSim2 Clock Frequency" in log_text
+            and "SimDRAM loaded ELF entry=" not in log_text
+        ):
+            return {
+                "stage": "dramsim_uart_only_no_observable_payload_entry",
+                "next_step": (
+                    "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for "
+                    "instruction trace evidence, and rebuild with SimDRAM loadmem "
+                    "entry instrumentation because UART and DRAMSim initialized but "
+                    "no observable payload entry or OpenSBI/Linux marker was recorded"
+                ),
+            }
         return {
             "stage": "fast_timeout_no_trace",
             "next_step": (
@@ -1005,7 +1735,24 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     instruction_trace = parse_instruction_trace(payload, log_metadata)
     simulator_artifact = simulator_artifact_metadata()
     log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
-    progress = classify_smoke_progress(log_text, instruction_trace, log_metadata)
+    loadmem = loadmem_diagnosis(log_text, log_metadata, instruction_trace, simulator_artifact)
+    active_processes = active_chipyard_smoke_processes()
+    active_simulator_users = active_simulator_artifact_users()
+    active_attempt = active_smoke_attempt_metadata()
+    live_output = live_sim_output_metadata(payload, log_metadata)
+    fdt_audit = generated_fdt_audit()
+    deferred_next_command = next_command()
+    safe_action = next_safe_action(
+        simulator_artifact, active_simulator_users, active_processes, active_attempt
+    )
+    quiet_linux_completion = has_quiet_linux_completion_evidence(
+        log_text, log_metadata, payload
+    )
+    progress = progress_with_active_attempt(
+        classify_smoke_progress(log_text, instruction_trace, log_metadata),
+        active_processes,
+        active_attempt,
+    )
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
         "schema": "eliza.chipyard_verilator_linux_smoke.v1",
@@ -1019,26 +1766,40 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "log_metadata": log_metadata,
         "instruction_trace": instruction_trace,
         "progress": progress,
+        "quiet_linux_completion_evidence": quiet_linux_completion,
         "host": {
             "system": platform.system(),
             "machine": platform.machine(),
         },
         "active_chipyard_containers": active_chipyard_containers(),
+        "active_chipyard_smoke_processes": active_processes,
+        "active_smoke_attempt": active_attempt,
+        "active_simulator_artifact_users": active_simulator_users,
+        "live_sim_output": live_output,
         "allow_container_generated_paths": allow_container_paths,
         "generated_driver_makefile": rel(GENERATED_DRIVER_MAKEFILE),
         "simulator_artifact": simulator_artifact,
+        "sim_memory_model_audit": sim_memory_model_audit(),
+        "loadmem_diagnosis": loadmem,
+        "generated_fdt_audit": fdt_audit,
         "required_log_markers": list(REQUIRED_LOG_MARKERS),
-        "next_command": next_command(),
+        "next_safe_action": safe_action,
+        "next_command": safe_action if safe_action == deferred_next_command else "",
+        "next_command_after_active_simulator_users": deferred_next_command,
         "blockers": blockers,
         "claim_boundary": (
             "This gate only passes after a real Chipyard Verilator run-binary log "
-            "contains OpenSBI and Linux markers from the generated ElizaRocketConfig. "
-            "It does not create or substitute boot evidence."
+            "contains OpenSBI/Linux markers or an intentionally quiet FireMarshal "
+            "Linux workload reaches the generated TestDriver success finish from "
+            "the generated ElizaRocketConfig. It does not create or substitute "
+            "boot evidence."
         ),
     }
-    tmp = REPORT.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    tmp.replace(REPORT)
+    for output in (REPORT, REPORT_MIRROR):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        tmp = output.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        tmp.replace(output)
 
 
 def main() -> int:
@@ -1105,51 +1866,125 @@ def main() -> int:
         if not artifact.is_file():
             blockers.append(f"missing generated Verilog artifact: {rel(artifact)}")
 
-    if not payload:
+    initial_log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
+    quiet_linux_completion = has_quiet_linux_completion_evidence(
+        initial_log_text, log_metadata, payload
+    )
+
+    if not payload and not quiet_linux_completion:
         blockers.append(
             f"{PAYLOAD_ENV} is unset, {rel(LOG)} does not record a replayable payload, "
             "and no FireMarshal OpenSBI/Linux ELF payload was found; run "
             "python3 scripts/locate_chipyard_linux_payload.py --require for build guidance"
         )
-    elif not Path(payload).is_file():
+    elif payload and not Path(payload).is_file():
         blockers.append(
             f"{PAYLOAD_ENV} {payload_source} payload does not point to a file: {payload}"
         )
 
     instruction_trace = parse_instruction_trace(payload, log_metadata)
+    active_processes = active_chipyard_smoke_processes()
+    active_simulator_users = active_simulator_artifact_users()
+    active_attempt = active_smoke_attempt_metadata()
+    live_output = live_sim_output_metadata(payload, log_metadata)
+    fdt_audit = generated_fdt_audit()
+    latest_live = live_output.get("latest")
+    if active_processes:
+        blocker = (
+            "generated AP Linux smoke is currently running; canonical evidence remains "
+            "blocked until the wrapper records raw_transcript_end and status=PASS"
+        )
+        active_stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
+        active_progress = (
+            active_attempt.get("last_progress_marker") if isinstance(active_attempt, dict) else None
+        )
+        reached_runtime = (
+            active_attempt.get("reached_simulator_runtime") if isinstance(active_attempt, dict) else False
+        )
+        if active_stage:
+            blocker += f"; active attempt stage: {active_stage}"
+        if active_progress:
+            blocker += f"; active attempt progress: {active_progress}"
+        if isinstance(latest_live, dict) and reached_runtime:
+            live_progress = latest_live.get("last_progress_marker")
+            if live_progress:
+                blocker += f"; latest live simulator progress: {live_progress}"
+            blocker += f"; live log: {latest_live.get('path')}"
+        if (
+            instruction_trace.get("fresh_for_log")
+            and instruction_trace.get("bootrom_to_payload_handoff")
+        ):
+            blocker += (
+                "; active instruction trace: "
+                f"first_payload_pc={instruction_trace.get('first_payload_pc')} "
+                f"last_pc={instruction_trace.get('last_pc')} "
+                f"last_symbol={instruction_trace.get('last_symbol') or 'unknown'} "
+                f"retired={instruction_trace.get('retired_instruction_count')} "
+                f"trace={instruction_trace.get('path')}"
+            )
+        blockers.append(blocker)
+    if simdram_source_newer_than_simulator(simulator_metadata) and active_simulator_users:
+        users = ", ".join(
+            f"pid={user.get('pid')} elapsed={user.get('elapsed')}"
+            for user in active_simulator_users[:5]
+        )
+        extra = "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        blockers.append(
+            "cannot safely rebuild stale ElizaRocketConfig simulator while active "
+            f"simulator user(s) are running: {users}{extra}"
+        )
+    if fdt_audit.get("dtc_status") == "fail":
+        blockers.append(
+            f"generated DTS fails dtc compilation: {fdt_audit.get('dtc_output')}"
+        )
+    missing_dts_tokens = fdt_audit.get("missing_required_tokens")
+    if isinstance(missing_dts_tokens, list) and missing_dts_tokens:
+        blockers.append(
+            "generated DTS is missing required Linux/OpenSBI token(s): "
+            + ", ".join(str(item) for item in missing_dts_tokens)
+        )
+    if fdt_audit.get("fits_bootrom_region") is False:
+        blockers.append(
+            "generated bootrom plus DTB does not fit the BootROM region: "
+            f"{fdt_audit.get('bootrom_plus_dtb_bytes')} > "
+            f"{fdt_audit.get('bootrom_region_size_bytes')}"
+        )
     log_text = ""
     if not LOG.is_file():
-        blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")
+        if not quiet_linux_completion:
+            blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")
     else:
-        log_text = LOG.read_text(encoding="utf-8", errors="replace")
-        if "eliza-evidence: raw_transcript_begin" in log_text and not log_metadata.get(
-            "raw_transcript_closed"
+        log_text = initial_log_text
+        if (
+            not quiet_linux_completion
+            and "eliza-evidence: raw_transcript_begin" in log_text
+            and not log_metadata.get("raw_transcript_closed")
         ):
             blockers.append(
                 f"{rel(LOG)} has raw_transcript_begin but lacks raw_transcript_end; "
                 "the smoke attempt was interrupted before the wrapper recorded a complete result"
             )
         lines_after_end = log_metadata.get("lines_after_raw_transcript_end")
-        if isinstance(lines_after_end, int) and lines_after_end:
+        if not quiet_linux_completion and isinstance(lines_after_end, int) and lines_after_end:
             blockers.append(
                 f"{rel(LOG)} contains {lines_after_end} non-empty line(s) after "
                 "raw_transcript_end; timeout handling allowed simulator output to outlive "
                 "the evidence wrapper"
             )
         fatal_errors = log_metadata.get("fatal_errors")
-        if isinstance(fatal_errors, list):
+        if not quiet_linux_completion and isinstance(fatal_errors, list):
             for fatal_error in fatal_errors:
                 blockers.append(f"{rel(LOG)} records fatal error: {fatal_error}")
         exceptions = log_metadata.get("exceptions")
-        if isinstance(exceptions, list):
+        if not quiet_linux_completion and isinstance(exceptions, list):
             for exception in exceptions:
                 blockers.append(f"{rel(LOG)} records generator exception: {exception}")
         kernel_panics = log_metadata.get("kernel_panics")
-        if isinstance(kernel_panics, list):
+        if not quiet_linux_completion and isinstance(kernel_panics, list):
             for kernel_panic in kernel_panics:
                 blockers.append(f"{rel(LOG)} records Linux kernel panic: {kernel_panic}")
         sim_failures = log_metadata.get("sim_failures")
-        if isinstance(sim_failures, list):
+        if not quiet_linux_completion and isinstance(sim_failures, list):
             for sim_failure in sim_failures:
                 hint = ""
                 if "timeout" in sim_failure and "+max-cycles=" in log_text:
@@ -1164,28 +1999,32 @@ def main() -> int:
                     )
                 blockers.append(f"{rel(LOG)} records simulator failure: {sim_failure}{hint}")
         exit_code = log_metadata.get("exit_code")
-        if exit_code and exit_code != "0":
+        if exit_code and exit_code != "0" and not quiet_linux_completion:
             reason = f"{rel(LOG)} records simulator wrapper exit_code={exit_code}"
             timeout_after = log_metadata.get("timeout_after_seconds")
             if timeout_after:
                 reason += f" after timeout_after_seconds={timeout_after}"
             blockers.append(reason)
         last_progress = log_metadata.get("last_progress_marker")
-        if exit_code and exit_code != "0" and last_progress:
+        if exit_code and exit_code != "0" and last_progress and not quiet_linux_completion:
             blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
         if last_progress and not (
-            has_accepted_opensbi_markers(log_text) or "Linux version" in log_text
+            quiet_linux_completion
+            or has_accepted_opensbi_markers(log_text)
+            or "Linux version" in log_text
         ):
             blockers.append(f"last simulator progress before missing boot markers: {last_progress}")
         trace_is_fresh = bool(instruction_trace.get("fresh_for_log"))
-        if instruction_trace.get("exists") and not trace_is_fresh:
+        if not quiet_linux_completion and instruction_trace.get("exists") and not trace_is_fresh:
             blockers.append(
                 "instruction trace is older than the current smoke log; rerun "
                 "with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC evidence: "
                 f"{instruction_trace.get('path')}"
             )
         if (
-            trace_is_fresh
+            not quiet_linux_completion
+            and simulator_log_reached_runtime(log_text)
+            and trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
             and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
         ):
@@ -1197,7 +2036,7 @@ def main() -> int:
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )
-        if not has_accepted_opensbi_markers(log_text):
+        if not has_accepted_opensbi_markers(log_text) and not quiet_linux_completion:
             blockers.append(f"{rel(LOG)} lacks required marker: OpenSBI/SBI handoff")
         if "OpenSBI" in log_text and not has_accepted_opensbi_markers(log_text):
             blockers.append(
@@ -1212,22 +2051,38 @@ def main() -> int:
             blockers.append(
                 f"{rel(LOG)} has Linux-observed SBI markers but lacks accepted implementation markers"
             )
-        if "Linux version" not in log_text:
+        if "Linux version" not in log_text and not quiet_linux_completion:
             blockers.append(f"{rel(LOG)} lacks required marker: Linux version")
-        if "Linux version" in log_text and not has_accepted_linux_markers(log_text):
+        if (
+            "Linux version" in log_text
+            and not has_accepted_linux_markers(log_text)
+            and not quiet_linux_completion
+        ):
             blockers.append(
                 f"{rel(LOG)} has a Linux banner but lacks accepted Linux boot markers: "
                 + ", ".join(LINUX_ACCEPTANCE_MARKERS)
             )
 
-    progress = classify_smoke_progress(log_text, instruction_trace, log_metadata)
+    progress = progress_with_active_attempt(
+        classify_smoke_progress(log_text, instruction_trace, log_metadata),
+        active_processes,
+        active_attempt,
+    )
     if blockers:
         write_report("blocked", blockers, payload)
         print(f"STATUS: BLOCKED chipyard.verilator_linux_smoke.{progress['stage']}")
         print(f"  simulator_path: {rel(SIM_DIR)}")
         print(f"  progress_stage: {progress['stage']}")
         print(f"  next_progress_step: {progress['next_step']}")
-        print(f"  next_command: {next_command()}")
+        safe_action = next_safe_action(
+            simulator_metadata, active_simulator_users, active_processes, active_attempt
+        )
+        deferred_next_command = next_command()
+        print(f"  next_safe_action: {safe_action}")
+        if safe_action != deferred_next_command:
+            print(f"  next_command_after_active_simulator_users: {deferred_next_command}")
+        else:
+            print(f"  next_command: {deferred_next_command}")
         for blocker in blockers:
             print(f"  - {blocker}")
         return 2

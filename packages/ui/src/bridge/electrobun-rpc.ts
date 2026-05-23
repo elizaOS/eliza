@@ -115,14 +115,18 @@ export interface DesktopRuntimeModeInfo {
 }
 
 export type DesktopRemotePluginPermissionTag =
-  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-carrots"}`
+  | `host:${"windows" | "tray" | "notifications" | "storage" | "manage-remote-plugins"}`
   | `bun:${"read" | "write" | "env" | "run" | "ffi" | "addons" | "worker"}`
   | `isolation:${"shared-worker" | "isolated-process"}`;
 
 export interface DesktopRemotePluginPermissionGrant {
   host?: Partial<
     Record<
-      "windows" | "tray" | "notifications" | "storage" | "manage-carrots",
+      | "windows"
+      | "tray"
+      | "notifications"
+      | "storage"
+      | "manage-remote-plugins",
       boolean
     >
   >;

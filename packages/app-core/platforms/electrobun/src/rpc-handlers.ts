@@ -53,9 +53,19 @@ import {
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import {
+  createDynamicViewHostForRuntime,
+  getDynamicViewRegistry,
+  getDynamicViewSessionManager,
+  registerBuiltInDynamicViews,
+} from "./dynamic-views";
+import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
 } from "./extension-rpc";
+import {
+  getFirstPartyRemotePluginDefinitions,
+  setFirstPartyRemotePluginDisabled,
+} from "./first-party-remotes";
 import { getFloatingChatManager } from "./floating-chat-window";
 import {
   composeInboxChatsSnapshot,
@@ -65,8 +75,13 @@ import {
   readInboxMessagesViaHttp,
   readInboxSourcesViaHttp,
 } from "./inbox-rpc";
+import { LaunchOrchestrator } from "./launch";
 import { logger } from "./logger";
-import { getAgentManager } from "./native/agent";
+import {
+  getAgentManager,
+  getStartupDiagnosticLogTail,
+  getStartupDiagnosticsSnapshot,
+} from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
@@ -133,11 +148,13 @@ import {
   readSubscriptionStatusViaHttp,
 } from "./subscription-rpc";
 import { isDetachedSurface } from "./surface-windows";
+import { createTraceHostForRuntime, getTraceService } from "./trace";
 import type { SendToWebview } from "./types.js";
 import {
   composeUpdateStatusSnapshot,
   readUpdateStatusViaHttp,
 } from "./update-rpc";
+import { createVoiceHostForRuntime, VoiceService } from "./voice";
 
 function normalizeRendererRoutePath(path: string): string {
   const trimmed = path.trim();
@@ -266,6 +283,21 @@ type BunRpcHandlers = {
   >;
 };
 
+let rpcVoiceService: VoiceService | null = null;
+let rpcLaunchOrchestrator: LaunchOrchestrator | null = null;
+
+function getRpcVoiceService(traceService: ReturnType<typeof getTraceService>) {
+  rpcVoiceService ??= new VoiceService({ traceService });
+  return rpcVoiceService;
+}
+
+function getRpcLaunchOrchestrator(
+  params: ConstructorParameters<typeof LaunchOrchestrator>[0],
+) {
+  rpcLaunchOrchestrator ??= new LaunchOrchestrator(params);
+  return rpcLaunchOrchestrator;
+}
+
 export function buildBunRpcHandlers({
   sendToWebview,
 }: {
@@ -288,6 +320,55 @@ export function buildBunRpcHandlers({
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
   const remotePluginHost = getRemotePluginHost();
+  registerBuiltInDynamicViews();
+  const dynamicViewRegistry = getDynamicViewRegistry();
+  const dynamicViewSessions = getDynamicViewSessionManager({
+    registry: dynamicViewRegistry,
+    canvas,
+    workerStatusProvider: {
+      getWorkerStatus: (id) => remotePluginHost.getWorkerStatus(id),
+    },
+  });
+  remotePluginHost.setDynamicViewHost(
+    createDynamicViewHostForRuntime(dynamicViewSessions),
+  );
+  const traceService = getTraceService({
+    dynamicViewRegistry,
+    dynamicViewSessions,
+  });
+  remotePluginHost.setTraceHost(createTraceHostForRuntime(traceService));
+  const voiceService = getRpcVoiceService(traceService);
+  remotePluginHost.setVoiceHost(createVoiceHostForRuntime(voiceService));
+  const launchOrchestrator = getRpcLaunchOrchestrator({
+    agent,
+    readBootProgress: async () => {
+      const status = agent.getStatus();
+      return composeBootProgressSnapshot(
+        { ...status, port: resolveRpcAgentPort(status.port) },
+        readAgentHealthSnapshotViaHttp,
+      );
+    },
+    readAuthStatus: readAuthStatusViaHttp,
+    readOnboardingStatus: readOnboardingStatusViaHttp,
+    readDiagnostics: getStartupDiagnosticsSnapshot,
+    readDatabaseStatus: () => agent.getDatabaseSnapshot(),
+    readDiagnosticLogTail: getStartupDiagnosticLogTail,
+    listRemoteStatuses: () =>
+      getFirstPartyRemotePluginDefinitions({ includeDev: true }).map(
+        (definition) => {
+          const status = remotePluginHost.getWorkerStatus(definition.id);
+          return {
+            id: definition.id,
+            state: status?.state ?? "stopped",
+            error: status?.error ?? null,
+            required: definition.kind === "required",
+          };
+        },
+      ),
+    createBugReportBundle: (params) => desktop.createBugReportBundle(params),
+    dynamicViewRegistry,
+    dynamicViewSessions,
+  });
   configureRemotePluginHostEvents(sendToWebview);
 
   return {
@@ -383,6 +464,17 @@ export function buildBunRpcHandlers({
         readAgentHealthSnapshotViaHttp,
       );
     },
+    launchProgress: async () => launchOrchestrator.getProgress(),
+    launchEventsTail: async (params) => launchOrchestrator.tailEvents(params),
+    launchRetry: async () => launchOrchestrator.retry(),
+    launchOpenDiagnosticsView: async () =>
+      launchOrchestrator.openDiagnosticsView(),
+    launchCreateBugReportBundle: async () =>
+      launchOrchestrator.createBugReport(),
+    databaseStatus: async () => agent.getDatabaseSnapshot(),
+    databaseRecoveryPreview: async () => agent.previewDatabaseRecovery(),
+    databaseBackupPglite: async () => agent.backupPgliteDatabase(),
+    databaseResetPglite: async (params) => agent.resetPgliteDatabase(params),
     /**
      * Typed counterpart to renderer `client.getOnboardingStatus()` —
      * the polling-backend startup phase calls this. See
@@ -794,10 +886,14 @@ export function buildBunRpcHandlers({
       remotePluginHost.installFromDirectory(params),
     remotePluginUninstall: async (params: { id: string }) =>
       remotePluginHost.uninstall(params.id),
-    remotePluginStartWorker: async (params: { id: string }) =>
-      remotePluginHost.startWorker(params.id),
-    remotePluginStopWorker: async (params: { id: string }) =>
-      remotePluginHost.stopWorker(params.id),
+    remotePluginStartWorker: async (params: { id: string }) => {
+      setFirstPartyRemotePluginDisabled(params.id, false, remotePluginHost);
+      return remotePluginHost.startWorker(params.id);
+    },
+    remotePluginStopWorker: async (params: { id: string }) => {
+      setFirstPartyRemotePluginDisabled(params.id, true, remotePluginHost);
+      return remotePluginHost.stopWorker(params.id);
+    },
     remotePluginGetWorkerStatus: async (params: { id: string }) =>
       remotePluginHost.getWorkerStatus(params.id),
     remotePluginListWorkerStatuses: async () => ({
@@ -805,6 +901,57 @@ export function buildBunRpcHandlers({
     }),
     remotePluginGetLogs: async (params) =>
       remotePluginHost.getLogs(params.id, params.maxBytes),
+    remotePluginInvokeWorker: async (params) =>
+      remotePluginHost.invokeWorker(params),
+    remotePluginTailWorkerEvents: async (params) =>
+      remotePluginHost.tailWorkerEvents(params),
+    dynamicViewRegister: async (params) =>
+      dynamicViewRegistry.register(params.manifest, { update: params.update }),
+    dynamicViewUnregister: async (params) => ({
+      removed: dynamicViewRegistry.unregister(params.viewId),
+    }),
+    dynamicViewList: async () => ({ views: dynamicViewRegistry.list() }),
+    dynamicViewOpen: async (params) => dynamicViewSessions.open(params),
+    dynamicViewClose: async (params) => dynamicViewSessions.close(params),
+    dynamicViewPush: async (params) => dynamicViewSessions.push(params),
+    dynamicViewSessions: async () => ({
+      sessions: dynamicViewSessions.list(),
+    }),
+    traceSessionStart: async (params) => traceService.startSession(params),
+    traceSessionComplete: async (params) =>
+      traceService.completeSession(params),
+    traceSessionCancel: async (params) => traceService.cancelSession(params),
+    traceSessionError: async (params) => traceService.errorSession(params),
+    traceEventRecord: async (params) => traceService.recordEvent(params),
+    traceSessionList: async (params) => ({
+      sessions: await traceService.listSessions(params),
+    }),
+    traceSessionGet: async (params) => traceService.getSession(params),
+    traceSessionSummary: async (params) =>
+      traceService.summarizeSession(params),
+    traceEventsTail: async (params) => traceService.tailEvents(params),
+    traceEventsSearch: async (params) => ({
+      events: await traceService.searchEvents(params ?? {}),
+    }),
+    traceViewOpen: async (params) => traceService.openTraceView(params),
+    voiceStatus: async () => voiceService.status(),
+    voiceComponents: async () => ({
+      components: await voiceService.components(),
+    }),
+    voiceStart: async (params) => voiceService.start(params ?? {}),
+    voiceStop: async (params) => voiceService.stop(params ?? {}),
+    voiceInterrupt: async (params) => voiceService.interrupt(params ?? {}),
+    voiceInjectTranscript: async (params) =>
+      voiceService.injectTranscript(params),
+    voiceSpeak: async (params) => voiceService.speak(params),
+    voiceTranscribeAudio: async (params) =>
+      voiceService.transcribeAudio(params),
+    voiceSynthesizeSpeech: async (params) =>
+      voiceService.synthesizeSpeech(params),
+    voiceLatency: async () => voiceService.latency(),
+    voiceRecentTurns: async (params) => ({
+      turns: await voiceService.recentTurns(params ?? {}),
+    }),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

@@ -57,17 +57,14 @@ module bimodal
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned i = 0; i < BIM_ENTRIES; i++) begin
-                // Weakly-taken on reset: backwards-taken loops and uncond-
-                // direct jumps mapped to the conditional path both expect
-                // an initial "taken" guess. Matches the behavioural model
-                // in benchmarks/cpu/branch/bpu_model.py and the CBP-5
-                // reference predictor. The previous weakly-not-taken seed
-                // caused thousands of avoidable cold-cond mispredictions on
-                // real traces; see
-                // docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
-                table_q[i] <= {1'b1, {(BIM_CTR_W-1){1'b0}}};
-            end
+            // Weakly-taken on reset: backwards-taken loops and uncond-direct
+            // jumps mapped to the conditional path both expect an initial
+            // "taken" guess. Matches the behavioural model in
+            // benchmarks/cpu/branch/bpu_model.py and the CBP-5 reference
+            // predictor. The previous weakly-not-taken seed caused thousands
+            // of avoidable cold-cond mispredictions on real traces; see
+            // docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
+            table_q <= '{default: {1'b1, {(BIM_CTR_W-1){1'b0}}}};
         end else if (upd_valid) begin
             if (upd_taken) begin
                 if (table_q[upd_i] != {BIM_CTR_W{1'b1}})

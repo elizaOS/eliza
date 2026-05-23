@@ -103,9 +103,7 @@ def main() -> int:
     netlist_in = resolve(args.netlist_in)
 
     out_dir = (
-        resolve(args.out_dir)
-        if args.out_dir
-        else ROOT / "build" / "qor" / "eco" / args.node_id
+        resolve(args.out_dir) if args.out_dir else ROOT / "build" / "qor" / "eco" / args.node_id
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 

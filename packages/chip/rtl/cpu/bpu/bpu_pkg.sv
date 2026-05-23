@@ -37,6 +37,7 @@ package bpu_pkg;
     // Predicted in a single BPU cycle. 32 B prediction block matches Zen 5 /
     // X925 / Lion Cove and fits up to 16 RVC instructions.
     localparam int unsigned FETCH_BLOCK_BYTES = 32;
+    localparam int unsigned FETCH_BLOCK_OFF_W = $clog2(FETCH_BLOCK_BYTES);
     localparam int unsigned MAX_BR_PER_BLOCK  = 2;      // 2 taken/cycle target
     localparam int unsigned XLEN              = 64;
     localparam int unsigned VADDR_W           = 39;     // Sv39 virtual address
@@ -55,6 +56,7 @@ package bpu_pkg;
     localparam int unsigned UFTB_SETS    = UFTB_ENTRIES / UFTB_WAYS;
     localparam int unsigned UFTB_IDX_W   = $clog2(UFTB_SETS);
     localparam int unsigned UFTB_TAG_W   = 10;
+    localparam int unsigned UFTB_STEER_CONF_MIN = 2;
 
     // ------------------------------------------------------------------
     // FTB (Fetch Target Buffer) - replaces traditional BTB
@@ -73,6 +75,7 @@ package bpu_pkg;
     localparam int unsigned FTB_SETS    = FTB_ENTRIES / FTB_WAYS;
     localparam int unsigned FTB_IDX_W   = $clog2(FTB_SETS);
     localparam int unsigned FTB_TAG_W   = 19;
+    localparam int unsigned FTB_TARGET_CONF_W = 2;
 
     // ------------------------------------------------------------------
     // TAGE conditional predictor
@@ -80,11 +83,15 @@ package bpu_pkg;
     // Number of tagged tables in the TAGE stack. The base bimodal predictor
     // is held separately and indexed by PC only.
     localparam int unsigned TAGE_TABLES        = 5;
-    localparam int unsigned TAGE_ENTRIES_TABLE = 4096;
+    // Sweep R9 (`combo_algo_geo`) moved the tagged stack to 8K entries/table.
+    // The added capacity is the dominant stable win across the real RV64,
+    // CBP-5 sample, and GPU-shaped synthetic workload mix.
+    localparam int unsigned TAGE_ENTRIES_TABLE = 8192;
     localparam int unsigned TAGE_IDX_W         = $clog2(TAGE_ENTRIES_TABLE);
     localparam int unsigned TAGE_TAG_W         = 8;
     localparam int unsigned TAGE_CTR_W         = 3;     // 3-bit signed direction
     localparam int unsigned TAGE_USEFUL_W      = 2;     // 2-bit useful field
+    localparam int unsigned TAGE_USE_ALT_ON_NA = 0;     // use alternate on weak tagged provider
     // Base bimodal predictor sized to match KMH bimodal floor.
     localparam int unsigned BIM_ENTRIES = 16384;
     localparam int unsigned BIM_IDX_W   = $clog2(BIM_ENTRIES);
@@ -99,10 +106,10 @@ package bpu_pkg;
     // generate-time elaboration so yosys (no constant-function support for
     // module port widths) can also parse the package.
     localparam int unsigned TAGE_HIST_LEN_0 = 8;
-    localparam int unsigned TAGE_HIST_LEN_1 = 13;
-    localparam int unsigned TAGE_HIST_LEN_2 = 32;
-    localparam int unsigned TAGE_HIST_LEN_3 = 64;
-    localparam int unsigned TAGE_HIST_LEN_4 = 119;
+    localparam int unsigned TAGE_HIST_LEN_1 = 16;
+    localparam int unsigned TAGE_HIST_LEN_2 = 44;
+    localparam int unsigned TAGE_HIST_LEN_3 = 90;
+    localparam int unsigned TAGE_HIST_LEN_4 = 195;
     function automatic int unsigned tage_hist_len(input int unsigned table_id);
         case (table_id)
             32'd0:   tage_hist_len = TAGE_HIST_LEN_0;
@@ -114,14 +121,15 @@ package bpu_pkg;
         endcase
     endfunction
 
-    // Useful-bit periodic reset interval (cycles). Matches Seznec CBP-5
-    // recommendation: alternate-half reset on every 256K predictions.
-    localparam int unsigned TAGE_USEFUL_RESET_PERIOD = 32'h0004_0000;
+    // Useful-bit periodic reset interval (cycles). The sweep favoured faster
+    // aging than the 256K seed because the mixed E1/GPU workload set changes
+    // phases more often than the CBP-only reference.
+    localparam int unsigned TAGE_USEFUL_RESET_PERIOD = 32'd100000;
 
     // Working width of the global history shift register. Sized to the
     // longest tagged-table history (table 4) so that all per-table histories
     // can be sliced from the same vector.
-    localparam int unsigned TAGE_HIST_LEN_MAX = 119;
+    localparam int unsigned TAGE_HIST_LEN_MAX = 195;
 
     // ------------------------------------------------------------------
     // Statistical Corrector (SC)
@@ -145,7 +153,13 @@ package bpu_pkg;
     endfunction
     // SC threshold counter for taking the corrector's verdict. Updated by
     // the SC update path when TAGE's confidence is low.
-    localparam int unsigned SC_THRESH_INIT = 6;
+    localparam int unsigned SC_THRESH_INIT = 8;
+    localparam int unsigned SC_THRESH_MIN  = 4;
+    localparam int unsigned SC_THRESH_MAX  = 31;
+    localparam logic signed [5:0] SC_TC_LIMIT = 6'sd12;
+    localparam int unsigned SC_LOCAL_HISTORY_BITS = 8;
+    localparam int unsigned SC_LOCAL_HISTORY_ENTRIES = 1024;
+    localparam int unsigned SC_LOCAL_HISTORY_IDX_W = $clog2(SC_LOCAL_HISTORY_ENTRIES);
 
     // ------------------------------------------------------------------
     // Loop predictor
@@ -179,10 +193,10 @@ package bpu_pkg;
     localparam int unsigned ITTAGE_ENTRIES_3 = 1024;
     localparam int unsigned ITTAGE_ENTRIES_4 = 1024;
     localparam int unsigned ITTAGE_HIST_LEN_0 = 4;
-    localparam int unsigned ITTAGE_HIST_LEN_1 = 8;
-    localparam int unsigned ITTAGE_HIST_LEN_2 = 13;
-    localparam int unsigned ITTAGE_HIST_LEN_3 = 16;
-    localparam int unsigned ITTAGE_HIST_LEN_4 = 32;
+    localparam int unsigned ITTAGE_HIST_LEN_1 = 10;
+    localparam int unsigned ITTAGE_HIST_LEN_2 = 20;
+    localparam int unsigned ITTAGE_HIST_LEN_3 = 40;
+    localparam int unsigned ITTAGE_HIST_LEN_4 = 80;
     function automatic int unsigned ittage_entries(input int unsigned table_id);
         case (table_id)
             32'd0:   ittage_entries = 32'd512;
@@ -196,16 +210,25 @@ package bpu_pkg;
     function automatic int unsigned ittage_hist_len(input int unsigned table_id);
         case (table_id)
             32'd0:   ittage_hist_len = 32'd4;
-            32'd1:   ittage_hist_len = 32'd8;
-            32'd2:   ittage_hist_len = 32'd13;
-            32'd3:   ittage_hist_len = 32'd16;
-            32'd4:   ittage_hist_len = 32'd32;
+            32'd1:   ittage_hist_len = 32'd10;
+            32'd2:   ittage_hist_len = 32'd20;
+            32'd3:   ittage_hist_len = 32'd40;
+            32'd4:   ittage_hist_len = 32'd80;
             default: ittage_hist_len = 32'd0;
         endcase
     endfunction
     localparam int unsigned ITTAGE_TAG_W = 9;
     localparam int unsigned ITTAGE_CTR_W = 3;
     localparam int unsigned ITTAGE_USEFUL_W = 2;
+    localparam int unsigned ITTAGE_USEFUL_RESET_PERIOD = 100000;
+    localparam int unsigned ITTAGE_REPLACE_WEAK_CTR = 3;
+    localparam int unsigned ITTAGE_REPLACE_MIN_PROVIDER = 4;
+    localparam int unsigned ITTAGE_TARGET_HISTORY_BITS = 64;
+    localparam int unsigned ITTAGE_TARGET_HISTORY_TOKEN_BITS = 7;
+    localparam int unsigned ITTAGE_TARGET_HISTORY_SHIFT = 8;
+    localparam int unsigned ITTAGE_PATH_HISTORY_BITS = 0;
+    localparam int unsigned ITTAGE_PATH_HISTORY_TOKEN_BITS = 6;
+    localparam int unsigned ITTAGE_PATH_HISTORY_SHIFT = 2;
 
     // ------------------------------------------------------------------
     // Performance Monitoring Unit (Zihpm) event encoding
@@ -272,6 +295,15 @@ package bpu_pkg;
         BR_IND    = 3'd4
     } br_kind_e;
 
+    typedef struct packed {
+        logic [VADDR_W-1:0]              target_pc;
+        logic [VADDR_W-1:0]              fall_through_pc;
+        logic [FTB_TARGET_CONF_W-1:0]    target_conf;
+        logic [FETCH_BLOCK_OFF_W-1:0]    offset;
+        br_kind_e                        kind;
+        logic                            valid;
+    } bpu_branch_slot_t;
+
     // A single FTQ entry describes one predicted fetch block of up to
     // FETCH_BLOCK_BYTES bytes. The predicted block extends from start_pc
     // through end_pc inclusive; if `taken` is asserted, the predicted target
@@ -285,9 +317,22 @@ package bpu_pkg;
         logic                     taken;
         br_kind_e                 kind;
         logic [MAX_BR_PER_BLOCK-1:0] br_taken_mask;
+        bpu_branch_slot_t [MAX_BR_PER_BLOCK-1:0] br_slots;
         logic [FTQ_IDX_W-1:0]     ftq_idx;
         // Snapshot fields used by the update path on redirect.
         logic [RAS_IDX_W:0]       ras_spec_top;
+        logic                     ras_restore_valid;
+        logic [VADDR_W-1:0]       ras_restore_addr;
+        logic [TAGE_HIST_LEN_MAX-1:0] ghist_snapshot;
+        logic [TAGE_HIST_LEN_MAX-1:0] ittage_hist_snapshot;
+        logic [TAGE_HIST_LEN_MAX-1:0] ittage_target_hist_snapshot;
+        logic [TAGE_HIST_LEN_MAX-1:0] ittage_path_hist_snapshot;
+        logic [$clog2(TAGE_TABLES+1)-1:0]   tage_provider;
+        logic [$clog2(ITTAGE_TABLES+1)-1:0] ittage_provider;
+        logic [TAGE_CTR_W-1:0]     tage_provider_ctr;
+        logic                      tage_lowconf;
+        logic                      sc_override;
+        logic                      sc_taken;
     } ftq_entry_t;
 
     // Lookup response bundled out of bpu_top.
@@ -315,6 +360,17 @@ package bpu_pkg;
     // Block-grained predictors cannot derive this from the block start_pc
     // alone because the call may not be the last instruction in the block.
     // Only consumed when `actual_kind == BR_CALL`.
+    //
+    // `ras_restore_top` is the speculative RAS stack pointer checkpoint
+    // captured in the FTQ entry for the resolved prediction. Redirect
+    // recovery must restore to this checkpoint, not to the live speculative
+    // top, because younger predicted calls/returns may have already mutated
+    // the live stack by the time the branch resolves.
+    //
+    // Predictor update metadata is replayed from the resolved FTQ entry at
+    // commit time. The provider fields remain on the resolver bus as a
+    // compatibility fallback for directed tests that inject resolves without
+    // a matching FTQ prediction.
     typedef struct packed {
         logic                 valid;
         logic                 misprediction;
@@ -324,6 +380,11 @@ package bpu_pkg;
         logic                 actual_taken;
         br_kind_e             actual_kind;
         logic [FTQ_IDX_W-1:0] ftq_idx;
+        logic [RAS_IDX_W:0]   ras_restore_top;
+        logic                 ras_restore_valid;
+        logic [VADDR_W-1:0]   ras_restore_addr;
+        logic [$clog2(TAGE_TABLES+1)-1:0]   tage_provider;
+        logic [$clog2(ITTAGE_TABLES+1)-1:0] ittage_provider;
     } bpu_resolve_t;
 
     // Cumulative PMU counter bundle.

@@ -10,6 +10,7 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_ACTOR_OBSERVATION_DIM,
     ASIMOV1_FULL_ACTION_DIM,
     ASIMOV1_LEG_ACTION_DIM,
+    ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS,
 )
 from eliza_robot.sim.mujoco.asimov_mjx_training import (
     _train_from_job_impl,
@@ -37,11 +38,14 @@ def test_asimov_mjx_env_reset_step_contract() -> None:
     assert env.action_size == ASIMOV1_LEG_ACTION_DIM
     assert env.mj_model.nu == ASIMOV1_FULL_ACTION_DIM
     assert env.n_substeps == 4
+    assert env.observation_delay_steps == (1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2)
 
     state = env.reset(jax.random.PRNGKey(0))
     assert tuple(state.obs.shape) == (env.observation_size,)
     assert bool(jp.all(jp.isfinite(state.obs)))
     assert tuple(state.info["motor_targets"].shape) == (ASIMOV1_FULL_ACTION_DIM,)
+    assert tuple(state.info["qpos_history"].shape) == (3, ASIMOV1_LEG_ACTION_DIM)
+    assert tuple(state.info["qvel_history"].shape) == (3, ASIMOV1_LEG_ACTION_DIM)
 
     action = jp.linspace(-0.25, 0.25, env.action_size)
     state = env.step(state, action)
@@ -52,6 +56,41 @@ def test_asimov_mjx_env_reset_step_contract() -> None:
 
     state = env.step(state, action)
     assert bool(state.done), "episode_length=2 should mark the second step done"
+
+
+def test_asimov_mjx_observation_uses_grouped_delayed_joint_state() -> None:
+    jax = pytest.importorskip("jax")
+    jp = pytest.importorskip("jax.numpy")
+    pytest.importorskip("mujoco")
+    pytest.importorskip("mujoco_playground")
+
+    env = make_asimov_text_conditioned_mjx_env(
+        active_tasks=("stand_up",),
+        pca_dim=4,
+        episode_length=2,
+        domain_randomization={},
+    )
+    state = env.reset(jax.random.PRNGKey(1))
+    qpos_history = jp.arange(36, dtype=jp.float32).reshape(3, 12)
+    qvel_history = qpos_history + 100.0
+    info = dict(state.info)
+    info["qpos_history"] = qpos_history
+    info["qvel_history"] = qvel_history
+
+    proprio = env._get_proprio(state.data, info)
+    qpos_slice = proprio[9:21]
+    qvel_slice = proprio[21:33]
+
+    expected_qpos = []
+    expected_qvel = []
+    for group, indices in ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS.items():
+        delay = 1 if group == "left_leg" else 2
+        for idx in indices:
+            expected_qpos.append(float(qpos_history[delay, idx]))
+            expected_qvel.append(float(qvel_history[delay, idx]))
+
+    assert tuple(qpos_slice.tolist()) == tuple(expected_qpos)
+    assert tuple(qvel_slice.tolist()) == tuple(expected_qvel)
 
 
 def test_asimov_train_from_job_impl_writes_brax_artifact_contract(tmp_path: Path) -> None:

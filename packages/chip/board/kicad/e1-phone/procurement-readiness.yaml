@@ -10,7 +10,10 @@ claim_boundary: >
 source_artifacts:
   - board/kicad/e1-phone/preliminary-bom.yaml
   - board/kicad/e1-phone/supplier-sourcing-audit.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/production-factory-release-execution.yaml
   - board/kicad/e1-phone/cellular-space-saving-downselect.yaml
   - board/kicad/e1-phone/production-readiness.yaml
 
@@ -33,6 +36,111 @@ procurement_policy:
     - no_incoming_inspection_record
     - no_lifecycle_or_compliance_statement
     - no_approved_substitute_strategy
+
+selected_supplier_response_procurement_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_prove_orderability_quotes_lifecycle_samples_and_avl_inputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_procurement_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  required_procurement_fields:
+    - orderable_manufacturer_part_number
+    - supplier_sku
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - incoming_inspection_path
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  procurement_decisions_blocked:
+    - selected supplier cannot be treated as AVL-approved from public marketplace listings alone
+    - orderable MPN, supplier SKU, lifecycle, MOQ, lead-time, and price breaks are missing for EVT1 buy
+    - sample lot, incoming inspection, compliance, and approval records are missing before purchase order release
+    - selected cellular branch cannot be locked until the compact module alternate quote and regional SKU scope are returned
+    - display, camera, USB-C, side-key, cellular, and Wi-Fi/Bluetooth substitutes cannot be approved without normalized response packs
+  line_item_functions_blocked:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  all_selected_supplier_response_packs_absent: true
+  procurement_release_allowed_without_selected_supplier_packs: false
+alternate_display_procurement_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_alternate_display_quotes_lifecycle_samples_compliance_avl_and_promotion_review_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_procurement_fields:
+        - orderable_manufacturer_part_number
+        - supplier_sku
+        - lifecycle_status
+        - MOQ
+        - unit_price_10
+        - unit_price_100
+        - lead_time_days_10
+        - lead_time_days_100
+        - compliance_pack_index_path
+        - sample_lot_tracking
+        - incoming_inspection_path
+        - approved_by_ee
+        - approved_by_me
+        - approved_by_ops
+      blocked_procurement_decisions:
+        - cannot create AVL row from public Alibaba listing alone
+        - cannot approve substitute until signed drawing, 40-pin pinout, connector, land pattern, STEP/B-rep, and samples exist
+        - cannot release purchase order until MOQ, price breaks, lead time, lifecycle, compliance, and inspection evidence exist
+        - cannot replace CH550FH01A-CT without promotion review covering supply, route, enclosure, and factory risk
+      procurement_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_procurement_fields:
+        - orderable_manufacturer_part_number
+        - supplier_sku
+        - lifecycle_status
+        - MOQ
+        - unit_price_10
+        - unit_price_100
+        - lead_time_days_10
+        - lead_time_days_100
+        - compliance_pack_index_path
+        - sample_lot_tracking
+        - incoming_inspection_path
+        - approved_by_ee
+        - approved_by_me
+        - approved_by_ops
+      blocked_procurement_decisions:
+        - cannot create AVL row from public Made-in-China listing alone
+        - cannot approve substitute until signed AMOLED drawing, FPC pinout, connector, land pattern, STEP/B-rep, RM67191/GT1151 data, and samples exist
+        - cannot release purchase order until MOQ, price breaks, lead time, lifecycle, compliance, burn-in/luminance, and inspection evidence exist
+        - cannot replace CH550FH01A-CT without promotion review covering supply, route, enclosure, power/thermal, and factory risk
+      procurement_release_allowed: false
 
 line_items:
   - function: display_touch
@@ -120,9 +228,13 @@ cross_checks:
   front_camera_no_longer_tbd: true
   display_has_three_or_more_alternates: true
   production_bom_not_ready: true
+  selected_supplier_response_procurement_gate_blocks_avl_release: true
+  alternate_display_procurement_gate_blocks_avl_release: true
 
 release_blockers:
   - supplier_quotes_not_captured
+  - selected_supplier_response_packs_for_display_camera_usb_sidekey_cellular_and_wifi_bt_not_returned
+  - parseable_055WU01_and_E549_RM67191_display_alternates_missing_quotes_lifecycle_samples_compliance_avl_and_promotion_review
   - samples_not_received
   - AVL_not_approved
   - lifecycle_and_compliance_not_verified

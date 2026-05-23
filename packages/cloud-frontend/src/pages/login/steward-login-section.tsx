@@ -388,7 +388,11 @@ export default function StewardLoginSection() {
     return (
       <div className="flex flex-col items-center gap-4 py-8">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
-        <p className="text-sm text-white/72">Redirecting to dashboard...</p>
+        <p className="text-sm text-white/72">
+          {t("cloud.login.redirecting", {
+            defaultValue: "Redirecting to dashboard...",
+          })}
+        </p>
       </div>
     );
   }
@@ -422,10 +426,16 @@ export default function StewardLoginSection() {
         className="flex flex-col items-center gap-4 py-8"
         role="status"
         aria-busy="true"
-        aria-label="Loading sign-in options"
+        aria-label={t("cloud.login.loadingOptions.aria", {
+          defaultValue: "Loading sign-in options",
+        })}
       >
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-white border-t-transparent" />
-        <p className="text-sm text-white/72">Loading sign-in options...</p>
+        <p className="text-sm text-white/72">
+          {t("cloud.login.loadingOptions", {
+            defaultValue: "Loading sign-in options...",
+          })}
+        </p>
       </div>
     );
   }
@@ -444,7 +454,9 @@ export default function StewardLoginSection() {
       <input
         ref={emailInputRef}
         type="email"
-        placeholder="you@example.com"
+        placeholder={t("cloud.login.emailPlaceholder", {
+          defaultValue: "you@example.com",
+        })}
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         onKeyDown={(e) => {
@@ -463,7 +475,8 @@ export default function StewardLoginSection() {
             disabled={isLoading}
             className="flex flex-1 items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#FF5800]/85 disabled:opacity-50"
           >
-            {loading === "passkey" ? <Spinner /> : <PasskeyIcon />} Passkey
+            {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
+            {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
           </button>
         )}
         {providers.email !== false && (
@@ -473,7 +486,10 @@ export default function StewardLoginSection() {
             disabled={isLoading}
             className="flex flex-1 items-center justify-center gap-2 border border-white/30 bg-black/40 px-4 py-3 font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
           >
-            {loading === "email" ? <Spinner /> : <EmailIcon />} Magic Link
+            {loading === "email" ? <Spinner /> : <EmailIcon />}{" "}
+            {t("cloud.login.button.magicLink", {
+              defaultValue: "Magic Link",
+            })}
           </button>
         )}
       </div>

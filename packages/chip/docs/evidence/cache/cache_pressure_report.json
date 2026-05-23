@@ -1,0 +1,34 @@
+{
+  "blocked_count": 0,
+  "claim_allowed": true,
+  "claim_boundary": "This cocotb report measures RTL pressure behavior only. It is not L5/L6 silicon, DRAM, LPDDR, Android, or phone bandwidth evidence.",
+  "contention_agents": [
+    "cpu_miss_stream",
+    "display_qos"
+  ],
+  "coverage": [
+    "l1d",
+    "l2",
+    "l3",
+    "slc"
+  ],
+  "evidence_class": "rtl_cocotb_pressure_gap",
+  "findings": [],
+  "metrics": {
+    "attempted_misses": 12,
+    "blocked_cycles": 4,
+    "completed_misses": 8,
+    "display_service_window_violations": 0,
+    "max_in_flight_misses": 4,
+    "p95_miss_latency_cycles": 4
+  },
+  "observations": [
+    "L1D sustained four outstanding line acquires through its MSHR entries.",
+    "L2 accepted an L1D miss, requested L3, and returned a refill.",
+    "L3 accepted an L2 miss, requested SLC, and returned a refill.",
+    "SLC serviced CPU and display QoS misses and pulsed display reservation evidence."
+  ],
+  "schema": "eliza.cache_pressure_evidence.v1",
+  "source": "cocotb-cache-pressure",
+  "status": "pass"
+}

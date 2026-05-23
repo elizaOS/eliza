@@ -1,0 +1,9 @@
+environment           = "production"
+hcloud_location       = "fsn1"
+hcloud_server_type    = "cpx21"
+control_plane_count   = 1
+cloudflare_zone_id    = "<zone-id-for-elizacloud.ai>"
+
+ssh_public_keys = [
+  # "ssh-ed25519 AAAA... operator@laptop"
+]

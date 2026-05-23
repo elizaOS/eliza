@@ -35,9 +35,7 @@ from .bpu_model import BR_CALL, BR_COND, BR_IND, BR_NONE, BR_RET, BranchEvent
 WORKLOAD_TRACE_SCHEMA = "eliza.bpu_workload_trace.v1"
 
 # execlog line: `<cpu>, 0x<pc>, 0x<opcode>, "<disasm>"[, <memtype>, 0x<addr>]`
-_EXECLOG_RE = re.compile(
-    r'^\s*\d+,\s*0x([0-9a-fA-F]+),\s*0x([0-9a-fA-F]+),\s*"([^"]*)"'
-)
+_EXECLOG_RE = re.compile(r'^\s*\d+,\s*0x([0-9a-fA-F]+),\s*0x([0-9a-fA-F]+),\s*"([^"]*)"')
 # Trailing `# 0x<target>` comment emitted for PC-relative control transfers.
 _TARGET_COMMENT_RE = re.compile(r"#\s*0x([0-9a-fA-F]+)")
 
@@ -203,7 +201,13 @@ def write_workload_trace(
         "class_counts": stats.as_dict(),
         # Compact row form: [pc, target, taken(0/1), kind, call_return_pc(-1=None)]
         "branches": [
-            [b.pc, b.target, int(b.taken), b.kind, -1 if b.call_return_pc is None else b.call_return_pc]
+            [
+                b.pc,
+                b.target,
+                int(b.taken),
+                b.kind,
+                -1 if b.call_return_pc is None else b.call_return_pc,
+            ]
             for b in branches
         ],
     }

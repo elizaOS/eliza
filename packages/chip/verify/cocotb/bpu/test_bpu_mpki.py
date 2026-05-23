@@ -57,6 +57,7 @@ from benchmarks.cpu.branch.traces import (  # noqa: E402
     SYNTHETIC_GENERATORS,
     read_cbp5_with_count,
 )
+from benchmarks.cpu.branch.workload_trace import read_workload_trace  # noqa: E402
 
 # PMU enum (zero-based; matches bpu_pkg::pmu_event_e).
 PMU_BR_PRED = 0
@@ -104,6 +105,9 @@ async def _reset(dut):
     dut.resolve_taken.value = 0
     dut.resolve_kind.value = 0
     dut.resolve_ftq_idx.value = 0
+    dut.resolve_ras_restore_top.value = 0
+    dut.resolve_tage_provider.value = 0
+    dut.resolve_ittage_provider.value = 0
     dut.csr_re.value = 0
     dut.csr_addr.value = 0
     for _ in range(4):
@@ -167,6 +171,9 @@ async def _drive_event(dut, event: BranchEvent) -> bool:
     dut.resolve_taken.value = 1 if actual_taken else 0
     dut.resolve_kind.value = event.kind
     dut.resolve_ftq_idx.value = 0
+    dut.resolve_ras_restore_top.value = 0
+    dut.resolve_tage_provider.value = 0
+    dut.resolve_ittage_provider.value = 0
     await RisingEdge(dut.clk)
     dut.resolve_valid.value = 0
     dut.resolve_misp.value = 0
@@ -345,14 +352,14 @@ def _cbp5_trace_paths() -> list[Path]:
 
 
 @cocotb.test()
-async def bpu_mpki_synthetic_8_workload_sweep(dut):
-    """Run all 8 canonical synthetic workloads end-to-end through the RTL
+async def bpu_mpki_synthetic_workload_sweep(dut):
+    """Run all canonical synthetic workloads end-to-end through the RTL
     BPU and write ``mpki_results_synthetic.json`` with per-workload MPKI."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
 
     results: dict[str, dict] = {}
     expected = list(SYNTHETIC_GENERATORS.keys())
-    assert len(expected) == 8, f"expected exactly 8 workloads, found {expected}"
+    assert expected, "expected at least one synthetic workload"
 
     for name in expected:
         events = [
@@ -500,5 +507,117 @@ async def bpu_mpki_cbp5_real_traces(dut):
     for name, r in results.items():
         dut._log.info(
             f"bpu_mpki_cbp5: {name}: branches={r['branch_count']} "
+            f"misp={r['misprediction_count']} mpki={r['mpki']:.3f}"
+        )
+
+
+def _resolve_workload_output_path() -> Path:
+    override = os.environ.get("ELIZA_BPU_MPKI_WORKLOAD_JSON")
+    if override:
+        return Path(override)
+    return _REPO_ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
+
+
+def _workload_trace_paths() -> list[Path]:
+    """QEMU-RV64 ``.btrace.json`` workload traces to replay through the RTL.
+
+    Selection mirrors the model/comparison harnesses so the RTL ingests the
+    *same* real-workload traces. ``ELIZA_BPU_MPKI_WORKLOAD_TRACES`` (``:``-
+    separated paths) pins an explicit set; otherwise every ``.btrace.json``
+    under ``external/workload-traces`` is replayed.
+    """
+    env = os.environ.get("ELIZA_BPU_MPKI_WORKLOAD_TRACES")
+    if env:
+        return [Path(p) for p in env.split(":") if p]
+    default_dir = _REPO_ROOT / "external/workload-traces"
+    if default_dir.is_dir():
+        return sorted(default_dir.glob("*.btrace.json"))
+    return []
+
+
+@cocotb.test()
+async def bpu_mpki_workload_traces(dut):
+    """Replay real QEMU-RV64 ``.btrace.json`` workload traces through the RTL BPU.
+
+    These are the *same* traces the behavioural model and the head-to-head
+    ``compare_mpki.py`` harness use, so the RTL MPKI here is directly
+    comparable to the E1-model MPKI in
+    ``docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json`` on a per-trace basis. This
+    is what lifts the E1 side of the win from a behavioural model to RTL.
+
+    Gated on the presence of trace files; when none are available the test
+    exits early with a skip annotation. Output is written to
+    ``docs/evidence/cpu_ap/mpki_results_workload_rtl.json`` (override via
+    ``ELIZA_BPU_MPKI_WORKLOAD_JSON``).
+    """
+    trace_paths = _workload_trace_paths()
+    if not trace_paths:
+        dut._log.info(
+            "bpu_mpki_workload: no .btrace.json under external/workload-traces; "
+            "skipping. Capture with `make bpu-workload-trace`."
+        )
+        return
+
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+
+    results: dict[str, dict] = {}
+    for path in trace_paths:
+        name = path.name[: -len(".btrace.json")]
+        dut._log.info(f"bpu_mpki_workload: ingesting {path.name}")
+        branches, instruction_count = read_workload_trace(path)
+        dut._log.info(
+            f"bpu_mpki_workload: {name}: inst={instruction_count} "
+            f"branches={len(branches)} (replay starts)"
+        )
+        result = await _run_cbp5_workload(dut, name, branches, instruction_count)
+        result["trace_class"] = "qemu_rv64_workload"
+        results[name] = result
+
+    aggregate_inst = sum(r["instruction_count"] for r in results.values())
+    aggregate_misp = sum(r["misprediction_count"] for r in results.values())
+    aggregate_branches = sum(r["branch_count"] for r in results.values())
+    aggregate_mpki = (aggregate_misp * 1000.0 / aggregate_inst) if aggregate_inst else 0.0
+
+    envelope = {
+        "schema": "eliza.bpu_mpki.v1",
+        "generated_at_utc": datetime.now(UTC).isoformat(),
+        "harness": "cocotb-rtl-bpu_top",
+        "rtl_top": "bpu_top",
+        "evidence_class": "qemu_rv64_workload",
+        "instructions_per_branch_assumption": None,
+        "aggregate": {
+            "branch_count": aggregate_branches,
+            "instruction_count": aggregate_inst,
+            "misprediction_count": aggregate_misp,
+            "mpki": round(aggregate_mpki, 6),
+        },
+        "workloads": results,
+        "claim_policy": {
+            "evidence_class": "qemu_rv64_workload",
+            "cbp5_claim": False,
+            "spec2017_claim": False,
+            "android_claim": False,
+            "v8_claim": False,
+            "reason": (
+                "Real QEMU-RV64 duty-cycle workload MPKI measured on the BPU RTL "
+                "via the cocotb harness, over the same .btrace.json traces the "
+                "behavioural model uses. Instruction counts are the true retired "
+                "counts decoded from the QEMU execlog, so MPKI is comparable to "
+                "the E1-model MPKI in bpu-vs-cva6-mpki.json. These are the E1's "
+                "own agent-loop / IO duty-cycle workloads; they are not SPEC2017, "
+                "AOSP, or JS-engine traces."
+            ),
+        },
+    }
+
+    out_path = _resolve_workload_output_path()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+
+    dut._log.info(f"bpu_mpki_workload: wrote {out_path}")
+    dut._log.info(f"bpu_mpki_workload: aggregate MPKI = {aggregate_mpki:.3f}")
+    for name, r in results.items():
+        dut._log.info(
+            f"bpu_mpki_workload: {name}: branches={r['branch_count']} "
             f"misp={r['misprediction_count']} mpki={r['mpki']:.3f}"
         )

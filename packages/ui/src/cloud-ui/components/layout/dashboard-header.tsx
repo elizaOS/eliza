@@ -39,7 +39,7 @@ function DashboardHeaderComponent({
   );
 
   return (
-    <header className="flex min-h-14 items-center justify-between gap-2 border border-white/14 bg-black px-3 py-2 md:min-h-16 md:gap-4 md:px-6">
+    <header className="flex min-h-14 items-center justify-between gap-2 border-b border-white/14 bg-black px-3 py-2 md:min-h-16 md:gap-4 md:px-6">
       <div className="flex min-w-0 flex-1 items-center gap-3 md:gap-4">
         <BrandButton
           variant="ghost"

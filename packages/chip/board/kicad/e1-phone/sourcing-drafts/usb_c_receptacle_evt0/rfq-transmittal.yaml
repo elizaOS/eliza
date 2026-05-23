@@ -13,6 +13,15 @@ draft:
   source_basis:
     - preliminary USB-C binding and waterproof Molex production alternate
   verified_public_source_ids: []
+  selected_hardware_trace:
+    selection_source: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
+    selected_connector: GCT_USB4105
+    conditional_alternate: Molex_221632_or_217804_Port_On
+    pd_controller: TPS65987DDH
+    charger_power_path: MAX77860
+    usb2_diff_pair_constraint: USB_DP_DN
+    release_allowed_without_supplier_response_packs: false
+    route_release_dependency: J_USB_C_route_release_remain_blocked_until_signed_connector_drawing_step_shell_load_path_and_routed_board_step
   recipient_candidates:
     - supplier: GCT
       candidate: USB4105 USB2 Type-C receptacle family

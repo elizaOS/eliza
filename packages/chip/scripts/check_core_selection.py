@@ -7,11 +7,11 @@ selected with a real pinned upstream SHA for each cluster role
 (big_core_e1_ultra, mid_core_e1_premium, little_core_e1_pro, plus the
 linux_bringup_application_hart bootstrap role).
 
-The big-core slot is gated separately: if no big-core manifest has a real
-pinned SHA the gate writes a BLOCKED record explaining why, without
-failing the build, because Tenstorrent Ascalon-D8 license closure is
-expected to be a long lead. Every other role must have at least one
-manifest with a real pin or the gate fails closed.
+The big-core slot is selected as the open XiangShan Kunminghu V3 scale-up
+(no vendor IP license required). If no big-core manifest has a real
+pinned SHA the gate writes a BLOCKED record explaining the missing
+external integration step, without failing the build. Every other role
+must have at least one manifest with a real pin or the gate fails closed.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_DIR = ROOT / "generators/chipyard"
 EVIDENCE_DIR = ROOT / "docs/evidence/cpu_ap"
 EVIDENCE_PATH = EVIDENCE_DIR / "core-selection.json"
+REPORT = ROOT / "build/reports/core_selection.json"
 
 REQUIRED_FIELDS = (
     "schema",
@@ -164,6 +165,71 @@ def write_evidence(grouped: dict[str, list[tuple[str, dict, bool]]], errors: lis
     EVIDENCE_PATH.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
 
+def build_report(
+    grouped: dict[str, list[tuple[str, dict, bool]]],
+    errors: list[str],
+    *,
+    require_big_core_pin: bool,
+) -> dict[str, object]:
+    big_has_pin = any(has for _, _, has in grouped["big"])
+    findings: list[dict[str, object]] = []
+    for error in errors:
+        findings.append(
+            {
+                "code": "core_selection_manifest_contract_error",
+                "severity": "blocker",
+                "message": "core-selection manifest contract failed",
+                "evidence": error,
+                "next_step": "Fix the selected Chipyard core manifests so every required role has a schema-valid real upstream pin.",
+            }
+        )
+    if not big_has_pin:
+        findings.append(
+            {
+                "code": "core_selection_big_core_pin_blocked",
+                "severity": "blocker",
+                "message": "no big_core_e1_ultra manifest has a real pinned upstream commit",
+                "evidence": "XiangShan Kunminghu scale-up external checkout not yet recorded",
+                "next_step": "Record a real pinned upstream commit for the open Kunminghu big-core scale-up, or select a different open phone-class big-core path.",
+            }
+        )
+    status = "fail" if errors and require_big_core_pin else ("blocked" if findings else "pass")
+    return {
+        "schema": "eliza.cpu_ap_core_selection_report.v1",
+        "status": status,
+        "claim_boundary": "core_selection_inventory_only_not_rv64_linux_or_aosp_boot_evidence",
+        "summary": {
+            "findings": len(findings),
+            "manifest_errors": len(errors),
+            "big_core_has_real_pin": big_has_pin,
+            "require_big_core_pin": require_big_core_pin,
+        },
+        "evidence": {
+            "manifest_dir": str(MANIFEST_DIR.relative_to(ROOT)),
+            "evidence_path": str(EVIDENCE_PATH.relative_to(ROOT)),
+            "target_topology": TARGET_TOPOLOGY,
+            "roles": {
+                role: [
+                    {
+                        "manifest": name,
+                        "core_role": data.get("core_role"),
+                        "status": data.get("status"),
+                        "has_real_pin": has_pin,
+                    }
+                    for name, data, has_pin in items
+                ]
+                for role, items in grouped.items()
+            },
+        },
+        "findings": findings,
+    }
+
+
+def write_report(report: dict[str, object]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -212,10 +278,17 @@ def main() -> int:
     if args.require_big_core_pin and not big_has_pin:
         errors.append(
             "no big_core_e1_ultra manifest has a real pinned commit; "
-            "Tenstorrent Ascalon-D8 license + procurement BLOCKED"
+            "open XiangShan Kunminghu scale-up checkout not yet recorded"
         )
 
     write_evidence(grouped, errors)
+    write_report(
+        build_report(
+            grouped,
+            errors,
+            require_big_core_pin=args.require_big_core_pin,
+        )
+    )
 
     if errors:
         print("Core selection check failed:")
@@ -223,8 +296,8 @@ def main() -> int:
             print(f"  - {err}")
         if not big_has_pin and not args.require_big_core_pin:
             print(
-                "BLOCKED: big_core_e1_ultra has no real pin (Tenstorrent Ascalon "
-                "license pending); other roles passed-or-failed as above."
+                "BLOCKED: big_core_e1_ultra has no real pin (open Kunminghu "
+                "scale-up checkout pending); other roles passed-or-failed as above."
             )
         return 1
 
@@ -232,7 +305,7 @@ def main() -> int:
     if not big_has_pin:
         print(
             "STATUS: BLOCKED cpu.core_selection_big_core - "
-            "Ascalon-D8 license + procurement required for big-core pin"
+            "open Kunminghu scale-up checkout required for big-core pin"
         )
     return 0
 

@@ -49,6 +49,7 @@ const publicPathPrefixes = [
   "/api/v1/models",
   "/api/v1/pricing/summary",
   "/api/v1/agents/by-token",
+  "/api/v1/agent-tokens",
   "/api/v1/credits/topup",
   "/api/v1/topup",
   "/api/v1/x402",
@@ -116,7 +117,10 @@ function isLocalDevAdminRequest(
   // env vars. SOC2 CC6.1 — production privileged access must require a real
   // session + admin role check.
   if (c.env.NODE_ENV === "production") {
-    if (c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" || c.env.LOCAL_DEV === "true") {
+    if (
+      c.env.ELIZA_CLOUD_LOCAL_DEV_ADMIN === "true" ||
+      c.env.LOCAL_DEV === "true"
+    ) {
       logger.error(
         "[Auth] Refusing dev-admin bypass in production — env var ignored",
         {

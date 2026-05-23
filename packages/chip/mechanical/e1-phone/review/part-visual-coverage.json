@@ -2,8 +2,8 @@
   "claim_boundary": "Automated part-to-view coverage map. It proves every generated CAD part is assigned to generated review artifacts and the per-part top-view and exploded-context contact sheets; it does not prove human CMF approval or pixel-level part segmentation.",
   "status": "part_visual_coverage_pass",
   "coverage_mode": "role_and_name_based_review_view_mapping",
-  "expected_part_count": 123,
-  "covered_part_count": 123,
+  "expected_part_count": 142,
+  "covered_part_count": 142,
   "required_review_artifacts": [
     "component-review-audio.png",
     "component-review-io-buttons.png",
@@ -476,6 +476,18 @@
       "pass": true
     },
     {
+      "part": "rear_camera_optical_sight_tunnel",
+      "role": "camera optical clearance",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
       "part": "rear_flash_led",
       "role": "camera",
       "required_views": [
@@ -621,6 +633,118 @@
     },
     {
       "part": "front_camera_black_mask_window",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_window_adhesive_top",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_window_adhesive_bottom",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_window_adhesive_left",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rear_flash_window_adhesive_right",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_under_glass_adhesive_top",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_under_glass_adhesive_bottom",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_under_glass_adhesive_left",
+      "role": "camera seal",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png",
+        "rear_feature_detail.png",
+        "component-review-optical.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "front_camera_under_glass_adhesive_right",
       "role": "camera seal",
       "required_views": [
         "part-review-contact-sheet.png",
@@ -1693,6 +1817,126 @@
         "part-explode-contact-sheet.png",
         "component_stack.png",
         "exploded_iso.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_lga_module_keepout",
+      "role": "cellular module",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_module_keepout",
+      "role": "Wi-Fi/Bluetooth module",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "soc_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "dram_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "storage_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "pmic_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "rf_transceiver_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "gnss_lna_package_marker",
+      "role": "PCB component marker",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "wifi_bt_rf_feed_coax_stub",
+      "role": "RF feed",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
+      ],
+      "missing_or_failed_views": [],
+      "contact_sheet_present": true,
+      "exploded_contact_sheet_present": true,
+      "pass": true
+    },
+    {
+      "part": "cellular_rf_feed_coax_stub",
+      "role": "RF feed",
+      "required_views": [
+        "part-review-contact-sheet.png",
+        "part-explode-contact-sheet.png"
       ],
       "missing_or_failed_views": [],
       "contact_sheet_present": true,

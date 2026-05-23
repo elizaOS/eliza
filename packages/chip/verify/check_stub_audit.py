@@ -7,6 +7,7 @@ when they have an executable test, fail-closed behavior, or a documented blocker
 
 from __future__ import annotations
 
+import json
 import re
 import sys
 from dataclasses import dataclass
@@ -15,15 +16,19 @@ from pathlib import Path
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+REPORT = ROOT / "build/reports/stub_audit.json"
 OWNED_ROOTS = (ROOT / "rtl", ROOT / "sim", ROOT / "verify")
 SKIP_PARTS = {
     "__pycache__",
-    "sim_build_e1_chip_top_test_e1_chip.EkHwvK",
-    "sim_build",
     "model",
     "engine_0",
     "src",
 }
+# Verilator/cocotb generate build trees under sim_build* directories. They are
+# gitignored, contain only generated C++/object output, and surface vendored
+# submodule signal names (e.g. an OpenTitan entropy_src node literally named
+# "Stub") that are not Worker-A-authored placeholders.
+SKIP_DIR_PREFIXES = ("sim_build", "obj_dir")
 SKIP_SUFFIXES = {".pyc", ".sqlite", ".log", ".xml"}
 TERMS = re.compile(
     r"\b(stub|placeholder|TODO|FIXME|not implemented|dummy|mock|scaffold)\b", re.IGNORECASE
@@ -77,29 +82,14 @@ ALLOWLIST = (
         "QEMU README documents the compatibility alias while the preferred path is firmware.",
     ),
     AllowedFinding(
-        "verify/cocotb/test_clint_timer_irq.py",
-        "CLINT timer interrupt entry contract scaffold",
-        "Skipped fail-closed test contract for future CLINT integration.",
-    ),
-    AllowedFinding(
-        "verify/cocotb/test_plic_claim_threshold.py",
-        "PLIC enable/threshold/claim contract scaffold",
-        "Executable PLIC contract test plus documented future threshold extension.",
-    ),
-    AllowedFinding(
         "rtl/cpu/e1_cva6_wrapper.sv",
-        "same external port list as the stub",
-        "CVA6 wrapper documents compatibility with the executable tiny CPU model.",
+        "stub it is quiescent",
+        "RVFI surface is tied quiescent in CVA6-disabled mode (cpu:cpu-real-core-integration).",
     ),
     AllowedFinding(
         "rtl/cpu/e1_cva6_wrapper.sv",
         "Stub: safe idle outputs",
         "Fail-closed CVA6-disabled mode ties CPU master outputs idle.",
-    ),
-    AllowedFinding(
-        "rtl/security/e1_lifecycle.sv",
-        "Placeholder device key",
-        "Lifecycle model uses a fixed non-secret debug-auth key until OTP provisioning exists.",
     ),
     AllowedFinding(
         "rtl/top/e1_soc_top.sv",
@@ -162,19 +152,36 @@ ALLOWLIST = (
         "AXI4 interconnect currently preserves the existing AXI-Lite scaffold boundary.",
     ),
     AllowedFinding(
-        "rtl/iommu/e1_riscv_iommu.sv",
-        "stub",
-        "RISC-V IOMMU model is a bounded verification implementation.",
+        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+        "earlier scaffold",
+        "Header notes the real AXI4 controller replaced the SRAM scaffold; LPDDR5X PHY "
+        "remains a physical dependency (dram:dram-controller-and-capacity).",
     ),
     AllowedFinding(
-        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
-        "stub",
-        "DRAM controller is a DFI-facing scaffold with blocked production memory evidence.",
+        "rtl/peripherals/e1_uart_ns16550.sv",
+        "intentionally not implemented",
+        "NS16550 is the register-level console-sink subset OpenSBI's uart8250 driver needs; "
+        "the wire-level 8N1 serializer lives in e1_uart.sv (bootrom:bootrom-firmware-handoff).",
     ),
     AllowedFinding(
         "rtl/top/e1_soc_integrated.sv",
         "scaffold",
         "Integrated SoC top carries the documented AXI-Lite scaffold boundary.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_pkg.sv",
+        "scaffold",
+        "Shared localparams extracted from both SoC tops' v0 MMIO debug scaffold.",
+    ),
+    AllowedFinding(
+        "rtl/peripherals/e1_clint.sv",
+        "scaffold",
+        "Bring-up CLINT register block extracted from both SoC tops' v0 MMIO debug scaffold.",
+    ),
+    AllowedFinding(
+        "rtl/memory/e1_behavioral_dram.sv",
+        "scaffold",
+        "Behavioural scratch-DRAM model extracted from both SoC tops' v0 MMIO debug scaffold.",
     ),
     AllowedFinding(
         "rtl/top/e1_soc_integrated.sv",
@@ -202,11 +209,6 @@ ALLOWLIST = (
         "CPU cocotb README documents tests that remain blocked on a real core.",
     ),
     AllowedFinding(
-        "verify/cocotb/cpu/README.md",
-        "placeholder",
-        "CPU cocotb README documents tests that remain blocked on a real core.",
-    ),
-    AllowedFinding(
         "verify/cocotb/cpu/test_csr_trap.py",
         "stub",
         "CSR trap test is explicitly fail-closed until a real CPU wrapper is present.",
@@ -225,11 +227,6 @@ ALLOWLIST = (
         "verify/cocotb/integration/test_cross_domain_interfaces.py",
         "scaffold",
         "Cross-domain integration tests name the current AXI-Lite scaffold boundary.",
-    ),
-    AllowedFinding(
-        "verify/cocotb/integration/test_cross_domain_interfaces.py",
-        "stub",
-        "Cross-domain integration tests name the current safe-idle CPU fallback.",
     ),
     AllowedFinding(
         "verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py",
@@ -268,13 +265,15 @@ def iter_files() -> list[Path]:
                 continue
             if any(part in SKIP_PARTS for part in path.parts):
                 continue
+            if any(part.startswith(SKIP_DIR_PREFIXES) for part in path.parts):
+                continue
             if path.suffix in SKIP_SUFFIXES:
                 continue
             paths.append(path)
     return sorted(paths)
 
 
-def check_placeholder_terms() -> list[str]:
+def check_placeholder_terms() -> tuple[list[str], list[str]]:
     errors: list[str] = []
     inventory: list[str] = []
     for path in iter_files():
@@ -296,7 +295,7 @@ def check_placeholder_terms() -> list[str]:
     print("Allowed placeholder/stub inventory:")
     for item in inventory:
         print(f"  - {item}")
-    return errors
+    return errors, inventory
 
 
 def require(condition: bool, message: str, errors: list[str]) -> None:
@@ -438,10 +437,52 @@ def check_gap_work_order() -> list[str]:
     return errors
 
 
+def finding_code(error: str) -> str:
+    if "silent placeholder term" in error:
+        return "silent_placeholder_term"
+    if "Renode" in error or "REPL" in error or "RESC" in error:
+        return "renode_scaffold_contract_gap"
+    if "RTL gap work order" in error or "critical_gaps" in error:
+        return "rtl_gap_work_order_contract_gap"
+    return "stub_audit_contract_gap"
+
+
+def build_report(errors: list[str], inventory: list[str]) -> dict[str, object]:
+    return {
+        "schema": "eliza.stub_audit.v1",
+        "status": "pass" if not errors else "fail",
+        "claim_boundary": "stub_inventory_only_not_rtl_completion_or_os_boot_evidence",
+        "summary": {
+            "errors": len(errors),
+            "allowed_placeholder_inventory": len(inventory),
+        },
+        "findings": [
+            {
+                "code": finding_code(error),
+                "severity": "blocker",
+                "message": "stub audit found an undocumented placeholder/stub/scaffold gap",
+                "evidence": error,
+                "next_step": (
+                    "Either remove the placeholder/stub/scaffold term by completing the implementation, "
+                    "or add a precise allowlist rationale tied to an executable fail-closed test or work order."
+                ),
+            }
+            for error in errors
+        ],
+        "allowed_placeholder_inventory": inventory,
+    }
+
+
+def write_report(report: dict[str, object]) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
-    errors = check_placeholder_terms()
+    errors, inventory = check_placeholder_terms()
     errors.extend(check_renode_scaffold())
     errors.extend(check_gap_work_order())
+    write_report(build_report(errors, inventory))
 
     if errors:
         print("Stub audit failed:")

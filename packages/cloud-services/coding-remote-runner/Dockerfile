@@ -35,10 +35,10 @@ COPY package.json ./
 COPY src ./src
 
 RUN mkdir -p /workspace \
-  && useradd -m remote \
-  && chown -R remote:remote /workspace /app
+  && useradd -m runner \
+  && chown -R runner:runner /workspace /app
 
-USER remote
+USER runner
 
 EXPOSE 3000
 

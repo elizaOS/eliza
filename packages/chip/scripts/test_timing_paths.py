@@ -93,8 +93,7 @@ def test_no_synthesized_values_on_malformed_block() -> None:
     # A block with no slack line must be dropped with a warning, never
     # assigned a fabricated slack.
     bad = (
-        "Startpoint: a (in)\nEndpoint: b (out)\nPath Group: g\nPath Type: max\n"
-        "no slack line here\n"
+        "Startpoint: a (in)\nEndpoint: b (out)\nPath Group: g\nPath Type: max\nno slack line here\n"
     )
     paths, warnings = ntp.parse_report(bad)
     assert paths == []

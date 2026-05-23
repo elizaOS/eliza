@@ -17,7 +17,9 @@ if [ -f "$PAYLOAD_DIR/e1_softmacro.openroad.plc" ] && [ ! -f "$BENCH_DIR/e1_soft
     cp "$PAYLOAD_DIR/e1_softmacro.openroad.plc" "$BENCH_DIR/e1_softmacro.openroad.plc"
 fi
 
-if [ ! -d "$CT_DIR/.git" ]; then
+# The payload bundles the circuit_training source (without .git). Only clone
+# when the source package itself is missing, not merely because .git is absent.
+if [ ! -d "$CT_DIR/circuit_training" ]; then
     git clone https://github.com/google-research/circuit_training.git "$CT_DIR"
     git -C "$CT_DIR" checkout r0.0.4
 fi
@@ -41,10 +43,20 @@ ALPHACHIP_IMAGE="$IMAGE" \
 ALPHACHIP_COMPARE_DIR="$BENCH_DIR/compare" \
     "$PAYLOAD_DIR/scripts/alphachip/compare_proxy_costs.sh" "$BENCH_DIR"
 
+# Pretrained-finetune is opt-in: only pass a policy dir when it actually exists.
+# Default is train-from-scratch (the 20-block TPU checkpoint is unavailable), so
+# an unset/missing policy dir must NOT be forwarded — otherwise the training
+# wrapper fails closed on a nonexistent directory.
+POLICY_DIR_ARG="${ALPHACHIP_POLICY_DIR-}"
+if [ -n "$POLICY_DIR_ARG" ] && [ ! -d "$POLICY_DIR_ARG" ]; then
+    echo "ALPHACHIP_POLICY_DIR=$POLICY_DIR_ARG does not exist; training from scratch." >&2
+    POLICY_DIR_ARG=""
+fi
+
 ALPHACHIP_IMAGE="$IMAGE" \
 ALPHACHIP_BENCH_DIR="$BENCH_DIR" \
 ALPHACHIP_RUN_DIR="$RUN_DIR" \
-ALPHACHIP_POLICY_DIR="${ALPHACHIP_POLICY_DIR:-$PAYLOAD_DIR/tpu_checkpoint_20240815}" \
+ALPHACHIP_POLICY_DIR="$POLICY_DIR_ARG" \
 USE_GPU=True \
 NUM_COLLECT_JOBS="${NUM_COLLECT_JOBS:-8}" \
 SEQUENCE_LENGTH="${SEQUENCE_LENGTH:-257}" \

@@ -1,10 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { MemoryKmsAdapter, AuditDispatcher, InMemorySink, systemKey } from "@elizaos/security";
-import { canonicalRpcBytes, hexEncode } from "@elizaos/plugin-remote-manifest/rpc-mac";
 import type {
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
+import {
+  canonicalRpcBytes,
+  hexEncode,
+} from "@elizaos/plugin-remote-manifest/rpc-mac";
+import {
+  AuditDispatcher,
+  InMemorySink,
+  MemoryKmsAdapter,
+  systemKey,
+} from "@elizaos/security";
 import type { HandlerEntry, HandlerRegistry } from "./descriptor.js";
 import { createWorkerRpcDispatcher } from "./dispatch.js";
 
@@ -80,7 +88,12 @@ describe("dispatcher HMAC enforcement", () => {
     const args = { message: null, state: null };
     const tagBytes = await kms.hmac(
       keyId,
-      canonicalRpcBytes({ requestId: 1, surface: "provider", target: "a", args }),
+      canonicalRpcBytes({
+        requestId: 1,
+        surface: "provider",
+        target: "a",
+        args,
+      }),
     );
     await dispatch({
       type: "worker-rpc",

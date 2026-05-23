@@ -10,11 +10,11 @@
  */
 
 import type { AuditDispatcher } from "@elizaos/security";
-import {
-  type MediaProviderResult,
-  type VisionAnalysisOptions,
-  type VisionAnalysisProvider,
-  type VisionAnalysisResult,
+import type {
+  MediaProviderResult,
+  VisionAnalysisOptions,
+  VisionAnalysisProvider,
+  VisionAnalysisResult,
 } from "../providers/media-provider.ts";
 
 export interface VisionGateConfig {

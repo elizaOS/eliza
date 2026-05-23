@@ -69,6 +69,19 @@ def test_scaffold_removal_fails() -> None:
     print("PASS scaffold removal rejected")
 
 
+def test_structured_findings_cover_tapeout_blockers() -> None:
+    report = check_manufacturing_tapeout_scope.build_report()
+    findings = report.get("findings")
+    if not isinstance(findings, list):
+        raise AssertionError("findings missing")
+    if len(findings) != len(report["blocked_until_real_evidence"]):
+        raise AssertionError(findings)
+    codes = [finding["code"] for finding in findings]
+    if not all(code.startswith("manufacturing_tapeout_missing_real_evidence_") for code in codes):
+        raise AssertionError(codes)
+    print("PASS structured manufacturing/tapeout findings cover real-evidence blockers")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
@@ -76,6 +89,7 @@ def main() -> None:
     test_blocker_removal_fails()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
+    test_structured_findings_cover_tapeout_blockers()
 
 
 if __name__ == "__main__":

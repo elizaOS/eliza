@@ -68,11 +68,15 @@ required_android_marker_evidence:
     producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full
     operator_recipe: docs/android/cuttlefish-agent-smoke-operator-recipe.md
     required_markers:
-      - '"agent_package": "ai.elizaos.app"'
-      - '"agent_service": "ai.elizaos.app/.ElizaAgentService"'
-      - '"agent_health_endpoint": "/api/health"'
-      - '"agent_health_http": "200"'
-      - '"launcher_ok": true'
+      - '"claim_boundary": "booted_android_launcher_agent_runtime_evidence_only"'
+      - '"cpu_abi": "riscv64"'
+      - '"package_name": "ai.elizaos.app"'
+      - '"service_component": "ai.elizaos.app/.ElizaAgentService"'
+      - '"health_url": "http://127.0.0.1:31337/api/health"'
+      - '"health_http": 200'
+      - '"health_ready": true'
+      - '"fatal_crash_count": 0'
+      - '"avc_denial_count": 0'
   - id: cuttlefish_agent_smoke
     evidence: docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
     producer: sw/aosp-device/agent-smoke-riscv64.sh --aosp /path/to/aosp
@@ -119,45 +123,64 @@ required_android_marker_evidence:
       - HAL_REGISTERED=true
       - INTERFACE_AVAILABLE=true
       - vendor.eliza.e1_npu@1.0::IE1Npu/default
+  - id: e1_npu_hal_liveness
+    evidence: docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log
+    producer: sw/aosp-device/capture-e1-npu-hal-liveness.sh
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SYS_BOOT_COMPLETED=1
+      - VENDOR_E1_NPU_READY=1
+      - DEVICE_NODE_PRESENT=true
+      - DEVICE_NODE_LABEL=e1_npu_device
+      - HAL_REGISTERED=true
+      - INTERFACE_AVAILABLE=true
+      - vendor.eliza.e1_npu@1.0::IE1Npu/default
 required_simulated_peripherals:
   - id: rear_camera
     evidence: docs/evidence/android/peripherals/rear_camera_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py rear_camera
     required_markers:
       - COMPONENT=rear_camera
       - FRAME_SOURCE=simulated_sensor
       - CAPTURE_COUNT=2
   - id: front_camera
     evidence: docs/evidence/android/peripherals/front_camera_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py front_camera
     required_markers:
       - COMPONENT=front_camera
       - FRAME_SOURCE=simulated_sensor
       - CAPTURE_COUNT=2
   - id: microphone
     evidence: docs/evidence/android/peripherals/microphone_input_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py microphone
     required_markers:
       - COMPONENT=microphone
       - AUDIO_CAPTURE=pcm_s16le
       - INPUT_RMS_DBFS=
   - id: speakers
     evidence: docs/evidence/android/peripherals/speaker_output_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py speakers
     required_markers:
       - COMPONENT=speakers
       - AUDIO_OUTPUT=stereo_pcm
       - LOOPBACK_VERIFIED=true
   - id: wifi
     evidence: docs/evidence/android/peripherals/wifi_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py wifi
     required_markers:
       - COMPONENT=wifi
       - IP_CONNECTIVITY=pass
       - ANDROID_DUMPSYS_WIFI=pass
   - id: bluetooth
     evidence: docs/evidence/android/peripherals/bluetooth_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py bluetooth
     required_markers:
       - COMPONENT=bluetooth
       - HCI_ATTACH=pass
       - BLE_SCAN=pass
   - id: cellular_5g_lte
     evidence: docs/evidence/android/peripherals/cellular_5g_lte_sim.log
+    producer: scripts/android/capture_simulated_peripheral_evidence.py cellular_5g_lte
     required_markers:
       - COMPONENT=cellular_5g_lte
       - LTE_REGISTRATION=pass

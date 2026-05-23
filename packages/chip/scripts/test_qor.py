@@ -191,9 +191,7 @@ def test_check_regression_wirelength_fail(tmp_path: Path) -> None:
     base["timing__setup__tns"] = -10.0
     cand = dict(base)
     cand["route__wirelength"] = 120.0  # +20% > 5%
-    violations = cqr.evaluate(
-        _baseline_row(base), _cand_row(cand), keys, 5.0
-    )
+    violations = cqr.evaluate(_baseline_row(base), _cand_row(cand), keys, 5.0)
     assert any("route__wirelength" in v for v in violations)
 
 

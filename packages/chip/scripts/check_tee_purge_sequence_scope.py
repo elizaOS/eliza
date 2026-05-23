@@ -11,6 +11,7 @@ here as BLOCKED with the proving command for each.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -83,6 +84,56 @@ def model_failures() -> list[str]:
     return errors
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def structured_findings(
+    blocked_until_real_evidence: list[dict[str, str]],
+    checks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for item in blocked_until_real_evidence:
+        claim = str(item.get("claim", "purge evidence"))
+        findings.append(
+            {
+                "code": (
+                    "tee_purge_missing_real_evidence_"
+                    f"{code_from_text(claim, 'purge_evidence')}"
+                ),
+                "severity": "blocker",
+                "message": (
+                    f"{claim} remains blocked by "
+                    f"{item.get('missing_dependency', 'missing real evidence')}"
+                ),
+                "evidence": item.get("proving_command"),
+                "next_step": (
+                    "Implement the missing purge RTL/formal/FPGA evidence path "
+                    "and capture the named proving command before treating the "
+                    "software purge model as runtime isolation evidence."
+                ),
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        check_id = str(check.get("id", "model_check"))
+        findings.append(
+            {
+                "code": f"tee_purge_model_check_failed_{code_from_text(check_id, 'check')}",
+                "severity": "blocker",
+                "message": f"{check_id} is {check.get('status')}",
+                "evidence": check.get("evidence"),
+                "next_step": (
+                    "Repair the purge sequence software model vectors before "
+                    "using the scope report as an ordering-contract signal."
+                ),
+            }
+        )
+    return findings
+
+
 def build_report() -> dict[str, Any]:
     model_errors = model_failures()
     checks = [
@@ -103,6 +154,7 @@ def build_report() -> dict[str, Any]:
         "purge_steps": list(PURGE_STEPS),
         "blocked_until_real_evidence": BLOCKED_UNTIL_REAL_EVIDENCE,
         "checks": checks,
+        "findings": structured_findings(BLOCKED_UNTIL_REAL_EVIDENCE, checks),
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([c for c in checks if c["status"] == "pass"]),
@@ -132,6 +184,9 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         for check in checks:
             if isinstance(check, dict) and check.get("status") != "pass":
                 errors.append(f"{check.get('id')}: model vectors must pass")
+    findings = report.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured purge-sequence blockers")
     return errors
 
 

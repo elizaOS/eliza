@@ -39,7 +39,12 @@ def _req(**overrides: object) -> dict[str, object]:
         "source_doc_sha": _real_sha("docs/spec-db/cpu-2028-target.yaml"),
         "status": "target_spec",
         "claim_boundary": "test_boundary",
-        "links": {"rtl": ["rtl/npu/e1_npu.sv"], "tests": [], "pd_evidence": [], "mfg_artifacts": []},
+        "links": {
+            "rtl": ["rtl/npu/e1_npu.sv"],
+            "tests": [],
+            "pd_evidence": [],
+            "mfg_artifacts": [],
+        },
         "gates": [],
         "work_order_id": None,
         "waiver": None,

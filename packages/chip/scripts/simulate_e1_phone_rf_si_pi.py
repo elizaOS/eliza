@@ -40,6 +40,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -91,7 +92,9 @@ def chu_fractional_bandwidth(ka: float, vswr: float = 2.0) -> float:
     return (vswr - 1.0) / (q * np.sqrt(vswr))
 
 
-def bode_fano_max_efficiency(ka: float, frac_bw_required: float, vswr: float = 2.0) -> float:
+def bode_fano_max_efficiency(
+    ka: float, frac_bw_required: float, vswr: float = 2.0
+) -> tuple[float, float]:
     """Bode-Fano single-resonance bound on the best |Gamma| achievable when
     forcing the required fractional bandwidth onto a load of the given radiation Q.
 
@@ -111,13 +114,13 @@ def bode_fano_max_efficiency(ka: float, frac_bw_required: float, vswr: float = 2
 # (literature, excludes mismatch). Lower in low-band where the element is a small
 # fraction of a wavelength and ground-plane losses dominate.
 TYPICAL_RAD_EFF = {
-    "low_band": 0.55,    # 700-960 MHz, electrically small edge element
-    "mid_high": 0.78,    # 1.7-2.7 GHz
-    "n78": 0.80,         # 3.3-3.8 GHz
-    "gnss_l1": 0.55,     # 1.559-1.61 GHz passive patch/FPC
-    "wifi_2g4": 0.62,    # 2.4 GHz side PIFA
-    "wifi_5g": 0.72,     # 5 GHz
-    "wifi_6g": 0.70,     # 6 GHz
+    "low_band": 0.55,  # 700-960 MHz, electrically small edge element
+    "mid_high": 0.78,  # 1.7-2.7 GHz
+    "n78": 0.80,  # 3.3-3.8 GHz
+    "gnss_l1": 0.55,  # 1.559-1.61 GHz passive patch/FPC
+    "wifi_2g4": 0.62,  # 2.4 GHz side PIFA
+    "wifi_5g": 0.72,  # 5 GHz
+    "wifi_6g": 0.70,  # 6 GHz
 }
 
 # Carrier / spec minimum total-efficiency floors (typical operator OTA intake
@@ -133,7 +136,7 @@ PASS_FLOOR_DB = -4.0  # ~40 % total efficiency
 # carrier; the modem programs the tuner state per channel over RFFE. So the
 # binding requirement is the INSTANTANEOUS single-carrier FBW (a few %), which
 # the Chu cap clears, not the whole-band 31.7% FBW.
-LOW_BAND_TUNER = {
+LOW_BAND_TUNER: dict[str, Any] = {
     "mpn_primary": "Qorvo QPC1252Q",
     "mpn_alternate": "pSemi PE613050",
     "control": "MIPI RFFE v2.1",
@@ -145,8 +148,18 @@ LOW_BAND_TUNER = {
     # so the grid is denser there. A 12-state tuner (e.g. cascaded QPC1252Q banks,
     # or a wider-state-count Qorvo/pSemi RFFE tuner) provides the needed centers.
     "center_states_GHz": [
-        0.640, 0.665, 0.690, 0.715, 0.745, 0.780, 0.820, 0.860,
-        0.895, 0.925, 0.945, 0.962,
+        0.640,
+        0.665,
+        0.690,
+        0.715,
+        0.745,
+        0.780,
+        0.820,
+        0.860,
+        0.895,
+        0.925,
+        0.945,
+        0.962,
     ],
     # Worst-case instantaneous single carrier the tuner state must match (20 MHz
     # LTE/NR low-band channel). This is the FBW the Chu cap must clear per state.
@@ -242,16 +255,20 @@ def analyze_antenna() -> dict:
                 seg_pass = seg_feasible and seg_total_db >= PASS_FLOOR_DB
                 all_seg_ok = all_seg_ok and seg_pass
                 worst_seg_eff_db = min(worst_seg_eff_db, seg_total_db)
-                seg_rows.append({
-                    "tuner_center_GHz": round(c_ghz, 4),
-                    "instantaneous_carrier_bw_mhz": LOW_BAND_TUNER["instantaneous_carrier_bw_mhz"],
-                    "seg_required_FBW_pct": round(float(seg_fbw_req) * 100.0, 2),
-                    "seg_max_FBW_at_vswr2_pct": round(float(seg_fbw_cap) * 100.0, 2),
-                    "state_match_window_mhz": round(float(state_match_mhz), 1),
-                    "seg_bandwidth_feasible": bool(seg_feasible),
-                    "seg_total_efficiency_db": round(float(seg_total_db), 2),
-                    "seg_meets_vswr2_and_floor": bool(seg_pass),
-                })
+                seg_rows.append(
+                    {
+                        "tuner_center_GHz": round(c_ghz, 4),
+                        "instantaneous_carrier_bw_mhz": LOW_BAND_TUNER[
+                            "instantaneous_carrier_bw_mhz"
+                        ],
+                        "seg_required_FBW_pct": round(float(seg_fbw_req) * 100.0, 2),
+                        "seg_max_FBW_at_vswr2_pct": round(float(seg_fbw_cap) * 100.0, 2),
+                        "state_match_window_mhz": round(float(state_match_mhz), 1),
+                        "seg_bandwidth_feasible": bool(seg_feasible),
+                        "seg_total_efficiency_db": round(float(seg_total_db), 2),
+                        "seg_meets_vswr2_and_floor": bool(seg_pass),
+                    }
+                )
             # No-gap coverage: each adjacent center-to-center step must be <= the
             # narrower of the two states' match windows (windows grow with freq, so
             # the binding constraint is the lower state of each pair). Adjacent
@@ -265,9 +282,11 @@ def analyze_antenna() -> dict:
                 worst_gap_margin_mhz = min(worst_gap_margin_mhz, pair_window - step_mhz)
                 if step_mhz > pair_window:
                     coverage_no_gap = False
-            max_step_mhz = max(
-                (centers[i + 1] - centers[i]) * 1000.0 for i in range(len(centers) - 1)
-            ) if len(centers) > 1 else 0.0
+            max_step_mhz = (
+                max((centers[i + 1] - centers[i]) * 1000.0 for i in range(len(centers) - 1))
+                if len(centers) > 1
+                else 0.0
+            )
             all_seg_ok = all_seg_ok and coverage_no_gap
             tuner_block = {
                 "part": LOW_BAND_TUNER["mpn_primary"],
@@ -293,14 +312,14 @@ def analyze_antenna() -> dict:
                     f"Low-band covered by an {LOW_BAND_TUNER['states']}-state aperture "
                     f"band-switch tuner ({LOW_BAND_TUNER['mpn_primary']}, "
                     f"{LOW_BAND_TUNER['control']}). The full 31.7% span exceeds the "
-                    f"{round(float(fbw_cap)*100,1)}% Chu instantaneous BW, but the radio "
+                    f"{round(float(fbw_cap) * 100, 1)}% Chu instantaneous BW, but the radio "
                     f"matches only one {LOW_BAND_TUNER['instantaneous_carrier_bw_mhz']:.0f} MHz "
                     "carrier at a time; the modem programs the tuner state to center the "
                     "Chu match window on the active channel. Every state's instantaneous "
-                    f"carrier FBW fits the Chu cap, the {round(max_step_mhz,0):.0f} MHz state grid "
-                    f"step is within the {round(float(worst_state_match_mhz),0):.0f} MHz match "
+                    f"carrier FBW fits the Chu cap, the {round(max_step_mhz, 0):.0f} MHz state grid "
+                    f"step is within the {round(float(worst_state_match_mhz), 0):.0f} MHz match "
                     "window (no coverage gap), and worst-state total efficiency is "
-                    f"{round(float(worst_seg_eff_db),2)} dB after tuner insertion loss."
+                    f"{round(float(worst_seg_eff_db), 2)} dB after tuner insertion loss."
                 )
 
         band_entry = {
@@ -364,10 +383,10 @@ def analyze_antenna() -> dict:
 # 8-layer 0.8 mm HDI stackup. Outer microstrip dielectric ~ prepreg er 3.8.
 # Geometry assumptions (typical for this class; final values need a board-house
 # impedance coupon).
-ER_PREPREG = 3.8         # FR-4-class prepreg, ~1-2 GHz
-TAN_D = 0.018            # loss tangent FR-4 class
-CU_T_UM = 18.0           # 1/2 oz finished outer copper (plated)
-ROUGHNESS_RMS_UM = 0.4   # VLP/RTF foil
+ER_PREPREG = 3.8  # FR-4-class prepreg, ~1-2 GHz
+TAN_D = 0.018  # loss tangent FR-4 class
+CU_T_UM = 18.0  # 1/2 oz finished outer copper (plated)
+ROUGHNESS_RMS_UM = 0.4  # VLP/RTF foil
 
 
 def microstrip_z0(w_um: float, h_um: float, er: float, t_um: float) -> tuple[float, float]:
@@ -377,14 +396,19 @@ def microstrip_z0(w_um: float, h_um: float, er: float, t_um: float) -> tuple[flo
     t = t_um * 1e-6
     # Thickness correction (Wheeler/Hammerstad)
     if t > 0:
-        dw = (t / np.pi) * np.log(1.0 + 4.0 * np.e / (t / h) / ((1.0 / np.tanh(np.sqrt(6.517 * (w / h)))) ** 2))
+        dw = (t / np.pi) * np.log(
+            1.0 + 4.0 * np.e / (t / h) / ((1.0 / np.tanh(np.sqrt(6.517 * (w / h)))) ** 2)
+        )
         w_eff = w + dw
     else:
         w_eff = w
     u = w_eff / h
     # Effective permittivity (Hammerstad-Jensen)
-    a = 1.0 + (1.0 / 49.0) * np.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432)) \
+    a = (
+        1.0
+        + (1.0 / 49.0) * np.log((u**4 + (u / 52.0) ** 2) / (u**4 + 0.432))
         + (1.0 / 18.7) * np.log(1.0 + (u / 18.1) ** 3)
+    )
     b = 0.564 * ((er - 0.9) / (er + 3.0)) ** 0.053
     eeff = (er + 1.0) / 2.0 + (er - 1.0) / 2.0 * (1.0 + 10.0 / u) ** (-a * b)
     # Characteristic impedance (Hammerstad-Jensen)
@@ -444,16 +468,25 @@ def analyze_signal_integrity() -> dict:
         # D-PHY HS channel budget: <= ~ 2 dB IL at the fundamental over short flex.
         il_budget = 2.0
         verdict = "PASS" if (z_err <= tol_pct and il_db <= il_budget) else "FAIL"
-        lines.append({
-            "net": name, "type": "mipi_dphy_diff", "spec": "MIPI D-PHY 80-125 ohm, 100 nominal",
-            "rate_gbps_per_lane": rate_gbps, "length_mm": length_mm,
-            "geometry_um": {"w": w_um, "s": s_um, "h": h_um, "t": CU_T_UM},
-            "z_diff_ohm": round(z_diff, 1), "target_ohm": target_z, "tol_pct": tol_pct,
-            "z_error_pct": round(z_err, 2), "eeff": round(eeff, 3),
-            "f_eval_MHz": round(f_hz / 1e6, 1),
-            "loss_db": round(il_db, 3), "loss_budget_db": il_budget,
-            "verdict": verdict,
-        })
+        lines.append(
+            {
+                "net": name,
+                "type": "mipi_dphy_diff",
+                "spec": "MIPI D-PHY 80-125 ohm, 100 nominal",
+                "rate_gbps_per_lane": rate_gbps,
+                "length_mm": length_mm,
+                "geometry_um": {"w": w_um, "s": s_um, "h": h_um, "t": CU_T_UM},
+                "z_diff_ohm": round(z_diff, 1),
+                "target_ohm": target_z,
+                "tol_pct": tol_pct,
+                "z_error_pct": round(z_err, 2),
+                "eeff": round(eeff, 3),
+                "f_eval_MHz": round(f_hz / 1e6, 1),
+                "loss_db": round(il_db, 3),
+                "loss_budget_db": il_budget,
+                "verdict": verdict,
+            }
+        )
 
     # ---- USB 2.0 HS, 90 ohm diff to USB-C ----
     # Tight-coupled 0.127 mm trace / 0.120 mm space over 0.075 mm prepreg lands
@@ -469,15 +502,25 @@ def analyze_signal_integrity() -> dict:
     z_err = abs(z_diff - 90.0) / 90.0 * 100.0
     il_budget = 1.5
     verdict = "PASS" if (z_err <= 15.0 and il_db <= il_budget) else "FAIL"
-    lines.append({
-        "net": "USB2_HS_to_typeC", "type": "usb2_diff", "spec": "USB 2.0 90 ohm +/-15 %, 480 Mbps",
-        "rate_gbps_per_lane": 0.48, "length_mm": length_mm,
-        "geometry_um": {"w": usb_w, "s": usb_s, "h": usb_h, "t": CU_T_UM},
-        "z_diff_ohm": round(z_diff, 1), "target_ohm": 90.0, "tol_pct": 15.0,
-        "z_error_pct": round(z_err, 2), "eeff": round(eeff, 3),
-        "f_eval_MHz": round(f_hz / 1e6, 1),
-        "loss_db": round(il_db, 3), "loss_budget_db": il_budget, "verdict": verdict,
-    })
+    lines.append(
+        {
+            "net": "USB2_HS_to_typeC",
+            "type": "usb2_diff",
+            "spec": "USB 2.0 90 ohm +/-15 %, 480 Mbps",
+            "rate_gbps_per_lane": 0.48,
+            "length_mm": length_mm,
+            "geometry_um": {"w": usb_w, "s": usb_s, "h": usb_h, "t": CU_T_UM},
+            "z_diff_ohm": round(z_diff, 1),
+            "target_ohm": 90.0,
+            "tol_pct": 15.0,
+            "z_error_pct": round(z_err, 2),
+            "eeff": round(eeff, 3),
+            "f_eval_MHz": round(f_hz / 1e6, 1),
+            "loss_db": round(il_db, 3),
+            "loss_budget_db": il_budget,
+            "verdict": verdict,
+        }
+    )
 
     # ---- Cellular RF feed 50 ohm microstrip to antenna ----
     # 0.30 mm trace over 0.15 mm prepreg gives ~50 ohm on this stackup.
@@ -495,20 +538,30 @@ def analyze_signal_integrity() -> dict:
         z_err = abs(z0_se - 50.0) / 50.0 * 100.0
         il_budget = 0.5  # feed-line loss directly subtracts from TRP/TIS
         verdict = "PASS" if (z_err <= 10.0 and il_db <= il_budget) else "FAIL"
-        rf.append({
-            "net": name, "type": "rf_single", "spec": "50 ohm +/-10 %",
-            "f_GHz": f_ghz, "length_mm": length_mm,
-            "geometry_um": {"w": 300.0, "h": 150.0, "t": CU_T_UM},
-            "z0_ohm": round(z0_se, 1), "target_ohm": 50.0, "tol_pct": 10.0,
-            "z_error_pct": round(z_err, 2), "eeff": round(eeff, 3),
-            "loss_db": round(il_db, 3), "loss_budget_db": il_budget, "verdict": verdict,
-        })
+        rf.append(
+            {
+                "net": name,
+                "type": "rf_single",
+                "spec": "50 ohm +/-10 %",
+                "f_GHz": f_ghz,
+                "length_mm": length_mm,
+                "geometry_um": {"w": 300.0, "h": 150.0, "t": CU_T_UM},
+                "z0_ohm": round(z0_se, 1),
+                "target_ohm": 50.0,
+                "tol_pct": 10.0,
+                "z_error_pct": round(z_err, 2),
+                "eeff": round(eeff, 3),
+                "loss_db": round(il_db, 3),
+                "loss_budget_db": il_budget,
+                "verdict": verdict,
+            }
+        )
     lines.extend(rf)
 
     n_fail = sum(1 for ln in lines if ln["verdict"] == "FAIL")
     return {
         "method": "Hammerstad-Jensen Z0 + edge-coupled diff coupling (Wadell/IPC-2141), "
-                  "skin-effect (with Hammerstad-Bracken roughness) + dielectric loss",
+        "skin-effect (with Hammerstad-Bracken roughness) + dielectric loss",
         "stackup": "8-layer 0.8 mm HDI, outer microstrip, prepreg er=3.8, tan_d=0.018, 18 um Cu",
         "lines": lines,
         "fail_count": n_fail,
@@ -548,8 +601,20 @@ def analyze_power_integrity() -> dict:
         ("RF_VBAT_modem", 3.85, 2.0, 6.0, 2.5, 35.0, 70.0, False, 47.0, 8.0, 1000.0, 8.0),
         ("VBAT_main", 3.85, 4.5, 6.0, 6.0, 25.0, 70.0, True, 220.0, 4.0, 1000.0, 6.0),
     ]
-    for (name, v, i_pk, ripple_tol, w_mm, l_mm, t_um, is_plane,
-         decap_uf, esr_mohm, fsw_khz, droop_tol) in rail_defs:
+    for (
+        name,
+        v,
+        i_pk,
+        ripple_tol,
+        w_mm,
+        l_mm,
+        t_um,
+        is_plane,
+        decap_uf,
+        esr_mohm,
+        fsw_khz,
+        droop_tol,
+    ) in rail_defs:
         rsheet = copper_sheet_resistance(t_um)
         squares = l_mm / w_mm
         r_path = rsheet * squares
@@ -573,24 +638,34 @@ def analyze_power_integrity() -> dict:
         z_ok = z_cap <= z_target
         droop_ok = droop_pct <= droop_tol
         verdict = "PASS" if (ir_ok and droop_ok) else "FAIL"
-        rails.append({
-            "rail": name, "voltage_v": v, "peak_current_a": i_pk,
-            "path_mm": {"w": w_mm, "l": l_mm, "cu_um": t_um}, "is_plane": is_plane,
-            "path_resistance_mohm": round(r_path * 1e3, 3),
-            "ir_drop_mv": round(v_ir * 1e3, 2), "ir_drop_pct": round(ir_pct, 3),
-            "ir_drop_pass_lt_3pct": bool(ir_ok),
-            "decap_uF": decap_uf, "decap_esr_mohm": esr_mohm,
-            "z_target_mohm": round(z_target * 1e3, 2), "z_cap_mohm": round(z_cap * 1e3, 2),
-            "z_target_met": bool(z_ok),
-            "droop_mv": round(v_droop * 1e3, 2), "droop_pct": round(droop_pct, 3),
-            "droop_tol_pct": droop_tol, "droop_pass": bool(droop_ok),
-            "verdict": verdict,
-        })
+        rails.append(
+            {
+                "rail": name,
+                "voltage_v": v,
+                "peak_current_a": i_pk,
+                "path_mm": {"w": w_mm, "l": l_mm, "cu_um": t_um},
+                "is_plane": is_plane,
+                "path_resistance_mohm": round(r_path * 1e3, 3),
+                "ir_drop_mv": round(v_ir * 1e3, 2),
+                "ir_drop_pct": round(ir_pct, 3),
+                "ir_drop_pass_lt_3pct": bool(ir_ok),
+                "decap_uF": decap_uf,
+                "decap_esr_mohm": esr_mohm,
+                "z_target_mohm": round(z_target * 1e3, 2),
+                "z_cap_mohm": round(z_cap * 1e3, 2),
+                "z_target_met": bool(z_ok),
+                "droop_mv": round(v_droop * 1e3, 2),
+                "droop_pct": round(droop_pct, 3),
+                "droop_tol_pct": droop_tol,
+                "droop_pass": bool(droop_ok),
+                "verdict": verdict,
+            }
+        )
 
     n_fail = sum(1 for r in rails if r["verdict"] == "FAIL")
     return {
         "method": "PCB copper sheet-resistance IR drop + decoupling target impedance "
-                  "(Z=dV/dI) + first-order load-step droop (I*t_resp/C + I*ESR)",
+        "(Z=dV/dI) + first-order load-step droop (I*t_resp/C + I*ESR)",
         "rails": rails,
         "fail_count": n_fail,
         "verdict": "PASS" if n_fail == 0 else "FAIL_WITH_FLAGS",
@@ -616,76 +691,108 @@ def write_md(result: dict, path: Path) -> None:
     L.append(f"- evidence_class: `{result['evidence_class']}`")
     L.append(f"- generated: deterministic, reproducible (`{Path(__file__).name}`)")
     L.append(f"- device: {result['device']['envelope_mm']} mm, PC+ABS er~3.0 enclosure\n")
-    L.append("This is an **analytical / closed-form pre-scan**, not a chamber, VNA, or "
-             "scope measurement. Each result is bounded by a cited physical limit and "
-             "checked against a target spec. A real anechoic chamber (antenna), VNA "
-             "(impedance/loss), and oscilloscope/PDN-VNA (eye/droop) measurement remain "
-             "the binding release evidence.\n")
+    L.append(
+        "This is an **analytical / closed-form pre-scan**, not a chamber, VNA, or "
+        "scope measurement. Each result is bounded by a cited physical limit and "
+        "checked against a target spec. A real anechoic chamber (antenna), VNA "
+        "(impedance/loss), and oscilloscope/PDN-VNA (eye/droop) measurement remain "
+        "the binding release evidence.\n"
+    )
 
     L.append("## A) Antenna -- Chu/McLean + Bode-Fano + literature efficiency\n")
     L.append("Formulas:")
     L.append("- Chu sphere radius `a` = (1/2)*diagonal of keepout box; `ka = 2*pi*f*a/c`.")
     L.append("- McLean min radiation Q: `Q_min = 1/(ka)^3 + 1/(ka)`.")
     L.append("- Max FBW at VSWR s: `FBW = (s-1)/(Q*sqrt(s))` (s=2).")
-    L.append("- Bode-Fano single-resonance mismatch cap: `ln(1/|Gamma|) <= pi/(Q*FBW)`, "
-             "`eta_match = 1-|Gamma|^2`.")
-    L.append("- Total efficiency = radiation_eff (cited typical) x eta_match. Floor: -4 dB (~40 %).\n")
-    L.append("| Band | f (GHz) | keepout (mm) | ka | Qmin | maxFBW% | reqFBW% | rad eff | total eff (dB) | Verdict |")
+    L.append(
+        "- Bode-Fano single-resonance mismatch cap: `ln(1/|Gamma|) <= pi/(Q*FBW)`, "
+        "`eta_match = 1-|Gamma|^2`."
+    )
+    L.append(
+        "- Total efficiency = radiation_eff (cited typical) x eta_match. Floor: -4 dB (~40 %).\n"
+    )
+    L.append(
+        "| Band | f (GHz) | keepout (mm) | ka | Qmin | maxFBW% | reqFBW% | rad eff | total eff (dB) | Verdict |"
+    )
     L.append("|---|---|---|---|---|---|---|---|---|---|")
     for b in a["bands"]:
-        L.append(f"| {b['band']} | {b['freq_GHz'][0]}-{b['freq_GHz'][1]} | "
-                 f"{'x'.join(str(x) for x in b['keepout_mm'])} | {b['ka']} | {b['mclean_Q_min']} | "
-                 f"{b['max_FBW_at_vswr2_pct']} | {b['required_FBW_pct']} | {b['typical_radiation_eff']} | "
-                 f"{b['total_efficiency_db']} | {b['verdict']} |")
+        L.append(
+            f"| {b['band']} | {b['freq_GHz'][0]}-{b['freq_GHz'][1]} | "
+            f"{'x'.join(str(x) for x in b['keepout_mm'])} | {b['ka']} | {b['mclean_Q_min']} | "
+            f"{b['max_FBW_at_vswr2_pct']} | {b['required_FBW_pct']} | {b['typical_radiation_eff']} | "
+            f"{b['total_efficiency_db']} | {b['verdict']} |"
+        )
     L.append("")
     for b in a["bands"]:
         if b["note"]:
             L.append(f"- **{b['band']} {b['verdict']}**: {b['note']}")
         tuner = b.get("aperture_tuner")
         if tuner:
-            L.append(f"\n  Aperture band-switch tuner `{tuner['part']}` "
-                     f"(alt `{tuner['alternate']}`, {tuner['control']}, "
-                     f"{tuner['states']} states, {tuner['tuner_insertion_loss_db']} dB IL, "
-                     f"matching one {tuner['instantaneous_carrier_bw_mhz']:.0f} MHz carrier per state):")
-            L.append("\n  | Tuner center (GHz) | reqFBW% (carrier) | maxFBW% (Chu) | match window (MHz) | feasible | state eff (dB) | VSWR2+floor |")
+            L.append(
+                f"\n  Aperture band-switch tuner `{tuner['part']}` "
+                f"(alt `{tuner['alternate']}`, {tuner['control']}, "
+                f"{tuner['states']} states, {tuner['tuner_insertion_loss_db']} dB IL, "
+                f"matching one {tuner['instantaneous_carrier_bw_mhz']:.0f} MHz carrier per state):"
+            )
+            L.append(
+                "\n  | Tuner center (GHz) | reqFBW% (carrier) | maxFBW% (Chu) | match window (MHz) | feasible | state eff (dB) | VSWR2+floor |"
+            )
             L.append("  |---|---|---|---|---|---|---|")
             for s in tuner["tuner_states"]:
-                L.append(f"  | {s['tuner_center_GHz']} | {s['seg_required_FBW_pct']} | "
-                         f"{s['seg_max_FBW_at_vswr2_pct']} | {s['state_match_window_mhz']} | "
-                         f"{'yes' if s['seg_bandwidth_feasible'] else 'NO'} | "
-                         f"{s['seg_total_efficiency_db']} | "
-                         f"{'PASS' if s['seg_meets_vswr2_and_floor'] else 'FAIL'} |")
-            L.append(f"\n  No-gap coverage: max state step {tuner['max_center_step_mhz']} MHz "
-                     f"<= narrowest match window {tuner['narrowest_state_match_window_mhz']} MHz "
-                     f"-> **{tuner['coverage_no_gap']}**. All states meet VSWR 2:1 + floor: "
-                     f"**{tuner['all_states_meet_vswr2_and_floor']}**; worst-state "
-                     f"total efficiency {tuner['worst_state_total_eff_db']} dB.")
+                L.append(
+                    f"  | {s['tuner_center_GHz']} | {s['seg_required_FBW_pct']} | "
+                    f"{s['seg_max_FBW_at_vswr2_pct']} | {s['state_match_window_mhz']} | "
+                    f"{'yes' if s['seg_bandwidth_feasible'] else 'NO'} | "
+                    f"{s['seg_total_efficiency_db']} | "
+                    f"{'PASS' if s['seg_meets_vswr2_and_floor'] else 'FAIL'} |"
+                )
+            L.append(
+                f"\n  No-gap coverage: max state step {tuner['max_center_step_mhz']} MHz "
+                f"<= narrowest match window {tuner['narrowest_state_match_window_mhz']} MHz "
+                f"-> **{tuner['coverage_no_gap']}**. All states meet VSWR 2:1 + floor: "
+                f"**{tuner['all_states_meet_vswr2_and_floor']}**; worst-state "
+                f"total efficiency {tuner['worst_state_total_eff_db']} dB."
+            )
     L.append(f"\nAntenna verdict: **{a['verdict']}** ({a['fail_count']} FAIL).")
     L.append("Chamber confirms: total-efficiency / realized-gain / TRP / TIS sweep per band.\n")
 
     L.append("## B) Signal integrity -- closed-form transmission line\n")
-    L.append("Formulas: Hammerstad-Jensen microstrip Z0 + eeff; edge-coupled diff "
-             "`Zdiff = 2*Z0*(1-0.48*exp(-0.96*s/h))`; "
-             "`alpha_c = Rs*Kr/(w*2*Z0)`, `alpha_d = pi*sqrt(eeff)/lambda0 * tan_d`.\n")
-    L.append("| Net | Spec | len (mm) | Zdiff/Z0 (ohm) | target | err% | loss (dB) | budget | Verdict |")
+    L.append(
+        "Formulas: Hammerstad-Jensen microstrip Z0 + eeff; edge-coupled diff "
+        "`Zdiff = 2*Z0*(1-0.48*exp(-0.96*s/h))`; "
+        "`alpha_c = Rs*Kr/(w*2*Z0)`, `alpha_d = pi*sqrt(eeff)/lambda0 * tan_d`.\n"
+    )
+    L.append(
+        "| Net | Spec | len (mm) | Zdiff/Z0 (ohm) | target | err% | loss (dB) | budget | Verdict |"
+    )
     L.append("|---|---|---|---|---|---|---|---|---|")
     for ln in si["lines"]:
         z = ln.get("z_diff_ohm", ln.get("z0_ohm"))
-        L.append(f"| {ln['net']} | {ln['spec']} | {ln['length_mm']} | {z} | {ln['target_ohm']} | "
-                 f"{ln['z_error_pct']} | {ln['loss_db']} | {ln['loss_budget_db']} | {ln['verdict']} |")
+        L.append(
+            f"| {ln['net']} | {ln['spec']} | {ln['length_mm']} | {z} | {ln['target_ohm']} | "
+            f"{ln['z_error_pct']} | {ln['loss_db']} | {ln['loss_budget_db']} | {ln['verdict']} |"
+        )
     L.append(f"\nSI verdict: **{si['verdict']}** ({si['fail_count']} FAIL).")
-    L.append("VNA/scope confirms: TDR impedance profile, S21 insertion loss, D-PHY/USB2 eye mask.\n")
+    L.append(
+        "VNA/scope confirms: TDR impedance profile, S21 insertion loss, D-PHY/USB2 eye mask.\n"
+    )
 
     L.append("## C) Power integrity -- IR drop, decoupling, droop\n")
-    L.append("Formulas: `Rsheet = 1/(sigma*t)`, `R = Rsheet*(L/W)` (plane x0.4); "
-             "`Vir = I*R`; target `Z = dV/I`; droop `dV = I*t_resp/C + I*ESR`.\n")
+    L.append(
+        "Formulas: `Rsheet = 1/(sigma*t)`, `R = Rsheet*(L/W)` (plane x0.4); "
+        "`Vir = I*R`; target `Z = dV/I`; droop `dV = I*t_resp/C + I*ESR`.\n"
+    )
     L.append("| Rail | V | Ipk (A) | Rpath (mohm) | IR drop (mV / %) | droop (mV / %) | Verdict |")
     L.append("|---|---|---|---|---|---|---|")
     for r in pi["rails"]:
-        L.append(f"| {r['rail']} | {r['voltage_v']} | {r['peak_current_a']} | "
-                 f"{r['path_resistance_mohm']} | {r['ir_drop_mv']} / {r['ir_drop_pct']}% | "
-                 f"{r['droop_mv']} / {r['droop_pct']}% | {r['verdict']} |")
-    L.append(f"\nPI verdict: **{pi['verdict']}** ({pi['fail_count']} FAIL). Target: IR drop <3 %/rail.")
+        L.append(
+            f"| {r['rail']} | {r['voltage_v']} | {r['peak_current_a']} | "
+            f"{r['path_resistance_mohm']} | {r['ir_drop_mv']} / {r['ir_drop_pct']}% | "
+            f"{r['droop_mv']} / {r['droop_pct']}% | {r['verdict']} |"
+        )
+    L.append(
+        f"\nPI verdict: **{pi['verdict']}** ({pi['fail_count']} FAIL). Target: IR drop <3 %/rail."
+    )
     L.append("PDN-VNA / scope confirms: measured PDN impedance vs frequency and load-step droop.\n")
 
     L.append("## Overall\n")

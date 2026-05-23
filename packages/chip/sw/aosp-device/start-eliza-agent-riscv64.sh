@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # start-eliza-agent-riscv64.sh
 #
-# Start the on-device Eliza agent foreground service on a live CVD and
+# Start the on-device Eliza app on a live CVD and verify its local agent is
 # verify it is reachable from the host. Pairs with
 # install-eliza-apk-riscv64.sh and agent-smoke-riscv64.sh.
 #
 # Steps:
-#   1. am start-foreground-service ai.elizaos.app/.ElizaAgentService
+#   1. launch the exported app activity; MainActivity starts the private
+#      ElizaAgentService from the app UID on branded AOSP
 #   2. poll pidof <package> for up to --service-wait seconds; bail if empty
 #   3. adb forward tcp:31337 tcp:31337 (override via --host-port/--device-port)
 #   4. curl http://127.0.0.1:31337/api/health; assert HTTP 200
@@ -21,15 +22,15 @@ usage() {
 	cat >&2 <<'USAGE'
 usage: start-eliza-agent-riscv64.sh [options]
 
-Start the Eliza foreground service on a CVD and verify /api/health returns
+Start the Eliza app on a CVD and verify /api/health returns
 HTTP 200.
 
 options:
   --serial=SERIAL          adb serial (default: AOSP_ADB_SERIAL or unset)
   --package=NAME           package whose pid is polled
                            (default: ai.elizaos.app)
-  --service=COMPONENT      component for am start-foreground-service
-                           (default: ai.elizaos.app/.ElizaAgentService)
+  --service=COMPONENT      expected private service component, recorded for
+                           evidence only (default: ai.elizaos.app/.ElizaAgentService)
   --host-port=N            host TCP port for adb forward (default: 31337)
   --device-port=N          device TCP port (default: 31337)
   --service-wait=SECONDS   max wait for pidof <package> (default: 60)
@@ -92,9 +93,9 @@ if [ "$abi" != "riscv64" ]; then
 	fail "device ABI is '$abi', expected riscv64"
 fi
 
-# Start the foreground service. Old API levels need start-foreground-service;
-# devicemanager will route to the right intent.
-adb_cmd shell am start-foreground-service -n "$service" >/dev/null
+# Launch the exported app surface. The agent service is private by design;
+# MainActivity starts it from the app UID on branded AOSP images.
+adb_cmd shell monkey -p "$package" -c android.intent.category.LAUNCHER 1 >/dev/null
 
 # Poll pidof for up to service_wait seconds.
 deadline=$(( $(date +%s) + service_wait ))

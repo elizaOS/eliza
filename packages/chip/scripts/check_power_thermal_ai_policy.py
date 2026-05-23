@@ -123,7 +123,9 @@ def main() -> int:
     if policy.get("status") != "DRAFT_CAPTURE_ONLY":
         fail("status must be DRAFT_CAPTURE_ONLY", errors)
 
-    require_set(policy.get("blocked_actions"), "blocked_actions", set(REQUIRED_BLOCKED_ACTIONS), errors)
+    require_set(
+        policy.get("blocked_actions"), "blocked_actions", set(REQUIRED_BLOCKED_ACTIONS), errors
+    )
     require_set(
         policy.get("required_before_execution"),
         "required_before_execution",

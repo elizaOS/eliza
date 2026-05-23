@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/coding-remote-runner",
   "version": "0.1.0",
-  "description": "Bun-based coding Remote HTTP runner for Eliza Cloud and home machines.",
+  "description": "Bun-based coding remote runner HTTP runner for Eliza Cloud and home machines.",
   "private": true,
   "type": "module",
   "scripts": {

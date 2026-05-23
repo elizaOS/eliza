@@ -1,0 +1,171 @@
+schema: eliza.e1_phone_routed_clearance_release_execution.v1
+status: blocked_routed_clearance_release_requires_routed_step_supplier_models_boolean_physical_fit_and_functional_logs
+date: 2026-05-21
+claim_boundary: >
+  Routed-board enclosure clearance release execution contract. This defines the
+  exact production clearance report required before the PCB can be placed into
+  the enclosure. The current mechanical routed-board-clearance JSON remains a
+  fail-closed intake/template, not release evidence.
+
+source_artifacts:
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/supplier-kicad-review-execution.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - mechanical/e1-phone/review/board-step-readiness.json
+  - mechanical/e1-phone/review/routed-board-clearance.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+
+release_contract:
+  required_release_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  intake_template: mechanical/e1-phone/review/routed-board-clearance.json
+  required_evidence_class: physical_routed_board_clearance_result
+  intake_template_evidence_class: fail_closed_routed_board_mechanical_clearance_intake
+  concept_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  required_case_count: 12
+  complete_case_count: 0
+  release_allowed: false
+  clearance_release_allowed_without_routed_step: false
+  clearance_release_allowed_without_supplier_3d_models: false
+  clearance_release_allowed_without_physical_fit: false
+  clearance_release_allowed_from_concept_cad: false
+
+required_inputs:
+  routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  pcb_drc_report: board/kicad/e1-phone/production/reports/drc.json
+  schematic_erc_report: board/kicad/e1-phone/production/reports/erc.json
+  supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+  routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+
+clearance_cases:
+  - case_id: haptic_to_battery
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 1
+    risk_level: high
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
+    pass: false
+  - case_id: split_interconnect_connectors_on_pcb_islands
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 1
+    risk_level: high
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
+    pass: false
+  - case_id: usb_shell_to_external_aperture
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 1
+    risk_level: high
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+    pass: false
+  - case_id: battery_back_void_foam_to_pouch
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 2
+    risk_level: medium
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
+    pass: false
+  - case_id: battery_to_pcb_islands
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 2
+    risk_level: medium
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
+    pass: false
+  - case_id: bottom_mic_to_usb
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
+    pass: false
+  - case_id: front_camera_to_earpiece
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
+    pass: false
+  - case_id: haptic_to_pcb_islands
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
+    pass: false
+  - case_id: rear_camera_to_battery
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
+    pass: false
+  - case_id: split_interconnect_flex_to_battery_edge
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
+    pass: false
+  - case_id: split_interconnect_flex_within_side_rail
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
+    pass: false
+  - case_id: usb_to_bottom_speaker
+    status: blocked_waiting_routed_step_rerun
+    rerun_priority: 3
+    risk_level: normal
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
+    pass: false
+
+selected_hardware_clearance_domains:
+  - function: display_touch
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    release_allowed: false
+  - function: rear_front_cameras
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/camera-capture-log.json
+    release_allowed: false
+  - function: usb_c_power_sidekeys
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+      - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    release_allowed: false
+  - function: cellular
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    release_allowed: false
+  - function: wifi_bluetooth
+    required_release_outputs:
+      - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    release_allowed: false
+
+cross_checks:
+  clearance_cases_match_mechanical_rerun_matrix: true
+  release_report_matches_post_route_validation_output: true
+  current_mechanical_clearance_json_is_not_release_evidence: true
+  all_clearance_cases_blocked_until_routed_step_rerun: true
+  selected_hardware_clearance_domains_fail_closed: true
+  routed_step_supplier_models_boolean_physical_fit_and_functional_logs_required: true
+
+release_blockers:
+  - routed KiCad STEP with supplier component models is missing
+  - production routed-board clearance release report is missing
+  - current routed-board-clearance JSON is only a fail-closed intake/template
+  - all 12 clearance cases require routed STEP rerun and remain incomplete
+  - concept CAD boolean interference result cannot release enclosure placement
+  - physical fit, functional logs, assembly drawing, ERC, DRC, and supplier 3D binding evidence are missing
+
+forbidden_claims:
+  - routed_clearance_passed
+  - routed_board_step_ready
+  - enclosure_ready
+  - physical_fit_verified
+  - fabrication_ready
+  - end_to_end_phone_ready

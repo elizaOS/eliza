@@ -14,6 +14,7 @@ source artifact returns non-zero.
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_DIR = ROOT / "docs" / "evidence" / "pd"
+REPORT = ROOT / "build/reports/pd_evidence_gates.json"
 
 REQUIRED_KEYS = {
     "schema",
@@ -100,17 +102,51 @@ def validate_manifest(path: Path) -> list[str]:
     return failures
 
 
+def code_from_text(text: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    return "_".join(part for part in cleaned.split("_") if part)[:96] or "pd_evidence_gate_failure"
+
+
+def write_report(failures: list[str], manifest_count: int) -> None:
+    findings = [
+        {
+            "code": code_from_text(failure),
+            "severity": "fail",
+            "message": failure,
+            "evidence": "docs/evidence/pd",
+            "next_step": "Fix the malformed or incomplete PD evidence manifest before using PD evidence as release support.",
+        }
+        for failure in failures
+    ]
+    report = {
+        "schema": "eliza.pd_evidence_gates.v1",
+        "status": "fail" if failures else "pass",
+        "claim_boundary": "pd_evidence_schema_check_only_not_physical_signoff_evidence",
+        "summary": {"manifests": manifest_count, "findings": len(findings)},
+        "findings": findings,
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     if not EVIDENCE_DIR.is_dir():
-        fail(f"evidence directory missing: {EVIDENCE_DIR.relative_to(ROOT)}")
+        failures = [f"evidence directory missing: {EVIDENCE_DIR.relative_to(ROOT)}"]
+        write_report(failures, 0)
+        for failure in failures:
+            fail(failure)
         return 1
     manifests = sorted(EVIDENCE_DIR.glob("*.yaml"))
     if not manifests:
-        fail(f"no evidence manifests under {EVIDENCE_DIR.relative_to(ROOT)}")
+        failures = [f"no evidence manifests under {EVIDENCE_DIR.relative_to(ROOT)}"]
+        write_report(failures, 0)
+        for failure in failures:
+            fail(failure)
         return 1
     all_failures: list[str] = []
     for manifest in manifests:
         all_failures.extend(validate_manifest(manifest))
+    write_report(all_failures, len(manifests))
     if all_failures:
         for f in all_failures:
             fail(f)

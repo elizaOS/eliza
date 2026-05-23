@@ -15,8 +15,32 @@
     "uncertainty_basis": "public-disclosure 1-sigma bands from ppa-projection.yaml.uncertainty_bands, sampled lognormal so the perturbation is strictly positive"
   },
   "open_pdk_projection": {
-    "status": "blocked_no_sky130_metrics",
-    "missing_input": "pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json"
+    "input_source": "pd/openlane/runs/RUN_2026-05-21_10-19-23/final/metrics.json",
+    "sky130_instances": 366,
+    "sky130_die_area_um2": 32400.0,
+    "projections_per_target": {
+      "n2p": {
+        "density_scaling_sky130_to_target": 74.24,
+        "projected_logic_area_mm2": 0.00043642241379310346
+      },
+      "a14": {
+        "density_scaling_sky130_to_target": 89.088,
+        "projected_logic_area_mm2": 0.00036368534482758623
+      },
+      "intel_14a": {
+        "density_scaling_sky130_to_target": 74.24,
+        "projected_logic_area_mm2": 0.00043642241379310346
+      },
+      "samsung_sf2p": {
+        "density_scaling_sky130_to_target": 66.56,
+        "projected_logic_area_mm2": 0.0004867788461538461
+      }
+    },
+    "envelope_total_mm2_min": 100,
+    "envelope_total_mm2_max": 130,
+    "envelope_status": "current_open_pdk_closure_does_not_yet_contain_flagship_class_logic",
+    "projection_marker": "projection_only_never_signoff",
+    "claim_boundary": "Sky130 logic area scaled by published density chain yields a single-point projection of advanced-node logic area. This is not signoff and must not be cited as measured silicon. The projected number is small because the current Sky130 e1 release contains the chip-top stub only and does not include real big-core OoO RTL, SRAM macros, NPU tile, NoC, IOMMU, or any flagship-class IP. The 100-130 mm\u00b2 envelope lives in docs/evidence/process/die-area-budget.yaml and is sized by die-shot calibration, not by this open-PDK closure."
   },
   "asap7_projection": [
     {

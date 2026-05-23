@@ -7,14 +7,16 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 PAYLOAD = ROOT / "external/datasets/r-zoo-rectilinear-floorplan/payload"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/r_zoo_rectilinear_floorplan"
-CLAIM_BOUNDARY = "r_zoo_rectilinear_floorplan_conversion_training_only_no_e1_signoff_or_release_claim"
+CLAIM_BOUNDARY = (
+    "r_zoo_rectilinear_floorplan_conversion_training_only_no_e1_signoff_or_release_claim"
+)
 LABEL_STATUS = "public_r_zoo_rectilinear_floorplan_legality_training_only_not_e1_signoff"
 REVISION = "986d5ca24362bc6fc0a4980afdafccb814d740e6"
 
@@ -250,7 +252,10 @@ def build_records(def_path: Path, label: str, payload: Path, out_dir: Path) -> l
             "version_capture": "external/datasets/r-zoo-rectilinear-floorplan/manifest.yaml",
         },
         "command": "python3 scripts/ai_eda/convert_r_zoo_to_internal_records.py --run-id <run-id>",
-        "inputs": {"def_file": file_record(def_path), "label_readme": file_record(payload / "for_evaluation/README.md")},
+        "inputs": {
+            "def_file": file_record(def_path),
+            "label_readme": file_record(payload / "for_evaluation/README.md"),
+        },
         "outputs": {"reports": [], "artifacts": source_records},
         "metrics": {
             "label_status": LABEL_STATUS,
@@ -313,7 +318,7 @@ def main() -> int:
     }
     report = {
         "schema": "eliza.ai_eda.r_zoo_rectilinear_floorplan_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "source_revision": REVISION,

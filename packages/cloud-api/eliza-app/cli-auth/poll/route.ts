@@ -41,7 +41,8 @@ app.get("/", async (c) => {
       const { cliAuthSessionsService } = await import(
         "@elizaos/cloud-shared/lib/services/cli-auth-sessions"
       );
-      const retrieved = await cliAuthSessionsService.getAndClearApiKey(sessionId);
+      const retrieved =
+        await cliAuthSessionsService.getAndClearApiKey(sessionId);
       await db
         .update(cliAuthSessions)
         .set({ status: "expired" })

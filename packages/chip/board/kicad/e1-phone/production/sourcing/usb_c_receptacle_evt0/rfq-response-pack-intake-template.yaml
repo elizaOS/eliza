@@ -1,0 +1,35 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_template.v1
+status: outbound_template_not_supplier_evidence
+date: 2026-05-22
+lane: usb_c_receptacle_evt0
+maps_to_gap_map_function: usb_c_receptacle_evt0
+selected_hardware: GCT_USB4105_class_USB2_Type_C
+package_binding: package/usb-c/e1-phone-usb-c-port.yaml
+expected_return_archive: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+required_supplier_returns:
+  - exact connector variant, signed 2D drawing, shell stake geometry, tongue height, board-edge datum, and shell load-path notes
+  - pinout or pad map for A/B side USB2, CC, VBUS, GND, shield, unused pins, and SBU disposition
+  - recommended footprint, stencil, paste mask, courtyard, keepout, aperture, plug sweep, and shell grounding requirements
+  - insertion and extraction force, mating-cycle rating, coplanarity, reflow limits, solderability data, and lot traceability
+  - STEP or B-rep model and enclosure aperture or tolerance recommendation
+intake_fields:
+  supplier_legal_name: ""
+  supplier_contact: ""
+  orderable_mpn: ""
+  quote_quantities: [10, 100, 1000]
+  sample_lot_quantity: 5
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  lifecycle_stock_quote_path: ""
+  sample_lot_tracking_path: ""
+  incoming_inspection_path: ""
+release_flags:
+  supplier_response_received: false
+  signed_drawing_received: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false

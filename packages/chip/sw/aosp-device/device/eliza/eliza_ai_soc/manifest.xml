@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- VINTF manifest for the Eliza e1 AI SoC fail-closed bring-up HALs. -->
+<!-- VINTF manifest for the Eliza e1 AI SoC fail-closed bring-up HALs.
+     The graphics composer service loads hwcomposer.eliza_ai_soc. -->
 <manifest version="1.0" type="device">
     <hal format="hidl">
         <name>vendor.eliza.e1_npu</name>

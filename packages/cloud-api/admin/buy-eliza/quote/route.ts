@@ -40,7 +40,9 @@ app.post("/", rateLimit(RateLimitPresets.STANDARD), async (c) => {
   }
   const { network, usdAmount } = parsed.data;
 
-  const priceQuote = await elizaTokenPriceService.getPrice(network as SupportedNetwork);
+  const priceQuote = await elizaTokenPriceService.getPrice(
+    network as SupportedNetwork,
+  );
   const elizaAmount = usdAmount / priceQuote.priceUsd;
 
   const wallets = getHotWalletAddresses();

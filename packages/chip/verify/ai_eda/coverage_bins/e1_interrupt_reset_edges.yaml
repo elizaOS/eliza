@@ -13,15 +13,15 @@ required_followup_gates:
   - make cocotb-contract
 bins:
   - id: plic_enable_claim_complete
-    description: Enable one external interrupt source, claim it, complete it, and observe deassertion.
-    required_observation: claim ID matches the enabled pending source and cpu_external_irq clears after complete
+    description: Enable external interrupt sources, claim, complete, and observe deassertion.
+    required_observation: claim returns an enabled pending source and the context IRQ clears after completion and line drop
     existing_reference:
-      - verify/cocotb/test_plic_claim_threshold.py::plic_enable_claim_complete_smoke
+      - verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
   - id: plic_multiple_pending_priority_order
-    description: Multiple enabled pending interrupt sources must claim in the documented v0 order.
-    required_observation: claim returns the lowest enabled pending source until production priority is implemented
+    description: Multiple enabled pending interrupt sources must claim in priority order.
+    required_observation: claim returns the highest-priority enabled pending source first, then the next, until all are serviced
     existing_reference:
-      - verify/cocotb/test_plic_claim_threshold.py::plic_priority_order_lowest_first_v0
+      - verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
   - id: reset_clears_interrupt_state
     description: Reset must clear interrupt enable, pending state, and external IRQ output.
     required_observation: enable, pending, and cpu_external_irq return to documented reset values

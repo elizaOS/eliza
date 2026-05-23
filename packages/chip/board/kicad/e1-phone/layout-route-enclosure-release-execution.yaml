@@ -1,0 +1,175 @@
+schema: eliza.e1_phone_layout_route_enclosure_release_execution.v1
+status: blocked_layout_route_enclosure_release_requires_supplier_footprints_trial_route_drc_si_pi_rf_power_thermal_factory_step_clearance_and_first_article
+date: '2026-05-21'
+claim_boundary: >
+  Release execution gate for carrying the selected E1 phone size and layout optimization
+  through EVT1 routing, post-route validation, routed STEP export, enclosure clearance,
+  factory-test setup, and first article. It preserves the current 78.0 x 153.6 mm
+  device envelope, 64.0 x 132.0 mm split-board, 64.0 x 87.0 mm battery window, and
+  5.5 inch display anchor as the concept target, but it is not routed PCB evidence,
+  not DRC/ERC evidence, not SI/PI/RF/power/thermal signoff, not routed STEP evidence,
+  not enclosure clearance, not factory limits, and not fabrication-ready proof.
+source_artifacts:
+  - board/kicad/e1-phone/board-optimization-scorecard.yaml
+  - board/kicad/e1-phone/layout-optimization-execution.yaml
+  - board/kicad/e1-phone/route-feasibility-density.yaml
+  - board/kicad/e1-phone/routing-acceptance-checklist.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+  - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/first-article-route-execution-order.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
+  - board/kicad/e1-phone/factory-probe-map.yaml
+upstream_status:
+  board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
+  layout_optimization_execution: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
+  route_feasibility_density: blocked_requires_supplier_footprints_escape_analysis_and_trial_route
+  routing_acceptance: blocked_routing_acceptance_requires_supplier_footprints_trial_route_drc_and_outputs
+  routed_layout_readiness_binding: blocked_layout_readiness_requires_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance
+  post_route_validation_binding: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+  routed_pcb_implementation_execution: blocked_requires_supplier_footprints_schematic_erc_trial_route_drc_outputs_and_routed_step
+  routed_board_step_export_contract: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+  enclosure_fit_execution_package: blocked_requires_routed_board_step_supplier_geometry_and_physical_fit_results
+  first_article_route_execution_order: blocked_first_article_route_requires_ordered_supplier_schematic_layout_factory_and_enclosure_evidence
+  component_height_step_integration: blocked_requires_supplier_step_models_routed_board_step_and_clearance_rerun
+  factory_probe_map: blocked_requires_routed_board_fixture_and_first_article_limits
+locked_geometry_release_target:
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 11.8}
+  board_bbox_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
+  battery_window_mm: {x: 0.0, y: 29.5, width: 64.0, height: 87.0, area_mm2: 5568.0}
+  display_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+  display_clearance_mm: {width_clearance_mm: 0.9, height_clearance_mm: 1.83}
+  preserved_decision: keep_78p0_x_153p6_device_and_64p0_x_132p0_split_board_for_evt1_trial_route
+  size_reduction_allowed_before_release_evidence: false
+release_policy:
+  release_revision: EVT1-routed-first-article
+  required_optimization_domain_count: 5
+  required_validation_output_count: 20
+  routed_layout_present_output_count: 0
+  post_route_present_output_count: 0
+  supplier_footprints_required: true
+  trial_route_required: true
+  clean_drc_or_signed_waivers_required: true
+  si_pi_rf_power_thermal_reports_required: true
+  routed_step_and_enclosure_clearance_required: true
+  factory_limits_and_first_article_required: true
+  release_allowed: false
+optimization_release_domains:
+  - id: size_display_battery
+    source_gate: board-optimization-scorecard.scorecard.board_size
+    required_route_domains:
+      - display_touch
+      - cameras
+      - battery
+    required_validation_outputs:
+      - routed_board_step
+      - routed_clearance_release
+      - routed_courtyard_utilization
+    status: blocked_missing_signed_display_battery_supplier_geometry_routed_step_and_clearance
+    release_allowed: false
+  - id: utilization_reserve
+    source_gate: layout-optimization-execution.layout_pressure_closure
+    required_route_domains:
+      - display_touch
+      - cameras
+      - radios
+      - usb_c_power
+      - side_buttons
+      - split_interconnect
+    required_validation_outputs:
+      - routed_courtyard_utilization
+      - escape_density_via_count
+      - pcb_drc_report
+    status: blocked_missing_supplier_footprints_routed_utilization_escape_density_and_drc
+    release_allowed: false
+  - id: route_density_si_pi
+    source_gate: layout-optimization-execution.performance_constraint_closure.route_density
+    required_route_domains:
+      - display_touch
+      - cameras
+      - usb_c_power
+      - radios
+      - compute_storage
+      - split_interconnect
+    required_validation_outputs:
+      - routed_kicad_pcb
+      - pcb_drc_report
+      - zone_fill_report
+      - si_pi_report_directory
+    status: blocked_missing_routed_high_speed_domains_drc_zone_fill_and_si_pi
+    release_allowed: false
+  - id: power_thermal
+    source_gate: layout-optimization-execution.performance_constraint_closure.power_efficiency
+    required_route_domains:
+      - usb_c_power
+      - battery
+      - compute_storage
+    required_validation_outputs:
+      - power_thermal_report_directory
+      - usb_pd_attach_log
+      - charger_cycle_log
+    status: blocked_missing_power_integrity_charge_cycle_efficiency_and_thermal_soak
+    release_allowed: false
+  - id: rf_factory_enclosure
+    source_gate: layout-optimization-execution.performance_constraint_closure.rf_connectivity
+    required_route_domains:
+      - radios
+      - manufacturing
+    required_validation_outputs:
+      - rf_report_directory
+      - vna_report
+      - radio_coexistence_matrix
+      - factory_test_limits
+      - probe_coordinates
+      - first_article_transcript
+      - routed_clearance_release
+    status: blocked_missing_rf_measurements_factory_limits_probe_coordinates_clearance_and_first_article
+    release_allowed: false
+absent_release_outputs:
+  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/zone-fill.json
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/si-pi
+  - board/kicad/e1-phone/production/reports/rf
+  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+  - board/kicad/e1-phone/production/reports/power-thermal
+  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  - board/kicad/e1-phone/production/test/probe-coordinates.csv
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+cross_checks:
+  locked_geometry_matches_layout_optimization_and_scorecard: true
+  optimization_domains_match_manifest_layout_gate: true
+  validation_outputs_match_post_route_binding: true
+  route_domains_match_routed_pcb_closure: true
+  routed_layout_and_post_route_present_output_counts_remain_zero: true
+  all_optimization_release_domains_fail_closed: true
+  absent_release_outputs_block_layout_enclosure_claim: true
+release_blockers:
+  - supplier footprints, courtyards, and STEP/B-rep models have not replaced placeholders
+  - routed utilization, escape density, filled zones, DRC, and SI/PI evidence are missing
+  - RF matching, VNA, coexistence, SAR, and factory RF evidence are missing
+  - power integrity, charger cycle, regulator efficiency, and thermal soak evidence are missing
+  - routed STEP, enclosure clearance release, factory limits, probe coordinates, and first-article transcript are missing
+forbidden_claims:
+  - board_size_optimized_final
+  - layout_release_ready
+  - route_feasible
+  - routed_pcb_ready
+  - drc_clean
+  - si_pi_ready
+  - power_thermal_ready
+  - rf_ready
+  - factory_test_ready
+  - routed_board_step_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -124,7 +124,9 @@ def expand_manifest(path: Path, errors: list[str]) -> dict[str, Any] | None:
         expansion = expand_blocked(required)
         minimum = required.get("total_effective_corners_min")
         if not isinstance(minimum, int) or isinstance(minimum, bool):
-            errors.append(f"{rel(path)}: required_after_unblock.total_effective_corners_min must be int")
+            errors.append(
+                f"{rel(path)}: required_after_unblock.total_effective_corners_min must be int"
+            )
             minimum = None
     else:
         expansion = expand_open(manifest)
@@ -195,10 +197,7 @@ def main(argv: list[str] | None = None) -> int:
         for err in errors:
             print(f"  - {err}")
         return 1
-    print(
-        f"corner expansion passed: {len(node_sets)} nodes; report -> "
-        f"{rel(ROOT / args.out)}"
-    )
+    print(f"corner expansion passed: {len(node_sets)} nodes; report -> {rel(ROOT / args.out)}")
     for node_id, result in sorted(node_sets.items()):
         minimum = result["total_effective_corners_min"]
         suffix = f" (min {minimum})" if minimum is not None else ""

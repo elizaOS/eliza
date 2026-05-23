@@ -1,0 +1,10 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1779415534" />
+    <testcase name="device_msi_to_topei_claim" classname="test_e1_aia" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_aia.py" lineno="148" time="0.001416921615600586" sim_time_ns="230.001" ratio_time="162324.4345118627" />
+    <testcase name="topei_priority_order" classname="test_e1_aia" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_aia.py" lineno="186" time="0.0007808208465576172" sim_time_ns="180.001" ratio_time="230527.91276458016" />
+    <testcase name="eie_masking" classname="test_e1_aia" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_aia.py" lineno="207" time="0.0004734992980957031" sim_time_ns="110.00100000000003" ratio_time="232315.02230815717" />
+    <testcase name="m_to_s_delegation" classname="test_e1_aia" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_aia.py" lineno="228" time="0.0012922286987304688" sim_time_ns="350.001" ratio_time="270850.6631557195" />
+    <testcase name="secure_domain_isolation" classname="test_e1_aia" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/security/test_e1_aia.py" lineno="272" time="0.0012569427490234375" sim_time_ns="320.0010000000001" ratio_time="254586.77433687414" />
+  </testsuite>
+</testsuites>

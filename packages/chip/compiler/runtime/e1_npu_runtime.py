@@ -951,6 +951,8 @@ class E1NpuRuntime:
     GEMM_STRIDE = 0x1002_0028
     PERF_UNSUPPORTED_OPS = 0x1002_002C
     CMD_PARAM = 0x1002_0030
+    SEC_OWNER_CFG = 0x1002_0034
+    SEC_STATUS = 0x1002_003C
     DESC_BASE = 0x1002_0040
     DESC_HEAD = 0x1002_0044
     DESC_TAIL = 0x1002_0048
@@ -1590,7 +1592,9 @@ def golden_gemm_s4(a, b):
         for row in matrix:
             for value in row:
                 if not -8 <= value <= 7:
-                    raise ValueError(f"golden_gemm_s4 {name} value {value} outside signed INT4 range")
+                    raise ValueError(
+                        f"golden_gemm_s4 {name} value {value} outside signed INT4 range"
+                    )
     return golden_gemm_s8(a, b)
 
 

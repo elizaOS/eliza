@@ -8,7 +8,7 @@ import csv
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -109,11 +109,8 @@ def convert_design(
     files = source_files(payload, design)
     source_records = [file_record(path) for path in files.values() if path.is_file()]
     design_id = f"macro-place-challenge-2026-{safe_id(design)}"
-    initial = (
-        metadata.get("initial_placement")
-        if isinstance(metadata.get("initial_placement"), dict)
-        else {}
-    )
+    initial_value = metadata.get("initial_placement")
+    initial: dict[str, Any] = initial_value if isinstance(initial_value, dict) else {}
     num_macros = int(metadata.get("num_macros", 0))
     num_nets = int(metadata.get("num_nets", 0))
     canvas_width = float(metadata.get("canvas_width", 0.0))
@@ -243,7 +240,7 @@ def convert_design(
             "num_nets": num_nets,
             "initial_proxy_cost": proxy_cost,
         }
-        for record, path in zip(records, paths)
+        for record, path in zip(records, paths, strict=False)
     ]
 
 
@@ -251,7 +248,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--payload", type=Path, default=PAYLOAD)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--sample-limit", type=int, default=4)
     parser.add_argument(
         "--all-records",
@@ -286,7 +283,7 @@ def main() -> int:
         converted.extend(convert_design(design, metadata, ppa_baselines, args.payload, out_dir))
     report = {
         "schema": "eliza.ai_eda.macro_place_challenge_2026_conversion_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "payload": rel(args.payload),

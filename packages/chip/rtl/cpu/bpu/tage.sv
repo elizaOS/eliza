@@ -50,6 +50,7 @@ module tage
     logic [TAGE_TABLES-1:0] tab_hit;
     logic [TAGE_TABLES-1:0] tab_taken;
     logic [TAGE_TABLES-1:0] tab_alloc_req;
+    logic [TAGE_TABLES-1:0] tab_useful_dec_req;
     logic [TAGE_USEFUL_W-1:0] tab_useful [TAGE_TABLES];
     logic [TAGE_CTR_W-1:0] tab_ctr [TAGE_TABLES];
     logic [TAGE_TABLES-1:0] tab_alloc_pmu;
@@ -98,7 +99,8 @@ module tage
             logic upd_valid_g;
             assign upd_valid_g = upd_valid &&
                 ((upd_provider == gi[$clog2(TAGE_TABLES+1)-1:0]+1) ||
-                 tab_alloc_req[gi]);
+                 tab_alloc_req[gi] ||
+                 tab_useful_dec_req[gi]);
 
             tage_table #(
                 .TABLE_ID   (gi),
@@ -122,7 +124,7 @@ module tage
                 .upd_alloc       (tab_alloc_req[gi]),
                 .upd_useful_inc  (upd_valid && !upd_misp &&
                                    (upd_provider == gi[$clog2(TAGE_TABLES+1)-1:0]+1)),
-                .upd_useful_dec  (1'b0),
+                .upd_useful_dec  (tab_useful_dec_req[gi]),
                 .useful_reset_lsb(useful_reset_lsb),
                 .useful_reset_msb(useful_reset_msb),
                 .pmu_alloc       (tab_alloc_pmu[gi])
@@ -142,6 +144,8 @@ module tage
     logic                              alt_taken;
     logic                              provider_found;
     logic                              alt_found;
+    logic                              provider_weak;
+    logic [TAGE_CTR_W-1:0]             provider_ctr;
 
     always_comb begin
         provider_pri   = '0;
@@ -150,6 +154,8 @@ module tage
         alt_taken      = bim_taken;
         provider_found = 1'b0;
         alt_found      = 1'b0;
+        provider_weak  = 1'b0;
+        provider_ctr   = '0;
         lkp_hit_vec    = {tab_hit, 1'b1};
         for (int ti = TAGE_TABLES-1; ti >= 0; ti--) begin
             if (tab_hit[ti]) begin
@@ -164,14 +170,22 @@ module tage
                 end
             end
         end
-        lkp_taken     = provider_found ? provider_taken : bim_taken;
         lkp_taken_alt = alt_found ? alt_taken : bim_taken;
         lkp_provider  = provider_pri;
         // Provider counter readout for SC. Zero when the bimodal provided.
         if (provider_found) begin
-            lkp_provider_ctr = tab_ctr[provider_pri - 1];
+            provider_ctr = tab_ctr[provider_pri - 1];
+            provider_weak =
+                (provider_ctr == ((1 << (TAGE_CTR_W - 1)) - 1)) ||
+                (provider_ctr == (1 << (TAGE_CTR_W - 1)));
+            lkp_provider_ctr = provider_ctr;
         end else begin
             lkp_provider_ctr = '0;
+        end
+        if (provider_found && TAGE_USE_ALT_ON_NA != 0 && provider_weak) begin
+            lkp_taken = lkp_taken_alt;
+        end else begin
+            lkp_taken = provider_found ? provider_taken : bim_taken;
         end
     end
 
@@ -184,12 +198,21 @@ module tage
     // -----------------------------------------------------------------------
     logic [TAGE_TABLES-1:0] alloc_candidates;
     always_comb begin
-        alloc_candidates = '0;
-        tab_alloc_req    = '0;
+        alloc_candidates    = '0;
+        tab_alloc_req       = '0;
+        tab_useful_dec_req  = '0;
         if (upd_valid && upd_misp) begin
             for (int unsigned ta = 0; ta < TAGE_TABLES; ta++) begin
-                if (ta + 1 > upd_provider && tab_useful[ta] == '0)
-                    alloc_candidates[ta] = 1'b1;
+                if (ta + 1 > upd_provider) begin
+                    if (tab_useful[ta] == '0) begin
+                        alloc_candidates[ta] = 1'b1;
+                    end else begin
+                        // Seznec-style allocation pressure: if every longer
+                        // table is useful, age the candidate victims so a
+                        // repeated miss can eventually allocate.
+                        tab_useful_dec_req[ta] = 1'b1;
+                    end
+                end
             end
             // Pick the lowest-index candidate. This matches the Seznec CBP-5
             // policy of allocating the shortest available table beyond the

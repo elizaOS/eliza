@@ -112,7 +112,9 @@ def check_contract(path: Path, group_ids: set[str], errors: list[str]) -> str | 
         fail(errors, f"{rel}: status must stay BLOCKED (procurement/interface only)")
 
     block_class = contract.get("block_class")
-    nodes = require_list(contract.get("target_process_nodes"), f"{rel}.target_process_nodes", errors)
+    nodes = require_list(
+        contract.get("target_process_nodes"), f"{rel}.target_process_nodes", errors
+    )
     for node in nodes:
         if node not in NODE_IDS:
             fail(errors, f"{rel}: unknown target_process_node: {node}")

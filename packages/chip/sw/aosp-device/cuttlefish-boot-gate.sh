@@ -49,6 +49,8 @@ Launcher / local-agent assertions:
   /api/health             HTTP 200 over the adb-forwarded port
   logcat fatal scan       no FATAL EXCEPTION / SIGSEGV crash lines
   avc denial scan         no audit avc: denied lines for the launcher domain
+  evidence JSON           nested device/app/agent/logs/artifacts schema for
+                          scripts/check_android_launcher_runtime_evidence.py
 USAGE
 }
 
@@ -85,6 +87,7 @@ fi
 if [ -z "$launcher_evidence" ]; then
 	launcher_evidence="$repo_root/docs/evidence/android/eliza_launcher_runtime_evidence.json"
 fi
+launcher_logcat="${launcher_evidence%.json}.logcat.txt"
 mkdir -p "$(dirname "$out")"
 mkdir -p "$(dirname "$launcher_evidence")"
 
@@ -128,7 +131,7 @@ emit() {
 	echo "eliza-evidence: target=aosp artifact=cuttlefish_riscv64_boot"
 	echo "eliza-evidence: claim_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence"
 	echo "eliza-evidence: command=cuttlefish-boot-gate.sh"
-	echo "BOOT_CLAIM=virtual_device_only"
+	echo "BOOT_CLAIM=none"
 	echo "COMPATIBILITY_CLAIM=none"
 	echo "START_UTC=$start_utc"
 	echo "eliza-evidence: started_utc=$start_utc"
@@ -141,6 +144,16 @@ emit() {
 	fi
 
 	if [ "$result" -eq 0 ]; then
+		# Arch triad. The canonical implementation of these three assertions
+		# is validateExpectedAbi() in
+		# eliza/packages/scripts/distro-android/boot-validate.mjs (reachable
+		# as `boot-validate.mjs --expected-abi <abi>`); the brand-config
+		# mjs validator owns the x86_64/arm64/riscv64 image path. This gate
+		# keeps its own host-side copy because it targets the chip
+		# ai.elizaos.app product without going through a distro-android brand
+		# config, and pairs the triad with the kernel.log / manifest /
+		# evidence-emission assertions the mjs validator does not perform.
+		# Keep the two in sync.
 		abi=$(adb_cvd shell getprop ro.product.cpu.abi 2>/dev/null | tr -d '\r' || true)
 		assert_eq ro.product.cpu.abi "$abi" riscv64 || result=1
 
@@ -215,9 +228,17 @@ emit() {
 		fi
 
 		adb_cvd forward "tcp:$agent_host_port" "tcp:$agent_device_port" >/dev/null 2>&1 || true
+		health_body=$(curl -s "http://127.0.0.1:$agent_host_port/api/health" 2>/dev/null || true)
 		health_code=$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$agent_host_port/api/health" 2>/dev/null || echo 000)
 		printf 'AGENT_HEALTH_HTTP=%s\n' "$health_code"
 		printf 'AGENT_HEALTH_ENDPOINT=/api/health\n'
+		health_ready=$(printf '%s' "$health_body" | python3 -c 'import json,sys; data=sys.stdin.read();
+try:
+    obj=json.loads(data) if data else {}
+except json.JSONDecodeError:
+    obj={}
+print("true" if obj.get("ready") is True else "false")' 2>/dev/null || printf false)
+		printf 'AGENT_HEALTH_READY=%s\n' "$health_ready"
 		if [ "$health_code" = 200 ]; then
 			echo "AGENT_HEALTH=ok"
 		else
@@ -226,8 +247,15 @@ emit() {
 			launcher_ok=0
 			echo "AGENT_HEALTH=fail"
 		fi
+		if [ "$health_ready" != true ]; then
+			fails+=("/api/health did not report ready=true")
+			result=1
+			launcher_ok=0
+		fi
 
-		logcat_dump=$(adb_cvd shell logcat -d -b crash -b main 2>/dev/null | tr -d '\r' || true)
+		logcat_dump=$(adb_cvd shell logcat -d -b all 2>/dev/null | tr -d '\r' || true)
+		printf '%s\n' "$logcat_dump" > "$launcher_logcat"
+		printf 'LOGCAT_ARTIFACT=%s\n' "$launcher_logcat"
 		fatal_hits=$(printf '%s\n' "$logcat_dump" | grep -E 'FATAL EXCEPTION|signal 11 \(SIGSEGV\)|--------- beginning of crash' | head -n5 || true)
 		printf 'LOGCAT_FATAL=%s\n' "$(printf '%s' "$fatal_hits" | tr '\n' ';')"
 		if [ -n "$fatal_hits" ]; then
@@ -309,29 +337,89 @@ emit() {
 	echo "RESULT=$result"
 	echo "$result" > "$result_file"
 
-	json_bool() { if [ "${1:-0}" = 1 ]; then printf 'true'; else printf 'false'; fi; }
-	json_str() { printf '%s' "${1:-}" | sed 's/\\/\\\\/g; s/"/\\"/g'; }
-	{
-		echo "{"
-		echo "  \"schema\": \"eliza.android_launcher_runtime_evidence.v1\","
-		echo "  \"claim_boundary\": \"virtual_device_smoke_only_not_boot_or_compatibility_evidence\","
-		echo "  \"status\": \"$(json_str "$status")\","
-		echo "  \"result\": $result,"
-		echo "  \"started_utc\": \"$(json_str "$start_utc")\","
-		echo "  \"ended_utc\": \"$(json_str "$end_utc")\","
-		echo "  \"agent_package\": \"$(json_str "$agent_package")\","
-		echo "  \"agent_service\": \"$(json_str "$agent_service")\","
-		echo "  \"pm_path\": \"$(json_str "${pm_path:-}")\","
-		echo "  \"home_role_holder\": \"$(json_str "${role_holder:-}")\","
-		echo "  \"foreground_activity\": \"$(json_str "${foreground:-}")\","
-		echo "  \"agent_pid\": \"$(json_str "${agent_pid:-}")\","
-		echo "  \"agent_health_endpoint\": \"/api/health\","
-		echo "  \"agent_health_http\": \"$(json_str "${health_code:-}")\","
-		echo "  \"logcat_fatal_present\": $(json_bool "$( [ -n "${fatal_hits:-}" ] && echo 1 || echo 0 )"),"
-		echo "  \"avc_denied_present\": $(json_bool "$( [ -n "${avc_hits:-}" ] && echo 1 || echo 0 )"),"
-		echo "  \"launcher_ok\": $(json_bool "${launcher_ok:-0}")"
-		echo "}"
-	} > "$launcher_evidence"
+	export LAUNCHER_EVIDENCE_PATH="$launcher_evidence"
+	export LAUNCHER_SCHEMA="eliza.android_launcher_runtime_evidence.v1"
+	export LAUNCHER_CLAIM_BOUNDARY="booted_android_launcher_agent_runtime_evidence_only"
+	export LAUNCHER_STATUS="$status"
+	export LAUNCHER_RESULT="$result"
+	export LAUNCHER_STARTED_UTC="$start_utc"
+	export LAUNCHER_ENDED_UTC="$end_utc"
+	export LAUNCHER_SYS_BOOT_COMPLETED="${boot:-}"
+	export LAUNCHER_CPU_ABI="${abi:-}"
+	export LAUNCHER_CPU_ABILIST="${abilist:-}"
+	export LAUNCHER_UNAME_M="${uname_m:-}"
+	export LAUNCHER_BUILD_ID="${build_id:-}"
+	export LAUNCHER_SDK="${sdk:-}"
+	export LAUNCHER_PACKAGE="$agent_package"
+	export LAUNCHER_SERVICE="$agent_service"
+	export LAUNCHER_PM_PATH="${pm_path:-}"
+	export LAUNCHER_HOME_RESOLVE="${resolved_home:-}"
+	export LAUNCHER_ROLE_HOLDER="${role_holder:-}"
+	export LAUNCHER_FOREGROUND="${foreground:-}"
+	export LAUNCHER_SERVICE_PID="${agent_pid:-0}"
+	export LAUNCHER_HEALTH_URL="http://127.0.0.1:$agent_host_port/api/health"
+	export LAUNCHER_HEALTH_HTTP="${health_code:-0}"
+	export LAUNCHER_HEALTH_READY="${health_ready:-false}"
+	export LAUNCHER_LOGCAT_PATH="$launcher_logcat"
+	export LAUNCHER_FATAL_COUNT="$( [ -n "${fatal_hits:-}" ] && printf 1 || printf 0 )"
+	export LAUNCHER_AVC_COUNT="$( [ -n "${avc_hits:-}" ] && printf 1 || printf 0 )"
+	export LAUNCHER_TRANSCRIPT_PATH="$out"
+	python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+def env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+def int_env(name: str) -> int:
+    try:
+        return int(env(name, "0").strip() or "0")
+    except ValueError:
+        return 0
+
+role_holder = env("LAUNCHER_ROLE_HOLDER")
+data = {
+    "schema": env("LAUNCHER_SCHEMA"),
+    "claim_boundary": env("LAUNCHER_CLAIM_BOUNDARY"),
+    "status": env("LAUNCHER_STATUS"),
+    "result": int_env("LAUNCHER_RESULT"),
+    "started_utc": env("LAUNCHER_STARTED_UTC"),
+    "ended_utc": env("LAUNCHER_ENDED_UTC"),
+    "device": {
+        "sys_boot_completed": env("LAUNCHER_SYS_BOOT_COMPLETED"),
+        "cpu_abi": env("LAUNCHER_CPU_ABI"),
+        "cpu_abilist": env("LAUNCHER_CPU_ABILIST"),
+        "uname_m": env("LAUNCHER_UNAME_M"),
+        "build_id": env("LAUNCHER_BUILD_ID"),
+        "sdk": env("LAUNCHER_SDK"),
+    },
+    "app": {
+        "package_name": env("LAUNCHER_PACKAGE"),
+        "pm_path": env("LAUNCHER_PM_PATH"),
+        "role_holders": {"android.app.role.HOME": [role_holder] if role_holder else []},
+        "home_resolve_activity": env("LAUNCHER_HOME_RESOLVE"),
+        "foreground_activity": env("LAUNCHER_FOREGROUND"),
+        "service_component": env("LAUNCHER_SERVICE"),
+        "service_pid": int_env("LAUNCHER_SERVICE_PID"),
+    },
+    "agent": {
+        "health_url": env("LAUNCHER_HEALTH_URL"),
+        "health_http": int_env("LAUNCHER_HEALTH_HTTP"),
+        "health_ready": env("LAUNCHER_HEALTH_READY").lower() == "true",
+    },
+    "logs": {
+        "logcat_path": env("LAUNCHER_LOGCAT_PATH"),
+        "fatal_crash_count": int_env("LAUNCHER_FATAL_COUNT"),
+        "avc_denial_count": int_env("LAUNCHER_AVC_COUNT"),
+    },
+    "artifacts": {
+        "transcript_path": env("LAUNCHER_TRANSCRIPT_PATH"),
+    },
+}
+path = Path(env("LAUNCHER_EVIDENCE_PATH"))
+path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 	echo "LAUNCHER_EVIDENCE=$launcher_evidence"
 }
 

@@ -74,6 +74,7 @@ function shouldRenderAttachmentPromptText(
 ): boolean {
 	if (allAttachments.length === 0) return false;
 	if ((message.content.attachments ?? []).length > 0) return true;
+	if (message.content.source === "sub_agent") return false;
 	const text = messageTextForAttachmentRelevance(message);
 	return (
 		ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)

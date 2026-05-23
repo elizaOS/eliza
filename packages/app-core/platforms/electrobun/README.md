@@ -37,13 +37,13 @@ Produces `src/libMacWindowEffects.dylib` (consumed via Bun FFI at runtime).
 
 ## First-party Remotes
 
-Prototype ElizaLaunch Remotes are folded into this shell under `remotes/` and seeded on desktop startup by `src/first-party-remotes.ts`. They use the existing `@elizaos/electrobun-carrots` install/start/log runtime instead of a parallel module system.
+Prototype ElizaLaunch Remotes are folded into this shell under `remotes/` and seeded on desktop startup by `src/first-party-remotes.ts`. They use the existing `@elizaos/plugin-remote-manifest` install/start/log runtime instead of a parallel module system.
 
 - `eliza.runtime` is required and runs as a Runtime Remote adapter over the existing Electrobun `AgentManager`; production mode must not start a second elizaOS runtime process.
 - `eliza.fs`, `eliza.local-model`, `eliza.pty`, and `eliza.git` are first-party capability Remotes.
 - `eliza.surface` is a dev/admin surface and is only included when `ELIZA_ENABLE_DEV_REMOTES=1`.
 
-The current worker-to-worker bridge supports the upstream `invoke-carrot` host request, and renderer/dev views can call workers through the typed `carrot:invokeWorker` RPC. Broad automatic event broadcast is still a host-level follow-up, so dev surfaces should use explicit invokes plus polling where needed.
+The current worker-to-worker bridge supports the upstream `invoke-remote-plugin` host request, and renderer/dev views can call workers through the typed `remote-plugin:invokeWorker` RPC. Broad automatic event broadcast is still a host-level follow-up, so dev surfaces should use explicit invokes plus polling where needed.
 
 `eliza.surface` is not the product dashboard. Keep it as an inspector harness while product work moves toward dynamic agent-created canvas/A2UI views, Eliza-1 routing, voice loop latency tracing, and OmniVoice/Kokoro validation.
 

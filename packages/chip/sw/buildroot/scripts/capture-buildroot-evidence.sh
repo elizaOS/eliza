@@ -65,13 +65,14 @@ case "$mode" in
 		record_command \
 			eliza_e1_defconfig \
 			"$evidence_dir/eliza_e1_defconfig.log" \
-			"make BR2_EXTERNAL=$external eliza_e1_defconfig"
+			"make BR2_EXTERNAL=$external eliza_e1_defconfig && grep -E '^(BR2_EXTERNAL_ELIZA_E1_PATH|BR2_PACKAGE_E1_MMIO_SMOKE|BR2_PACKAGE_E1_NPU_ML_SMOKE|BR2_PACKAGE_ELIZA_E1_BSP)=' .config"
 		;;
 	image-manifest)
 		log="$evidence_dir/eliza_e1_image_manifest.txt"
 		images="$buildroot/output/images"
 		{
 			echo "eliza-evidence: target=buildroot artifact=eliza_e1_image_manifest"
+			echo "eliza-evidence: buildroot_config=eliza_e1_defconfig"
 			echo "eliza-evidence: command=find output/images -maxdepth 1 -type f -print -exec sha256sum {} ;"
 			started=$(timestamp_utc)
 			echo "eliza-evidence: started_utc=$started"

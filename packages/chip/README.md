@@ -126,6 +126,12 @@ readiness contract, the quarantined assertion-candidate manifest checker, the
 deterministic macro-placement replay queue for top ranked candidates, the
 hash-pinned CUDA evidence bundle manifest, and the no-datasets/no-weights
 payload boundary.
+The latest current-research refresh (`codex-latest-research-refresh-20260521`)
+validates 19 metadata-only watchlist entries, including EXPlace as a
+domain-expert RL macro-placement successor candidate and AMS-IO-Agent as an
+AMS I/O-ring layout-agent lane. These entries intentionally do not import
+code/data or make E1 design claims; deterministic replay/signoff and reviewer
+gates remain mandatory before any generated candidate can affect E1.
 `make ai-eda-cuda-run-plan-dry-run`
 expands the embedded CUDA run plan into a reviewed execution manifest without
 running commands. `make ai-eda-cuda-run-plan-safety-matrix` then proves each
@@ -161,14 +167,24 @@ ChiPBench-D, OpenABC-D, AIEDA/iDATA, EDALearn, and Macro Placement Challenge
 design-family train/validation/test split manifest. R-Zoo also carries a
 training-only license review gate: local CUDA handoff is allowed, while
 release, commercial use, model-weight release, and E1 signoff claims remain
-false. The local Make targets keep bounded samples for fast smoke validation
-where converters support sampling.
+false. FloorSet is pinned to the local verified checkout, carries a
+training-only Apache-2.0 / CC BY 4.0 license review, and the CUDA run plan now
+includes the 100-case Lite validation tensor conversion plus deterministic
+`train=80`, `val=10`, `test=10` split manifest. The local Make targets keep
+bounded samples for fast smoke validation where converters support sampling.
 `make ai-eda-openlane-replay-prerequisites` records the OpenLane/OpenROAD binary,
 PDK, config, run-tree, and replay-queue gates required before deterministic
-replay execution. `capture_openlane_replay_execution.py` and
+replay execution. `make ai-eda-openlane-replay-handoff` then packages each
+ready E1 replay candidate, generated macro-placement override, candidate and
+placement-case manifest, replay queue/preflight input, and the exact PD-host
+capture commands into a hash-pinned tarball without executing OpenLane.
+`capture_openlane_replay_execution.py` and
 `check_openlane_replay_execution.py` define the post-execution evidence
 contract for PD hosts: metrics, OpenLane/OpenROAD logs, final DEF/GDS, and
-hashes must be present before replay can count as optimization evidence.
+hashes must be present before replay can count as optimization evidence. The
+execution gate now also flattens nested metrics, requires timing/signoff/objective
+metric coverage, and records OpenLane/OpenROAD log line counts plus error-like
+line samples before a replay report can become ready.
 `capture_openlane_replay_comparison.py` and
 `check_openlane_replay_comparison.py` then compare a replayed baseline against
 the candidate, require no timing/DRC/LVS/antenna regression, and require at
@@ -196,18 +212,49 @@ training-only evidence and never counts as E1 signoff or an optimization claim.
 
 Current local validation uses `/usr/bin/python3` for non-Torch checks and
 `/opt/miniconda3/bin/python` for Torch training/inference. The latest integrated
-evidence refresh is `AI_EDA_RUN_ID=codex-readiness-with-artifacts`, with setup
-evidence from `codex-bootstrap-setup5`, training handoff from
-`codex-handoff-artifacts`, and a validated training corpus from
-`codex-openroad-corpus-manifest`. That audit validates the 42-asset / 237-file
-payload, dry-run, safety matrix, setup evidence, complete MPS training-handoff
-bootstrap, Torch training/inference, full replay plan, replay queue, OpenLane
-prerequisite report, AlphaChip successor plan, blocked successor reproduction
+evidence refresh is `codex-full-conversion-objective`, with payload/run-plan
+evidence from `codex-full-conversion-payload`, readiness/evidence-bundle output
+from `codex-full-conversion-readiness` with 25/25 artifacts present, the
+14-job full matrix from `codex-full-conversion-matrix`,
+formal-prerequisite evidence from `codex-full-conversion-readiness`,
+formal-execution fallback evidence from `codex-full-conversion-readiness`,
+successor-reproduction evidence from `codex-successor-reproduction-contract`, setup
+evidence from `codex-latest-setup-20260521`, replay handoff evidence from
+`codex-openlane-replay-handoff-20260521`, and training handoff / validated
+training corpus from `codex-handoff-dedupe-20260521-training-handoff`.
+Current-research coverage is refreshed through
+`codex-chipseek-watchlist-20260521`, adding ChipSeek to the gated RTL/PPA
+feedback lane. That audit validates the 43-asset / 255-file payload,
+232-command dry-run with 228
+selected commands, safety matrix,
+setup evidence, complete MPS training-handoff bootstrap, Torch
+training/inference, R-Zoo and FloorSet conversion/split/license evidence, the
+176-candidate full replay plan with seven ready candidates, the 23-entry replay
+queue with one ready OpenLane candidate, OpenLane prerequisite report, the
+ready seven-candidate PD-host OpenLane replay handoff package with generated
+runbook and command stub, blocked strict formal prerequisites with Yosys fallback
+recorded as smoke coverage only, fallback formal execution evidence blocked from
+deep-proof claims, AlphaChip successor plan, blocked successor reproduction
 evidence, blocked 14-job full-training matrix, and blocked replay comparison
-contract. It remains blocked by local CUDA absence, public AlphaChip checkpoint
-access, CUDA-scale successor reproduction, OpenLane/OpenROAD host prerequisites,
-E1 deterministic replay execution, and missing real baseline-vs-candidate replay
-comparison evidence.
+contract. The objective audit proves 7 of 11
+requirements and remains blocked by local CUDA absence, public AlphaChip
+checkpoint access or CUDA-scale successor reproduction, OpenLane/OpenROAD/PDK
+host prerequisites, missing strict SymbiYosys formal host and execution
+readiness, E1 deterministic replay execution, and missing real
+baseline-vs-candidate replay comparison evidence.
+
+The latest FloorSet-specific refresh is `codex-floorset-full-archives-docs-20260521`:
+FloorSet Lite conversion PASS with 100 cases / 300 normalized records, split
+manifest PASS with `train=80`, `val=10`, `test=10`, and floorplanning readiness
+PASS_BLOCKED with full Hugging Face archive evidence verified: 10/10 archives
+and 29,665,773,263 bytes. The remaining blockers are generated-floorplan
+quarantine for FloorSet and R-Zoo until deterministic E1 replay/signoff exists. The
+training-handoff corpus refresh
+`codex-handoff-dedupe-20260521-training-handoff` now includes FloorSet Lite in
+the unified training corpus manifest: 18 datasets, 589 normalized records, and
+2,689 logical records. The corresponding CUDA metadata payload is now folded
+into `codex-floorset-payload-20260521` with 42 assets, 254 files, a
+230-command dry-run with 226 selected commands, and a validated safety matrix.
 
 ## Docker Setup
 

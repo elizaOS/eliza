@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-sourcing-audit.yaml
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/procurement-readiness.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
   - board/kicad/e1-phone/display-fit.yaml
   - package/display/v0-dsi-720x1280.yaml
   - package/camera/oem-mipi-csi-modules.yaml
@@ -151,6 +152,54 @@ verified_sources:
       - step_model_cover_lens_stack_and_touch_controller_data
       - sample_lot_and_panel_init_sequence
 
+  - id: display_alternate_alibaba_meta_055wu01
+    group: display
+    supplier: META Display LLC
+    marketplace_or_vendor: Alibaba
+    url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+    public_page_status: public_listing_observed_2026_05_21
+    candidate: 055WU01
+    observed_public_fields:
+      model: 055WU01
+      type: 5p5_in_tft_lcd_ctp
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      signal_interface: MIPI_40_pins
+      active_area_mm: {width: 68.04, height: 120.96}
+      brightness_typ_cd_m2: 1000
+      minimum_order_signal_pieces: 1
+      single_piece_lead_time_business_days: 10
+    board_use: parseable_brightness_and_40pin_display_alternate_shortlist_only
+    still_missing_before_use:
+      - exact_orderable_mpn_lifecycle_and_signed_outline_drawing
+      - exact_40_pin_fpc_pinout_mating_connector_and_land_pattern
+      - fpc_exit_pin1_cover_lens_datums_step_model_and_touch_controller_pack
+      - sample_lot_incoming_inspection_and_panel_init_sequence
+
+  - id: display_alternate_made_in_china_e549_amoled
+    group: display
+    supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+    marketplace_or_vendor: Made-in-China
+    url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+    public_page_status: public_listing_observed_2026_05_21
+    candidate: E549-HC01_RM67191_AMOLED_class
+    observed_public_fields:
+      model: E549-HC01
+      type: 5p5_in_amoled_on_cell_touch_display
+      resolution: 1080x1920
+      interface: MIPI_4_lane
+      driver_ic: RM67191
+      touch_ic: GT1151
+      active_area_mm: {width: 68.299, height: 121.421}
+      outline_mm: {width: 70.66, height: 128.36, thickness: 0.82}
+      application_signal: mobile_phone
+    board_use: thin_z_height_amoled_display_alternate_shortlist_only
+    still_missing_before_use:
+      - exact_orderable_mpn_lifecycle_touch_stack_and_signed_outline_drawing
+      - exact_fpc_pinout_mating_connector_recommended_land_pattern_and_power_sequence
+      - step_model_cover_lens_burn_in_luminance_and_touch_controller_configuration
+      - sample_lot_incoming_inspection_and_enclosure_clearance_review
+
   - id: rear_camera_alternate_alibaba_ov13855_mipi
     group: camera
     supplier: Alibaba OV13855 module supplier
@@ -253,6 +302,9 @@ supplier_contact_plan:
 cross_checks:
   has_primary_display_public_dimensions: true
   has_display_alibaba_and_made_in_china_alternates: true
+  has_parseable_alibaba_meta_055wu01_display_alternate: true
+  has_parseable_made_in_china_e549_amoled_display_alternate: true
+  display_alternates_match_2026_05_21_revalidation: true
   has_rear_camera_public_pin_count_and_sensor_class: true
   has_front_camera_public_pin_count_and_sensor_class: true
   has_camera_alibaba_and_made_in_china_alternates: true
@@ -260,7 +312,7 @@ cross_checks:
   has_wifi_bt_vendor_page_with_in_production_status_dimensions_and_interfaces: true
   all_records_have_https_urls: true
   all_records_remain_blocked_for_supplier_pack_before_use: true
-  source_count: 9
+  source_count: 11
 
 release_blockers:
   - public pages are not supplier quote packs or approved AVL records

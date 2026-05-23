@@ -66,9 +66,7 @@ def analyze() -> dict[str, object]:
 
     # Cross-check against the signoff gate's mandated corner count.
     gate_doc = yaml.safe_load(GATE_FILE.read_text(encoding="utf-8")) or {}
-    gate_total = (gate_doc.get("multi_corner_requirements") or {}).get(
-        "total_corner_runs_required"
-    )
+    gate_total = (gate_doc.get("multi_corner_requirements") or {}).get("total_corner_runs_required")
     if gate_total is not None and gate_total != computed_total:
         blockers.append(
             f"corner_matrix yields {computed_total} runs but signoff gate mandates {gate_total}"
@@ -137,7 +135,9 @@ def main(argv: list[str]) -> int:
 
     if args.report:
         REPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        REPORT_PATH.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        REPORT_PATH.write_text(
+            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         print(f"pdn_ir_analysis inventory -> {REPORT_PATH.relative_to(ROOT)}")
 
     if not blockers:

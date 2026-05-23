@@ -84,7 +84,7 @@
           "pass": true,
           "summary": {
             "pass": true,
-            "estimated_mass_g": 183.29,
+            "estimated_mass_g": 183.15,
             "target_mass_g": 185,
             "note": "Rough CAD estimate; placeholder void markers excluded."
           }

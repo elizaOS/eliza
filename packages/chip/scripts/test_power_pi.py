@@ -58,17 +58,13 @@ class TestPowerThermalAiPolicy(unittest.TestCase):
         self.assertEqual(doc["schema"], check_policy.EXPECTED_SCHEMA)
         self.assertEqual(doc["status"], "DRAFT_CAPTURE_ONLY")
         self.assertEqual(doc["claim_boundary"], check_policy.EXPECTED_CLAIM_BOUNDARY)
-        self.assertIn(
-            check_policy.REQUIRED_QUARANTINE_ROOT, doc["artifact_quarantine_roots"]
-        )
+        self.assertIn(check_policy.REQUIRED_QUARANTINE_ROOT, doc["artifact_quarantine_roots"])
 
     def test_blocked_actions_complete(self) -> None:
         from chip_utils import load_yaml_object
 
         doc = load_yaml_object(check_policy.POLICY)
-        self.assertTrue(
-            check_policy.REQUIRED_BLOCKED_ACTIONS.issubset(set(doc["blocked_actions"]))
-        )
+        self.assertTrue(check_policy.REQUIRED_BLOCKED_ACTIONS.issubset(set(doc["blocked_actions"])))
 
 
 class TestPdnIrAnalysis(unittest.TestCase):

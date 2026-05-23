@@ -8,7 +8,7 @@ fi
 
 opensbi=$1
 mode=$2
-repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
+repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../../.." && pwd)
 evidence_dir="$repo_root/docs/evidence/linux"
 
 if [ ! -f "$opensbi/Makefile" ] || [ ! -d "$opensbi/lib" ]; then
@@ -29,8 +29,12 @@ record_opensbi_command() {
 	{
 		echo "eliza-evidence: target=opensbi artifact=$artifact"
 		echo "eliza-evidence: command=$command"
-		echo "eliza-evidence: started_utc=$(timestamp_utc)"
+		started=$(timestamp_utc)
+		echo "eliza-evidence: started_utc=$started"
 		echo "eliza-evidence: opensbi=$opensbi"
+		echo "EXTERNAL_TREE=$opensbi"
+		echo "COMMAND=$command"
+		echo "START_UTC=$started"
 	} > "$log"
 	set +e
 	(cd "$opensbi" && sh -c "$command") >> "$log" 2>&1
@@ -38,10 +42,14 @@ record_opensbi_command() {
 	set -e
 	if [ "$rc" -eq 0 ]; then
 		echo "eliza-evidence: status=PASS" >> "$log"
+		echo "RESULT=PASS" >> "$log"
 	else
 		echo "eliza-evidence: status=FAIL rc=$rc" >> "$log"
+		echo "RESULT=FAIL rc=$rc" >> "$log"
 	fi
-	echo "eliza-evidence: ended_utc=$(timestamp_utc)" >> "$log"
+	ended=$(timestamp_utc)
+	echo "eliza-evidence: ended_utc=$ended" >> "$log"
+	echo "END_UTC=$ended" >> "$log"
 	exit "$rc"
 }
 

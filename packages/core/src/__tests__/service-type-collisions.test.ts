@@ -51,6 +51,29 @@ const serviceTypeValuesByMember = new Map(
 
 const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 	[
+		"capability-router",
+		{
+			reason:
+				"Runtime capability routing keeps local, remote, and E2B implementations in one capability-router discovery slot while the strategy-table migration is in progress.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
+		"xr-session",
+		{
+			reason:
+				"Hearwear and XR plugins expose the same XR session service contract for different runtime surfaces; only the enabled plugin registers its implementation.",
+			classes: new Set([
+				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
+			]),
+		},
+	],
+	[
 		"trajectories",
 		{
 			reason:
@@ -58,6 +81,18 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 			classes: new Set([
 				"packages/core/src/features/trajectories/TrajectoriesService.ts:TrajectoriesService",
 				"packages/agent/src/runtime/trajectory-storage.ts:DatabaseTrajectoryLogger",
+			]),
+		},
+	],
+	[
+		"capability-router",
+		{
+			reason:
+				"Capability routing is mid-migration: the core canonical service and the legacy agent remote/E2B routers share the slot until callers finish moving to RuntimeCapabilityService.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
 			]),
 		},
 	],
@@ -82,6 +117,29 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 				"plugins/plugin-tailscale/src/services/CloudTailscaleService.ts:CloudTailscaleService",
 				"plugins/plugin-tailscale/src/services/LocalTailscaleService.ts:LocalTailscaleService",
 				"plugins/plugin-tunnel/src/services/LocalTunnelService.ts:LocalTunnelService",
+			]),
+		},
+	],
+	[
+		"capability-router",
+		{
+			reason:
+				"RuntimeCapabilityService is the canonical slot while existing HTTP and sandbox router services remain constructible during the router-strategy migration.",
+			classes: new Set([
+				"packages/core/src/services/runtime-capability-service.ts:RuntimeCapabilityService",
+				"packages/agent/src/services/e2b-capability-router.ts:E2BRemoteCapabilityRouterService",
+				"packages/agent/src/services/remote-capability-router.ts:RemoteCapabilityRouterService",
+			]),
+		},
+	],
+	[
+		"xr-session",
+		{
+			reason:
+				"plugin-hearwear keeps the plugin-xr session contract so headset clients and parity tests use the same service slot.",
+			classes: new Set([
+				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
 			]),
 		},
 	],

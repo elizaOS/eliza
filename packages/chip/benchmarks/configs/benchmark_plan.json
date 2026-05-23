@@ -298,6 +298,35 @@
       "timeout_seconds": 600
     },
     {
+      "name": "e1_npu_mlperf_inference_modeled",
+      "suite": "MLPerf Inference modeled subset",
+      "version": "local/modeled-v1",
+      "command": [
+        "python3",
+        "benchmarks/mlperf/run_mlperf_inference.py",
+        "--query-count",
+        "64"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic tiny INT8 MLP synthetic dataset",
+      "primary_metric": "SingleStream p90 query latency",
+      "units": "ns",
+      "parser": "eliza_mlperf_inference_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "min_top1_accuracy",
+        "single_stream_p90_latency_ns",
+        "offline_throughput_samples_per_second",
+        "energy_joules_per_inference",
+        "npu_macs_total",
+        "npu_commands_total"
+      ],
+      "metric_gates": [
+        { "metric": "min_top1_accuracy", "op": "==", "value": 1.0 }
+      ],
+      "timeout_seconds": 60
+    },
+    {
       "name": "tflite_e1_npu",
       "suite": "TensorFlow Lite benchmark_model",
       "version": "upstream/local",

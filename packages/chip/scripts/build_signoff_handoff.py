@@ -106,9 +106,7 @@ def build_handoff(
     # Liberty references are by basename + node; the actual files live in the
     # partner's PDK install. We list them so the partner maps each delay
     # corner to its Liberty, but we do not embed open-PDK Liberty bytes here.
-    liberty_refs = sorted(
-        {s.delay_corner.liberty for s in sset.scenarios}
-    )
+    liberty_refs = sorted({s.delay_corner.liberty for s in sset.scenarios})
 
     return {
         "schema": SCHEMA,
@@ -125,9 +123,7 @@ def build_handoff(
             "sdc": _file_ref(sdc),
             "spef": [_file_ref(s) for s in present_spefs],
         },
-        "liberty_refs": [
-            {"basename": name, "node_id": node_id} for name in liberty_refs
-        ],
+        "liberty_refs": [{"basename": name, "node_id": node_id} for name in liberty_refs],
         "import_back": {
             "schema": "eliza.pd_timing_path.v1",
             "command": (

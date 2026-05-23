@@ -46,7 +46,7 @@ function readAppXr(relPath: string): string {
   return readFileSync(resolve(appXrRoot, relPath), "utf8");
 }
 
-// All 24 registered XR view IDs
+// All 25 registered XR view IDs
 const ALL_XR_VIEW_IDS = [
   "wallet",
   "companion",
@@ -84,13 +84,13 @@ async function callViewHostRoute(input: unknown) {
 // ── tests ─────────────────────────────────────────────────────────────────────
 
 describe("XR feature parity audit", () => {
-  // 1. View registration parity — facewear has gui, tui, and xr views ──────────
-  it("axis 1 — plugin-hearwear declares gui, tui, and xr views for the 'facewear' id", () => {
+  // 1. View registration parity — hearwear has gui, tui, and xr views ──────────
+  it("axis 1 — plugin-hearwear declares gui, tui, and xr views for the 'hearwear' id", () => {
     const source = readFile("plugins/plugin-hearwear/src/index.ts");
     expect(source, "gui view").toContain('viewType: "gui"');
     expect(source, "tui view").toContain('viewType: "tui"');
     expect(source, "xr view").toContain('viewType: "xr"');
-    expect(source, "facewear view id").toContain('id: "facewear"');
+    expect(source, "hearwear view id").toContain('id: "hearwear"');
   });
 
   it("axis 1 — plugin-hearwear declares focused Smartglasses GUI and XR views", () => {
@@ -154,7 +154,7 @@ describe("XR feature parity audit", () => {
     expect(missing, "missing agent actions").toEqual([]);
   });
 
-  it("axis 3 — extractViewId() knows all 24 view ids for natural-language routing", () => {
+  it("axis 3 — extractViewId() knows all 25 view ids for natural-language routing", () => {
     const actionsSource = readFile(
       "plugins/plugin-hearwear/src/actions/xr-view-actions.ts",
     );
@@ -189,7 +189,7 @@ describe("XR feature parity audit", () => {
   // 5. Voice input ────────────────────────────────────────────────────────────
 
   it("axis 5 — view-host pages have voice transcript routing for INPUT, TEXTAREA, SELECT, and ARIA widgets", async () => {
-    // All 24 view-host pages share the same template — test a representative sample
+    // All 25 view-host pages share the same template — test a representative sample
     const sampleIds: (typeof ALL_XR_VIEW_IDS)[number][] = [
       "wallet",
       "phone",
@@ -342,7 +342,7 @@ describe("XR feature parity audit", () => {
 
   // Cross-cutting: simulator test coverage ────────────────────────────────────
 
-  it("cross-cut — all 24 view ids are present in the all-views-crud Playwright spec", () => {
+  it("cross-cut — all 25 view ids are present in the all-views-crud Playwright spec", () => {
     const specSrc = readAppXr("e2e/all-views-crud.spec.ts");
     const missing = ALL_XR_VIEW_IDS.filter(
       (id) => !specSrc.includes(`"${id}"`),

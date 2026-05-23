@@ -6,6 +6,9 @@
 #   bun.sha256
 #   elizaos-app/                 (Electrobun-packaged elizaOS app)
 #   elizaos-app.sha256
+#   vector.tar.gz                (PGlite extension bundle, resolved via ../)
+#   fuzzystrmatch.tar.gz         (PGlite extension bundle, resolved via ../)
+#   elizaos-root-assets.sha256
 #
 # On riscv64, CI should derive bun from the same
 # bun-linux-riscv64-musl.zip + SHA-256 contract consumed by the Android
@@ -90,6 +93,10 @@ EOF
 }
 
 if [ ! -d "${ART}" ]; then
+    if [ "${ELIZAOS_REQUIRE_AGENT_ARTIFACTS:-0}" = "1" ]; then
+        echo "ERROR: ${ART} missing and ELIZAOS_REQUIRE_AGENT_ARTIFACTS=1." >&2
+        exit 1
+    fi
     echo "WARN: ${ART} missing — installing offline elizaOS fallback agent payload."
     install_fallback_payload
 else
@@ -104,6 +111,19 @@ else
     # elizaOS app payload.
     if [ -d "${ART}/elizaos-app" ]; then
         cp -a "${ART}/elizaos-app/." "${INSTALL}/app/"
+        if [ -f "${ART}/elizaos-app.sha256" ]; then
+            ( cd "${INSTALL}/app" && sha256sum -c "${ART}/elizaos-app.sha256" )
+        fi
+    fi
+
+    # PGlite contrib bundles are referenced by the mobile bundle as ../*.tar.gz.
+    for asset in vector.tar.gz fuzzystrmatch.tar.gz; do
+        if [ -f "${ART}/${asset}" ]; then
+            install -m 0644 "${ART}/${asset}" "${INSTALL}/${asset}"
+        fi
+    done
+    if [ -f "${ART}/elizaos-root-assets.sha256" ]; then
+        ( cd "${INSTALL}" && sha256sum -c "${ART}/elizaos-root-assets.sha256" )
     fi
 fi
 

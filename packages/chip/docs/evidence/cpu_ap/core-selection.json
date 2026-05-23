@@ -1,18 +1,18 @@
 {
   "schema": "eliza.cpu_ap_core_selection_evidence.v1",
-  "generated_at": "2026-05-21T13:19:47Z",
+  "generated_at": "2026-05-22T21:08:45Z",
   "manifest_dir": "generators/chipyard",
   "target_topology": "1_ultra_3_premium_4_pro",
   "roles": {
     "big": [
       {
-        "manifest": "eliza-ascalon-manifest.json",
+        "manifest": "eliza-kunminghu-big-manifest.json",
         "core_role": "big_core_e1_ultra",
-        "status": "BLOCKED_until_license_and_procurement_resolved",
-        "isa": "RVA23 + V + Zfh + Zvfh + Zvbb + Zvkt + Zicbom + Zicboz + Zicond + Sv57",
+        "status": "selected_pending_external_xiangshan_checkout",
+        "isa": "RV64GCB + V + H",
         "decode_width": 8,
-        "rob_entries": 480,
-        "has_real_pin": false
+        "rob_entries": 512,
+        "has_real_pin": true
       }
     ],
     "mid": [
@@ -62,5 +62,5 @@
     "unknown": []
   },
   "errors": [],
-  "verdict": "blocked_big_core"
+  "verdict": "ok"
 }

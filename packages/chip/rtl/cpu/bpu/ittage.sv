@@ -163,12 +163,13 @@ module ittage
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
-                for (int unsigned e = 0; e < ITTAGE_ENTRIES_MAX; e++) begin
-                    storage_q[t][e] <= '{valid:1'b0, tag:'0, target:'0,
-                                          ctr:'0, useful:'0};
-                end
-            end
+            storage_q <= '{default: '{default: '{
+                valid:  1'b0,
+                tag:    '0,
+                target: '0,
+                ctr:    '0,
+                useful: '0
+            }}};
         end else if (upd_valid) begin
             // For the provider, refresh confidence and update target if the
             // observed target matches; if it disagrees the counter is

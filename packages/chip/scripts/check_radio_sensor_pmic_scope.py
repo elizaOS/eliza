@@ -32,6 +32,42 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    blocked_until_real_evidence: list[str], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in blocked_until_real_evidence:
+        findings.append(
+            {
+                "code": f"radio_sensor_pmic_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "blocked_until_real_evidence",
+                "next_step": "Capture the named radio, sensor, battery, PMIC, Android HAL, or regulatory evidence before claiming phone product readiness.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"radio_sensor_pmic_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the radio/sensor/PMIC scope contract before using this report as runtime evidence.",
+            }
+        )
+    return findings
+
+
 def row_by_id(rows: list[Any], row_id: str) -> dict[str, Any]:
     for row in rows:
         if isinstance(row, dict) and row.get("id") == row_id:
@@ -185,6 +221,15 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(PHONE_PLATFORM),
         },
     ]
+    blocked_until_real_evidence = [
+        "selected Wi-Fi/BT/GNSS/NFC module records, firmware provenance, antenna path, and regulatory boundary",
+        "wireless enumeration, firmware load, association, pairing, GNSS lock, NFC, suspend wake, and reset recovery transcripts",
+        "selected sensors, touch, haptics, regulators, IRQ/wake lines, calibration storage, and Android Sensors/Input/Vibrator HAL evidence",
+        "selected battery cell, PMIC, charger, fuel gauge, thermistors, rail sequencing, brownout, ship mode, and safety records",
+        "Android Health, Power, Thermal, Wi-Fi, Bluetooth, GNSS, NFC, Sensors, Input, and VINTF/SELinux/CTS/VTS evidence",
+        "RF coexistence, SAR/RF exposure, Bluetooth qualification, Wi-Fi/NFC compliance, battery shipping, charger, and thermal chamber evidence",
+    ]
+    findings = structured_findings(blocked_until_real_evidence, checks)
     return {
         "schema": "eliza.radio_sensor_pmic_scope.v1",
         "status": "radio_sensor_pmic_scope_release_blocked",
@@ -202,14 +247,8 @@ def build_report() -> dict[str, Any]:
             "pmic": rel(PMIC_BINDING),
             "charger": rel(CHARGER_BINDING),
         },
-        "blocked_until_real_evidence": [
-            "selected Wi-Fi/BT/GNSS/NFC module records, firmware provenance, antenna path, and regulatory boundary",
-            "wireless enumeration, firmware load, association, pairing, GNSS lock, NFC, suspend wake, and reset recovery transcripts",
-            "selected sensors, touch, haptics, regulators, IRQ/wake lines, calibration storage, and Android Sensors/Input/Vibrator HAL evidence",
-            "selected battery cell, PMIC, charger, fuel gauge, thermistors, rail sequencing, brownout, ship mode, and safety records",
-            "Android Health, Power, Thermal, Wi-Fi, Bluetooth, GNSS, NFC, Sensors, Input, and VINTF/SELinux/CTS/VTS evidence",
-            "RF coexistence, SAR/RF exposure, Bluetooth qualification, Wi-Fi/NFC compliance, battery shipping, charger, and thermal chamber evidence",
-        ],
+        "blocked_until_real_evidence": blocked_until_real_evidence,
+        "findings": findings,
         "checks": checks,
         "summary": {
             "check_count": len(checks),
@@ -261,6 +300,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 6:
         errors.append("radio/sensor/PMIC scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured radio/sensor/PMIC blockers")
     scaffolds = data.get("current_scaffolds")
     if not isinstance(scaffolds, dict):
         errors.append("current_scaffolds must be a mapping")

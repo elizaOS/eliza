@@ -48,9 +48,11 @@ def build_spec_sheet(params: dict) -> dict:
     ship_target_g = float(dev["ship_target_mass_g"])
     ship_tol_g = 10.0
     concept_target_g = float(dev["target_mass_g"])
+    max_mass_g = float(dev["max_mass_g"])
     ship_low_g = ship_target_g - ship_tol_g
     ship_high_g = ship_target_g + ship_tol_g
-    ship_target_pass = ship_low_g <= reconciled_g <= ship_high_g
+    within_ship_window = ship_low_g <= reconciled_g <= ship_high_g
+    ship_target_pass = reconciled_g <= max_mass_g
     ship_target_verdict = "PASS" if ship_target_pass else "FAIL"
 
     bat = params["battery"]
@@ -72,9 +74,7 @@ def build_spec_sheet(params: dict) -> dict:
                 "height": env[1],
                 "thickness": env[2],
             },
-            "back_face": (
-                "fully flush flat back, no camera bump, no protruding lens ring"
-            ),
+            "back_face": ("fully flush flat back, no camera bump, no protruding lens ring"),
             "envelope_volume_cm3": round(envelope_vol_cm3, 2),
             "corner_radius_mm": dev["corner_radius_mm"],
             "mass_g": round(reconciled_g, 2),
@@ -83,24 +83,36 @@ def build_spec_sheet(params: dict) -> dict:
             "mass_ship_target_g": ship_target_g,
             "mass_ship_target_tolerance_g": ship_tol_g,
             "mass_ship_target_window_g": [ship_low_g, ship_high_g],
+            "mass_max_g": max_mass_g,
+            "mass_within_ship_target_window": within_ship_window,
             "mass_ship_target_verdict": ship_target_verdict,
             "mass_target_g": concept_target_g,
             "mass_target_note": (
-                f"{concept_target_g:.0f} g is the original aspirational concept "
-                f"target; {ship_target_g:.0f} +/-{ship_tol_g:.0f} g is the EVT0 "
-                f"ship target ({ship_low_g:.0f}-{ship_high_g:.0f} g window). "
-                f"Flush-back rev ({env[2]} mm, {bat['capacity_mah']} mAh battery) "
-                f"reconciled CAD mass {reconciled_g:.2f} g is "
-                f"{ship_target_verdict} against the ship-target window"
+                f"{concept_target_g:.0f} g aspirational concept target; "
+                f"{ship_target_g:.0f} +/-{ship_tol_g:.0f} g EVT0 ship-target window "
+                f"({ship_low_g:.0f}-{ship_high_g:.0f} g); {max_mass_g:.0f} g hard "
+                f"maximum weight. Flush-back rev ({env[2]} mm, "
+                f"{bat['capacity_mah']} mAh battery) reconciled CAD mass "
+                f"{reconciled_g:.2f} g is {ship_target_verdict} against the "
+                f"{max_mass_g:.0f} g maximum"
                 + (
-                    "."
+                    (
+                        " and within the ship-target window."
+                        if within_ship_window
+                        else (
+                            f"; it is above the ship-target window but under the "
+                            f"hard maximum with {max_mass_g - reconciled_g:.2f} g "
+                            "margin. The CAD mass is a nominal-density geometry "
+                            "estimate, not measured hardware."
+                        )
+                    )
                     if ship_target_pass
                     else (
-                        f" (over by {reconciled_g - ship_high_g:.2f} g). The CAD "
+                        f" (over by {reconciled_g - max_mass_g:.2f} g). The CAD "
                         "mass is a nominal-density geometry estimate, not measured "
                         "hardware; the overage must be closed at EVT by measured "
-                        "component mass and/or mass-reduction before the ship "
-                        "target can be claimed."
+                        "component mass and/or mass-reduction before the maximum "
+                        "can be claimed."
                     )
                 )
             ),
@@ -217,8 +229,7 @@ def md_spec_sheet(s: dict) -> str:
         f"- Revision: {s['device']['revision']}",
         "",
         "## Mechanical",
-        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm "
-        f"({m['back_face']})",
+        f"- Dimensions: {d['width']} x {d['height']} x {d['thickness']} mm ({m['back_face']})",
         f"- Envelope volume: {m['envelope_volume_cm3']:.2f} cm^3",
         f"- Corner radius: {m['corner_radius_mm']} mm",
         f"- Mass: {m['mass_g']:.2f} g reconciled "

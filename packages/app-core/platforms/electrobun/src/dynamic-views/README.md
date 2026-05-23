@@ -8,8 +8,8 @@ The platform contract is:
 agent/plugin/runtime event
   -> register or open a DynamicViewManifest
   -> canvas/A2UI hosts the view session
-  -> the view calls Remotes through eliza.runtime with carrotInvokeWorker
-  -> the view tails worker events with carrotTailWorkerEvents
+  -> the view calls Remotes through eliza.runtime with remotePluginInvokeWorker
+  -> the view tails worker events with remotePluginTailWorkerEvents
   -> the view is closed when the task no longer needs it
 ```
 
@@ -37,8 +37,8 @@ Trusted workers can use host requests:
 - `dynamic-view-push`
 - `dynamic-view-sessions`
 
-Worker host requests currently require `host:manage-carrots`. A narrower view-management permission should replace that once the manifest permission model adds it.
+Worker host requests currently require `host:manage-remote-plugins`. A narrower view-management permission should replace that once the manifest permission model adds it.
 
 ## Demo
 
-`agent.run.trace.demo` is a developer-only proof of the dynamic view path. It opens a floating canvas view, receives A2UI pushed events, calls `eliza.runtime` through `carrotInvokeWorker`, and tails `eliza.runtime` events through `carrotTailWorkerEvents`.
+`agent.run.trace.demo` is a developer-only proof of the dynamic view path. It opens a floating canvas view, receives A2UI pushed events, calls `eliza.runtime` through `remotePluginInvokeWorker`, and tails `eliza.runtime` events through `remotePluginTailWorkerEvents`.

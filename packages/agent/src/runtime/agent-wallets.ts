@@ -18,9 +18,11 @@
  * up — see `runtime/eliza.ts`.
  */
 
+import { logger } from "@elizaos/core";
 import type { WalletChain } from "@elizaos/shared";
 import { removeEntryMeta, setEntryMeta, type Vault } from "@elizaos/vault";
 import { deriveEvmAddress, generateWalletForChain } from "../api/wallet.ts";
+import { teeBootGateBlocksSecrets } from "../services/tee-boot-gate-state.ts";
 
 const PREFIX = "agent";
 const SEGMENT = "wallet";
@@ -146,6 +148,15 @@ export async function revealAgentWalletPrivateKey(
   chain: WalletChain,
   caller?: string,
 ): Promise<string> {
+  // Fail-closed under a blocking TEE boot gate: a signing private key is a
+  // high-value secret and must not be revealed when TEE evidence is not
+  // trusted. Inert when no TEE policy is configured (the gate is unset/not
+  // required), so normal/local-only boots are unaffected.
+  if (teeBootGateBlocksSecrets()) {
+    throw new Error(
+      `[TeeBootGate] agent-wallet private-key reveal blocked: TEE evidence is not trusted (agentId=${agentId}, chain=${chain}).`,
+    );
+  }
   const key = walletKey(agentId, chain);
   const raw = await vault.reveal(key, caller);
   return parseStored(raw).privateKey;
@@ -342,6 +353,16 @@ export async function bridgeAgentWalletsToProcessEnv(
 ): Promise<void> {
   // Default off. Skipping bridge unless explicitly opted in.
   if (process.env.ELIZA_AGENT_WALLET_AS_USER !== "1") return;
+  // Fail-closed under a blocking TEE boot gate: do not write private keys into
+  // process.env when TEE evidence is not trusted. Skip-with-warn so the boot
+  // continues secret-less. Inert when no TEE policy is configured.
+  if (teeBootGateBlocksSecrets()) {
+    logger.warn(
+      { agentId },
+      "[TeeBootGate] Skipping agent-wallet → process.env bridge: TEE evidence is not trusted.",
+    );
+    return;
+  }
   for (const d of descriptors) {
     const envKey = CHAIN_TO_ENV_KEY[d.chain];
     if (process.env[envKey]?.trim()) continue; // user-set wins

@@ -18,6 +18,8 @@ module ras_tb (
     input  logic               commit_pop,
     input  logic               restore_valid,
     input  logic [RAS_IDX_W:0] restore_top,
+    input  logic               restore_entry_valid,
+    input  logic [VADDR_W-1:0] restore_entry_addr,
     output logic               pmu_overflow,
     output logic               pmu_underflow
 );

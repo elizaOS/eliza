@@ -822,8 +822,8 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
       relatedLayers: ["electrobun-shell", "dynamic-views", "trace"],
     }),
     packageEntry({
-      id: "packages/electrobun-carrots",
-      path: "packages/electrobun-carrots",
+      id: "packages/electrobun-remote-plugins",
+      path: "packages/electrobun-remote-plugins",
       category: "desktop-shell",
       keepAs: "core",
       action: "leave-alone",
@@ -912,11 +912,9 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
       path.basename(directory).startsWith("app-"),
   );
   const pluginEntries = await Promise.all(pluginDirectories.map(pluginEntry));
-  return [
-    ...manualEntries,
-    ...(await remoteEntries()),
-    ...pluginEntries,
-  ].sort((left, right) => left.id.localeCompare(right.id));
+  return [...manualEntries, ...(await remoteEntries()), ...pluginEntries].sort(
+    (left, right) => left.id.localeCompare(right.id),
+  );
 }
 
 function list(
@@ -947,17 +945,14 @@ function buildSummaries(
       "packages/agent",
       "packages/app-core",
       "packages/app-core/platforms/electrobun core shell",
-      "packages/electrobun-carrots",
+      "packages/electrobun-remote-plugins",
       "connector plugins",
       "provider plugins",
       "app plugins",
       "core runtime plugins",
     ],
     currentRemotes: list(entries, (entry) => entry.keepAs === "remote"),
-    futureRemoteCandidates: list(
-      entries,
-      (entry) => entry.shouldBecomeRemote,
-    ),
+    futureRemoteCandidates: list(entries, (entry) => entry.shouldBecomeRemote),
     traceFirstCandidates: list(
       entries,
       (entry) => entry.shouldEmitTraceEvents && entry.keepAs !== "remote",

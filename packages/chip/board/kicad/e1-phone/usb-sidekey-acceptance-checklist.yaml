@@ -5,10 +5,12 @@ claim_boundary: Acceptance checklist for the single USB-C port, charging path, p
   It is not a passed validation report, not a sent RFQ, not a supplier drawing pack, not DRC/ERC evidence, and not
   enclosure release.
 source_artifacts:
+  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/usb-sidekey-integration.yaml
   - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
   - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
   - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-power-sidekey-release-execution.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - package/usb-c/e1-phone-usb-c-port.yaml
   - package/human-interface/side-buttons.yaml

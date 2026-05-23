@@ -67,7 +67,9 @@ def collect_fpga(errors: list[str]) -> dict[str, Any]:
     if not isinstance(rtl_top, str) or not rtl_top:
         errors.append(f"{rel(FPGA_CFG)}: rtl_top must be a non-empty string")
         return side
-    reports = sorted(p for p in FPGA_REPORTS.rglob("*") if p.is_file()) if FPGA_REPORTS.is_dir() else []
+    reports = (
+        sorted(p for p in FPGA_REPORTS.rglob("*") if p.is_file()) if FPGA_REPORTS.is_dir() else []
+    )
     if not reports:
         errors.append(
             f"no FPGA build reports under {rel(FPGA_REPORTS)}; "

@@ -42,7 +42,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             tmp / "app-core/platforms/android/app/src/main/AndroidManifest.xml",
             """<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application>
-    <service android:name=".ElizaAgentService" />
+    <service android:name=".ElizaAgentService" android:exported="false" />
   </application>
 </manifest>
 """,
@@ -82,6 +82,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             tmp / "chip/sw/aosp-device/start-eliza-agent-riscv64.sh",
             "package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}\n"
             "service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentForegroundService}\n"
+            "adb shell am start-foreground-service -n \"$service\"\n"
             "url=/api/agent/self-status\n",
         )
         smoke_script = write(
@@ -152,6 +153,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
         self.assertIn("apk_missing_riscv64_native_libs", codes)
         self.assertIn("apk_missing_riscv64_agent_assets", codes)
         self.assertIn("android_service_identity_mismatch", codes)
+        self.assertIn("android_agent_service_not_exported_for_adb_smoke", codes)
         self.assertIn("android_agent_health_contract_mismatch", codes)
 
     def test_aligned_static_contract_passes(self) -> None:

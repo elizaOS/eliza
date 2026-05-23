@@ -1,0 +1,191 @@
+schema: eliza.e1_phone_supplier_kicad_review_execution.v1
+status: blocked_supplier_response_packs_missing_no_kicad_review_execution
+date: 2026-05-21
+claim_boundary: >
+  Supplier-to-KiCad review execution matrix. This file defines the exact
+  review outputs required after supplier RFQ response packs are returned,
+  before any symbol, footprint, STEP/B-rep binding, route, enclosure, BOM/AVL,
+  or first-article release claim. It is not supplier evidence, not a reviewed
+  KiCad library, not ERC/DRC evidence, and not approval to fabricate.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-response-pack-intake-contract.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+  - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  - board/kicad/e1-phone/production-readiness.yaml
+
+review_policy:
+  required_function_count: 10
+  required_review_output_classes:
+    - pinout_review
+    - symbol_review
+    - footprint_review
+    - footprint_3d_binding
+  required_review_output_count: 40
+  require_supplier_response_pack_before_review: true
+  require_signed_drawing_pinout_land_pattern_step_and_sample_before_approval: true
+  require_ee_layout_me_ops_signoff_before_unlock: true
+  placeholder_or_public_listing_unlocks_kicad_capture: false
+  partial_supplier_pack_unlocks_routing: false
+  review_templates_are_release_evidence: false
+
+execution_records:
+  - function: display_touch
+    primary_candidate: CH550FH01A-CT
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
+    approval_gates: &approval_gates
+      supplier_response_pack_present: false
+      signed_2d_drawing_present: false
+      pinout_or_pad_map_present: false
+      recommended_land_pattern_present: false
+      step_or_brep_model_present: false
+      sample_inspection_present: false
+      pinout_review_approved: false
+      symbol_review_approved: false
+      footprint_review_approved: false
+      footprint_3d_binding_approved: false
+      erc_rerun_after_symbol_capture: false
+      drc_rerun_after_footprint_replacement: false
+    downstream_unlocks: &downstream_unlocks
+      production_symbol_capture: false
+      production_footprint_capture: false
+      routed_layout: false
+      routed_step_export: false
+      enclosure_clearance: false
+      production_bom_avl: false
+      first_article_release: false
+  - function: rear_camera
+    primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/rear_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: front_camera
+    primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/front_camera.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: cellular
+    primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/cellular.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: wifi_bluetooth
+    primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/wifi_bluetooth.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: usb_c_receptacle_evt0
+    primary_candidate: GCT_USB4105_class_USB2_Type_C
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/usb_c_receptacle_evt0.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: side_buttons
+    primary_candidate: side_key_flex_or_enclosure_mounted_switch_subassembly
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/side_buttons.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: battery_pack
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/battery_pack.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: audio_speaker_microphone_flexes
+    primary_candidate: codec_amp_mics_speaker_receiver_haptic_stack
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/audio_speaker_microphone_flexes.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+  - function: top_bottom_interconnect
+    primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+    status: blocked_waiting_supplier_response_pack_and_review
+    required_response_pack: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+    review_outputs:
+      pinout_review: board/kicad/e1-phone/production/reports/pinout-review/top_bottom_interconnect.yaml
+      symbol_review: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
+      footprint_review: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
+      footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
+    approval_gates: *approval_gates
+    downstream_unlocks: *downstream_unlocks
+
+cross_checks:
+  functions_match_supplier_to_kicad_evidence_map: true
+  review_outputs_match_evt1_footprint_capture_work_package: true
+  response_packs_remain_absent: true
+  review_outputs_remain_absent: true
+  all_approval_gates_fail_closed: true
+  all_downstream_unlocks_fail_closed: true
+  routing_enclosure_and_production_unlocks_blocked_until_reviews_complete: true
+
+release_blockers:
+  - supplier RFQ response packs have not been returned or archived
+  - signed drawings, pinouts, land patterns, STEP/B-rep models, samples, and compliance packs are missing
+  - pinout, symbol, footprint, and 3D-binding review outputs are absent for every supplier function
+  - ERC and DRC reruns after supplier symbol and footprint replacement are missing
+  - routing, enclosure clearance, production BOM/AVL, and first article remain locked until every review output is approved
+
+forbidden_claims:
+  - supplier_kicad_reviews_complete
+  - production_symbols_ready
+  - production_footprints_ready
+  - step_models_bound
+  - routed_layout_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

@@ -18,7 +18,15 @@
     "declarationMap": true,
     "sourceMap": true,
     "noEmit": true,
-    "rootDir": "src",
+    "paths": {
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/types.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": [
+        "../plugin-remote-manifest/src/*"
+      ]
+    },
+    "rootDir": "..",
     "outDir": "dist"
   },
   "include": ["src/**/*.ts"]

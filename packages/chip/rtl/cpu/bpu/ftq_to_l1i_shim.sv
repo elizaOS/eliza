@@ -14,8 +14,8 @@
 //   1. Virtual `target_pc` (39-bit Sv39) -> 40-bit physical line address.
 //      The shim assumes a 1:1 V->P identity mapping at this stage. Real
 //      translation requires an iTLB consult, which is owned by the cache
-//      agent on the receive side; this shim therefore zero-extends and
-//      drops the line offset bits.
+//      agent on the receive side; this shim therefore zero-extends and clears
+//      the line offset bits.
 //   2. The `kind` field is mapped onto a 3-bit confidence: BR_NONE=0,
 //      BR_COND=4, BR_CALL=5, BR_RET=6. This is the simplest monotonic mapping
 //      consistent with the cache agent's documented 0..7 scale.
@@ -40,8 +40,8 @@ module ftq_to_l1i_shim (
     /* verilator lint_off UNUSEDSIGNAL */
     // Only target_pc, kind, taken, and valid feed the L1I prefetch request.
     // The other ftq_entry_t fields (start_pc, end_pc, br_taken_mask, ftq_idx,
-    // ras_spec_top) stay on the BPU side; the cache agent does not consume
-    // them.
+    // RAS snapshot, and predictor-provider metadata) stay on the BPU side;
+    // the cache agent does not consume them.
     input  ftq_entry_t          fetch_entry,
     /* verilator lint_on UNUSEDSIGNAL */
 
@@ -57,12 +57,13 @@ module ftq_to_l1i_shim (
     output logic                l1i_flush_o
 );
 
-    // 64 B L1I line offset is 6 bits. Drop the bottom 6 bits and zero-extend
-    // the remaining 33 bits to 40-bit physical line address.
+    // 64 B L1I line offset is 6 bits. Preserve a 40-bit 64 B-aligned
+    // physical address, matching e1_ftq_to_l1i_pkg::ftq_prefetch_req_t and
+    // the L1I prefetch port.
     logic [FTQ_PADDR_W-1:0] paddr_line;
     always_comb begin
         paddr_line = '0;
-        paddr_line[(VADDR_W-6)-1:0] = fetch_entry.target_pc[VADDR_W-1:6];
+        paddr_line[VADDR_W-1:6] = fetch_entry.target_pc[VADDR_W-1:6];
     end
 
     logic [FTQ_CONFIDENCE_W-1:0] confidence;

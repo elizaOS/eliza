@@ -317,7 +317,10 @@ function unwrapTeeReleaseKey(
     format: "der",
     type: "spki",
   });
-  const shared = diffieHellman({ privateKey: agentPrivateKey, publicKey: kmsPub });
+  const shared = diffieHellman({
+    privateKey: agentPrivateKey,
+    publicKey: kmsPub,
+  });
   const wrapKey = deriveWrapKey(shared, nonceHex);
   shared.fill(0);
   try {

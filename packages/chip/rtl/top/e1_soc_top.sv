@@ -24,8 +24,18 @@
 
 `timescale 1ns/1ps
 
+// E1_SOC_REAL_SUBSYS is the umbrella define: it is set whenever either the
+// real interrupt path (E1_SOC_REAL_IRQ) or the real main-memory path
+// (E1_SOC_REAL_DRAM) is requested, so the e1_soc_real_subsys composite (which
+// always contains all three production leaves) is instantiated once.
+`ifdef E1_SOC_REAL_IRQ
+  `define E1_SOC_REAL_SUBSYS
+`endif
+`ifdef E1_SOC_REAL_DRAM
+  `define E1_SOC_REAL_SUBSYS
+`endif
+
 module e1_soc_top
-    import e1_soc_pkg::*;
 (
 `ifdef USE_POWER_PINS
     inout  wire         VPWR,
@@ -45,6 +55,30 @@ module e1_soc_top
     output logic        irq_vsync,
     output logic        msip_o,
     output logic        mtip_o,
+`ifdef E1_SOC_REAL_IRQ
+    // Real-PLIC external-interrupt line to the CPU (mip.MEIP). Only present in
+    // the E1_SOC_REAL_IRQ config; the legacy path has no PLIC claim output.
+    output logic        meip_o,
+`endif
+`ifdef E1_SOC_REAL_DRAM
+    // Discoverable main-memory geometry from the real AXI4 DRAM controller,
+    // surfaced for boot enumeration / DTB memory-node sizing.
+    output logic [63:0] mem_capacity_bytes,
+    output logic [63:0] mem_base_addr,
+`endif
+`ifdef E1_SOC_ROT_GATED
+    // RoT-gated boot (rtl/security/rot/e1_rot_reset_seq.sv): the CPU cluster is
+    // held in reset until the mask-ROM secure-boot verifier strobes
+    // boot_verified_i AND the IOPMP source-ID policy is programmed
+    // (iopmp_policy_ready_i). Fail-closed: no timeout release; lc_scrap_i
+    // latches a permanent halt. See docs/security/tee-plan/02-root-of-trust.md.
+    input  logic        boot_verified_i,
+    input  logic        iopmp_policy_ready_i,
+    input  logic        lc_scrap_i,
+    output logic [2:0]  rot_state_o,
+    output logic        platform_released_o,
+    output logic        rot_halted_o,
+`endif
     output logic [7:0]  gpio_out
 );
     logic [31:0] bootrom_rdata;
@@ -128,8 +162,13 @@ module e1_soc_top
         .dram_sel           (dram_sel)
     );
 
-    assign mtip_o = clint_mtime >= clint_mtimecmp;
+    // Bring-up CLINT outputs feed the CPU only in the legacy config. In the
+    // E1_SOC_REAL_IRQ config the real e1_clint (in e1_soc_real_subsys) drives
+    // msip_o/mtip_o and the bring-up block is not instantiated.
+    logic        legacy_msip;
+    logic [31:0] legacy_clint_rdata;
 
+`ifndef E1_SOC_REAL_IRQ
     // Shared bring-up CLINT (rtl/peripherals/e1_clint.sv).
     e1_clint u_clint (
         .clk            (clk),
@@ -139,11 +178,28 @@ module e1_soc_top
         .mmio_word_addr (mmio_addr[15:2]),
         .mmio_wdata     (mmio_wdata),
         .sel_i          (clint_sel),
-        .clint_rdata    (clint_rdata),
-        .msip_o         (msip_o),
+        .clint_rdata    (legacy_clint_rdata),
+        .msip_o         (legacy_msip),
         .mtime_o        (clint_mtime),
         .mtimecmp_o     (clint_mtimecmp)
     );
+    assign msip_o      = legacy_msip;
+    assign mtip_o      = clint_mtime >= clint_mtimecmp;
+    assign clint_rdata = legacy_clint_rdata;
+`else
+    // Real-IRQ config: bring-up CLINT nets are unused; tie them to keep lint
+    // clean. msip_o/mtip_o/clint_rdata are driven by u_real_subsys below.
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_legacy_clint;
+    assign unused_legacy_clint = ^{legacy_msip, legacy_clint_rdata};
+    /* verilator lint_on UNUSEDSIGNAL */
+    assign legacy_msip        = 1'b0;
+    assign legacy_clint_rdata = 32'h0;
+    assign clint_mtime        = 64'h0;
+    assign clint_mtimecmp     = 64'hFFFF_FFFF_FFFF_FFFF;
+    // msip_o/mtip_o/clint_rdata are driven from the real subsys (rs_*) wires,
+    // assigned after the subsys instantiation below.
+`endif
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_display_scanout;
@@ -157,6 +213,105 @@ module e1_soc_top
         display_scan_rgb
     };
     /* verilator lint_on UNUSEDSIGNAL */
+
+    // ── Real interrupt + main-memory subsystem (E1_SOC_REAL_IRQ / _DRAM) ──
+    //
+    // Behind these defines the production CLINT, PLIC, and AXI4 DRAM
+    // controller (each cocotb-verified standalone) are composed onto the v0
+    // MMIO aperture by e1_soc_real_subsys. The legacy bring-up CLINT +
+    // behavioural-DRAM path is preserved when the defines are absent, so the
+    // existing gates (test_e1_soc.py, PD/synth/formal) stay green.
+    //
+    //   E1_SOC_REAL_IRQ  : real CLINT @ 0x0200_0000 drives msip_o/mtip_o;
+    //                      real PLIC  @ 0x0C00_0000 drives meip_o via a
+    //                      claim/complete round-trip. PLIC sources are the
+    //                      peripheral IRQs (timer/dma/npu/vsync).
+    //   E1_SOC_REAL_DRAM : real AXI4 DRAM controller (2 GiB @ 0x8000_0000)
+    //                      backs the CPU/debug MMIO DRAM window.
+`ifdef E1_SOC_REAL_SUBSYS
+    localparam int unsigned PLIC_NUM_SOURCES = 4;
+
+    // PLIC decode window: 0x0C00_0000 .. 0x0FFF_FFFF (64 MiB), word-aligned.
+    logic        rs_plic_sel;
+    assign rs_plic_sel = word_aligned && (mmio_addr[31:26] == 6'b0000_11);
+
+    // The real subsys handles a region only when that real define is active;
+    // otherwise the legacy block keeps the region (selects forced 0 here).
+`ifdef E1_SOC_REAL_IRQ
+    wire rs_clint_sel = clint_sel;
+    wire rs_plic_sel_q = rs_plic_sel;
+`else
+    wire rs_clint_sel = 1'b0;
+    wire rs_plic_sel_q = 1'b0;
+`endif
+`ifdef E1_SOC_REAL_DRAM
+    wire rs_dram_sel = dram_sel;
+`else
+    wire rs_dram_sel = 1'b0;
+`endif
+
+    logic [31:0] rs_clint_rdata;
+    logic [31:0] rs_plic_rdata;
+    logic [31:0] rs_dram_rdata;
+    logic        rs_mmio_ready;
+    logic        rs_msip;
+    logic        rs_mtip;
+    logic        rs_meip;
+    logic [63:0] rs_mtime;
+    logic [63:0] rs_mem_base;
+    logic [63:0] rs_mem_cap;
+
+    // PLIC sources: peripheral device IRQs. Source id 1=timer, 2=dma, 3=npu,
+    // 4=vsync (index 0 == source id 1 in the PLIC gateway).
+    wire [PLIC_NUM_SOURCES-1:0] rs_plic_sources = {irq_vsync, irq_npu,
+                                                   irq_dma, irq_timer};
+
+    e1_soc_real_subsys #(
+        .NUM_HARTS        (1),
+        .PLIC_NUM_SOURCES (PLIC_NUM_SOURCES)
+    ) u_real_subsys (
+        .clk          (clk),
+        .rst_n        (rst_n),
+        .mmio_valid   (mmio_valid),
+        .mmio_write   (mmio_write),
+        .mmio_addr    (mmio_addr),
+        .mmio_wdata   (mmio_wdata),
+        .clint_sel    (rs_clint_sel),
+        .plic_sel     (rs_plic_sel_q),
+        .dram_sel     (rs_dram_sel),
+        .clint_rdata  (rs_clint_rdata),
+        .plic_rdata   (rs_plic_rdata),
+        .dram_rdata   (rs_dram_rdata),
+        .mmio_ready_o (rs_mmio_ready),
+        .msip_o       (rs_msip),
+        .mtip_o       (rs_mtip),
+        .meip_o       (rs_meip),
+        .mtime_o      (rs_mtime),
+        .plic_sources (rs_plic_sources),
+        .mem_base_addr      (rs_mem_base),
+        .mem_capacity_bytes (rs_mem_cap)
+    );
+
+    // rs_mtime is observability-only; rs_*_rdata / rs_msip / rs_mtip / rs_meip
+    // are consumed by the muxes below only when E1_SOC_REAL_IRQ/_DRAM are set,
+    // so absorb them here to keep lint clean across the define matrix.
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_rs;
+    assign unused_rs = ^{rs_mtime, rs_clint_rdata, rs_plic_rdata, rs_dram_rdata,
+                         rs_msip, rs_mtip, rs_meip, rs_mem_base, rs_mem_cap};
+    /* verilator lint_on UNUSEDSIGNAL */
+`endif
+
+`ifdef E1_SOC_REAL_DRAM
+    assign mem_base_addr      = rs_mem_base;
+    assign mem_capacity_bytes = rs_mem_cap;
+`endif
+`ifdef E1_SOC_REAL_IRQ
+    assign meip_o      = rs_meip;
+    assign msip_o      = rs_msip;
+    assign mtip_o      = rs_mtip;
+    assign clint_rdata = rs_clint_rdata;
+`endif
 
     // Shared behavioural scratch-DRAM model (rtl/memory/e1_behavioral_dram.sv).
     // Backs the DMA / NPU AXI-Lite masters, the display framebuffer read port,
@@ -303,7 +458,45 @@ module e1_soc_top
     // This is a placeholder — replace with the PLIC claim output when the full
     // PLIC is wired in.
     logic        cpu_ext_irq;
-    assign cpu_ext_irq = irq_timer | irq_dma | irq_npu | irq_vsync;
+`ifdef E1_SOC_REAL_IRQ
+    // Real config: the external IRQ line is the PLIC's per-context request
+    // (mip.MEIP), gated through a real claim/complete. The timer IRQ comes
+    // from the real CLINT's mtip_o.
+    assign cpu_ext_irq    = rs_meip;
+    wire   cpu_time_irq   = rs_mtip;
+`else
+    assign cpu_ext_irq    = irq_timer | irq_dma | irq_npu | irq_vsync;
+    wire   cpu_time_irq   = clint_mtime >= clint_mtimecmp;
+`endif
+
+    // ── RoT reset sequencer (E1_SOC_ROT_GATED) ─────────────────────────────
+    // Holds the CPU cluster in reset until secure-boot is verified and the
+    // IOPMP policy is programmed. cpu_rst_n is the CPU's effective reset.
+    logic cpu_rst_n;
+`ifdef E1_SOC_ROT_GATED
+    logic rot_cva6_rst_no;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic rot_rst_no_unused;
+    logic rot_pmc_rst_no_unused;
+    /* verilator lint_on UNUSEDSIGNAL */
+    e1_rot_reset_seq u_rot_reset_seq (
+        .clk_i                (clk),
+        .rst_ni               (rst_n),
+        .boot_verified_i      (boot_verified_i),
+        .iopmp_policy_ready_i (iopmp_policy_ready_i),
+        .lc_scrap_i           (lc_scrap_i),
+        .rot_rst_no           (rot_rst_no_unused),
+        .cva6_rst_no          (rot_cva6_rst_no),
+        .pmc_rst_no           (rot_pmc_rst_no_unused),
+        .state_o              (rot_state_o),
+        .platform_released_o  (platform_released_o),
+        .halted_o             (rot_halted_o)
+    );
+    // CPU stays in reset until the RoT releases the application cluster.
+    assign cpu_rst_n = rst_n & rot_cva6_rst_no;
+`else
+    assign cpu_rst_n = rst_n;
+`endif
 
     // ── CPU subsystem ──────────────────────────────────────────────────────
     e1_cpu_subsystem #(
@@ -312,10 +505,10 @@ module e1_soc_top
         .BOOT_ADDR (64'h0000_0000_0000_1000)
     ) u_cpu (
         .clk_i          (clk),
-        .rst_ni         (rst_n),
+        .rst_ni         (cpu_rst_n),
         // Interrupts wired from CLINT and combined external IRQ
         .ipi_i          (msip_o),              // CLINT msip → software IRQ
-        .time_irq_i     (clint_mtime >= clint_mtimecmp), // CLINT mtip
+        .time_irq_i     (cpu_time_irq),        // CLINT mtip
         .irq_i          ({cpu_ext_irq, 1'b0}), // [1]=M-mode ext, [0]=S-mode
         .debug_req_i    (1'b0),                // JTAG debug: tie 0 for now
         // AXI4 master → bridge
@@ -595,18 +788,51 @@ module e1_soc_top
         .p1_dout (wbuf_p1_dout_unused)
     );
 
+    // Which regions are served by the real subsystem (multi-cycle AXI shim)
+    // vs the single-cycle legacy blocks. In the legacy config all of these
+    // are 0 and the bus behaves exactly as before.
+`ifdef E1_SOC_REAL_IRQ
+    wire real_clint_region = clint_sel;
+    wire real_plic_region  = rs_plic_sel;
+`else
+    wire real_clint_region = 1'b0;
+    wire real_plic_region  = 1'b0;
+`endif
+`ifdef E1_SOC_REAL_DRAM
+    wire real_dram_region  = dram_sel;
+`else
+    wire real_dram_region  = 1'b0;
+`endif
+    wire real_region = real_clint_region | real_plic_region | real_dram_region;
+
     always_comb begin
+        // Real-subsys regions hold the bus until the AXI(-Lite) transfer
+        // drains (rs_mmio_ready); every legacy region completes in one cycle.
+`ifdef E1_SOC_REAL_SUBSYS
+        mmio_ready = real_region ? (mmio_valid & rs_mmio_ready)
+                                 : mmio_valid;
+`else
         mmio_ready = mmio_valid;
-        unique case (1'b1)
-            bootrom_sel:  mmio_rdata = bootrom_rdata;
-            periph_sel:   mmio_rdata = periph_rdata;
-            dma_sel:      mmio_rdata = dma_rdata;
-            npu_sel:      mmio_rdata = npu_rdata;
-            display_sel:  mmio_rdata = display_rdata;
-            wbuf_sel:     mmio_rdata = wbuf_rdata;
-            clint_sel:    mmio_rdata = clint_rdata;
-            dram_sel:     mmio_rdata = mmio_dram_rdata;
-            default:      mmio_rdata = 32'hDEAD_BEEF;
+`endif
+        // Legacy CLINT/DRAM arms are suppressed when the real subsystem owns
+        // that region, so the case stays one-hot under `priority`.
+        priority case (1'b1)
+`ifdef E1_SOC_REAL_IRQ
+            real_plic_region:                    mmio_rdata = rs_plic_rdata;
+            real_clint_region:                   mmio_rdata = rs_clint_rdata;
+`endif
+`ifdef E1_SOC_REAL_DRAM
+            real_dram_region:                    mmio_rdata = rs_dram_rdata;
+`endif
+            bootrom_sel:                         mmio_rdata = bootrom_rdata;
+            periph_sel:                          mmio_rdata = periph_rdata;
+            dma_sel:                             mmio_rdata = dma_rdata;
+            npu_sel:                             mmio_rdata = npu_rdata;
+            display_sel:                         mmio_rdata = display_rdata;
+            wbuf_sel:                            mmio_rdata = wbuf_rdata;
+            (clint_sel && !real_clint_region):   mmio_rdata = clint_rdata;
+            (dram_sel  && !real_dram_region):    mmio_rdata = mmio_dram_rdata;
+            default:                             mmio_rdata = 32'hDEAD_BEEF;
         endcase
     end
 

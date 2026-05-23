@@ -22,7 +22,7 @@ import argparse
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -200,7 +200,7 @@ def split_by_design_id(samples: list[dict[str, Any]], seed: int) -> dict[str, li
 
 def import_torch() -> Any:
     try:
-        import torch  # type: ignore[import-not-found]
+        import torch
     except ImportError as exc:
         raise SystemExit(
             "PyTorch is required for train_pd_surrogates.py; install a CPU or "
@@ -239,16 +239,34 @@ class MessagePassingSurrogate:
     states produces the graph embedding consumed by per-target linear heads.
     """
 
-    def __init__(self, torch: Any, node_dim: int, edge_dim: int, hidden: int, layers: int, target_keys: list[str]) -> None:
+    def __init__(
+        self,
+        torch: Any,
+        node_dim: int,
+        edge_dim: int,
+        hidden: int,
+        layers: int,
+        target_keys: list[str],
+    ) -> None:
         self.torch = torch
         nn = torch.nn
         self.target_keys = target_keys
-        self.node_encoder = nn.Sequential(nn.Linear(node_dim, hidden), nn.ReLU(), nn.Linear(hidden, hidden))
+        self.node_encoder = nn.Sequential(
+            nn.Linear(node_dim, hidden), nn.ReLU(), nn.Linear(hidden, hidden)
+        )
         self.message_layers = nn.ModuleList(
-            [nn.Sequential(nn.Linear(2 * hidden + edge_dim, hidden), nn.ReLU(), nn.Linear(hidden, hidden)) for _ in range(layers)]
+            [
+                nn.Sequential(
+                    nn.Linear(2 * hidden + edge_dim, hidden), nn.ReLU(), nn.Linear(hidden, hidden)
+                )
+                for _ in range(layers)
+            ]
         )
         self.update_layers = nn.ModuleList(
-            [nn.Sequential(nn.Linear(2 * hidden, hidden), nn.ReLU(), nn.Linear(hidden, hidden)) for _ in range(layers)]
+            [
+                nn.Sequential(nn.Linear(2 * hidden, hidden), nn.ReLU(), nn.Linear(hidden, hidden))
+                for _ in range(layers)
+            ]
         )
         self.head = nn.Linear(hidden, len(target_keys))
         self.module = nn.ModuleList(
@@ -283,7 +301,9 @@ class MessagePassingSurrogate:
                 0, dst, torch.ones(dst.shape[0], device=h.device)
             )
             in_degree = in_degree.clamp(min=1.0).unsqueeze(1)
-        for message_layer, update_layer in zip(self.message_layers, self.update_layers, strict=True):
+        for message_layer, update_layer in zip(
+            self.message_layers, self.update_layers, strict=True
+        ):
             if src.numel() > 0:
                 message_input = torch.cat([h[src], h[dst], edge_attr], dim=1)
                 messages = message_layer(message_input)
@@ -296,13 +316,17 @@ class MessagePassingSurrogate:
         return self.head(pooled).squeeze(0)
 
 
-def to_graph_tensors(torch: Any, sample: dict[str, Any], device: Any, max_nodes: int) -> dict[str, Any]:
+def to_graph_tensors(
+    torch: Any, sample: dict[str, Any], device: Any, max_nodes: int
+) -> dict[str, Any]:
     node_features = sample["node_features"][:max_nodes]
     kept = set(range(len(node_features)))
     edge_src: list[int] = []
     edge_dst: list[int] = []
     edge_attr: list[list[float]] = []
-    for s, d, attr in zip(sample["edge_src"], sample["edge_dst"], sample["edge_features"], strict=True):
+    for s, d, attr in zip(
+        sample["edge_src"], sample["edge_dst"], sample["edge_features"], strict=True
+    ):
         if s in kept and d in kept:
             edge_src.append(s)
             edge_dst.append(d)
@@ -317,7 +341,13 @@ def to_graph_tensors(torch: Any, sample: dict[str, Any], device: Any, max_nodes:
     }
 
 
-def target_vector(torch: Any, sample: dict[str, Any], stats: dict[str, dict[str, float]], target_keys: list[str], device: Any) -> tuple[Any, Any]:
+def target_vector(
+    torch: Any,
+    sample: dict[str, Any],
+    stats: dict[str, dict[str, float]],
+    target_keys: list[str],
+    device: Any,
+) -> tuple[Any, Any]:
     values: list[float] = []
     mask: list[float] = []
     for key in target_keys:
@@ -396,7 +426,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--record-dir", action="append", type=Path, default=[])
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--learning-rate", type=float, default=2e-3)
@@ -440,12 +470,17 @@ def main() -> int:
 
     node_dim = 1 + 2 * len(NODE_NUMERIC_FEATURES)
     edge_dim = 2 * len(EDGE_NUMERIC_FEATURES)
-    model = MessagePassingSurrogate(torch, node_dim, edge_dim, args.hidden, args.layers, target_keys).to(device)
+    model = MessagePassingSurrogate(
+        torch, node_dim, edge_dim, args.hidden, args.layers, target_keys
+    ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     loss_fn = torch.nn.SmoothL1Loss(reduction="none")
 
     train_graphs = [
-        (to_graph_tensors(torch, sample, device, args.max_nodes), *target_vector(torch, sample, stats, target_keys, device))
+        (
+            to_graph_tensors(torch, sample, device, args.max_nodes),
+            *target_vector(torch, sample, stats, target_keys, device),
+        )
         for sample in splits["train"]
     ]
 
@@ -465,7 +500,9 @@ def main() -> int:
             loss_history.append({"epoch": epoch + 1, "loss": round(mean_epoch_loss, 8)})
 
     evaluations = [
-        evaluate(torch, model, splits[name], stats, target_keys, baseline, device, args.max_nodes, name)
+        evaluate(
+            torch, model, splits[name], stats, target_keys, baseline, device, args.max_nodes, name
+        )
         for name in ("train", "val", "test")
     ]
 
@@ -477,7 +514,9 @@ def main() -> int:
             "model_state_dict": model.state_dict(),
             "node_feature_schema": ["cell_name_hash_unit"]
             + [item for key in NODE_NUMERIC_FEATURES for item in (key, f"{key}_present")],
-            "edge_feature_schema": [item for key in EDGE_NUMERIC_FEATURES for item in (key, f"{key}_present")],
+            "edge_feature_schema": [
+                item for key in EDGE_NUMERIC_FEATURES for item in (key, f"{key}_present")
+            ],
             "target_keys": target_keys,
             "target_normalization": stats,
             "hidden": args.hidden,
@@ -488,12 +527,13 @@ def main() -> int:
     )
 
     held_out_design_ids = {
-        name: sorted({sample["design_id"] for sample in splits[name]}) for name in ("train", "val", "test")
+        name: sorted({sample["design_id"] for sample in splits[name]})
+        for name in ("train", "val", "test")
     }
 
     metrics = {
         "schema": "eliza.ai_eda.pd_surrogates_metrics.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "device": device.type,
@@ -510,7 +550,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.pd_surrogates_training_run.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "device": device.type,

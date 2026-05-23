@@ -34,9 +34,10 @@ EVIDENCE_PATH = ROOT / "docs/evidence/cpu_ap/branch-prediction-params.json"
 # `docs/architecture-optimization/sota-2028/branch-predictors.md`.
 THRESHOLDS: dict[str, int] = {
     "FETCH_BLOCK_BYTES": 32,
-    "MAX_BR_PER_BLOCK": 1,
+    "MAX_BR_PER_BLOCK": 2,
     "FTQ_ENTRIES": 32,
     "UFTB_ENTRIES": 256,
+    "UFTB_STEER_CONF_MIN": 2,
     "FTB_ENTRIES": 2048,
     "FTB_WAYS": 4,
     "TAGE_TABLES": 4,
@@ -48,11 +49,53 @@ THRESHOLDS: dict[str, int] = {
     "ITTAGE_TABLES": 5,
     "RAS_ARCH_ENTRIES": 16,
     "RAS_SPEC_ENTRIES": 32,
-    "TAGE_HIST_LEN_MAX": 100,
+    "SC_LOCAL_HISTORY_BITS": 8,
+    "SC_LOCAL_HISTORY_ENTRIES": 1024,
+    "ITTAGE_TARGET_HISTORY_BITS": 64,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
+    "ITTAGE_TARGET_HISTORY_SHIFT": 8,
 }
+TAGE_HIST_LEN_MAX_THRESHOLD = 100
+ITTAGE_HIST_LEN_MAX_THRESHOLD = 80
 
-# Names whose values are parsed from `bpu_pkg.sv` localparams.
-SCALAR_NAMES = list(THRESHOLDS.keys())
+# Names whose values are parsed from `bpu_pkg.sv` localparams. `THRESHOLDS`
+# entries are fail-closed minimums; the extra names are performance-relevant
+# tuning knobs that must be visible in evidence even when they are not floor
+# checks.
+EVIDENCE_SCALARS = {
+    "BIM_CTR_W",
+    "FTB_TARGET_CONF_W",
+    "ITTAGE_CTR_W",
+    "ITTAGE_PATH_HISTORY_BITS",
+    "ITTAGE_PATH_HISTORY_SHIFT",
+    "ITTAGE_PATH_HISTORY_TOKEN_BITS",
+    "ITTAGE_REPLACE_MIN_PROVIDER",
+    "ITTAGE_REPLACE_WEAK_CTR",
+    "ITTAGE_TAG_W",
+    "ITTAGE_TARGET_HISTORY_BITS",
+    "ITTAGE_TARGET_HISTORY_SHIFT",
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS",
+    "ITTAGE_USEFUL_RESET_PERIOD",
+    "ITTAGE_USEFUL_W",
+    "LOOP_CONF_W",
+    "LOOP_CTR_W",
+    "SC_ADAPTIVE",
+    "SC_CTR_W",
+    "SC_TC_LIMIT",
+    "SC_LOCAL_HISTORY_BITS",
+    "SC_LOCAL_HISTORY_ENTRIES",
+    "SC_THRESH_INIT",
+    "SC_THRESH_MAX",
+    "SC_THRESH_MIN",
+    "TAGE_CTR_W",
+    "TAGE_USE_ALT_ON_NA",
+    "TAGE_TAG_W",
+    "TAGE_USEFUL_RESET_PERIOD",
+    "TAGE_USEFUL_W",
+    "UFTB_STEER_CONF_MIN",
+    "UFTB_WAYS",
+}
+SCALAR_NAMES = sorted(set(THRESHOLDS) | EVIDENCE_SCALARS)
 
 
 def parse_int_literal(token: str) -> int:
@@ -91,10 +134,10 @@ def parse_package(text: str) -> dict[str, int | list[int]]:
     # named NAME_0, NAME_1, .... yosys does not accept array-form localparams
     # in package context, so the package declares one entry at a time.
     for array_name, count in (
-        ("TAGE_HIST_LEN", 5),
-        ("SC_HIST_LEN", 4),
-        ("ITTAGE_ENTRIES", 5),
-        ("ITTAGE_HIST_LEN", 5),
+        ("TAGE_HIST_LEN", raw_scalars.get("TAGE_TABLES", 5)),
+        ("SC_HIST_LEN", raw_scalars.get("SC_TABLES", 4)),
+        ("ITTAGE_ENTRIES", raw_scalars.get("ITTAGE_TABLES", 5)),
+        ("ITTAGE_HIST_LEN", raw_scalars.get("ITTAGE_TABLES", 5)),
     ):
         elements: list[int] = []
         for idx in range(count):
@@ -163,10 +206,18 @@ def evaluate(values: dict[str, int | list[int]]) -> tuple[str, list[str]]:
     tage_hist = values.get("TAGE_HIST_LEN")
     if not isinstance(tage_hist, list) or len(tage_hist) < 4:
         failures.append("TAGE_HIST_LEN must declare >=4 per-table histories")
-    elif max(tage_hist) < THRESHOLDS["TAGE_HIST_LEN_MAX"]:
+    elif max(tage_hist) < TAGE_HIST_LEN_MAX_THRESHOLD:
         failures.append(
             f"max TAGE history {max(tage_hist)} below minimum reach "
-            f"{THRESHOLDS['TAGE_HIST_LEN_MAX']}"
+            f"{TAGE_HIST_LEN_MAX_THRESHOLD}"
+        )
+    ittage_hist = values.get("ITTAGE_HIST_LEN")
+    if not isinstance(ittage_hist, list) or len(ittage_hist) < 5:
+        failures.append("ITTAGE_HIST_LEN must declare >=5 per-table histories")
+    elif max(ittage_hist) < ITTAGE_HIST_LEN_MAX_THRESHOLD:
+        failures.append(
+            f"max ITTAGE history {max(ittage_hist)} below minimum reach "
+            f"{ITTAGE_HIST_LEN_MAX_THRESHOLD}"
         )
     ittage_entries = values.get("ITTAGE_ENTRIES")
     if not isinstance(ittage_entries, list) or sum(ittage_entries) < 1024:
@@ -194,6 +245,7 @@ def build_evidence(
             "ITTAGE_ENTRIES",
             "ITTAGE_HIST_LEN",
         }
+        or name in EVIDENCE_SCALARS
     }
     synthetic_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
     synthetic_mpki_ref: dict[str, str | bool] = {

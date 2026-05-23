@@ -1,0 +1,23 @@
+{
+  "_comment": "pVM -> normalized TeeEvidence export shape emitted by eliza_pvm_mgr on the AOSP bring-up track. Conforms to packages/agent/src/services/tee-evidence.ts TeeEvidence. Confidentiality claims (memoryEncrypted/ioProtected/npuProtected) are intentionally ABSENT because they are BLOCKED on the riscv64 Cuttlefish/qemu-virt host. This is a contract/shape fixture, not a real attestation.",
+  "kind": "pkvm",
+  "provider": "eliza-pvm-mgr",
+  "hardwareVendor": "eliza",
+  "platformVersion": "avf-pkvm-bringup-riscv64",
+  "securityVersion": 1,
+  "measurements": {
+    "boot": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "os": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "agent": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+    "policy": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "freshness": {
+    "nonce": "bringup-nonce-0000000000000000",
+    "timestamp": "2026-05-22T00:00:00Z",
+    "verifier": "eliza-pvm-mgr-bringup"
+  },
+  "claims": {
+    "debugDisabled": true,
+    "secureBoot": true
+  }
+}

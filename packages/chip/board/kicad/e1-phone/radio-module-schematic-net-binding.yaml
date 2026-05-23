@@ -13,6 +13,7 @@ claim_boundary: >
 source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/radio-module-integration.yaml
+  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - board/kicad/e1-phone/module-rf-pinout-execution.yaml
   - board/kicad/e1-phone/module-host-integration-closure.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml

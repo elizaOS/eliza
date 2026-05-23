@@ -266,9 +266,7 @@ def _check_source_file(
     pdk = data.get("pdk")
     expected = row.get("pdk_name")
     if pdk != expected:
-        errors.append(
-            f"{node_id}: {label} pdk {pdk!r} != portability-index pdk_name {expected!r}"
-        )
+        errors.append(f"{node_id}: {label} pdk {pdk!r} != portability-index pdk_name {expected!r}")
     node_class = data.get("node_class")
     if node_class != row.get("node_class"):
         errors.append(
@@ -310,8 +308,7 @@ def _check_access_gate(
         extra = set(profile_forbidden) - set(gate_forbidden)
         if extra:
             errors.append(
-                f"{node_id}: profile forbidden_claims not present in access-gate: "
-                f"{sorted(extra)}"
+                f"{node_id}: profile forbidden_claims not present in access-gate: {sorted(extra)}"
             )
 
 

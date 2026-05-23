@@ -100,11 +100,8 @@ module e1_mockingjay #(
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++)
-                for (int s = 0; s < SETS; s++)
-                    etr[w][s] <= MAX_ETR;
-            for (int i = 0; i < STT_ENTRIES; i++)
-                stt[i] <= '0;
+            etr          <= '{default: '{default: MAX_ETR}};
+            stt          <= '{default: '0};
             access_cnt_q <= '0;
         end else begin
             if (acc_valid) begin

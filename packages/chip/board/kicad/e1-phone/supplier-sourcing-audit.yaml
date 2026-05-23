@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_supplier_sourcing_audit.v1
 status: sourcing_supported_by_public_listings_not_procurement_ready
-date: '2026-05-20'
+date: '2026-05-21'
 claim_boundary: Current public sourcing audit only. This is not a purchase order, AVL, supplier approval,
   NDA datasheet pack, sample receipt, incoming inspection, or permission to freeze KiCad symbols, footprints,
   FPC pinouts, antennas, or enclosure datums.
@@ -11,6 +11,8 @@ source_artifacts:
   - package/wifi/murata-type-2ea-wifi6e.yaml
   - docs/board/e1-phone-mainboard-metrics.yaml
   - board/kicad/e1-phone/display-fit.yaml
+  - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
 selection_summary:
   display_anchor: 5.5_in_1080x1920_MIPI_DSI_CTP
   device_envelope_mm:
@@ -35,7 +37,7 @@ selection_summary:
   primary_radio_module: RG255C_or_RM255C
   primary_wifi_bt_module: LBEE5XV2EA-802
 public_source_validation:
-  checked_date: '2026-05-20'
+  checked_date: '2026-05-21'
   method: Manual public web revalidation of marketplace/vendor pages. Listings are treated as sourcing
     evidence only; supplier quote, drawing pack, sample receipt, and incoming inspection are still missing.
   validated_sources:
@@ -65,6 +67,19 @@ public_source_validation:
       layout_use: 40_pin_DSI_brightness_alternate
       blocking_gap: public_outline_and_FPC_exit_missing
     - group: display
+      supplier: META Display LLC
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      public_page_status: public_listing_observed_2026_05_21
+      observed_fields:
+        - 055WU01 model number
+        - 5.5 inch 1080x1920 TFT LCD with capacitive touch
+        - MIPI 4-lane and MIPI 40-pin signal interface
+        - 68.04 x 120.96 mm active area
+        - 1000 cd/m2 typical brightness signal
+        - MOQ 1 piece and 10 business day single-piece lead-time signal
+      layout_use: parseable_40pin_DSI_high_brightness_alternate
+      blocking_gap: signed_outline_drawing_FPC_exit_mating_connector_STEP_and_sample_inspection_missing
+    - group: display
       supplier: Forfuture/FET display supplier
       url: https://www.made-in-china.com/showroom/bella823/product-detailDjlmucpOAohW/China-Fet-High-Resolution-1080-1920-Mipi-Interface-5-5-Inch-Amoled-Display.html
       public_page_status: public_listing_observed_2026_05_20
@@ -75,6 +90,19 @@ public_source_validation:
         - 70.66 x 128.36 x 0.82 mm outline
       layout_use: thin_z_height_display_alternate
       blocking_gap: touch_stack_and_power_sequence_not_received
+    - group: display
+      supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+      url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+      public_page_status: public_listing_observed_2026_05_21
+      observed_fields:
+        - E549-HC01/RM67191-class model signal
+        - 5.5 inch 1080x1920 AMOLED
+        - MIPI 4-lane interface
+        - GT1151 touch IC or equivalent on-cell touch-controller signal
+        - 68.299 x 121.421 mm active area
+        - 70.66 x 128.36 x 0.82 mm outline
+      layout_use: parseable_thin_z_height_amoled_alternate
+      blocking_gap: exact_touch_stack_power_sequence_FPC_pinout_STEP_and_sample_inspection_missing
     - group: camera
       supplier: Sincere First
       url: https://sincerefirst.en.made-in-china.com/product/WACpUrRYOVkc/China-Ov13855-Ov13850-CMOS-Sensor-Autofocus-13MP-Mipi-Camera-Module.html
@@ -160,6 +188,22 @@ public_sourcing_evidence:
         signal_interface: MIPI_40_pin
       fit_result: electrical_alternate_missing_public_outline
       procurement_role: pinout_or_brightness_alternate
+    - supplier: META Display LLC
+      marketplace: Alibaba
+      candidate: 055WU01_parseable_5p5_1080x1920_MIPI_40pin_CTP
+      url: https://www.alibaba.com/product-detail/5-5-Inch-TFT-LCD-Display_1601425016323.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_4_lane
+        signal_interface: MIPI_40_pins
+        active_area_mm:
+          width: 68.04
+          height: 120.96
+        brightness_typ_cd_m2: 1000
+        minimum_order_signal_pieces: 1
+        single_piece_lead_time_business_days: 10
+      fit_result: active_area_matches_primary_display_supplier_outline_required
+      procurement_role: parseable_40pin_brightness_display_alternate
     - supplier: Alibaba OEM/ODM display supplier
       marketplace: Alibaba
       candidate: 5p5_1080x1920_MIPI_40pin_ILI7807D_1200nit_class
@@ -189,6 +233,25 @@ public_sourcing_evidence:
           thickness: 0.82
       fit_result: z_height_alternate_supplier_touch_stack_required
       procurement_role: thin_display_power_alternate
+    - supplier: Shenzhen Dayuan Display Technology / FET-class suppliers
+      marketplace: Made-in-China
+      candidate: E549-HC01_RM67191_AMOLED_class
+      url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+      observed_public_specs:
+        resolution: 1080x1920
+        interface: MIPI_4_lane
+        driver_ic: RM67191
+        touch_ic: GT1151
+        touch_screen: on_cell
+        active_area_mm:
+          width: 68.299
+          height: 121.421
+        outline_mm:
+          width: 70.66
+          height: 128.36
+          thickness: 0.82
+      fit_result: thin_z_height_amoled_alternate_supplier_pack_required
+      procurement_role: parseable_thin_amoled_display_alternate
   camera:
     - supplier: Guangzhou Sincere Information Technology
       marketplace: Alibaba
@@ -334,6 +397,9 @@ cross_checks:
   has_made_in_china_display_evidence: true
   has_high_brightness_display_alternate: true
   has_thin_amoled_display_alternate: true
+  has_parseable_alibaba_meta_055wu01_display_alternate: true
+  has_parseable_made_in_china_e549_amoled_display_alternate: true
+  display_sourcing_audit_matches_source_verification_2026_05_21: true
   has_camera_marketplace_evidence: true
   has_front_camera_candidate_evidence: true
   has_alibaba_camera_evidence: true

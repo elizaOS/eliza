@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DOC = ROOT / "docs/project/minimum-linux-npu-target.md"
 REPORT = ROOT / "build/reports/minimum-linux-kernel-target.json"
 LINUX_DTS = ROOT / "sw/linux/dts/eliza-e1.dts"
-LINUX_EXTERNAL_STATUS = ROOT / "docs/evidence/linux/linux-external-bsp-status.json"
+LINUX_EXTERNAL_STATUS = ROOT / "build/reports/linux-external-bsp-status.json"
 
 REQUIRED_LOCAL_ARTIFACTS = {
     "linux_bsp_readme": "docs/sw/linux/README.md",
@@ -151,7 +151,12 @@ def collect() -> dict[str, Any]:
             errors.append(f"Linux DTS missing {name}: {REQUIRED_DTS_TOKENS[name]}")
 
     subprocess.run(
-        [sys.executable, "scripts/check_linux_external_bsp.py"],
+        [
+            sys.executable,
+            "scripts/check_linux_external_bsp.py",
+            "--report",
+            str(LINUX_EXTERNAL_STATUS),
+        ],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,

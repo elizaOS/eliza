@@ -39,7 +39,7 @@ that recovers performance **without weakening the security claim**.
 | --- | --- | --- | --- |
 | Little-core integration | `rtl/cpu/e1_cva6_wrapper.sv` | Real OpenHW CVA6 v5.3.0 (`cv64a6_imafdc_sv39`) behind `+define+E1_HAVE_CVA6`; flat-AXI4 adapter `rtl/top/adapters/e1_cva6_to_e1axi4.sv`; safe-idle when undefined. | **Real RTL boundary.** In-order, single-issue, RV64GC+S/Sv39. SPECint IPC ~1.5–1.8 (per `sota-2028/ooo-execution.md` §B). |
 | Smoke core | `rtl/cpu/e1_cpu_subsystem_stub.sv` | 8-state FSM, ~12 opcodes, no CSR/MMU/traps. | **Smoke only.** Not a performance vehicle; do not grow it. |
-| Cluster top | `rtl/cpu/cluster/e1_cluster_top.sv` | Parameterized 1+3+4 tie-off skeleton, `E1_HAVE_*` gated. | **Contract skeleton.** Big/mid cores `BLOCKED` on Ascalon license / Kunminghu fork. |
+| Cluster top | `rtl/cpu/cluster/e1_cluster_top.sv` | Parameterized 1+3+4 tie-off skeleton, `E1_HAVE_*` gated. | **Contract skeleton.** Big/mid cores `BLOCKED` on the open Kunminghu external checkout / scale-up fork. |
 | Branch prediction | `rtl/cpu/bpu/` (TAGE×5, SC×4, ITTAGE×5, loop, RAS, FTB 2048×4, uFTB 512, FTQ 64) | Substantial synthesizable BPU; 33/33 cocotb, MPKI harness on CBP-5. | **Real RTL.** Scaled XiangShan-Kunminghu derivative; the most mature OoO-relevant block in-tree. |
 | Macro-op fusion | `rtl/cpu/fusion/fusion_pkg.sv` (19 pairs) | Contract package only; `fusion_detect.sv` not yet written. | **Contract, no datapath.** Detection lands with rename/dispatch. |
 | RVV | `rtl/cpu/rvv/rvv_csr.sv` (7 CSRs real), `rvv_unit_stub.sv` | CSR/`vsetvl` real; arithmetic is a **behavioral pass-through stub**. | **CSR real, datapath BLOCKED.** No vector ALU. |
@@ -51,7 +51,7 @@ that recovers performance **without weakening the security claim**.
 **Bottom line:** the front-end (BPU) and the cache/SLC hierarchy are the most
 mature OoO-relevant RTL in the package. The OoO **back-end** (rename, ROB,
 schedulers, LSU, vector ALU) does not exist as datapath — it is contract +
-skeleton, deliberately deferred to a fork decision (Ascalon-D8 / Kunminghu V3).
+skeleton, deliberately deferred to the open Kunminghu V3 scale-up fork.
 This shapes the whole plan: **do not grow the stub into an OoO core.** Lean on
 an upstream OoO generator and spend E1-specific effort on the front-end,
 cache/SLC, vector/NPU datapath, the compiler, and the TEE co-design seams.
@@ -111,9 +111,11 @@ this plan commits to the experiment sequence:
   **Gate:** `make xiangshan-generator-check`, then a new
   `docs/evidence/cpu_ap/kunminghu-gem5-baseline.yaml` (`BLOCKED` until the
   generator pin + sim transcript exist).
-- **E2.0b — Big core: Ascalon-D8 vs Kunminghu scale-up.** Keep both behind
-  the existing `core-selection-gate.yaml`. Do not write a bespoke 8-wide core.
-  The decision gate is licensing (§F of the SOTA doc), not RTL readiness.
+- **E2.0b — Big core: open Kunminghu V3 8-wide scale-up.** Tracked behind the
+  existing `core-selection-gate.yaml`. Do not write a bespoke 8-wide core. The
+  selected path is the open Kunminghu scale-up (no vendor license; Ascalon-D8
+  surveyed but rejected for lack of published mobile license); the gate is the
+  external checkout + scale-up microbench, not licensing.
 - **E2.0c — Reject growing the stub or CVA6 into OoO.** CVA6 stays the
   `e1-pro` little core (in-order, ~1.6 IPC); the FSM stub stays a smoke target.
 
@@ -164,8 +166,8 @@ XS-GEM5 before any RTL freeze.
 ### 2.3 Path recommendation
 
 **Mid-core-first on Kunminghu V3 in XS-GEM5**, with the in-tree front-end (BPU,
-fusion) and cache/SLC as the E1 differentiators, and the big core gated on the
-Ascalon-vs-Kunminghu licensing decision. Do not build a bespoke OoO back-end.
+fusion) and cache/SLC as the E1 differentiators, and the big core selected as
+the open Kunminghu V3 8-wide scale-up. Do not build a bespoke OoO back-end.
 
 ---
 

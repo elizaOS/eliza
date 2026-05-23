@@ -205,6 +205,15 @@ TIER_RANK = {
     "rtl_sim": 1,
 }
 
+ON_CHIP_OS_BOOT_REQUIRED_STEPS = {
+    "cpu_ap_linux_evidence",
+    "chipyard_verilator_preflight",
+    "chipyard_generated_ap",
+    "chipyard_payload_path",
+    "chipyard_verilator_linux_attempt",
+    "chipyard_verilator_linux_smoke",
+}
+
 
 def display_path(path: Path) -> str:
     try:
@@ -365,6 +374,14 @@ def best_reference_evidence(results: list[dict[str, object]]) -> dict[str, objec
     return max(passing, key=lambda item: TIER_RANK.get(str(item.get("tier")), 0))
 
 
+def on_chip_os_boot_claim(results: list[dict[str, object]]) -> bool:
+    by_name = {str(item.get("name")): item for item in results}
+    return all(
+        by_name.get(name, {}).get("status") == "pass"
+        for name in ON_CHIP_OS_BOOT_REQUIRED_STEPS
+    )
+
+
 def blocked_items(results: list[dict[str, object]]) -> list[dict[str, object]]:
     items = []
     for item in results:
@@ -445,6 +462,10 @@ def failed_items(results: list[dict[str, object]]) -> list[dict[str, object]]:
     return items
 
 
+def nonpassing_items(results: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [*blocked_items(results), *failed_items(results)]
+
+
 def main() -> int:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     results = []
@@ -472,19 +493,14 @@ def main() -> int:
         item.get("scope") == "android_reference" and item.get("status") == "pass"
         for item in results
     )
-    on_chip_os_boot_passed = any(
-        item.get("name") == "chipyard_verilator_linux_smoke"
-        and item.get("scope") == "our_chip_os_boot"
-        and item.get("status") == "pass"
-        for item in results
-    )
+    on_chip_os_boot_passed = on_chip_os_boot_claim(results)
     npu_ml_smoke_passed = any(
         item.get("name") == "npu_ml_smoke" and item.get("status") == "pass" for item in results
     )
     integrated_npu_claim, integrated_npu_blockers = integrated_linux_npu_ml_claim()
     on_chip_blockers = [
         item
-        for item in blocked_items(results)
+        for item in nonpassing_items(results)
         if any(
             result.get("name") == item.get("name")
             and result.get("scope") in {"our_chip_prereq", "our_chip_os_boot"}
@@ -494,7 +510,7 @@ def main() -> int:
     minimum_target_blockers = list(on_chip_blockers)
     if not npu_ml_smoke_passed:
         minimum_target_blockers.extend(
-            item for item in blocked_items(results) if item.get("name") == "npu_ml_smoke"
+            item for item in nonpassing_items(results) if item.get("name") == "npu_ml_smoke"
         )
     if not integrated_npu_claim:
         minimum_target_blockers.append(

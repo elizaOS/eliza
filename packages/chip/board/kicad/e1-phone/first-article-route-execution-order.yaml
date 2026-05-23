@@ -9,6 +9,7 @@ claim_boundary: >
   package, not a first-article result, and not enclosure-ready evidence.
 
 source_artifacts:
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/supplier-sample-release-gate.yaml
   - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
   - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
@@ -16,6 +17,7 @@ source_artifacts:
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
   - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/post-route-validation-binding.yaml
   - board/kicad/e1-phone/routed-board-step-export-contract.yaml
   - board/kicad/e1-phone/production-factory-release-execution.yaml
   - board/kicad/e1-phone/factory-production-acceptance-checklist.yaml
@@ -23,6 +25,7 @@ source_artifacts:
   - board/kicad/e1-phone/end-to-end-readiness.yaml
 
 upstream_status:
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
   supplier_sample_release_gate: blocked_supplier_samples_response_packs_and_reviews_required_before_layout_release
   evt1_footprint_capture: blocked_evt1_footprint_capture_requires_supplier_intake_reviews_and_real_kicad_libraries
   schematic_capture_readiness: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
@@ -44,7 +47,45 @@ execution_policy:
   no_fabrication_outputs_without_routed_pcb_and_drc: true
   no_factory_limits_without_routed_probe_coordinates_and_first_article_measurements: true
   no_enclosure_release_without_routed_board_step_supplier_models_and_clearance_rerun: true
+  no_selected_hardware_phase_without_selected_supplier_response_packs: true
   all_phases_fail_closed_until_evidence_exists: true
+
+selected_supplier_response_sequence_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_exist_before_phase_zero_exit
+  phase_id: supplier_response_and_samples
+  must_complete_before_phase_order: 1
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  phase_zero_exit_requires:
+    - selected supplier RFQ response packs returned and normalized
+    - signed drawings, pinout/pad maps, land patterns, and STEP models for selected hardware
+    - EE, ME, and operations review signoff for selected hardware response packs
+    - sample inspection and compliance pack index for selected hardware
+  downstream_phases_blocked:
+    - footprint_symbol_and_3d_capture
+    - schematic_netclass_and_erc_capture
+    - placement_escape_and_trial_route
+    - high_speed_rf_power_route_and_drc
+    - manufacturing_release_outputs
+    - factory_fixture_and_first_article
+    - routed_step_and_enclosure_clearance
+    - final_readiness_decision
+  all_selected_supplier_response_packs_absent: true
+  blocks_first_article_route_sequence: true
 
 ordered_phases:
   - order: 0
@@ -181,6 +222,78 @@ ordered_phases:
     present_exit_evidence_count: 0
     blocked: true
 
+route_to_enclosure_handoff:
+  status: blocked_until_routed_pcb_drc_step_supplier_models_and_clearance_release_exist
+  route_phase: high_speed_rf_power_route_and_drc
+  enclosure_phase: routed_step_and_enclosure_clearance
+  handoff_is_strict: true
+  enclosure_claim_allowed_before_all_handoff_evidence: false
+  required_route_evidence:
+    - release_output_id: routed_kicad_pcb
+      expected_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      present: false
+    - release_output_id: pcb_drc_report
+      expected_path: board/kicad/e1-phone/production/reports/drc.json
+      present: false
+    - release_output_id: filled_zones
+      expected_path: board/kicad/e1-phone/production/reports/zone-fill.json
+      present: false
+  required_step_evidence:
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_step_output
+      expected_path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: false
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_component_model_directory
+      expected_path: board/kicad/e1-phone/production/step/component-models
+      present: false
+    - source_contract: routed-board-step-export-contract.yaml
+      evidence_id: required_report_output
+      expected_path: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+      present: false
+  required_mechanical_release_evidence:
+    - release_output_id: enclosure_clearance_report_using_routed_step
+      expected_path: mechanical/e1-phone/review/routed-board-clearance.json
+      production_release_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+      present: false
+    - post_export_check_id: full_cad_boolean_interference_passed
+      expected_path: mechanical/e1-phone/review/full-cad-boolean-interference.json
+      production_release_path: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-release.yaml
+      present: false
+  blocked_by:
+    - routed KiCad PCB and DRC evidence are absent
+    - zone-fill report is absent
+    - routed STEP with supplier component models is absent
+    - routed-board clearance release report is absent
+    - full CAD boolean interference release report is absent
+
+alternate_display_first_article_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/post-route-validation-binding.yaml
+    - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  status: blocked_until_alternate_display_branch_completes_supplier_route_step_validation_and_physical_fit
+  branch_count: 2
+  blocks_final_readiness_decision: true
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_first_article_evidence:
+        - selected-or-promoted supplier response pack with signed drawing, 40-pin pinout, land pattern, STEP/B-rep, and samples
+        - routed KiCad display branch with DRC, SI/PI, courtyard utilization, and display/touch bring-up logs
+        - routed board STEP with branch-specific display stack, connector, FPC tail, and enclosure clearance release
+        - first-article physical fit and functional validation before final readiness decision
+      first_article_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_first_article_evidence:
+        - selected-or-promoted supplier response pack with signed AMOLED drawing, FPC pinout, land pattern, STEP/B-rep, and samples
+        - routed KiCad AMOLED branch with DRC, SI/PI, power/thermal, courtyard utilization, and RM67191/GT1151 bring-up logs
+        - routed board STEP with branch-specific AMOLED stack, connector, FPC tail, and enclosure clearance release
+        - first-article physical fit and functional validation before final readiness decision
+      first_article_release_allowed: false
+
 release_output_inventory:
   routed_release_required_output_count: 20
   routed_release_present_output_count: 0
@@ -194,6 +307,7 @@ cross_checks:
   manifest_cites_execution_order: true
   source_artifacts_exist: true
   upstream_statuses_match_current_sources: true
+  selected_supplier_response_sequence_gate_blocks_phase_zero_exit: true
   phases_are_strictly_ordered: true
   every_phase_is_blocked: true
   no_phase_has_present_exit_evidence: true
@@ -201,13 +315,16 @@ cross_checks:
   production_factory_inventory_matches_release_execution: true
   routed_layout_ready_flags_remain_false: true
   enclosure_phase_depends_on_routed_step_and_supplier_models: true
+  alternate_display_first_article_gate_blocks_final_readiness: true
 
 release_blockers:
   - supplier response packs, samples, signed drawings, pinouts, land patterns, and STEP models are missing
+  - selected supplier RFQ response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - KiCad symbols, footprints, 3D bindings, and ERC evidence are missing
   - routed PCB, DRC, filled zones, SI/PI/RF/power reports, and production outputs are missing
   - factory probe coordinates, limits, fixture program, first-article transcript, and fab quote are missing
   - routed board STEP, supplier-model enclosure clearance rerun, and final readiness decision are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter first-article release until supplier, route, validation, STEP, enclosure, and physical fit evidence exist
 
 forbidden_claims:
   - route_sequence_complete

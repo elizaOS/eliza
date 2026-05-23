@@ -1,5 +1,18 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
-import { stripProgressLabelPrefix } from "../../src/index.js";
+import {
+  compactProgressText,
+  resolveSubAgentProgressPolicy,
+  stripProgressLabelPrefix,
+} from "../../src/index.js";
+
+function runtimeWithSettings(
+  settings: Record<string, string | undefined>,
+): IAgentRuntime {
+  return {
+    getSetting: (key: string) => settings[key],
+  } as unknown as IAgentRuntime;
+}
 
 describe("stripProgressLabelPrefix", () => {
   it("strips a 💬 narration label prefix", () => {
@@ -48,5 +61,36 @@ describe("stripProgressLabelPrefix", () => {
     expect(stripProgressLabelPrefix("💬 no bracket here")).toBe(
       "💬 no bracket here",
     );
+  });
+
+  it("formats compact progress without emoji or duplicated labels", () => {
+    expect(compactProgressText("🚀 [tweet-idea-app] running")).toBe("running");
+    expect(compactProgressText("💬 [tweet-idea-app] Writing files")).toBe(
+      "Writing files",
+    );
+  });
+
+  it("defaults to compact delayed progress with no reactions", () => {
+    expect(resolveSubAgentProgressPolicy(runtimeWithSettings({}))).toEqual({
+      mode: "compact",
+      reactions: false,
+      delayMs: 15000,
+    });
+  });
+
+  it("supports explicit threaded progress as an opt-in", () => {
+    expect(
+      resolveSubAgentProgressPolicy(
+        runtimeWithSettings({
+          ACPX_PROGRESS_MODE: "threaded",
+          ACPX_PROGRESS_REACTIONS: "1",
+          ACPX_PROGRESS_DELAY_MS: "0",
+        }),
+      ),
+    ).toEqual({
+      mode: "threaded",
+      reactions: true,
+      delayMs: 0,
+    });
   });
 });

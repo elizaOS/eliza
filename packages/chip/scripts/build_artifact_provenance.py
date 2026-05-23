@@ -136,14 +136,15 @@ def check(errors: list[str]) -> int:
         if unpropagated:
             fail(
                 errors,
-                f"node {node_id} missing upstream ECO/ECN propagation: "
-                + ", ".join(unpropagated),
+                f"node {node_id} missing upstream ECO/ECN propagation: " + ", ".join(unpropagated),
             )
 
     if errors:
         print("\n".join(errors))
         return 1
-    print(f"STATUS: PASS artifact_provenance docs/spec-db/artifact-provenance.yaml ({len(nodes)} nodes)")
+    print(
+        f"STATUS: PASS artifact_provenance docs/spec-db/artifact-provenance.yaml ({len(nodes)} nodes)"
+    )
     return 0
 
 

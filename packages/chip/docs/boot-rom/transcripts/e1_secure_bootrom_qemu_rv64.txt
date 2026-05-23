@@ -1,0 +1,141 @@
+E1 secure-boot mask ROM — simulator boot transcript
+================================================================
+
+simulator   : qemu-system-riscv64 (QEMU virt, -bios none)
+rom image   : build/boot-rom/e1_secure_boot_rom.bin (rv64imac mask ROM)
+load base   : 0x0000000080000000 (virt reset vector mrom@0x1000 -> 0x80000000)
+reproduce   : scripts/run_bootrom_sim_transcript.sh
+scope       : development simulator trace; NOT a silicon secure-boot claim
+
+ordered first-fetch instruction walk (ROM-image PCs only):
+----------------------------------------------------------------
+0x0000000080000000:  00000297  auipc                   t0,0                    # 0x80000000  <_start>
+0x0000000080000004:  02828293  addi                    t0,t0,40  <_start+0x4>
+0x0000000080000008:  30529073  csrrw                   zero,mtvec,t0  <_start+0x8>
+0x000000008000000c:  30047073  csrrci                  zero,mstatus,8  <_start+0xc>
+0x0000000080000010:  00014117  auipc                   sp,20                   # 0x80014010  <_start+0x10>
+0x0000000080000014:  ff010113  addi                    sp,sp,-16  <_start+0x14>
+0x0000000080000018:  00001097  auipc                   ra,1                    # 0x80001018  <_start+0x18>
+0x000000008000001c:  6f2080e7  jalr                    ra,ra,1778  <_start+0x1c>
+0x000000008000170a:  7111  addi                    sp,sp,-256  <e1_secure_boot_main>
+0x000000008000170c:  1808  addi                    a0,sp,48  <e1_secure_boot_main+0x2>
+0x000000008000170e:  fd86  sd                      ra,248(sp)  <e1_secure_boot_main+0x4>
+0x0000000080001710:  f9a2  sd                      s0,240(sp)  <e1_secure_boot_main+0x6>
+0x0000000080001712:  e002  sd                      zero,0(sp)  <e1_secure_boot_main+0x8>
+0x0000000080001714:  e402  sd                      zero,8(sp)  <e1_secure_boot_main+0xa>
+0x0000000080001716:  00000097  auipc                   ra,0                    # 0x80001716  <e1_secure_boot_main+0xc>
+0x000000008000171a:  fd0080e7  jalr                    ra,ra,-48  <e1_secure_boot_main+0x10>
+0x00000000800016e6:  4781  mv                      a5,zero  <e1_rom_read_otp>
+0x00000000800016e8:  02000713  addi                    a4,zero,32  <e1_rom_read_otp+0x2>
+0x00000000800016ec:  00f506b3  add                     a3,a0,a5  <e1_rom_read_otp+0x6>
+0x00000000800016f0:  00068023  sb                      zero,0(a3)  <e1_rom_read_otp+0xa>
+0x00000000800016f4:  0785  addi                    a5,a5,1  <e1_rom_read_otp+0xe>
+0x00000000800016f6:  fee79be3  bne                     a5,a4,-10               # 0x800016ec  <e1_rom_read_otp+0x10>
+0x00000000800016fa:  02052023  sw                      zero,32(a0)  <e1_rom_read_otp+0x14>
+0x00000000800016fe:  02051223  sh                      zero,36(a0)  <e1_rom_read_otp+0x18>
+0x0000000080001702:  02050323  sb                      zero,38(a0)  <e1_rom_read_otp+0x1c>
+0x0000000080001706:  8082  ret  <e1_rom_read_otp+0x20>
+0x000000008000171e:  00000097  auipc                   ra,0                    # 0x8000171e  <e1_secure_boot_main+0x14>
+0x0000000080001722:  fbc080e7  jalr                    ra,ra,-68  <e1_secure_boot_main+0x18>
+0x00000000800016da:  4501  mv                      a0,zero  <e1_rom_image_base>
+0x00000000800016dc:  8082  ret  <e1_rom_image_base+0x2>
+0x0000000080001726:  842a  mv                      s0,a0  <e1_secure_boot_main+0x1c>
+0x0000000080001728:  00000097  auipc                   ra,0                    # 0x80001728  <e1_secure_boot_main+0x1e>
+0x000000008000172c:  fb6080e7  jalr                    ra,ra,-74  <e1_secure_boot_main+0x22>
+0x00000000800016de:  4501  mv                      a0,zero  <e1_rom_image_len>
+0x00000000800016e0:  8082  ret  <e1_rom_image_len+0x2>
+0x0000000080001730:  c111  beqz                    a0,4                    # 0x80001734  <e1_secure_boot_main+0x26>
+0x0000000080001734:  0108  addi                    a0,sp,128  <e1_secure_boot_main+0x2a>
+0x0000000080001736:  1814  addi                    a3,sp,48  <e1_secure_boot_main+0x2c>
+0x0000000080001738:  4601  mv                      a2,zero  <e1_secure_boot_main+0x2e>
+0x000000008000173a:  45ad  addi                    a1,zero,11  <e1_secure_boot_main+0x30>
+0x000000008000173c:  00000097  auipc                   ra,0                    # 0x8000173c  <e1_secure_boot_main+0x32>
+0x0000000080001740:  dfc080e7  jalr                    ra,ra,-516  <e1_secure_boot_main+0x36>
+0x0000000080001538:  4781  mv                      a5,zero  <halt_record_build>
+0x000000008000153a:  02000713  addi                    a4,zero,32  <halt_record_build+0x2>
+0x000000008000153e:  00f50833  add                     a6,a0,a5  <halt_record_build+0x6>
+0x0000000080001542:  00080023  sb                      zero,0(a6)  <halt_record_build+0xa>
+0x0000000080001546:  0785  addi                    a5,a5,1  <halt_record_build+0xe>
+0x0000000080001548:  fee79be3  bne                     a5,a4,-10               # 0x8000153e  <halt_record_build+0x10>
+0x000000008000154c:  04800793  addi                    a5,zero,72  <halt_record_build+0x14>
+0x0000000080001550:  00f50023  sb                      a5,0(a0)  <halt_record_build+0x18>
+0x0000000080001554:  04100793  addi                    a5,zero,65  <halt_record_build+0x1c>
+0x0000000080001558:  00f500a3  sb                      a5,1(a0)  <halt_record_build+0x20>
+0x000000008000155c:  04c00793  addi                    a5,zero,76  <halt_record_build+0x24>
+0x0000000080001560:  00f50123  sb                      a5,2(a0)  <halt_record_build+0x28>
+0x0000000080001564:  05400793  addi                    a5,zero,84  <halt_record_build+0x2c>
+0x0000000080001568:  00f501a3  sb                      a5,3(a0)  <halt_record_build+0x30>
+0x000000008000156c:  0085d79b  srliw                   a5,a1,8  <halt_record_build+0x34>
+0x0000000080001570:  00b50223  sb                      a1,4(a0)  <halt_record_build+0x38>
+0x0000000080001574:  00f502a3  sb                      a5,5(a0)  <halt_record_build+0x3c>
+0x0000000080001578:  0105d79b  srliw                   a5,a1,16  <halt_record_build+0x40>
+0x000000008000157c:  0185d59b  srliw                   a1,a1,24  <halt_record_build+0x44>
+0x0000000080001580:  00f50323  sb                      a5,6(a0)  <halt_record_build+0x48>
+0x0000000080001584:  00b503a3  sb                      a1,7(a0)  <halt_record_build+0x4c>
+0x0000000080001588:  57fd  addi                    a5,zero,-1  <halt_record_build+0x50>
+0x000000008000158a:  c211  beqz                    a2,4                    # 0x8000158e  <halt_record_build+0x52>
+0x000000008000158e:  0087d71b  srliw                   a4,a5,8  <halt_record_build+0x56>
+0x0000000080001592:  00f50423  sb                      a5,8(a0)  <halt_record_build+0x5a>
+0x0000000080001596:  00e504a3  sb                      a4,9(a0)  <halt_record_build+0x5e>
+0x000000008000159a:  0107d71b  srliw                   a4,a5,16  <halt_record_build+0x62>
+0x000000008000159e:  0187d79b  srliw                   a5,a5,24  <halt_record_build+0x66>
+0x00000000800015a2:  00f505a3  sb                      a5,11(a0)  <halt_record_build+0x6a>
+0x00000000800015a6:  00e50523  sb                      a4,10(a0)  <halt_record_build+0x6e>
+0x00000000800015aa:  57fd  addi                    a5,zero,-1  <halt_record_build+0x72>
+0x00000000800015ac:  c211  beqz                    a2,4                    # 0x800015b0  <halt_record_build+0x74>
+0x00000000800015b0:  0087d71b  srliw                   a4,a5,8  <halt_record_build+0x78>
+0x00000000800015b4:  00f50623  sb                      a5,12(a0)  <halt_record_build+0x7c>
+0x00000000800015b8:  00e506a3  sb                      a4,13(a0)  <halt_record_build+0x80>
+0x00000000800015bc:  0107d71b  srliw                   a4,a5,16  <halt_record_build+0x84>
+0x00000000800015c0:  0187d79b  srliw                   a5,a5,24  <halt_record_build+0x88>
+0x00000000800015c4:  00f507a3  sb                      a5,15(a0)  <halt_record_build+0x8c>
+0x00000000800015c8:  00e50723  sb                      a4,14(a0)  <halt_record_build+0x90>
+0x00000000800015cc:  4781  mv                      a5,zero  <halt_record_build+0x94>
+0x00000000800015ce:  c211  beqz                    a2,4                    # 0x800015d2  <halt_record_build+0x96>
+0x00000000800015d2:  0087d71b  srliw                   a4,a5,8  <halt_record_build+0x9a>
+0x00000000800015d6:  00f50823  sb                      a5,16(a0)  <halt_record_build+0x9e>
+0x00000000800015da:  00e508a3  sb                      a4,17(a0)  <halt_record_build+0xa2>
+0x00000000800015de:  0107d71b  srliw                   a4,a5,16  <halt_record_build+0xa6>
+0x00000000800015e2:  0187d79b  srliw                   a5,a5,24  <halt_record_build+0xaa>
+0x00000000800015e6:  00f509a3  sb                      a5,19(a0)  <halt_record_build+0xae>
+0x00000000800015ea:  00e50923  sb                      a4,18(a0)  <halt_record_build+0xb2>
+0x00000000800015ee:  4781  mv                      a5,zero  <halt_record_build+0xb6>
+0x00000000800015f0:  c291  beqz                    a3,4                    # 0x800015f4  <halt_record_build+0xb8>
+0x00000000800015f2:  529c  lw                      a5,32(a3)  <halt_record_build+0xba>
+0x00000000800015f4:  0087d71b  srliw                   a4,a5,8  <halt_record_build+0xbc>
+0x00000000800015f8:  00f50a23  sb                      a5,20(a0)  <halt_record_build+0xc0>
+0x00000000800015fc:  00e50aa3  sb                      a4,21(a0)  <halt_record_build+0xc4>
+0x0000000080001600:  0107d71b  srliw                   a4,a5,16  <halt_record_build+0xc8>
+0x0000000080001604:  0187d79b  srliw                   a5,a5,24  <halt_record_build+0xcc>
+0x0000000080001608:  00f50ba3  sb                      a5,23(a0)  <halt_record_build+0xd0>
+0x000000008000160c:  00e50b23  sb                      a4,22(a0)  <halt_record_build+0xd4>
+0x0000000080001610:  4781  mv                      a5,zero  <halt_record_build+0xd8>
+0x0000000080001612:  c299  beqz                    a3,6                    # 0x80001618  <halt_record_build+0xda>
+0x0000000080001614:  0256c783  lbu                     a5,37(a3)  <halt_record_build+0xdc>
+0x0000000080001618:  00f50c23  sb                      a5,24(a0)  <halt_record_build+0xe0>
+0x000000008000161c:  8082  ret  <halt_record_build+0xe4>
+0x0000000080001744:  0108  addi                    a0,sp,128  <e1_secure_boot_main+0x3a>
+0x0000000080001746:  00000097  auipc                   ra,0                    # 0x80001746  <e1_secure_boot_main+0x3c>
+0x000000008000174a:  fc2080e7  jalr                    ra,ra,-62  <e1_secure_boot_main+0x40>
+0x0000000080001708:  8082  ret  <e1_rom_emit_halt>
+0x000000008000174e:  4501  mv                      a0,zero  <e1_secure_boot_main+0x44>
+0x0000000080001750:  70ee  ld                      ra,248(sp)  <e1_secure_boot_main+0x46>
+0x0000000080001752:  744e  ld                      s0,240(sp)  <e1_secure_boot_main+0x48>
+0x0000000080001754:  6111  addi                    sp,sp,256  <e1_secure_boot_main+0x4a>
+0x0000000080001756:  8082  ret  <e1_secure_boot_main+0x4c>
+0x0000000080000020:  00050463  beqz                    a0,8                    # 0x80000028  <_start+0x20>
+0x0000000080000028:  10500073  wfi  <e1_bootrom_trap>
+0x000000008000002c:  ffdff06f  j                       -4                      # 0x80000028  <e1_bootrom_trap+0x4>
+----------------------------------------------------------------
+
+MARKERS:
+  reset-vector-fetch : 0x0000000080000000  auipc                   t0,0                    # 0x80000000  <_start>
+  mtvec-setup        : 0x0000000080000008  csrrw                   zero,mtvec,t0
+  verifier-call      : 0x000000008000001c  jalr                    ra,ra,1778  <_start+0x1c>
+  fail-closed-trap   : 0x0000000080000028  wfi  <e1_bootrom_trap> (WFI)
+
+RESULT: fail-closed. With no provisioned OTP root hash and no signed first-stage
+image present, e1_secure_boot_main returned 0 and the reset vector fell into the
+WFI trap loop. Nothing was booted without authentication — the intended negative
+evidence for the secure-boot threat model.
+

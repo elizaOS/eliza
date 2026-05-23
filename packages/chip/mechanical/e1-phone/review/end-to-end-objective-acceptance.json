@@ -15,6 +15,8 @@
       "live KiCad PCB audit confirms nets/classes/placeholders exist but routed copper, zones, DRC, and production outputs are absent",
       "live KiCad utilization audit finds placeholder courtyard intrusions into the battery window and reserve pressure remains below routed-release target",
       "supplier pinouts, footprints, STEP models, routed DRC/ERC, SI/PI, RF, thermal, factory, and enclosure evidence are missing",
+      "selected supplier RFQ response packs for display, camera, USB-C, side keys, cellular, and Wi-Fi/Bluetooth are missing",
+      "parseable 055WU01 and E549/RM67191 display alternates remain blocked until supplier, route, validation, STEP, enclosure, first-article, and promotion evidence exist",
       "enclosure fit execution package requires routed-board STEP, supplier 3D models, boolean-interference clearance, physical fit logs, and measured clearance cases"
     ]
   },
@@ -26,8 +28,8 @@
     {
       "id": "popular_screen_size_fit",
       "requirement": "Optimize device and board size around a popular/easy 5.5 inch 1080x1920 MIPI CTP display.",
-      "evidence_artifact": "board/kicad/e1-phone/display-camera-oem-integration.yaml",
-      "current_status": "blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence",
+      "evidence_artifact": "board/kicad/e1-phone/display-envelope-downselect.yaml",
+      "current_status": "blocked_display_envelope_downselect_requires_signed_display_stack_connector_and_routed_clearance",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -90,8 +92,8 @@
     {
       "id": "usb_c_power_volume_hardware",
       "requirement": "Review and wire one USB-C port, USB-PD, charger, power button, and volume buttons.",
-      "evidence_artifact": "board/kicad/e1-phone/usb-sidekey-acceptance-checklist.yaml",
-      "current_status": "blocked_usb_c_sidekey_acceptance_requires_supplier_route_enclosure_and_measurements",
+      "evidence_artifact": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
+      "current_status": "blocked_usb_sidekey_selection_requires_supplier_drawings_real_schematic_route_measurements_and_enclosure_load_path",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [
@@ -117,8 +119,8 @@
     {
       "id": "off_the_shelf_wireless_modules",
       "requirement": "Use easy-to-acquire off-the-shelf cellular, Wi-Fi, and Bluetooth modules and wire host/RF contracts.",
-      "evidence_artifact": "board/kicad/e1-phone/module-rf-pinout-execution.yaml",
-      "current_status": "blocked_requires_cellular_wifi_module_pinouts_reference_layouts_rf_feeds_firmware_and_factory_evidence",
+      "evidence_artifact": "board/kicad/e1-phone/wireless-module-release-execution.yaml",
+      "current_status": "blocked_wireless_module_release_requires_cellular_branch_decision_supplier_design_packs_routed_rf_firmware_regulatory_and_factory_logs",
       "objective_satisfied": false,
       "release_required": true,
       "blockers": [

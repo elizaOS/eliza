@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import pty
+import re
 import select
 import signal
 import socket
@@ -71,6 +72,11 @@ def rel(path: Path, root: Path) -> str:
 def write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
 
 
 def compact_dependency_status(dependencies: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -349,6 +355,77 @@ def run_one(
     return result
 
 
+def structured_findings(results: list[dict[str, Any]], passed: list[str]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for row in results:
+        status = str(row.get("status", "unknown"))
+        if status == "passed":
+            continue
+        name = str(row.get("name", "benchmark"))
+        code_status = code_from_text(status, "status")
+        evidence: dict[str, Any] = {
+            "benchmark": name,
+            "status": status,
+            "raw_output": row.get("artifacts", {}).get("raw_output")
+            if isinstance(row.get("artifacts"), dict)
+            else None,
+            "claim_boundary": row.get("claim_boundary"),
+        }
+        if status == "blocked":
+            message = (
+                f"{name} local-host benchmark is blocked by missing dependencies "
+                "or release-blocked assets"
+            )
+            evidence["missing_dependency_details"] = row.get("missing_dependency_details", [])
+            evidence["blocked_requirements"] = row.get("blocked_requirements", [])
+            next_step = (
+                "Install or archive the benchmark dependency with provenance, then "
+                "rerun the local-host probe; keep target performance claims gated "
+                "on chip/AP or AOSP runtime evidence."
+            )
+        elif status in {"timeout", "partial_timeout"}:
+            message = f"{name} local-host benchmark timed out"
+            evidence["elapsed_seconds"] = row.get("elapsed_seconds")
+            next_step = (
+                "Use a bounded local smoke workload for parser plumbing, or capture "
+                "real chip/AP target benchmark evidence with calibrated power, "
+                "thermal, and raw artifact metadata before making performance claims."
+            )
+        else:
+            message = f"{name} local-host benchmark did not produce valid parsed evidence"
+            evidence["error"] = row.get("error")
+            next_step = (
+                "Repair the local benchmark command/parser plumbing and rerun the "
+                "probe; do not promote local host output as Linux/AOSP chip runtime "
+                "evidence."
+            )
+        findings.append(
+            {
+                "code": f"local_host_benchmark_{code_status}_{code_from_text(name, 'benchmark')}",
+                "severity": "blocker",
+                "message": message,
+                "evidence": evidence,
+                "next_step": next_step,
+            }
+        )
+    if not passed:
+        findings.append(
+            {
+                "code": "local_host_benchmark_no_parseable_passes",
+                "severity": "blocker",
+                "message": "no requested local-host benchmark executed and parsed successfully",
+                "evidence": [row.get("name") for row in results],
+                "next_step": (
+                    "Get at least one bounded local benchmark probe passing for "
+                    "parser plumbing, then separately capture chip/AP Linux and "
+                    "AOSP target benchmark evidence before any no-issues runtime "
+                    "or performance claim."
+                ),
+            }
+        )
+    return findings
+
+
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     root = repo_root()
@@ -406,6 +483,7 @@ def main(argv: list[str]) -> int:
         },
         "results": results,
     }
+    report["findings"] = structured_findings(results, passed)
     write_json(out_path, report)
     print(f"wrote {rel(out_path, root)}")
     print(

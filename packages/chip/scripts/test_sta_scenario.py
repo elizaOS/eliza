@@ -98,9 +98,7 @@ def test_handoff_open_node_validates_and_detects_tamper() -> None:
         spef = d / "e1.max.spef"
         spef.write_text('*SPEF "IEEE 1481-1998"\n')
         sdb_path = d / "scen.json"
-        sdb_path.write_text(
-            json.dumps(sdb.scenario_set_to_dict(sdb.build_scenario_set("sky130")))
-        )
+        sdb_path.write_text(json.dumps(sdb.scenario_set_to_dict(sdb.build_scenario_set("sky130"))))
         bundle = bsh.build_handoff(
             node_id="sky130",
             netlist=netlist,
@@ -110,9 +108,10 @@ def test_handoff_open_node_validates_and_detects_tamper() -> None:
         )
         assert bundle["blocked"] is False
         assert bundle["liberty_refs"], "open bundle must list Liberty refs"
-        assert bundle["design"]["netlist"]["sha256"] == hashlib.sha256(
-            netlist.read_bytes()
-        ).hexdigest()
+        assert (
+            bundle["design"]["netlist"]["sha256"]
+            == hashlib.sha256(netlist.read_bytes()).hexdigest()
+        )
 
         bundle_path = d / "handoff.json"
         bundle_path.write_text(json.dumps(bundle))
@@ -170,7 +169,9 @@ def test_import_back_provenance_and_redaction() -> None:
 
         notop = d / "notop.json"
         notop.write_text(
-            json.dumps({"paths": [{"startpoint": "a", "endpoint": "b", "path_type": "max", "slack": 1.0}]})
+            json.dumps(
+                {"paths": [{"startpoint": "a", "endpoint": "b", "path_type": "max", "slack": 1.0}]}
+            )
         )
         try:
             csh.import_back(bundle, notop, "tempus")

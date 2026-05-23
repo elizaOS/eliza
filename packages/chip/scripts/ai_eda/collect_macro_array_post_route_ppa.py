@@ -101,7 +101,9 @@ def find_runs(runs_root: Path) -> dict[str, dict[str, Any]]:
             continue
         cfg = str(config.get("MACRO_PLACEMENT_CFG", ""))
         basename = Path(cfg).name
-        variant = next((name for name, base in VARIANT_CFG_BASENAME.items() if base == basename), None)
+        variant = next(
+            (name for name, base in VARIANT_CFG_BASENAME.items() if base == basename), None
+        )
         if variant is None:
             continue
         found[variant] = {"run_dir": run_dir, "checker": checker}
@@ -175,7 +177,11 @@ def main() -> int:
             for key in ("route_wirelength_est", "setup_tns_ns", "route_drc_iter1"):
                 base_value = baseline.get(key)
                 value = ppa.get(key)
-                if isinstance(base_value, (int, float)) and isinstance(value, (int, float)) and base_value:
+                if (
+                    isinstance(base_value, (int, float))
+                    and isinstance(value, (int, float))
+                    and base_value
+                ):
                     variant_deltas[f"{key}_pct_vs_baseline"] = round(
                         (value - base_value) / abs(base_value) * 100.0, 3
                     )

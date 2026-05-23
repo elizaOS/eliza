@@ -26,8 +26,6 @@ const ROUTE_PARAM_EXAMPLES: Record<string, string> = {
 
 const ROUTE_SAMPLE_OVERRIDES: Record<string, string> = {
   "/dashboard/apps/:id": "/dashboard/apps/app_1",
-  "/dashboard/containers/:id": "/dashboard/containers/container_1",
-  "/dashboard/containers/agents/:id": "/dashboard/containers/agents/agent_1",
   "/dashboard/invoices/:id": "/dashboard/invoices/inv_1",
 };
 

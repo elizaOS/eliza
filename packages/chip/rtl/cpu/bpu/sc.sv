@@ -40,6 +40,7 @@ module sc
 
     sc_ctr_t storage_q [SC_TABLES][SC_ENTRIES_TABLE];
     logic signed [7:0] threshold_q;
+    logic signed [5:0] threshold_ctrl_q;
 
     function automatic logic [SC_IDX_W-1:0] sc_idx(
         input int unsigned tid,
@@ -61,16 +62,40 @@ module sc
         sc_idx = folded_pc ^ folded_h ^ tid[SC_IDX_W-1:0];
     endfunction
 
+    function automatic logic signed [SC_CTR_W+2:0] sc_sum(
+        input logic [VADDR_W-1:0] pc,
+        input logic [TAGE_HIST_LEN_MAX-1:0] hist
+    );
+        logic signed [SC_CTR_W+2:0] total;
+        total = '0;
+        for (int unsigned t = 0; t < SC_TABLES; t++) begin
+            logic [SC_IDX_W-1:0] idx;
+            sc_ctr_t ctr;
+            idx = sc_idx(t, pc, hist);
+            ctr = storage_q[t][idx];
+            total = total + $signed({{3{ctr[SC_CTR_W-1]}}, ctr});
+        end
+        sc_sum = total;
+    endfunction
+
+    function automatic logic signed [SC_CTR_W+2:0] sc_abs(
+        input logic signed [SC_CTR_W+2:0] value
+    );
+        sc_abs = value < 0 ? -value : value;
+    endfunction
+
     logic signed [SC_CTR_W+2:0] sum;
     logic signed [SC_CTR_W+2:0] abs_sum;
+    logic signed [SC_CTR_W+2:0] upd_sum;
+    logic signed [SC_CTR_W+2:0] upd_abs_sum;
+    logic                       upd_sc_taken;
 
     always_comb begin
-        sum = '0;
-        for (int unsigned t = 0; t < SC_TABLES; t++) begin
-            sum = sum + $signed({{3{storage_q[t][sc_idx(t, lkp_pc, lkp_hist)][SC_CTR_W-1]}},
-                                  storage_q[t][sc_idx(t, lkp_pc, lkp_hist)]});
-        end
-        abs_sum = sum < 0 ? -sum : sum;
+        sum = sc_sum(lkp_pc, lkp_hist);
+        abs_sum = sc_abs(sum);
+        upd_sum = sc_sum(upd_pc, upd_hist);
+        upd_abs_sum = sc_abs(upd_sum);
+        upd_sc_taken = (upd_sum >= 0) ? 1'b1 : 1'b0;
         // Override TAGE only when TAGE was low confidence and SC has a
         // confident vote.
         lkp_override = lkp_valid && lkp_tage_lowconf &&
@@ -81,13 +106,29 @@ module sc
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned t = 0; t < SC_TABLES; t++) begin
-                for (int unsigned e = 0; e < SC_ENTRIES_TABLE; e++) begin
-                    storage_q[t][e] <= '0;
+            storage_q <= '{default: '{default: '0}};
+            threshold_q <= $signed(SC_THRESH_INIT[7:0]);
+            threshold_ctrl_q <= '0;
+        end else if (upd_valid && upd_tage_lowconf) begin
+            // Adaptive threshold control: raise the threshold when SC was
+            // confidently wrong, lower it when a confident SC vote matched.
+            if (upd_sc_taken != upd_taken) begin
+                if (threshold_ctrl_q >= (SC_TC_LIMIT - 6'sd1)) begin
+                    threshold_ctrl_q <= '0;
+                    if (threshold_q < $signed(SC_THRESH_MAX[7:0]))
+                        threshold_q <= threshold_q + 1'b1;
+                end else begin
+                    threshold_ctrl_q <= threshold_ctrl_q + 1'b1;
+                end
+            end else if (upd_abs_sum >= $signed({1'b0, threshold_q})) begin
+                if (threshold_ctrl_q <= -(SC_TC_LIMIT - 6'sd1)) begin
+                    threshold_ctrl_q <= '0;
+                    if (threshold_q > $signed(SC_THRESH_MIN[7:0]))
+                        threshold_q <= threshold_q - 1'b1;
+                end else begin
+                    threshold_ctrl_q <= threshold_ctrl_q - 1'b1;
                 end
             end
-            threshold_q <= $signed(SC_THRESH_INIT[7:0]);
-        end else if (upd_valid && upd_tage_lowconf) begin
             for (int unsigned t = 0; t < SC_TABLES; t++) begin
                 automatic logic [SC_IDX_W-1:0] idx = sc_idx(t, upd_pc, upd_hist);
                 if (upd_taken) begin

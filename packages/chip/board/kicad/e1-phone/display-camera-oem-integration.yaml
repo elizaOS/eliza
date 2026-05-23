@@ -1,6 +1,6 @@
 schema: eliza.e1_phone_display_camera_oem_integration.v1
 status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
-date: '2026-05-20'
+date: '2026-05-21'
 claim_boundary: Fail-closed integration gate for the selected 5.5 inch display/touch module and front/rear MIPI camera OEM
   modules. Public marketplace listings are RFQ seed evidence only. This is not a signed supplier drawing pack, exact FPC pinout,
   KiCad footprint freeze, routed MIPI signoff, STEP clearance proof, display bring-up log, camera capture proof, or enclosure-ready
@@ -11,6 +11,7 @@ source_artifacts:
   - package/camera/oem-mipi-csi-modules.yaml
   - board/kicad/e1-phone/display-fit.yaml
   - board/kicad/e1-phone/display-envelope-downselect.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
   - board/kicad/e1-phone/supplier-source-verification.yaml
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/external-interface-design-review.yaml
@@ -171,9 +172,36 @@ display_oem_context:
       - sample inspection report for outline, FPC exit, and touch stack thickness
     intake_status: blocked_no_signed_drawing_pinout_or_sample
   supply_diversity:
-    verified_display_source_count: 3
+    verified_display_source_count: 5
     has_alibaba_alternate: true
     has_made_in_china_primary_or_alternate: true
+    has_parseable_40pin_brightness_alternate: true
+    has_parseable_thin_amoled_alternate: true
+  alternate_display_options:
+    meta_055wu01_40pin:
+      source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      marketplace: Alibaba
+      active_area_mm:
+        width: 68.04
+        height: 120.96
+      signal_interface: MIPI_40_pins
+      brightness_typ_cd_m2: 1000
+      connector_implication: possible_40pin_display_fpc_variant_requires_signed_pinout_and_mating_connector
+      integration_status: blocked_shortlist_only_missing_outline_fpc_exit_connector_step_and_sample
+    e549_rm67191_amoled:
+      source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      marketplace: Made-in-China
+      outline_mm:
+        width: 70.66
+        height: 128.36
+        thickness: 0.82
+      active_area_mm:
+        width: 68.299
+        height: 121.421
+      connector_implication: thinner_smaller_amoled_branch_requires_touch_stack_power_sequence_fpc_pinout_connector_and_step
+      integration_status: blocked_shortlist_only_missing_touch_stack_power_sequence_fpc_pinout_connector_step_and_sample
 camera_oem_context:
   rear_primary:
     vendor: Sincere First
@@ -507,6 +535,8 @@ cross_checks:
   primary_display_matches_display_fit: true
   primary_display_fits_current_envelope: true
   display_has_alibaba_and_made_in_china_sources: true
+  display_parseable_40pin_alternate_bound_to_connector_blocker: true
+  display_parseable_thin_amoled_alternate_bound_to_envelope_blocker: true
   camera_has_alibaba_and_made_in_china_sources: true
   rear_and_front_camera_primary_sources_match_binding: true
   display_camera_contracts_remain_fail_closed: true
@@ -514,6 +544,8 @@ cross_checks:
 release_blockers:
   - display supplier signed 2D drawing, FPC pinout, connector MPN, panel init sequence, touch-controller data, and STEP model
     missing
+  - parseable 055WU01 and E549/RM67191 display alternates are shortlist-only until signed pinout, connector, STEP, touch-stack,
+    power-sequence, and sample evidence are returned
   - rear and front camera drawings, exact FPC pinouts, mating connector MPNs, STEP models, driver notes, and calibration data
     missing
   - routed MIPI DSI/CSI length-skew, impedance, return-path, and DRC evidence missing

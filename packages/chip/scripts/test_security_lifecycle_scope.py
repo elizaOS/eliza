@@ -45,12 +45,20 @@ def test_release_claim_flip_fails() -> None:
     print("PASS release-claim flip rejected")
 
 
-def test_placeholder_key_status_removal_fails() -> None:
+def test_signed_auth_status_removal_fails() -> None:
     report = check_security_lifecycle_scope.build_report()
     mutated = copy.deepcopy(report)
-    mutated["current_scaffold"]["device_key"] = "production_key"
-    expect_error(mutated, "placeholder key")
-    print("PASS placeholder key status removal rejected")
+    mutated["current_scaffold"]["debug_auth"] = "production_signer_integrated"
+    expect_error(mutated, "signed-auth status")
+    print("PASS signed-auth status removal rejected")
+
+
+def test_synthetic_otp_placeholder_marker_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    mutated["current_scaffold"]["synthetic_otp"] = "production_otp_ready"
+    expect_error(mutated, "synthetic OTP placeholder")
+    print("PASS synthetic OTP placeholder marker removal rejected")
 
 
 def test_blocker_removal_fails() -> None:
@@ -61,12 +69,43 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
+def test_placeholder_non_secret_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    del mutated["current_scaffold"]["placeholder_non_secret"]
+    expect_error(mutated, "placeholder_non_secret")
+    print("PASS placeholder_non_secret label removal rejected")
+
+
+def test_placeholder_non_secret_fuses_removal_fails() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    mutated = copy.deepcopy(report)
+    mutated["current_scaffold"]["placeholder_non_secret_fuses"] = []
+    expect_error(mutated, "placeholder_non_secret fuse fields")
+    print("PASS placeholder_non_secret fuse enumeration removal rejected")
+
+
+def test_structured_findings_cover_security_blockers() -> None:
+    report = check_security_lifecycle_scope.build_report()
+    findings = report.get("findings")
+    if not isinstance(findings, list) or not findings:
+        raise AssertionError("security lifecycle findings missing")
+    codes = [str(finding.get("code", "")) for finding in findings if isinstance(finding, dict)]
+    if not any(code.startswith("security_lifecycle_missing_real_evidence_") for code in codes):
+        raise AssertionError(codes)
+    print("PASS structured security lifecycle findings cover blocked real evidence")
+
+
 def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
-    test_placeholder_key_status_removal_fails()
+    test_signed_auth_status_removal_fails()
+    test_synthetic_otp_placeholder_marker_removal_fails()
     test_blocker_removal_fails()
+    test_placeholder_non_secret_removal_fails()
+    test_placeholder_non_secret_fuses_removal_fails()
+    test_structured_findings_cover_security_blockers()
 
 
 if __name__ == "__main__":

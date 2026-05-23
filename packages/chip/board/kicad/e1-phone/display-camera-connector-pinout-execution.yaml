@@ -36,6 +36,46 @@ selected_oem_context:
     rear_camera: Sincere_First_OV13855_class_remains_rear_primary_pending_supplier_pack
     front_camera: Sincere_First_GC5035_class_remains_front_primary_pending_supplier_pack
     alibaba_junde_imx219: not_promoted_due_to_25x24_mm_envelope_and_parser_inaccessibility
+    display_meta_055wu01: not_promoted_active_area_matches_primary_but_signed_40pin_connector_pack_missing
+    display_e549_rm67191_amoled: not_promoted_smaller_thinner_outline_but_signed_touch_stack_power_connector_pack_missing
+alternate_display_connector_branches:
+  - branch_id: meta_055wu01_40pin
+    source_id: display_alternate_alibaba_meta_055wu01
+    source_context: display_oem_context.alternate_display_options.meta_055wu01_40pin
+    candidate: 055WU01
+    source_marketplace: Alibaba
+    observed_signal_interface: MIPI_40_pins
+    observed_active_area_mm:
+      width: 68.04
+      height: 120.96
+    connector_branch_status: blocked_shortlist_only_until_signed_40pin_fpc_pinout_mating_connector_land_pattern_step_and_sample
+    connector_decision: keep_as_possible_40pin_display_fpc_variant_not_promoted
+    required_before_symbol_or_footprint:
+      - signed 2D drawing with FPC exit, pin-1 datum, and cover-lens datum
+      - exact 40-pin FPC pinout with DSI lane order, touch pins, reset, TE, backlight, bias, and grounds
+      - mating connector MPN, recommended land pattern, height, insertion direction, and STEP model
+      - sample inspection and panel initialization/touch configuration data
+    release_allowed: false
+  - branch_id: e549_rm67191_amoled
+    source_id: display_alternate_made_in_china_e549_amoled
+    source_context: display_oem_context.alternate_display_options.e549_rm67191_amoled
+    candidate: E549-HC01_RM67191_AMOLED_class
+    source_marketplace: Made-in-China
+    observed_outline_mm:
+      width: 70.66
+      height: 128.36
+      thickness: 0.82
+    observed_active_area_mm:
+      width: 68.299
+      height: 121.421
+    connector_branch_status: blocked_shortlist_only_until_signed_amoled_touch_stack_power_sequence_fpc_pinout_connector_step_and_sample
+    connector_decision: keep_as_possible_thinner_amoled_branch_not_promoted
+    required_before_symbol_or_footprint:
+      - signed 2D drawing with FPC exit, pin-1 datum, active area, and cover-lens/touch-stack datum
+      - exact AMOLED FPC pinout with MIPI lane order, touch-controller pins, power rails, reset, TE, grounds, and NC pins
+      - mating connector MPN, recommended land pattern, height, insertion direction, and STEP model
+      - AMOLED power-sequence limits, touch-controller configuration, burn-in/luminance data, and sample inspection
+    release_allowed: false
 connector_pinout_execution:
   - interface_id: display_touch_fpc
     refdes: J_DISPLAY_TOUCH
@@ -284,12 +324,15 @@ cross_checks:
   all_execution_records_fail_closed: true
   source_revalidation_still_not_supplier_approved: true
   schematic_netclass_still_blocks_real_capture: true
+  alternate_display_connector_branches_fail_closed: true
+  parseable_display_alternates_bound_to_integration_context: true
 release_blockers:
   - display/touch FPC exact pin count, lane order, mating connector, and STEP model are missing
   - rear and front camera FPC exact pin orders, mating connectors, and STEP models are missing
   - KiCad connector symbols and supplier land patterns are not captured
   - MIPI DSI/CSI escape, length/skew, impedance, return-path, and DRC/SI reports are missing
   - sample inspection, display bring-up, camera capture, and routed-board enclosure clearance evidence are missing
+  - parseable 055WU01 and E549/RM67191 display connector branches require signed FPC pinout, mating connector, land pattern, STEP, power/touch data, and samples before symbol or footprint capture
 forbidden_claims:
   - display_pinout_frozen
   - camera_pinout_frozen

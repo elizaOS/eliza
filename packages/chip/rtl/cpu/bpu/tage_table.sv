@@ -67,6 +67,8 @@ module tage_table
     } tage_entry_t;
 
     tage_entry_t storage_q [ENTRIES];
+    tage_entry_t storage_d [ENTRIES];
+    logic        pmu_alloc_d;
 
     // Index hash: fold PC and history together. Verilog does not have a
     // built-in modulo on wide vectors; XOR-fold both operands into IDX_W
@@ -133,59 +135,67 @@ module tage_table
         upd_hit = storage_q[upd_i].valid && (storage_q[upd_i].tag == upd_t);
     end
 
+    always_comb begin
+        storage_d = storage_q;
+        pmu_alloc_d = 1'b0;
+
+        // Periodic useful-bit reset: alternates MSB/LSB to slowly age out
+        // entries that have not proven useful since last reset.
+        if (useful_reset_lsb || useful_reset_msb) begin
+            for (int unsigned e = 0; e < ENTRIES; e++) begin
+                if (useful_reset_msb && storage_d[e].useful != '0)
+                    storage_d[e].useful[TAGE_USEFUL_W-1] = 1'b0;
+                if (useful_reset_lsb && storage_d[e].useful != '0)
+                    storage_d[e].useful[0] = 1'b0;
+            end
+        end
+
+        if (upd_valid) begin
+            if (upd_hit) begin
+                // Update the direction counter toward the actual outcome.
+                if (upd_taken && storage_q[upd_i].ctr != {TAGE_CTR_W{1'b1}})
+                    storage_d[upd_i].ctr = storage_q[upd_i].ctr + 1'b1;
+                else if (!upd_taken && storage_q[upd_i].ctr != '0)
+                    storage_d[upd_i].ctr = storage_q[upd_i].ctr - 1'b1;
+
+                // Useful field saturates upward when correct and the lower
+                // table was wrong; saturates downward on the periodic reset
+                // path above.
+                if (upd_useful_inc && storage_q[upd_i].useful != {TAGE_USEFUL_W{1'b1}})
+                    storage_d[upd_i].useful = storage_q[upd_i].useful + 1'b1;
+                else if (upd_useful_dec && storage_q[upd_i].useful != '0)
+                    storage_d[upd_i].useful = storage_q[upd_i].useful - 1'b1;
+            end else if (upd_alloc) begin
+                // Allocation policy is owned by the TAGE top, which only
+                // raises `upd_alloc` when this table is the chosen one and
+                // a victim (useful==0) was identified by the read path.
+                if (storage_q[upd_i].useful == '0 || !storage_q[upd_i].valid) begin
+                    storage_d[upd_i] = '{
+                        valid: 1'b1,
+                        tag:   upd_t,
+                        ctr:   upd_taken
+                            ? {1'b1, {(TAGE_CTR_W-1){1'b0}}}
+                            : {1'b0, {(TAGE_CTR_W-1){1'b1}}},
+                        useful:'0
+                    };
+                    pmu_alloc_d = 1'b1;
+                end
+            end
+        end
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int unsigned e = 0; e < ENTRIES; e++) begin
-                storage_q[e] <= '{valid:1'b0, tag:'0, ctr: {1'b0, {(TAGE_CTR_W-1){1'b1}}}, useful:'0};
-            end
+            storage_q <= '{default: '{
+                valid:  1'b0,
+                tag:    '0,
+                ctr:    {1'b0, {(TAGE_CTR_W-1){1'b1}}},
+                useful: '0
+            }};
             pmu_alloc <= 1'b0;
         end else begin
-            pmu_alloc <= 1'b0;
-
-            // Periodic useful-bit reset: alternates MSB/LSB to slowly age out
-            // entries that have not proven useful since last reset.
-            if (useful_reset_lsb || useful_reset_msb) begin
-                for (int unsigned e = 0; e < ENTRIES; e++) begin
-                    if (useful_reset_msb && storage_q[e].useful != '0)
-                        storage_q[e].useful[TAGE_USEFUL_W-1] <= 1'b0;
-                    if (useful_reset_lsb && storage_q[e].useful != '0)
-                        storage_q[e].useful[0] <= 1'b0;
-                end
-            end
-
-            if (upd_valid) begin
-                if (upd_hit) begin
-                    // Update the direction counter toward the actual outcome.
-                    if (upd_taken && storage_q[upd_i].ctr != {TAGE_CTR_W{1'b1}})
-                        storage_q[upd_i].ctr <= storage_q[upd_i].ctr + 1'b1;
-                    else if (!upd_taken && storage_q[upd_i].ctr != '0)
-                        storage_q[upd_i].ctr <= storage_q[upd_i].ctr - 1'b1;
-
-                    // Useful field saturates upward when correct and the
-                    // lower table was wrong; saturates downward on the
-                    // periodic reset path above.
-                    if (upd_useful_inc &&
-                        storage_q[upd_i].useful != {TAGE_USEFUL_W{1'b1}})
-                        storage_q[upd_i].useful <= storage_q[upd_i].useful + 1'b1;
-                    else if (upd_useful_dec && storage_q[upd_i].useful != '0)
-                        storage_q[upd_i].useful <= storage_q[upd_i].useful - 1'b1;
-                end else if (upd_alloc) begin
-                    // Allocation policy is owned by the TAGE top, which only
-                    // raises `upd_alloc` when this table is the chosen one and
-                    // a victim (useful==0) was identified by the read path.
-                    if (storage_q[upd_i].useful == '0 || !storage_q[upd_i].valid) begin
-                        storage_q[upd_i] <= '{
-                            valid: 1'b1,
-                            tag:   upd_t,
-                            ctr:   upd_taken
-                                ? {1'b1, {(TAGE_CTR_W-1){1'b0}}}
-                                : {1'b0, {(TAGE_CTR_W-1){1'b1}}},
-                            useful:'0
-                        };
-                        pmu_alloc <= 1'b1;
-                    end
-                end
-            end
+            storage_q <= storage_d;
+            pmu_alloc <= pmu_alloc_d;
         end
     end
 

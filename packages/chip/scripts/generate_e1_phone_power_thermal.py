@@ -222,7 +222,9 @@ def main() -> int:
             "modem_idle_paging": 0.06,
         },
     }
-    scenario_total_w = {name: round2(sum(rails.values())) for name, rails in scenario_power_w.items()}
+    scenario_total_w = {
+        name: round2(sum(rails.values())) for name, rails in scenario_power_w.items()
+    }
 
     runtime_estimates = {
         "idle_display_off_idle_days_at_target": round2(
@@ -323,7 +325,8 @@ def main() -> int:
         ),
         "junction_limit_c": 105.0,
         "junction_headroom_at_product_budget_c": round2(
-            105.0 - (ambient_c + sustained_w * (r_skin_ambient_c_per_w + r_junction_to_skin_c_per_w))
+            105.0
+            - (ambient_c + sustained_w * (r_skin_ambient_c_per_w + r_junction_to_skin_c_per_w))
         ),
         "skin_budget_margin_w": round2(sustained_skin_limited_power_w - sustained_w),
         "evidence_class": "cad_estimate_lumped_model_not_chamber_measured",
@@ -424,9 +427,7 @@ def main() -> int:
         disk_spreading_resistance_c_per_w(vapor_chamber_k_w_per_mk, vapor_chamber_thickness_m)
     )
     r_skin_graphite_plus_vc_c_per_w = round2(
-        r_spread_vapor_chamber_c_per_w
-        + r_surface_to_ambient_c_per_w
-        + r_tim_series_c_per_w
+        r_spread_vapor_chamber_c_per_w + r_surface_to_ambient_c_per_w + r_tim_series_c_per_w
     )
 
     sustained_graphite_only_w = round2(allowed_rise_c / r_skin_graphite_only_c_per_w)
@@ -458,7 +459,9 @@ def main() -> int:
     # derate factor against the 3B-INT4 100 tok/s / 7B-INT4 30 tok/s SPEC TARGETS,
     # not as a measured rate.
     sustained_scenario = scenario_power_w["sustained_ai_skin_limited"]
-    compute_power_w = round2(sustained_scenario["ap_soc_cluster"] + sustained_scenario["npu_active"])
+    compute_power_w = round2(
+        sustained_scenario["ap_soc_cluster"] + sustained_scenario["npu_active"]
+    )
     fixed_overhead_w = round2(scenario_total_w["sustained_ai_skin_limited"] - compute_power_w)
     capped_compute_power_w = round2(
         min(max(dvfs_sustained_cap_w - fixed_overhead_w, 0.0), compute_power_w)

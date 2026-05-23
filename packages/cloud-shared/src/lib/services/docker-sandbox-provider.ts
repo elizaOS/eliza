@@ -11,6 +11,7 @@
 import { agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { dockerNodesRepository } from "../../db/repositories/docker-nodes";
 import type { DockerNode } from "../../db/schemas/docker-nodes";
+import { isAgentTokenSigningConfigured, mintAgentToken } from "../auth/agent-token";
 import { containersEnv } from "../config/containers-env";
 import { getAgentBaseDomain } from "../eliza-agent-web-ui";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
@@ -102,6 +103,101 @@ function resolveStewardHostUrl(): string {
 function resolveStewardContainerEnvUrl(): string {
   const env = getCloudAwareEnv();
   return resolveStewardContainerUrl(resolveStewardHostUrl(), env.STEWARD_CONTAINER_URL);
+}
+
+const STEWARD_JWT_FILE = "/app/data/steward.jwt";
+
+function trimTrailingSlash(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function resolveElizaCloudPublicUrl(): string {
+  const env = getCloudAwareEnv();
+  const candidates = [
+    env.ELIZA_CLOUD_PUBLIC_URL,
+    env.PUBLIC_URL,
+    env.NEXT_PUBLIC_API_URL,
+    env.NEXT_PUBLIC_APP_URL,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate !== "string" || !candidate.trim()) continue;
+    return trimTrailingSlash(candidate.trim());
+  }
+  return "https://elizacloud.ai/api";
+}
+
+function resolveStewardRefreshUrl(): string {
+  const env = getCloudAwareEnv();
+  if (typeof env.STEWARD_REFRESH_URL === "string" && env.STEWARD_REFRESH_URL.trim()) {
+    return env.STEWARD_REFRESH_URL.trim();
+  }
+  return `${resolveElizaCloudPublicUrl()}/v1/agent-tokens`;
+}
+
+function resolveStewardRefreshServiceToken(): string {
+  const env = getCloudAwareEnv();
+  for (const candidate of [env.ELIZA_CLOUD_SERVICE_TOKEN, env.AGENT_TOKEN_SERVICE_TOKEN]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "";
+}
+
+function resolveStewardElizaPluginPackage(): string {
+  const env = getCloudAwareEnv();
+  return typeof env.STEWARD_ELIZA_PLUGIN_PACKAGE === "string" &&
+    env.STEWARD_ELIZA_PLUGIN_PACKAGE.trim()
+    ? env.STEWARD_ELIZA_PLUGIN_PACKAGE.trim()
+    : "@stwd/eliza-plugin";
+}
+
+function shouldInstallStewardPlugin(
+  agentId: string,
+  environmentVars: Record<string, string>,
+): boolean {
+  const env = getCloudAwareEnv();
+  return (
+    agentId.toLowerCase() === "sol" ||
+    environmentVars.STEWARD_ENABLE_TRADE_PLUGIN === "true" ||
+    env.STEWARD_ENABLE_TRADE_PLUGIN === "true"
+  );
+}
+
+function buildStewardRefreshCommand(
+  containerName: string,
+  agentId: string,
+  serviceToken: string,
+): string {
+  const refreshScript = [
+    "set -eu",
+    `agent_id=${shellQuote(agentId)}`,
+    `refresh_url=${shellQuote(resolveStewardRefreshUrl())}`,
+    `jwt_file=${shellQuote(STEWARD_JWT_FILE)}`,
+    `service_token=${shellQuote(serviceToken)}`,
+    "while true; do",
+    '  response=$(curl -fsS -X POST "$refresh_url" -H "content-type: application/json" -H "authorization: Bearer $service_token" --data "{\\"agentId\\":\\"$agent_id\\",\\"ttl\\":900}" || true)',
+    '  token=$(printf "%s" "$response" | sed -n "s/.*\\"token\\"[[:space:]]*:[[:space:]]*\\"\\([^\\"]*\\)\\".*/\\1/p")',
+    '  if [ -n "$token" ]; then',
+    "    umask 077",
+    '    printf "%s" "$token" > "$jwt_file"',
+    '    echo "[steward-jwt-refresh] refreshed token for $agent_id at $(date -Iseconds)"',
+    "  else",
+    '    echo "[steward-jwt-refresh] refresh failed for $agent_id at $(date -Iseconds)" >&2',
+    "  fi",
+    "  sleep 600",
+    "done",
+  ].join("; ");
+
+  return `docker exec -d ${shellQuote(containerName)} sh -lc ${shellQuote(refreshScript)}`;
+}
+
+function buildStewardPluginInstallCommand(containerName: string): string {
+  const pluginPackage = resolveStewardElizaPluginPackage();
+  const installScript = [
+    "set -eu",
+    `npm install --prefix /app --save ${shellQuote(pluginPackage)}`,
+    `echo ${shellQuote(`[steward-plugin] installed ${pluginPackage}`)}`,
+  ].join("; ");
+  return `docker exec ${shellQuote(containerName)} sh -lc ${shellQuote(installScript)}`;
 }
 
 /**
@@ -528,9 +624,29 @@ export class DockerSandboxProvider implements SandboxProvider {
         );
       }
 
+      const stewardJwt = isAgentTokenSigningConfigured()
+        ? (await mintAgentToken(agentId, 900)).token
+        : "";
+      const stewardRefreshServiceToken = resolveStewardRefreshServiceToken();
+      if (!stewardJwt) {
+        logger.warn(
+          "[docker-sandbox] AGENT_TOKEN_PRIVATE_KEY_PEM not configured — skipping STEWARD_JWT injection for Steward agent JWT auth",
+        );
+      }
+
       const allEnv: Record<string, string> = {
         ...baseEnv,
         STEWARD_AGENT_TOKEN: stewardAgentToken,
+        ...(stewardJwt
+          ? {
+              STEWARD_JWT: stewardJwt,
+              STEWARD_JWT_FILE,
+              STEWARD_REFRESH_URL: resolveStewardRefreshUrl(),
+              ...(stewardRefreshServiceToken
+                ? { STEWARD_REFRESH_SERVICE_TOKEN: stewardRefreshServiceToken }
+                : {}),
+            }
+          : {}),
         // Bind to 0.0.0.0 so Docker port mapping works (container otherwise
         // listens on 127.0.0.1 which is unreachable via -p host:container).
         // Set BOTH AGENT_API_BIND and ELIZA_API_BIND — the image default for
@@ -611,6 +727,31 @@ export class DockerSandboxProvider implements SandboxProvider {
       logger.info(
         `[docker-sandbox] Container created on ${nodeId}: ${containerId} (${containerName})`,
       );
+
+      if (shouldInstallStewardPlugin(agentId, environmentVars)) {
+        try {
+          await ssh.exec(buildStewardPluginInstallCommand(containerName), PULL_TIMEOUT_MS);
+          logger.info(`[docker-sandbox] Steward Eliza plugin installed in ${containerName}`);
+        } catch (pluginErr) {
+          logger.warn(
+            `[docker-sandbox] Failed to install Steward Eliza plugin in ${containerName}: ${pluginErr instanceof Error ? pluginErr.message : String(pluginErr)}`,
+          );
+        }
+      }
+
+      if (stewardJwt && stewardRefreshServiceToken) {
+        try {
+          await ssh.exec(
+            buildStewardRefreshCommand(containerName, agentId, stewardRefreshServiceToken),
+            DOCKER_CMD_TIMEOUT_MS,
+          );
+          logger.info(`[docker-sandbox] Steward JWT refresh sidecar started in ${containerName}`);
+        } catch (refreshErr) {
+          logger.warn(
+            `[docker-sandbox] Failed to start Steward JWT refresh sidecar in ${containerName}: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
+          );
+        }
+      }
 
       // Write ~/.eliza/eliza.json so the runtime sees cloud config even if
       // it bypasses env vars. Best-effort: a failure here is logged but

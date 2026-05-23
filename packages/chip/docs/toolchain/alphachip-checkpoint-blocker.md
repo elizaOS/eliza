@@ -1,12 +1,16 @@
 # AlphaChip pretrained checkpoint and `plc_wrapper_main` — external blocker
 
-**Status:** historically BLOCKED; now PARTIALLY MITIGATED.
-**Last audited:** 2026-05-20.
+**Status:** the `plc_wrapper_main` placement-cost binary is now obtainable from a
+lawful third-party mirror (Farama-Foundation, Apache-2.0) and runs locally; the
+**20-block TPU pretrained checkpoint** remains BLOCKED (no lawful mirror found).
+A fully-open native proxy-cost path (TILOS `plc_client_os`, BSD-3) is also wired
+and needs no binary at all.
+**Last audited:** 2026-05-21.
 **Owners of the broken artifact:** Google Research (`google-research/circuit_training`).
 **Pin record:** `external/circuit_training/pin-manifest.json`
 (`checkpoint_status = "gcs-403-with-local-mitigation-blocked-by-closed-source-binary"`).
 
-## Mitigation summary (2026-05-20)
+## Mitigation summary (2026-05-21)
 
 Everything in the AlphaChip toolchain that is *open-source* now builds and
 runs locally:
@@ -22,11 +26,57 @@ runs locally:
 | Bootstrap fallback              | `scripts/alphachip/bootstrap_pretrained_checkpoint.sh`                | this repo                                                                        |
 
 These let us drive one PPO iteration on Ariane end-to-end *iff*
-`plc_wrapper_main` is present on disk. They do **not** unblock the
-plc_wrapper_main dependency itself — see the next section for why this is
-irreducible.
+`plc_wrapper_main` is present on disk. A lawful copy of that binary is now
+available (next section), so the reward function is no longer the blocker; the
+remaining hard limits are the missing TPU checkpoint and CT's distributed-PPO
+handshake on a CPU-only host (see "Follow-up finding" below).
 
-## Why `plc_wrapper_main` cannot be built from source
+## Two open paths now exist for the placement-cost reward
+
+The proxy cost is `wirelength + 0.5*congestion + 0.5*density`
+(`circuit_training.environment.environment.cost_info_function`). There are now
+two open ways to compute it without the closed binary on the GCS bucket:
+
+1. **Lawful third-party mirror of `plc_wrapper_main` (Farama-Foundation).** The
+   Apache-2.0 repo
+   [`Farama-Foundation/a2perf-circuit-training`](https://github.com/Farama-Foundation/a2perf-circuit-training)
+   ships the genuine Linux x86-64 binary at `bin/plc_wrapper_main`
+   (`dev` branch, 10,605,424 bytes, raw URL returns HTTP 200 as of 2026-05-21).
+   `scripts/alphachip/build_container.sh` already points at this URL via
+   `PLC_BINARY_URL`. Downloaded locally to
+   `external/circuit_training/checkpoints/plc_wrapper_main`
+   (sha256 `86fe9a2841fc21d3c18bb838d93fff128ceb51f82490d561e22985caab00c9b3`),
+   it executes and computes all three proxy terms on the vendored Ariane
+   fixtures. This is *acquisition of a real published artifact*, not a rebuild:
+   the source is still unreleased (see below), but a usable binary is no longer
+   "unavailable".
+
+2. **Fully-open native cost function (TILOS `plc_client_os`, BSD-3).** The
+   reverse-engineered open reimplementation at
+   `external/repos/tilos-macroplacement/payload/CodeElements/Plc_client/plc_client_os.py`
+   computes `get_cost` / `get_congestion_cost` / `get_density_cost` in pure
+   Python on CPU with **no `plc_wrapper_main` dependency at all**.
+   `scripts/alphachip/open_proxy_cost.py` drives it and, when the binary is
+   present, records both costs and their delta in
+   `build/reports/alphachip/open-proxy-cost.json`
+   (schema `eliza.alphachip.open_proxy_cost.v1`).
+
+### Open-client fidelity (Ariane `initial.plc`, measured 2026-05-21)
+
+| Term        | Real binary (Farama)   | Open `plc_client_os` | Delta (open − binary) |
+| ----------- | ---------------------- | -------------------- | --------------------- |
+| wirelength  | 0.050186607699881      | 0.050186607693903    | -5.98e-12 (bit-match) |
+| congestion  | 0.941179621160251      | 0.984565648958765    | +0.043386 (+4.6%)     |
+| density     | 0.756401121979883      | 0.750061768642256    | -0.006339 (-0.84%)    |
+| proxy cost  | 0.898976979269949      | 0.917500316494413    | +0.018523 (+2.1%)     |
+
+Wirelength matches near bit-exactly; density is within ~1%; the congestion term
+uses a stochastic fast-router and diverges ~5%. The open client is therefore a
+faithful but **not bit-exact** stand-in: usable as an open reward signal and for
+cross-validation, but a placement scored only by `plc_client_os` cannot be
+claimed to reproduce a `plc_wrapper_main`-scored result to the last digit.
+
+## Why `plc_wrapper_main` still cannot be built from source
 
 The repository ships zero C++ source, no `BUILD`/`WORKSPACE` files, and no
 `.proto` definitions for the placement-cost binary. Upstream maintainer
@@ -37,12 +87,11 @@ The repository ships zero C++ source, no `BUILD`/`WORKSPACE` files, and no
 > lots of internal Google dependencies which make extremely hard to clean for
 > open-sourcing.
 
-The binary is shipped only as a pre-built artifact via the GCS bucket, and the
-GCS bucket has been returning HTTP 403 since February 2026. There is therefore
-no source-based recovery path, and no public bazel target to point at. Any
-suggestion to "build from source" against this checkout is rooted in a false
-premise — the source has never been released, and the maintainer has stated it
-will not be in any cleanable form.
+The binary is shipped only as a pre-built artifact. The canonical GCS bucket has
+been returning HTTP 403 since February 2026, but the Farama mirror above serves
+the same artifact. There is no source-based rebuild path and no public bazel
+target — "build from source" against this checkout remains a false premise. What
+changed in this audit is *availability of a pre-built copy*, not buildability.
 
 ## Summary
 
@@ -86,10 +135,18 @@ All three are open with no maintainer response as of the audit date:
   artifacts (plc_wrapper_main and DREAMPlace tarball) from GCS (HTTP 403)".
   Tested 2026-02-19, two "+1" comments.
 
-## Mirror audit (2026-05-20)
+## Mirror audit (2026-05-21)
 
-No public mirror exists. Channels checked:
+A lawful mirror of the **binary and DREAMPlace builds** now exists; no mirror of
+the **TPU checkpoint** was found. Channels checked:
 
+- **`Farama-Foundation/a2perf-circuit-training` (Apache-2.0, NOT archived):**
+  hosts the genuine `bin/plc_wrapper_main` (10,605,424 bytes, raw URL HTTP 200
+  on 2026-05-21) plus a `dreamplace_builds/` directory. This is a live, lawful,
+  license-clear mirror of the closed binary and of DREAMPlace. It does **not**
+  host the 20-block `tpu_checkpoint_20240815.tar.gz`. This is the recommended
+  acquisition path for the binary; it supersedes the earlier "no public mirror
+  exists" finding for the binary specifically.
 - **GitHub releases on `google-research/circuit_training`:** none — the repo
   publishes no release assets (`gh api repos/google-research/circuit_training/releases`
   returns `[]`).
@@ -111,9 +168,12 @@ No public mirror exists. Channels checked:
   paper):** the paper does not bundle the checkpoint or the `plc_wrapper_main`
   binary; both are released only via the GCS bucket described above.
 
-Upstream never published SHA256s for any of these artifacts, so even if a
-copy is recovered later we cannot byte-verify it against an authoritative
-hash — we can only verify it against a known-good local copy.
+Upstream never published SHA256s for any of these artifacts, so even the Farama
+copy cannot be byte-verified against an *authoritative* upstream hash — we record
+our own hash of the downloaded binary
+(`86fe9a2841fc21d3c18bb838d93fff128ceb51f82490d561e22985caab00c9b3`) and verify
+the file is a Linux x86-64 ELF that runs and computes the documented proxy terms.
+The TPU checkpoint remains hash-unverifiable and unavailable.
 
 ## Recovery channels
 
@@ -176,6 +236,30 @@ deterministic proxy lane set (legal-grid / target-aware / target-repair plus the
 simulated-annealing, Hier-RTLMP, and ChipDiffusion proxy adapters), with
 OpenLane/OpenROAD as the authoritative replay. Revisit only if a lawful binary
 with a recorded SHA256 is later obtained.
+
+### Follow-up finding (2026-05-21) — the revisit condition is now met for the binary
+
+The owner decision's revisit trigger ("a lawful binary with a recorded SHA256 is
+later obtained") is satisfied for `plc_wrapper_main`: the Apache-2.0
+`Farama-Foundation/a2perf-circuit-training` mirror serves a genuine, runnable
+binary (sha256 `86fe9a2841fc21d3c18bb838d93fff128ceb51f82490d561e22985caab00c9b3`),
+verified to compute the documented proxy terms on the Ariane fixtures. Two
+irreducible blockers remain and gate any "AlphaChip pretraining reproduced" claim:
+
+1. **TPU pretrained checkpoint** — still has no lawful mirror. Pretraining from
+   scratch is possible with the binary above, but the published 20-block policy
+   is not recoverable, so we cannot reproduce *its* results.
+2. **Full distributed PPO on CPU** — CT's `ppo_reverb_server` blocks in a
+   `wait_predicate_fn` handshake that the single-host smoke ordering does not
+   satisfy on this CPU host; a real training run wants the GPU collect/train
+   topology. The reward function itself is unblocked (binary + open client both
+   compute it), but a multi-iteration trained policy is not yet produced here.
+
+What this *does* unblock today, on CPU: the AlphaChip proxy-cost reward via two
+open paths — the lawful Farama binary and the BSD-3 `plc_client_os` — proven by
+`scripts/alphachip/open_proxy_cost.py --compare-binary`
+(`build/reports/alphachip/open-proxy-cost.json`). Owner to decide whether to lift
+the binary half of the blocker; the checkpoint half stays closed.
 
 ## Re-audit cadence
 

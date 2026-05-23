@@ -41,9 +41,19 @@ def test_report_schema_and_next_commands_are_machine_readable() -> None:
     commands = "\n".join(blocker["next"] for blocker in report["blockers"])
     for token in (
         "run_chipyard_eliza_linux_smoke.sh",
-        "capture-linux-bsp-evidence.sh",
+        "CHIPYARD_LINUX_BINARY=",
     ):
         assert_contains(commands, token)
+
+
+def test_generated_dts_uart_token_matches_current_generated_ap() -> None:
+    if readiness.REQUIRED_DTS_TOKENS["uart"] != "serial@10001000":
+        raise AssertionError(readiness.REQUIRED_DTS_TOKENS)
+
+    report = readiness.build_report()
+    for error in report["errors"]:
+        if "generated DTS missing uart" in error:
+            raise AssertionError(error)
 
 
 def test_generated_bootrom_dtb_words_are_reconstructed_little_endian() -> None:
@@ -69,6 +79,7 @@ def main() -> int:
     for test in (
         test_build_report_is_fail_closed,
         test_report_schema_and_next_commands_are_machine_readable,
+        test_generated_dts_uart_token_matches_current_generated_ap,
         test_generated_bootrom_dtb_words_are_reconstructed_little_endian,
     ):
         test()

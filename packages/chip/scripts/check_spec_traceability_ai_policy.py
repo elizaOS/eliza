@@ -103,7 +103,9 @@ def main() -> int:
     if gate_errors:
         for line in gate_errors:
             print(f"FAIL: {line}", file=sys.stderr)
-        print("FAIL: spec-traceability AI policy gate blocked by traceability errors", file=sys.stderr)
+        print(
+            "FAIL: spec-traceability AI policy gate blocked by traceability errors", file=sys.stderr
+        )
         return 1 if code == 0 else code
 
     summary = coverage["summary"]

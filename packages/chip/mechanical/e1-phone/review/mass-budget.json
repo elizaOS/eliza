@@ -1,13 +1,16 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 183.29,
+  "total_estimated_mass_g": 183.15,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
     "I/O seal": 0.02,
     "PCB": 5.45,
+    "PCB component marker": 0.0,
+    "RF feed": 0.0,
     "RF keepout": 0.0,
     "RF tuner": 0.0,
+    "Wi-Fi/Bluetooth module": 0.0,
     "audio": 1.75,
     "battery": 82.63,
     "battery support": 1.04,
@@ -15,10 +18,12 @@
     "button seal": 0.03,
     "camera": 1.03,
     "camera aperture": 0.0,
+    "camera optical clearance": 0.0,
     "camera seal": 0.04,
+    "cellular module": 0.0,
     "connector": 0.21,
     "haptics": 0.22,
-    "molded enclosure": 23.96,
+    "molded enclosure": 23.82,
     "screen": 57.57,
     "screen retention": 0.2,
     "service": 0.0,
@@ -28,9 +33,9 @@
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
-      "volume_mm3": 14302.89,
+      "volume_mm3": 14178.292,
       "density_g_per_cm3": 1.15,
-      "mass_g": 16.448,
+      "mass_g": 16.305,
       "excluded_placeholder": false
     },
     {
@@ -274,6 +279,14 @@
       "excluded_placeholder": true
     },
     {
+      "name": "rear_camera_optical_sight_tunnel",
+      "role": "camera optical clearance",
+      "volume_mm3": 62.941,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
       "name": "rear_flash_led",
       "role": "camera",
       "volume_mm3": 0.7,
@@ -360,6 +373,70 @@
       "density_g_per_cm3": 2.5,
       "mass_g": 0.005,
       "excluded_placeholder": false
+    },
+    {
+      "name": "rear_flash_window_adhesive_top",
+      "role": "camera seal",
+      "volume_mm3": 0.18,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_flash_window_adhesive_bottom",
+      "role": "camera seal",
+      "volume_mm3": 0.18,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_flash_window_adhesive_left",
+      "role": "camera seal",
+      "volume_mm3": 0.115,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_flash_window_adhesive_right",
+      "role": "camera seal",
+      "volume_mm3": 0.115,
+      "density_g_per_cm3": 1.15,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_top",
+      "role": "camera seal",
+      "volume_mm3": 0.134,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_bottom",
+      "role": "camera seal",
+      "volume_mm3": 0.134,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_left",
+      "role": "camera seal",
+      "volume_mm3": 0.109,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "front_camera_under_glass_adhesive_right",
+      "role": "camera seal",
+      "volume_mm3": 0.109,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     },
     {
       "name": "rear_flash_camera_septum",
@@ -968,6 +1045,86 @@
       "density_g_per_cm3": 7.8,
       "mass_g": 3.37,
       "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_lga_module_keepout",
+      "role": "cellular module",
+      "volume_mm3": 2227.2,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "wifi_bt_module_keepout",
+      "role": "Wi-Fi/Bluetooth module",
+      "volume_mm3": 141.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "soc_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 40.56,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "dram_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 16.72,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "storage_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 22.77,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "pmic_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 10.78,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "rf_transceiver_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 12.375,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "gnss_lna_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 1.5,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "wifi_bt_rf_feed_coax_stub",
+      "role": "RF feed",
+      "volume_mm3": 1.575,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "cellular_rf_feed_coax_stub",
+      "role": "RF feed",
+      "volume_mm3": 2.363,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
     },
     {
       "name": "haptic_lra",

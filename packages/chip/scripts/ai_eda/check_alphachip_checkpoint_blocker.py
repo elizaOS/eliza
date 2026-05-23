@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,7 +73,7 @@ def find_lock_entry(lock: dict[str, Any], entry_id: str) -> dict[str, Any] | Non
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
     parser.add_argument(
         "--network", action="store_true", help="Probe canonical GCS URLs with HEAD."
@@ -134,9 +134,8 @@ def main() -> int:
             errors.append("AlphaChip checkpoint lock entry must remain allowed_use=blocked")
         if lock_entry.get("license_status") != "unavailable_for_review":
             errors.append("AlphaChip checkpoint lock entry must remain unavailable_for_review")
-        revision = (
-            lock_entry.get("revision") if isinstance(lock_entry.get("revision"), dict) else {}
-        )
+        revision_value = lock_entry.get("revision")
+        revision: dict[str, Any] = revision_value if isinstance(revision_value, dict) else {}
         if revision.get("value") != "BLOCKED_HTTP_403_REAUDIT_REQUIRED":
             errors.append(
                 "AlphaChip checkpoint revision must remain BLOCKED_HTTP_403_REAUDIT_REQUIRED"
@@ -178,7 +177,7 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     report = {
         "schema": "eliza.ai_eda.alphachip_checkpoint_blocker_audit.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "status": status,

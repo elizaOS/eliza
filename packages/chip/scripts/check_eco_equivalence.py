@@ -107,8 +107,8 @@ def main() -> int:
         )
         return 2
 
-    build_dir = resolve(args.build_dir) if args.build_dir else (
-        ROOT / "build" / "qor" / "eco" / "equiv"
+    build_dir = (
+        resolve(args.build_dir) if args.build_dir else (ROOT / "build" / "qor" / "eco" / "equiv")
     )
     script = build_equiv_script(
         golden=golden, revised=revised, top=args.top, liberty=liberty, build_dir=build_dir
@@ -122,9 +122,7 @@ def main() -> int:
         check=False,
     )
     if completed.returncode != 0:
-        tail = "\n".join(
-            (completed.stderr + "\n" + completed.stdout).splitlines()[-25:]
-        )
+        tail = "\n".join((completed.stderr + "\n" + completed.stdout).splitlines()[-25:])
         print(
             "FAIL: ECO equivalence NOT proven (equiv_status -assert failed or "
             f"proof inconclusive). ECO rejected.\nlog: {log.relative_to(ROOT)}\n{tail}",
@@ -133,8 +131,7 @@ def main() -> int:
         return 1
 
     print(
-        f"PASS: ECO equivalence proven golden={golden.name} revised={revised.name} "
-        f"top={args.top}"
+        f"PASS: ECO equivalence proven golden={golden.name} revised={revised.name} top={args.top}"
     )
     return 0
 

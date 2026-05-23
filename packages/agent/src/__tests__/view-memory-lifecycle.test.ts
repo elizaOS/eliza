@@ -42,6 +42,11 @@ function makePlugin(
   return { name: pluginName, description: `Test plugin ${pluginName}`, views };
 }
 
+function requirePluginViews(plugin: Plugin): ViewDeclaration[] {
+  if (!plugin.views) throw new Error(`Expected ${plugin.name} test views`);
+  return plugin.views;
+}
+
 /** Collect all view ids currently in the registry that start with `prefix`. */
 function viewsWithPrefix(prefix: string): string[] {
   return listViews({ developerMode: true })
@@ -101,7 +106,9 @@ describe("repeated register/unregister cycles", () => {
 
   it("re-registering after unregister yields exactly the original view ids", async () => {
     const plugin = makePlugin("bounded-plugin", 3);
-    const expectedIds = plugin.views?.map((v) => v.id).sort();
+    const expectedIds = requirePluginViews(plugin)
+      .map((v) => v.id)
+      .sort();
 
     for (let i = 0; i < 10; i++) {
       await register(plugin);
@@ -126,7 +133,7 @@ describe("module cache isolation", () => {
     unregister("isolation-plugin");
 
     const allIds = listViews({ developerMode: true }).map((e) => e.id);
-    for (const view of plugin.views!) {
+    for (const view of requirePluginViews(plugin)) {
       expect(allIds).not.toContain(view.id);
     }
   });
@@ -157,7 +164,7 @@ describe("bundle URL cleanup", () => {
 
     await register(plugin);
 
-    for (const view of plugin.views!) {
+    for (const view of requirePluginViews(plugin)) {
       const entry = getView(view.id);
       // bundleUrl is present when bundlePath is set (no real pluginDir, so
       // available=false, but bundleUrl is still assigned from the path).
@@ -167,7 +174,7 @@ describe("bundle URL cleanup", () => {
 
     unregister("bundle-plugin");
 
-    for (const view of plugin.views!) {
+    for (const view of requirePluginViews(plugin)) {
       expect(getView(view.id)).toBeUndefined();
     }
   });
@@ -233,12 +240,15 @@ describe("WeakRef collectability after unregister", () => {
     const plugin = makePlugin("weakref-plugin", 1);
     await register(plugin);
 
-    const viewId = plugin.views?.[0].id;
+    const viewId = requirePluginViews(plugin)[0]?.id;
     if (!viewId) {
       throw new Error("Expected test plugin to register a view");
     }
     const entry = getView(viewId);
     expect(entry).toBeDefined();
+    if (!entry) {
+      throw new Error("Expected registry entry");
+    }
 
     // Hold a WeakRef to the entry object. After the plugin is unregistered the
     // registry Map drops its reference; if no other strong refs exist the entry
@@ -246,7 +256,7 @@ describe("WeakRef collectability after unregister", () => {
     // NOTE: `entry` is a local variable that is a strong reference — we must
     // copy the ref and then null out all our local references to make the
     // object truly unreachable.
-    const weakEntry = new WeakRef(entry!);
+    const weakEntry = new WeakRef(entry);
 
     unregister("weakref-plugin");
 
@@ -288,7 +298,7 @@ describe("no EventEmitter listener accumulation", () => {
 
     const listenerFns: Array<() => void> = [];
 
-    async function loadCycle(_i: number): Promise<void> {
+    async function loadCycle(): Promise<void> {
       const fn = () => {};
       listenerFns.push(fn);
       emitter.on(EVENT, fn);
@@ -301,9 +311,10 @@ describe("no EventEmitter listener accumulation", () => {
 
     const baseline = emitter.listenerCount(EVENT);
 
-    const cycles = 10;
-    for (let i = 0; i < cycles; i++) {
-      await loadCycle(i);
+    let remainingCycles = 10;
+    while (remainingCycles > 0) {
+      remainingCycles -= 1;
+      await loadCycle();
       unloadCycle();
     }
 

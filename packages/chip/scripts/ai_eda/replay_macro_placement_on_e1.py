@@ -14,7 +14,7 @@ import json
 import os
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +43,14 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def timeout_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -86,7 +94,7 @@ def artifact_status(plan: dict[str, Any]) -> tuple[list[dict[str, Any]], list[st
             errors.append(f"missing {field}")
             continue
         path = repo_path(value)
-        item = {"kind": field, "path": rel(path), "exists": path.exists()}
+        item: dict[str, Any] = {"kind": field, "path": rel(path), "exists": path.exists()}
         if path.is_file():
             item["sha256"] = sha256_file(path)
             expected = plan.get(expected_hash_fields.get(field, ""))
@@ -166,8 +174,8 @@ def execute_openlane(
             "stderr": rel(stderr_path),
         }
     except subprocess.TimeoutExpired as exc:
-        stdout_path.write_text(exc.stdout or "", encoding="utf-8")
-        stderr_path.write_text(exc.stderr or "", encoding="utf-8")
+        stdout_path.write_text(timeout_output(exc.stdout), encoding="utf-8")
+        stderr_path.write_text(timeout_output(exc.stderr), encoding="utf-8")
         return {
             "command": command,
             "environment_overrides": env,
@@ -250,7 +258,7 @@ def main() -> int:
 
         report = {
             "schema": "eliza.ai_eda.macro_placement_replay_preflight.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,
@@ -274,7 +282,7 @@ def main() -> int:
     except Exception as exc:  # noqa: BLE001
         report = {
             "schema": "eliza.ai_eda.macro_placement_replay_preflight.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "release_use_allowed": False,

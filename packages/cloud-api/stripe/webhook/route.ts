@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type Stripe from "stripe";
+import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 import type { StripeEventMessage } from "@/api-queue/types";
 import { webhookEventsRepository } from "@/db/repositories/webhook-events";
 import {
@@ -10,7 +11,6 @@ import { enqueue } from "@/lib/queue/redis-queue";
 import { isStripeConfigured, requireStripe } from "@/lib/stripe";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
-import { getAuditDispatcher } from "@/api-app/services/audit-dispatcher-singleton";
 
 const STRIPE_QUEUE_KEY = "stripe-events";
 

@@ -57,6 +57,12 @@ external/models/*/*
 !external/circuit_training/
 external/circuit_training/*
 !external/circuit_training/pin-manifest.json
+# OpenTitan RoT crypto/security IP (W1). Track the pin manifest; the cloned
+# checkout under external/opentitan/opentitan is fetched by
+# scripts/bootstrap_opentitan.sh and stays ignored like other external IP.
+!external/opentitan/
+external/opentitan/*
+!external/opentitan/pin-manifest.json
 tools/bin/
 tools/bin.*-backup/
 tools/include/
@@ -80,3 +86,11 @@ external/busybox/
 build/sim/tier2/Image
 build/sim/tier2/busybox
 build/sim/tier2/rootfs/
+
+# --- close build-artifact gaps (nested verilator sim_build, OpenRAM macro build, big reports) ---
+sim_build_*/
+**/sim_build_*/
+*.gch
+*.magic_drc.report
+pd/macros/**/build/
+**/build/

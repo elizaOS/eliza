@@ -37,6 +37,36 @@ function bunExecutable() {
   return "bun";
 }
 
+function isRealNodeExecutable(candidate) {
+  if (!candidate || !existsSync(candidate)) return false;
+  const result = spawnSync(
+    candidate,
+    ["-e", "process.exit(process.versions.bun ? 1 : 0)"],
+    { stdio: "ignore" },
+  );
+  return result.status === 0;
+}
+
+function nodeExecutable() {
+  const candidates = [
+    process.env.NODE,
+    process.execPath,
+    ...(process.env.PATH?.split(path.delimiter).map((entry) =>
+      path.resolve(entry, "node"),
+    ) ?? []),
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ];
+  const seen = new Set();
+  for (const candidate of candidates) {
+    if (!candidate || seen.has(candidate)) continue;
+    seen.add(candidate);
+    if (isRealNodeExecutable(candidate)) return candidate;
+  }
+  return "node";
+}
+
 function wranglerScript() {
   return require.resolve("wrangler/bin/wrangler.js", {
     paths: [path.join(repoRoot, "packages", "cloud-api")],
@@ -185,12 +215,8 @@ async function main() {
           ...testModeVars,
         ];
 
-  // Cloud-e2e harness (NODE_ENV=test + CLOUD_E2E=1) runs wrangler under Node
-  // to avoid bun-runtime incompatibilities (wrangler's InspectorProxyWorker
-  // WebSocket and dev:inspector flag don't work on the bun runtime).
-  const useNodeWrangler =
-    process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
-  const wranglerCmd = useNodeWrangler ? process.execPath : bun;
+  const useNodeWrangler = env.CLOUD_E2E === "1" && env.NODE_ENV === "test";
+  const wranglerCmd = useNodeWrangler ? nodeExecutable() : bun;
   const wranglerSpawnArgs = useNodeWrangler
     ? [wranglerScript(), ...wranglerArgs]
     : ["run", "wrangler", ...wranglerArgs];

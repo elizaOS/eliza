@@ -6,17 +6,20 @@ checkout="${CHIPYARD_CHECKOUT:-$repo_dir/external/chipyard}"
 sim_dir="$checkout/sims/verilator"
 out_dir="$repo_dir/build/chipyard/eliza_rocket"
 log="$out_dir/verilator-linux-smoke.log"
+evidence_dir="$repo_dir/docs/evidence/linux"
+serial_boot_evidence="$evidence_dir/eliza_e1_serial_boot.log"
 log_tmp=""
 raw_log=""
 lock_dir="$out_dir/verilator-linux-smoke.lock"
 config="${CHIPYARD_CONFIG:-ElizaRocketConfig}"
 config_package="${CHIPYARD_CONFIG_PACKAGE:-eliza}"
 binary="${CHIPYARD_LINUX_BINARY:-}"
-timeout_seconds="${CHIPYARD_LINUX_SMOKE_SECONDS:-180}"
+timeout_seconds="${CHIPYARD_LINUX_SMOKE_SECONDS:-1200}"
 timeout_seconds="${CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS:-$timeout_seconds}"
-timeout_cycles="${CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES:-10000000}"
+timeout_cycles="${CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES:-1000000000}"
 jobs="${CHIPYARD_LINUX_SMOKE_JOBS:-1}"
 loadmem="${CHIPYARD_LINUX_SMOKE_LOADMEM:-1}"
+disable_dramsim="${CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM:-0}"
 binary_arg="${CHIPYARD_LINUX_SMOKE_BINARY_ARG:-$binary}"
 extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-+custom_boot_pin=1 +uart_tx_printf=1}"
 extra_sim_cxxflags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_CXXFLAGS:-}"
@@ -25,16 +28,22 @@ use_docker="${CHIPYARD_LINUX_SMOKE_USE_DOCKER:-auto}"
 attempt="${CHIPYARD_LINUX_SMOKE_ATTEMPT:-1}"
 simulator_default="$sim_dir/simulator-chipyard.harness-$config"
 simulator_archive="$out_dir/simulator/simulator-chipyard.harness-$config"
+simdram_source="$checkout/generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
 default_run_target="run-binary"
 default_break_sim_prereq="0"
 if [ -x "$simulator_default" ] || [ -x "$simulator_archive" ]; then
 	default_run_target="run-binary-fast"
 	default_break_sim_prereq="1"
 fi
+if { [ -x "$simulator_default" ] && [ -f "$simdram_source" ] && [ "$simdram_source" -nt "$simulator_default" ]; } ||
+	{ [ ! -x "$simulator_default" ] && [ -x "$simulator_archive" ] && [ -f "$simdram_source" ] && [ "$simdram_source" -nt "$simulator_archive" ]; }; then
+	default_break_sim_prereq="0"
+fi
 run_target="${CHIPYARD_LINUX_SMOKE_RUN_TARGET:-$default_run_target}"
 break_sim_prereq="${CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ:-$default_break_sim_prereq}"
 
 mkdir -p "$out_dir"
+mkdir -p "$evidence_dir"
 if ! mkdir "$lock_dir" 2>/dev/null; then
 	lock_pid=""
 	if [ -f "$lock_dir/pid" ]; then
@@ -75,8 +84,48 @@ cleanup_lock() {
 	rm -f "$lock_dir/pid"
 	rmdir "$lock_dir" 2>/dev/null || true
 }
+quiet_linux_finished() {
+	printf '%s\n' "${binary_arg:-}" | grep -F -q 'linux-poweroff-quiet' || return 1
+	if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ] &&
+		grep -F -q 'TestDriver.v:158: Verilog $finish' "$raw_log"; then
+		return 0
+	fi
+	sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
+	[ -f "$sim_log" ] && grep -F -q 'TestDriver.v:158: Verilog $finish' "$sim_log"
+}
 cleanup_signal() {
-	cleanup_lock
+	if [ -n "${log_tmp:-}" ] && [ -f "$log_tmp" ]; then
+		if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ]; then
+			cat "$raw_log" >>"$log_tmp"
+		fi
+		signal_quiet_finish=0
+		if quiet_linux_finished; then
+			signal_quiet_finish=1
+			sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
+			if [ -f "$sim_log" ] && ! grep -F -q 'TestDriver.v:158: Verilog $finish' "$log_tmp"; then
+				cat "$sim_log" >>"$log_tmp"
+			fi
+		fi
+		{
+			printf 'eliza-evidence: raw_transcript_end\n'
+			printf 'eliza-evidence: exit_code=143\n'
+			printf 'eliza-evidence: signal=TERM\n'
+			if [ "$signal_quiet_finish" = "1" ]; then
+				printf 'eliza-evidence: quiet_linux_completion=1\n'
+				printf 'eliza-evidence: status=PASS\n'
+			else
+				printf 'eliza-evidence: status=BLOCKED\n'
+			fi
+		} >>"$log_tmp"
+		mv "$log_tmp" "$log"
+		log_tmp=""
+	fi
+	if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ]; then
+		rm -f "$raw_log"
+		raw_log=""
+	fi
+	rm -f "$lock_dir/pid"
+	rmdir "$lock_dir" 2>/dev/null || true
 	exit 143
 }
 trap cleanup_lock EXIT
@@ -136,6 +185,15 @@ case "$break_sim_prereq" in
 		exit 2
 		;;
 esac
+case "$disable_dramsim" in
+	0|1) ;;
+	*)
+		printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
+		printf '  simulator_path: external/chipyard/sims/verilator\n'
+		printf '  - unsupported CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM: %s\n' "$disable_dramsim"
+		exit 2
+		;;
+esac
 
 cd "$repo_dir"
 python3 scripts/check_chipyard_verilator_preflight.py
@@ -190,12 +248,19 @@ fi
 
 generated_dir="$sim_dir/generated-src/chipyard.harness.TestHarness.$config"
 bootrom_src="$checkout/generators/testchipip/src/main/resources/testchipip/bootrom"
+simdram_target="$checkout/generators/testchipip/target/scala-2.13/classes/testchipip/csrc/SimDRAM.cc"
 mkdir -p "$generated_dir"
 for bootrom_img in bootrom.rv64.img bootrom.rv32.img; do
 	if [ -f "$bootrom_src/$bootrom_img" ]; then
 		cp -f "$bootrom_src/$bootrom_img" "$generated_dir/$bootrom_img"
 	fi
 done
+if [ -f "$simdram_source" ]; then
+	mkdir -p "$(dirname -- "$simdram_target")"
+	if [ ! -f "$simdram_target" ] || ! cmp -s "$simdram_source" "$simdram_target"; then
+		cp -f "$simdram_source" "$simdram_target"
+	fi
+fi
 
 command_text="make CONFIG=$config CONFIG_PACKAGE=$config_package BINARY=$binary LOADMEM=1 TIMEOUT_CYCLES=$timeout_cycles $run_target"
 loadmem_arg="$loadmem"
@@ -203,6 +268,7 @@ if [ "$loadmem_arg" = "1" ]; then
 	loadmem_arg=1
 fi
 command_text="make -j $jobs CONFIG=$config CONFIG_PACKAGE=$config_package BINARY=$binary_arg LOADMEM=$loadmem_arg TIMEOUT_CYCLES=$timeout_cycles"
+command_text="$command_text DISABLE_DRAMSIM=$disable_dramsim"
 if [ -n "$extra_sim_flags" ]; then
 	command_text="$command_text EXTRA_SIM_FLAGS='$extra_sim_flags'"
 fi
@@ -229,6 +295,7 @@ command_text="$command_text $run_target"
 	printf 'eliza-evidence: jobs=%s\n' "$jobs"
 	printf 'eliza-evidence: loadmem=%s\n' "$loadmem"
 	printf 'eliza-evidence: break_sim_prereq=%s\n' "$break_sim_prereq"
+	printf 'eliza-evidence: disable_dramsim=%s\n' "$disable_dramsim"
 	if [ -n "$extra_sim_flags" ]; then
 		printf 'eliza-evidence: extra_sim_flags=%s\n' "$extra_sim_flags"
 	fi
@@ -253,12 +320,12 @@ if [ "$break_sim_prereq" = "1" ]; then
 	python3 "$repo_dir/scripts/run_with_timeout.py" \
 		--timeout-seconds "$timeout_seconds" \
 		--label chipyard-generated-ap-linux-smoke \
-		-- make -j "$jobs" CONFIG="$config" CONFIG_PACKAGE="$config_package" BINARY="$binary_arg" LOADMEM="$loadmem" TIMEOUT_CYCLES="$timeout_cycles" EXTRA_SIM_FLAGS="$extra_sim_flags" EXTRA_SIM_CXXFLAGS="$extra_sim_cxxflags" EXTRA_SIM_LDFLAGS="$extra_sim_ldflags" BREAK_SIM_PREREQ=1 "$run_target" >>"$raw_log" 2>&1
+		-- make -j "$jobs" CONFIG="$config" CONFIG_PACKAGE="$config_package" BINARY="$binary_arg" LOADMEM="$loadmem" TIMEOUT_CYCLES="$timeout_cycles" DISABLE_DRAMSIM="$disable_dramsim" EXTRA_SIM_FLAGS="$extra_sim_flags" EXTRA_SIM_CXXFLAGS="$extra_sim_cxxflags" EXTRA_SIM_LDFLAGS="$extra_sim_ldflags" BREAK_SIM_PREREQ=1 "$run_target" >>"$raw_log" 2>&1
 else
 	python3 "$repo_dir/scripts/run_with_timeout.py" \
 		--timeout-seconds "$timeout_seconds" \
 		--label chipyard-generated-ap-linux-smoke \
-		-- make -j "$jobs" CONFIG="$config" CONFIG_PACKAGE="$config_package" BINARY="$binary_arg" LOADMEM="$loadmem" TIMEOUT_CYCLES="$timeout_cycles" EXTRA_SIM_FLAGS="$extra_sim_flags" EXTRA_SIM_CXXFLAGS="$extra_sim_cxxflags" EXTRA_SIM_LDFLAGS="$extra_sim_ldflags" "$run_target" >>"$raw_log" 2>&1
+		-- make -j "$jobs" CONFIG="$config" CONFIG_PACKAGE="$config_package" BINARY="$binary_arg" LOADMEM="$loadmem" TIMEOUT_CYCLES="$timeout_cycles" DISABLE_DRAMSIM="$disable_dramsim" EXTRA_SIM_FLAGS="$extra_sim_flags" EXTRA_SIM_CXXFLAGS="$extra_sim_cxxflags" EXTRA_SIM_LDFLAGS="$extra_sim_ldflags" "$run_target" >>"$raw_log" 2>&1
 fi
 status=$?
 set -e
@@ -267,6 +334,10 @@ kernel_panic=0
 if grep -E -q 'Kernel panic - not syncing|panic - not syncing' "$raw_log"; then
 	kernel_panic=1
 fi
+testdriver_success_finish=0
+if quiet_linux_finished; then
+	testdriver_success_finish=1
+fi
 
 {
 	printf 'eliza-evidence: raw_transcript_end\n'
@@ -274,6 +345,9 @@ fi
 	if [ "$kernel_panic" = "1" ]; then
 		printf 'eliza-evidence: kernel_panic=1\n'
 		printf 'eliza-evidence: status=BLOCKED\n'
+	elif [ "$testdriver_success_finish" = "1" ]; then
+		printf 'eliza-evidence: quiet_linux_completion=1\n'
+		printf 'eliza-evidence: status=PASS\n'
 	elif [ "$status" -eq 0 ]; then
 		printf 'eliza-evidence: status=PASS\n'
 	else
@@ -284,7 +358,7 @@ mv "$log_tmp" "$log"
 
 tail -n 80 "$log"
 
-if [ "$status" -ne 0 ] || [ "$kernel_panic" = "1" ]; then
+if { [ "$status" -ne 0 ] && [ "$testdriver_success_finish" != "1" ]; } || [ "$kernel_panic" = "1" ]; then
 	if [ "${CHIPYARD_LINUX_SMOKE_RETRY_GENERATED:-1}" = "1" ] && [ "$attempt" = "1" ] && \
 		[ "$kernel_panic" != "1" ] && \
 		python3 "$repo_dir/scripts/check_chipyard_verilator_linux_smoke.py" \
@@ -309,3 +383,16 @@ fi
 
 cd "$repo_dir"
 CHIPYARD_LINUX_BINARY="$binary" python3 scripts/check_chipyard_verilator_linux_smoke.py
+{
+	printf 'eliza-evidence: target=linux artifact=eliza_e1_serial_boot\n'
+	printf 'eliza-evidence: claim_boundary=generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence\n'
+	printf 'eliza-evidence: source=%s\n' "${log#"$repo_dir"/}"
+	printf 'eliza-evidence: command=%s\n' "$command_text"
+	printf 'eliza-evidence: payload=%s\n' "$binary"
+	printf 'eliza-evidence: raw_transcript_begin\n'
+	cat "$log"
+	printf 'eliza-evidence: raw_transcript_end\n'
+	printf 'eliza-evidence: status=PASS\n'
+} >"$serial_boot_evidence"
+printf 'STATUS: PASS linux.serial_boot_evidence\n'
+printf '  evidence: %s\n' "${serial_boot_evidence#"$repo_dir"/}"

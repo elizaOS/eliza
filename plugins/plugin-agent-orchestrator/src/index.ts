@@ -439,8 +439,83 @@ const SELF_HEAL_REPLACEMENT =
  * Exported for unit tests; not a public API.
  */
 const PROGRESS_PREFIX_REGEX = /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+\[[^\]]+\]\s+/u;
+const PROGRESS_EMOJI_PREFIX_REGEX = /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+/u;
 export function stripProgressLabelPrefix(text: string): string {
   return text.replace(PROGRESS_PREFIX_REGEX, "$1 ");
+}
+
+type SubAgentProgressMode = "compact" | "threaded" | "silent";
+
+interface SubAgentProgressPolicy {
+  mode: SubAgentProgressMode;
+  reactions: boolean;
+  delayMs: number;
+}
+
+function readProgressSetting(
+  runtime: IAgentRuntime,
+  key: string,
+): string | undefined {
+  const value = runtime.getSetting(key);
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function parseProgressMode(value: string | undefined): SubAgentProgressMode {
+  const normalized = value?.trim().toLowerCase();
+  if (
+    normalized === "off" ||
+    normalized === "silent" ||
+    normalized === "disabled" ||
+    normalized === "none" ||
+    normalized === "0" ||
+    normalized === "false"
+  ) {
+    return "silent";
+  }
+  if (normalized === "thread" || normalized === "threaded") return "threaded";
+  return "compact";
+}
+
+function parseProgressDelayMs(value: string | undefined): number {
+  if (!value) return 15_000;
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 0) return 15_000;
+  return Math.min(parsed, 120_000);
+}
+
+function parseProgressReactions(value: string | undefined): boolean {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+}
+
+// Exported for unit tests; not part of the plugin's public API contract.
+export function resolveSubAgentProgressPolicy(
+  runtime: IAgentRuntime,
+): SubAgentProgressPolicy {
+  return {
+    mode: parseProgressMode(
+      readProgressSetting(runtime, "ACPX_PROGRESS_MODE") ??
+        readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_MODE"),
+    ),
+    reactions: parseProgressReactions(
+      readProgressSetting(runtime, "ACPX_PROGRESS_REACTIONS") ??
+        readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_REACTIONS"),
+    ),
+    delayMs: parseProgressDelayMs(
+      readProgressSetting(runtime, "ACPX_PROGRESS_DELAY_MS") ??
+        readProgressSetting(runtime, "ELIZA_SUB_AGENT_PROGRESS_DELAY_MS"),
+    ),
+  };
+}
+
+// Exported for unit tests; not part of the plugin's public API contract.
+export function compactProgressText(text: string): string {
+  const stripped = stripProgressLabelPrefix(text)
+    .replace(PROGRESS_EMOJI_PREFIX_REGEX, "")
+    .trim();
+  return stripped || "Working.";
 }
 
 // Exported for unit tests; not part of the plugin's public API contract.
@@ -603,6 +678,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // ~100KB without eviction. 200 entries fits all realistic concurrent
   // labels with insertion-order eviction.
   const LABEL_CACHE_LIMIT = 200;
+  const progressPolicy = resolveSubAgentProgressPolicy(runtime);
   const evictOldest = <V>(map: Map<string, V>): void => {
     if (map.size <= LABEL_CACHE_LIMIT) return;
     const first = map.keys().next();
@@ -671,6 +747,19 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   // exactly one thread per (source, roomId, label) for the life of the
   // orchestrator (cleared by stop()/dispose()).
   const mainMessageCacheByKey = new Map<string, string>();
+  const delayedProgressTimers = new Map<string, NodeJS.Timeout>();
+  const delayedProgressPayloads = new Map<
+    string,
+    {
+      target: {
+        source: string;
+        roomId: `${string}-${string}-${string}-${string}-${string}`;
+      };
+      rawText: string;
+      label?: string;
+    }
+  >();
+  const delayedProgressFirstSeenAt = new Map<string, number>();
 
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
@@ -725,10 +814,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       if (typeof runtime.postToThreadOnTarget !== "function") {
         return originalSend(target, content);
       }
+      const thread = matches[0];
+      if (!thread) return originalSend(target, content);
       try {
         const result = await runtime.postToThreadOnTarget(
           target,
-          matches[0]!,
+          thread,
           content,
         );
         return result ?? undefined;
@@ -883,9 +974,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   const resolveCanEdit = (source: string): boolean =>
     hasCap(source, "edit_message");
   const resolveCanReact = (source: string): boolean =>
+    progressPolicy.mode === "threaded" &&
+    progressPolicy.reactions &&
     hasCap(source, "react_message");
   const resolveCanThread = (source: string): boolean =>
-    hasCap(source, "create_thread") && hasCap(source, "post_to_thread");
+    progressPolicy.mode === "threaded" &&
+    hasCap(source, "create_thread") &&
+    hasCap(source, "post_to_thread");
 
   async function bestEffortReact(
     target: TargetInfo,
@@ -898,6 +993,14 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     } catch {
       // best-effort: reactions are visual sugar, never block the flow
     }
+  }
+
+  function clearDelayedProgress(sessionId: string): void {
+    const timer = delayedProgressTimers.get(sessionId);
+    if (timer) clearTimeout(timer);
+    delayedProgressTimers.delete(sessionId);
+    delayedProgressPayloads.delete(sessionId);
+    delayedProgressFirstSeenAt.delete(sessionId);
   }
 
   // emitProgress is the single hot path for sub-agent narration + heartbeat.
@@ -919,8 +1022,37 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     rawText: string,
     label?: string,
   ): Promise<void> {
+    if (progressPolicy.mode === "silent") return;
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
+    if (!state && progressPolicy.delayMs > 0) {
+      const firstSeenAt =
+        delayedProgressFirstSeenAt.get(sessionId) ?? Date.now();
+      delayedProgressFirstSeenAt.set(sessionId, firstSeenAt);
+      delayedProgressPayloads.set(sessionId, { target, rawText, label });
+      const elapsed = Date.now() - firstSeenAt;
+      if (elapsed < progressPolicy.delayMs) {
+        if (!delayedProgressTimers.has(sessionId)) {
+          const timer = setTimeout(() => {
+            delayedProgressTimers.delete(sessionId);
+            const payload = delayedProgressPayloads.get(sessionId);
+            delayedProgressPayloads.delete(sessionId);
+            if (!payload) return;
+            void emitProgress(
+              sessionId,
+              payload.target,
+              payload.rawText,
+              payload.label,
+            );
+          }, progressPolicy.delayMs - elapsed);
+          delayedProgressTimers.set(sessionId, timer);
+        }
+        return;
+      }
+      clearDelayedProgress(sessionId);
+    }
+    const displayText =
+      progressPolicy.mode === "threaded" ? text : compactProgressText(text);
     // Silent-narration mode for capability-poor surfaces. When the target
     // supports neither threads nor edits (Twitter/X DM, SMS, plain stdio),
     // every emitProgress would otherwise produce a fresh message. After
@@ -935,19 +1067,19 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     try {
       // ── post into the per-session thread when supported ──
       if (state?.thread && typeof runtime.postToThreadOnTarget === "function") {
-        if (state.lastText === text) return;
+        if (state.lastText === displayText) return;
         // The thread name IS the label — repeating `[label]` in the body
         // is redundant. Strip the emoji-prefixed `[label]` marker so the
         // thread reads as clean prose: `💬 [foo] Reading file...` becomes
         // `💬 Reading file...`. See PROGRESS_PREFIX_REGEX above for the
         // (subtle) reason this can't use a `[...]` character class.
-        const threadText = stripProgressLabelPrefix(text);
+        const threadText = stripProgressLabelPrefix(displayText);
         await runtime.postToThreadOnTarget(
           target,
           state.thread,
           transientContent(threadText, "sub_agent_progress"),
         );
-        state.lastText = text;
+        state.lastText = displayText;
         return;
       }
       // ── edit the single main-channel message in place ──
@@ -956,13 +1088,13 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         state.mainMessageId &&
         typeof runtime.editMessageOnTarget === "function"
       ) {
-        if (state.lastText === text) return;
+        if (state.lastText === displayText) return;
         await runtime.editMessageOnTarget(
           target,
           state.mainMessageId,
-          transientContent(text, "sub_agent_progress"),
+          transientContent(displayText, "sub_agent_progress"),
         );
-        state.lastText = text;
+        state.lastText = displayText;
         return;
       }
       // ── first emit OR fallback: send a fresh main-channel message ──
@@ -998,7 +1130,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         await emitProgress(sessionId, target, rawText, sessionLabel);
         return;
       }
-      const initialText = state ? text : `🚀 [${sessionLabel}] running`;
+      const initialText = state
+        ? displayText
+        : progressPolicy.mode === "threaded"
+          ? `🚀 [${sessionLabel}] running`
+          : displayText;
       const sent = await runtime.sendMessageToTarget(
         target,
         transientContent(initialText, "sub_agent_progress"),
@@ -1075,16 +1211,16 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
                 ),
               );
             if (
-              text !== initialText &&
+              displayText !== initialText &&
               typeof runtime.postToThreadOnTarget === "function"
             ) {
               try {
                 await runtime.postToThreadOnTarget(
                   target,
                   thread,
-                  transientContent(text, "sub_agent_progress"),
+                  transientContent(displayText, "sub_agent_progress"),
                 );
-                newState.lastText = text;
+                newState.lastText = displayText;
               } catch {
                 // best-effort: cached thread may have been archived; on next
                 // call we'll attempt re-create lazily via the same path.
@@ -1112,7 +1248,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
   ): Promise<void> {
     const state = progressBySession.get(sessionId);
     if (!state) return;
-    const completionText = `✅ [${state.label}] ${summary}`;
+    const completionText =
+      progressPolicy.mode === "threaded"
+        ? `✅ [${state.label}] ${summary}`
+        : `Completed ${state.label}: ${summary}`;
     if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
       try {
         await runtime.editMessageOnTarget(
@@ -1157,7 +1296,12 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
       try {
         await runtime.sendMessageToTarget(
           target,
-          transientContent(`❌ [${state.label}] failed`, "sub_agent_complete"),
+          transientContent(
+            progressPolicy.mode === "threaded"
+              ? `❌ [${state.label}] failed`
+              : `Failed ${state.label}.`,
+            "sub_agent_complete",
+          ),
         );
       } catch {
         // best-effort
@@ -1245,6 +1389,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           // ✅/❌ that turns a "spawning" message into a permanent done/failed
           // record. capability-gated — connectors without react/edit just
           // skip these signals.
+          clearDelayedProgress(sessionId);
           if (evName === "task_complete") {
             const rawResponse =
               typeof (data as { response?: unknown })?.response === "string"
@@ -1442,6 +1587,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
     messageBuffers.clear();
     for (const timer of heartbeatTimers.values()) clearInterval(timer);
     heartbeatTimers.clear();
+    for (const timer of delayedProgressTimers.values()) clearTimeout(timer);
+    delayedProgressTimers.clear();
+    delayedProgressPayloads.clear();
+    delayedProgressFirstSeenAt.clear();
     lastHeartbeatPostAt.clear();
     lastHeartbeatSummary.clear();
     toolHistory.clear();

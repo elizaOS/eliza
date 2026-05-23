@@ -33,6 +33,11 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     assert isinstance(report["release_blockers"], list)
     assert report["release_blockers"]
     assert report["claim_boundary"]
+    findings = report.get("findings")
+    assert isinstance(findings, list)
+    assert findings
+    codes = [finding["code"] for finding in findings if isinstance(finding, dict)]
+    assert any(code.startswith("product_release_blocker_") for code in codes)
 
     detail_checks = report["detail_checks"]
     assert isinstance(detail_checks, dict)

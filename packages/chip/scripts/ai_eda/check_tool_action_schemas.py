@@ -50,10 +50,14 @@ def validate_example(path: Path, schema: dict[str, Any]) -> list[str]:
 
     action_type = document.get("action_type")
     mode = document.get("mode")
-    decision = document.get("decision") if isinstance(document.get("decision"), dict) else {}
-    safety = document.get("safety") if isinstance(document.get("safety"), dict) else {}
-    command = document.get("command") if isinstance(document.get("command"), dict) else {}
-    scope = document.get("scope") if isinstance(document.get("scope"), dict) else {}
+    decision_value = document.get("decision")
+    safety_value = document.get("safety")
+    command_value = document.get("command")
+    scope_value = document.get("scope")
+    decision: dict[str, Any] = decision_value if isinstance(decision_value, dict) else {}
+    safety: dict[str, Any] = safety_value if isinstance(safety_value, dict) else {}
+    command: dict[str, Any] = command_value if isinstance(command_value, dict) else {}
+    scope: dict[str, Any] = scope_value if isinstance(scope_value, dict) else {}
 
     if action_type in schema["forbidden_action_types"] and mode != "blocked":
         errors.append(f"{record_id}: forbidden action_type {action_type} must use mode blocked")

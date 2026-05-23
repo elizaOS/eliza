@@ -33,7 +33,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # This workflow validates the app-core mobile project wiring, not
+          # native inference submodule health. Keep checkout source-clean and
+          # let setup-bun-workspace/postinstall initialize only the submodules
+          # it actually needs.
+          submodules: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -160,7 +164,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          # Android cloud-debug smoke sets ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1
+          # below, so recursive native inference submodules are not part of this
+          # contract. Avoid failing app smoke on optional nested native pins.
+          submodules: false
 
       - name: Setup Java 21
         uses: actions/setup-java@v5

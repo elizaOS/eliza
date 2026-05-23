@@ -5,19 +5,19 @@
       1650
     ],
     "mean_rgb": [
-      248.485,
-      243.394,
-      241.139
+      248.486,
+      243.391,
+      241.136
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.05589,
+    "nonwhite_pixel_ratio": 0.05591,
     "occupied_bbox_ratio": 0.25202,
-    "edge_pixel_ratio": 0.005,
-    "quantized_unique_color_count": 111,
+    "edge_pixel_ratio": 0.00501,
+    "quantized_unique_color_count": 128,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -26,8 +26,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.49491,
-    "dark_pixel_ratio_of_nonwhite": 0.48786,
+    "orange_pixel_ratio_of_nonwhite": 0.49487,
+    "dark_pixel_ratio_of_nonwhite": 0.48768,
     "pass": true
   },
   "full_back_iso.png": {
@@ -36,19 +36,19 @@
       1650
     ],
     "mean_rgb": [
-      254.506,
-      244.716,
-      240.355
+      254.528,
+      244.747,
+      240.372
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.05905,
+    "nonwhite_pixel_ratio": 0.05907,
     "occupied_bbox_ratio": 0.25085,
-    "edge_pixel_ratio": 0.00533,
-    "quantized_unique_color_count": 117,
+    "edge_pixel_ratio": 0.0044,
+    "quantized_unique_color_count": 143,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -57,8 +57,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.96867,
-    "dark_pixel_ratio_of_nonwhite": 0.0167,
+    "orange_pixel_ratio_of_nonwhite": 0.96386,
+    "dark_pixel_ratio_of_nonwhite": 0.01693,
     "pass": true
   },
   "rear_feature_detail.png": {
@@ -67,19 +67,19 @@
       1650
     ],
     "mean_rgb": [
-      254.104,
-      245.08,
-      241.103
+      254.229,
+      245.207,
+      241.233
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.11031,
+    "nonwhite_pixel_ratio": 0.11041,
     "occupied_bbox_ratio": 0.25089,
-    "edge_pixel_ratio": 0.01613,
-    "quantized_unique_color_count": 139,
+    "edge_pixel_ratio": 0.00881,
+    "quantized_unique_color_count": 149,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -88,8 +88,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.00606,
-    "dark_pixel_ratio_of_nonwhite": 0.00943,
+    "orange_pixel_ratio_of_nonwhite": 0.00587,
+    "dark_pixel_ratio_of_nonwhite": 0.01877,
     "pass": true
   },
   "full_left_side.png": {
@@ -98,9 +98,9 @@
       1650
     ],
     "mean_rgb": [
-      254.493,
-      249.262,
-      246.932
+      254.492,
+      249.261,
+      246.931
     ],
     "channel_spans": [
       255,
@@ -108,9 +108,9 @@
       255
     ],
     "nonwhite_pixel_ratio": 0.03282,
-    "occupied_bbox_ratio": 0.23419,
-    "edge_pixel_ratio": 0.00476,
-    "quantized_unique_color_count": 98,
+    "occupied_bbox_ratio": 0.23451,
+    "edge_pixel_ratio": 0.00477,
+    "quantized_unique_color_count": 101,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -119,7 +119,7 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.93193,
+    "orange_pixel_ratio_of_nonwhite": 0.93174,
     "dark_pixel_ratio_of_nonwhite": 0.04692,
     "pass": true
   },
@@ -161,18 +161,18 @@
     ],
     "mean_rgb": [
       228.544,
-      227.962,
-      227.607
+      227.961,
+      227.606
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.11012,
+    "nonwhite_pixel_ratio": 0.11013,
     "occupied_bbox_ratio": 0.1761,
-    "edge_pixel_ratio": 0.00458,
-    "quantized_unique_color_count": 110,
+    "edge_pixel_ratio": 0.00459,
+    "quantized_unique_color_count": 124,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -181,8 +181,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.03011,
-    "dark_pixel_ratio_of_nonwhite": 0.96093,
+    "orange_pixel_ratio_of_nonwhite": 0.03006,
+    "dark_pixel_ratio_of_nonwhite": 0.96091,
     "pass": true
   },
   "exploded_iso.png": {
@@ -191,19 +191,19 @@
       1650
     ],
     "mean_rgb": [
-      244.772,
-      238.51,
-      235.706
+      244.8,
+      238.528,
+      235.711
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.07825,
+    "nonwhite_pixel_ratio": 0.07826,
     "occupied_bbox_ratio": 0.2648,
-    "edge_pixel_ratio": 0.00656,
-    "quantized_unique_color_count": 139,
+    "edge_pixel_ratio": 0.00623,
+    "quantized_unique_color_count": 161,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -212,8 +212,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.46735,
-    "dark_pixel_ratio_of_nonwhite": 0.51766,
+    "orange_pixel_ratio_of_nonwhite": 0.46639,
+    "dark_pixel_ratio_of_nonwhite": 0.5177,
     "pass": true
   },
   "component_stack.png": {
@@ -222,19 +222,19 @@
       1650
     ],
     "mean_rgb": [
-      236.165,
-      238.878,
-      237.628
+      235.989,
+      238.558,
+      237.375
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.08478,
+    "nonwhite_pixel_ratio": 0.08634,
     "occupied_bbox_ratio": 0.18828,
-    "edge_pixel_ratio": 0.00412,
-    "quantized_unique_color_count": 168,
+    "edge_pixel_ratio": 0.00475,
+    "quantized_unique_color_count": 174,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -243,8 +243,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.00725,
-    "dark_pixel_ratio_of_nonwhite": 0.60256,
+    "orange_pixel_ratio_of_nonwhite": 0.00712,
+    "dark_pixel_ratio_of_nonwhite": 0.62376,
     "pass": true
   },
   "component-review-audio.png": {
@@ -336,7 +336,7 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.15546,
+    "orange_pixel_ratio_of_nonwhite": 0.15542,
     "dark_pixel_ratio_of_nonwhite": 0.03552,
     "pass": true
   },
@@ -346,19 +346,19 @@
       1650
     ],
     "mean_rgb": [
-      251.435,
-      247.131,
-      245.308
+      251.468,
+      247.156,
+      245.33
     ],
     "channel_spans": [
       255,
       255,
       255
     ],
-    "nonwhite_pixel_ratio": 0.04154,
+    "nonwhite_pixel_ratio": 0.04156,
     "occupied_bbox_ratio": 0.21159,
-    "edge_pixel_ratio": 0.00545,
-    "quantized_unique_color_count": 244,
+    "edge_pixel_ratio": 0.00541,
+    "quantized_unique_color_count": 266,
     "content_checks": {
       "resolution": true,
       "channel_span": true,
@@ -367,8 +367,8 @@
       "edge_detail": true,
       "color_variation": true
     },
-    "orange_pixel_ratio_of_nonwhite": 0.15405,
-    "dark_pixel_ratio_of_nonwhite": 0.02458,
+    "orange_pixel_ratio_of_nonwhite": 0.15411,
+    "dark_pixel_ratio_of_nonwhite": 0.02467,
     "pass": true
   }
 }

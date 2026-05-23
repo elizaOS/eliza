@@ -22,6 +22,7 @@ import { ensureRuntimeAgentRecord } from "../lifeops/runtime.js";
 import { LifeOpsService, LifeOpsServiceError } from "../lifeops/service.js";
 import { parseJsonModelRecord } from "../utils/json-model-output.js";
 import { resolveEffectiveDayKey } from "./analyzer.js";
+import { proactiveInboxDigestRequest } from "./proactive-inbox-digest.js";
 import {
   type CalendarEventSlim,
   type GoalSlim,
@@ -738,7 +739,9 @@ async function loadInboxDigest(
   runtime: IAgentRuntime,
 ): Promise<InboxDigestSlim | null> {
   try {
-    const inbox = await new LifeOpsService(runtime).getInbox({ limit: 24 });
+    const inbox = await new LifeOpsService(runtime).getInbox(
+      proactiveInboxDigestRequest(),
+    );
     const unreadCount = Object.values(inbox.channelCounts).reduce(
       (sum, count) => sum + count.unread,
       0,

@@ -14,7 +14,7 @@ import hashlib
 import json
 import shutil
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +156,20 @@ def verify_existing(path: Path, asset: dict[str, Any]) -> dict[str, Any]:
         }
     if not path.exists():
         return {"status": "BLOCKED_MISSING_LOCAL_ASSET", "path": str(path)}
+    hf_revision_path = path / ".hf_revision"
+    if hf_revision_path.is_file():
+        actual_revision = hf_revision_path.read_text(encoding="utf-8").strip()
+        expected = expected_revision(asset)
+        status = "PRESENT_HUGGINGFACE_PAYLOAD"
+        if expected and actual_revision != expected:
+            status = "BLOCKED_REVISION_MISMATCH"
+        return {
+            "status": status,
+            "path": str(path),
+            "revision": actual_revision,
+            "expected_revision": expected,
+            "file_manifest": payload_file_manifest(path),
+        }
     if (path / ".git").exists() and command_exists("git"):
         rev = run_command(["git", "rev-parse", "HEAD"], cwd=path)
         actual_revision = rev["stdout_tail"].strip()
@@ -228,21 +242,33 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
             result["git_lfs_pull"] = lfs
         return result
     if mode == "huggingface":
-        if not command_exists("hf"):
-            return {"status": "BLOCKED_MISSING_TOOL", "tool": "hf"}
         # Convert https://huggingface.co/datasets/org/name to org/name.
         dataset_id = source_url.rstrip("/").split("/datasets/", 1)[-1]
-        return run_command(
-            [
-                "hf",
-                "download",
-                dataset_id,
-                "--type",
-                "dataset",
-                "--local-dir",
-                str(dest),
-            ]
-        )
+        revision = expected_revision(asset)
+        try:
+            from huggingface_hub import snapshot_download
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface_hub", "error": str(exc)}
+        try:
+            snapshot_download(
+                repo_id=dataset_id,
+                repo_type="dataset",
+                revision=revision,
+                local_dir=dest,
+                local_dir_use_symlinks=False,
+            )
+        except TypeError:
+            snapshot_download(
+                repo_id=dataset_id,
+                repo_type="dataset",
+                revision=revision,
+                local_dir=dest,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return {"status": "BLOCKED_HUGGINGFACE_DOWNLOAD_FAILED", "error": str(exc)}
+        if revision:
+            (dest / ".hf_revision").write_text(revision + "\n", encoding="utf-8")
+        return {"status": "PRESENT_HUGGINGFACE_PAYLOAD", "path": str(dest), "revision": revision}
     if mode == "model":
         if source_url.startswith("https://storage.googleapis.com/"):
             dest.mkdir(parents=True, exist_ok=True)
@@ -266,7 +292,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--lockfile", type=Path, default=LOCKFILE)
     parser.add_argument("--report-root", type=Path, default=DEFAULT_REPORT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true")
     mode.add_argument("--verify-only", action="store_true")
@@ -329,7 +355,7 @@ def main() -> int:
 
     report = {
         "schema": "eliza.ai_eda.external_asset_fetch_report.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "mode": mode,
         "claim_boundary": CLAIM_BOUNDARY,

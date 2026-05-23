@@ -1,1425 +1,672 @@
 {
-  "baseline_weighted_mpki": 5.576196,
-  "best_config": "tage_big_tables",
-  "best_delta_vs_baseline": -0.037236,
-  "best_geometry_diff": {
-    "TAGE_ENTRIES_TABLE": 8192
-  },
-  "best_weighted_mpki": 5.53896,
+  "baseline_weighted_mpki": 10.942147,
+  "best_config": "baseline",
+  "best_delta_vs_baseline": 0.0,
+  "best_geometry_diff": {},
+  "best_weighted_mpki": 10.942147,
   "cbp5_reference_mpki": {
     "sample_fp_trace": 0.5736,
     "sample_int_trace": 5.1327
   },
-  "generated_at_utc": "2026-05-21T12:39:18.694224+00:00",
+  "claim_boundary": "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload MPKI claims remain blocked until those trace sets are captured",
+  "generated_at_utc": "2026-05-22T20:24:11.275557+00:00",
   "harness": "behavioural-bpu-model",
-  "max_branches_per_trace": 700000,
+  "max_branches_per_trace": 0,
   "ranking": [
-    "tage_big_tables",
-    "combo_algo_geo",
-    "combo_b",
-    "combo_a",
-    "tage6_tables",
-    "tage_reach_long",
-    "sc_wide",
-    "tage7_tables",
-    "tage_ubit_reset",
-    "tage_alloc_aging",
-    "bim_big",
-    "tage_alloc_decr",
-    "combo_algo",
-    "sc_thresh_high",
     "baseline",
-    "loop_big",
-    "tage_ubit_reset_fast",
-    "sc_thresh_low",
-    "sc_adaptive",
-    "tage_reach_xlong"
+    "pre_ittage_hist_long",
+    "tage_use_alt_on_na"
   ],
   "results": {
     "baseline": {
       "per_trace": {
         "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2930,
-          "mpki": 0.72048,
+          "branches": 6622719,
+          "instructions": 38475498,
+          "misp": 14797,
+          "mpki": 0.384582,
           "weight": 1.5
         },
         "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2541,
-          "mpki": 0.561614,
+          "branches": 3839663,
+          "instructions": 24817722,
+          "misp": 8513,
+          "mpki": 0.343021,
           "weight": 2.0
         },
         "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40656,
-          "mpki": 14.089598,
+          "branches": 432230,
+          "instructions": 2890947,
+          "misp": 27030,
+          "mpki": 9.349877,
           "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
           "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
+          "misp": 7201,
+          "mpki": 7.217304,
           "weight": 1.0
         },
         "cbp5:sample_int_trace": {
           "branches": 181877,
           "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
+          "misp": 5257,
+          "mpki": 5.271227,
           "weight": 1.0
         },
         "file_tlv": {
           "branches": 471277,
           "instructions": 3139574,
-          "misp": 12636,
-          "mpki": 4.02475,
+          "misp": 13884,
+          "mpki": 4.422256,
           "weight": 1.5
         },
         "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36589,
-          "mpki": 13.387455,
+          "branches": 774042,
+          "instructions": 2599051,
+          "misp": 7006,
+          "mpki": 2.695599,
           "weight": 1.5
         },
+        "synthetic:alias_thrash": {
+          "branches": 1280,
+          "instructions": 6400,
+          "misp": 268,
+          "mpki": 41.875,
+          "weight": 0.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 5,
+          "mpki": 1.0,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:correlated_xor_branches": {
+          "branches": 2304,
+          "instructions": 11520,
+          "misp": 207,
+          "mpki": 17.96875,
+          "weight": 0.75
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:dual_branch_fetch_block": {
+          "branches": 497,
+          "instructions": 2485,
+          "misp": 8,
+          "mpki": 3.219316,
+          "weight": 0.75
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 90,
+          "mpki": 9.809264,
+          "weight": 1.0
+        },
+        "synthetic:gpu_occupancy_phase": {
+          "branches": 1008,
+          "instructions": 5040,
+          "misp": 74,
+          "mpki": 14.68254,
+          "weight": 0.75
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 14,
+          "mpki": 0.883838,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 132,
+          "mpki": 25.78125,
+          "weight": 1.0
+        },
+        "synthetic:interpreter_dispatch_mixed": {
+          "branches": 709,
+          "instructions": 3545,
+          "misp": 373,
+          "mpki": 105.218618,
+          "weight": 0.75
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 77,
+          "mpki": 9.649123,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 4,
+          "mpki": 0.78125,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 6,
+          "mpki": 1.704545,
+          "weight": 0.75
+        },
+        "synthetic:nested_imli_loop": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 19,
+          "mpki": 5.397727,
+          "weight": 0.75
+        },
+        "synthetic:phase_change_server": {
+          "branches": 2880,
+          "instructions": 14400,
+          "misp": 648,
+          "mpki": 45.0,
+          "weight": 0.75
+        },
+        "synthetic:return_mismatch_exceptions": {
+          "branches": 378,
+          "instructions": 1890,
+          "misp": 14,
+          "mpki": 7.407407,
+          "weight": 0.35
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 36,
+          "mpki": 14.0625,
+          "weight": 0.5
+        },
+        "synthetic:vtable_path_correlated": {
+          "branches": 576,
+          "instructions": 2880,
+          "misp": 22,
+          "mpki": 7.638889,
+          "weight": 0.75
+        },
         "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29026,
-          "mpki": 9.931887,
+          "branches": 461102,
+          "instructions": 2668630,
+          "misp": 18430,
+          "mpki": 6.906165,
           "weight": 1.5
         },
         "video_blocks": {
           "branches": 275928,
           "instructions": 2641291,
-          "misp": 5024,
-          "mpki": 1.9021,
+          "misp": 5959,
+          "mpki": 2.256094,
           "weight": 1.5
         }
       },
-      "weighted_mpki": 5.576196
+      "weighted_mpki": 10.942147
     },
-    "bim_big": {
+    "pre_ittage_hist_long": {
       "per_trace": {
         "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2930,
-          "mpki": 0.72048,
+          "branches": 6622719,
+          "instructions": 38475498,
+          "misp": 14797,
+          "mpki": 0.384582,
           "weight": 1.5
         },
         "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2542,
-          "mpki": 0.561835,
+          "branches": 3839663,
+          "instructions": 24817722,
+          "misp": 8513,
+          "mpki": 0.343021,
           "weight": 2.0
         },
         "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40655,
-          "mpki": 14.089251,
+          "branches": 432230,
+          "instructions": 2890947,
+          "misp": 27030,
+          "mpki": 9.349877,
           "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
           "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
+          "misp": 7201,
+          "mpki": 7.217304,
           "weight": 1.0
         },
         "cbp5:sample_int_trace": {
           "branches": 181877,
           "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
+          "misp": 5328,
+          "mpki": 5.342419,
           "weight": 1.0
         },
         "file_tlv": {
           "branches": 471277,
           "instructions": 3139574,
-          "misp": 12635,
-          "mpki": 4.024431,
+          "misp": 13884,
+          "mpki": 4.422256,
           "weight": 1.5
         },
         "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36587,
-          "mpki": 13.386724,
+          "branches": 774042,
+          "instructions": 2599051,
+          "misp": 7226,
+          "mpki": 2.780246,
           "weight": 1.5
         },
+        "synthetic:alias_thrash": {
+          "branches": 1280,
+          "instructions": 6400,
+          "misp": 268,
+          "mpki": 41.875,
+          "weight": 0.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 5,
+          "mpki": 1.0,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:correlated_xor_branches": {
+          "branches": 2304,
+          "instructions": 11520,
+          "misp": 207,
+          "mpki": 17.96875,
+          "weight": 0.75
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:dual_branch_fetch_block": {
+          "branches": 497,
+          "instructions": 2485,
+          "misp": 8,
+          "mpki": 3.219316,
+          "weight": 0.75
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 93,
+          "mpki": 10.13624,
+          "weight": 1.0
+        },
+        "synthetic:gpu_occupancy_phase": {
+          "branches": 1008,
+          "instructions": 5040,
+          "misp": 74,
+          "mpki": 14.68254,
+          "weight": 0.75
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 14,
+          "mpki": 0.883838,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 132,
+          "mpki": 25.78125,
+          "weight": 1.0
+        },
+        "synthetic:interpreter_dispatch_mixed": {
+          "branches": 709,
+          "instructions": 3545,
+          "misp": 375,
+          "mpki": 105.782793,
+          "weight": 0.75
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 78,
+          "mpki": 9.774436,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 4,
+          "mpki": 0.78125,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 7,
+          "mpki": 1.988636,
+          "weight": 0.75
+        },
+        "synthetic:nested_imli_loop": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 19,
+          "mpki": 5.397727,
+          "weight": 0.75
+        },
+        "synthetic:phase_change_server": {
+          "branches": 2880,
+          "instructions": 14400,
+          "misp": 576,
+          "mpki": 40.0,
+          "weight": 0.75
+        },
+        "synthetic:return_mismatch_exceptions": {
+          "branches": 378,
+          "instructions": 1890,
+          "misp": 14,
+          "mpki": 7.407407,
+          "weight": 0.35
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 37,
+          "mpki": 14.453125,
+          "weight": 0.5
+        },
+        "synthetic:vtable_path_correlated": {
+          "branches": 576,
+          "instructions": 2880,
+          "misp": 44,
+          "mpki": 15.277778,
+          "weight": 0.75
+        },
         "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29000,
-          "mpki": 9.922991,
+          "branches": 461102,
+          "instructions": 2668630,
+          "misp": 18430,
+          "mpki": 6.906165,
           "weight": 1.5
         },
         "video_blocks": {
           "branches": 275928,
           "instructions": 2641291,
-          "misp": 5023,
-          "mpki": 1.901722,
+          "misp": 5959,
+          "mpki": 2.256094,
           "weight": 1.5
         }
       },
-      "weighted_mpki": 5.574999
+      "weighted_mpki": 11.075085
     },
-    "combo_a": {
+    "tage_use_alt_on_na": {
       "per_trace": {
         "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2934,
-          "mpki": 0.721463,
+          "branches": 6622719,
+          "instructions": 38475498,
+          "misp": 14736,
+          "mpki": 0.382997,
           "weight": 1.5
         },
         "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2543,
-          "mpki": 0.562056,
+          "branches": 3839663,
+          "instructions": 24817722,
+          "misp": 8415,
+          "mpki": 0.339072,
           "weight": 2.0
         },
         "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40452,
-          "mpki": 14.0189,
+          "branches": 432230,
+          "instructions": 2890947,
+          "misp": 26738,
+          "mpki": 9.248872,
           "weight": 1.5
         },
         "cbp5:sample_fp_trace": {
           "branches": 148723,
           "instructions": 997741,
-          "misp": 2969,
-          "mpki": 2.975722,
+          "misp": 7134,
+          "mpki": 7.150152,
           "weight": 1.0
         },
         "cbp5:sample_int_trace": {
           "branches": 181877,
           "instructions": 997301,
-          "misp": 2190,
-          "mpki": 2.195927,
+          "misp": 5279,
+          "mpki": 5.293287,
           "weight": 1.0
         },
         "file_tlv": {
           "branches": 471277,
           "instructions": 3139574,
-          "misp": 12636,
-          "mpki": 4.02475,
+          "misp": 13535,
+          "mpki": 4.311094,
           "weight": 1.5
         },
         "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36372,
-          "mpki": 13.308058,
+          "branches": 774042,
+          "instructions": 2599051,
+          "misp": 7024,
+          "mpki": 2.702525,
           "weight": 1.5
         },
+        "synthetic:alias_thrash": {
+          "branches": 1280,
+          "instructions": 6400,
+          "misp": 396,
+          "mpki": 61.875,
+          "weight": 0.5
+        },
+        "synthetic:alternating": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 6,
+          "mpki": 1.2,
+          "weight": 0.35
+        },
+        "synthetic:always_not_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:always_taken": {
+          "branches": 1000,
+          "instructions": 5000,
+          "misp": 1,
+          "mpki": 0.2,
+          "weight": 0.25
+        },
+        "synthetic:correlated_xor_branches": {
+          "branches": 2304,
+          "instructions": 11520,
+          "misp": 216,
+          "mpki": 18.75,
+          "weight": 0.75
+        },
+        "synthetic:deep_recursion": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 32,
+          "mpki": 12.5,
+          "weight": 0.35
+        },
+        "synthetic:dual_branch_fetch_block": {
+          "branches": 497,
+          "instructions": 2485,
+          "misp": 6,
+          "mpki": 2.414487,
+          "weight": 0.75
+        },
+        "synthetic:gpu_command_processor": {
+          "branches": 1835,
+          "instructions": 9175,
+          "misp": 93,
+          "mpki": 10.13624,
+          "weight": 1.0
+        },
+        "synthetic:gpu_occupancy_phase": {
+          "branches": 1008,
+          "instructions": 5040,
+          "misp": 80,
+          "mpki": 15.873016,
+          "weight": 0.75
+        },
+        "synthetic:gpu_tile_kernel": {
+          "branches": 3168,
+          "instructions": 15840,
+          "misp": 12,
+          "mpki": 0.757576,
+          "weight": 1.0
+        },
+        "synthetic:gpu_warp_divergence": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 167,
+          "mpki": 32.617188,
+          "weight": 1.0
+        },
+        "synthetic:interpreter_dispatch_mixed": {
+          "branches": 709,
+          "instructions": 3545,
+          "misp": 388,
+          "mpki": 109.449929,
+          "weight": 0.75
+        },
+        "synthetic:jit_dispatch_warmup": {
+          "branches": 1596,
+          "instructions": 7980,
+          "misp": 77,
+          "mpki": 9.649123,
+          "weight": 0.75
+        },
+        "synthetic:loop_with_known_trip": {
+          "branches": 1024,
+          "instructions": 5120,
+          "misp": 4,
+          "mpki": 0.78125,
+          "weight": 0.5
+        },
+        "synthetic:mixed_workload": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 7,
+          "mpki": 1.988636,
+          "weight": 0.75
+        },
+        "synthetic:nested_imli_loop": {
+          "branches": 704,
+          "instructions": 3520,
+          "misp": 21,
+          "mpki": 5.965909,
+          "weight": 0.75
+        },
+        "synthetic:phase_change_server": {
+          "branches": 2880,
+          "instructions": 14400,
+          "misp": 668,
+          "mpki": 46.388889,
+          "weight": 0.75
+        },
+        "synthetic:return_mismatch_exceptions": {
+          "branches": 378,
+          "instructions": 1890,
+          "misp": 14,
+          "mpki": 7.407407,
+          "weight": 0.35
+        },
+        "synthetic:v8_indirect_dispatch": {
+          "branches": 512,
+          "instructions": 2560,
+          "misp": 36,
+          "mpki": 14.0625,
+          "weight": 0.5
+        },
+        "synthetic:vtable_path_correlated": {
+          "branches": 576,
+          "instructions": 2880,
+          "misp": 22,
+          "mpki": 7.638889,
+          "weight": 0.75
+        },
         "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28950,
-          "mpki": 9.905882,
+          "branches": 461102,
+          "instructions": 2668630,
+          "misp": 17487,
+          "mpki": 6.552801,
           "weight": 1.5
         },
         "video_blocks": {
           "branches": 275928,
           "instructions": 2641291,
-          "misp": 5067,
-          "mpki": 1.91838,
+          "misp": 5665,
+          "mpki": 2.144785,
           "weight": 1.5
         }
       },
-      "weighted_mpki": 5.549378
-    },
-    "combo_algo": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2939,
-          "mpki": 0.722693,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2544,
-          "mpki": 0.562277,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40679,
-          "mpki": 14.097569,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3056,
-          "mpki": 3.062919,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2212,
-          "mpki": 2.217986,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12621,
-          "mpki": 4.019972,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36628,
-          "mpki": 13.401725,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28973,
-          "mpki": 9.913752,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5005,
-          "mpki": 1.894907,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.575491
-    },
-    "combo_algo_geo": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2934,
-          "mpki": 0.721463,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2543,
-          "mpki": 0.562056,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40337,
-          "mpki": 13.979047,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2970,
-          "mpki": 2.976724,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2190,
-          "mpki": 2.195927,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12553,
-          "mpki": 3.998313,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36370,
-          "mpki": 13.307326,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28918,
-          "mpki": 9.894933,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5063,
-          "mpki": 1.916866,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.540283
-    },
-    "combo_b": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2938,
-          "mpki": 0.722447,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2560,
-          "mpki": 0.565813,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40725,
-          "mpki": 14.11351,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2969,
-          "mpki": 2.975722,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2187,
-          "mpki": 2.192919,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12609,
-          "mpki": 4.01615,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36401,
-          "mpki": 13.318669,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28593,
-          "mpki": 9.783727,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5041,
-          "mpki": 1.908536,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.545756
-    },
-    "loop_big": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2930,
-          "mpki": 0.72048,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2541,
-          "mpki": 0.561614,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40656,
-          "mpki": 14.089598,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12636,
-          "mpki": 4.02475,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36589,
-          "mpki": 13.387455,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29026,
-          "mpki": 9.931887,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5024,
-          "mpki": 1.9021,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.576196
-    },
-    "sc_adaptive": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2934,
-          "mpki": 0.721463,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2542,
-          "mpki": 0.561835,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40652,
-          "mpki": 14.088212,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3056,
-          "mpki": 3.062919,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2212,
-          "mpki": 2.217986,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12697,
-          "mpki": 4.044179,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36624,
-          "mpki": 13.400261,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29083,
-          "mpki": 9.951391,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5027,
-          "mpki": 1.903236,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.58213
-    },
-    "sc_thresh_high": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2931,
-          "mpki": 0.720726,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2533,
-          "mpki": 0.559846,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40649,
-          "mpki": 14.087172,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3054,
-          "mpki": 3.060915,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2213,
-          "mpki": 2.218989,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12643,
-          "mpki": 4.026979,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36581,
-          "mpki": 13.384528,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29036,
-          "mpki": 9.935309,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5028,
-          "mpki": 1.903615,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.57593
-    },
-    "sc_thresh_low": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2940,
-          "mpki": 0.722939,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2547,
-          "mpki": 0.56294,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40666,
-          "mpki": 14.093064,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3052,
-          "mpki": 3.05891,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2229,
-          "mpki": 2.235032,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12657,
-          "mpki": 4.031439,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36627,
-          "mpki": 13.401359,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29057,
-          "mpki": 9.942495,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5035,
-          "mpki": 1.906265,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.582013
-    },
-    "sc_wide": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2922,
-          "mpki": 0.718513,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2523,
-          "mpki": 0.557636,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40647,
-          "mpki": 14.086479,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3035,
-          "mpki": 3.041872,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2214,
-          "mpki": 2.219992,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12635,
-          "mpki": 4.024431,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36546,
-          "mpki": 13.371722,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28978,
-          "mpki": 9.915463,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 4994,
-          "mpki": 1.890742,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.56832
-    },
-    "tage6_tables": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2956,
-          "mpki": 0.726873,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2575,
-          "mpki": 0.569129,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40722,
-          "mpki": 14.112471,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2992,
-          "mpki": 2.998774,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2197,
-          "mpki": 2.202946,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12675,
-          "mpki": 4.037172,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36423,
-          "mpki": 13.326718,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28609,
-          "mpki": 9.789201,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5058,
-          "mpki": 1.914973,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.55393
-    },
-    "tage7_tables": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2968,
-          "mpki": 0.729824,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2585,
-          "mpki": 0.571339,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40759,
-          "mpki": 14.125293,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3018,
-          "mpki": 3.024833,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2236,
-          "mpki": 2.242051,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12554,
-          "mpki": 3.998632,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36412,
-          "mpki": 13.322693,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28879,
-          "mpki": 9.881588,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5101,
-          "mpki": 1.931253,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.56873
-    },
-    "tage_alloc_aging": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2935,
-          "mpki": 0.721709,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2544,
-          "mpki": 0.562277,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40673,
-          "mpki": 14.095489,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12634,
-          "mpki": 4.024113,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36605,
-          "mpki": 13.39331,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28958,
-          "mpki": 9.90862,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5017,
-          "mpki": 1.89945,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.574731
-    },
-    "tage_alloc_decr": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2935,
-          "mpki": 0.721709,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2544,
-          "mpki": 0.562277,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40668,
-          "mpki": 14.093757,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12611,
-          "mpki": 4.016787,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36646,
-          "mpki": 13.408311,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28980,
-          "mpki": 9.916147,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 4997,
-          "mpki": 1.891878,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.575412
-    },
-    "tage_big_tables": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2919,
-          "mpki": 0.717775,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2533,
-          "mpki": 0.559846,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40485,
-          "mpki": 14.030337,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2959,
-          "mpki": 2.9657,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2215,
-          "mpki": 2.220994,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12437,
-          "mpki": 3.961365,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36688,
-          "mpki": 13.423678,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28572,
-          "mpki": 9.776541,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 4993,
-          "mpki": 1.890363,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.53896
-    },
-    "tage_reach_long": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2949,
-          "mpki": 0.725152,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2555,
-          "mpki": 0.564708,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40465,
-          "mpki": 14.023406,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 2981,
-          "mpki": 2.987749,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2196,
-          "mpki": 2.201943,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12505,
-          "mpki": 3.983024,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36264,
-          "mpki": 13.268542,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29409,
-          "mpki": 10.062939,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5154,
-          "mpki": 1.951319,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.564668
-    },
-    "tage_reach_xlong": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2974,
-          "mpki": 0.731299,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2570,
-          "mpki": 0.568024,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40788,
-          "mpki": 14.135343,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3038,
-          "mpki": 3.044878,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2202,
-          "mpki": 2.207959,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12627,
-          "mpki": 4.021883,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36305,
-          "mpki": 13.283543,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29362,
-          "mpki": 10.046857,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5095,
-          "mpki": 1.928981,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.585442
-    },
-    "tage_ubit_reset": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2930,
-          "mpki": 0.72048,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2541,
-          "mpki": 0.561614,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40592,
-          "mpki": 14.067418,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12640,
-          "mpki": 4.026024,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36590,
-          "mpki": 13.387821,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 28992,
-          "mpki": 9.920253,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5023,
-          "mpki": 1.901722,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.57244
-    },
-    "tage_ubit_reset_fast": {
-      "per_trace": {
-        "agent_decode": {
-          "branches": 700000,
-          "instructions": 4066735,
-          "misp": 2930,
-          "mpki": 0.72048,
-          "weight": 1.5
-        },
-        "agent_loop": {
-          "branches": 700000,
-          "instructions": 4524460,
-          "misp": 2543,
-          "mpki": 0.562056,
-          "weight": 2.0
-        },
-        "audio_frames": {
-          "branches": 427497,
-          "instructions": 2885533,
-          "misp": 40676,
-          "mpki": 14.096529,
-          "weight": 1.5
-        },
-        "cbp5:sample_fp_trace": {
-          "branches": 148723,
-          "instructions": 997741,
-          "misp": 3053,
-          "mpki": 3.059912,
-          "weight": 1.0
-        },
-        "cbp5:sample_int_trace": {
-          "branches": 181877,
-          "instructions": 997301,
-          "misp": 2217,
-          "mpki": 2.223,
-          "weight": 1.0
-        },
-        "file_tlv": {
-          "branches": 471277,
-          "instructions": 3139574,
-          "misp": 12535,
-          "mpki": 3.99258,
-          "weight": 1.5
-        },
-        "http_parser": {
-          "branches": 700000,
-          "instructions": 2733081,
-          "misp": 36596,
-          "mpki": 13.390017,
-          "weight": 1.5
-        },
-        "text_log": {
-          "branches": 480583,
-          "instructions": 2922506,
-          "misp": 29132,
-          "mpki": 9.968157,
-          "weight": 1.5
-        },
-        "video_blocks": {
-          "branches": 275928,
-          "instructions": 2641291,
-          "misp": 5021,
-          "mpki": 1.900964,
-          "weight": 1.5
-        }
-      },
-      "weighted_mpki": 5.577701
+      "weighted_mpki": 11.786175
     }
   },
   "schema": "eliza.bpu_sweep.v1",
+  "status": "pass",
   "trace_set": [
     {
-      "branches": 700000,
-      "instructions": 4524460,
+      "branches": 3839663,
+      "instructions": 24817722,
       "name": "agent_loop",
       "weight": 2.0
     },
     {
-      "branches": 700000,
-      "instructions": 4066735,
+      "branches": 6622719,
+      "instructions": 38475498,
       "name": "agent_decode",
       "weight": 1.5
     },
     {
-      "branches": 700000,
-      "instructions": 2733081,
+      "branches": 774042,
+      "instructions": 2599051,
       "name": "http_parser",
       "weight": 1.5
     },
     {
-      "branches": 480583,
-      "instructions": 2922506,
+      "branches": 461102,
+      "instructions": 2668630,
       "name": "text_log",
       "weight": 1.5
     },
@@ -1436,10 +683,130 @@
       "weight": 1.5
     },
     {
-      "branches": 427497,
-      "instructions": 2885533,
+      "branches": 432230,
+      "instructions": 2890947,
       "name": "audio_frames",
       "weight": 1.5
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:always_taken",
+      "weight": 0.25
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:always_not_taken",
+      "weight": 0.25
+    },
+    {
+      "branches": 1000,
+      "instructions": 5000,
+      "name": "synthetic:alternating",
+      "weight": 0.35
+    },
+    {
+      "branches": 1024,
+      "instructions": 5120,
+      "name": "synthetic:loop_with_known_trip",
+      "weight": 0.5
+    },
+    {
+      "branches": 512,
+      "instructions": 2560,
+      "name": "synthetic:deep_recursion",
+      "weight": 0.35
+    },
+    {
+      "branches": 512,
+      "instructions": 2560,
+      "name": "synthetic:v8_indirect_dispatch",
+      "weight": 0.5
+    },
+    {
+      "branches": 704,
+      "instructions": 3520,
+      "name": "synthetic:mixed_workload",
+      "weight": 0.75
+    },
+    {
+      "branches": 1596,
+      "instructions": 7980,
+      "name": "synthetic:jit_dispatch_warmup",
+      "weight": 0.75
+    },
+    {
+      "branches": 3168,
+      "instructions": 15840,
+      "name": "synthetic:gpu_tile_kernel",
+      "weight": 1.0
+    },
+    {
+      "branches": 1024,
+      "instructions": 5120,
+      "name": "synthetic:gpu_warp_divergence",
+      "weight": 1.0
+    },
+    {
+      "branches": 1835,
+      "instructions": 9175,
+      "name": "synthetic:gpu_command_processor",
+      "weight": 1.0
+    },
+    {
+      "branches": 497,
+      "instructions": 2485,
+      "name": "synthetic:dual_branch_fetch_block",
+      "weight": 0.75
+    },
+    {
+      "branches": 704,
+      "instructions": 3520,
+      "name": "synthetic:nested_imli_loop",
+      "weight": 0.75
+    },
+    {
+      "branches": 2304,
+      "instructions": 11520,
+      "name": "synthetic:correlated_xor_branches",
+      "weight": 0.75
+    },
+    {
+      "branches": 576,
+      "instructions": 2880,
+      "name": "synthetic:vtable_path_correlated",
+      "weight": 0.75
+    },
+    {
+      "branches": 709,
+      "instructions": 3545,
+      "name": "synthetic:interpreter_dispatch_mixed",
+      "weight": 0.75
+    },
+    {
+      "branches": 2880,
+      "instructions": 14400,
+      "name": "synthetic:phase_change_server",
+      "weight": 0.75
+    },
+    {
+      "branches": 1280,
+      "instructions": 6400,
+      "name": "synthetic:alias_thrash",
+      "weight": 0.5
+    },
+    {
+      "branches": 1008,
+      "instructions": 5040,
+      "name": "synthetic:gpu_occupancy_phase",
+      "weight": 0.75
+    },
+    {
+      "branches": 378,
+      "instructions": 1890,
+      "name": "synthetic:return_mismatch_exceptions",
+      "weight": 0.35
     },
     {
       "branches": 148723,
@@ -1462,6 +829,26 @@
     "cbp5:sample_int_trace": 1.0,
     "file_tlv": 1.5,
     "http_parser": 1.5,
+    "synthetic:alias_thrash": 0.5,
+    "synthetic:alternating": 0.35,
+    "synthetic:always_not_taken": 0.25,
+    "synthetic:always_taken": 0.25,
+    "synthetic:correlated_xor_branches": 0.75,
+    "synthetic:deep_recursion": 0.35,
+    "synthetic:dual_branch_fetch_block": 0.75,
+    "synthetic:gpu_command_processor": 1.0,
+    "synthetic:gpu_occupancy_phase": 0.75,
+    "synthetic:gpu_tile_kernel": 1.0,
+    "synthetic:gpu_warp_divergence": 1.0,
+    "synthetic:interpreter_dispatch_mixed": 0.75,
+    "synthetic:jit_dispatch_warmup": 0.75,
+    "synthetic:loop_with_known_trip": 0.5,
+    "synthetic:mixed_workload": 0.75,
+    "synthetic:nested_imli_loop": 0.75,
+    "synthetic:phase_change_server": 0.75,
+    "synthetic:return_mismatch_exceptions": 0.35,
+    "synthetic:v8_indirect_dispatch": 0.5,
+    "synthetic:vtable_path_correlated": 0.75,
     "text_log": 1.5,
     "video_blocks": 1.5
   }

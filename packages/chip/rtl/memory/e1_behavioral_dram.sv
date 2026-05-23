@@ -15,7 +15,6 @@
 // handshake per master. The DRAM window check is 0x8000_0xxx, word-aligned.
 
 module e1_behavioral_dram
-    import e1_soc_pkg::*;
 (
     input  logic        clk,
     input  logic        rst_n,
@@ -72,14 +71,14 @@ module e1_behavioral_dram
     output logic [31:0] display_fb_read_data,
     output logic        display_fb_read_ready
 );
-    logic [31:0] dram_mem [0:DRAM_WORDS-1];
+    logic [31:0] dram_mem [0:e1_soc_pkg::DRAM_WORDS-1];
 
-    wire [DRAM_INDEX_BITS-1:0] mmio_dram_word = mmio_addr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] dma_wr_word = dma_m_awaddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] npu_wr_word = npu_m_awaddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] dma_rd_word = dma_m_araddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] npu_rd_word = npu_m_araddr[2 +: DRAM_INDEX_BITS];
-    wire [DRAM_INDEX_BITS-1:0] display_rd_word = display_fb_read_addr[2 +: DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] mmio_dram_word = mmio_addr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] dma_wr_word = dma_m_awaddr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] npu_wr_word = npu_m_awaddr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] dma_rd_word = dma_m_araddr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] npu_rd_word = npu_m_araddr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
+    wire [e1_soc_pkg::DRAM_INDEX_BITS-1:0] display_rd_word = display_fb_read_addr[2 +: e1_soc_pkg::DRAM_INDEX_BITS];
     wire        dma_wr_fire = dma_m_awvalid && dma_m_awready && dma_m_wvalid && dma_m_wready;
     wire        npu_wr_fire = npu_m_awvalid && npu_m_awready && npu_m_wvalid && npu_m_wready;
     wire        dma_rd_fire = dma_m_arvalid && dma_m_arready;

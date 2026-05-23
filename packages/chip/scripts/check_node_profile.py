@@ -53,8 +53,7 @@ def reject_unblocked_advanced(node_id: str, profile: dict[str, Any]) -> list[str
         )
     if profile.get("fabricable") is not False:
         errors.append(
-            f"{node_id}: advanced node fabricable must be false, "
-            f"got {profile.get('fabricable')!r}"
+            f"{node_id}: advanced node fabricable must be false, got {profile.get('fabricable')!r}"
         )
     if profile.get("pdk_adapter") is not None:
         errors.append(
@@ -63,9 +62,7 @@ def reject_unblocked_advanced(node_id: str, profile: dict[str, Any]) -> list[str
         )
     forbidden = profile.get("forbidden_claims_until_unblocked")
     if not isinstance(forbidden, list) or not forbidden:
-        errors.append(
-            f"{node_id}: advanced node must list forbidden_claims_until_unblocked"
-        )
+        errors.append(f"{node_id}: advanced node must list forbidden_claims_until_unblocked")
     return errors
 
 

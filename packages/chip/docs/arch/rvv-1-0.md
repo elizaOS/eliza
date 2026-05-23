@@ -131,5 +131,5 @@ buffer interaction with the cache subsystem.
 | MMU Sv39 (Sv48/Sv57 follow) | `docs/evidence/cpu_ap/mmu-sv39-evidence.yaml` |
 | riscv-arch-test + riscv-dv | `verify/riscv-arch-tests/manifest.json` |
 
-Every gate fails closed until the corresponding DUT (CVA6 / Kunminghu /
-Ascalon) is selectable and the test produces a signed transcript.
+Every gate fails closed until the corresponding DUT (CVA6 / Kunminghu) is
+selectable and the test produces a signed transcript.

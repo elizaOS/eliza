@@ -71,9 +71,7 @@ def main() -> int:
     cellular_rf_nets = ["CELL_RF_MAIN", "CELL_RF_DIV", "CELL_GNSS_RF"]
     wifi_rf_nets = ["WIFI_BT_RF0", "WIFI_BT_RF1"]
 
-    s11_plan = {
-        item["net"]: item for item in rf["s11_and_efficiency_plan"]["per_feed"]
-    }
+    s11_plan = {item["net"]: item for item in rf["s11_and_efficiency_plan"]["per_feed"]}
     rf_feed_execution = []
     for feed in rf["antenna_feed_assignments"]:
         matching = next(

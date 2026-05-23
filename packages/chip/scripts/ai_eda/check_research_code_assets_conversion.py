@@ -27,6 +27,7 @@ REQUIRED_ASSETS = {
     "openroad-mcp",
     "open3dbench",
     "dreamplace",
+    "verireason",
 }
 REQUIRED_TASKS = {"ai_eda_research_asset_summary", "ai_eda_research_asset_inventory"}
 

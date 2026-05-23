@@ -38,13 +38,65 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 check_cpu_2028_target = importlib.import_module("check_cpu_2028_target")
 
+given: Any
+settings: Any
+HealthCheck: Any
+st: Any
+
 try:
-    from hypothesis import HealthCheck, given, settings
-    from hypothesis import strategies as st
+    from hypothesis import HealthCheck as _HypothesisHealthCheck
+    from hypothesis import given as _hypothesis_given
+    from hypothesis import settings as _hypothesis_settings
+    from hypothesis import strategies as _hypothesis_st
 
     HYPOTHESIS_AVAILABLE = True
+    given = _hypothesis_given
+    settings = _hypothesis_settings
+    HealthCheck = _HypothesisHealthCheck
+    st = _hypothesis_st
 except ImportError:  # pragma: no cover - skip when hypothesis is absent
     HYPOTHESIS_AVAILABLE = False
+
+    class _MissingHealthCheck:
+        too_slow = "too_slow"
+        function_scoped_fixture = "function_scoped_fixture"
+
+    class _MissingStrategy:
+        def filter(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return self
+
+    class _MissingStrategies:
+        def sampled_from(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def lists(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def text(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def characters(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+        def integers(self, *_args: object, **_kwargs: object) -> _MissingStrategy:
+            return _MissingStrategy()
+
+    def _missing_given(*_args: object, **_kwargs: object):
+        def decorator(fn: Any) -> Any:
+            return fn
+
+        return decorator
+
+    def _missing_settings(*_args: object, **_kwargs: object):
+        def decorator(fn: Any) -> Any:
+            return fn
+
+        return decorator
+
+    given = _missing_given
+    settings = _missing_settings
+    HealthCheck = _MissingHealthCheck
+    st = _MissingStrategies()
 
 
 def minimal_valid_spec() -> dict[str, Any]:

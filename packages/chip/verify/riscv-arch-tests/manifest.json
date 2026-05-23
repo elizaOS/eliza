@@ -46,7 +46,7 @@
     }
   ],
   "target_du_t_paths": {
-    "big_core_blocked_until_ascalon_license": "rtl/cpu/cluster/ (no big-core wrapper until license)",
+    "big_core_kunminghu_scaleup_wrapper_planned": "rtl/cpu/cluster/e1_kunminghu_wrapper.sv (open Kunminghu scale-up; BLOCKED pending external/xiangshan/)",
     "mid_core_kunminghu_wrapper_planned": "rtl/cpu/cluster/e1_kunminghu_wrapper.sv (BLOCKED pending external/xiangshan/)",
     "little_core_cva6_wrapper": "rtl/cpu/e1_cva6_wrapper.sv"
   },

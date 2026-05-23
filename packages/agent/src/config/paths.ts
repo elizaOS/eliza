@@ -14,12 +14,7 @@ function readEnvOverride(env: NodeJS.ProcessEnv): string | undefined {
   return readEnv(CONFIG_PATH_CANONICAL_KEY, [], { env });
 }
 
-export {
-  getElizaNamespace,
-  resolveOAuthDir,
-  resolveStateDir,
-  resolveUserPath,
-};
+export { getElizaNamespace, resolveOAuthDir, resolveStateDir, resolveUserPath };
 
 /**
  * Ordered list of on-disk config filenames to look for under the state dir,

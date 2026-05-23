@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
@@ -12,12 +13,53 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 RUNS = ROOT / "pd/openlane/runs"
 PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
+REPORT = ROOT / "build/reports/antenna_metadata.json"
+SCHEMA = "eliza.antenna_metadata.v1"
+CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evidence"
 RELEASE_PADFRAME_STEPS = (
     "select a foundry IO library with input, output, bidirectional, power, ground, ESD, corner, and filler cells",
     "instantiate those pad cells around e1_chip_top instead of using the padless core wrapper as the release top",
     "connect JTAG_TCK, JTAG_TDI, JTAG_TMS, TEST_MODE, DBG_READY, and JTAG_TDO either to real IO pads and tested internal logic or remove them from the release top",
     "archive padframe-inclusive KLayout/Magic DRC, LVS, antenna, and ESD evidence from one selected run",
 )
+
+
+def write_report(
+    status: str,
+    report_path: Path | None,
+    findings: list[str],
+    release: bool,
+) -> None:
+    evidence = ""
+    if report_path is not None:
+        try:
+            evidence = report_path.relative_to(ROOT).as_posix()
+        except ValueError:
+            evidence = str(report_path)
+    payload = {
+        "schema": SCHEMA,
+        "status": status,
+        "claim_boundary": CLAIM_BOUNDARY,
+        "mode": "release" if release else "preflight",
+        "source_report": evidence,
+        "summary": {
+            "release_ready": status == "pass" and release,
+            "blockers": len(findings) if status == "blocked" else 0,
+            "failures": len(findings) if status == "fail" else 0,
+        },
+        "findings": [
+            {
+                "code": f"antenna_metadata_{status}_{index}",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": finding,
+                "evidence": evidence,
+                "next_step": "Instantiate release IO/pad cells and archive padframe-inclusive antenna evidence.",
+            }
+            for index, finding in enumerate(findings, start=1)
+        ],
+    }
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def latest_report() -> Path | None:
@@ -72,21 +114,41 @@ def main() -> int:
     if report_path is not None and not report_path.is_absolute():
         report_path = ROOT / report_path
     if report_path is None or not report_path.is_file():
-        print("antenna metadata blocker: no OpenLane design antenna report found")
+        finding = "antenna metadata blocker: no OpenLane design antenna report found"
+        write_report(
+            "blocked" if args.release else "pass",
+            report_path,
+            [finding] if args.release else [],
+            args.release,
+        )
+        if args.release:
+            print(f"STATUS: BLOCKED {finding}")
+        else:
+            print(finding)
         return 1 if args.release else 0
 
     missing = missing_metadata(report_path)
     rel_report = report_path.relative_to(ROOT)
     if not missing:
+        write_report("pass", report_path, [], args.release)
         print(f"antenna metadata check ok: {rel_report}")
         return 0
 
+    findings = [
+        f"{direction} pins without antenna {'gate' if direction == 'input' else 'diffusion'} information: {', '.join(pins)}"
+        for direction, pins in missing.items()
+    ]
+    release_blocked = padframe_release_blocked()
+    status = "blocked" if args.release or not release_blocked else "pass"
+    write_report(status, report_path, findings if status == "blocked" else [], args.release)
+    if status == "blocked":
+        print(f"STATUS: BLOCKED antenna metadata check: {rel_report}")
     print(f"antenna metadata blockers in {rel_report}:")
     for direction, pins in missing.items():
         label = "gate" if direction == "input" else "diffusion"
         print(f"  - {direction} pins without antenna {label} information: {', '.join(pins)}")
 
-    if padframe_release_blocked():
+    if release_blocked:
         print(
             "  - padframe release remains blocked, so this is documented as a "
             "non-release core-wrapper limitation until real IO/pad cells are instantiated"
@@ -95,7 +157,7 @@ def main() -> int:
         for step in RELEASE_PADFRAME_STEPS:
             print(f"    * {step}")
 
-    return 1 if args.release or not padframe_release_blocked() else 0
+    return 1 if args.release or not release_blocked else 0
 
 
 if __name__ == "__main__":

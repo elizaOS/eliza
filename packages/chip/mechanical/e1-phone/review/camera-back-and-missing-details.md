@@ -3,7 +3,7 @@
 evidence_class: `cad_estimate_for_evt_planning, not_measured_hardware`
 
 Scope: rear-camera/torch optical+mechanical path verification, and an audit of
-production-phone CAD parts against the 123-entry assembly manifest. All numbers
+production-phone CAD parts against the 132-entry assembly manifest. All numbers
 are read from `out/assembly-manifest.json` bounds and the fresh OCP boolean
 interference run (`check_e1_phone_boolean_interference.py`, 2026-05-21,
 11/11 scopes PASS, 0 unintentional clashes, 459 B-rep pairs evaluated).
@@ -30,18 +30,16 @@ older review revs are superseded by the manifest).
 | Module vs shell wall | boolean min gap 0.5 mm, intersection 0.0 | clears |
 | Stray-light baffle | `rear_camera_light_baffle_{top,bottom}` only (8.3×0.35×0.55) | partial — see gap B-1 |
 
-Lens optical aperture: `rear_camera_lens_window` clear aperture is **6.8 × 6.8 mm =
-exactly the 6.8 mm lens diameter** — zero radial margin between lens OD and the
-window clear opening. The component-optical review assumed a 9.2 mm aperture
-(1.2 mm margin); the live window is the 6.8 mm inner clear, with the 9.2 mm being
-the glass insert outline. Flag B-2.
+Lens optical aperture: the flush back-shell lens window opening
+(`lens_window_opening_diameter_mm`) is **7.2 mm vs the 6.8 mm lens OD**, i.e.
+**0.2 mm radial margin** for placement tolerance and bond. Flag B-2 CLOSED.
 
 ### Rear torch / flash
 
 | Interface | Manifest evidence | Verdict |
 |---|---|---|
 | `rear_flash_led_window` flush | 1.6×1.6×0.55, Z = [-5.9, -5.35], outer face at -5.9 | FLUSH |
-| Window→shell seal | no dedicated flash-window adhesive part (camera window has 4; flash window has none) | gap B-3 |
+| Window→shell seal | `rear_flash_window_adhesive_{top,bottom,left,right}` 4-side PSA ring (0.45 mm width), matching the rear-camera window seal | SEALED — B-3 CLOSED |
 | `rear_flash_led` burial | back face Zmin = -4.55 vs inner wall -4.7 → **0.15 mm burial** | BURIED ≥0.1 |
 | Flash↔camera spacing | window-center to lens-window-center = **8.1 mm** (≥6.0 target, ≫5.0 floor) | PASS |
 | `rear_flash_camera_septum` | opaque PC wall 0.6 mm thick, Z = [-4.75, -2.65], between flash pipe and camera baffle | PRESENT |
@@ -59,7 +57,7 @@ flash side is covered by the septum. No light-leak path to the lens is open.
 | `front_camera_black_mask_window` aperture | 5.0×5.0×0.12 at Z = [5.76, 5.88] (in cover-glass ink plane) | aperture 5.0 > 3.4 lens OD, OK |
 | Module seat | `front_camera_module` 6.5×6.5×3.2, Z = [-0.6, 2.6], behind display band | buried/fits |
 | Earpiece neighbor | `earpiece_gasket` + `handset_acoustic_mesh` present | sealed |
-| Under-glass→cover-glass seal | no adhesive/foam ring bonding `front_camera_under_glass` to the black-mask aperture | gap B-4 |
+| Under-glass→cover-glass seal | `front_camera_under_glass_adhesive_{top,bottom,left,right}` 4-side bond ring sealing the under-glass window to the black-mask aperture | SEALED — B-4 CLOSED |
 
 ### PART A verdict
 
@@ -67,17 +65,19 @@ flash side is covered by the septum. No light-leak path to the lens is open.
   (boolean). Both windows coplanar at Z = -5.9 mm. Only envelope/void parts
   (`rear_camera_shell_aperture` 0.055, `rear_flash_shell_aperture` 0.055,
   `service_label_recess` 0.205) excurse, and they are voids, not solid.
-- **Sealed: REAR CAMERA yes** (4-side adhesive), **REAR FLASH no dedicated seal**
-  (B-3), **FRONT CAMERA no under-glass bond ring** (B-4).
+- **Sealed: REAR CAMERA yes** (4-side adhesive), **REAR FLASH yes** (4-side
+  `rear_flash_window_adhesive_*`, B-3 closed), **FRONT CAMERA yes** (4-side
+  `front_camera_under_glass_adhesive_*`, B-4 closed).
 - **Buried: YES** — rear camera 0.4 mm, flash 0.15 mm, both inside the inner wall.
 - **No light-leak path** to the rear lens: septum + spacing + baffles + camera
   4-side seal close the flush-coplanar-window crosstalk risk the optical review
-  flagged. Residual: rear camera has no left/right baffle wall (B-1), and the
-  6.8 mm lens window has zero radial margin (B-2).
+  flagged. Lens window now carries 0.2 mm radial margin (B-2 closed). Residual:
+  rear camera has no left/right baffle wall (B-1, acceptable — L/R faces dark
+  interior, septum covers the flash side).
 
 ---
 
-## PART B — Missing-details hunt (vs 123-part manifest)
+## PART B — Missing-details hunt (vs 132-part manifest)
 
 EMI/RF, retention, glass-edge, and acoustic-mesh families are well covered. The
 gaps cluster in **thermal**, **display EMI/grounding**, **structural mid-plate**,
@@ -103,16 +103,18 @@ gaps cluster in **thermal**, **display EMI/grounding**, **structural mid-plate**
 | Proximity / ambient-light sensor (front) | NO | HIGH | no `proximity/als/ambient` part; nearly every phone has prox (call screen-off) + ALS (auto-brightness). Likely real omission |
 | Accelerometer / gyro / magnetometer IMU | NO | MED | no IMU footprint (electrical, on PCB) — note for board, no CAD volume needed |
 | LRA vibration isolation | NO | MED | `haptic_lra` seated rigidly; no isolation grommet/foam → buzz into shell + drop shock to actuator |
-| Front-cam under-glass bond ring | NO | MED | B-4: `front_camera_under_glass` not bonded/sealed to black-mask aperture |
-| Rear-camera flash-window adhesive | NO | MED | B-3: flash window has no seal part (camera window does) |
-| Rear-camera L/R light baffle | NO | LOW | B-1: only top/bottom baffles modeled |
+| Front-cam under-glass bond ring | YES | — | B-4 CLOSED: `front_camera_under_glass_adhesive_{4}` bond ring to black-mask aperture |
+| Rear-camera flash-window adhesive | YES | — | B-3 CLOSED: `rear_flash_window_adhesive_{4}` 4-side PSA ring |
+| Rear-camera L/R light baffle | NO | LOW | B-1: only top/bottom baffles modeled (acceptable; L/R faces dark interior) |
 
 ### Missing-detail counts
 
 - HIGH: 5 — thermal spreader/pad; display EMI ground foam; mid-frame/stiffener;
-  antenna spring contacts/carrier; proximity+ALS sensor.
-- MED: 6 — battery mounting adhesive/pull-tab; FPC stiffeners; IMU (electrical);
-  LRA vibration isolation; front-cam under-glass bond; flash-window seal.
+  antenna spring contacts/carrier; proximity+ALS sensor. All five are declared in
+  `cad/e1_phone_params.yaml` but not yet emitted by `build_parts`; they are
+  CAD-closeable (no supplier data) and tracked as an open generator action.
+- MED: 4 — battery mounting adhesive/pull-tab; FPC stiffeners; IMU (electrical);
+  LRA vibration isolation.
 - LOW: 3 — ZIF actuators; notification LED/light-pipe; rear-cam L/R baffle.
 
 ### Real gap vs acceptable-to-omit at EVT
@@ -125,8 +127,11 @@ gaps cluster in **thermal**, **display EMI/grounding**, **structural mid-plate**
   (HIGH) is a larger architecture decision: if the plastic shell + side frame +
   10 bosses + gussets pass drop/bend, a metal mid-plate can be skipped, but the
   reviews never validated panel-bend stiffness without one — call it out.
+- **Closed in CAD this rev:** rear flash-window 4-side adhesive seal (B-3),
+  front-camera under-glass 4-side bond ring (B-4), rear lens-window 0.2 mm radial
+  margin (B-2).
 - **Real but EVT-deferrable:** LRA isolation grommet, battery mounting adhesive +
-  pull-tab, FPC stiffeners, front-cam under-glass bond, flash-window seal.
+  pull-tab, FPC stiffeners.
 - **Acceptable to omit / electrical-only:** IMU + ZIF actuators (vendor/board
   detail, no enclosure volume), notification LED (product decision),
   rear-cam L/R baffle (faces dark interior, septum handles the flash side).

@@ -21,24 +21,34 @@ open_pdk_lanes:
     library_manifest: pd/library-manifests/sky130.yaml
     corner_manifest: pd/corner-manifests/sky130.yaml
     evidence_class: real_open_pdk_methodology_evidence
-    status: drc_lvs_route_clean_timing_violations_open
-    last_run_artifact: pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json
+    status: leaf_macro_drc_lvs_route_timing_clean
+    proof_design: e1_pd_smoke_top
+    proof_clock_period_ns: 20
+    last_run_artifact: pd/openlane/runs/RUN_2026-05-21_10-19-23/final/metrics.json
     last_run_summary:
-      die_area_um2: 3240000
-      core_area_um2: 2616850
-      instances: 142274
+      design_name: e1_pd_smoke_top
+      clock_period_ns: 20
+      die_area_um2: 32400
+      core_area_um2: 18955.7
+      instances: 366
       macros: 0
       drc_clean: true
       lvs_clean: true
-      setup_wns_ns: 70.65
-      hold_wns_ns: -0.109
-      max_slew_violations: 23099
-      max_cap_violations: 442
+      route_drc_errors: 0
+      setup_wns_ns: 13.142303617362067
+      hold_wns_ns: 0.14235538151205496
+      max_slew_violations: 0
+      max_cap_violations: 0
+      max_fanout_violations: 0
+      antenna_violating_nets: 0
     flagship_class: false
     notes: >
-      Latest full release run is clean DRC + LVS but has hold + slew + cap
-      violations that block pd-signoff release. Methodology evidence is real;
-      flagship-frequency claims are not.
+      e1_pd_smoke_top closes clean end-to-end through OpenLane 2 on the open
+      Sky130A flow: DRC clean (magic + klayout), LVS clean, route DRC-free,
+      setup and hold met, zero slew/cap/fanout/antenna violations. This proves
+      the open-PDK flow produces real signoff-shape artifacts. It is a leaf
+      smoke macro at 50 MHz, not a flagship-frequency claim for e1_chip_top;
+      the full e1_chip_top release lane remains open for a clean closure.
 
   - id: gf180mcuC
     pdk: gf180mcuC
@@ -111,7 +121,7 @@ predictive_lanes:
           subset in-order microcontroller stub with RISC-V decoder, ALU,
           architectural register file, and AXI4-Lite master FSM) synthesized
           standalone with yosys 0.64 + ABC -fast, mapped to asap7sc7p5t_27
-          RVT TT (0.70 V, 25 C). Substitutes for the CVA6 / Ascalon / Kunminghu
+          RVT TT (0.70 V, 25 C). Substitutes for the CVA6 / Kunminghu
           big-core RTL until those land; the stub is real RISC-V execution
           logic, not a placeholder.
         shape_report: docs/evidence/process/asap7/big_core_shell_shape.json
@@ -195,6 +205,7 @@ ppa_projection_coverage:
   output_marker: projection_only_never_signoff
 
 next_commands:
+  open_pdk_proof_sky130_smoke: scripts/run_openlane.sh --smoke
   open_pdk_run_sky130: scripts/run_openlane.sh --release
   open_pdk_run_gf180: OPENLANE_CONFIG=pd/openlane/config.gf180.json scripts/run_openlane.sh --release
   open_pdk_run_ihp_sg13g2: OPENLANE_CONFIG=pd/openlane/config.ihp-sg13g2.json scripts/run_openlane.sh --release

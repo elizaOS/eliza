@@ -53,6 +53,17 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
+def test_structured_findings_cover_radio_sensor_pmic_blockers() -> None:
+    report = check_radio_sensor_pmic_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("radio/sensor/PMIC scope report must expose structured findings")
+    codes = {str(item.get("code", "")) for item in findings}
+    if not any(code.startswith("radio_sensor_pmic_missing_real_evidence_") for code in codes):
+        raise AssertionError(f"radio/sensor/PMIC findings must include missing evidence: {findings}")
+    print("PASS structured radio/sensor/PMIC findings cover blocked real evidence")
+
+
 def test_scaffold_removal_fails() -> None:
     report = check_radio_sensor_pmic_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -66,6 +77,7 @@ def main() -> None:
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
     test_blocker_removal_fails()
+    test_structured_findings_cover_radio_sensor_pmic_blockers()
     test_scaffold_removal_fails()
 
 

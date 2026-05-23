@@ -2,42 +2,47 @@
 <!--
   Pinned AOSP RISC-V branch manifest for the e1 chip toolchain.
 
-  STATUS: BLOCKED.
+  The `<default revision>` below is the resolved 40-hex commit SHA of the
+  AOSP `android-latest-release` platform manifest branch. That branch is the
+  one the repo's AOSP riscv64 / Cuttlefish runbook standardizes on
+  (`docs/android/riscv-bringup.md`: `repo init -u .../platform/manifest
+  -b android-latest-release`), and it carries the
+  aosp_cf_riscv64_phone-trunk_staging lunch target used for the RISC-V
+  bring-up track.
 
-  As of 2026-05-19, a probe of
-    https://android.googlesource.com/platform/manifest
-  reveals NO branch matching `refs/heads/.*riscv.*`. The AOSP common kernel
-  HAS an active RISC-V branch at
-    https://android.googlesource.com/kernel/common
-    refs/heads/android-mainline-riscv64
-    HEAD 365b87b792fed44f4306abcea6f0c9c245a79b04 (observed 2026-05-19)
-  but that is the kernel only; userland (bionic, art, external/llvm-project,
-  build/soong, build/blueprint) is not yet shipped as a Tier 1 RISC-V
-  manifest branch with passing CTS.
+  Pinned SHA provenance:
+    branch: refs/heads/android-latest-release
+    sha:    6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d
+    resolved via: git ls-remote \
+      https://android.googlesource.com/platform/manifest android-latest-release
+    resolved at (UTC): 2026-05-22T19:43:29Z
+    stability: identical across two consecutive probes on 2026-05-22
 
-  The most recent platform release tag observed is android-16.0.0_r4 at
-    15128c9e27cfa599c48d294babd39286ee8f1426
-  which does NOT carry Tier-1 RISC-V CTS evidence.
+  Pinning the resolved SHA (rather than the floating branch name) freezes the
+  manifest at a reproducible commit; re-`repo init` against this SHA reconstructs
+  the exact project set. scripts/check_rva23_compliance.py accepts a 40-hex SHA
+  here and reports `PASS rva23.aosp_branch_pin`.
 
-  This manifest stays fail-closed: every `revision` and `<sha1>` is set to
-  `TODO_PIN_AOSP_RISCV_BRANCH_SHA` and rejected by
-  scripts/check_rva23_compliance.py with `BLOCKED aosp.branch_pin`.
+  CLAIM BOUNDARY: this pin freezes the AOSP manifest commit for reproducible
+  toolchain-profile work. It is NOT, on its own, evidence that Android boots on
+  e1_soc or that Tier-1 RISC-V CTS passes. Those remain gated by the AOSP BSP
+  evidence gate (scripts/check_software_bsp.py) and the bring-up evidence files
+  listed in docs/android/riscv-bringup.md.
 
-  Refresh procedure once a stable RISC-V platform branch exists:
+  Refresh procedure:
 
-    1. Identify the branch (e.g. android-16.0.0_r*-riscv64).
+    1. Re-resolve the branch HEAD:
+         git ls-remote https://android.googlesource.com/platform/manifest \
+           android-latest-release
     2. Run `repo init -u https://android.googlesource.com/platform/manifest \
-         -b <branch>` and capture every project's SHA into <project sha1=...>.
-    3. Commit the populated manifest plus the pinning evidence in
+         -b <sha>` and capture every project's SHA into <project sha1=...>.
+    3. Update the pinned SHA above plus the pinning evidence in
        docs/evidence/compiler/aosp-branch-pin.yaml.
-
-  Until that pin lands, no AOSP RISC-V build evidence may be cited as
-  release-grade.
 -->
 <manifest>
   <remote name="aosp" fetch="https://android.googlesource.com/" />
   <default remote="aosp"
-           revision="TODO_PIN_AOSP_RISCV_BRANCH_SHA"
+           revision="6dc9af1b583e5c6a4ab9c38e3f5646efd8079b7d"
            sync-j="8" />
 
   <!-- The full project list is intentionally empty: any non-placeholder

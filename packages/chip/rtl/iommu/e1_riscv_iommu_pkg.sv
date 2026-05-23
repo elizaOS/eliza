@@ -125,6 +125,54 @@ package e1_riscv_iommu_pkg;
     localparam logic [3:0] PRGI_RESPONSE_RESPONSE_FAILURE     = 4'd15;
 
     // ------------------------------------------------------------------
+    // Device-context (DC) field encodings (spec 2.1).  The base (non-MSI)
+    // device context is four 64-bit doublewords:
+    //   DW0 = tc   (translation control)
+    //   DW1 = iohgatp (G-stage address-translation+protection)
+    //   DW2 = ta   (translation attributes)
+    //   DW3 = fsc  (first-stage context: iosatp when PDTV=0)
+    // tc.V is bit 0 of DW0; tc.PDTV is bit 5.
+    // iohgatp.MODE is bits [63:60], iohgatp.PPN is bits [43:0].
+    // fsc.MODE   is bits [63:60], fsc.PPN   is bits [43:0] (iosatp form).
+    // ------------------------------------------------------------------
+    localparam int unsigned DC_DW_BYTES = 32;   // base-format DC size in bytes
+    localparam int unsigned DDTE_BYTES  = 8;    // non-leaf DDT entry size
+
+    // tc (DW0) bit positions
+    localparam int unsigned DC_TC_V_BIT    = 0;
+    localparam int unsigned DC_TC_PDTV_BIT = 5;
+
+    // atp/hgatp common field slices (within a 64-bit doubleword)
+    localparam int unsigned ATP_PPN_LSB  = 0;
+    localparam int unsigned ATP_PPN_MSB  = 43;
+    localparam int unsigned ATP_MODE_LSB = 60;
+    localparam int unsigned ATP_MODE_MSB = 63;
+
+    // Non-leaf DDT entry: bit 0 = V, PPN in [53:10] (PpnW=44)
+    localparam int unsigned DDTE_V_BIT   = 0;
+    localparam int unsigned DDTE_PPN_LSB = 10;
+    localparam int unsigned DDTE_PPN_MSB = 53;
+
+    // ------------------------------------------------------------------
+    // Sv* page-table-entry bit positions (RISC-V privileged spec).  Used
+    // for both first-stage and G-stage PTEs.
+    // ------------------------------------------------------------------
+    localparam int unsigned PTE_V_BIT   = 0;
+    localparam int unsigned PTE_R_BIT   = 1;
+    localparam int unsigned PTE_W_BIT   = 2;
+    localparam int unsigned PTE_X_BIT   = 3;
+    localparam int unsigned PTE_U_BIT   = 4;
+    localparam int unsigned PTE_G_BIT   = 5;
+    localparam int unsigned PTE_A_BIT   = 6;
+    localparam int unsigned PTE_D_BIT   = 7;
+    localparam int unsigned PTE_PPN_LSB = 10;
+    localparam int unsigned PTE_PPN_MSB = 53;
+
+    // Number of page-table levels per mode (Sv39 = 3, Sv48 = 4).
+    localparam int unsigned SV39_LEVELS = 3;
+    localparam int unsigned SV48_LEVELS = 4;
+
+    // ------------------------------------------------------------------
     // Fault queue record layout (4x64-bit words = 32 bytes per spec 3.5.1)
     // ------------------------------------------------------------------
     typedef struct packed {

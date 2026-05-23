@@ -56,6 +56,10 @@ const SEED_TARGETS = [
     dir: path.join(ELIZA_ROOT, "packages", "skills"),
   },
   {
+    label: "@elizaos/security",
+    dir: path.join(ELIZA_ROOT, "packages", "security"),
+  },
+  {
     label: "@elizaos/app-core",
     dir: path.join(ELIZA_ROOT, "packages", "app-core"),
   },
@@ -190,6 +194,52 @@ function collectLocalDependencyNames(pkgJson, workspacePackages) {
   return names;
 }
 
+function sortTargetsByLocalDependencies(targets, workspacePackages) {
+  const targetByLabel = new Map(
+    targets.map((target) => [target.label, target]),
+  );
+  const visiting = new Set();
+  const visited = new Set();
+  const sorted = [];
+
+  function visit(target) {
+    if (visited.has(target.label)) {
+      return;
+    }
+    if (visiting.has(target.label)) {
+      throw new Error(
+        `[pack-upstreams] Circular workspace package dependency involving ${target.label}`,
+      );
+    }
+
+    visiting.add(target.label);
+    const pkgJson = readPackageJson(target.dir);
+    if (!pkgJson) {
+      throw new Error(
+        `[pack-upstreams] No package.json found in ${target.dir}`,
+      );
+    }
+    const dependencyNames = [
+      ...collectLocalDependencyNames(pkgJson, workspacePackages),
+    ].sort();
+    for (const dependencyName of dependencyNames) {
+      const dependencyTarget = targetByLabel.get(dependencyName);
+      if (dependencyTarget) {
+        visit(dependencyTarget);
+      }
+    }
+    visiting.delete(target.label);
+    visited.add(target.label);
+    sorted.push(target);
+  }
+
+  for (const target of targets) {
+    visit(target);
+  }
+
+  return sorted;
+}
+
 function resolveTargets() {
   const workspacePackages = collectWorkspacePackages(ELIZA_ROOT);
   const targets = new Map();
@@ -227,7 +277,10 @@ function resolveTargets() {
   }
 
   return {
-    targets: [...targets.values()],
+    targets: sortTargetsByLocalDependencies(
+      [...targets.values()],
+      workspacePackages,
+    ),
     workspacePackages,
   };
 }

@@ -7,7 +7,7 @@ import argparse
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from statistics import mean, pstdev
 from typing import Any
@@ -65,7 +65,8 @@ def numeric(value: Any, default: float = 0.0) -> float:
 
 def feature_vector(record: dict[str, Any]) -> dict[str, float]:
     graph = record.get("graph", {})
-    nodes = graph.get("node_features") if isinstance(graph, dict) else []
+    nodes_value = graph.get("node_features") if isinstance(graph, dict) else []
+    nodes = nodes_value if isinstance(nodes_value, list) else []
     node_by_id = {
         str(node.get("id")): node for node in nodes if isinstance(node, dict) and node.get("id")
     }
@@ -81,8 +82,12 @@ def feature_vector(record: dict[str, Any]) -> dict[str, float]:
     area = max(width * height, 1.0)
     return {
         "bias": 1.0,
-        "diearea_point_count": numeric(diearea.get("point_count") if isinstance(diearea, dict) else 0.0),
-        "first_point_repeated_as_last": numeric(diearea.get("first_point_repeated_as_last") if isinstance(diearea, dict) else False),
+        "diearea_point_count": numeric(
+            diearea.get("point_count") if isinstance(diearea, dict) else 0.0
+        ),
+        "first_point_repeated_as_last": numeric(
+            diearea.get("first_point_repeated_as_last") if isinstance(diearea, dict) else False
+        ),
         "bbox_width_dbu": width,
         "bbox_height_dbu": height,
         "bbox_area_dbu2_log10": math.log10(area),
@@ -98,7 +103,10 @@ def load_samples(record_dir: Path) -> list[dict[str, Any]]:
     for path in sorted(record_dir.glob("*diearea-legality-graph.json")):
         record = load_json(path)
         values = record.get("labels", {}).get("values", {})
-        if not isinstance(values, dict) or values.get("public_legality") not in {"LEGAL", "ILLEGAL"}:
+        if not isinstance(values, dict) or values.get("public_legality") not in {
+            "LEGAL",
+            "ILLEGAL",
+        }:
             continue
         features = feature_vector(record)
         samples.append(
@@ -142,7 +150,10 @@ def load_split_samples(split_manifest: Path) -> dict[str, list[dict[str, Any]]]:
             path = ROOT / str(graph_records[0].get("path", ""))
             record = load_json(path)
             values = record.get("labels", {}).get("values", {})
-            if not isinstance(values, dict) or values.get("public_legality") not in {"LEGAL", "ILLEGAL"}:
+            if not isinstance(values, dict) or values.get("public_legality") not in {
+                "LEGAL",
+                "ILLEGAL",
+            }:
                 raise ValueError(f"{rel(path)}: missing R-Zoo public legality label")
             result[split].append(
                 {
@@ -197,7 +208,7 @@ def train_logistic(samples: list[dict[str, Any]], epochs: int, lr: float) -> dic
         for sample in samples:
             x = vector(sample, stats)
             y = float(sample["target"])
-            pred = sigmoid(sum(w * xi for w, xi in zip(weights, x)))
+            pred = sigmoid(sum(w * xi for w, xi in zip(weights, x, strict=False)))
             error = pred - y
             for index, xi in enumerate(x):
                 weights[index] -= lr * error * xi
@@ -207,7 +218,7 @@ def train_logistic(samples: list[dict[str, Any]], epochs: int, lr: float) -> dic
         "claim_boundary": CLAIM_BOUNDARY,
         "features": list(FEATURES),
         "standardization": stats,
-        "weights": dict(zip(FEATURES, weights)),
+        "weights": dict(zip(FEATURES, weights, strict=False)),
         "threshold": 0.5,
         "release_use_allowed": False,
     }
@@ -217,7 +228,7 @@ def predict(model: dict[str, Any], sample: dict[str, Any]) -> dict[str, Any]:
     stats = model["standardization"]
     weights = [float(model["weights"][feature]) for feature in FEATURES]
     x = vector(sample, stats)
-    probability = sigmoid(sum(w * xi for w, xi in zip(weights, x)))
+    probability = sigmoid(sum(w * xi for w, xi in zip(weights, x, strict=False)))
     predicted = 1 if probability >= float(model["threshold"]) else 0
     return {
         "id": sample["id"],
@@ -246,7 +257,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--record-dir", type=Path, default=DEFAULT_RECORD_DIR)
     parser.add_argument("--split-manifest", type=Path, default=DEFAULT_SPLIT_MANIFEST)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--epochs", type=int, default=250)
     parser.add_argument("--learning-rate", type=float, default=0.05)
     return parser.parse_args()
@@ -294,7 +305,7 @@ def main() -> int:
     metrics_path.write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     run = {
         "schema": "eliza.ai_eda.r_zoo_legality_training_run.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "record_dir": rel(args.record_dir),

@@ -30,7 +30,7 @@ import json
 import subprocess
 import sys
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -52,15 +52,11 @@ BLOCKED_NODE_IDS = {"tsmc-n2p", "tsmc-a14", "intel-14a", "samsung-sf2p"}
 def required_metric_keys() -> list[str]:
     """Single source of truth: the post-route PPA validator's columns."""
     if not VALIDATOR.is_file():
-        raise FileNotFoundError(
-            f"post-route PPA validator missing: {VALIDATOR.relative_to(ROOT)}"
-        )
+        raise FileNotFoundError(f"post-route PPA validator missing: {VALIDATOR.relative_to(ROOT)}")
     payload = yaml.safe_load(VALIDATOR.read_text())
     keys = payload.get("required_metric_keys") if isinstance(payload, dict) else None
     if not isinstance(keys, list) or not keys:
-        raise ValueError(
-            f"{VALIDATOR.relative_to(ROOT)} has no required_metric_keys list"
-        )
+        raise ValueError(f"{VALIDATOR.relative_to(ROOT)} has no required_metric_keys list")
     return [str(k) for k in keys]
 
 
@@ -98,7 +94,7 @@ def git_sha() -> str:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def load_rows(store_path: Path = STORE_PATH) -> list[QorRow]:
@@ -151,9 +147,7 @@ def filter_rows(
     return out
 
 
-def latest_baseline(
-    rows: list[QorRow], design: str, node_id: str
-) -> QorRow | None:
+def latest_baseline(rows: list[QorRow], design: str, node_id: str) -> QorRow | None:
     """Most recently recorded captured row flagged as a baseline."""
     candidates = [
         r
@@ -319,9 +313,7 @@ def parse_args() -> argparse.Namespace:
     record.add_argument("--git-sha", default=None)
     record.set_defaults(func=cmd_record)
 
-    blocked = sub.add_parser(
-        "record-blocked", help="Record a fail-closed BLOCKED placeholder row"
-    )
+    blocked = sub.add_parser("record-blocked", help="Record a fail-closed BLOCKED placeholder row")
     blocked.add_argument("--design", required=True)
     blocked.add_argument("--node-id", required=True)
     blocked.add_argument("--run-id", required=True)

@@ -107,6 +107,11 @@ def validate(report_path: Path) -> list[str]:
     if deterministic and status == FIXTURE_STATUS:
         errors.append("deterministic run metrics cannot use fixture label status")
 
+    if metrics.get("source_design") != report.get("source_design"):
+        errors.append("flow metrics source_design does not match report")
+    if metrics.get("macro_count") != report.get("macro_count"):
+        errors.append("flow metrics macro_count does not match report")
+
     missing = report.get("missing_required_labels")
     if not isinstance(missing, list):
         errors.append("missing_required_labels must be a list")

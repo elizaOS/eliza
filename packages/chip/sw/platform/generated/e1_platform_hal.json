@@ -92,6 +92,8 @@
         "SCRATCH7": "0x9C",
         "SCRATCH8": "0xA0",
         "SCRATCH9": "0xA4",
+        "SEC_OWNER_CFG": "0x34",
+        "SEC_STATUS": "0x3C",
         "TRACE": "0x1C"
       },
       "size": "0x00001000"

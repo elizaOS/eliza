@@ -17,8 +17,8 @@
  *     transcript hash + byte count are emitted to the audit pipeline.
  */
 
-import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import type { AuditDispatcher } from "@elizaos/security";
 import {
@@ -29,10 +29,7 @@ import {
   resolveSafeCwd,
   SAFE_ENV_KEYS,
 } from "./sandbox.js";
-import {
-  pruneOldSessions,
-  SessionRecorder,
-} from "./session-recorder.js";
+import { pruneOldSessions, SessionRecorder } from "./session-recorder.js";
 
 export interface ClaudeCodeSession {
   sessionId: string;
@@ -167,7 +164,9 @@ export class ClaudeCodeSubAgentService {
 
     const recorder = new SessionRecorder({
       sessionId,
-      ...(this.auditDispatcher ? { auditDispatcher: this.auditDispatcher } : {}),
+      ...(this.auditDispatcher
+        ? { auditDispatcher: this.auditDispatcher }
+        : {}),
       ...(this.actorId ? { actorId: this.actorId } : {}),
     });
 

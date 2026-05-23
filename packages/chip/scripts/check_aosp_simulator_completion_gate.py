@@ -128,6 +128,39 @@ def require_text_markers(
             blockers.append(f"{rel(path)} missing marker: {marker}")
 
 
+def require_json_markers(path: Path, markers: list[str], blockers: list[str]) -> None:
+    if not path.is_file():
+        blockers.append(f"missing evidence: {rel(path)}")
+        return
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        blockers.append(f"{rel(path)} is invalid JSON: {exc}")
+        return
+    if not isinstance(data, dict):
+        blockers.append(f"{rel(path)} must contain a JSON object")
+        return
+    status = str(data.get("status", "")).upper()
+    result = data.get("result")
+    if status in {"FAIL", "FAILED", "BLOCKED"}:
+        blockers.append(f"{rel(path)} contains forbidden JSON status: {status}")
+    if result not in (0, "0"):
+        blockers.append(f"{rel(path)} requires JSON result=0")
+    if status != "PASS":
+        blockers.append(f"{rel(path)} requires JSON status=PASS")
+    text = json.dumps(data, indent=2, sort_keys=True)
+    for marker in markers:
+        if marker not in text:
+            blockers.append(f"{rel(path)} missing marker: {marker}")
+
+
+def require_evidence_markers(path: Path, markers: list[str], blockers: list[str]) -> None:
+    if path.suffix == ".json":
+        require_json_markers(path, markers, blockers)
+        return
+    require_text_markers(path, markers, blockers)
+
+
 def check_mvp_report(data: dict[str, Any], blockers: list[str]) -> None:
     required_reports = data.get("required_reports", {})
     if not isinstance(required_reports, dict):
@@ -167,7 +200,7 @@ def check_android_evidence(data: dict[str, Any], blockers: list[str]) -> None:
         return
     for item in values:
         if isinstance(item, str):
-            require_text_markers(ROOT / item, [], blockers)
+            require_evidence_markers(ROOT / item, [], blockers)
         else:
             blockers.append("required_android_evidence entries must be paths")
 
@@ -199,7 +232,7 @@ def check_android_marker_evidence(data: dict[str, Any], blockers: list[str]) -> 
         if not isinstance(markers, list) or not all(isinstance(marker, str) for marker in markers):
             blockers.append(f"{ident}: required_markers must be a string list")
             continue
-        require_text_markers(ROOT / evidence, markers, blockers)
+        require_evidence_markers(ROOT / evidence, markers, blockers)
 
 
 def check_peripherals(data: dict[str, Any], blockers: list[str]) -> None:

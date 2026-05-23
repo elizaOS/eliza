@@ -81,15 +81,47 @@ function hasUrl(text: string): boolean {
 function hasUserFacingUrl(text: string): boolean {
   URL_IN_TEXT_RE.lastIndex = 0;
   for (const match of text.matchAll(URL_IN_TEXT_RE)) {
-    try {
-      if (!isLoopbackHost(new URL(match[0]).hostname)) return true;
-    } catch {}
+    const url = parseUrl(match[0]);
+    if (url && !isLoopbackHost(url.hostname)) return true;
+  }
+  return false;
+}
+
+function hasLoopbackUrl(text: string): boolean {
+  URL_IN_TEXT_RE.lastIndex = 0;
+  for (const match of text.matchAll(URL_IN_TEXT_RE)) {
+    const url = parseUrl(match[0]);
+    if (url && isLoopbackHost(url.hostname)) return true;
   }
   return false;
 }
 
 function isEmptyCompletionPlaceholder(text: string): boolean {
   return text.trim().toLowerCase() === EMPTY_COMPLETION_PLACEHOLDER;
+}
+
+function appendVerifiedUrl(reply: string, verifiedUrl: string): string {
+  const trimmed = reply.trim();
+  return trimmed ? `${trimmed}\n${verifiedUrl}` : verifiedUrl;
+}
+
+function cleanCompletionReply(reply: string | undefined): string | undefined {
+  const trimmed = reply?.trim();
+  if (!trimmed) return trimmed;
+  const statusPrefixes = ["✅ ", "❌ ", "🚀 ", "💬 ", "⏳ ", "⚠️ "];
+  const prefix = statusPrefixes.find((candidate) =>
+    trimmed.startsWith(candidate),
+  );
+  return prefix ? trimmed.slice(prefix.length).trimStart() : trimmed;
+}
+
+function stripLoopbackUrlLines(reply: string, verifiedUrl: string): string {
+  const retained = reply
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((line) => !hasLoopbackUrl(line));
+  const cleaned = cleanCompletionReply(retained.join("\n")) ?? "";
+  return hasUrl(cleaned) ? cleaned : appendVerifiedUrl(cleaned, verifiedUrl);
 }
 
 function bodyIsOnlyUrls(text: string): boolean {
@@ -142,6 +174,28 @@ function userFacingVerifiedUrl(urls: readonly string[]): string | undefined {
     parsed.find((entry) => !isLoopbackHost(entry.parsed.hostname))?.url ??
     parsed[0]?.url
   );
+}
+
+function replyMentionsVerifiedUrl(reply: string, verifiedUrl: string): boolean {
+  const trimmedReply = reply.trim();
+  if (!trimmedReply) return false;
+  if (trimmedReply.includes(verifiedUrl)) return true;
+  const verified = parseUrl(verifiedUrl);
+  if (!verified) return false;
+  URL_IN_TEXT_RE.lastIndex = 0;
+  for (const match of trimmedReply.matchAll(URL_IN_TEXT_RE)) {
+    const candidate = parseUrl(match[0]);
+    if (candidate?.toString() === verified.toString()) return true;
+  }
+  return false;
+}
+
+function parseUrl(value: string): URL | undefined {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function isLoopbackHost(hostname: string): boolean {
@@ -264,6 +318,7 @@ function replyPatchFromCompletion(
   currentReply: string,
   completionText: string,
   verifiedUrls: readonly string[] = [],
+  preferCurrentReplyForUrlOnlyCompletion = false,
 ) {
   const body = userFacingCompletionBody(completionText);
   const verifiedUrl = userFacingVerifiedUrl(verifiedUrls);
@@ -273,7 +328,50 @@ function replyPatchFromCompletion(
     : "";
   if (!body && !verifiedUrl) return undefined;
   if (isEmptyCompletionPlaceholder(body)) return verifiedUrl;
+  if (verifiedUrl && cleanCurrentReply && hasLoopbackUrl(cleanCurrentReply)) {
+    const bodyWithoutLoopback =
+      cleanBody && !bodyIsOnlyUrls(cleanBody) && hasLoopbackUrl(cleanBody)
+        ? stripLoopbackUrlLines(cleanBody, verifiedUrl)
+        : undefined;
+    return (
+      bodyWithoutLoopback ??
+      stripLoopbackUrlLines(cleanCurrentReply, verifiedUrl)
+    );
+  }
+  if (
+    verifiedUrl &&
+    cleanBody &&
+    !bodyIsOnlyUrls(cleanBody) &&
+    hasLoopbackUrl(cleanBody)
+  ) {
+    return stripLoopbackUrlLines(cleanBody, verifiedUrl);
+  }
+  if (
+    verifiedUrl &&
+    cleanCurrentReply &&
+    !bodyIsOnlyUrls(cleanCurrentReply) &&
+    replyMentionsVerifiedUrl(cleanCurrentReply, verifiedUrl)
+  ) {
+    return cleanCurrentReply;
+  }
+  if (
+    verifiedUrl &&
+    preferCurrentReplyForUrlOnlyCompletion &&
+    cleanCurrentReply &&
+    !hasUrl(cleanCurrentReply) &&
+    bodyIsOnlyUrls(cleanBody)
+  ) {
+    return appendVerifiedUrl(cleanCurrentReply, verifiedUrl);
+  }
   if (verifiedUrl && looksLikeRawToolTranscript(completionText)) {
+    if (
+      cleanBody &&
+      !looksLikeCapturedToolOutput(cleanBody) &&
+      !looksLikeRawToolTranscript(cleanBody) &&
+      hasUserFacingUrl(cleanBody)
+    ) {
+      return cleanBody;
+    }
     return verifiedUrl;
   }
   if (verifiedUrl && bodyIsOnlyUrls(cleanBody)) return verifiedUrl;
@@ -342,10 +440,15 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
-    const reply = replyPatchFromCompletion(
-      currentReply,
-      completionText,
-      verifiedUrls,
+    const reply = cleanCompletionReply(
+      replyPatchFromCompletion(
+        currentReply,
+        completionText,
+        verifiedUrls,
+        messageHandler.plan.requiresTool === false &&
+          !hasStrings(messageHandler.plan.candidateActions) &&
+          !hasStrings(messageHandler.plan.parentActionHints),
+      ),
     );
     if (
       isEmptyCompletionPlaceholder(userFacingCompletionBody(completionText))

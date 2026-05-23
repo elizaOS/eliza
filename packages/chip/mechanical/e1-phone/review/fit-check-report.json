@@ -16,6 +16,7 @@
       "back_face": "fully flush flat back; no camera bump, no protruding lens ring; rear camera and torch buried under flat back wall behind flush internal windows",
       "target_mass_g": 185,
       "ship_target_mass_g": 168,
+      "max_mass_g": 200,
       "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence"
     },
     "display": {
@@ -327,6 +328,11 @@
       },
       "wifi_bt": {
         "candidate": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+        "envelope_mm": [
+          12.5,
+          9.4,
+          1.2
+        ],
         "source_url": "https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea",
         "antenna_keepout_mm": [
           34.0,
@@ -612,6 +618,7 @@
         "top_mic": true,
         "rear_camera_module": true,
         "rear_camera_shell_aperture": true,
+        "rear_camera_optical_sight_tunnel": true,
         "orange_rear_camera_bezel_top": true,
         "orange_rear_camera_bezel_bottom": true,
         "orange_rear_camera_bezel_left": true,
@@ -685,12 +692,12 @@
       "pass": true,
       "corner_radius_mm": 7.5,
       "wall_thickness_mm": 1.15,
-      "back_shell_vertices": 98,
+      "back_shell_vertices": 280,
       "side_frame_vertices": 192
     },
     "mesh_integrity": {
       "pass": true,
-      "checked_parts": 123,
+      "checked_parts": 142,
       "failures": []
     },
     "usb_c_insertion_envelope": {
@@ -916,7 +923,7 @@
     },
     "mass_budget": {
       "pass": true,
-      "estimated_mass_g": 183.29,
+      "estimated_mass_g": 183.15,
       "target_mass_g": 185,
       "note": "Rough CAD estimate; placeholder void markers excluded."
     }

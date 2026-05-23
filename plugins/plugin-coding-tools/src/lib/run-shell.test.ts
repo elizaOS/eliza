@@ -50,7 +50,13 @@ function remoteRouter(): {
     availability: async () => ({
       environment: "server",
       available: true,
-      capabilities: { fs: true, pty: true, git: true, model: false },
+      capabilities: {
+        fs: true,
+        pty: true,
+        git: true,
+        model: false,
+        plugin: false,
+      },
     }),
     fs: {
       list: vi.fn(),

@@ -146,9 +146,7 @@ def parse_upf(path: Path) -> UpfModel:
     return model
 
 
-def check_supply_consistency(
-    model: UpfModel, plan_rails: set[str], failures: list[str]
-) -> None:
+def check_supply_consistency(model: UpfModel, plan_rails: set[str], failures: list[str]) -> None:
     nets_without_vss = model.supply_nets - {"VSS"}
     missing_in_upf = plan_rails - model.supply_nets
     if missing_in_upf:
@@ -230,7 +228,9 @@ def check_domain_map(model: UpfModel, plan_rails: set[str], failures: list[str])
         if isinstance(rail, str) and upf_net and upf_net != rail:
             fail(failures, f"domain {name} bound to {upf_net} in UPF but mapped to rail {rail}")
         if entry.get("always_on") is True and name not in model.always_on_domains:
-            fail(failures, f"domain {name} is always_on in map but lacks always_on attribute in UPF")
+            fail(
+                failures, f"domain {name} is always_on in map but lacks always_on attribute in UPF"
+            )
         # A UPF set_retention asserts retention-FF intent; the map must
         # acknowledge that domain holds state. (The map's retention_strategy
         # is broader than UPF retention FFs — e.g. self-refresh / pad-latch /
@@ -248,7 +248,9 @@ def check_domain_map(model: UpfModel, plan_rails: set[str], failures: list[str])
 
     missing_in_domains = domain_rails - plan_rails
     if missing_in_domains:
-        fail(failures, f"domain map references rails not in rail plan: {sorted(missing_in_domains)}")
+        fail(
+            failures, f"domain map references rails not in rail plan: {sorted(missing_in_domains)}"
+        )
     missing_in_plan = plan_rails - domain_rails
     if missing_in_plan:
         fail(failures, f"domain map does not reference rail-plan rails: {sorted(missing_in_plan)}")
@@ -263,7 +265,9 @@ def check_planning_blockers(model: UpfModel, failures: list[str]) -> None:
         if token not in model.text:
             fail(failures, f"UPF planning blocker dropped without signoff evidence: {token!r}")
     if "planning_only" not in model.text:
-        fail(failures, "UPF must retain planning_only markers until low-power signoff replaces them")
+        fail(
+            failures, "UPF must retain planning_only markers until low-power signoff replaces them"
+        )
     if "upf_version 4.0" not in model.text:
         fail(failures, "UPF must declare upf_version 4.0 (IEEE 1801-2024 target)")
 

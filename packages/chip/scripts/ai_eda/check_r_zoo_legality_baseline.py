@@ -40,7 +40,11 @@ def jsonl_count(path: Path) -> int:
 
 
 def finite(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
 
 
 def validate(report: dict[str, Any], report_path: Path) -> list[str]:
@@ -68,7 +72,10 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
         errors.append("baseline must consume the deterministic R-Zoo split manifest")
     elif not repo_path(split_manifest).is_file():
         errors.append(f"split_manifest missing on disk: {split_manifest}")
-    if report.get("split_policy") != "deterministic_design_family_holdout_from_r_zoo_split_manifest":
+    if (
+        report.get("split_policy")
+        != "deterministic_design_family_holdout_from_r_zoo_split_manifest"
+    ):
         errors.append("split_policy must use deterministic design-family holdout")
     split_counts = report.get("split_counts")
     if not isinstance(split_counts, dict) or set(split_counts) != REQUIRED_SPLITS:
@@ -111,7 +118,10 @@ def validate(report: dict[str, Any], report_path: Path) -> list[str]:
     if metrics.get("claim_boundary") != CLAIM_BOUNDARY:
         errors.append("metrics claim_boundary mismatch")
     splits = metrics.get("splits")
-    if not isinstance(splits, list) or {item.get("split") for item in splits if isinstance(item, dict)} != REQUIRED_SPLITS:
+    if (
+        not isinstance(splits, list)
+        or {item.get("split") for item in splits if isinstance(item, dict)} != REQUIRED_SPLITS
+    ):
         errors.append("metrics splits must cover train/val/test")
     else:
         for item in splits:

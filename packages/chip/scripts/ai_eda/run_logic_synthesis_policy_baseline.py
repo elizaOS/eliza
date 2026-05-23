@@ -10,14 +10,19 @@ import re
 import shutil
 import signal
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CORPUS = ROOT / "build/ai_eda/logic_synthesis_recipes/validation/recipe_corpus.json"
 DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/logic_synthesis_baselines"
-CLAIM_BOUNDARY = "logic_synthesis_baseline_only_no_ppa_equivalence_or_release_claim"
+CLAIM_BOUNDARY = "logic_synthesis_baseline_with_yosys_equiv_opt_proof_no_ppa_or_release_claim"
+
+# Passes that only report or reorganize hierarchy; they carry no logic
+# transformation that an equivalence proof would need to confirm.
+NON_TRANSFORM_PASSES = frozenset({"stat", "flatten"})
+EQUIV_SUCCESS_MARKER = "Equivalence successfully proven!"
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -55,6 +60,104 @@ def parse_stat(log_text: str, top: str) -> dict[str, Any]:
     return metrics
 
 
+def run_yosys(
+    yosys_bin: str, script_path: Path, log_path: Path, timeout_s: int
+) -> tuple[int | None, str]:
+    process = subprocess.Popen(
+        [yosys_bin, "-l", str(log_path), str(script_path)],
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        _stdout, stderr = process.communicate(timeout=timeout_s)
+        return process.returncode, stderr
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGTERM)
+        try:
+            _stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(process.pid, signal.SIGKILL)
+            _stdout, stderr = process.communicate()
+        return None, stderr
+
+
+def equivalence_passes(recipe: dict[str, Any]) -> list[str]:
+    """Recipe passes that carry a logic transformation worth proving equivalent."""
+    return [
+        str(item)
+        for item in recipe.get("passes", [])
+        if str(item).split()[0] not in NON_TRANSFORM_PASSES
+    ]
+
+
+def run_equivalence(
+    yosys_bin: str,
+    target: dict[str, Any],
+    recipe: dict[str, Any],
+    result_id: str,
+    out_dir: Path,
+    timeout_s: int,
+) -> dict[str, Any]:
+    """Prove the recipe transformation preserves function via Yosys equiv_opt.
+
+    The first transform pass is run through ``equiv_opt -async2sync -assert`` so
+    the gold (pre-transform) and gate (post-transform) copies are compared with a
+    SAT proof. Any remaining transform passes run inside the same equiv scope.
+    A proof failure is recorded as BLOCKED with the tool reason, never as a pass.
+    """
+    transforms = equivalence_passes(recipe)
+    if not transforms:
+        return {"status": "SKIPPED_NO_TRANSFORM_PASS"}
+
+    log_path = out_dir / f"{result_id}.equiv.log"
+    script_path = out_dir / f"{result_id}.equiv.ys"
+    rtl_reads = [f"read_verilog -sv {path}" for path in target["rtl"]]
+    head, *tail = transforms
+    equiv_line = f"equiv_opt -async2sync -assert {head}"
+    if tail:
+        equiv_line += "; " + "; ".join(tail)
+    # Lower inferred memories and drop dangling nets before equiv_opt. Modules
+    # that infer a memory array (e.g. the NPU scratch RAM) otherwise leave
+    # mem2reg-derived undriven wires that trip equiv_opt's internal
+    # `check -assert` with hundreds of spurious problems before the SAT proof
+    # ever runs. Both passes are no-ops for memory-free modules, so the DMA
+    # proof is unaffected.
+    lines = [
+        *rtl_reads,
+        f"hierarchy -top {target['top']}",
+        "proc",
+        "memory",
+        "opt_clean",
+        equiv_line,
+    ]
+    script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    returncode, stderr = run_yosys(yosys_bin, script_path, log_path, timeout_s)
+    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+    base = {
+        "transform_passes": transforms,
+        "script": str(script_path.relative_to(ROOT)),
+        "log": str(log_path.relative_to(ROOT)),
+    }
+    if returncode is None:
+        return {**base, "status": "BLOCKED_EQUIVALENCE_TIMEOUT", "timeout_s": timeout_s}
+    if returncode == 0 and EQUIV_SUCCESS_MARKER in log_text:
+        return {**base, "status": "EQUIVALENCE_PROVEN"}
+    reason = next(
+        (line.strip() for line in log_text.splitlines() if line.startswith("ERROR:")),
+        "equiv_opt did not report a proof",
+    )
+    return {
+        **base,
+        "status": "BLOCKED_EQUIVALENCE_NOT_PROVEN",
+        "returncode": returncode,
+        "reason": reason,
+        "stderr_tail": stderr[-1000:],
+    }
+
+
 def run_recipe(
     yosys_bin: str,
     target: dict[str, Any],
@@ -85,27 +188,9 @@ def run_recipe(
         *recipe["passes"],
     ]
     script_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    process = subprocess.Popen(
-        [yosys_bin, "-l", str(log_path), str(script_path)],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    try:
-        _stdout, stderr = process.communicate(timeout=timeout_s)
-        returncode = process.returncode
-    except subprocess.TimeoutExpired:
-        os.killpg(process.pid, signal.SIGTERM)
-        try:
-            _stdout, stderr = process.communicate(timeout=5)
-        except subprocess.TimeoutExpired:
-            os.killpg(process.pid, signal.SIGKILL)
-            _stdout, stderr = process.communicate()
-        log_text = (
-            log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
-        )
+    returncode, stderr = run_yosys(yosys_bin, script_path, log_path, timeout_s)
+    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
+    if returncode is None:
         return {
             "id": result_id,
             "target": target_id,
@@ -118,9 +203,8 @@ def run_recipe(
             "stderr_tail": stderr[-2000:],
             "claim_boundary": CLAIM_BOUNDARY,
         }
-    log_text = log_path.read_text(encoding="utf-8", errors="replace") if log_path.exists() else ""
     status = "PASS_YOSYS_RECIPE_SMOKE" if returncode == 0 else "FAIL_YOSYS_RECIPE"
-    return {
+    result = {
         "id": result_id,
         "target": target_id,
         "recipe": recipe_id,
@@ -132,13 +216,18 @@ def run_recipe(
         "stderr_tail": stderr[-2000:],
         "claim_boundary": CLAIM_BOUNDARY,
     }
+    if returncode == 0:
+        result["equivalence"] = run_equivalence(
+            yosys_bin, target, recipe, result_id, out_dir, timeout_s
+        )
+    return result
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--corpus", type=Path, default=DEFAULT_CORPUS)
     parser.add_argument("--out-root", type=Path, default=DEFAULT_OUT_ROOT)
-    parser.add_argument("--run-id", default=datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+    parser.add_argument("--run-id", default=datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"))
     parser.add_argument("--timeout-s", type=int, default=20)
     return parser.parse_args()
 
@@ -153,7 +242,7 @@ def main() -> int:
     if yosys_bin is None:
         report = {
             "schema": "eliza.ai_eda.logic_synthesis_policy_baseline.v1",
-            "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
             "run_id": args.run_id,
             "claim_boundary": CLAIM_BOUNDARY,
             "status": "BLOCKED_YOSYS_NOT_FOUND",
@@ -173,9 +262,15 @@ def main() -> int:
     failed = [item for item in results if str(item["status"]).startswith("FAIL")]
     passed = [item for item in results if str(item["status"]).startswith("PASS")]
     blocked = [item for item in results if str(item["status"]).startswith("BLOCKED")]
+    equiv_counts: dict[str, int] = {}
+    for item in results:
+        equivalence = item.get("equivalence")
+        if isinstance(equivalence, dict):
+            status = str(equivalence.get("status", "UNKNOWN"))
+            equiv_counts[status] = equiv_counts.get(status, 0) + 1
     report = {
         "schema": "eliza.ai_eda.logic_synthesis_policy_baseline.v1",
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "status": "PASS_WITH_BLOCKED_OPENABC_D" if not failed else "FAIL",
@@ -186,6 +281,7 @@ def main() -> int:
             "blocked": len(blocked),
             "failed": len(failed),
         },
+        "equivalence_summary": equiv_counts,
         "results": results,
         "release_use_allowed": False,
     }

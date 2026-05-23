@@ -43,7 +43,11 @@ def load_json(path: Path) -> dict[str, Any]:
 
 
 def valid_number(value: Any) -> bool:
-    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )
 
 
 def as_float(value: Any) -> float | None:
@@ -79,7 +83,9 @@ def validate_split_leakage(report: dict[str, Any]) -> list[str]:
     return errors
 
 
-def validate_metrics(metrics: dict[str, Any], report: dict[str, Any]) -> tuple[list[str], list[str]]:
+def validate_metrics(
+    metrics: dict[str, Any], report: dict[str, Any]
+) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     beaten_targets: list[str] = []
     if metrics.get("schema") != "eliza.ai_eda.pd_surrogates_metrics.v1":
@@ -127,7 +133,12 @@ def validate_metrics(metrics: dict[str, Any], report: dict[str, Any]) -> tuple[l
                 errors.append(f"{split}/{target}: baseline_mae must be finite or null")
             mae = as_float(values.get("mae"))
             baseline = as_float(baseline_mae)
-            if split == "test" and mae is not None and baseline is not None and mae <= baseline + 1e-9:
+            if (
+                split == "test"
+                and mae is not None
+                and baseline is not None
+                and mae <= baseline + 1e-9
+            ):
                 beaten_targets.append(target)
 
     history = metrics.get("loss_history")
@@ -136,7 +147,11 @@ def validate_metrics(metrics: dict[str, Any], report: dict[str, Any]) -> tuple[l
     else:
         previous = 0
         for item in history:
-            if not isinstance(item, dict) or not isinstance(item.get("epoch"), int) or item["epoch"] <= previous:
+            if (
+                not isinstance(item, dict)
+                or not isinstance(item.get("epoch"), int)
+                or item["epoch"] <= previous
+            ):
                 errors.append("metrics.loss_history epochs must be strictly increasing integers")
             else:
                 previous = item["epoch"]

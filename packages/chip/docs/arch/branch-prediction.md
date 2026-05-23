@@ -31,6 +31,14 @@ Both the prediction and the resolve buses are timed to a single cycle in the
 current geometry; the FTQ is the decoupling structure between the BPU and the
 fetch engine.
 
+Each `ftq_entry_t` carries the prediction-time metadata needed for
+production-style update/recovery: RAS speculative top plus top-entry restore
+contents, TAGE/ITTAGE provider IDs, TAGE provider counter and low-confidence
+bit, SC override direction, the global-history snapshot, and the mixed ITTAGE
+history plus target/path-history components. Commit-time TAGE/SC/ITTAGE
+training replays the resolved FTQ entry's prediction metadata so the backend
+does not have to mirror provider IDs or predictor histories from decode/rename.
+
 ## Selected topology
 
 The BPU shape is a scaled XiangShan Kunminghu derivative. Numbers come from
@@ -42,22 +50,39 @@ rationale.
 | Component | Selected | 2028 minimum threshold | Rationale |
 | --- | --- | --- | --- |
 | FETCH_BLOCK_BYTES | 32 | 32 | 16 RVC inst/predict, matches Zen 5 / X925 / Lion Cove. |
-| MAX_BR_PER_BLOCK | 2 | 1 | 2 taken/cycle target by 2028, MVP 1-taken acceptable. |
+| MAX_BR_PER_BLOCK | 2 | 1 | FTB/FTQ carry two in-block branch slots; a later conditional slot can redirect when the earlier conditional falls through. |
 | FTQ_ENTRIES | 64 | 32 | Decouple BPU from fetch, FDIP-compatible. |
 | UFTB_ENTRIES | 512 | 256 | Zero-bubble next-line predictor, above KMH 256. |
-| FTB_ENTRIES | 2048 | 2048 | BTB replacement, KMH v2 floor. |
-| FTB_WAYS | 4 | 4 | Match KMH/X925 set-associative footprint. |
+| UFTB_STEER_CONF_MIN | 2 | optional | uFTB-only steering requires repeated matching target/kind updates. |
+| FTB_ENTRIES | 4096 | 2048 | BTB replacement, above KMH v2 floor; doubled after CBP/E1 working-set sweep. |
+| FTB_WAYS | 4 | 4 | Match KMH/X925 set-associative footprint with invalid-first age-based replacement. |
 | TAGE_TABLES | 5 | 4 | TAGE-SC-L stack on top of bimodal. |
-| TAGE_ENTRIES_TABLE | 4096 | 4096 | CBP-5 floor; KMH-class. |
-| TAGE_HIST_LEN | {8, 13, 32, 64, 119} | reach >= 100 | Geometric history. |
+| TAGE_ENTRIES_TABLE | 8192 | 4096 | CBP-5 floor plus R9 capacity sweep win. |
+| TAGE_HIST_LEN | {8, 16, 44, 90, 195} | reach >= 100 | Geometric history, extended to 195 after mixed workload sweep. |
+| TAGE_USE_ALT_ON_NA | 0 | optional | Alternate-provider path is implemented and swept; default awaits evidence. |
 | BIM_ENTRIES | 16384 | 8192 | Base bimodal table. |
 | SC_TABLES | 4 | 4 | Statistical corrector for low-confidence TAGE. |
 | SC_ENTRIES_TABLE | 512 | 512 | Seznec CBP-5 baseline. |
+| SC_LOCAL_HISTORY_BITS | 8 | optional | Local-history fold in the SC index; full-trace check improved weighted MPKI by 0.0163 versus disabled. |
 | LOOP_ENTRIES | 64 | 32 | Loop-trip predictor. |
 | ITTAGE_TABLES | 5 | 5 | Indirect target predictor. |
-| ITTAGE_ENTRIES | {256, 256, 512, 512, 512} | >= 1024 total | Matches KMH-v2. |
+| ITTAGE_ENTRIES | {512, 512, 1024, 1024, 1024} | >= 1024 total | Indirect target capacity for JS/GPU dispatch. |
+| ITTAGE_HIST_LEN | {4, 10, 20, 40, 80} | optional | Full-trace sweep improved weighted MPKI by 0.0502 with no reported regressions. |
+| ITTAGE_USEFUL_RESET_PERIOD | 100000 | optional | ITTAGE useful-bit aging for stale indirect-target replacement. |
+| ITTAGE_TARGET_HISTORY_SHIFT | 8 | optional | Target-history token starts at target bit 8; full-trace sweep improved weighted MPKI by 0.0822. |
+| ITTAGE_PATH_HISTORY_BITS | 0 | optional | RTL/model support path-history mixing; capped sweeps currently regress, so default stays disabled. |
 | RAS_ARCH_ENTRIES | 32 | 16 | Architectural depth. |
 | RAS_SPEC_ENTRIES | 64 | 32 | Speculative depth with overflow counter. |
+
+The uFTB stores the fast next-PC prediction plus the resolved branch kind,
+call fall-through PC, and a small target confidence counter. FTB hits still
+win the full arbitration path, but a confident uFTB-only hit can classify the
+prediction as call/return/indirect; calls push the mirrored fall-through PC
+into the speculative RAS and returns pop/use the RAS top when it is valid
+instead of blindly using the stored target. Raw uFTB hits still count for PMU
+visibility, but they do not steer fetch until matching target/kind updates
+raise confidence to `UFTB_STEER_CONF_MIN`. uFTB replacement is invalid-first
+and age-based so recent zero-bubble targets survive set churn.
 
 ## PMU events (Zihpm)
 
@@ -147,35 +172,49 @@ bottleneck" character.
 
 `benchmarks/cpu/branch/sweep.py` (`make bpu-sweep`) is the optimisation loop:
 it runs the behavioural TAGE-SC-L+ITTAGE model under candidate `bpu_pkg.sv`
-geometries over the trace set (the two real RV64 workloads plus the CBP-5
-references) and ranks them by workload-weighted MPKI, writing
+geometries over the trace set (real RV64 agent/IO workloads, synthetic hard
+shapes, and the CBP-5 references) and ranks them by workload-weighted MPKI, writing
 `docs/evidence/cpu_ap/bpu_sweep_results.json` and `…_leaderboard.md`. Each knob
 maps one-to-one to a `bpu_pkg.sv` parameter, so a winning config is a direct
 RTL proposal.
 
-Full-trace validation of the top configs (weighted MPKI, lower is better):
+Full-trace validation of the current expanded workload set (weighted MPKI,
+lower is better):
 
 | Config | Weighted MPKI | Δ vs baseline | bpu_pkg.sv change |
 | --- | --- | --- | --- |
-| `combo_a` | 0.9495 | -1.6% | TAGE 8192 entries + reach {8,16,44,90,195} + adaptive SC |
-| `tage_big_tables` | 0.9514 | -1.5% | `TAGE_ENTRIES_TABLE` 4096→8192 (2× SRAM) |
-| `tage_reach_long` | 0.9526 | -1.3% | `TAGE_HIST_LEN` reach 119→195 (near-free) |
-| `baseline` (shipped) | 0.9654 | — | — |
+| `baseline` | 10.9421 | — | current `bpu_pkg.sv` geometry |
+| `pre_ittage_hist_long` | 11.0751 | +0.1329 | old ITTAGE history schedule |
+| `tage_use_alt_on_na` | 11.7862 | +0.8440 | alternate-provider mode enabled |
 
-**Decision: keep the baseline geometry.** The aggregate gains come entirely
-from the generic CBP-5 references; on the E1's *own* workload every config is
-within ~1% of baseline, and the longer-history configs slightly *regress* the
-duty cycle (loop control flow is short-range correlated). Per the directive to
-optimise for our workload, no swept config is a high-confidence win that
-justifies its area/timing cost. The shipped TAGE-SC-L+ITTAGE geometry is at the
-optimisation frontier for the E1; the sweep is retained as the mechanism to
-re-decide if the workload mix shifts toward more irregular code.
+**Decision: promote `ITTAGE_TARGET_HISTORY_SHIFT=8` and longer ITTAGE
+histories.** Shift 8 first improved the full-trace weighted mix by 0.0822 MPKI
+over the prior geometry; with shift 8 as baseline, the longer
+`{4,10,20,40,80}` ITTAGE history schedule improved another 0.0502 MPKI. After
+adding nested-loop, XOR-correlation, vtable-path, and interpreter-dispatch
+synthetics plus phase-change, alias-thrash, GPU-occupancy, and RAS-exception
+stressors, the old schedule is 0.1329 MPKI worse than current baseline.
+Path-history variants remain disabled: the 50k capped sweep regressed the
+weighted mix, so the shipped TAGE-SC-L+ITTAGE geometry now keeps target history
+but leaves ITTAGE path history off.
 
-The behavioural model now implements the statistical corrector (`sc.sv`) it
-previously omitted, so the planning model is a faithful TAGE-SC-L companion to
-the RTL. Adaptive-SC-threshold is available in the model as a tuning lever
-(`SC_ADAPTIVE`) and measured neutral on this trace set; the RTL keeps the
-static threshold.
+The behavioural model now implements the statistical corrector (`sc.sv`) and
+the ITTAGE target-history token parameters it sweeps, so the planning model is
+a faithful TAGE-SC-L companion to the RTL for these knobs. Adaptive-SC-threshold
+is available in the model as a tuning lever (`SC_ADAPTIVE`) and measured
+neutral on this trace set; the RTL also implements bounded adaptive threshold
+control.
+
+SC local history stays enabled after a full-trace baseline-vs-disabled check
+with the promoted shift-8 target history (`baseline` 5.5196 MPKI vs
+`sc_no_local_hist` 5.5359). The win is concentrated in GPU/divergence and
+dual-branch-block traces, which matches the E1 tuning objective while still
+leaving the knob visible in the sweep for future general-workload retuning.
+
+The alternate-provider TAGE path (`TAGE_USE_ALT_ON_NA`) is implemented and
+swept but disabled by default. On the expanded full-trace set it regressed
+weighted MPKI by 0.8440, mainly on alias-thrash, GPU divergence, and
+interpreter-dispatch synthetics.
 
 ## Cross-domain contracts
 
@@ -224,20 +263,31 @@ between `bpu_top.fetch_entry` and the cache domain.
    tracked via `generators/xiangshan/eliza-kunminghu-manifest.json`
    (BPU IP pin) and `generators/chipyard/eliza-kunminghu-manifest.json`
    (whole-core selection, owned by the OoO domain).
-2. **Two-taken-per-cycle** — current geometry parameterises
-   `MAX_BR_PER_BLOCK = 2` but the prediction pipeline only emits one taken
-   branch per cycle. Lifting this to two requires a dual-port FTB read path
-   and a non-contiguous fetch contract.
-3. **L1I prefetch path** — `ftq_to_l1i_shim` lands the prefetch request on
-   the cache agent's interface, but the cache-side prefetch engine and the
-   iTLB-on-receive translation remain in the cache domain.
-4. **Real-trace MPKI evidence** — see Accuracy targets.
-5. **Verilator/Yosys/SBY hosting** — the chip package has historically relied
+2. **Full two-taken/non-contiguous fetch** — current geometry parameterises
+   `MAX_BR_PER_BLOCK = 2`, stores both FTB slots, carries both through the
+   FTQ, and can redirect to a later conditional when the earlier conditional
+   falls through. The remaining blocker is a true two-taken/non-contiguous
+   fetch contract; the redirect bus still emits one next-PC per cycle.
+3. **Commit-time predictor replay cleanup** — top-level TAGE/SC/ITTAGE
+   updates replay FTQ histories, providers, and SC/TAGE confidence metadata by
+   `resolve.ftq_idx`. The remaining cleanup is removing legacy directed-test
+   provider mirrors from `bpu_resolve_t` once non-FTQ resolve injection paths
+   are retired.
+4. **Speculative history recovery precision** — on a redirect, current
+   speculative direction and target histories rebuild from architectural
+   history plus the resolved outcome. FTQ entries preserve prediction-time
+   history snapshots, but top-level recovery does not yet restore from those
+   snapshots and replay younger surviving predictions.
+5. **L1I translation boundary** — `ftq_to_l1i_shim` lands the prefetch request
+   on the cache agent's interface and the FDIP/L1I ready path has cocotb
+   coverage. Real iTLB-on-receive translation remains in the cache domain.
+6. **Real-trace MPKI evidence** — see Accuracy targets.
+7. **Verilator/Yosys/SBY hosting** — the chip package has historically relied
    on Docker/Nix shells for these tools; the local oss-cad-suite checkout
    under `external/oss-cad-suite/` resolves them. `make bpu-lint`,
    `make cocotb-bpu`, and `make formal-bpu` fail closed with `STATUS: BLOCKED`
    when the suite is missing.
-6. **Formal coverage for the FTQ and RAS** — yosys 0.64 (oss-cad-suite) does
+8. **Formal coverage for the FTQ and RAS** — yosys 0.64 (oss-cad-suite) does
    not accept struct typedefs in module port lists, and its async-reset
    handling lets the BMC pick arbitrary initial values for reset-driven
    flops. Both formal harnesses fail closed with named yosys limitations and

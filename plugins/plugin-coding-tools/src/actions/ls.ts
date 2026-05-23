@@ -4,8 +4,9 @@ import * as path from "node:path";
 import {
   type ActionResult,
   CapabilityError,
-  logger as coreLogger,
+  type FileListResult,
   getCapabilityRouter,
+  logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -36,23 +37,53 @@ interface LsEntry {
   size?: number;
 }
 
-function normalizeEntryKind(kind: string): EntryType {
-  if (kind === "directory") return "dir";
-  if (kind === "symlink") return "symlink";
-  return "file";
+function sortEntries(entries: LsEntry[]): LsEntry[] {
+  const dirEntries = entries
+    .filter((e) => e.type === "dir")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const fileEntries = entries
+    .filter((e) => e.type !== "dir")
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return [...dirEntries, ...fileEntries];
+}
+
+function formatListText(params: {
+  dir: string;
+  entries: LsEntry[];
+  truncated: boolean;
+  totalAfterIgnore: number;
+}): string {
+  const lines = [
+    `Directory: ${params.dir}`,
+    ...params.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
+  ];
+  if (params.truncated) {
+    lines.push(
+      `…[truncated, listed ${ENTRY_LIMIT} of ${params.totalAfterIgnore} entries]`,
+    );
+  }
+  return lines.join("\n");
+}
+
+function toLsEntry(entry: FileListResult["entries"][number]): LsEntry {
+  const type: EntryType =
+    entry.kind === "directory"
+      ? "dir"
+      : entry.kind === "symlink"
+        ? "symlink"
+        : "file";
+  if (type === "file") {
+    return { name: entry.name, type, size: entry.size };
+  }
+  return { name: entry.name, type };
 }
 
 async function listWithCapabilityRouter(params: {
   runtime: IAgentRuntime;
   dir: string;
-  ignore?: string[];
+  ignore: string[];
 }): Promise<
-  | {
-      ok: true;
-      entries: LsEntry[];
-      truncated: boolean;
-      totalAfterIgnore: number;
-    }
+  | { ok: true; payload: FileListResult }
   | { ok: false; reason: "unavailable" | "failed"; message: string }
 > {
   const router = getCapabilityRouter(params.runtime);
@@ -62,19 +93,9 @@ async function listWithCapabilityRouter(params: {
       path: params.dir,
       limit: ENTRY_LIMIT,
       includeHidden: true,
-      ...(params.ignore ? { ignore: params.ignore } : {}),
+      ignore: params.ignore,
     });
-    return {
-      ok: true,
-      entries: result.entries.map((entry) => {
-        const type = normalizeEntryKind(entry.kind);
-        return type === "file"
-          ? { name: entry.name, type, size: entry.size }
-          : { name: entry.name, type };
-      }),
-      truncated: result.truncated,
-      totalAfterIgnore: result.totalAfterIgnore,
-    };
+    return { ok: true, payload: result };
   } catch (error) {
     if (
       error instanceof CapabilityError &&
@@ -166,44 +187,43 @@ export async function lsHandler(
   }
   const dir = validation.resolved;
 
-  const ignoreRaw = readArrayParam(options, "ignore");
-  const ignore = (ignoreRaw ?? []).filter(
+  const ignore = (readArrayParam(options, "ignore") ?? []).filter(
     (entry): entry is string => typeof entry === "string" && entry.length > 0,
   );
 
-  const routed = await listWithCapabilityRouter({
-    runtime,
-    dir,
-    ignore: ignore.length > 0 ? ignore : undefined,
-  });
+  const routed = await listWithCapabilityRouter({ runtime, dir, ignore });
   if (routed.ok) {
-    const lines = [
-      `Directory: ${dir}`,
-      ...routed.entries.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
-    ];
-    if (routed.truncated) {
-      lines.push(
-        `…[truncated, listed ${ENTRY_LIMIT} of ${routed.totalAfterIgnore} entries]`,
-      );
-    }
-    const text = lines.join("\n");
+    const sorted = sortEntries(routed.payload.entries.map(toLsEntry));
+    const text = formatListText({
+      dir: routed.payload.path,
+      entries: sorted,
+      truncated: routed.payload.truncated,
+      totalAfterIgnore: routed.payload.totalAfterIgnore,
+    });
+
     coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${routed.entries.length} truncated=${routed.truncated}`,
+      `${CODING_TOOLS_LOG_PREFIX} LS dir=${routed.payload.path} count=${sorted.length} truncated=${routed.payload.truncated}`,
     );
+
     if (callback) await callback({ text, source: "coding-tools" });
+
     return successActionResult(text, {
-      entries: routed.entries,
-      truncated: routed.truncated,
+      entries: sorted,
+      truncated: routed.payload.truncated,
     });
   }
   if (routed.reason === "failed") {
     return failureToActionResult({
       reason: "io_error",
-      message: `readdir failed: ${routed.message}`,
+      message: `fs.list failed: ${routed.message}`,
     });
   }
 
-  const ignoreMatchers: RegExp[] = ignore.map((entry) => globToRegExp(entry));
+  const ignoreMatchers: RegExp[] = ignore
+    .filter(
+      (entry): entry is string => typeof entry === "string" && entry.length > 0,
+    )
+    .map((entry) => globToRegExp(entry));
 
   let names: string[];
   try {
@@ -240,29 +260,17 @@ export async function lsHandler(
         size = st.size;
       }
     } catch {
-      // unreadable entry — fall through with default type
     }
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 
-  const dirEntries = enriched
-    .filter((e) => e.type === "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const fileEntries = enriched
-    .filter((e) => e.type !== "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const sorted: LsEntry[] = [...dirEntries, ...fileEntries];
-
-  const lines = [
-    `Directory: ${dir}`,
-    ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
-  ];
-  if (truncated) {
-    lines.push(
-      `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
-    );
-  }
-  const text = lines.join("\n");
+  const sorted = sortEntries(enriched);
+  const text = formatListText({
+    dir,
+    entries: sorted,
+    truncated,
+    totalAfterIgnore,
+  });
 
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,

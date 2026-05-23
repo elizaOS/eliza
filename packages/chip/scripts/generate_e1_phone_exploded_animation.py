@@ -19,6 +19,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 import trimesh
@@ -84,7 +85,12 @@ def classify(name: str) -> tuple[np.ndarray, int]:
         return np.array([1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
     if n.startswith("volume_button") or "volume_actuator" in n or "volume_flex" in n:
         return np.array([-1.0, 0.0, 0.0]), 2 if "cap" in n else 3 if "labyrinth" in n else 1
-    if "side_key" in n or "split_interconnect_side" in n or "wifi_bt_side" in n:
+    # The split-board side flex is a board-top interconnect running along the +X
+    # rail; lift it +Z off the board (like the other interconnect parts) so it
+    # clears the -Z-dropping snap hooks instead of sliding +X into them.
+    if "split_interconnect_side" in n:
+        return np.array([0.0, 0.0, 1.0]), 1
+    if "side_key" in n or "wifi_bt_side" in n:
         return np.array([1.0, 0.0, 0.0]), 1
     # Front of screen (+Z toward viewer): cover glass, adhesives, perimeter
     # cushion, display, fpc. The PORON glass-perimeter cushions sit under the
@@ -133,10 +139,15 @@ def classify(name: str) -> tuple[np.ndarray, int]:
     # the PCB (which ejects -Z) instead of sharing its ring and staying nested.
     if "antenna" in n or "interconnect" in n:
         return np.array([0.0, 0.0, 1.0]), 1
-    # Molded retention bosses/ribs/snaps belong to the enclosure and nest deep
+    # Snap hooks ride the shallow side-frame top (z near the parting line); eject
+    # them -Z at ring 1 so they do not overtake and dive through the deeper
+    # mid-stack parts (the haptic LRA) the way a ring-4 ejection would.
+    if "snap_hook" in n:
+        return np.array([0.0, 0.0, -1.0]), 1
+    # Molded retention bosses/ribs/saddle belong to the enclosure and nest deep
     # around the battery perimeter. They eject -Z at ring 4 — past the battery
     # (ring 2) so they separate from it, ahead of the back shell (ring 5).
-    if "snap_hook" in n or "screw_boss" in n or "rib" in n or "reinforcement" in n:
+    if "screw_boss" in n or "rib" in n or "reinforcement" in n:
         return np.array([0.0, 0.0, -1.0]), 4
     if "service_label" in n:
         return np.array([0.0, 0.0, -1.0]), 3
@@ -185,7 +196,7 @@ def color_for(name: str) -> tuple[int, int, int, int]:
 
 
 # --------------------------------------------------------------- build GLB
-def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
+def build_animated_glb(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> None:
     """Author an animated GLB with translation keyframes per part node."""
     import pygltflib as pg
     from pygltflib import (
@@ -367,7 +378,7 @@ def build_animated_glb(scene: trimesh.Scene, parts: list[dict]) -> None:
 
 
 # ----------------------------------------------------------- render mp4
-def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
+def render_mp4(scene: trimesh.Scene, parts: list[dict[str, Any]]) -> tuple[str, float]:
     """Render 12s turntable with explode-hold-reassemble-hold timing.
 
     Returns (renderer_label, seconds_elapsed).
@@ -400,11 +411,11 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
 
     # build base meshes once with colors
     base_meshes: dict[str, trimesh.Trimesh] = {}
-    for p in parts:
-        g = scene.geometry[p["name"]].copy()
-        c = color_for(p["name"])
+    for part in parts:
+        g = scene.geometry[part["name"]].copy()
+        c = color_for(part["name"])
         g.visual = trimesh.visual.ColorVisuals(g, vertex_colors=np.tile(c, (len(g.vertices), 1)))
-        base_meshes[p["name"]] = g
+        base_meshes[part["name"]] = g
 
     # camera target = centroid
     target = np.array([0.0, 0.0, 0.0])
@@ -426,7 +437,9 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
     fill = pyrender.DirectionalLight(color=np.ones(3) * 0.85, intensity=1.5)
     rim = pyrender.DirectionalLight(color=np.ones(3), intensity=1.8)
 
-    key_frame_times = {round(x * 0.5, 2) for x in range(int(TURNTABLE_S / 0.5) + 1)}
+    key_frame_times: list[float] = [
+        float(round(x * 0.5, 2)) for x in range(int(TURNTABLE_S / 0.5) + 1)
+    ]
 
     for fi in range(n_frames):
         if fi > 0 and fi % RENDERER_CHUNK == 0:
@@ -437,11 +450,11 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
             bg_color=np.array([0.22, 0.22, 0.24, 1.0]), ambient_light=np.array([0.28, 0.28, 0.30])
         )
         # add parts with displaced positions
-        for p in parts:
-            offset = part_offset(t, p["dir"], p["ring"])
+        for part in parts:
+            offset = part_offset(t, part["dir"], part["ring"])
             T = np.eye(4)
             T[:3, 3] = offset
-            mesh = pyrender.Mesh.from_trimesh(base_meshes[p["name"]], smooth=False)
+            mesh = pyrender.Mesh.from_trimesh(base_meshes[part["name"]], smooth=False)
             pyscene.add(mesh, pose=T)
 
         # camera orbit
@@ -479,9 +492,16 @@ def render_mp4(scene: trimesh.Scene, parts: list[dict]) -> tuple[str, float]:
         img = Image.fromarray(color)
         img.save(FRAMES_DIR / f"frame_{fi:04d}.png")
         # also save keyframe copy
-        tr = round(t, 2)
+        tr = float(round(t, 2))
         if any(abs(tr - kt) < (1.0 / FPS) / 2 for kt in key_frame_times):
-            kt = round(min(key_frame_times, key=lambda x: abs(x - tr)), 1)
+            nearest_key = key_frame_times[0]
+            nearest_delta = abs(nearest_key - tr)
+            for frame_time in key_frame_times[1:]:
+                delta = abs(float(frame_time) - tr)
+                if delta < nearest_delta:
+                    nearest_key = frame_time
+                    nearest_delta = delta
+            kt = round(nearest_key, 1)
             img.save(FRAMES_DIR / f"keyframe_t{kt:04.1f}s.png")
     renderer.delete()
     elapsed = time.time() - t0
@@ -525,9 +545,9 @@ def verify_glb(path: Path) -> dict:
 # --------------------------------------------------------------- main
 def main() -> int:
     print(f"[load] {ASM_GLB}")
-    scene = trimesh.load(str(ASM_GLB), force="scene")
+    scene = cast(trimesh.Scene, trimesh.load(str(ASM_GLB), force="scene"))
     manifest = json.loads(MANIFEST.read_text())
-    parts = []
+    parts: list[dict[str, Any]] = []
     for entry in manifest:
         name = entry["name"]
         if name not in scene.geometry:

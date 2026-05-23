@@ -732,8 +732,12 @@ export class SlackService extends Service implements ISlackService {
       // session is needed. Only constructed when a user token is
       // configured. Routing decisions in getOutboundClient() consult
       // account.role to decide which client receives each call.
+      // `WebClient` is the alias for `App["client"]`, which is the
+      // same `@slack/web-api` `WebClient` class imported here as
+      // `SlackWebClient` — a direct `as WebClient` cast is correct
+      // and a future type divergence will surface as an error here.
       const userClient = account.userToken
-        ? (new SlackWebClient(account.userToken) as unknown as WebClient)
+        ? (new SlackWebClient(account.userToken) as WebClient)
         : null;
 
       const state: SlackAccountRuntime = {

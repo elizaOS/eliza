@@ -1,0 +1,6 @@
+<testsuites name="results">
+  <testsuite name="all" package="all">
+    <property name="random_seed" value="1779405750" />
+    <testcase name="keymgr_ladder_advance_and_bind" classname="test_e1_rot_keymgr_kat" file="/home/shaw/milady/eliza/packages/chip/verify/cocotb/rot/test_e1_rot_keymgr_kat.py" lineno="269" time="1.617600679397583" sim_time_ns="101990.001" ratio_time="63050.17196084667" />
+  </testsuite>
+</testsuites>

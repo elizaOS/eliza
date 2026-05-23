@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { AuditDispatcher, InMemorySink } from "@elizaos/security";
+import { describe, expect, it } from "vitest";
 import type {
   MediaProviderResult,
   VisionAnalysisOptions,

@@ -134,7 +134,9 @@ def validate(report: dict[str, Any]) -> list[str]:
             if name not in artifacts:
                 errors.append(f"input_artifacts.{name} missing")
             else:
-                errors.extend(validate_artifact(f"input_artifacts.{name}", artifacts[name], allow_missing))
+                errors.extend(
+                    validate_artifact(f"input_artifacts.{name}", artifacts[name], allow_missing)
+                )
     full_dataset_modes = report.get("full_dataset_conversion_modes")
     if not isinstance(full_dataset_modes, dict):
         errors.append("full_dataset_conversion_modes must be a mapping")
@@ -148,7 +150,9 @@ def validate(report: dict[str, Any]) -> list[str]:
             if name in REQUIRED_FULL_DATASET_MODES and not isinstance(value, bool)
         ]
         if bad_values:
-            errors.append(f"full-dataset mode values must be boolean: {', '.join(sorted(bad_values))}")
+            errors.append(
+                f"full-dataset mode values must be boolean: {', '.join(sorted(bad_values))}"
+            )
         if report.get("status") == "MATRIX_READY_FOR_CUDA_HOST" and not all(
             full_dataset_modes.get(name) is True for name in REQUIRED_FULL_DATASET_MODES
         ):

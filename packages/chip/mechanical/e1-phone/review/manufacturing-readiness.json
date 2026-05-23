@@ -18,7 +18,7 @@
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 183.29,
+    "estimated_mass_g": 183.15,
     "target_mass_g": 185,
     "compactness_status": "cad_compactness_optimized",
     "compactness_width_excess_mm": 0.3,
@@ -79,15 +79,15 @@
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
     "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 123,
+    "solid_cad_step_part_count": 142,
     "step_validation_status": "pass",
-    "step_validation_count": 123,
+    "step_validation_count": 142,
     "supplier_rfq_status": "rfq_ready",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 123
+    "part_review_count": 142
   },
   "required_outputs": {
     "assembly_glb": true,

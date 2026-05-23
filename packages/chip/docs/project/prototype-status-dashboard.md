@@ -8,18 +8,18 @@ Snapshot: updated 2026-05-21 after native-toolchain recovery; MVP rows mirror `s
 | --- | --- | --- | --- |
 | docs-and-project-plan | `PASS` | `command_pass` | `none` |
 | architecture-docs | `PASS` | `command_pass` | `none` |
-| toolchain-fast-path | `PASS` | `tool_available` | `none` |
-| platform-contract | `FAIL` | `command_fail` | `make platform-contract-check` |
+| toolchain-fast-path | `BLOCK` | `tool_blocker` | `scripts/check_tools.sh && scripts/tool_versions.sh` |
+| platform-contract | `PASS` | `command_pass` | `none` |
 | linux-boot-prerequisites | `PASS` | `command_pass` | `none` |
-| software-bsp | `FAIL` | `command_fail` | `make software-bsp-check` |
+| software-bsp | `BLOCK` | `scaffold_only` | `make software-bsp-evidence-check` |
 | real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
 | synthesis | `PASS` | `generated_artifact` | `none` |
 | cocotb | `PASS` | `generated_artifact` | `none` |
 | verilator | `PASS` | `generated_artifact` | `none` |
-| formal | `PASS` | `generated_artifact` | `none` |
-| qemu | `PASS` | `generated_artifact` | `none` |
-| renode | `PASS` | `generated_artifact` | `none` |
+| formal | `BLOCK` | `tool_blocker` | `make formal inside Docker/Nix` |
+| qemu | `BLOCK` | `tool_blocker` | `make qemu-check` |
+| renode | `BLOCK` | `tool_blocker` | `make renode-check` |
 | npu-ml-proof | `PASS` | `generated_artifact` | `none` |
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |

@@ -202,6 +202,18 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="npu",
         tier="spec",
     ),
+    GateSpec(
+        name="mlperf-inference-check",
+        script="scripts/check_mlperf_inference.py",
+        subsystem="npu",
+        tier="spec",
+    ),
+    GateSpec(
+        name="multi-pdk-closure-check",
+        script="scripts/check_multi_pdk_closure.py",
+        subsystem="pd",
+        tier="spec",
+    ),
     # ---- Process / packaging ------------------------------------------------
     GateSpec(
         name="process-14a-effects-check",
@@ -211,6 +223,12 @@ GATES: tuple[GateSpec, ...] = (
     ),
     GateSpec(
         name="pdk-portability-check",
+        script="scripts/check_pdk_portability.py",
+        subsystem="process",
+        tier="pd",
+    ),
+    GateSpec(
+        name="pdk-access-gate",
         script="scripts/check_pdk_portability.py",
         subsystem="process",
         tier="pd",
@@ -229,11 +247,24 @@ GATES: tuple[GateSpec, ...] = (
         tier="pd",
     ),
     GateSpec(
+        name="pd-soc-input-contract-check",
+        script="scripts/check_e1_soc_pd_input_contract.py",
+        subsystem="pd",
+        tier="pd",
+        args=("--strict",),
+    ),
+    GateSpec(
         name="pd-signoff-manifest-check",
         script="scripts/check_pd_signoff.py",
         subsystem="pd",
         tier="pd",
         args=("--manifest-only",),
+    ),
+    GateSpec(
+        name="pd-signoff-check",
+        script="scripts/check_pd_signoff.py",
+        subsystem="pd",
+        tier="pd",
     ),
     GateSpec(
         name="pd-evidence-gates",
@@ -254,10 +285,30 @@ GATES: tuple[GateSpec, ...] = (
         tier="pd",
     ),
     GateSpec(
+        name="pinout-check",
+        script="package/scripts/validate_pinout.py",
+        subsystem="pd",
+        tier="spec",
+        args=("package/e1-demo-pinout.yaml",),
+    ),
+    GateSpec(
+        name="io-cell-contract-check",
+        script="scripts/check_io_cell_contract.py",
+        subsystem="pd",
+        tier="pd",
+    ),
+    GateSpec(
         name="antenna-metadata-check",
         script="scripts/check_antenna_metadata.py",
         subsystem="pd",
         tier="pd",
+    ),
+    GateSpec(
+        name="antenna-metadata-release-check",
+        script="scripts/check_antenna_metadata.py",
+        subsystem="pd",
+        tier="pd",
+        args=("--release",),
     ),
     GateSpec(
         name="openlane-run-preflight-check",
@@ -277,6 +328,31 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="pd",
         tier="pd",
     ),
+    GateSpec(
+        name="rail-plan-check",
+        script="scripts/check_rail_plan.py",
+        subsystem="pd",
+        tier="pd",
+    ),
+    GateSpec(
+        name="upf-check",
+        script="scripts/check_upf_consistency.py",
+        subsystem="pd",
+        tier="pd",
+    ),
+    GateSpec(
+        name="pdn-workload-signoff",
+        script="scripts/check_pdn_workload_signoff.py",
+        subsystem="pd",
+        tier="pd",
+    ),
+    GateSpec(
+        name="pmic-procurement-gate",
+        script="scripts/check_pdn_workload_signoff.py",
+        subsystem="pd",
+        tier="pd",
+        args=("--allow-blocked",),
+    ),
     # ---- Platform / board / package ----------------------------------------
     GateSpec(
         name="platform-contract-check",
@@ -285,10 +361,77 @@ GATES: tuple[GateSpec, ...] = (
         tier="spec",
     ),
     GateSpec(
+        name="chip-stats-consistency-check",
+        script="scripts/check_chip_stats_consistency.py",
+        subsystem="platform",
+        tier="spec",
+    ),
+    GateSpec(
         name="board-package-evidence-check",
         script="scripts/check_board_package_evidence.py",
         subsystem="platform",
         tier="spec",
+    ),
+    GateSpec(
+        name="e1-phone-board-package-check",
+        script="scripts/check_e1_phone_board_package.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-fabrication-release-check",
+        script="scripts/check_e1_phone_fabrication_release.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-release-evidence-regeneration-check",
+        script="scripts/check_e1_phone_release_evidence_regeneration.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-release-approval-signature-check",
+        script="scripts/check_e1_phone_release_approval_signatures.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-supplier-return-content-check",
+        script="scripts/check_e1_phone_supplier_return_content.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-routed-output-content-check",
+        script="scripts/check_e1_phone_routed_output_content.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-factory-output-content-check",
+        script="scripts/check_e1_phone_factory_output_content.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-first-article-content-check",
+        script="scripts/check_e1_phone_first_article_content.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-enclosure-mechanical-content-check",
+        script="scripts/check_e1_phone_enclosure_mechanical_content.py",
+        subsystem="platform",
+        tier="pd",
+    ),
+    GateSpec(
+        name="e1-phone-manufacturing-artifacts-check",
+        script="scripts/check_manufacturing_artifacts.py",
+        subsystem="platform",
+        tier="pd",
+        args=("--manifest", "board/kicad/e1-phone/artifact-manifest.yaml"),
     ),
     GateSpec(
         name="package-cross-probe-check",
@@ -309,6 +452,13 @@ GATES: tuple[GateSpec, ...] = (
         tier="pd",
     ),
     GateSpec(
+        name="manufacturing-artifacts-release-check",
+        script="scripts/check_manufacturing_artifacts.py",
+        subsystem="platform",
+        tier="pd",
+        args=("--release",),
+    ),
+    GateSpec(
         name="real-world-gates-check",
         script="scripts/check_real_world_gates.py",
         subsystem="platform",
@@ -325,6 +475,13 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_fpga_target.py",
         subsystem="platform",
         tier="spec",
+    ),
+    GateSpec(
+        name="fpga-release-check",
+        script="scripts/check_fpga_release.py",
+        subsystem="platform",
+        tier="silicon",
+        args=("--release",),
     ),
     GateSpec(
         name="phone-soc-claim-check",
@@ -350,7 +507,26 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="platform",
         tier="spec",
     ),
+    GateSpec(
+        name="chip-stats-consistency",
+        script="scripts/check_chip_stats_consistency.py",
+        subsystem="platform",
+        tier="spec",
+    ),
+    GateSpec(
+        name="chip-topology-pkg-sync",
+        script="scripts/gen_e1_topology_pkg.py",
+        subsystem="platform",
+        tier="spec",
+        args=("--check",),
+    ),
     # ---- BSP / Linux / Android ---------------------------------------------
+    GateSpec(
+        name="dts-soc-consistency",
+        script="scripts/check_dts_soc_consistency.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
     GateSpec(
         name="software-bsp-scaffold-check",
         script="scripts/check_software_bsp.py",
@@ -558,6 +734,11 @@ def _classify(returncode: int, combined_output: str) -> Status:
         "BLOCKED:",
         "gate BLOCKED",
         "blocked_until_evidence",
+        "release gate remains blocked",
+        "release remains blocked",
+        "metadata blocker:",
+        "PDN signoff gate is BLOCKED",
+        "FPGA release check failed:",
     )
     if any(marker in blob for marker in blocked_markers):
         return "BLOCKED"

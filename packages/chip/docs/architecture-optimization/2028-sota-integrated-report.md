@@ -57,7 +57,7 @@ Consolidated hard numbers. Where two appear (MVP / stretch), MVP is the baseline
 | IPC SPEC2017int | ≥ 9 | ~5 | ~1.6 |
 | Area (N2P class) | ~2.0 mm² incl L2 | ~0.85 mm² | ~0.25 mm² |
 | Power | 1.4 W sustained / 2.8 W burst | 0.8 W / 1.6 W | 0.3 W / 0.7 W |
-| Recommended open base | fork Tenstorrent Ascalon-D8 (Apache, 8-wide, LLVM-upstream); fallback XiangShan Kunminghu V3 scaled to 8-wide | XiangShan Kunminghu V3 (Mulan PSL v2) | CVA6 (Apache/Solderpad) |
+| Recommended open base | XiangShan Kunminghu V3 scaled to 8-wide (Mulan PSL v2, no vendor license; Tenstorrent Ascalon-D8 surveyed but rejected: unpublished mobile IP license) | XiangShan Kunminghu V3 (Mulan PSL v2) | CVA6 (Apache/Solderpad) |
 
 Management hart: Ibex (lowRISC, Apache-2.0) on AON rail for boot, security, PMU, RPMI firmware.
 
@@ -231,12 +231,12 @@ Unified eval gauntlet across all domains. Mandatory artifacts before any 2028 cl
 17. BSPDN-aware floorplan + thermal model (only if stretch A14P / 14A path is selected; 2029 product).
 18. Android RVA23 prebuilts + Bionic cross + NDK + AOSP branch pinning + NNAPI/AIDL HAL skeleton + ExecuTorch backend.
 19. Reproducible CI: pinned Docker base, flake.lock, LLVM SHA, OpenLane SHA, mobile_smoke.tflite checksum.
-20. Cooley/RVI legal review on Mulan PSL v2 (XiangShan) and Tenstorrent Ascalon mobile licensing.
+20. Cooley/RVI legal review on Mulan PSL v2 (XiangShan) Apache-2.0 compatibility for the selected open big/mid cores.
 
 ## 6. Prioritized work order
 
 **P0 (Q3-Q4 2026): repo discipline + decisions that cannot slip.**
-- Pick big core: Tenstorrent Ascalon-D8 mobile-license path or XiangShan Kunminghu V3 fork. Decision deadline Q4 2026.
+- Big core: open XiangShan Kunminghu V3 8-wide scale-up fork (selected; Ascalon-D8 surveyed but rejected for lack of published mobile license). Land external checkout + 8-wide scale-up microbench by Q4 2026.
 - Pick process target shortlist: TSMC N2P primary, A14 stretch, Intel 14A 2nd source. Begin foundry conversation.
 - Pick fabric: TileLink TL-C inside cluster + CHI bridge at SLC. Commit one.
 - Reconcile `soc-optimized-operating-point.yaml` vs `uma-dram-evidence-gate.yaml`; split LPDDR5X / LPDDR6 SKUs.

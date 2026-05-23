@@ -20,6 +20,7 @@ import type {
   RemotePluginRuntimeContext,
   RemotePluginStoreSnapshot,
   RemotePluginWorkerMessage,
+  WorkerEventMessage,
   WorkerInitMessage,
   WorkerResponseMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -37,8 +38,12 @@ import {
 } from "@elizaos/plugin-remote-manifest";
 import { resolveApiToken } from "@elizaos/shared";
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
+import type { DynamicViewHost } from "../dynamic-views/host";
 import { logger } from "../logger.js";
+import type { TraceHost } from "../trace/trace-host-requests";
 import type { SendToWebview } from "../types.js";
+import type { VoiceHost } from "../voice/voice-host-requests";
+import { getAgentManager, getDiagnosticLogPath } from "./agent";
 
 type RemotePluginWindowInstance = InstanceType<typeof BrowserWindow>;
 
@@ -75,6 +80,22 @@ export interface RemotePluginLogsSnapshot {
   truncated: boolean;
 }
 
+export interface RemotePluginWorkerEventRecord {
+  remotePluginId: string;
+  sequence: number;
+  name: string;
+  payload: JsonValue | null;
+  timestamp: string;
+}
+
+export interface RemotePluginWorkerEventsTailSnapshot {
+  id: string;
+  events: RemotePluginWorkerEventRecord[];
+  nextSequence: number;
+  minimumSequence: number | null;
+  gapBeforeSequence: number | null;
+}
+
 export interface RemotePluginWorkerHandle {
   postMessage(message: RemotePluginWorkerMessage): void;
   terminate(): void;
@@ -102,11 +123,19 @@ export interface RemotePluginHostOptions {
   storeRoot?: string;
   workerRunner?: RemotePluginWorkerRunner;
   now?: () => number;
+  maxWorkerEvents?: number;
   events?: RemotePluginHostEvents;
+  dynamicViewHost?: DynamicViewHost;
+  traceHost?: TraceHost;
+  voiceHost?: VoiceHost;
 }
 
 const REMOTE_PLUGIN_STORE_ENV_KEYS = [
-  "ELIZA_CARROT_STORE_DIR",
+  "MILADY_REMOTE_PLUGIN_STORE_DIR",
+  "ELIZA_REMOTE_PLUGIN_STORE_DIR",
+  // Deprecated: kept for backward compatibility with operators using the
+  // old "carrot" vocabulary; remove after one release cycle.
+  "MILADY_CARROT_STORE_DIR",
   "ELIZA_CARROT_STORE_DIR",
 ] as const;
 
@@ -391,26 +420,94 @@ interface PendingInvoke {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface PendingDirectInvoke {
+  targetId: string;
+  resolve: (payload: JsonValue | null) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 const INVOKE_TIMEOUT_MS = 30_000;
+const DEFAULT_WORKER_EVENT_BUFFER_LIMIT = 1_000;
+const DEFAULT_WORKER_EVENT_TAIL_LIMIT = 100;
+const MAX_WORKER_EVENT_TAIL_LIMIT = 500;
+
+function resolveWorkerEventBufferLimit(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw =
+    env.ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS ??
+    env.ELIZA_CARROT_MAX_WORKER_EVENTS;
+  if (raw === undefined || raw.trim().length === 0) {
+    return DEFAULT_WORKER_EVENT_BUFFER_LIMIT;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1) {
+    throw new Error("ELIZA_REMOTE_PLUGIN_MAX_WORKER_EVENTS must be positive.");
+  }
+  return Math.floor(value);
+}
+
+function cloneEventPayload(payload: JsonValue | undefined): JsonValue | null {
+  if (payload === undefined) return null;
+  try {
+    return JSON.parse(JSON.stringify(payload)) as JsonValue;
+  } catch (error) {
+    return {
+      error: "EVENT_PAYLOAD_UNSERIALIZABLE",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 export class RemotePluginHost {
   private readonly storeRoot: string;
   private readonly workerRunner: RemotePluginWorkerRunner;
   private readonly now: () => number;
+  private readonly maxWorkerEvents: number;
   private events: RemotePluginHostEvents;
   private readonly workers = new Map<string, RemotePluginWorkerRecord>();
+  private readonly workerEvents = new Map<
+    string,
+    RemotePluginWorkerEventRecord[]
+  >();
+  private readonly workerEventSequences = new Map<string, number>();
   private readonly pendingInvokes = new Map<number, PendingInvoke>();
+  private readonly pendingDirectInvokes = new Map<
+    number,
+    PendingDirectInvoke
+  >();
+  private dynamicViewHost: DynamicViewHost | null;
+  private traceHost: TraceHost | null;
+  private voiceHost: VoiceHost | null;
   private nextInvokeId = 1;
 
   constructor(options: RemotePluginHostOptions = {}) {
     this.storeRoot = options.storeRoot ?? resolveRemotePluginStoreRoot();
     this.workerRunner = options.workerRunner ?? new AdaptiveWorkerRunner();
     this.now = options.now ?? Date.now;
+    this.maxWorkerEvents =
+      options.maxWorkerEvents ?? resolveWorkerEventBufferLimit();
     this.events = options.events ?? {};
+    this.dynamicViewHost = options.dynamicViewHost ?? null;
+    this.traceHost = options.traceHost ?? null;
+    this.voiceHost = options.voiceHost ?? null;
   }
 
   setEvents(events: RemotePluginHostEvents): void {
     this.events = events;
+  }
+
+  setDynamicViewHost(host: DynamicViewHost | null): void {
+    this.dynamicViewHost = host;
+  }
+
+  setTraceHost(host: TraceHost | null): void {
+    this.traceHost = host;
+  }
+
+  setVoiceHost(host: VoiceHost | null): void {
+    this.voiceHost = host;
   }
 
   getStoreRoot(): string {
@@ -458,6 +555,8 @@ export class RemotePluginHost {
     const record = uninstallInstalledRemotePlugin(this.storeRoot, id);
     if (record) {
       this.workers.delete(id);
+      this.workerEvents.delete(id);
+      this.workerEventSequences.delete(id);
       this.emitStoreChanged();
     }
     return { removed: record !== null, remotePlugin: entry };
@@ -499,6 +598,8 @@ export class RemotePluginHost {
       window: null,
     };
     this.workers.set(id, record);
+    this.workerEvents.set(id, []);
+    this.workerEventSequences.set(id, 0);
     this.emitWorkerChanged(status);
 
     try {
@@ -629,6 +730,8 @@ export class RemotePluginHost {
       context: record.context,
       window: null,
     });
+    this.workerEvents.delete(id);
+    this.workerEventSequences.delete(id);
     this.emitWorkerChanged(status);
     return status;
   }
@@ -693,6 +796,95 @@ export class RemotePluginHost {
     };
   }
 
+  invokeWorker(options: {
+    id: string;
+    method: string;
+    params?: JsonValue;
+    windowId?: string;
+  }): Promise<JsonValue | null> {
+    if (options.id.length === 0) {
+      throw new Error("remote-plugin invoke: invalid id.");
+    }
+    if (options.method.length === 0) {
+      throw new Error("remote-plugin invoke: invalid method.");
+    }
+    const target = this.workers.get(options.id);
+    if (!target?.handle || target.status.state !== "running") {
+      throw new Error(
+        `remote-plugin invoke: target ${options.id} is not running.`,
+      );
+    }
+    const requestId = ++this.nextInvokeId;
+    const timeout = setTimeout(() => {
+      const pending = this.pendingDirectInvokes.get(requestId);
+      if (!pending) return;
+      this.pendingDirectInvokes.delete(requestId);
+      pending.reject(
+        new Error(
+          `remote-plugin invoke: target ${options.id} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, INVOKE_TIMEOUT_MS);
+
+    const promise = new Promise<JsonValue | null>((resolve, reject) => {
+      this.pendingDirectInvokes.set(requestId, {
+        targetId: options.id,
+        resolve,
+        reject,
+        timeout,
+      });
+    });
+    target.handle.postMessage({
+      type: "request",
+      requestId,
+      method: options.method,
+      ...(options.params === undefined ? {} : { params: options.params }),
+      ...(typeof options.windowId === "string"
+        ? { windowId: options.windowId }
+        : {}),
+    });
+    return promise;
+  }
+
+  tailWorkerEvents(options: {
+    id: string;
+    afterSequence?: number;
+    limit?: number;
+  }): RemotePluginWorkerEventsTailSnapshot {
+    const record = this.workers.get(options.id);
+    if (!record?.handle || record.status.state !== "running") {
+      throw new Error(
+        `remote-plugin events: target ${options.id} is not running.`,
+      );
+    }
+    const limit = this.normalizeEventTailLimit(options.limit);
+    const events = this.workerEvents.get(options.id) ?? [];
+    const afterSequence = options.afterSequence;
+    const filtered =
+      typeof afterSequence === "number"
+        ? events.filter((event) => event.sequence > afterSequence)
+        : events.slice(-limit);
+    const selected = filtered.slice(0, limit);
+    const currentSequence = this.workerEventSequences.get(options.id) ?? 0;
+    const minimumSequence = events[0]?.sequence ?? null;
+    const gapBeforeSequence =
+      typeof afterSequence === "number" &&
+      minimumSequence !== null &&
+      afterSequence < minimumSequence - 1
+        ? minimumSequence
+        : null;
+    return {
+      id: options.id,
+      events: selected,
+      nextSequence:
+        selected.length > 0
+          ? selected[selected.length - 1].sequence
+          : (afterSequence ?? currentSequence),
+      minimumSequence,
+      gapBeforeSequence,
+    };
+  }
+
   dispose(): void {
     for (const id of this.workers.keys()) {
       this.stopWorker(id);
@@ -722,6 +914,11 @@ export class RemotePluginHost {
 
     if (message.type === "response") {
       this.handleWorkerResponse(id, handle, message);
+      return;
+    }
+
+    if (message.type === "event") {
+      this.recordWorkerEvent(id, message);
       return;
     }
 
@@ -765,6 +962,32 @@ export class RemotePluginHost {
       name,
       ...(payload.payload === undefined ? {} : { payload: payload.payload }),
     });
+  }
+
+  private recordWorkerEvent(id: string, message: WorkerEventMessage): void {
+    const sequence = (this.workerEventSequences.get(id) ?? 0) + 1;
+    this.workerEventSequences.set(id, sequence);
+    const event: RemotePluginWorkerEventRecord = {
+      remotePluginId: id,
+      sequence,
+      name: message.name,
+      payload: cloneEventPayload(message.payload),
+      timestamp: new Date(this.now()).toISOString(),
+    };
+    const events = this.workerEvents.get(id) ?? [];
+    events.push(event);
+    if (events.length > this.maxWorkerEvents) {
+      events.splice(0, events.length - this.maxWorkerEvents);
+    }
+    this.workerEvents.set(id, events);
+  }
+
+  private normalizeEventTailLimit(limit: number | undefined): number {
+    if (limit === undefined) return DEFAULT_WORKER_EVENT_TAIL_LIMIT;
+    if (!Number.isFinite(limit) || limit < 1) {
+      throw new Error("remote-plugin events: limit must be positive.");
+    }
+    return Math.min(Math.floor(limit), MAX_WORKER_EVENT_TAIL_LIMIT);
   }
 
   private handleHostRequest(
@@ -873,7 +1096,10 @@ export class RemotePluginHost {
     const record = this.workers.get(id);
     if (record?.handle !== handle) return;
     const pending = this.pendingInvokes.get(response.requestId);
-    if (!pending) return;
+    if (!pending) {
+      this.handleDirectWorkerResponse(response);
+      return;
+    }
     this.pendingInvokes.delete(response.requestId);
     clearTimeout(pending.timeout);
     this.postHostResponse(pending.callerHandle, {
@@ -891,6 +1117,22 @@ export class RemotePluginHost {
     });
   }
 
+  private handleDirectWorkerResponse(response: WorkerResponseMessage): void {
+    const pending = this.pendingDirectInvokes.get(response.requestId);
+    if (!pending) return;
+    this.pendingDirectInvokes.delete(response.requestId);
+    clearTimeout(pending.timeout);
+    if (response.success) {
+      pending.resolve(response.payload ?? null);
+    } else {
+      pending.reject(
+        new Error(
+          response.error ?? "remote-plugin invoke: target returned failure",
+        ),
+      );
+    }
+  }
+
   private rejectPendingInvokesForWorker(id: string): void {
     for (const [invokeId, pending] of this.pendingInvokes) {
       if (pending.targetId === id) {
@@ -906,6 +1148,16 @@ export class RemotePluginHost {
         this.pendingInvokes.delete(invokeId);
         clearTimeout(pending.timeout);
       }
+    }
+    for (const [invokeId, pending] of this.pendingDirectInvokes) {
+      if (pending.targetId !== id) continue;
+      this.pendingDirectInvokes.delete(invokeId);
+      clearTimeout(pending.timeout);
+      pending.reject(
+        new Error(
+          `remote-plugin invoke: target ${id} stopped before responding`,
+        ),
+      );
     }
   }
 
@@ -959,6 +1211,26 @@ export class RemotePluginHost {
         this.stopWorker(targetId);
         return { ok: true };
       }
+      case "agent-manager-start":
+        this.requireManageRemotePlugins(callerId, "agent-manager-start");
+        return (await getAgentManager().start()) as unknown as JsonValue;
+      case "agent-manager-stop": {
+        this.requireManageRemotePlugins(callerId, "agent-manager-stop");
+        await getAgentManager().stop();
+        return getAgentManager().getStatus() as unknown as JsonValue;
+      }
+      case "agent-manager-restart":
+        this.requireManageRemotePlugins(callerId, "agent-manager-restart");
+        return (await getAgentManager().restart()) as unknown as JsonValue;
+      case "agent-manager-status":
+        this.requireManageRemotePlugins(callerId, "agent-manager-status");
+        return getAgentManager().getStatus() as unknown as JsonValue;
+      case "agent-manager-health":
+        this.requireManageRemotePlugins(callerId, "agent-manager-health");
+        return this.readAgentManagerHealth();
+      case "agent-manager-logs-tail":
+        this.requireManageRemotePlugins(callerId, "agent-manager-logs-tail");
+        return this.readAgentManagerLogsTail(params);
       case "get-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -973,6 +1245,93 @@ export class RemotePluginHost {
         throw new Error(
           "invoke-remote-plugin must be routed through startInvokeRemotePlugin",
         );
+      case "dynamic-view-register":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-register");
+        return this.requireDynamicViewHost(method).register(params);
+      case "dynamic-view-unregister":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-unregister");
+        return this.requireDynamicViewHost(method).unregister(params);
+      case "dynamic-view-list":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-list");
+        return this.requireDynamicViewHost(method).list();
+      case "dynamic-view-open":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-open");
+        return this.requireDynamicViewHost(method).open(params);
+      case "dynamic-view-close":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-close");
+        return this.requireDynamicViewHost(method).close(params);
+      case "dynamic-view-push":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-push");
+        return this.requireDynamicViewHost(method).push(params);
+      case "dynamic-view-sessions":
+        this.requireManageRemotePlugins(callerId, "dynamic-view-sessions");
+        return this.requireDynamicViewHost(method).sessions();
+      case "trace-session-start":
+        this.requireManageRemotePlugins(callerId, "trace-session-start");
+        return this.requireTraceHost(method).startSession(params);
+      case "trace-session-complete":
+        this.requireManageRemotePlugins(callerId, "trace-session-complete");
+        return this.requireTraceHost(method).completeSession(params);
+      case "trace-session-cancel":
+        this.requireManageRemotePlugins(callerId, "trace-session-cancel");
+        return this.requireTraceHost(method).cancelSession(params);
+      case "trace-session-error":
+        this.requireManageRemotePlugins(callerId, "trace-session-error");
+        return this.requireTraceHost(method).errorSession(params);
+      case "trace-event-record":
+        this.requireManageRemotePlugins(callerId, "trace-event-record");
+        return this.requireTraceHost(method).recordEvent(params);
+      case "trace-session-list":
+        this.requireManageRemotePlugins(callerId, "trace-session-list");
+        return this.requireTraceHost(method).listSessions(params);
+      case "trace-session-get":
+        this.requireManageRemotePlugins(callerId, "trace-session-get");
+        return this.requireTraceHost(method).getSession(params);
+      case "trace-session-summary":
+        this.requireManageRemotePlugins(callerId, "trace-session-summary");
+        return this.requireTraceHost(method).summarizeSession(params);
+      case "trace-events-tail":
+        this.requireManageRemotePlugins(callerId, "trace-events-tail");
+        return this.requireTraceHost(method).tailEvents(params);
+      case "trace-events-search":
+        this.requireManageRemotePlugins(callerId, "trace-events-search");
+        return this.requireTraceHost(method).searchEvents(params);
+      case "trace-view-open":
+        this.requireManageRemotePlugins(callerId, "trace-view-open");
+        return this.requireTraceHost(method).openTraceView(params);
+      case "voice-status":
+        this.requireManageRemotePlugins(callerId, "voice-status");
+        return this.requireVoiceHost(method).status();
+      case "voice-components":
+        this.requireManageRemotePlugins(callerId, "voice-components");
+        return this.requireVoiceHost(method).components();
+      case "voice-start":
+        this.requireManageRemotePlugins(callerId, "voice-start");
+        return this.requireVoiceHost(method).start(params);
+      case "voice-stop":
+        this.requireManageRemotePlugins(callerId, "voice-stop");
+        return this.requireVoiceHost(method).stop(params);
+      case "voice-interrupt":
+        this.requireManageRemotePlugins(callerId, "voice-interrupt");
+        return this.requireVoiceHost(method).interrupt(params);
+      case "voice-inject-transcript":
+        this.requireManageRemotePlugins(callerId, "voice-inject-transcript");
+        return this.requireVoiceHost(method).injectTranscript(params);
+      case "voice-speak":
+        this.requireManageRemotePlugins(callerId, "voice-speak");
+        return this.requireVoiceHost(method).speak(params);
+      case "voice-transcribe-audio":
+        this.requireManageRemotePlugins(callerId, "voice-transcribe-audio");
+        return this.requireVoiceHost(method).transcribeAudio(params);
+      case "voice-synthesize-speech":
+        this.requireManageRemotePlugins(callerId, "voice-synthesize-speech");
+        return this.requireVoiceHost(method).synthesizeSpeech(params);
+      case "voice-latency":
+        this.requireManageRemotePlugins(callerId, "voice-latency");
+        return this.requireVoiceHost(method).latency();
+      case "voice-recent-turns":
+        this.requireManageRemotePlugins(callerId, "voice-recent-turns");
+        return this.requireVoiceHost(method).recentTurns(params);
       case "set-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -993,6 +1352,101 @@ export class RemotePluginHost {
           `Host request method not implemented: ${method} (caller=${callerId})`,
         );
     }
+  }
+
+  private async readAgentManagerHealth(): Promise<JsonValue> {
+    const status = getAgentManager().getStatus();
+    if (status.port === null) {
+      return {
+        ok: false,
+        apiBase: null,
+        path: "/api/health",
+        status: null,
+        error: "AgentManager has no active API port.",
+        agentStatus: status as unknown as JsonValue,
+      };
+    }
+    const apiBase = `http://127.0.0.1:${status.port}`;
+    try {
+      const response = await fetch(`${apiBase}/api/health`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      return {
+        ok: response.ok,
+        apiBase,
+        path: "/api/health",
+        status: response.status,
+        body: await response.text(),
+        agentStatus: status as unknown as JsonValue,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        apiBase,
+        path: "/api/health",
+        status: null,
+        error: error instanceof Error ? error.message : String(error),
+        agentStatus: status as unknown as JsonValue,
+      };
+    }
+  }
+
+  private requireDynamicViewHost(method: string): DynamicViewHost {
+    if (!this.dynamicViewHost) {
+      throw new Error(`${method}: dynamic view host is not configured.`);
+    }
+    return this.dynamicViewHost;
+  }
+
+  private requireTraceHost(method: string): TraceHost {
+    if (!this.traceHost) {
+      throw new Error(`${method}: trace host is not configured.`);
+    }
+    return this.traceHost;
+  }
+
+  private requireVoiceHost(method: string): VoiceHost {
+    if (!this.voiceHost) {
+      throw new Error(`${method}: voice host is not configured.`);
+    }
+    return this.voiceHost;
+  }
+
+  private readAgentManagerLogsTail(params: JsonValue | undefined): JsonValue {
+    const maxBytes = this.readLogMaxBytes(params);
+    const logPath = getDiagnosticLogPath();
+    if (!fs.existsSync(logPath)) {
+      return { path: logPath, text: "", truncated: false };
+    }
+    const stat = fs.statSync(logPath);
+    const size = Math.max(0, stat.size);
+    const start = Math.max(0, size - maxBytes);
+    const length = size - start;
+    const buffer = Buffer.alloc(length);
+    const fd = fs.openSync(logPath, "r");
+    try {
+      fs.readSync(fd, buffer, 0, length, start);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return {
+      path: logPath,
+      text: buffer.toString("utf8"),
+      truncated: start > 0,
+    };
+  }
+
+  private readLogMaxBytes(params: JsonValue | undefined): number {
+    if (params === undefined) return 64 * 1024;
+    if (!isRecord(params)) {
+      throw new Error("agent-manager-logs-tail: params must be an object.");
+    }
+    const value = params.maxBytes;
+    if (value === undefined) return 64 * 1024;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+      throw new Error("agent-manager-logs-tail: maxBytes must be positive.");
+    }
+    return Math.floor(value);
   }
 
   private markWorkerError(

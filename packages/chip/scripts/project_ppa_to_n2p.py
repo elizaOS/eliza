@@ -38,7 +38,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 SCALING_SPEC = ROOT / "docs/evidence/process/ppa-projection.yaml"
-SKY130_RUN_METRICS = ROOT / "pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json"
+SKY130_RUN_METRICS = ROOT / "pd/openlane/runs/RUN_2026-05-21_10-19-23/final/metrics.json"
 ASAP7_SHAPES_DIR = ROOT / "docs/evidence/process/asap7"
 OUT = ROOT / "docs/evidence/process/ppa-projection.json"
 

@@ -8,6 +8,7 @@ and the static gate inventory.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -188,6 +189,185 @@ class GateInventoryTests(unittest.TestCase):
             specs["chipyard-generated-linux-contract-check"].args,
             ("--require-boot-evidence",),
         )
+
+    def test_pd_soc_input_contract_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("pd-soc-input-contract-check", specs)
+        spec = specs["pd-soc-input-contract-check"]
+        self.assertEqual(spec.script, "scripts/check_e1_soc_pd_input_contract.py")
+        self.assertEqual(spec.subsystem, "pd")
+        self.assertEqual(spec.tier, "pd")
+        self.assertEqual(spec.args, ("--strict",))
+
+    def test_e1_phone_board_package_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-board-package-check", specs)
+        spec = specs["e1-phone-board-package-check"]
+        self.assertEqual(spec.script, "scripts/check_e1_phone_board_package.py")
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_fabrication_release_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-fabrication-release-check", specs)
+        spec = specs["e1-phone-fabrication-release-check"]
+        self.assertEqual(spec.script, "scripts/check_e1_phone_fabrication_release.py")
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_release_evidence_regeneration_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-release-evidence-regeneration-check", specs)
+        spec = specs["e1-phone-release-evidence-regeneration-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_release_evidence_regeneration.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_release_approval_signature_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-release-approval-signature-check", specs)
+        spec = specs["e1-phone-release-approval-signature-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_release_approval_signatures.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_supplier_return_content_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-supplier-return-content-check", specs)
+        spec = specs["e1-phone-supplier-return-content-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_supplier_return_content.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_routed_output_content_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-routed-output-content-check", specs)
+        spec = specs["e1-phone-routed-output-content-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_routed_output_content.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_factory_output_content_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-factory-output-content-check", specs)
+        spec = specs["e1-phone-factory-output-content-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_factory_output_content.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_first_article_content_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-first-article-content-check", specs)
+        spec = specs["e1-phone-first-article-content-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_first_article_content.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_e1_phone_enclosure_mechanical_content_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("e1-phone-enclosure-mechanical-content-check", specs)
+        spec = specs["e1-phone-enclosure-mechanical-content-check"]
+        self.assertEqual(
+            spec.script,
+            "scripts/check_e1_phone_enclosure_mechanical_content.py",
+        )
+        self.assertEqual(spec.subsystem, "platform")
+        self.assertEqual(spec.tier, "pd")
+
+    def test_product_dependency_gates_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        expected = {
+            "pinout-check": (
+                "package/scripts/validate_pinout.py",
+                "pd",
+                "spec",
+                ("package/e1-demo-pinout.yaml",),
+            ),
+            "e1-phone-manufacturing-artifacts-check": (
+                "scripts/check_manufacturing_artifacts.py",
+                "platform",
+                "pd",
+                ("--manifest", "board/kicad/e1-phone/artifact-manifest.yaml"),
+            ),
+            "pdk-access-gate": (
+                "scripts/check_pdk_portability.py",
+                "process",
+                "pd",
+                (),
+            ),
+            "io-cell-contract-check": (
+                "scripts/check_io_cell_contract.py",
+                "pd",
+                "pd",
+                (),
+            ),
+            "rail-plan-check": ("scripts/check_rail_plan.py", "pd", "pd", ()),
+            "upf-check": ("scripts/check_upf_consistency.py", "pd", "pd", ()),
+            "pdn-workload-signoff": (
+                "scripts/check_pdn_workload_signoff.py",
+                "pd",
+                "pd",
+                (),
+            ),
+            "pmic-procurement-gate": (
+                "scripts/check_pdn_workload_signoff.py",
+                "pd",
+                "pd",
+                ("--allow-blocked",),
+            ),
+        }
+        for name, (script, subsystem, tier, args) in expected.items():
+            with self.subTest(name=name):
+                self.assertIn(name, specs)
+                self.assertEqual(specs[name].script, script)
+                self.assertEqual(specs[name].subsystem, subsystem)
+                self.assertEqual(specs[name].tier, tier)
+                self.assertEqual(specs[name].args, args)
+
+    def test_release_mode_gates_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        expected = {
+            "pd-signoff-check": ("scripts/check_pd_signoff.py", "pd", ()),
+            "manufacturing-artifacts-release-check": (
+                "scripts/check_manufacturing_artifacts.py",
+                "platform",
+                ("--release",),
+            ),
+            "fpga-release-check": (
+                "scripts/check_fpga_release.py",
+                "platform",
+                ("--release",),
+            ),
+            "antenna-metadata-release-check": (
+                "scripts/check_antenna_metadata.py",
+                "pd",
+                ("--release",),
+            ),
+        }
+        for name, (script, subsystem, args) in expected.items():
+            with self.subTest(name=name):
+                self.assertIn(name, specs)
+                self.assertEqual(specs[name].script, script)
+                self.assertEqual(specs[name].subsystem, subsystem)
+                self.assertEqual(specs[name].args, args)
 
     def test_os_rv64_subsystem_present(self) -> None:
         """The unified bring-up dashboard requires at least one os_rv64 gate.
@@ -484,6 +664,253 @@ class AbsolutePathGateTests(unittest.TestCase):
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "FAIL")
         self.assertIn("script missing", result.evidence)
+
+
+class E1PhoneBoardPackageGateTests(unittest.TestCase):
+    def test_checker_exits_zero_but_reports_blocked_readiness(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_board_package.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 0, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone fabrication/enclosure/e2e release evidence "
+            "is incomplete; structural package checks passed only",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_board_package_as_blocked(self) -> None:
+        spec = next(
+            gate for gate in agg.GATES if gate.name == "e1-phone-board-package-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone", result.evidence)
+
+
+class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_release(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_fabrication_release.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined)
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone fabrication/enclosure/e2e release gate",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_fabrication_release_as_blocked(
+        self,
+    ) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-fabrication-release-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone", result.evidence)
+
+
+class E1PhoneReleaseEvidenceRegenerationGateTests(unittest.TestCase):
+    def test_checker_reports_regeneration_drift_or_pass(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_release_evidence_regeneration.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=120,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 0, combined[-4000:])
+        self.assertIn(
+            "STATUS: PASS E1 phone release evidence regeneration",
+            combined,
+        )
+
+
+class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_approvals(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_release_approval_signatures.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone release approval signatures",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_release_approvals_as_blocked(
+        self,
+    ) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-release-approval-signature-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone release approval", result.evidence)
+
+
+class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_supplier_content(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_supplier_return_content.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone supplier-return content",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_supplier_content_as_blocked(
+        self,
+    ) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-supplier-return-content-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone supplier-return", result.evidence)
+
+
+class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_routed_content(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_routed_output_content.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone routed-output content",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_routed_content_as_blocked(self) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-routed-output-content-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone routed-output", result.evidence)
+
+
+class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_factory_content(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_factory_output_content.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone factory-output content",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_factory_content_as_blocked(self) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-factory-output-content-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone factory-output", result.evidence)
+
+
+class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_first_article(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_first_article_content.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone first-article content",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_first_article_as_blocked(self) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-first-article-content-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone first-article", result.evidence)
+
+
+class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
+    def test_checker_exits_nonzero_and_reports_blocked_enclosure(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, "scripts/check_e1_phone_enclosure_mechanical_content.py"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+        combined = completed.stdout + completed.stderr
+        self.assertEqual(completed.returncode, 2, combined[-4000:])
+        self.assertIn(
+            "STATUS: BLOCKED E1 phone enclosure mechanical content",
+            combined,
+        )
+
+    def test_aggregator_classifies_e1_phone_enclosure_as_blocked(self) -> None:
+        spec = next(
+            gate
+            for gate in agg.GATES
+            if gate.name == "e1-phone-enclosure-mechanical-content-check"
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertIn("STATUS: BLOCKED E1 phone enclosure", result.evidence)
 
 
 if __name__ == "__main__":

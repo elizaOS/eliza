@@ -259,14 +259,9 @@ module e1_mockingjay_prod #(
     // cycle's `victim_way` reflects the new state.
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int w = 0; w < WAYS; w++)
-                for (int s = 0; s < SETS; s++)
-                    etr[w][s] <= MAX_ETR[ETR_W-1:0];
-            for (int w = 0; w < STT_WAYS; w++)
-                for (int s = 0; s < STT_SETS; s++)
-                    stt[w][s] <= '0;
-            for (int i = 0; i < RTP_ENTRIES; i++)
-                rtp[i] <= '0;
+            etr         <= '{default: '{default: MAX_ETR[ETR_W-1:0]}};
+            stt         <= '{default: '{default: '0}};
+            rtp         <= '{default: '0};
             global_ts_q <= '0;
             hits_q      <= '0;
             misses_q    <= '0;

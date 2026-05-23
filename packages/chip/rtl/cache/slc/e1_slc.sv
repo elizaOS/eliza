@@ -204,16 +204,12 @@ module e1_slc
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (int b = 0; b < BANKS; b++)
-                for (int w = 0; w < WAYS; w++)
-                    for (int s = 0; s < SETS_PER_BANK; s++) begin
-                        tag_array[b][w][s]   <= '0;
-                        vld_array[b][w][s]   <= 1'b0;
-                        drty_array[b][w][s]  <= 1'b0;
-                        data_array[b][w][s]  <= '0;
-                        compressed_form[b][w][s] <= BDI_NONE;
-                        rrpv[b][w][s]        <= 2'b11;
-                    end
+            tag_array       <= '{default: '{default: '{default: '0}}};
+            vld_array       <= '{default: '{default: '{default: 1'b0}}};
+            drty_array      <= '{default: '{default: '{default: 1'b0}}};
+            data_array      <= '{default: '{default: '{default: '0}}};
+            compressed_form <= '{default: '{default: '{default: BDI_NONE}}};
+            rrpv            <= '{default: '{default: '{default: 2'b11}}};
 
             state_q                <= U_IDLE;
             cur_paddr_q            <= '0;

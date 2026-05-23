@@ -14,11 +14,57 @@
 
 import type {
   InstalledRemotePluginSnapshot,
+  JsonValue,
   RemotePluginListEntry,
   RemotePluginPermissionGrant,
   RemotePluginStoreSnapshot,
 } from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
+import type {
+  DatabaseBackupResult,
+  DatabaseResetResult,
+  DatabaseSnapshot,
+} from "./database";
+import type {
+  DynamicViewCloseParams,
+  DynamicViewManifest,
+  DynamicViewOpenParams,
+  DynamicViewPushParams,
+  DynamicViewRegisterParams,
+  DynamicViewSession,
+  DynamicViewUnregisterParams,
+} from "./dynamic-views/types";
+import type {
+  LaunchBugReportBundleInfo,
+  LaunchEventsTailParams,
+  LaunchEventsTailResult,
+  LaunchSnapshot,
+} from "./launch/types";
+import type {
+  TraceEvent,
+  TraceRecordEventParams,
+  TraceSearchParams,
+  TraceSession,
+  TraceSessionStatus,
+  TraceStartSessionParams,
+  TraceSummary,
+  TraceTailParams,
+  TraceTailResult,
+} from "./trace/types";
+import type {
+  VoiceComponentSnapshot,
+  VoiceInjectTranscriptParams,
+  VoiceInterruptParams,
+  VoiceLatencySummary,
+  VoicePipelineSnapshot,
+  VoiceSpeakParams,
+  VoiceStartParams,
+  VoiceStopParams,
+  VoiceSynthesisResult,
+  VoiceSynthesizeSpeechParams,
+  VoiceTranscribeAudioParams,
+  VoiceTurn,
+} from "./voice/types";
 
 // ============================================================================
 // Shared Types
@@ -766,6 +812,7 @@ export interface RemotePluginInstallFromDirectoryRequest {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: RemotePluginPermissionGrant;
+  currentHash?: string | null;
 }
 
 export interface RemotePluginUninstallResult {
@@ -778,6 +825,35 @@ export interface RemotePluginLogsSnapshot {
   path: string;
   text: string;
   truncated: boolean;
+}
+
+export interface RemotePluginInvokeWorkerRequest {
+  id: string;
+  method: string;
+  params?: JsonValue;
+  windowId?: string;
+}
+
+export interface RemotePluginTailWorkerEventsRequest {
+  id: string;
+  afterSequence?: number;
+  limit?: number;
+}
+
+export interface RemotePluginWorkerEventRecord {
+  remotePluginId: string;
+  sequence: number;
+  name: string;
+  payload: JsonValue | null;
+  timestamp: string;
+}
+
+export interface RemotePluginWorkerEventsTailSnapshot {
+  id: string;
+  events: RemotePluginWorkerEventRecord[];
+  nextSequence: number;
+  minimumSequence: number | null;
+  gapBeforeSequence: number | null;
 }
 
 export interface DesktopStartupDiagnostics {
@@ -793,12 +869,22 @@ export interface DesktopStartupDiagnostics {
   configDir: string;
   logPath: string;
   statusPath: string;
+  database: DatabaseSnapshot;
   logTail: string;
   appVersion?: string;
   appRuntime?: string;
   packaged?: boolean;
   locale?: string;
 }
+
+export interface DatabaseRecoveryPreview {
+  snapshot: DatabaseSnapshot;
+  actions: DatabaseSnapshot["recoveryActions"];
+}
+
+export type DatabaseResetPgliteResult = DatabaseResetResult & {
+  restarted: boolean;
+};
 
 export interface DesktopBugReportBundleInfo {
   directory: string;
@@ -1083,6 +1169,138 @@ export type ElizaDesktopRPCSchema = {
         params: { id: string; maxBytes?: number };
         response: RemotePluginLogsSnapshot;
       };
+      remotePluginInvokeWorker: {
+        params: RemotePluginInvokeWorkerRequest;
+        response: JsonValue | null;
+      };
+      remotePluginTailWorkerEvents: {
+        params: RemotePluginTailWorkerEventsRequest;
+        response: RemotePluginWorkerEventsTailSnapshot;
+      };
+      dynamicViewRegister: {
+        params: DynamicViewRegisterParams;
+        response: DynamicViewManifest;
+      };
+      dynamicViewUnregister: {
+        params: DynamicViewUnregisterParams;
+        response: { removed: boolean };
+      };
+      dynamicViewList: {
+        params: undefined;
+        response: { views: DynamicViewManifest[] };
+      };
+      dynamicViewOpen: {
+        params: DynamicViewOpenParams;
+        response: DynamicViewSession;
+      };
+      dynamicViewClose: {
+        params: DynamicViewCloseParams;
+        response: DynamicViewSession;
+      };
+      dynamicViewPush: {
+        params: DynamicViewPushParams;
+        response: { ok: true };
+      };
+      dynamicViewSessions: {
+        params: undefined;
+        response: { sessions: DynamicViewSession[] };
+      };
+      traceSessionStart: {
+        params: TraceStartSessionParams;
+        response: TraceSession;
+      };
+      traceSessionComplete: {
+        params: {
+          sessionId: string;
+          metadata?: Record<string, JsonValue>;
+        };
+        response: TraceSession;
+      };
+      traceSessionCancel: {
+        params: { sessionId: string; reason?: string };
+        response: TraceSession;
+      };
+      traceSessionError: {
+        params: { sessionId: string; error: string; details?: JsonValue };
+        response: TraceSession;
+      };
+      traceEventRecord: {
+        params: TraceRecordEventParams;
+        response: TraceEvent;
+      };
+      traceSessionList: {
+        params:
+          | {
+              limit?: number;
+              status?: TraceSessionStatus;
+            }
+          | undefined;
+        response: { sessions: TraceSession[] };
+      };
+      traceSessionGet: {
+        params: { sessionId: string };
+        response: TraceSession;
+      };
+      traceSessionSummary: {
+        params: { sessionId: string };
+        response: TraceSummary;
+      };
+      traceEventsTail: {
+        params: TraceTailParams;
+        response: TraceTailResult;
+      };
+      traceEventsSearch: {
+        params: TraceSearchParams | undefined;
+        response: { events: TraceEvent[] };
+      };
+      traceViewOpen: {
+        params: { sessionId: string };
+        response: { session: TraceSession; dynamicViewSessionId: string };
+      };
+      voiceStatus: {
+        params: undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceComponents: {
+        params: undefined;
+        response: { components: VoiceComponentSnapshot[] };
+      };
+      voiceStart: {
+        params: VoiceStartParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceStop: {
+        params: VoiceStopParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceInterrupt: {
+        params: VoiceInterruptParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceInjectTranscript: {
+        params: VoiceInjectTranscriptParams;
+        response: VoiceTurn;
+      };
+      voiceSpeak: {
+        params: VoiceSpeakParams;
+        response: VoiceTurn;
+      };
+      voiceTranscribeAudio: {
+        params: VoiceTranscribeAudioParams;
+        response: VoiceTurn;
+      };
+      voiceSynthesizeSpeech: {
+        params: VoiceSynthesizeSpeechParams;
+        response: VoiceSynthesisResult;
+      };
+      voiceLatency: {
+        params: undefined;
+        response: VoiceLatencySummary;
+      };
+      voiceRecentTurns: {
+        params: { limit?: number } | undefined;
+        response: { turns: VoiceTurn[] };
+      };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
        * `/api/health` plugin/db counters and the in-process runtime phase.
@@ -1091,6 +1309,36 @@ export type ElizaDesktopRPCSchema = {
        * no port shifts, no schema drift.
        */
       bootProgress: { params: undefined; response: BootProgressSnapshot };
+      launchProgress: { params: undefined; response: LaunchSnapshot };
+      launchEventsTail: {
+        params: LaunchEventsTailParams | undefined;
+        response: LaunchEventsTailResult;
+      };
+      launchRetry: { params: undefined; response: LaunchSnapshot };
+      launchOpenDiagnosticsView: {
+        params: undefined;
+        response: { sessionId: string };
+      };
+      launchCreateBugReportBundle: {
+        params: undefined;
+        response: LaunchBugReportBundleInfo;
+      };
+      databaseStatus: {
+        params: undefined;
+        response: DatabaseSnapshot;
+      };
+      databaseRecoveryPreview: {
+        params: undefined;
+        response: DatabaseRecoveryPreview;
+      };
+      databaseBackupPglite: {
+        params: undefined;
+        response: DatabaseBackupResult;
+      };
+      databaseResetPglite: {
+        params: { restart?: boolean } | undefined;
+        response: DatabaseResetPgliteResult;
+      };
       /**
        * Typed counterpart to `client.getOnboardingStatus()` — the
        * renderer's first-boot gate. Same data as
@@ -2236,6 +2484,15 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "desktop:setDockIconVisibility": "desktopSetDockIconVisibility",
   "desktop:getPath": "desktopGetPath",
   "desktop:getStartupDiagnostics": "desktopGetStartupDiagnostics",
+  "launch:progress": "launchProgress",
+  "launch:eventsTail": "launchEventsTail",
+  "launch:retry": "launchRetry",
+  "launch:openDiagnosticsView": "launchOpenDiagnosticsView",
+  "launch:createBugReportBundle": "launchCreateBugReportBundle",
+  "database:status": "databaseStatus",
+  "database:recoveryPreview": "databaseRecoveryPreview",
+  "database:backupPglite": "databaseBackupPglite",
+  "database:resetPglite": "databaseResetPglite",
   "desktop:getRuntimeMode": "desktopGetRuntimeMode",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",
@@ -2262,6 +2519,37 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "remote-plugin:getWorkerStatus": "remotePluginGetWorkerStatus",
   "remote-plugin:listWorkerStatuses": "remotePluginListWorkerStatuses",
   "remote-plugin:getLogs": "remotePluginGetLogs",
+  "remote-plugin:invokeWorker": "remotePluginInvokeWorker",
+  "remote-plugin:tailWorkerEvents": "remotePluginTailWorkerEvents",
+  "dynamic-view:register": "dynamicViewRegister",
+  "dynamic-view:unregister": "dynamicViewUnregister",
+  "dynamic-view:list": "dynamicViewList",
+  "dynamic-view:open": "dynamicViewOpen",
+  "dynamic-view:close": "dynamicViewClose",
+  "dynamic-view:push": "dynamicViewPush",
+  "dynamic-view:sessions": "dynamicViewSessions",
+  "trace:sessionStart": "traceSessionStart",
+  "trace:sessionComplete": "traceSessionComplete",
+  "trace:sessionCancel": "traceSessionCancel",
+  "trace:sessionError": "traceSessionError",
+  "trace:eventRecord": "traceEventRecord",
+  "trace:sessionList": "traceSessionList",
+  "trace:sessionGet": "traceSessionGet",
+  "trace:sessionSummary": "traceSessionSummary",
+  "trace:eventsTail": "traceEventsTail",
+  "trace:eventsSearch": "traceEventsSearch",
+  "trace:viewOpen": "traceViewOpen",
+  "voice:status": "voiceStatus",
+  "voice:components": "voiceComponents",
+  "voice:start": "voiceStart",
+  "voice:stop": "voiceStop",
+  "voice:interrupt": "voiceInterrupt",
+  "voice:injectTranscript": "voiceInjectTranscript",
+  "voice:speak": "voiceSpeak",
+  "voice:transcribeAudio": "voiceTranscribeAudio",
+  "voice:synthesizeSpeech": "voiceSynthesizeSpeech",
+  "voice:latency": "voiceLatency",
+  "voice:recentTurns": "voiceRecentTurns",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",

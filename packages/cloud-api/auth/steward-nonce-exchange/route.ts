@@ -9,9 +9,14 @@
  * 3. This route forwards to Steward `POST /auth/oauth/exchange`, which
  *    consumes the code and returns `{ token, refreshToken, expiresAt }`.
  * 4. We verify the JWT (same path as `/api/auth/steward-session`), sync the
- *    user, set the HttpOnly cookies, and return `{ ok, userId }`.
+ *    user, set the HttpOnly cookies, and return `{ ok, userId }`. The
+ *    elizaos.ai hardware checkout origin also receives the access token so
+ *    its cross-site Stripe checkout POST can use Bearer auth; refresh stays
+ *    cookie-only.
  *
- * The access and refresh tokens never enter the browser process at any point.
+ * The refresh token never enters the browser process; the access token is
+ * returned only to the hardware checkout origin that still has to authenticate
+ * a cross-site Stripe checkout request with Bearer auth.
  *
  * Origin/Referer CSRF check mirrors `/api/auth/steward-session` exactly — the
  * route is callable from `*.elizacloud.ai` and `elizaos.ai` only (plus
@@ -97,6 +102,16 @@ function checkOrigin(
     ok: false,
     reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
   };
+}
+
+function shouldReturnClientToken(
+  c: { req: { header: (name: string) => string | undefined } },
+  isProduction: boolean,
+): boolean {
+  const origin =
+    originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
+  if (origin === "elizaos.ai" || origin === "www.elizaos.ai") return true;
+  return !isProduction && origin !== null && LOCAL_DEV_ORIGIN_HOSTS.has(origin);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -396,8 +411,9 @@ app.post("/", async (c) => {
     stewardUserId: claims.userId,
     expiresAt: exchange.data.expiresAt,
     expiresIn: exchange.data.expiresIn,
-    token,
-    refreshToken,
+    ...(shouldReturnClientToken(c, isProduction)
+      ? { token, refreshToken }
+      : {}),
   });
 });
 

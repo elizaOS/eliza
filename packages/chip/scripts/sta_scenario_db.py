@@ -36,9 +36,7 @@ SCHEMA = "eliza.pd_mmmc_scenario.v1"
 
 OPEN_PDK_NODES = frozenset({"sky130", "gf180", "ihp-sg13g2"})
 PREDICTIVE_NODES = frozenset({"asap7"})
-NDA_BLOCKED_NODES = frozenset(
-    {"tsmc-n2p", "tsmc-a14", "intel-14a", "samsung-sf2p"}
-)
+NDA_BLOCKED_NODES = frozenset({"tsmc-n2p", "tsmc-a14", "intel-14a", "samsung-sf2p"})
 KNOWN_NODES = OPEN_PDK_NODES | PREDICTIVE_NODES | NDA_BLOCKED_NODES
 
 # Default OCV margin derate (early/late) applied when a manifest does NOT
@@ -235,9 +233,7 @@ def _analysis_type(role: str) -> str:
 def build_scenario_set(node_id: str) -> ScenarioSet:
     """Build the scenario DB for one node from its corner manifest."""
     if node_id not in KNOWN_NODES:
-        raise ValueError(
-            f"unknown node_id '{node_id}'; known nodes: {sorted(KNOWN_NODES)}"
-        )
+        raise ValueError(f"unknown node_id '{node_id}'; known nodes: {sorted(KNOWN_NODES)}")
     manifest = _load_manifest(node_id)
     status = str(manifest.get("status", ""))
     pdk = str(manifest.get("pdk", ""))

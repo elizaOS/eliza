@@ -39,9 +39,21 @@ jobs:
           gitleaks version
 
       - name: Run gitleaks
-        # Scan the full working tree. Returns non-zero on any finding so the
-        # job fails the build the same way the wrapper action did.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
+          CURRENT_SHA: ${{ github.sha }}
         run: |
+          set -euo pipefail
+          RANGE_ARGS=()
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            RANGE_ARGS=(--log-opts "${PR_BASE_SHA}..${PR_HEAD_SHA}")
+          elif [[ -n "$BEFORE_SHA" && "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]]; then
+            RANGE_ARGS=(--log-opts "${BEFORE_SHA}..${CURRENT_SHA}")
+          fi
+
           gitleaks detect \
             --config .gitleaks.toml \
             --source . \
@@ -49,7 +61,8 @@ jobs:
             --redact \
             --report-format sarif \
             --report-path gitleaks.sarif \
-            --no-banner
+            --no-banner \
+            "${RANGE_ARGS[@]}"
 
       - name: Upload SARIF
         if: always()

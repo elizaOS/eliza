@@ -297,6 +297,69 @@
         "VTS passed"
       ]
     },
+    "docs/evidence/linux/u_boot_eliza_build.log": {
+      "blocker_code": "missing_uboot_build_log",
+      "claim_boundary": "external_uboot_build_only_not_linux_or_android_boot_evidence",
+      "producer_command": "ELIZA_UBOOT_CMD='make eliza_defconfig && make' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot build",
+      "capture_hint": "capture-u-boot-evidence.sh prepends eliza-evidence provenance and appends the verbatim external U-Boot build transcript",
+      "required_metadata": [
+        "eliza-evidence: target=u-boot artifact=u_boot_eliza_build",
+        "eliza-evidence: command=",
+        "eliza-evidence: started_utc=",
+        "eliza-evidence: ended_utc=",
+        "eliza-evidence: status=PASS"
+      ],
+      "required_any": [
+        "u-boot.bin",
+        "U-Boot"
+      ],
+      "required_all": [
+        "eliza-evidence: uboot="
+      ],
+      "forbidden_any": [
+        "Error 1",
+        "No rule to make target",
+        "FAILED",
+        "status=FAIL"
+      ],
+      "forbidden_claims": [
+        "Linux booted",
+        "Android compatible",
+        "CTS passed",
+        "VTS passed"
+      ]
+    },
+    "docs/evidence/linux/u_boot_opensbi_boot_chain.log": {
+      "blocker_code": "missing_uboot_opensbi_boot_chain_log",
+      "claim_boundary": "external_uboot_opensbi_boot_chain_only_not_linux_or_android_boot_evidence",
+      "producer_command": "ELIZA_UBOOT_BOOT_CMD='/path/to/qemu-or-renode boot command' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot boot-chain",
+      "capture_hint": "capture-u-boot-evidence.sh prepends eliza-evidence provenance and appends the external simulator or board UART transcript for OpenSBI handoff into U-Boot",
+      "required_metadata": [
+        "eliza-evidence: target=u-boot artifact=u_boot_opensbi_boot_chain",
+        "eliza-evidence: command=",
+        "eliza-evidence: started_utc=",
+        "eliza-evidence: ended_utc=",
+        "eliza-evidence: status=PASS"
+      ],
+      "required_any": [
+        "U-Boot"
+      ],
+      "required_all": [
+        "OpenSBI",
+        "eliza-evidence: uboot="
+      ],
+      "forbidden_any": [
+        "Kernel panic",
+        "FAILED",
+        "timeout",
+        "status=FAIL"
+      ],
+      "forbidden_claims": [
+        "Android compatible",
+        "CTS passed",
+        "VTS passed"
+      ]
+    },
     "docs/evidence/android/eliza_ai_soc_lunch.log": {
       "blocker_code": "missing_aosp_lunch_log",
       "claim_boundary": "external_aosp_product_selection_only_not_boot_or_compatibility_evidence",

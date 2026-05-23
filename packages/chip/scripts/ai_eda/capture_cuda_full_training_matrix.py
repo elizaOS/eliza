@@ -11,7 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -109,7 +109,10 @@ def required_jobs() -> list[dict[str, Any]]:
             ["external/SOURCES.lock.yaml", "network access", "license/storage review"],
             ["build/ai_eda/external_assets/<run-id>/*.json"],
             0,
-            ["each fetched asset has a verify-only follow-up report", "no payload tarball embeds raw datasets"],
+            [
+                "each fetched asset has a verify-only follow-up report",
+                "no payload tarball embeds raw datasets",
+            ],
         ),
         job(
             "normalized_training_corpus",
@@ -138,8 +141,13 @@ def required_jobs() -> list[dict[str, Any]]:
             "Gate FloorSet and R-Zoo before floorplanning pretraining",
             "data",
             "python3 scripts/ai_eda/capture_floorplanning_dataset_readiness.py --run-id <cuda-host>",
-            ["FloorSet and R-Zoo external intake manifests", "ignored payload directories after fetch"],
-            ["build/ai_eda/floorplanning_dataset_readiness/<run-id>/floorplanning_dataset_readiness.json"],
+            [
+                "FloorSet and R-Zoo external intake manifests",
+                "ignored payload directories after fetch",
+            ],
+            [
+                "build/ai_eda/floorplanning_dataset_readiness/<run-id>/floorplanning_dataset_readiness.json"
+            ],
             0,
             [
                 "check_floorplanning_dataset_readiness.py passes",
@@ -237,7 +245,11 @@ def required_jobs() -> list[dict[str, Any]]:
             "Execute deterministic baseline/candidate replay and compare PPA/signoff metrics",
             "physical-design",
             "python3 scripts/ai_eda/capture_openlane_replay_comparison.py --run-id <cuda-host> --baseline-execution <baseline-openlane-replay-execution.json> --candidate-execution build/ai_eda/openlane_replay_execution/<cuda-host>/openlane_replay_execution.json",
-            ["OpenLane/OpenROAD/PDK host prerequisites", "baseline replay execution report", "candidate replay execution report"],
+            [
+                "OpenLane/OpenROAD/PDK host prerequisites",
+                "baseline replay execution report",
+                "candidate replay execution report",
+            ],
             ["build/ai_eda/openlane_replay_comparison/<run-id>/openlane_replay_comparison.json"],
             0,
             ["no signoff regression", "at least one objective metric improvement"],
@@ -266,11 +278,14 @@ def required_jobs() -> list[dict[str, Any]]:
             "objective_readiness_closeout",
             "Repackage evidence and run objective readiness after CUDA/PD execution",
             "audit",
-            "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff",
+            "python3 scripts/ai_eda/capture_ai_eda_objective_readiness.py --run-id <cuda-host> --readiness-run-id <cuda-host> --evidence-bundle-run-id <cuda-host> --training-handoff-run-id <cuda-host>-training-handoff --replay-handoff-run-id <cuda-host>",
             ["CUDA readiness audit", "evidence bundle", "all job outputs above"],
             ["build/ai_eda/objective_readiness/<run-id>/objective_readiness.json"],
             0,
-            ["objective checker passes", "completion remains false until all objective requirements are proven"],
+            [
+                "objective checker passes",
+                "completion remains false until all objective requirements are proven",
+            ],
         ),
     ]
 
@@ -311,7 +326,8 @@ def main() -> int:
         ROOT / f"build/ai_eda/cuda_training_payloads/{payload_run_id}/cuda_training_run_plan.json"
     )
     preflight_path = (
-        ROOT / f"build/ai_eda/cuda_training_preflight/{preflight_run_id}/cuda_training_preflight.json"
+        ROOT
+        / f"build/ai_eda/cuda_training_preflight/{preflight_run_id}/cuda_training_preflight.json"
     )
     run_plan = load_json(run_plan_path)
     preflight = load_json(preflight_path)
@@ -336,7 +352,9 @@ def main() -> int:
                 if "{" in expected or "*" in expected:
                     continue
                 if not has_output(run_plan, expected):
-                    blockers.append(f"run plan missing expected output for job {item['id']}: {expected}")
+                    blockers.append(
+                        f"run plan missing expected output for job {item['id']}: {expected}"
+                    )
 
     full_dataset_modes: dict[str, bool] = {}
     for dataset, command in FULL_DATASET_CONVERTER_COMMANDS.items():
@@ -348,7 +366,7 @@ def main() -> int:
     status = "MATRIX_READY_FOR_CUDA_HOST" if not blockers else "MATRIX_RECORDED_WITH_BLOCKERS"
     report = {
         "schema": SCHEMA,
-        "created_at_utc": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+        "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "run_id": args.run_id,
         "claim_boundary": CLAIM_BOUNDARY,
         "release_use_allowed": False,
