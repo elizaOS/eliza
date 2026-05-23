@@ -292,7 +292,7 @@ export function AdminMetricsClient() {
           label="DAU"
           icon={Users}
           loading={loading}
-          value={overview?.dau.toLocaleString() ?? "0"}
+          value={overview?.dau?.toLocaleString() ?? "0"}
           helper="Daily active users"
           className="border border-brand-surface"
         />
@@ -300,7 +300,7 @@ export function AdminMetricsClient() {
           label="WAU"
           icon={Users}
           loading={loading}
-          value={overview?.wau.toLocaleString() ?? "0"}
+          value={overview?.wau?.toLocaleString() ?? "0"}
           helper="Weekly active users"
           className="border border-brand-surface border-l-0"
         />
@@ -308,7 +308,7 @@ export function AdminMetricsClient() {
           label="MAU"
           icon={Activity}
           loading={loading}
-          value={overview?.mau.toLocaleString() ?? "0"}
+          value={overview?.mau?.toLocaleString() ?? "0"}
           helper="Monthly active users"
           className="border border-brand-surface border-t-0 lg:border-t lg:border-l-0"
         />
@@ -316,8 +316,8 @@ export function AdminMetricsClient() {
           label="New Signups (7d)"
           icon={UserPlus}
           loading={loading}
-          value={overview?.newSignups7d.toLocaleString() ?? "0"}
-          helper={overview ? `${overview.newSignupsToday} today` : "— today"}
+          value={overview?.newSignups7d?.toLocaleString() ?? "0"}
+          helper={overview?.newSignupsToday != null ? `${overview.newSignupsToday} today` : "— today"}
           className="border border-brand-surface border-t-0 border-l-0 lg:border-t"
         />
       </div>
@@ -328,7 +328,7 @@ export function AdminMetricsClient() {
           label="Avg Messages/User"
           icon={MessageSquare}
           loading={loading}
-          value={overview?.avgMessagesPerUser.toLocaleString() ?? "0"}
+          value={overview?.avgMessagesPerUser?.toLocaleString() ?? "0"}
           helper="Average daily engagement depth"
           className="border border-brand-surface"
         />
@@ -599,7 +599,7 @@ export function AdminMetricsClient() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {overview?.platformDistribution.map(
+                    {overview?.platformDistribution?.map(
                       ({ key: platform, count, percent }) => (
                         <div key={platform} className="space-y-1">
                           <div className="flex items-center justify-between text-sm">
@@ -623,7 +623,7 @@ export function AdminMetricsClient() {
                         </div>
                       ),
                     )}
-                    {overview && overview.platformDistribution.length === 0 && (
+                    {overview?.platformDistribution?.length === 0 && (
                       <p className="text-center text-sm font-mono text-white/40">
                         No platform data yet
                       </p>
