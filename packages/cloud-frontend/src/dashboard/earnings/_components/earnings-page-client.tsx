@@ -384,9 +384,9 @@ export function EarningsPageClient() {
             <Coins className="mr-2 h-4 w-4" />
             Redeem for elizaOS
           </Button>
-          {balance?.eligibility.reason && !balance.eligibility.canRedeem && (
+          {balance?.eligibility?.reason && !balance.eligibility?.canRedeem && (
             <p className="text-xs text-white/40 mt-2 text-center">
-              {balance.eligibility.reason}
+              {balance.eligibility?.reason}
             </p>
           )}
         </BrandCard>
@@ -781,7 +781,7 @@ export function EarningsPageClient() {
                 !quote?.success ||
                 !redeemAddress ||
                 submitting ||
-                !balance?.eligibility.canRedeem
+                !balance?.eligibility?.canRedeem
               }
               className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
             >

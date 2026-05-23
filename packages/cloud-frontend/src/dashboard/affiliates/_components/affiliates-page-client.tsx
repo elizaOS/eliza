@@ -55,8 +55,10 @@ export function AffiliatesPageClient() {
     }
 
     const data = await res.json();
-    setAffiliateData(data.code);
-    setMarkupPercent(data.code.markup_percent);
+    if (data.code) {
+      setAffiliateData(data.code);
+      setMarkupPercent(data.code.markup_percent);
+    }
     return data.code as AffiliateData;
   }, []);
 

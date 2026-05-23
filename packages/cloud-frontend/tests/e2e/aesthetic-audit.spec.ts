@@ -784,8 +784,28 @@ for (const viewport of VIEWPORTS) {
               return empty({ keys: [], total: 0 });
             if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
               return empty({ containers: [] });
+            if (/\/eliza\/agents\/[^/?]+/.test(url))
+              return empty({
+                success: true,
+                data: {
+                  id: "e2e-fixture",
+                  agentName: "E2E Test Agent",
+                  status: "running",
+                  databaseStatus: "connected",
+                  lastBackupAt: null,
+                  lastHeartbeatAt: new Date().toISOString(),
+                  errorMessage: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  token_address: null, token_chain: null, token_name: null, token_ticker: null,
+                  bridgeUrl: null,
+                  errorCount: 0,
+                  walletAddress: null, walletProvider: null, walletStatus: "none",
+                  adminDetails: null,
+                },
+              });
             if (/\/agents(\/[^/]+)?($|\?)/.test(url))
-              return empty({ agents: [] });
+              return empty([]);
             if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
             if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
             if (/\/documents\/query/.test(url))
@@ -807,6 +827,17 @@ for (const viewport of VIEWPORTS) {
                 },
                 bySource: [],
                 recentEarnings: [],
+                limits: {
+                  minRedemptionUsd: 10,
+                  maxSingleRedemptionUsd: 1000,
+                  userDailyLimitUsd: 1000,
+                  userHourlyLimitUsd: 250,
+                },
+                eligibility: {
+                  canRedeem: false,
+                  reason: "Minimum redemption is $10.00. You have $0.00 available.",
+                  dailyLimitRemaining: 1000,
+                },
               });
             if (/\/redemptions\/status/.test(url))
               return empty({
@@ -820,12 +851,17 @@ for (const viewport of VIEWPORTS) {
               });
             if (/\/redemptions/.test(url))
               return empty({ redemptions: [], total: 0 });
-            if (/\/affiliates|\/referrals/.test(url))
+            if (/\/affiliates/.test(url))
               return empty({
-                referrals: [],
-                stats: { totalEarned: 0, totalReferred: 0 },
-                total_referrals: 0,
+                code: {
+                  id: "aff_test",
+                  code: "TEST123",
+                  markup_percent: "20.00",
+                  is_active: true,
+                },
               });
+            if (/\/referrals/.test(url))
+              return empty({ code: "REF123", total_referrals: 0, is_active: true });
             if (/\/quotas\/usage/.test(url))
               return empty({
                 quotas: {},
@@ -1068,16 +1104,24 @@ for (const viewport of VIEWPORTS) {
               });
             if (/\/admin\/metrics/.test(url))
               return empty({
-                dailyTrend: [],
+                dau: 0,
+                wau: 0,
+                mau: 0,
+                newSignupsToday: 0,
+                newSignups7d: 0,
+                avgMessagesPerUser: 0,
                 platformBreakdown: {},
+                platformDistribution: [],
+                oauthRate: {
+                  total_users: 0,
+                  connected_users: 0,
+                  rate: 0,
+                  ratePercent: 0,
+                  byService: {},
+                },
+                dailyTrend: [],
                 retentionCohorts: [],
                 retentionRates: [],
-                oauthMetrics: { granted: 0, revoked: 0, providers: [] },
-                summary: {
-                  totalUsers: 0,
-                  totalMessages: 0,
-                  averageMessagesPerUser: "0",
-                },
               });
             if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 

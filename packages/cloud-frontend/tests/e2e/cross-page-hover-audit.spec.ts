@@ -84,12 +84,24 @@ test("cross-page hover audit — no orange↔black, no blue", async ({
   context,
 }) => {
   test.setTimeout(600_000);
-  await context.addInitScript(() => {
-    window.localStorage.setItem(
-      "steward_session_token",
-      "playwright-test-token",
-    );
-  });
+  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" }), "utf8")
+    .toString("base64")
+    .replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "22222222-2222-4222-8222-222222222222",
+      userId: "22222222-2222-4222-8222-222222222222",
+      address: "0xE2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2E2",
+      email: "audit@example.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    }),
+    "utf8",
+  ).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  const syntheticToken = `${header}.${payload}.audit-fake-signature`;
+  await context.addInitScript((t: string) => {
+    window.localStorage.setItem("steward_session_token", t);
+  }, syntheticToken);
   // Generic empty mock — every dashboard fetch returns an empty list.
   await context.route(/\/api\//, (route) => {
     const url = route.request().url();

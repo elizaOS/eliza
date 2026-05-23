@@ -200,7 +200,7 @@ export function AdminMetricsClient() {
   }, [overview]);
 
   const oauthServiceData = useMemo(() => {
-    if (!overview) return [];
+    if (!overview?.oauthRate?.byService) return [];
     return Object.entries(overview.oauthRate.byService)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 10)
@@ -337,10 +337,10 @@ export function AdminMetricsClient() {
           icon={Link2}
           loading={loading}
           value={
-            overview ? `${overview.oauthRate.ratePercent.toFixed(1)}%` : "0%"
+            overview?.oauthRate ? `${overview.oauthRate.ratePercent.toFixed(1)}%` : "0%"
           }
           helper={
-            overview
+            overview?.oauthRate
               ? `${overview.oauthRate.connected_users} of ${overview.oauthRate.total_users} users`
               : ""
           }
@@ -744,13 +744,13 @@ export function AdminMetricsClient() {
                 ) : (
                   <div className="flex flex-col items-center gap-4 py-6">
                     <div className="text-5xl font-mono font-bold text-white">
-                      {overview
+                      {overview?.oauthRate
                         ? overview.oauthRate.ratePercent.toFixed(1)
                         : "0"}
                       %
                     </div>
                     <p className="text-sm font-mono text-white/60">
-                      {overview
+                      {overview?.oauthRate
                         ? `${overview.oauthRate.connected_users.toLocaleString()} of ${overview.oauthRate.total_users.toLocaleString()} users`
                         : "— of — users"}
                     </p>
