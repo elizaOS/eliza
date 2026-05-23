@@ -39,6 +39,17 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "PEM envelope template wrappers (no key material checked in)"
+paths = [
+  '''(^|/)packages/cloud-shared/src/lib/auth/agent-token\.ts$''',
+]
+regexTarget = "match"
+regexes = [
+  '''-----BEGIN PRIVATE KEY-----''',
+  '''-----END PRIVATE KEY-----''',
+]
+
+[[allowlists]]
 description = "Generated lockfiles — hash output, not secrets"
 paths = [
   '''(^|/)bun\.lock$''',
