@@ -35,8 +35,10 @@ button.active { border-color: #f80; color: #f80; background: #1a1408; }
   <h1>ASIMOV-1 · Feminine Edit</h1>
 
   <h2>Layers</h2>
-  <div class="row"><input type="checkbox" id="showAsimov" checked> <label>ASIMOV-1 (STL)</label></div>
+  <div class="row"><input type="checkbox" id="showAsimov" checked> <label>ASIMOV-1 modified (STL)</label></div>
   <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="asimovOpacity" min="0" max="100" value="85"> <span class="val" id="asimovOpacityVal">85</span></div>
+  <div class="row"><input type="checkbox" id="showOrig"> <label>ASIMOV-1 original (ghost)</label></div>
+  <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="origOpacity" min="0" max="100" value="18"> <span class="val" id="origOpacityVal">18</span></div>
   <div class="row"><input type="checkbox" id="showGLB" checked> <label>Saffron Sentinel (GLB)</label></div>
   <div class="row"><label style="padding-left:16px">Opacity</label> <input type="range" id="glbOpacity" min="0" max="100" value="40"> <span class="val" id="glbOpacityVal">40</span></div>
   <div class="row"><input type="checkbox" id="showWire"> <label>Wireframe</label></div>
@@ -79,6 +81,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { STLLoader } from 'three/addons/loaders/STLLoader.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const canvas = document.getElementById('c');
 const container = document.getElementById('canvas-container');
@@ -140,8 +143,11 @@ function setView(name) {
 setView('front');
 
 // ── Groups ────────────────────────────────────────────────────────
-const asimovGroup = new THREE.Group();
-const glbGroup = new THREE.Group();
+const asimovGroup   = new THREE.Group();  // modified
+const origGroup     = new THREE.Group();  // original (for comparison, hidden by default)
+const glbGroup      = new THREE.Group();  // Saffron Sentinel GLB
+origGroup.visible = false;
+scene.add(origGroup);
 scene.add(asimovGroup);
 scene.add(glbGroup);
 
@@ -183,11 +189,14 @@ fetch('./kinematic_tree.json')
       const color = GROUP_COLORS[group] || 0x888888;
 
       stlLoader.load(stlUrl, (geometry) => {
+        // Merge coincident vertices so computeVertexNormals produces smooth
+        // shading rather than flat per-face normals (STL has unshared verts).
+        try { geometry = mergeVertices(geometry, 1e-4); } catch(e) {}
         geometry.computeVertexNormals();
         const mat = new THREE.MeshStandardMaterial({
           color,
-          roughness: 0.6,
-          metalness: 0.3,
+          roughness: 0.55,
+          metalness: 0.35,
           transparent: true,
           opacity: 0.85,
         });
@@ -238,6 +247,40 @@ fetch('./kinematic_tree.json')
     }
   });
 
+// ── Load Original ASIMOV-1 (for comparison) ───────────────────────
+let origLoadedCount = 0;
+fetch('./kinematic_tree.json')
+  .then(r => r.json())
+  .then(tree => {
+    for (const link of tree.links) {
+      if (!link.stl) continue;
+      const origUrl = './cad/asimov-feminine/originals/' + link.stl;
+      const group = PART_GROUP[link.stl] || 'leg';
+      stlLoader.load(origUrl, (geometry) => {
+        try { geometry = mergeVertices(geometry, 1e-4); } catch(e) {}
+        geometry.computeVertexNormals();
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          roughness: 0.8,
+          metalness: 0.1,
+          transparent: true,
+          opacity: 0.18,
+          depthWrite: false,
+        });
+        const mesh = new THREE.Mesh(geometry, mat);
+        const pos = link.world_pos;
+        mesh.position.set(pos[0], pos[1], pos[2]);
+        if (link.world_rot) {
+          const r = link.world_rot;
+          const m4 = new THREE.Matrix4();
+          m4.set(r[0][0],r[0][1],r[0][2],0, r[1][0],r[1][1],r[1][2],0, r[2][0],r[2][1],r[2][2],0, 0,0,0,1);
+          mesh.setRotationFromMatrix(m4);
+        }
+        origGroup.add(mesh);
+      });
+    }
+  });
+
 function onAsimovLoaded() {
   updateStatus('ASIMOV-1 loaded. Loading GLB...');
   // Compute bounding box
@@ -270,8 +313,10 @@ gltfLoader.load('./saffron_sentinel.glb', (gltf) => {
     }
   });
 
-  // GLB is Y-up, MJCF/scene is Z-up → rotate 90° around X
-  glbModel.rotation.x = Math.PI / 2;
+  // GLB is Y-up, character faces -Z (glTF convention).
+  // Three.js XYZ Euler = Rx*Ry*Rz, so to map Y→Z and -Z→+X we need:
+  //   rotation.y = -PI/2, rotation.z = -PI/2  (rotation.x = 0)
+  glbModel.rotation.set(0, -Math.PI / 2, -Math.PI / 2);
 
   // Compute GLB bounding box
   const box = new THREE.Box3().setFromObject(glbModel);
@@ -317,6 +362,7 @@ function bindRange(id, valId, fmt, fn) {
 }
 
 bindCheck('showAsimov', v => { asimovGroup.visible = v; });
+bindCheck('showOrig', v => { origGroup.visible = v; });
 bindCheck('showGLB', v => { glbGroup.visible = v; });
 bindCheck('showWire', v => {
   asimovGroup.traverse(c => { if (c.isMesh) c.material.wireframe = v; });
@@ -328,6 +374,9 @@ bindCheck('showLegs', v => { (meshByGroup.leg||[]).forEach(m => m.visible = v); 
 
 bindRange('asimovOpacity', 'asimovOpacityVal', v => v + '%', v => {
   asimovGroup.traverse(c => { if (c.isMesh) { c.material.opacity = v/100; c.material.transparent = v < 100; } });
+});
+bindRange('origOpacity', 'origOpacityVal', v => v + '%', v => {
+  origGroup.traverse(c => { if (c.isMesh) { c.material.opacity = v/100; c.material.transparent = true; } });
 });
 bindRange('glbOpacity', 'glbOpacityVal', v => v + '%', v => {
   glbGroup.traverse(c => { if (c.isMesh) { c.material.opacity = v/100; c.material.transparent = true; } });

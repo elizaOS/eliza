@@ -35,15 +35,18 @@ r = modify(str(ORIG / "WAIST_YAW.STL"), str(OUT / "WAIST_YAW.STL"), [
     # Global lateral compression (unchanged)
     {"op": "scale", "sx": 1.0, "sy": 0.76, "sz": 1.0},
 
-    # Breast shape: stronger main bulge — 45mm forward (was 35mm)
+    # Breast shape: 28mm forward protrusion with very soft falloff.
+    # 45mm caused visible mesh stepping due to large per-vertex displacements
+    # on a coarse STL mesh. 28mm + falloff=1.5 (softer bell curve) reduces
+    # discontinuous normal artifacts while still creating clear chest shape.
     {"op": "add_bulge", "axis_fwd": 0, "axis_up": 2,
-     "up_frac_lo": 0.55, "up_frac_hi": 0.90,
-     "bulge_max": 0.045, "falloff": 2.5},
+     "up_frac_lo": 0.52, "up_frac_hi": 0.92,
+     "bulge_max": 0.028, "falloff": 1.5},
 
-    # Second focused breast bulge (unchanged)
+    # Second focused breast bulge — subtle lift at peak
     {"op": "add_bulge", "axis_fwd": 0, "axis_up": 2,
-     "up_frac_lo": 0.65, "up_frac_hi": 0.85,
-     "bulge_max": 0.015, "falloff": 2.0},
+     "up_frac_lo": 0.62, "up_frac_hi": 0.84,
+     "bulge_max": 0.010, "falloff": 1.8},
 
     # Shoulder region lateral compression (unchanged)
     {"op": "scale_axis_range", "axis": 2, "scale": 0.84,
