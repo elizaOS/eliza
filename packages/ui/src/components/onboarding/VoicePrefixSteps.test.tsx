@@ -49,7 +49,9 @@ describe("VoicePrefixSteps", () => {
     expect(screen.getByTestId("voice-prefix-steps").className).toContain(
       "text-[#0B35F1]",
     );
-    expect(container.querySelector("main")?.className).toContain("bg-[#FFFFFF]");
+    expect(container.querySelector("main")?.className).toContain(
+      "bg-[#FFFFFF]",
+    );
     expect(
       screen.getByTestId("voice-prefix-welcome-request-mic").className,
     ).toContain("bg-[#0B35F1]");

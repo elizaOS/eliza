@@ -44,7 +44,6 @@ import { CustomActionEditor } from "./components/custom-actions/CustomActionEdit
 import { CustomActionsPanel } from "./components/custom-actions/CustomActionsPanel";
 import { AppsPageView } from "./components/pages/AppsPageView";
 import { ChatView } from "./components/pages/ChatView";
-import { HomeView } from "./components/pages/HomeView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
 import { AssistantOverlay } from "./components/shell/AssistantOverlay";
