@@ -411,6 +411,120 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("routes short chat-entity identity lookups through recall instead of simple guessing", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["simple"],
+					reply: "Queuebot is just the same assistant you've seen before.",
+					simple: true,
+					requiresTool: false,
+				},
+				extract: {
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+			}),
+			JSON.stringify({
+				thought: "Identity lookup should be grounded in recalled chat context.",
+				toolCalls: [],
+				messageToUser:
+					"I don't have enough recalled chat context to identify queuebot.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "MESSAGE",
+				contexts: ["messaging", "memory"],
+				description: "Search and inspect stored conversation messages.",
+				validate: async () => true,
+				handler: async () => ({ success: true }),
+			},
+		] as never;
+		runtime.composeState = vi.fn(async () => ({
+			values: { availableContexts: "simple, general, memory, messaging" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nrecent provider text",
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "",
+		})) as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: [
+					"[Recent channel context]",
+					"e2e: queuebot came up earlier in the channel.",
+					"",
+					"[Discord #general | NUBot test server] @e2e (Sat 05/23/2026 10:25 UTC): assistant (@1490833425802854491) who is queuebot?",
+				].join("\n"),
+				source: "discord",
+			}),
+			state: {
+				values: { availableContexts: "simple, general, memory, messaging" },
+				data: {},
+				text: "",
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerCall = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain("identity_lookup_policy");
+		expect(plannerUserContent).toContain('"candidateActions":["MESSAGE"]');
+		expect(plannerUserContent).toContain("routing through recall context");
+		expect(plannerUserContent).not.toContain(
+			"Queuebot is just the same assistant",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I don't have enough recalled chat context to identify queuebot.",
+			);
+		}
+	});
+
+	it("does not reroute ordinary public identity questions through recall", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Barack Obama is a former U.S. president.",
+				extra: { requiresTool: false },
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "assistant (@1490833425802854491) who is obama?",
+				source: "discord",
+			}),
+			state: {
+				values: { availableContexts: "simple, general, memory, messaging" },
+				data: {},
+				text: "",
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Barack Obama is a former U.S. president.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
 	it("does not treat the agent's own attachment ack as a user follow-up anchor", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
