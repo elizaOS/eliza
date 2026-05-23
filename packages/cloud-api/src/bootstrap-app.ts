@@ -16,6 +16,7 @@ import { runWithCloudBindingsAsync } from "@/lib/runtime/cloud-bindings";
 import { setRuntimeR2Bucket } from "@/lib/storage/r2-runtime-binding";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
+import jwksRoute from "../.well-known/jwks.json/route";
 import { handleBlueBubblesWebhook } from "../webhooks/bluebubbles/route";
 import { mountRoutes } from "./_router.generated";
 import { authMiddleware } from "./middleware/auth";
@@ -68,6 +69,8 @@ export function createApp(): Hono<AppEnv> {
       },
     );
   });
+  app.route("/.well-known/jwks.json", jwksRoute);
+
   app.use("*", authMiddleware);
 
   app.all("/steward", embeddedStewardHandler);
