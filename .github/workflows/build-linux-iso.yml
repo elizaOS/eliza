@@ -108,8 +108,23 @@ jobs:
             -enable-kvm -cdrom "${{ steps.iso.outputs.path }}" -boot d \
             -m 2G -smp 2 -display none -vga none \
             -serial "file:$SERIAL_LOG" -no-reboot -nographic 2>/dev/null || true
-          if grep -qi "elizaOS\|eliza\|login:" "$SERIAL_LOG" 2>/dev/null; then
-            echo "ISO smoke test: boot strings found"
+          # Tiered match: a strong signal proves elizaOS-specific services
+          # came up; a generic match proves the kernel/userspace booted but
+          # the agent stack did not (surfaced as a warning so the build
+          # doesn't regress while the issue is investigated).
+          #
+          # Strong regex covers two formats:
+          #   1. Description-based "(Starting|Started) elizaOS <word>..."
+          #      — what modern systemd (v245+, Debian trixie ships v257)
+          #      prints because every elizaos-*.service has
+          #      Description=elizaOS <...>.
+          #   2. Unit-name "elizaos-<name>.service" — appears in service
+          #      exit / failure lines and on older systemd.
+          if grep -qE '(Starting|Started) elizaOS [A-Za-z]|elizaos-(agent|launcher|first-boot|chat-overlay|terminal-tui-smoke)\.service' "$SERIAL_LOG" 2>/dev/null; then
+            echo "ISO smoke test: elizaOS service markers detected"
+          elif grep -qi 'elizaOS\|eliza\|login:' "$SERIAL_LOG" 2>/dev/null; then
+            echo "::warning::Boot reached generic strings but no elizaos-*.service marker detected — verify the agent stack started."
+            echo "ISO smoke test: weak match (boot OK, elizaOS service markers missing)"
           else
             echo "ERROR: boot strings not detected"
             tail -200 "$SERIAL_LOG" || true
