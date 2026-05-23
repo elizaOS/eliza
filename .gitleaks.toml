@@ -60,3 +60,70 @@ paths = [
   '''(^|/)poetry\.lock$''',
   '''(^|/)uv\.lock$''',
 ]
+
+# Hardware part-selection YAMLs under packages/chip/board/kicad/. The
+# generic-api-key rule flags keys like `side_key_*`, `selected_side_key_*` whose
+# values are component family names (e.g. Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7,
+# Littelfuse_CK_KMR2). These are mechanical-button part identifiers in
+# engineering planning docs, not credentials.
+[[allowlists]]
+description = "Hardware side-button part-name configs (not API keys)"
+paths = [
+  '''(^|/)packages/chip/board/kicad/.*\.yaml$''',
+]
+regexTarget = "match"
+regexes = [
+  '''(side_key|selected_side_key|side_key_alternate|side_key_primary|selected_side_key_family)\s*:\s*[A-Za-z][A-Za-z0-9_\-]*''',
+]
+
+# evidence/tee/*.json: keyMaterialSha256 fields are SHA-256 digests of TEE key
+# material captured for attestation evidence — the hashes themselves are not
+# secrets, and publishing them is the entire point of the evidence artifact.
+[[allowlists]]
+description = "TEE attestation evidence: SHA-256 of key material, not the key"
+paths = [
+  '''(^|/)evidence/tee/.*\.json$''',
+]
+regexTarget = "match"
+regexes = [
+  '''"keyMaterialSha256"\s*:\s*"[0-9a-fA-F]{64}"''',
+]
+
+# FIPS-197 AES test vectors. The constant 0x2B7E151628AED2A6ABF7158809CF4F3C is
+# the published AES key from NIST FIPS-197 Appendix C — used to cross-check the
+# RTL roundtrip against the reference. Public standard, not a credential.
+[[allowlists]]
+description = "FIPS-197 published AES test vector"
+paths = [
+  '''(^|/)packages/chip/verify/cocotb/security/test_e1_mcie\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''0x2B7E1516_28AED2A6_ABF71588_09CF4F3C''',
+]
+
+# Python tuple unpacking of an Ed25519 reference backend: the identifier
+# `ed25519_verify_raw` is a function name returned from `_loader()`, not a key.
+# Triggered by gitleaks 8.30+ generic-api-key regex on `<token>, <token> = ...`.
+[[allowlists]]
+description = "Ed25519 reference backend function-name tuple unpacking"
+paths = [
+  '''(^|/)packages/chip/tests/security/negative/(ed25519_ref|opnphn)\.py$''',
+]
+regexTarget = "match"
+regexes = [
+  '''Ed25519PrivateKey,\s*ed25519_verify_raw''',
+]
+
+# Anvil / Hardhat well-known deterministic dev account #0 private key. Public,
+# documented, used by every Ethereum dev tool's local node. Lives in an e2e
+# helper that injects a fake wallet for Playwright tests.
+[[allowlists]]
+description = "Anvil/Hardhat well-known test private key (public dev fixture)"
+paths = [
+  '''(^|/)packages/cloud-frontend/tests/e2e/_helpers/injected-eth\.ts$''',
+]
+regexTarget = "match"
+regexes = [
+  '''0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80''',
+]
