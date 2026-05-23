@@ -119,6 +119,45 @@ def add_bulge(vertices: np.ndarray, axis_fwd: int, axis_up: int,
     return verts.reshape(vertices.shape)
 
 
+def add_split_bulge(vertices: np.ndarray, axis_fwd: int, axis_up: int, axis_lat: int,
+                    up_frac_lo: float, up_frac_hi: float,
+                    lat_offset: float, lat_sigma: float,
+                    bulge_max: float, falloff: float = 2.0) -> np.ndarray:
+    """Two laterally-offset breast mounds pushed forward in a height band.
+
+    axis_fwd: axis to push (X=0)
+    axis_up: vertical axis (Z=2)
+    axis_lat: lateral axis (Y=1)
+    lat_offset: distance from lateral center to each mound peak (m)
+    lat_sigma: Gaussian width of each mound (m)
+    bulge_max: max forward displacement at mound peak (m)
+    """
+    verts = vertices.reshape(-1, 3).copy()
+
+    # Height weight — smooth bell within [up_frac_lo, up_frac_hi]
+    mn_up = verts[:, axis_up].min(); mx_up = verts[:, axis_up].max()
+    span = mx_up - mn_up
+    lo = mn_up + span * up_frac_lo; hi = mn_up + span * up_frac_hi
+    mid_up = (lo + hi) / 2.0; half_up = (hi - lo) / 2.0
+    h_mask = (verts[:, axis_up] >= lo) & (verts[:, axis_up] <= hi)
+    t = np.abs(verts[:, axis_up] - mid_up) / (half_up + 1e-9)
+    h_weight = np.clip(1.0 - np.clip(t, 0.0, 1.0) ** falloff, 0.0, 1.0) * h_mask
+
+    # Lateral weight — sum of two Gaussians at ±lat_offset, normalized so max=1
+    lat_mid = (verts[:, axis_lat].max() + verts[:, axis_lat].min()) / 2.0
+    d = verts[:, axis_lat] - lat_mid
+    lat_weight = (np.exp(-0.5 * (d - lat_offset) ** 2 / (lat_sigma ** 2 + 1e-9)) +
+                  np.exp(-0.5 * (d + lat_offset) ** 2 / (lat_sigma ** 2 + 1e-9))) / 2.0
+
+    # Only push verts on the forward side
+    fwd_mid = verts[:, axis_fwd].mean()
+    fwd_mask = (verts[:, axis_fwd] > fwd_mid).astype(float)
+
+    disp = bulge_max * h_weight * lat_weight * fwd_mask
+    verts[:, axis_fwd] += disp
+    return verts.reshape(vertices.shape)
+
+
 def thin_cross_section(vertices: np.ndarray, axis_primary: int,
                        scale_x: float = 0.8, scale_y: float = 0.8) -> np.ndarray:
     """Compress the two axes perpendicular to axis_primary (thin the limb cross-section)."""

@@ -21,7 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 from stl_utils import (read_stl, write_stl, recalc_normals, bbox,
-                        scale_mesh, scale_axis_range, add_bulge,
+                        scale_mesh, scale_axis_range, add_bulge, add_split_bulge,
                         thin_cross_section, cinch_waist, flare_hips, back_arch)
 
 
@@ -54,6 +54,17 @@ def apply_op(verts, op: dict):
             up_frac_lo=op.get("up_frac_lo", 0.55),
             up_frac_hi=op.get("up_frac_hi", 0.95),
             bulge_max=op.get("bulge_max", 0.02),
+            falloff=op.get("falloff", 2.0))
+    if name == "add_split_bulge":
+        return add_split_bulge(verts,
+            axis_fwd=op.get("axis_fwd", 0),
+            axis_up=op.get("axis_up", 2),
+            axis_lat=op.get("axis_lat", 1),
+            up_frac_lo=op.get("up_frac_lo", 0.55),
+            up_frac_hi=op.get("up_frac_hi", 0.90),
+            lat_offset=op.get("lat_offset", 0.030),
+            lat_sigma=op.get("lat_sigma", 0.035),
+            bulge_max=op.get("bulge_max", 0.04),
             falloff=op.get("falloff", 2.0))
     if name == "flare_hips":
         return flare_hips(verts,
