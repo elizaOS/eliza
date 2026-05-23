@@ -103,7 +103,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      # contents: write — upload SHA256SUMS to release via
+      #   softprops/action-gh-release.
+      # id-token + attestations — required by
+      #   actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      #   SLSA provenance attestation over the SHA256SUMS file via
+      #   GitHub OIDC.
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -192,6 +200,19 @@ jobs:
             --output ./_artifacts/SHA256SUMS
           echo "Generated SHA256SUMS:"
           cat ./_artifacts/SHA256SUMS
+
+      - name: Attest SLSA build provenance over SHA256SUMS
+        # Mints a single Sigstore-signed in-toto/SLSA provenance
+        # attestation that covers every release artifact via its hash,
+        # by attesting the canonical SHA256SUMS file generated above.
+        # Requires id-token: write + attestations: write (set in this
+        # job's permissions block). Users verify with:
+        #
+        #   gh attestation verify SHA256SUMS --owner elizaOS
+        #   sha256sum -c SHA256SUMS --ignore-missing
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: ./_artifacts/SHA256SUMS
 
       - name: Upload SHA256SUMS artifact
         uses: actions/upload-artifact@v7

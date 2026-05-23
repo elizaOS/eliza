@@ -3,7 +3,7 @@
 #
 # Walks the layered trust stack that the OS release pipeline ships:
 #
-#   1. SHA256SUMS roundtrip            (required; uses coreutils sha256sum)
+#   1. SHA256SUMS roundtrip            (required; uses sha256sum or shasum -a 256)
 #   2. GitHub artifact attestations    (optional; uses gh CLI)
 #   3. GPG signature on SHA256SUMS     (optional; uses gpg)
 #   4. SBOM summary                    (optional; uses jq)
@@ -25,7 +25,7 @@
 #   2  an optional layer detected real corruption / tampering
 #      (e.g. a mix of valid and invalid attestations, or a bad GPG
 #      signature). Pure-absence does NOT trigger exit 2.
-set -uo pipefail
+set -euo pipefail
 
 DIR="${1:-.}"
 cd "$DIR" || { echo "ERROR: cannot enter $DIR" >&2; exit 1; }
@@ -43,8 +43,24 @@ if [ ! -f SHA256SUMS ]; then
   fail "SHA256SUMS not found in $(pwd)"
   exit 1
 fi
-if sha256sum -c SHA256SUMS --ignore-missing --quiet; then
-  ok "SHA256SUMS roundtrip verified ($(grep -cE '^[a-f0-9]{64}' SHA256SUMS) entries)"
+
+# sha256sum is Linux coreutils; fall back to shasum -a 256 on macOS.
+SHA256CMD=sha256sum
+if ! command -v sha256sum >/dev/null 2>&1; then
+  if command -v shasum >/dev/null 2>&1; then
+    SHA256CMD="shasum -a 256"
+  else
+    fail "neither sha256sum nor shasum found; cannot verify checksums"
+    exit 1
+  fi
+fi
+
+# grep -c returns exit 1 when there are 0 matching lines; || true prevents
+# set -e from aborting if SHA256SUMS contains only comment lines.
+entry_count=$(grep -cE '^[a-f0-9]{64}' SHA256SUMS || true)
+
+if $SHA256CMD -c SHA256SUMS --ignore-missing --quiet; then
+  ok "SHA256SUMS roundtrip verified (${entry_count} entries)"
 else
   fail "SHA256SUMS roundtrip FAILED — re-download required"
   exit 1
@@ -87,8 +103,11 @@ fi
 
 # ---- 3. GPG signature on SHA256SUMS ---------------------------------------
 SIG=""
-[ -f SHA256SUMS.asc ] && SIG=SHA256SUMS.asc
-[ -z "$SIG" ] && [ -f SHA256SUMS.sig ] && SIG=SHA256SUMS.sig
+if [ -f SHA256SUMS.asc ]; then
+  SIG=SHA256SUMS.asc
+elif [ -f SHA256SUMS.sig ]; then
+  SIG=SHA256SUMS.sig
+fi
 if [ -n "$SIG" ]; then
   if command -v gpg >/dev/null 2>&1; then
     note "Checking GPG signature on SHA256SUMS"
