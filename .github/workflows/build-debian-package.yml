@@ -16,7 +16,14 @@ jobs:
     timeout-minutes: 30
 
     permissions:
+      # contents: write covers the existing softprops/action-gh-release
+      # release upload + checkout.
+      # id-token + attestations are required by
+      # actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      # SLSA build provenance for the .deb via GitHub OIDC.
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Checkout
@@ -80,6 +87,16 @@ jobs:
           echo "deb_sha256=$DEB_SHA256" >> "$GITHUB_OUTPUT"
           echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
           echo "Found .deb: $DEB ($DEB_SIZE bytes)"
+
+      - name: Attest SLSA build provenance for .deb
+        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
+        # tied to this repo + workflow + commit, via GitHub OIDC.
+        # No long-lived secrets. Users verify with:
+        #   gh attestation verify <deb-file> --owner elizaOS
+        if: steps.find_deb.outputs.deb_path != ''
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.find_deb.outputs.deb_path }}
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v7
