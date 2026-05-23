@@ -3,19 +3,13 @@ import { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins } from "./pairing-token-
 
 describe("getAlternateDomainOrigins", () => {
   it("returns every other suffix in the same alias group", () => {
-    // The canonical group is the first entry. Verify all five domains
-    // produce four alternates each (the matched suffix is excluded).
-    const inputs = [
-      "https://abc.waifu.fun",
-      "https://abc.eliza.ai",
-      "https://abc.elizacloud.ai",
-      "https://abc.milady.ai",
-      "https://abc.shad0w.xyz",
-    ];
+    // The canonical group is the first entry. Verify each domain produces
+    // (group.length - 1) alternates — the matched suffix is excluded.
+    const inputs = ["https://abc.waifu.fun", "https://abc.eliza.ai", "https://abc.elizacloud.ai"];
 
     for (const origin of inputs) {
       const alts = getAlternateDomainOrigins(origin);
-      expect(alts).toHaveLength(4);
+      expect(alts).toHaveLength(2);
       expect(alts).not.toContain(origin);
       const hostnames = alts.map((url) => new URL(url).hostname);
       for (const hostname of hostnames) {
@@ -33,10 +27,16 @@ describe("getAlternateDomainOrigins", () => {
       [
         "9d77d8b5-1d63-4b4c-9bd1-ec1b5deb4dc8.eliza.ai",
         "9d77d8b5-1d63-4b4c-9bd1-ec1b5deb4dc8.elizacloud.ai",
-        "9d77d8b5-1d63-4b4c-9bd1-ec1b5deb4dc8.milady.ai",
-        "9d77d8b5-1d63-4b4c-9bd1-ec1b5deb4dc8.shad0w.xyz",
       ].sort(),
     );
+  });
+
+  it("rejects retired 0xSolace-era domains (milady.ai, shad0w.xyz)", () => {
+    // These domains were intentionally dropped from the alias group to
+    // close the "0 legacy" cleanup. A leftover bookmark must fail Origin
+    // validation rather than silently aliasing into a live brand.
+    expect(getAlternateDomainOrigins("https://abc.milady.ai")).toEqual([]);
+    expect(getAlternateDomainOrigins("https://abc.shad0w.xyz")).toEqual([]);
   });
 
   it("preserves the URL port when an origin includes one", () => {

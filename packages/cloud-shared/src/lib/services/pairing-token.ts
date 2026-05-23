@@ -94,9 +94,8 @@ class PairingTokenService {
 
     // If no match, try each alternate domain in the same alias group. The
     // dashboard may rewrite the agent URL between any two aliased domains
-    // (waifu.fun ↔ eliza.ai ↔ elizacloud.ai ↔ milady.ai ↔ shad0w.xyz), and
-    // we cannot predict which one is stored as `expected_origin` for a
-    // given token row.
+    // (waifu.fun ↔ eliza.ai ↔ elizacloud.ai), and we cannot predict which
+    // one is stored as `expected_origin` for a given token row.
     if (!row) {
       for (const alternateOrigin of getAlternateDomainOrigins(normalizedOrigin)) {
         row = await agentPairingTokensRepository.consumeValidToken(
