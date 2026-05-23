@@ -45,6 +45,15 @@ jobs:
     # arm64/riscv64 build under qemu-user-static and have no validated
     # artifact yet — surface failures without blocking the amd64 gate.
     continue-on-error: ${{ matrix.arch != 'amd64' }}
+    permissions:
+      # contents: write covers checkout (read) + the existing
+      #   softprops/action-gh-release release upload (write).
+      # id-token + attestations are required by
+      #   actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      #   SLSA build provenance for the ISO via GitHub OIDC.
+      contents: write
+      id-token: write
+      attestations: write
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
       VARIANT_DIR: packages/os/linux/elizaos
@@ -120,6 +129,18 @@ jobs:
       - name: Smoke test skipped (no KVM or non-amd64)
         if: matrix.arch != 'amd64' || steps.kvm.outputs.have_kvm != 'true'
         run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
+
+      - name: Attest SLSA build provenance for ISO
+        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
+        # tied to this repo + workflow + commit, via GitHub OIDC.
+        # No long-lived secrets. Users verify with:
+        #   gh attestation verify <iso-file> --owner elizaOS
+        # Gated on amd64 because that's the only arch with a validated
+        # artifact today — same gate as the QEMU smoke test.
+        if: matrix.arch == 'amd64'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.iso.outputs.path }}
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v7
