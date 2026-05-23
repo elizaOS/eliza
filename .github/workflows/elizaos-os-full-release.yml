@@ -103,12 +103,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
-      # contents: write — upload SHA256SUMS to release via
-      #   softprops/action-gh-release.
-      # id-token + attestations — required by
-      #   actions/attest-build-provenance@v2 to mint a Sigstore-signed
-      #   SLSA provenance attestation over the SHA256SUMS file via
-      #   GitHub OIDC.
+      # contents: write — required by softprops/action-gh-release to
+      #   attach SHA256SUMS to the release asset list.
+      # id-token: write + attestations: write — required by
+      #   actions/attest-build-provenance@v4 to mint a Sigstore-signed
+      #   SLSA provenance attestation over SHA256SUMS via GitHub OIDC.
       contents: write
       id-token: write
       attestations: write
@@ -168,25 +167,13 @@ jobs:
             --manifest packages/os/release/beta-2026-05-16/manifest.json \
             --require-publishable-checksums
 
-      - name: Promote release status to available
-        run: |
-          set -euo pipefail
-          node -e '
-            const fs = require("node:fs");
-            const p = "packages/os/release/beta-2026-05-16/manifest.json";
-            const m = JSON.parse(fs.readFileSync(p, "utf8"));
-            m.release.status = "available";
-            fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
-          '
-
-      - name: Upload populated manifest
-        uses: actions/upload-artifact@v7
-        with:
-          name: elizaos-os-release-manifest-published
-          path: packages/os/release/beta-2026-05-16/manifest.json
-          retention-days: 90
-
       - name: Generate canonical SHA256SUMS via the in-repo tool
+        # Runs BEFORE manifest promotion so that any failure here prevents
+        # the "available" status from being set and uploaded. SHA256SUMS
+        # generation is a hard prerequisite for promotion — closing the
+        # window where a promoted manifest could exist without a
+        # corresponding SHA256SUMS file or SLSA attestation.
+        #
         # Calls packages/os/scripts/generate-release-checksums.mjs (which
         # already exists, has unit tests under __tests__, and is the
         # repo's canonical checksum tool) against the populated manifest
@@ -219,6 +206,24 @@ jobs:
         with:
           name: elizaos-release-checksums
           path: ./_artifacts/SHA256SUMS
+          retention-days: 90
+
+      - name: Promote release status to available
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const p = "packages/os/release/beta-2026-05-16/manifest.json";
+            const m = JSON.parse(fs.readFileSync(p, "utf8"));
+            m.release.status = "available";
+            fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
+          '
+
+      - name: Upload populated manifest
+        uses: actions/upload-artifact@v7
+        with:
+          name: elizaos-os-release-manifest-published
+          path: packages/os/release/beta-2026-05-16/manifest.json
           retention-days: 90
 
       - name: Attach SHA256SUMS to release
