@@ -1,4 +1,7 @@
 import { agentPairingTokensRepository } from "../../db/repositories/agent-pairing-tokens";
+import { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins } from "./pairing-token-domains";
+
+export { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins };
 
 interface PairingToken {
   userId: string;
@@ -47,35 +50,7 @@ function createPairingToken(): string {
   return base64UrlEncode(bytes);
 }
 
-// Domain aliases — waifu.fun and eliza.ai resolve to the same containers.
-// The dashboard rewrites URLs from one to the other, so the Origin header
-// sent by pair.html may use either domain.
-const DOMAIN_ALIASES: [string, string][] = [[".waifu.fun", ".eliza.ai"]];
-
 class PairingTokenService {
-  /**
-   * Given an origin like https://uuid.waifu.fun, return https://uuid.eliza.ai
-   * (and vice versa). Returns null if no alias applies.
-   */
-  private getAlternateDomainOrigin(origin: string): string | null {
-    for (const [a, b] of DOMAIN_ALIASES) {
-      try {
-        const url = new URL(origin);
-        if (url.hostname.endsWith(a)) {
-          url.hostname = url.hostname.replace(new RegExp(`${a.replaceAll(".", "\\.")}$`), b);
-          return url.origin;
-        }
-        if (url.hostname.endsWith(b)) {
-          url.hostname = url.hostname.replace(new RegExp(`${b.replaceAll(".", "\\.")}$`), a);
-          return url.origin;
-        }
-      } catch {
-        // Invalid URL — skip
-      }
-    }
-    return null;
-  }
-
   async generateToken(
     userId: string,
     orgId: string,
@@ -117,16 +92,18 @@ class PairingTokenService {
       normalizedOrigin,
     );
 
-    // If no match, try the alternate domain. The dashboard may rewrite
-    // waifu.fun → eliza.ai (or vice versa) which changes the Origin header
-    // but both domains resolve to the same agent container.
+    // If no match, try each alternate domain in the same alias group. The
+    // dashboard may rewrite the agent URL between any two aliased domains
+    // (waifu.fun ↔ eliza.ai ↔ elizacloud.ai ↔ milady.ai ↔ shad0w.xyz), and
+    // we cannot predict which one is stored as `expected_origin` for a
+    // given token row.
     if (!row) {
-      const alternateOrigin = this.getAlternateDomainOrigin(normalizedOrigin);
-      if (alternateOrigin) {
+      for (const alternateOrigin of getAlternateDomainOrigins(normalizedOrigin)) {
         row = await agentPairingTokensRepository.consumeValidToken(
           await hashToken(token),
           alternateOrigin,
         );
+        if (row) break;
       }
     }
 
