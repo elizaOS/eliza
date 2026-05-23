@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { runPlannerLoop } from "../planner-loop";
+import {
+	runPlannerLoop,
+	singleVerifiedUserFacingToolResultText,
+} from "../planner-loop";
+import type { PlannerTrajectory } from "../planner-types";
 import type { TrajectoryRecorder } from "../trajectory-recorder";
 
 /**
@@ -184,5 +188,80 @@ describe("planner-loop — user-facing tool text isolation", () => {
 		});
 
 		expect(result.finalMessage).toBe(evaluatorMessage);
+	});
+});
+
+describe("singleVerifiedUserFacingToolResultText — failed-step filter", () => {
+	// Greptile flagged that the previous implementation counted ALL steps
+	// with `toolCall + result` toward its uniqueness check — failed steps
+	// included — so a 2-tool plan whose first tool errored and whose
+	// second tool set `verifiedUserFacing: true` would silently fall
+	// through to the evaluator's reply. These tests pin the corrected
+	// filter (`step.result?.success === true`).
+	const trajectoryWith = (
+		steps: PlannerTrajectory["steps"],
+	): PlannerTrajectory => ({
+		context: { id: "ctx" },
+		steps,
+		archivedSteps: [],
+		plannedQueue: [],
+		evaluatorOutputs: [],
+	});
+
+	const failedStep = {
+		iteration: 0,
+		toolCall: { id: "call-1", name: "FLAKY", arguments: {} },
+		result: {
+			success: false as const,
+			text: "transient network error",
+			error: "ECONNRESET",
+		},
+	};
+	const verifiedStep = {
+		iteration: 1,
+		toolCall: { id: "call-2", name: "CHECK_CACHE", arguments: {} },
+		result: {
+			success: true as const,
+			text: "raw diag",
+			userFacingText: "Wrote 14 files to /home/example/.bun/install/cache.",
+			verifiedUserFacing: true,
+		},
+	};
+
+	it("returns the verified tool's text when a prior step failed", () => {
+		const trajectory = trajectoryWith([failedStep, verifiedStep]);
+		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBe(
+			"Wrote 14 files to /home/example/.bun/install/cache.",
+		);
+	});
+
+	it("returns undefined when two successful tools both have results", () => {
+		// Genuine ambiguity — caller falls through to evaluator/fallback.
+		const secondVerified = {
+			...verifiedStep,
+			iteration: 2,
+			toolCall: { id: "call-3", name: "OTHER", arguments: {} },
+		};
+		const trajectory = trajectoryWith([
+			{ ...verifiedStep, iteration: 1 },
+			secondVerified,
+		]);
+		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBeUndefined();
+	});
+
+	it("returns undefined when the single successful tool did not opt in", () => {
+		const trajectory = trajectoryWith([
+			failedStep,
+			{
+				...verifiedStep,
+				result: { ...verifiedStep.result, verifiedUserFacing: false },
+			},
+		]);
+		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBeUndefined();
+	});
+
+	it("returns undefined when there are no successful tools", () => {
+		const trajectory = trajectoryWith([failedStep]);
+		expect(singleVerifiedUserFacingToolResultText(trajectory)).toBeUndefined();
 	});
 });

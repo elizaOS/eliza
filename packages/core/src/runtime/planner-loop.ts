@@ -2179,24 +2179,34 @@ function latestToolResultText(
 }
 
 /**
- * Returns a single successful tool's `userFacingText` ONLY when the tool
- * explicitly opted in to canonical-output via `verifiedUserFacing: true`.
+ * Returns the canonical user-facing text from a trajectory whose
+ * `verifiedUserFacing` opt-in is unambiguous: exactly one *successful*
+ * tool step set `verifiedUserFacing: true` with a non-empty
+ * `userFacingText`.
  *
- * Tools that emit structured data the evaluator could easily paraphrase
+ * Failed steps are intentionally ignored when counting toward the
+ * uniqueness check — a plan whose first tool errored and whose second
+ * tool emitted a verified canonical reply must still echo the verified
+ * reply. (Counting failed steps would silently fall through to the
+ * evaluator's `messageToUser`, defeating the whole point of the flag
+ * for any tool that runs after a recoverable error.)
+ *
+ * Tools that emit structured data the evaluator could paraphrase
  * incorrectly (paths, ids, counts, numeric metrics) set the flag so the
  * framework echoes their output verbatim instead of trusting the
  * evaluator's rewording.
  */
-function singleVerifiedUserFacingToolResultText(
+// Exported for unit-test coverage of the success-filter / failed-step
+// invariant; not part of the public runtime surface.
+export function singleVerifiedUserFacingToolResultText(
 	trajectory: PlannerTrajectory,
 ): string | undefined {
-	const toolResultSteps = trajectory.steps.filter(
-		(step) => step.toolCall && step.result,
+	const successfulToolSteps = trajectory.steps.filter(
+		(step) => step.toolCall && step.result?.success === true,
 	);
-	if (toolResultSteps.length !== 1) return undefined;
-	const result = toolResultSteps[0]?.result;
-	if (result?.success !== true) return undefined;
-	if (result.verifiedUserFacing !== true) return undefined;
+	if (successfulToolSteps.length !== 1) return undefined;
+	const result = successfulToolSteps[0]?.result;
+	if (result?.verifiedUserFacing !== true) return undefined;
 	const text = result.userFacingText?.trim();
 	return text || undefined;
 }
