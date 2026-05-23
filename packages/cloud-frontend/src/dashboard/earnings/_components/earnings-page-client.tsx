@@ -24,6 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from "@elizaos/ui";
+import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
+import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
+import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
+import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import {
   AlertTriangle,
   AppWindow,
@@ -39,10 +43,6 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
-import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
-import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
-import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
