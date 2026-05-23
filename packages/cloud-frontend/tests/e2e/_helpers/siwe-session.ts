@@ -15,7 +15,7 @@
 // The helper:
 //   1. Mocks /auth/nonce + /auth/verify (path-suffix match).
 //   2. Injects a fake EIP-1193 window.ethereum that signs via a viem key.
-//   3. Clicks the Ethereum login button on /login.
+//   3. Clicks the EVM login button on /login.
 //   4. Waits for the verify mock to fire, leaving the session token
 //      installed in localStorage exactly as the production bundle would.
 //
@@ -129,7 +129,7 @@ export async function loginWithInjectedEthereum(
   );
 
   await page.goto("/login");
-  await page.getByRole("button", { name: /^Ethereum$/i }).click();
+  await page.getByRole("button", { name: /^EVM$/i }).click();
 
   const messageStr = (await page
     .waitForFunction(

@@ -153,7 +153,7 @@ export function AdminMetricsClient() {
 
   // Derived chart data
   const dailyTrendData = useMemo(() => {
-    if (!overview) return [];
+    if (!overview?.dailyTrend) return [];
     return overview.dailyTrend
       .filter((d) => d.platform === null)
       .map((d) => ({
@@ -167,7 +167,7 @@ export function AdminMetricsClient() {
   }, [overview]);
 
   const platformPieData = useMemo(() => {
-    if (!overview) return [];
+    if (!overview?.platformBreakdown) return [];
     return Object.entries(overview.platformBreakdown)
       .filter(([, v]) => v > 0)
       .map(([k, v]) => ({
@@ -178,13 +178,13 @@ export function AdminMetricsClient() {
   }, [overview]);
 
   const retentionData = useMemo(() => {
-    if (!overview) return [];
+    if (!overview?.retentionCohorts) return [];
     // `retentionRates` mirrors `retentionCohorts` 1:1 with server-computed
     // percent values, so use index lookup to keep the platform filter.
     return overview.retentionCohorts
       .map((cohort, index) => ({
         cohort,
-        rates: overview.retentionRates[index],
+        rates: overview.retentionRates?.[index],
       }))
       .filter(
         ({ cohort }) => cohort.platform === null && cohort.cohort_size > 0,
