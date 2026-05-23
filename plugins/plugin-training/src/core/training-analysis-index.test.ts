@@ -804,6 +804,7 @@ describe("training analysis index", () => {
     expect(html).toContain("Test Trajectory Transcript");
     expect(html).toContain("Test Trajectory LLM Calls");
     expect(html).toContain("Test Trajectory Actions");
+    expect(html).toContain("Trajectory Bundle LLM Calls");
     expect(html).toContain("Trajectories");
     expect(html).toContain("Scenarios");
     expect(html).toContain("lifeops_bench");
@@ -811,6 +812,8 @@ describe("training analysis index", () => {
     expect(html).toContain("CREATE_SCHEDULED_TASK");
     expect(html).toContain("scenario-traj-1");
     expect(html).toContain("action_planner");
+    expect(html).toContain("Pick one action.");
+    expect(html).toContain("SEND_MESSAGE");
     expect(html).toContain("lifeops.basic");
     expect(html).toContain("feed_train_archetype_export");
     expect(html).toContain("Feed Generation");
