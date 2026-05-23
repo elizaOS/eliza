@@ -128,8 +128,11 @@ controls.dampingFactor = 0.08;
 
 function setView(name) {
   const tgt = controls.target.clone();
-  if (name === 'front')  { camera.position.set(0, -3.5, 0.7); }
-  if (name === 'side')   { camera.position.set(3.5, 0, 0.7); }
+  // ASIMOV convention: X=forward (robot faces +X), Y=lateral, Z=up
+  // Front = camera on +X axis looking at robot's face/chest
+  // Side  = camera on -Y axis looking at robot's right side profile
+  if (name === 'front')  { camera.position.set(3.5, 0, 0.7); }
+  if (name === 'side')   { camera.position.set(0, -3.5, 0.7); }
   if (name === 'top')    { camera.position.set(0, 0, 4.5); camera.up.set(0, 1, 0); }
   if (name === '3d')     { camera.position.set(2, -2.5, 1.2); camera.up.set(0, 0, 1); }
   controls.update();
