@@ -43,11 +43,21 @@ describe("getAlternateDomainOrigins", () => {
     // `URL.origin` keeps non-default ports — the alternate origins must
     // round-trip them so a sandbox served on :8443 still matches its alias.
     const alts = getAlternateDomainOrigins("https://abc.waifu.fun:8443");
-    expect(alts.length).toBeGreaterThan(0);
+    expect(alts).toHaveLength(2);
     for (const alt of alts) {
       const url = new URL(alt);
       expect(url.port).toBe("8443");
     }
+  });
+
+  it("rewrites only the suffix when the prefix is itself a multi-level subdomain", () => {
+    // Production sandbox URLs are flat (`<uuid>.waifu.fun`), but the
+    // suffix-strip algorithm should treat anything before the matched
+    // suffix as opaque prefix — so `a.b.c.waifu.fun` aliases to
+    // `a.b.c.eliza.ai` without touching the inner labels.
+    const alts = getAlternateDomainOrigins("https://a.b.c.waifu.fun");
+    const hostnames = alts.map((u) => new URL(u).hostname).sort();
+    expect(hostnames).toEqual(["a.b.c.eliza.ai", "a.b.c.elizacloud.ai"].sort());
   });
 
   it("returns an empty array when no aliased suffix matches", () => {
@@ -60,6 +70,14 @@ describe("getAlternateDomainOrigins", () => {
     expect(getAlternateDomainOrigins("not a url")).toEqual([]);
     expect(getAlternateDomainOrigins("")).toEqual([]);
     expect(getAlternateDomainOrigins("://no-protocol")).toEqual([]);
+  });
+
+  it("matches uppercase hostnames (URL parser lowercases per WHATWG spec)", () => {
+    // `endsWith` is case-sensitive but `new URL()` lowercases the hostname,
+    // so an Origin header arriving as `https://ABC.WAIFU.FUN` still aliases.
+    const alts = getAlternateDomainOrigins("https://ABC.WAIFU.FUN");
+    const hostnames = alts.map((u) => new URL(u).hostname).sort();
+    expect(hostnames).toEqual(["abc.eliza.ai", "abc.elizacloud.ai"].sort());
   });
 
   it("matches the suffix on the right boundary (no partial-domain false positive)", () => {

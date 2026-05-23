@@ -40,14 +40,12 @@ export function getAlternateDomainOrigins(origin: string): string[] {
   for (const group of DOMAIN_ALIAS_GROUPS) {
     const matched = group.find((suffix) => url.hostname.endsWith(suffix));
     if (!matched) continue;
+    const prefix = url.hostname.slice(0, -matched.length);
     const alternates: string[] = [];
     for (const candidate of group) {
       if (candidate === matched) continue;
-      const altUrl = new URL(url.toString());
-      altUrl.hostname = url.hostname.replace(
-        new RegExp(`${matched.replaceAll(".", "\\.")}$`),
-        candidate,
-      );
+      const altUrl = new URL(url);
+      altUrl.hostname = prefix + candidate;
       alternates.push(altUrl.origin);
     }
     return alternates;

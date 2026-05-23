@@ -1,7 +1,5 @@
 import { agentPairingTokensRepository } from "../../db/repositories/agent-pairing-tokens";
-import { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins } from "./pairing-token-domains";
-
-export { DOMAIN_ALIAS_GROUPS, getAlternateDomainOrigins };
+import { getAlternateDomainOrigins } from "./pairing-token-domains";
 
 interface PairingToken {
   userId: string;
