@@ -659,8 +659,22 @@ export interface ActionResult {
 	 * instead of the diagnostic `text`. Leave unset for log-emitting
 	 * actions (BASH, file readers); set for Q&A actions, REPLY actions,
 	 * and content generators.
+	 *
+	 * By default an explicit evaluator `messageToUser` outranks this.
+	 * Set `verifiedUserFacing: true` to mark this text as canonical
+	 * (do-not-paraphrase) — e.g. when it contains paths, ids, counts,
+	 * or numeric metrics the evaluator might otherwise hallucinate.
 	 */
 	userFacingText?: string;
+
+	/**
+	 * When `true` and `userFacingText` is set, the planner-loop prefers
+	 * the action's `userFacingText` over the evaluator's `messageToUser`
+	 * for the terminal-FINISH reply. Use for structured outputs
+	 * (paths, ids, counts, numeric metrics) where a paraphrase risk is
+	 * worse than echoing the action verbatim.
+	 */
+	verifiedUserFacing?: boolean;
 
 	/** Values to merge into the state */
 	values?: Record<string, ProviderValue>;

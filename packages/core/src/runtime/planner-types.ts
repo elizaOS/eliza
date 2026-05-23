@@ -99,8 +99,29 @@ export interface PlannerToolResult {
 	 * undefined; in that case the framework falls through to the
 	 * evaluator's synthesized reply rather than dumping shell-wrapper
 	 * text into the user channel.
+	 *
+	 * By default an explicit evaluator `messageToUser` outranks this —
+	 * the evaluator has seen the full trajectory and chose what the
+	 * user should read. To mark `userFacingText` as canonical
+	 * (do-not-paraphrase) and have it outrank the evaluator's reply
+	 * when there is exactly one successful tool, set
+	 * `verifiedUserFacing: true`.
 	 */
 	userFacingText?: string;
+	/**
+	 * Marks `userFacingText` as the canonical answer for this turn —
+	 * the evaluator's `messageToUser` MUST NOT paraphrase it. When set
+	 * AND there is exactly one successful tool with `userFacingText`,
+	 * the planner-loop prefers the tool's text over the evaluator's
+	 * reply for the terminal-FINISH `finalMessage`.
+	 *
+	 * Use when the tool's output is structured data the evaluator can
+	 * easily hallucinate (paths, ids, counts, numeric metrics) and any
+	 * paraphrase risk is worse than echoing the tool verbatim. Leave
+	 * unset for natural-language answers where the evaluator may
+	 * legitimately rephrase or add framing.
+	 */
+	verifiedUserFacing?: boolean;
 	data?: Record<string, unknown>;
 	error?: unknown;
 	continueChain?: boolean;
