@@ -121,6 +121,59 @@ jobs:
         if: matrix.arch != 'amd64' || steps.kvm.outputs.have_kvm != 'true'
         run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
 
+      - name: Install squashfs-tools (for SBOM extraction)
+        if: matrix.arch == 'amd64'
+        run: sudo apt-get install -y --no-install-recommends squashfs-tools
+
+      - name: Extract Debian package database from ISO
+        # Mount the ISO read-only and unsquashfs only /var/lib/dpkg so syft
+        # can inventory the runtime packages. Extracting the full root would
+        # cost ~7 GB and ~5 min; the dpkg dir alone is ~50 MB and lets syft
+        # enumerate every installed Debian package with name + version.
+        if: matrix.arch == 'amd64'
+        id: sbom-extract
+        run: |
+          set -euo pipefail
+          MNT=$(mktemp -d)
+          SQ=$(mktemp -d)
+          sudo mount -o loop,ro "${{ steps.iso.outputs.path }}" "$MNT"
+          SQUASH=$(sudo find "$MNT" -maxdepth 4 -name 'filesystem.squashfs' -o -name '*.squashfs' 2>/dev/null | head -1)
+          if [ -z "$SQUASH" ]; then
+            echo "::warning::No squashfs found in ISO — skipping SBOM generation"
+            sudo umount "$MNT"
+            rmdir "$MNT" "$SQ"
+            echo "extracted=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          sudo unsquashfs -d "$SQ" "$SQUASH" var/lib/dpkg > /dev/null
+          sudo umount "$MNT"
+          rmdir "$MNT"
+          sudo chown -R "$USER:$USER" "$SQ"
+          echo "root=$SQ" >> "$GITHUB_OUTPUT"
+          echo "extracted=true" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ISO SBOM (SPDX JSON)
+        if: matrix.arch == 'amd64' && steps.sbom-extract.outputs.extracted == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          path: ${{ steps.sbom-extract.outputs.root }}
+          format: spdx-json
+          output-file: ${{ steps.iso.outputs.filename }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Report SBOM package count
+        if: matrix.arch == 'amd64' && steps.sbom-extract.outputs.extracted == 'true'
+        run: |
+          set -euo pipefail
+          SBOM="${{ steps.iso.outputs.filename }}.spdx.json"
+          if [ -f "$SBOM" ]; then
+            COUNT=$(jq '.packages | length' "$SBOM")
+            echo "::notice::SBOM contains $COUNT packages"
+          fi
+          # Best-effort cleanup; do not fail the job if the temp dir is gone.
+          rm -rf "${{ steps.sbom-extract.outputs.root }}" || true
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v7
         with:
@@ -128,6 +181,7 @@ jobs:
           path: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.filename }}.sha256
+            ${{ steps.iso.outputs.filename }}.spdx.json
           retention-days: 7
 
       - name: Upload to GitHub Release
@@ -137,6 +191,7 @@ jobs:
           files: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.filename }}.sha256
+            ${{ steps.iso.outputs.filename }}.spdx.json
           tag_name: ${{ github.event.release.tag_name || github.ref_name }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
