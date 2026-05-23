@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 
 BR_NONE = 0
 BR_COND = 1
@@ -29,7 +30,7 @@ BR_RET = 3
 BR_IND = 4
 
 # Per-table geometry mirrors rtl/cpu/bpu/bpu_pkg.sv.
-DEFAULT_GEOMETRY: dict[str, object] = {
+DEFAULT_GEOMETRY: dict[str, Any] = {
     "FETCH_BLOCK_BYTES": 32,
     # Experiment-only front-end limit: how many conditional-branch predictions
     # can be carried for one fetched block. Many production predictors carry
@@ -397,9 +398,8 @@ class _SC:
                 self.storage[tid][idx] = ctr - 1
         if self.local_history_bits > 0:
             idx = (pc >> 1) % self.local_history_entries
-            self.local_history[idx] = (
-                ((self.local_history[idx] << 1) | int(taken)) &
-                _mask(self.local_history_bits)
+            self.local_history[idx] = ((self.local_history[idx] << 1) | int(taken)) & _mask(
+                self.local_history_bits
             )
 
 
@@ -538,26 +538,28 @@ class _ITTAGE:
                     entry["useful"] = max(entry.get("useful", 0) - 1, 0)
         if provider > 0:
             idx, tag = self._index_tag(provider - 1, pc, hist)
-            entry = self.storage[provider - 1].get(idx)
-            if entry is not None and entry["tag"] == tag:
-                if entry["target"] == target:
-                    entry["ctr"] = min(entry["ctr"] + 1, _mask(self.geo["ITTAGE_CTR_W"]))
-                    entry["useful"] = min(
-                        entry.get("useful", 0) + 1,
+            provider_entry = self.storage[provider - 1].get(idx)
+            if provider_entry is not None and provider_entry["tag"] == tag:
+                if provider_entry["target"] == target:
+                    provider_entry["ctr"] = min(
+                        provider_entry["ctr"] + 1, _mask(self.geo["ITTAGE_CTR_W"])
+                    )
+                    provider_entry["useful"] = min(
+                        provider_entry.get("useful", 0) + 1,
                         _mask(self.geo["ITTAGE_USEFUL_W"]),
                     )
                 elif (
                     provider >= self.geo["ITTAGE_REPLACE_MIN_PROVIDER"]
-                    and entry["ctr"] <= self.geo["ITTAGE_REPLACE_WEAK_CTR"]
+                    and provider_entry["ctr"] <= self.geo["ITTAGE_REPLACE_WEAK_CTR"]
                 ):
-                    entry["target"] = target
-                    entry["ctr"] = 1 << (self.geo["ITTAGE_CTR_W"] - 1)
-                    entry["useful"] = 0
-                elif entry["ctr"] == 0:
+                    provider_entry["target"] = target
+                    provider_entry["ctr"] = 1 << (self.geo["ITTAGE_CTR_W"] - 1)
+                    provider_entry["useful"] = 0
+                elif provider_entry["ctr"] == 0:
                     self.storage[provider - 1].pop(idx, None)
                 else:
-                    entry["ctr"] -= 1
-                    entry["useful"] = max(entry.get("useful", 0) - 1, 0)
+                    provider_entry["ctr"] -= 1
+                    provider_entry["useful"] = max(provider_entry.get("useful", 0) - 1, 0)
         if misp:
             for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
                 idx, tag = self._index_tag(higher, pc, hist)
@@ -572,7 +574,7 @@ class _ITTAGE:
             for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
                 idx, tag = self._index_tag(higher, pc, hist)
                 victim = self.storage[higher].get(idx)
-                if victim.get("useful", 0) == 0:
+                if victim is not None and victim.get("useful", 0) == 0:
                     self.storage[higher][idx] = {
                         "tag": tag,
                         "target": target,
@@ -687,9 +689,7 @@ class BPUSimulator:
     def _step(self, event: BranchEvent) -> None:
         ittage_hist = self._ittage_history()
         pred_taken, pred_target = self._predict(event)
-        pred_taken, pred_target = self._apply_fetch_block_slot_limit(
-            event, pred_taken, pred_target
-        )
+        pred_taken, pred_target = self._apply_fetch_block_slot_limit(event, pred_taken, pred_target)
         actual_taken = event.taken
         actual_target = event.target
         misp = (pred_taken != actual_taken) or (actual_taken and pred_target != actual_target)

@@ -41,9 +41,7 @@ def test_failed_model_check_emits_finding() -> None:
         ],
     )
     codes = [finding["code"] for finding in findings]
-    if codes != [
-        "tee_purge_model_check_failed_purge_sequence_model_positive_negative_vectors"
-    ]:
+    if codes != ["tee_purge_model_check_failed_purge_sequence_model_positive_negative_vectors"]:
         raise AssertionError(codes)
     print("PASS TEE purge model failures emit structured findings")
 

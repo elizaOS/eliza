@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CHIP_ROOT = REPO_ROOT / "packages/chip"
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
@@ -61,12 +60,14 @@ def main() -> int:
     objective = load_yaml(BOARD_ROOT / "e1-phone-objective-completion-audit-2026-05-22.yaml")
     route_inventory = load_yaml(BOARD_ROOT / "kicad-route-readiness-inventory-2026-05-22.yaml")
     supplier_intake = load_yaml(
-        BOARD_ROOT / "production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+        BOARD_ROOT
+        / "production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
     )
     production_presence = load_yaml(
-        BOARD_ROOT / "production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml"
+        BOARD_ROOT
+        / "production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml"
     )
-    mechanical = load_yaml(
+    load_yaml(
         CHIP_ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
     )
     bench = load_yaml(
@@ -82,7 +83,9 @@ def main() -> int:
                 f"{archive_dir}/{filename}" for filename in record["required_return_files"]
             )
     supplier_acceptance = sorted(dict.fromkeys(supplier_acceptance))
-    route_acceptance = sorted({row["path"] for row in route_inventory["missing_production_outputs"]})
+    route_acceptance = sorted(
+        {row["path"] for row in route_inventory["missing_production_outputs"]}
+    )
     production_acceptance = sorted(
         {row["path"] for row in production_presence["required_output_presence"]}
     )
@@ -148,9 +151,7 @@ def main() -> int:
             "mechanical",
             "mechanical_engineering",
             "blocked_enclosure_evidence_missing",
-            [
-                "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
-            ],
+            ["mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"],
             [
                 "routed-board STEP imported into enclosure CAD",
                 "routed clearance results and boolean interference checks using supplier B-rep/STEP models",
@@ -196,7 +197,9 @@ def main() -> int:
             "blocker_count": len(blockers),
             "complete_blocker_count": sum(1 for item in blockers if item["acceptance_complete"]),
             "open_blocker_count": sum(1 for item in blockers if not item["acceptance_complete"]),
-            "acceptance_artifact_count": sum(len(item["acceptance_artifacts"]) for item in blockers),
+            "acceptance_artifact_count": sum(
+                len(item["acceptance_artifacts"]) for item in blockers
+            ),
             "missing_acceptance_artifact_count": sum(
                 len(item["missing_acceptance_artifacts"]) for item in blockers
             ),

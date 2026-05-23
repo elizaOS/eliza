@@ -412,7 +412,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         findings,
         bool(adb_service_starters) and service_exported == "false",
         "android_agent_service_not_exported_for_adb_smoke",
-        "chip smoke starts ElizaAgentService directly through adb, but the manifest marks that service android:exported=\"false\"",
+        'chip smoke starts ElizaAgentService directly through adb, but the manifest marks that service android:exported="false"',
         json.dumps(
             {
                 "adb_service_starters": sorted(adb_service_starters),

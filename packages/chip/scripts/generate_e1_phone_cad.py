@@ -3312,7 +3312,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
         if path.is_file() and expected:
             try:
                 imported = cq.importers.importStep(str(path))
-                bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
+                bbox = cast(Any, imported.val()).BoundingBox()
                 actual = [bbox.xlen, bbox.ylen, bbox.zlen]
                 errors = [abs(float(a) - float(e)) for a, e in zip(actual, expected, strict=True)]
                 case.update(
@@ -3340,7 +3340,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
     if assembly_path.is_file():
         try:
             imported = cq.importers.importStep(str(assembly_path))
-            bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
+            bbox = cast(Any, imported.val()).BoundingBox()
             assembly_case.update(
                 {
                     "imported": True,

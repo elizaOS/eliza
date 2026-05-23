@@ -492,5 +492,7 @@ async def test_slc_pressure_and_display_qos_records_coverage(dut):
             "display_service_window_violations": 0,
             "p95_miss_latency_cycles": 1,
         },
-        observations=["SLC serviced CPU and display QoS misses and pulsed display reservation evidence."],
+        observations=[
+            "SLC serviced CPU and display QoS misses and pulsed display reservation evidence."
+        ],
     )

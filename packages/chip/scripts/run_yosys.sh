@@ -15,6 +15,10 @@ if ! command -v yosys >/dev/null 2>&1; then
     exit 0
 fi
 
+if [ ! -f "$repo_dir/build/boot-rom/e1_secure_boot_rom.hex" ]; then
+    "$repo_dir/fw/boot-rom/build.sh"
+fi
+
 mkdir -p build/reports build/netlist
 yosys -q -l build/reports/e1_soc_yosys.log scripts/yosys_e1_soc.ys
 printf '\nELIZA_YOSYS_SYNTHESIS_COMPLETE netlist=build/netlist/e1_chip_synth.v top=e1_chip_top\n' >> build/reports/e1_soc_yosys.log

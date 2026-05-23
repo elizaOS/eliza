@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/sourcing/readiness/"
+    ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
     "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_supplier_return_evidence_acceptance_matrix.v1"

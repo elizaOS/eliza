@@ -625,7 +625,9 @@ def synthetic_vtable_path_correlated(paths: int = 4, repeats: int = 192) -> Iter
         )
 
 
-def synthetic_interpreter_dispatch_mixed(opcodes: int = 9, repeats: int = 160) -> Iterator[BranchEvent]:
+def synthetic_interpreter_dispatch_mixed(
+    opcodes: int = 9, repeats: int = 160
+) -> Iterator[BranchEvent]:
     """Interpreter/VM dispatch: bytecode indirects mixed with local branches."""
     dispatch_pc = 0x8007_A000
     guard_pc = 0x8007_A040

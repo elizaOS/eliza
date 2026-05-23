@@ -16,3 +16,7 @@ rules:
     allowed-values: ["true", "false", "on", "off"]
   comments:
     min-spaces-from-content: 1
+  # The chip tree carries YAML from KiCad/package manifests, PyYAML-generated
+  # evidence reports, and hand-authored docs. Their sequence indentation styles
+  # intentionally differ; content validators cover schema/semantic correctness.
+  indentation: disable

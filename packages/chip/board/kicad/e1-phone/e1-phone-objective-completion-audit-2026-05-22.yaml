@@ -121,7 +121,7 @@ objective_requirements:
   authoritative_sources:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - ../../mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
+  - mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
   evidence_state: contradicts_completion
   blocking_facts:
   - artifact manifest enclosure gate is missing

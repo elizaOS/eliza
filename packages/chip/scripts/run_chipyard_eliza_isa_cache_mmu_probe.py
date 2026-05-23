@@ -29,9 +29,7 @@ DEFAULT_SIMULATOR = (
 )
 MANIFEST = OUT / "ElizaRocketConfig.manifest.json"
 DTS = OUT / "eliza-e1.dts"
-DRAMSIM_INI = (
-    ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
-)
+DRAMSIM_INI = ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
 
 LINKER = r"""
 OUTPUT_ARCH(riscv)
@@ -374,7 +372,9 @@ def main(argv: list[str]) -> int:
                 "evidence_log_created": False,
                 "timeout_seconds": args.timeout_seconds,
                 "max_cycles": args.max_cycles,
-                "problems": ["generated-AP bare-metal ISA/cache/MMU probe timed out before completion"],
+                "problems": [
+                    "generated-AP bare-metal ISA/cache/MMU probe timed out before completion"
+                ],
                 "updated_utc": utc_now(),
             }
         )

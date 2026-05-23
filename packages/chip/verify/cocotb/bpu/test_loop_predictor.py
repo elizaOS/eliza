@@ -112,7 +112,7 @@ async def loop_replacement_preserves_confident_hot_loop(dut):
         await drive_loop_trip(dut, hot_pc, hot_target, hot_trip_count)
 
     used_tags = {loop_tag(hot_pc)}
-    churn_pcs = []
+    churn_pcs: list[int] = []
     candidate = 0x8001_0000
     while len(churn_pcs) < 80:
         tag = loop_tag(candidate)

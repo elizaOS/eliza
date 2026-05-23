@@ -266,10 +266,7 @@ def gate_status_entry(source: Path, data: dict[str, Any]) -> dict[str, Any] | No
         gate = source.stem
     status = str(data.get("status", "NONPASS")).lower()
     blocker_id = data.get("blocker_id")
-    if isinstance(blocker_id, str) and blocker_id:
-        code_seed = blocker_id
-    else:
-        code_seed = f"{gate}_{status}"
+    code_seed = blocker_id if isinstance(blocker_id, str) and blocker_id else f"{gate}_{status}"
     blocker_reason = data.get("blocker_reason")
     if isinstance(blocker_reason, str) and blocker_reason:
         message = blocker_reason
@@ -410,15 +407,15 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "schema": SCHEMA,
             "status": "blocked",
             "claim_boundary": CLAIM_BOUNDARY,
-                "summary": {
-                    "nonpassing_aggregate_gates": 0,
-                    "blocked_aggregate_gates": 0,
-                    "failed_aggregate_gates": 0,
-                    "uncovered_nonpassing_gates": 0,
-                    "nonpassing_reports_without_structured_details": 0,
-                    "detailed_blocker_entries": 0,
-                    "unique_detailed_blocker_codes": 0,
-                },
+            "summary": {
+                "nonpassing_aggregate_gates": 0,
+                "blocked_aggregate_gates": 0,
+                "failed_aggregate_gates": 0,
+                "uncovered_nonpassing_gates": 0,
+                "nonpassing_reports_without_structured_details": 0,
+                "detailed_blocker_entries": 0,
+                "unique_detailed_blocker_codes": 0,
+            },
             "sources": {"missing": [rel(path) for path in missing]},
             "nonpassing_aggregate_gates": [],
             "aggregate_gate_detail_coverage": [],

@@ -685,9 +685,7 @@ class E1PhoneBoardPackageGateTests(unittest.TestCase):
         )
 
     def test_aggregator_classifies_e1_phone_board_package_as_blocked(self) -> None:
-        spec = next(
-            gate for gate in agg.GATES if gate.name == "e1-phone-board-package-check"
-        )
+        spec = next(gate for gate in agg.GATES if gate.name == "e1-phone-board-package-check")
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
         self.assertIn("STATUS: BLOCKED E1 phone", result.evidence)
@@ -713,11 +711,7 @@ class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
     def test_aggregator_classifies_e1_phone_fabrication_release_as_blocked(
         self,
     ) -> None:
-        spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-fabrication-release-check"
-        )
+        spec = next(gate for gate in agg.GATES if gate.name == "e1-phone-fabrication-release-check")
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
         self.assertIn("STATUS: BLOCKED E1 phone", result.evidence)
@@ -762,9 +756,7 @@ class E1PhoneReleaseApprovalSignatureGateTests(unittest.TestCase):
         self,
     ) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-release-approval-signature-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-release-approval-signature-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
@@ -792,9 +784,7 @@ class E1PhoneSupplierReturnContentGateTests(unittest.TestCase):
         self,
     ) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-supplier-return-content-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-supplier-return-content-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
@@ -820,9 +810,7 @@ class E1PhoneRoutedOutputContentGateTests(unittest.TestCase):
 
     def test_aggregator_classifies_e1_phone_routed_content_as_blocked(self) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-routed-output-content-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-routed-output-content-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
@@ -848,9 +836,7 @@ class E1PhoneFactoryOutputContentGateTests(unittest.TestCase):
 
     def test_aggregator_classifies_e1_phone_factory_content_as_blocked(self) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-factory-output-content-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-factory-output-content-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
@@ -876,9 +862,7 @@ class E1PhoneFirstArticleContentGateTests(unittest.TestCase):
 
     def test_aggregator_classifies_e1_phone_first_article_as_blocked(self) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-first-article-content-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-first-article-content-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")
@@ -904,9 +888,7 @@ class E1PhoneEnclosureMechanicalContentGateTests(unittest.TestCase):
 
     def test_aggregator_classifies_e1_phone_enclosure_as_blocked(self) -> None:
         spec = next(
-            gate
-            for gate in agg.GATES
-            if gate.name == "e1-phone-enclosure-mechanical-content-check"
+            gate for gate in agg.GATES if gate.name == "e1-phone-enclosure-mechanical-content-check"
         )
         result = agg.run_gate(spec)
         self.assertEqual(result.status, "BLOCKED")

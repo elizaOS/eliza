@@ -110,16 +110,12 @@ ARCHIVED_SIMULATOR = ARCHIVED_SIMULATOR_DIR / f"simulator-chipyard.harness-{CONF
 SIMULATOR_CANDIDATES = (GENERATED_SIMULATOR, ARCHIVED_SIMULATOR)
 SIM_OUTPUT_DIR = SIM_DIR / "output" / f"chipyard.harness.TestHarness.{CONFIG}"
 SIMAXIMEM_SOURCE = CHECKOUT / "generators/rocket-chip/src/main/scala/system/SimAXIMem.scala"
-SIMDRAM_SOURCE = (
-    CHECKOUT / "generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
-)
+SIMDRAM_SOURCE = CHECKOUT / "generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
 SIMDRAM_LOADMEM_ENTRY_MARKER = "SimDRAM loaded ELF entry="
 BOOTROM_RV64_IMAGE = (
     CHECKOUT / "generators/testchipip/src/main/resources/testchipip/bootrom/bootrom.rv64.img"
 )
-ABSTRACT_CONFIG_SOURCE = (
-    CHECKOUT / "generators/chipyard/src/main/scala/config/AbstractConfig.scala"
-)
+ABSTRACT_CONFIG_SOURCE = CHECKOUT / "generators/chipyard/src/main/scala/config/AbstractConfig.scala"
 GENERATED_METADATA_PATTERNS = repair_chipyard_generated_paths.GENERATED_METADATA_PATTERNS
 STALE_ABSOLUTE_ROOTS = ("/work/", "/workspace/", "/__w/")
 TRACE_LINE_RE = re.compile(
@@ -235,9 +231,7 @@ def next_safe_action(
     if active_processes:
         stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
         progress = (
-            active_attempt.get("last_progress_marker")
-            if isinstance(active_attempt, dict)
-            else None
+            active_attempt.get("last_progress_marker") if isinstance(active_attempt, dict) else None
         )
         detail = f"; active attempt stage={stage}" if stage else ""
         if progress:
@@ -248,7 +242,9 @@ def next_safe_action(
             f"pid={user.get('pid')} elapsed={user.get('elapsed')}"
             for user in active_simulator_users[:5]
         )
-        extra = "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        extra = (
+            "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        )
         return (
             "wait for active ElizaRocketConfig simulator user(s) to finish before rebuilding: "
             f"{users}{extra}"
@@ -707,10 +703,7 @@ def has_quiet_linux_completion_evidence(
     quiet_completion_logs = log_metadata.get("quiet_linux_completion_logs")
     if isinstance(quiet_completion_logs, list) and quiet_completion_logs:
         return True
-    return (
-        has_simulator_success_finish(text, log_metadata)
-        and not has_kernel_panic(text)
-    )
+    return has_simulator_success_finish(text, log_metadata) and not has_kernel_panic(text)
 
 
 def remove_path(path: Path) -> None:
@@ -1044,7 +1037,9 @@ def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
     }
 
 
-def live_sim_output_metadata(payload: str | None, log_metadata: dict[str, object]) -> dict[str, object]:
+def live_sim_output_metadata(
+    payload: str | None, log_metadata: dict[str, object]
+) -> dict[str, object]:
     candidates: list[Path] = []
     for value in (log_metadata.get("binary_arg"), payload, log_metadata.get("payload")):
         if isinstance(value, str) and value:
@@ -1064,7 +1059,12 @@ def live_sim_output_metadata(payload: str | None, log_metadata: dict[str, object
         except OSError:
             continue
         logs.append(progress_metadata_for_text(candidate, text))
-    logs.sort(key=lambda item: float(item.get("mtime") or 0.0), reverse=True)
+
+    def log_mtime(item: dict[str, object]) -> float:
+        value = item.get("mtime")
+        return float(value) if isinstance(value, (int, float, str)) else 0.0
+
+    logs.sort(key=log_mtime, reverse=True)
     return {
         "output_dir": rel(SIM_OUTPUT_DIR),
         "logs": logs,
@@ -1311,9 +1311,7 @@ def simulator_log_reached_runtime(log_text: str) -> bool:
     return any(marker in log_text for marker in SIM_RUNTIME_MARKERS)
 
 
-def simulator_rebuild_was_interrupted(
-    log_text: str, log_metadata: dict[str, object]
-) -> bool:
+def simulator_rebuild_was_interrupted(log_text: str, log_metadata: dict[str, object]) -> bool:
     exit_code = log_metadata.get("exit_code")
     return (
         bool(exit_code and exit_code != "0")
@@ -1448,7 +1446,11 @@ def loadmem_diagnosis(
         or "LOADMEM=1" in command
     )
     reason = ""
-    if plus_loadmem_in_command and instruction_trace.get("entered_payload") and not simdram_marker_observed:
+    if (
+        plus_loadmem_in_command
+        and instruction_trace.get("entered_payload")
+        and not simdram_marker_observed
+    ):
         if simdram_source_newer:
             reason = (
                 "fresh instruction trace proves payload entry, but the current simulator "
@@ -1745,9 +1747,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     safe_action = next_safe_action(
         simulator_artifact, active_simulator_users, active_processes, active_attempt
     )
-    quiet_linux_completion = has_quiet_linux_completion_evidence(
-        log_text, log_metadata, payload
-    )
+    quiet_linux_completion = has_quiet_linux_completion_evidence(log_text, log_metadata, payload)
     progress = progress_with_active_attempt(
         classify_smoke_progress(log_text, instruction_trace, log_metadata),
         active_processes,
@@ -1899,7 +1899,9 @@ def main() -> int:
             active_attempt.get("last_progress_marker") if isinstance(active_attempt, dict) else None
         )
         reached_runtime = (
-            active_attempt.get("reached_simulator_runtime") if isinstance(active_attempt, dict) else False
+            active_attempt.get("reached_simulator_runtime")
+            if isinstance(active_attempt, dict)
+            else False
         )
         if active_stage:
             blocker += f"; active attempt stage: {active_stage}"
@@ -1910,9 +1912,8 @@ def main() -> int:
             if live_progress:
                 blocker += f"; latest live simulator progress: {live_progress}"
             blocker += f"; live log: {latest_live.get('path')}"
-        if (
-            instruction_trace.get("fresh_for_log")
-            and instruction_trace.get("bootrom_to_payload_handoff")
+        if instruction_trace.get("fresh_for_log") and instruction_trace.get(
+            "bootrom_to_payload_handoff"
         ):
             blocker += (
                 "; active instruction trace: "
@@ -1928,15 +1929,15 @@ def main() -> int:
             f"pid={user.get('pid')} elapsed={user.get('elapsed')}"
             for user in active_simulator_users[:5]
         )
-        extra = "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        extra = (
+            "" if len(active_simulator_users) <= 5 else f", +{len(active_simulator_users) - 5} more"
+        )
         blockers.append(
             "cannot safely rebuild stale ElizaRocketConfig simulator while active "
             f"simulator user(s) are running: {users}{extra}"
         )
     if fdt_audit.get("dtc_status") == "fail":
-        blockers.append(
-            f"generated DTS fails dtc compilation: {fdt_audit.get('dtc_output')}"
-        )
+        blockers.append(f"generated DTS fails dtc compilation: {fdt_audit.get('dtc_output')}")
     missing_dts_tokens = fdt_audit.get("missing_required_tokens")
     if isinstance(missing_dts_tokens, list) and missing_dts_tokens:
         blockers.append(

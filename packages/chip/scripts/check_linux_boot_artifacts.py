@@ -373,7 +373,11 @@ def print_text(report: dict[str, Any]) -> None:
                 "    - "
                 + str(item["path"])
                 + " "
-                + ("[serial-artifact-ok]" if item["satisfies_serial_boot_artifact"] else "[debug-only]")
+                + (
+                    "[serial-artifact-ok]"
+                    if item["satisfies_serial_boot_artifact"]
+                    else "[debug-only]"
+                )
             )
             if item.get("non_substitution_reason"):
                 print(f"      reason: {item['non_substitution_reason']}")

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # run_dhrystone.sh — cycle-accurate Dhrystone on the CVA6 ("Ariane") reference
 # core under Verilator, via CVA6's OWN supported veri-testharness flow. CVA6
 # RV64GC is the open-core reference and E1's "little" core (e1-pro), so a
@@ -158,9 +158,11 @@ INSNS=$(LC_ALL=C grep -acE '^core +0:' "${DASM}" 2>/dev/null || echo 0)
 RUNS=$(grep -oE '#define NUMBER_OF_RUNS[[:space:]]+[0-9]+' "${DH}/dhrystone.h" | grep -oE '[0-9]+' | tail -1 || true)
 CPD=$(grep -oE 'Microseconds for one run through Dhrystone:[[:space:]]+[0-9]+' "${RUNLOG}" | grep -oE '[0-9]+' | tail -1 || true)
 DPS=$(grep -oE 'Dhrystones per Second:[[:space:]]+[0-9]+' "${RUNLOG}" | grep -oE '[0-9]+' | tail -1 || true)
-[ -n "${RUNS:-}" ] && [ -n "${CPD:-}" ] && [ -n "${DPS:-}" ] || write_blocked \
-    "Dhrystone completed but final result metrics were not found on the UART" \
-    "Dhrystone Microseconds/Dhrystones banner" "inspect ${RUNLOG}"
+if [ -z "${RUNS:-}" ] || [ -z "${CPD:-}" ] || [ -z "${DPS:-}" ]; then
+    write_blocked \
+        "Dhrystone completed but final result metrics were not found on the UART" \
+        "Dhrystone Microseconds/Dhrystones banner" "inspect ${RUNLOG}"
+fi
 
 DMIPS=$(python3 -c "print(round(${DPS}/1757, 4))")
 CPI=$(python3 -c "print(round(${CYCLES}/${INSNS}, 4) if ${INSNS} else 'null')")

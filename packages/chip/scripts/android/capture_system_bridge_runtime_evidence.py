@@ -92,8 +92,12 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
     adb_state = run(prefix + ["get-state"], args.timeout_seconds)
     boot = adb_shell(prefix, args.timeout_seconds, "getprop", "sys.boot_completed")
     pm_path = adb_shell(prefix, args.timeout_seconds, "pm", "path", args.bridge_package)
-    package_dump = adb_shell(prefix, args.timeout_seconds, "dumpsys", "package", args.bridge_package)
-    service_dump = adb_shell(prefix, args.timeout_seconds, "dumpsys", "activity", "services", args.bridge_package)
+    package_dump = adb_shell(
+        prefix, args.timeout_seconds, "dumpsys", "package", args.bridge_package
+    )
+    service_dump = adb_shell(
+        prefix, args.timeout_seconds, "dumpsys", "activity", "services", args.bridge_package
+    )
     logcat_probe = adb_shell(prefix, args.timeout_seconds, "logcat", "-d", "-b", "all")
     logcat = logcat_probe.output
     args.logcat.parent.mkdir(parents=True, exist_ok=True)
@@ -108,11 +112,17 @@ def build_report(args: argparse.Namespace) -> dict[str, object]:
     )
     denial_count = count_lines(logcat, ("avc: denied",))
 
-    sys_boot_completed = boot.output.strip().splitlines()[-1:] == ["1"] if boot.output.strip() else False
+    sys_boot_completed = (
+        boot.output.strip().splitlines()[-1:] == ["1"] if boot.output.strip() else False
+    )
     package_installed = pm_path.output.strip().startswith("package:")
-    service_registered = args.bridge_service_marker in service_dump.output or args.bridge_package in service_dump.output
+    service_registered = (
+        args.bridge_service_marker in service_dump.output
+        or args.bridge_package in service_dump.output
+    )
     privapp_permissions_granted = all(
-        permission_granted(package_dump.output, permission) for permission in REQUIRED_PRIV_PERMISSIONS
+        permission_granted(package_dump.output, permission)
+        for permission in REQUIRED_PRIV_PERMISSIONS
     )
     js_bridge_bound = bridge_bound_marker in logcat
     launcher_consumed_live_state = live_state_marker in logcat
@@ -182,7 +192,9 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--live-state-marker",
-        default=os.environ.get("ELIZA_SYSTEM_BRIDGE_LIVE_STATE_MARKER", "AndroidSystemProvider: live-state"),
+        default=os.environ.get(
+            "ELIZA_SYSTEM_BRIDGE_LIVE_STATE_MARKER", "AndroidSystemProvider: live-state"
+        ),
     )
     parser.add_argument(
         "--mock-fallback-marker",
@@ -210,7 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"{report['status']}: android.system_bridge_runtime ({rel(args.output)})")
     if report["status"] != "PASS":
-        missing = report.get("observations", {}).get("missing_or_false", [])
+        observations = report.get("observations")
+        missing = observations.get("missing_or_false", []) if isinstance(observations, dict) else []
         print("missing_or_false=" + ",".join(str(item) for item in missing))
     return 0 if report["status"] == "PASS" else 2
 

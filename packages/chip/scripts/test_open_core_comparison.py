@@ -40,8 +40,14 @@ def test_silicon_axis_stays_an_honest_loss() -> None:
 def test_improved_axes_cite_measured_evidence() -> None:
     # Axes that moved off "loss"/"unproven" must point at an evidence file on disk.
     verdicts = _data()["e1_vs_ariane_verdict"]
-    for axis in ("verification_maturity", "peak_single_thread", "linux_boot_readiness",
-                 "area_energy_efficiency", "vector_ai", "scalar_integer_throughput"):
+    for axis in (
+        "verification_maturity",
+        "peak_single_thread",
+        "linux_boot_readiness",
+        "area_energy_efficiency",
+        "vector_ai",
+        "scalar_integer_throughput",
+    ):
         v = verdicts[axis]
         if v["verdict"] in ("win", "parity"):
             assert v.get("evidence"), f"{axis} claims {v['verdict']} without evidence"

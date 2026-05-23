@@ -361,8 +361,19 @@ print("true" if obj.get("ready") is True else "false")' 2>/dev/null || printf fa
 	export LAUNCHER_HEALTH_HTTP="${health_code:-0}"
 	export LAUNCHER_HEALTH_READY="${health_ready:-false}"
 	export LAUNCHER_LOGCAT_PATH="$launcher_logcat"
-	export LAUNCHER_FATAL_COUNT="$( [ -n "${fatal_hits:-}" ] && printf 1 || printf 0 )"
-	export LAUNCHER_AVC_COUNT="$( [ -n "${avc_hits:-}" ] && printf 1 || printf 0 )"
+	export LAUNCHER_OK="$launcher_ok"
+	if [ -n "${fatal_hits:-}" ]; then
+		LAUNCHER_FATAL_COUNT=1
+	else
+		LAUNCHER_FATAL_COUNT=0
+	fi
+	export LAUNCHER_FATAL_COUNT
+	if [ -n "${avc_hits:-}" ]; then
+		LAUNCHER_AVC_COUNT=1
+	else
+		LAUNCHER_AVC_COUNT=0
+	fi
+	export LAUNCHER_AVC_COUNT
 	export LAUNCHER_TRANSCRIPT_PATH="$out"
 	python3 - <<'PY'
 import json

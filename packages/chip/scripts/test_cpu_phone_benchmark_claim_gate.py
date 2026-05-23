@@ -15,7 +15,7 @@ CHECK_PATH = ROOT / "scripts/check_cpu_phone_benchmark_claim_gate.py"
 spec = importlib.util.spec_from_file_location("check_cpu_phone_benchmark_claim_gate", CHECK_PATH)
 if spec is None or spec.loader is None:
     raise SystemExit(f"unable to import {CHECK_PATH}")
-gate = importlib.util.module_from_spec(spec)
+gate: Any = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = gate
 spec.loader.exec_module(gate)
 
@@ -283,9 +283,7 @@ def test_missing_report_includes_real_run_command() -> None:
             write_json(path, side_result(name))
         report = gate.build_report(root / "benchmarks/results/cpu-phone/report.json")
         expect_status(report, "blocked")
-        finding = next(
-            item for item in report["findings"] if item["name"] == "benchmark_report"
-        )
+        finding = next(item for item in report["findings"] if item["name"] == "benchmark_report")
         if "--report-id cpu-phone" not in finding.get("next_command", ""):
             raise AssertionError(finding)
         if "target-built bw_mem" not in finding.get("requirements", ""):

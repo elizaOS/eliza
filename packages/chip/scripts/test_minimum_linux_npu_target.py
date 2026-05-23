@@ -78,7 +78,9 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             {"SingleStream", "Offline"},
         )
         mlperf_energy = next(
-            gate for gate in report["gates"] if gate["name"] == "modeled_mlperf_inference_energy_gate"
+            gate
+            for gate in report["gates"]
+            if gate["name"] == "modeled_mlperf_inference_energy_gate"
         )
         self.assertEqual(mlperf_energy["status"], "passed")
         self.assertIn("measured silicon power stays BLOCKED", mlperf_energy["stdout"])

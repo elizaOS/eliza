@@ -56,7 +56,7 @@ AP_REQUIRED_COMMANDS = (
     "scripts/run_chipyard_eliza_linux_smoke.sh",
     "scripts/capture_cpu_ap_evidence.py intake ap-benchmarks --source "
     "build/chipyard/eliza_rocket/verilator-linux-smoke.log --command "
-    "\"$ELIZA_AP_BENCHMARKS_CMD\" --generated-manifest "
+    '"$ELIZA_AP_BENCHMARKS_CMD" --generated-manifest '
     "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
 )
 DERIVED_SMOKE_MODES = ("opensbi-boot", "linux-boot")
@@ -140,7 +140,7 @@ def classify_tool(path: Path) -> str:
     if not path.exists():
         return "missing"
     try:
-        prefix = path.read_bytes()[:256 * 1024]
+        prefix = path.read_bytes()[: 256 * 1024]
     except OSError:
         return "unreadable"
     if b"eliza-host-smoke" in prefix or path.resolve().is_relative_to(
@@ -171,7 +171,9 @@ def ap_required_markers() -> tuple[list[str], list[str]]:
 def ap_benchmark_runner_report() -> dict[str, object]:
     markers, marker_errors = ap_required_markers()
     smoke_script = ROOT / LINUX_SMOKE_WORKLOAD
-    smoke_text = smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else ""
+    smoke_text = (
+        smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else ""
+    )
 
     tools: list[dict[str, object]] = []
     target_ready_tools: list[str] = []
@@ -218,7 +220,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
     if not smoke_runner_path.is_file() or not os.access(smoke_runner_path, os.X_OK):
         blockers.append(f"missing executable generated-AP simulator wrapper: {SMOKE_RUNNER}")
     if not workload_path.is_file():
-        blockers.append(f"missing generated-AP benchmark FireMarshal workload: {AP_BENCHMARK_WORKLOAD}")
+        blockers.append(
+            f"missing generated-AP benchmark FireMarshal workload: {AP_BENCHMARK_WORKLOAD}"
+        )
     if not payload_path.is_file():
         blockers.append(f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}")
     if missing_tools:

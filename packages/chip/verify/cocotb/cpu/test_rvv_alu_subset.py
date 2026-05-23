@@ -37,10 +37,18 @@ OPMVX = 0b110
 
 # funct6.
 F6 = {
-    "add": 0b000000, "sub": 0b000010,
-    "and": 0b001001, "or": 0b001010, "xor": 0b001011,
-    "sll": 0b100101, "srl": 0b101000, "sra": 0b101001,
-    "minu": 0b000100, "min": 0b000101, "maxu": 0b000110, "max": 0b000111,
+    "add": 0b000000,
+    "sub": 0b000010,
+    "and": 0b001001,
+    "or": 0b001010,
+    "xor": 0b001011,
+    "sll": 0b100101,
+    "srl": 0b101000,
+    "sra": 0b101001,
+    "minu": 0b000100,
+    "min": 0b000101,
+    "maxu": 0b000110,
+    "max": 0b000111,
     "mv": 0b010111,
     "mul": 0b100101,  # OPMVV / OPMVX
 }
@@ -98,7 +106,7 @@ def pack_vtype(vsew: int, vlmul: int = 0, vta: int = 0, vma: int = 0, vill: int 
     # vtype_t packed struct (rvv_csr.sv), MSB..LSB:
     #   vill[71], reserved_hi[70:8], vma[7], vta[6], vsew[5:3], vlmul[2:0]
     # = 1 + 63 + 1 + 1 + 3 + 3 = 72 bits. cocotb drives it as an integer.
-    val = (vlmul & 0b111)
+    val = vlmul & 0b111
     val |= (vsew & 0b111) << 3
     val |= (vta & 1) << 6
     val |= (vma & 1) << 7
@@ -180,8 +188,21 @@ async def random_elementwise(dut):
     await reset(dut)
     rng = random.Random(0x5EED)
 
-    vv_ops = ["add", "sub", "and", "or", "xor", "sll", "srl", "sra",
-              "minu", "min", "maxu", "max", "mv"]
+    vv_ops = [
+        "add",
+        "sub",
+        "and",
+        "or",
+        "xor",
+        "sll",
+        "srl",
+        "sra",
+        "minu",
+        "min",
+        "maxu",
+        "max",
+        "mv",
+    ]
     checks = 0
     for _ in range(400):
         vsew = rng.randint(0, 3)
@@ -208,9 +229,17 @@ async def random_elementwise(dut):
         rs1 = rng.getrandbits(XLEN)
 
         vd = await fire(
-            dut, f3=f3, f6=F6[op], vsew=vsew, vl=vl, vstart=vstart, vta=vta,
-            vs1=pack_vec(vs1_e, sb), vs2=pack_vec(vs2_e, sb),
-            vs3=pack_vec(vs3_e, sb), rs1=rs1,
+            dut,
+            f3=f3,
+            f6=F6[op],
+            vsew=vsew,
+            vl=vl,
+            vstart=vstart,
+            vta=vta,
+            vs1=pack_vec(vs1_e, sb),
+            vs2=pack_vec(vs2_e, sb),
+            vs3=pack_vec(vs3_e, sb),
+            rs1=rs1,
         )
         got = unpack_vec(vd, sb, n)
         exp = model(op, f3, vsew, vl, vstart, vta, vs1_e, vs2_e, vs3_e, rs1)
@@ -236,9 +265,17 @@ async def vstart_prefix_undisturbed(dut):
     vs1_e = [1] * n
     vs3_e = [0xDEAD_0000 + i for i in range(n)]
     vd = await fire(
-        dut, f3=OPIVV, f6=F6["add"], vsew=vsew, vl=n, vstart=3, vta=0,
-        vs1=pack_vec(vs1_e, sb), vs2=pack_vec(vs2_e, sb),
-        vs3=pack_vec(vs3_e, sb), rs1=0,
+        dut,
+        f3=OPIVV,
+        f6=F6["add"],
+        vsew=vsew,
+        vl=n,
+        vstart=3,
+        vta=0,
+        vs1=pack_vec(vs1_e, sb),
+        vs2=pack_vec(vs2_e, sb),
+        vs3=pack_vec(vs3_e, sb),
+        rs1=0,
     )
     got = unpack_vec(vd, sb, n)
     for e in range(3):
@@ -259,9 +296,17 @@ async def tail_agnostic_ones(dut):
     vs1_e = [7] * n
     vs3_e = [0] * n
     vd = await fire(
-        dut, f3=OPIVV, f6=F6["add"], vsew=vsew, vl=vl, vstart=0, vta=1,
-        vs1=pack_vec(vs1_e, sb), vs2=pack_vec(vs2_e, sb),
-        vs3=pack_vec(vs3_e, sb), rs1=0,
+        dut,
+        f3=OPIVV,
+        f6=F6["add"],
+        vsew=vsew,
+        vl=vl,
+        vstart=0,
+        vta=1,
+        vs1=pack_vec(vs1_e, sb),
+        vs2=pack_vec(vs2_e, sb),
+        vs3=pack_vec(vs3_e, sb),
+        rs1=0,
     )
     got = unpack_vec(vd, sb, n)
     for e in range(vl):

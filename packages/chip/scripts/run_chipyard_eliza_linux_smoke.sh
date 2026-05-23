@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -eu
 
 repo_dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -87,11 +87,11 @@ cleanup_lock() {
 quiet_linux_finished() {
 	printf '%s\n' "${binary_arg:-}" | grep -F -q 'linux-poweroff-quiet' || return 1
 	if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ] &&
-		grep -F -q 'TestDriver.v:158: Verilog $finish' "$raw_log"; then
+		grep -F -q "TestDriver.v:158: Verilog \$finish" "$raw_log"; then
 		return 0
 	fi
 	sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
-	[ -f "$sim_log" ] && grep -F -q 'TestDriver.v:158: Verilog $finish' "$sim_log"
+	[ -f "$sim_log" ] && grep -F -q "TestDriver.v:158: Verilog \$finish" "$sim_log"
 }
 cleanup_signal() {
 	if [ -n "${log_tmp:-}" ] && [ -f "$log_tmp" ]; then
@@ -102,7 +102,7 @@ cleanup_signal() {
 		if quiet_linux_finished; then
 			signal_quiet_finish=1
 			sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
-			if [ -f "$sim_log" ] && ! grep -F -q 'TestDriver.v:158: Verilog $finish' "$log_tmp"; then
+			if [ -f "$sim_log" ] && ! grep -F -q "TestDriver.v:158: Verilog \$finish" "$log_tmp"; then
 				cat "$sim_log" >>"$log_tmp"
 			fi
 		fi

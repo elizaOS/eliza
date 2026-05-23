@@ -60,7 +60,9 @@ def test_structured_findings_cover_radio_sensor_pmic_blockers() -> None:
         raise AssertionError("radio/sensor/PMIC scope report must expose structured findings")
     codes = {str(item.get("code", "")) for item in findings}
     if not any(code.startswith("radio_sensor_pmic_missing_real_evidence_") for code in codes):
-        raise AssertionError(f"radio/sensor/PMIC findings must include missing evidence: {findings}")
+        raise AssertionError(
+            f"radio/sensor/PMIC findings must include missing evidence: {findings}"
+        )
     print("PASS structured radio/sensor/PMIC findings cover blocked real evidence")
 
 

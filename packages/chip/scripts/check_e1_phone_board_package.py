@@ -10,6 +10,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/kicad/e1-phone/artifact-manifest.yaml"
+PUBLIC_SOURCE_STATUS_RE = re.compile(r"^(public_listing|vendor_page)_observed_20\d{2}_\d{2}_\d{2}$")
 
 
 def load_yaml(path: Path):
@@ -20,6 +21,10 @@ def load_yaml(path: Path):
 def require_path(path: Path) -> None:
     if not path.exists():
         raise SystemExit(f"missing required artifact: {path}")
+
+
+def is_public_source_status(value: object) -> bool:
+    return isinstance(value, str) and PUBLIC_SOURCE_STATUS_RE.fullmatch(value) is not None
 
 
 def nonwhite_percent(path: Path) -> float:
@@ -791,10 +796,7 @@ def check_supplier_sourcing_audit() -> None:
     for item in validated_sources:
         if not str(item.get("url", "")).startswith("https://"):
             raise SystemExit(f"supplier sourcing validation source missing https URL: {item}")
-        if item.get("public_page_status") not in {
-            "public_listing_observed_2026_05_20",
-            "vendor_page_observed_2026_05_20",
-        }:
+        if not is_public_source_status(item.get("public_page_status")):
             raise SystemExit(f"supplier sourcing validation source stale/unrecognized: {item}")
         if len(item.get("observed_fields", [])) < 4:
             raise SystemExit(f"supplier sourcing validation has weak observed fields: {item}")
@@ -921,6 +923,8 @@ def check_supplier_source_verification() -> None:
         "display_primary_chenghao_ch550fh01a_ct",
         "display_alternate_made_in_china_5p5_1080p_mipi_ctp",
         "display_alternate_alibaba_youritech_5p5_1080p_40pin",
+        "display_alternate_alibaba_meta_055wu01",
+        "display_alternate_made_in_china_e549_amoled",
         "rear_camera_primary_sincere_first_ov13855",
         "rear_camera_alternate_alibaba_ov13855_mipi",
         "front_camera_primary_sincere_first_gc5035",
@@ -938,10 +942,7 @@ def check_supplier_source_verification() -> None:
         by_group.setdefault(source["group"], []).append(source)
         if not str(source.get("url", "")).startswith("https://"):
             raise SystemExit(f"supplier source verification source missing https URL: {source}")
-        if source["public_page_status"] not in {
-            "public_listing_observed_2026_05_20",
-            "vendor_page_observed_2026_05_20",
-        }:
+        if not is_public_source_status(source.get("public_page_status")):
             raise SystemExit(f"supplier source verification source status stale: {source}")
         if not source.get("observed_public_fields"):
             raise SystemExit(
@@ -951,7 +952,7 @@ def check_supplier_source_verification() -> None:
             raise SystemExit(
                 f"supplier source verification source weak missing-evidence list: {source}"
             )
-    expected_group_counts = {"display": 3, "camera": 4, "cellular": 1, "wifi_bluetooth": 1}
+    expected_group_counts = {"display": 5, "camera": 4, "cellular": 1, "wifi_bluetooth": 1}
     if {group: len(items) for group, items in by_group.items()} != expected_group_counts:
         raise SystemExit("supplier source verification group counts diverge")
     for group in ["display", "camera"]:
@@ -1709,6 +1710,8 @@ def check_display_camera_source_revalidation() -> None:
     required_sources = {
         "display_primary_chenghao_ch550fh01a_ct",
         "display_primary_chenghao_ch550fh01a_ct_public_pdf",
+        "display_alternate_alibaba_meta_055wu01",
+        "display_alternate_made_in_china_e549_amoled",
         "rear_camera_primary_sincere_first_ov13855",
         "front_camera_primary_sincere_first_gc5035",
         "front_camera_alternate_alibaba_junde_imx219",
@@ -1780,6 +1783,8 @@ def check_display_camera_source_revalidation() -> None:
     rfq_matrix = revalidation["rfq_readiness_matrix"]
     expected_rfq_sources = {
         "display_touch": "display_primary_chenghao_ch550fh01a_ct",
+        "display_alibaba_alternate": "display_alternate_alibaba_meta_055wu01",
+        "display_amoled_alternate": "display_alternate_made_in_china_e549_amoled",
         "rear_camera": "rear_camera_primary_sincere_first_ov13855",
         "front_camera": "front_camera_primary_sincere_first_gc5035",
         "alibaba_camera_alternate": "front_camera_alternate_alibaba_junde_imx219",
@@ -2466,6 +2471,7 @@ def check_display_camera_acceptance() -> None:
         "display_fpc_pinout_symbol_footprint",
         "mipi_dsi_route_si_and_return_path",
         "display_touch_power_sequence_and_bringup",
+        "display_alternate_screen_branch_release_gate",
         "rear_camera_supplier_pack_and_sample",
         "front_camera_supplier_pack_and_sample",
         "mipi_csi_route_power_and_clocking",
@@ -12409,6 +12415,9 @@ def check_routed_layout_readiness_binding() -> None:
     post_route_validation = load_yaml(
         ROOT / "board/kicad/e1-phone/post-route-validation-binding.yaml"
     )
+    supplier_rfq_responses = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
+    )
 
     if binding["schema"] != "eliza.e1_phone_routed_layout_readiness_binding.v1":
         raise SystemExit(f"unexpected routed layout readiness schema: {binding['schema']}")
@@ -12438,6 +12447,7 @@ def check_routed_layout_readiness_binding() -> None:
         "board_optimization_scorecard": scorecard["status"],
         "layout_optimization_execution": layout_optimization["status"],
         "post_route_validation_binding": post_route_validation["status"],
+        "supplier_rfq_response_normalization": supplier_rfq_responses["status"],
     }
     if binding["upstream_status"] != expected_upstream:
         raise SystemExit("routed layout readiness upstream status snapshot is stale")
@@ -12604,6 +12614,9 @@ def check_first_article_route_execution_order() -> None:
     )
     enclosure_fit = load_yaml(ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml")
     readiness = load_yaml(ROOT / "board/kicad/e1-phone/end-to-end-readiness.yaml")
+    supplier_rfq_responses = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
+    )
 
     if order["schema"] != "eliza.e1_phone_first_article_route_execution_order.v1":
         raise SystemExit(f"unexpected first-article route order schema: {order['schema']}")
@@ -12635,6 +12648,7 @@ def check_first_article_route_execution_order() -> None:
         "factory_production_acceptance": factory_acceptance["status"],
         "enclosure_fit_execution": enclosure_fit["status"],
         "end_to_end_readiness": readiness["status"],
+        "supplier_rfq_response_normalization": supplier_rfq_responses["status"],
     }
     if order["upstream_status"] != expected_upstream:
         raise SystemExit("first-article route order upstream status snapshot is stale")
@@ -12883,6 +12897,9 @@ def check_post_route_validation_binding() -> None:
         ROOT / "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml"
     )
     pcb_audit = load_yaml(ROOT / "board/kicad/e1-phone/pcb-implementation-audit.yaml")
+    supplier_rfq_responses = load_yaml(
+        ROOT / "board/kicad/e1-phone/supplier-rfq-response-normalization.yaml"
+    )
 
     if binding["schema"] != "eliza.e1_phone_post_route_validation_binding.v1":
         raise SystemExit(f"unexpected post-route validation schema: {binding['schema']}")
@@ -12918,6 +12935,7 @@ def check_post_route_validation_binding() -> None:
         "routed_board_step_export": routed_step["status"],
         "enclosure_fit_execution": enclosure_fit["status"],
         "pcb_implementation_audit": pcb_audit["status"],
+        "supplier_rfq_response_normalization": supplier_rfq_responses["status"],
     }
     if binding["upstream_status"] != expected_upstream:
         raise SystemExit("post-route validation upstream status snapshot is stale")
@@ -13850,7 +13868,7 @@ def check_end_to_end_readiness() -> None:
         "popular_screen_size_fit": "board/kicad/e1-phone/display-envelope-downselect.yaml",
         "screen_camera_oem_sourcing": "board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml",
         "usb_c_power_volume_hardware": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
-        "off_the_shelf_wireless_modules": "board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml",
+        "off_the_shelf_wireless_modules": "board/kicad/e1-phone/wireless-module-release-execution.yaml",
         "board_size_power_rf_thermal_optimization": "board/kicad/e1-phone/layout-optimization-execution.yaml",
         "schematic_and_pcb_routed_release": "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml",
         "manufacturing_and_factory_release": "board/kicad/e1-phone/production-factory-release-execution.yaml",

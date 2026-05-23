@@ -156,8 +156,8 @@ def build_evidence() -> dict:
         e1_model = m["e1_mpki"]
         cva6_model = m["cva6_mpki"]
         ratio_rtl = (cva6_model / e1_rtl) if e1_rtl > 0 else None
-        rel_gap = (abs(e1_rtl - e1_model) / e1_model) if e1_model > 0 else (
-            0.0 if e1_rtl == 0 else None
+        rel_gap = (
+            (abs(e1_rtl - e1_model) / e1_model) if e1_model > 0 else (0.0 if e1_rtl == 0 else None)
         )
         per_trace[name] = {
             "trace_class": info["trace_class"] or m.get("trace_class"),
@@ -169,9 +169,7 @@ def build_evidence() -> dict:
             "improvement_ratio_cva6_model_over_e1_rtl": (
                 round(ratio_rtl, 4) if ratio_rtl is not None else None
             ),
-            "e1_rtl_vs_model_rel_gap": (
-                round(rel_gap, 4) if rel_gap is not None else None
-            ),
+            "e1_rtl_vs_model_rel_gap": (round(rel_gap, 4) if rel_gap is not None else None),
         }
 
     paired = list(per_trace.values())
@@ -186,12 +184,8 @@ def build_evidence() -> dict:
     pearson = _pearson(e1_rtl_vals, e1_model_vals)
     spearman = _spearman(e1_rtl_vals, e1_model_vals)
 
-    rel_geo_gap = (
-        abs(e1_rtl_geo - e1_model_geo) / e1_model_geo if e1_model_geo > 0 else None
-    )
-    converged = bool(
-        rel_geo_gap is not None and rel_geo_gap <= RTL_MODEL_REL_GAP_CONVERGED
-    )
+    rel_geo_gap = abs(e1_rtl_geo - e1_model_geo) / e1_model_geo if e1_model_geo > 0 else None
+    converged = bool(rel_geo_gap is not None and rel_geo_gap <= RTL_MODEL_REL_GAP_CONVERGED)
 
     ratio_rtl_geo = cva6_model_geo / e1_rtl_geo if e1_rtl_geo > 0 else None
 
@@ -251,9 +245,7 @@ def build_evidence() -> dict:
             "rtl_citations": CVA6_RTL_CITATIONS,
         },
         "model_comparison_source": str(MODEL_COMPARISON_PATH.relative_to(ROOT)),
-        "rtl_evidence_sources": sorted(
-            {p["rtl_source"] for p in per_trace.values()}
-        ),
+        "rtl_evidence_sources": sorted({p["rtl_source"] for p in per_trace.values()}),
         "shared_trace_count": len(per_trace),
         "rtl_traces_without_model_pair": sorted(missing_model),
         "per_trace": per_trace,
@@ -270,9 +262,7 @@ def build_evidence() -> dict:
             "spearman_rho": round(spearman, 6) if spearman is not None else None,
             "e1_model_geomean_mpki": round(e1_model_geo, 6),
             "e1_rtl_geomean_mpki": round(e1_rtl_geo, 6),
-            "geomean_relative_gap": (
-                round(rel_geo_gap, 6) if rel_geo_gap is not None else None
-            ),
+            "geomean_relative_gap": (round(rel_geo_gap, 6) if rel_geo_gap is not None else None),
             "convergence_band_rel_gap": RTL_MODEL_REL_GAP_CONVERGED,
             "converged": converged,
         },

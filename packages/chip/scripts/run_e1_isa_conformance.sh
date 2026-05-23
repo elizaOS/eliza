@@ -53,7 +53,8 @@ SPIKE_INSTALL_DIR="$(readlink -f "$CVA6/tools/spike")"
     "Spike ISS not built at $SPIKE_INSTALL_DIR/bin/spike" \
     "cd external/cva6/cva6 && RISCV=$RISCV NUM_JOBS=8 source verif/regress/install-spike.sh"
 export SPIKE_INSTALL_DIR
-export SPIKE_SRC_DIR="$(readlink -f "$CVA6/verif/core-v-verif/vendor/riscv/riscv-isa-sim")"
+SPIKE_SRC_DIR="$(readlink -f "$CVA6/verif/core-v-verif/vendor/riscv/riscv-isa-sim")"
+export SPIKE_SRC_DIR
 
 DTC_BIN="$REPO_ROOT/external/deb-tools/dtc/usr/bin"
 OSS_BIN="$REPO_ROOT/external/oss-cad-suite/bin"
@@ -184,7 +185,7 @@ export RTL_PATH="$ISO/"
 export PATH="$SHIM:$PATH"
 export RISCV_CC="$SHIM/riscv-none-elf-gcc"
 export UVM_VERBOSITY="${UVM_VERBOSITY:-UVM_NONE}"
-DV_OPTS="--issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=$UVM_VERBOSITY"
+DV_OPTS=(--issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY="$UVM_VERBOSITY")
 
 # --- Run suites --------------------------------------------------------------
 run_testlist() {
@@ -192,10 +193,10 @@ run_testlist() {
     # $3.. = extra cva6.py args (e.g. --linker=...).
     local testlist="$1" odir="$2"
     shift 2
-    rm -rf "$OUT/$odir"
+    rm -rf "$OUT/${odir:?}"
     ( cd "$CVA6/verif/sim" && \
       python3 cva6.py --testlist="$testlist" --target "$TARGET" \
-        --iss="$DV_SIMULATORS" --iss_yaml=cva6.yaml -o "$OUT/$odir" $DV_OPTS "$@" )
+        --iss="$DV_SIMULATORS" --iss_yaml=cva6.yaml -o "$OUT/$odir" "${DV_OPTS[@]}" "$@" )
 }
 
 # The riscv-arch-test / riscv-compliance suites need the LLVM compiler shim:

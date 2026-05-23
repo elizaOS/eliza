@@ -6,6 +6,7 @@ root-owned (uid/gid 0) entries, plus the device nodes an initramfs needs for a
 working console (/dev/console, /dev/null, /dev/ttyS0, /dev/tty). This avoids
 requiring host root / mknod to assemble the cpio.
 """
+
 import os
 import stat
 import sys

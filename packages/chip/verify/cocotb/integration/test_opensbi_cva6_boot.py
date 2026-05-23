@@ -90,9 +90,7 @@ async def test_opensbi_boots_and_prints_banner(dut):
     for _ in range(4):
         await RisingEdge(dut.clk)
 
-    assert int(dut.platform_released_o.value) == 1, (
-        "RoT did not release the CVA6 cluster."
-    )
+    assert int(dut.platform_released_o.value) == 1, "RoT did not release the CVA6 cluster."
     assert int(dut.cva6_rst_n_o.value) == 1, "CVA6 still held in reset."
 
     chars = bytearray()
@@ -135,9 +133,7 @@ async def test_opensbi_boots_and_prints_banner(dut):
     )
     dut._log.info("UART transcript:\n" + transcript)
 
-    assert dram_ar >= 1 and dram_r >= 1, (
-        f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
-    )
+    assert dram_ar >= 1 and dram_r >= 1, f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
     assert len(chars) > 0, (
         "No UART output — OpenSBI never reached its console.  Check the entry "
         "shim regs (a0/a1), the OpenSBI image base (FW_TEXT_START=0x80000000), "

@@ -90,9 +90,8 @@ def package_name_from_apk(apk: Path) -> tuple[str | None, str]:
         package_name = package_name_from_aapt(apk, aapt)
         if package_name:
             return package_name, aapt
-    apkanalyzer = (
-        shutil.which("apkanalyzer")
-        or str(Path.home() / "Android/Sdk/cmdline-tools/latest/bin/apkanalyzer")
+    apkanalyzer = shutil.which("apkanalyzer") or str(
+        Path.home() / "Android/Sdk/cmdline-tools/latest/bin/apkanalyzer"
     )
     if apkanalyzer and Path(apkanalyzer).is_file():
         completed = subprocess.run(
@@ -107,15 +106,15 @@ def package_name_from_apk(apk: Path) -> tuple[str | None, str]:
 
 
 def package_name_from_aapt(apk: Path, aapt: str) -> str | None:
-    aapt = subprocess.run(
+    completed = subprocess.run(
         [aapt, "dump", "badging", str(apk)],
         check=False,
         capture_output=True,
         text=True,
     )
-    if aapt.returncode != 0:
+    if completed.returncode != 0:
         return None
-    for line in aapt.stdout.splitlines():
+    for line in completed.stdout.splitlines():
         if line.startswith("package:"):
             for part in line.split():
                 if part.startswith("name="):
@@ -125,9 +124,8 @@ def package_name_from_aapt(apk: Path, aapt: str) -> str | None:
 
 def read_zip_json(apk: Path, entry: str) -> dict[str, Any]:
     try:
-        with zipfile.ZipFile(apk) as zf:
-            with zf.open(entry) as fp:
-                value = json.loads(fp.read().decode("utf-8"))
+        with zipfile.ZipFile(apk) as zf, zf.open(entry) as fp:
+            value = json.loads(fp.read().decode("utf-8"))
     except (KeyError, json.JSONDecodeError, UnicodeDecodeError, zipfile.BadZipFile):
         return {}
     return value if isinstance(value, dict) else {}
@@ -141,9 +139,7 @@ def read_zip_bytes(apk: Path, entry: str) -> bytes:
         return b""
 
 
-def runtime_file_integrity_mismatches(
-    apk: Path, runtime_provenance: dict[str, Any]
-) -> list[str]:
+def runtime_file_integrity_mismatches(apk: Path, runtime_provenance: dict[str, Any]) -> list[str]:
     files = runtime_provenance.get("files", [])
     if not isinstance(files, list):
         return []
@@ -159,9 +155,7 @@ def runtime_file_integrity_mismatches(
             continue
         recorded_size = item.get("size_bytes")
         if isinstance(recorded_size, int) and recorded_size != len(data):
-            mismatches.append(
-                f"{entry}: size_bytes recorded={recorded_size} actual={len(data)}"
-            )
+            mismatches.append(f"{entry}: size_bytes recorded={recorded_size} actual={len(data)}")
         recorded_sha256 = item.get("sha256")
         if isinstance(recorded_sha256, str) and recorded_sha256.lower() != sha256_bytes(data):
             mismatches.append(f"{entry}: sha256 does not match APK entry bytes")
@@ -190,7 +184,9 @@ def host_local_paths(value: Any, prefix: str = "$") -> list[str]:
 def vendor_home_package() -> str | None:
     if not VENDOR_COMMON_MK.is_file():
         return None
-    match = re.search(r"\bro\.elizaos\.home=([A-Za-z0-9_.]+)", VENDOR_COMMON_MK.read_text(encoding="utf-8"))
+    match = re.search(
+        r"\bro\.elizaos\.home=([A-Za-z0-9_.]+)", VENDOR_COMMON_MK.read_text(encoding="utf-8")
+    )
     return match.group(1) if match else None
 
 
@@ -217,9 +213,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     riscv_libs = sorted(entry for entry in entries if entry.startswith("lib/riscv64/"))
     provenance = read_zip_json(apk, PROVENANCE_ENTRY) if PROVENANCE_ENTRY in entries else {}
     runtime_provenance = (
-        read_zip_json(apk, RUNTIME_PROVENANCE_ENTRY)
-        if RUNTIME_PROVENANCE_ENTRY in entries
-        else {}
+        read_zip_json(apk, RUNTIME_PROVENANCE_ENTRY) if RUNTIME_PROVENANCE_ENTRY in entries else {}
     )
     runtime_provenance_bytes = read_zip_bytes(apk, RUNTIME_PROVENANCE_ENTRY)
     runtime_provenance_sha256 = (
@@ -281,17 +275,14 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     add_if(
         findings,
         RUNTIME_PROVENANCE_ENTRY in entries
-        and runtime_provenance.get("schema")
-        != "eliza.android_agent_runtime_provenance.v1",
+        and runtime_provenance.get("schema") != "eliza.android_agent_runtime_provenance.v1",
         "runtime_provenance_schema_mismatch",
         "runtime payload provenance has the wrong schema",
         f"schema={runtime_provenance.get('schema')!r}",
         "Regenerate the APK with the current stage-android-agent.mjs provenance writer.",
     )
     runtime_file_paths = {
-        file.get("path")
-        for file in runtime_provenance.get("files", [])
-        if isinstance(file, dict)
+        file.get("path") for file in runtime_provenance.get("files", []) if isinstance(file, dict)
     }
     add_if(
         findings,

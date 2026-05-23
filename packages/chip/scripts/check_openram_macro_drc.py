@@ -204,6 +204,7 @@ def main() -> int:
     total = drc["drc_total_error_tiles"]
     rule_sum = drc["rule_tile_sum"]
     periphery = drc["periphery_tiles"]
+    rules_parsed_ok = bool(drc["rules_parsed_ok"])
 
     # Fail-closed: only trust a PASS/FAIL split when the per-rule breakdown was
     # parsed AND its tile sum reconciles with the grand total (Magic counts each
@@ -211,11 +212,11 @@ def main() -> int:
     # total; it must never be LESS, which would mean rules were dropped). If the
     # breakdown is missing or under-counts while the total is nonzero, the split
     # is unreliable and the verdict is UNKNOWN, never PASS.
-    if total is None:
+    if not isinstance(total, int):
         status = "UNKNOWN"
     elif total == 0:
         status = "PASS"
-    elif not drc["rules_parsed_ok"] or rule_sum < total:
+    elif not isinstance(rule_sum, int) or not rules_parsed_ok or rule_sum < total:
         status = "UNKNOWN"
     else:
         status = "PASS" if periphery == 0 else "FAIL"

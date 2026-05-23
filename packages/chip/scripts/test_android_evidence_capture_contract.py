@@ -146,9 +146,7 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                             "app": {
                                 "package_name": "ai.elizaos.app",
                                 "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
-                                "role_holders": {
-                                    "android.app.role.HOME": ["ai.elizaos.app"]
-                                },
+                                "role_holders": {"android.app.role.HOME": ["ai.elizaos.app"]},
                                 "home_resolve_activity": "ai.elizaos.app/.MainActivity",
                                 "foreground_activity": "ai.elizaos.app/.MainActivity",
                                 "service_component": "ai.elizaos.app/.ElizaAgentService",

@@ -102,7 +102,7 @@ async def uftb_replacement_preserves_recently_used_way(dut):
     pcs = [base] + [uftb_same_set_pc(base, salt) for salt in range(4)]
     targets = [0x8001_0000 + i * 0x40 for i in range(len(pcs))]
 
-    for pc, target in zip(pcs[:4], targets[:4]):
+    for pc, target in zip(pcs[:4], targets[:4], strict=True):
         await train(dut, pc, target, 1)
 
     hit, nxt, _, _, _ = await lookup(dut, pcs[0])

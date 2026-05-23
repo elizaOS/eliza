@@ -15,7 +15,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MECH_DIR = REPO_ROOT / "packages/chip/mechanical/e1-phone"
 OUT_DIR = MECH_DIR / "out"
@@ -94,7 +93,9 @@ def manifest_inventory() -> dict[str, Any]:
                 "role_counts": {},
             }
             continue
-        roles = Counter(str(item.get("role", "<missing>")) for item in data if isinstance(item, dict))
+        roles = Counter(
+            str(item.get("role", "<missing>")) for item in data if isinstance(item, dict)
+        )
         rows[name] = {
             "path": repo_rel(path),
             "present": True,
@@ -278,10 +279,7 @@ def to_yaml(value: Any, indent: int = 0) -> list[str]:
             return [f"{prefix}[]"]
         lines = []
         for item in value:
-            if isinstance(item, dict):
-                lines.append(f"{prefix}-")
-                lines.extend(to_yaml(item, indent + 2))
-            elif isinstance(item, list):
+            if isinstance(item, (dict, list)):
                 lines.append(f"{prefix}-")
                 lines.extend(to_yaml(item, indent + 2))
             else:

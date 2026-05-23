@@ -216,9 +216,7 @@ def run_mlperf_modeled_check() -> dict[str, Any]:
     return {
         "name": "modeled_loadgen_npu_mlperf_subset",
         "status": (
-            "passed"
-            if completed.returncode == 0 and report_status == "pass"
-            else "blocked"
+            "passed" if completed.returncode == 0 and report_status == "pass" else "blocked"
         ),
         "command": completed.args,
         "stdout": completed.stdout,

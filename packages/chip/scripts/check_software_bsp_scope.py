@@ -138,7 +138,9 @@ def structured_findings(
                     "severity": "blocker",
                     "message": f"{target} missing {item.get('artifact') or item.get('path')}",
                     "evidence": str(item.get("path", "")),
-                    "next_step": str(item.get("capture_command") or item.get("validation_command") or ""),
+                    "next_step": str(
+                        item.get("capture_command") or item.get("validation_command") or ""
+                    ),
                 }
             )
         for item in list_values(report.get("invalid_evidence")):
@@ -432,7 +434,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     ):
         errors.append("targets must cover buildroot, linux, opensbi, and aosp")
     elif all(isinstance(item, dict) and item.get("evidence_status") == "PASS" for item in targets):
-        errors.append("software BSP target evidence must not all pass while release_claim_allowed is false")
+        errors.append(
+            "software BSP target evidence must not all pass while release_claim_allowed is false"
+        )
     findings = data.get("findings")
     if not isinstance(findings, list) or not findings:
         errors.append("findings must list structured software BSP blockers")

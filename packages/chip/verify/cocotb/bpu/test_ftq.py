@@ -177,9 +177,7 @@ async def ftq_full_accepts_push_when_pop_frees_slot(dut):
 
     base = 0x9800_0000
     for i in range(FTQ_ENTRIES):
-        await push(
-            dut, base + i * 0x20, base + 0x1F + i * 0x20, base + 0x40 + i * 0x20, 1, BR_COND
-        )
+        await push(dut, base + i * 0x20, base + 0x1F + i * 0x20, base + 0x40 + i * 0x20, 1, BR_COND)
 
     await RisingEdge(dut.clk)
     assert int(dut.pmu_full.value) == 1

@@ -290,12 +290,16 @@ def stale_manifest_bindings(evidence_manifest: dict) -> list[dict[str, object]]:
                 "recorded_generated_manifest_sha256": recorded_sha,
                 "current_generated_manifest": expected_manifest,
                 "current_generated_manifest_sha256": expected_sha,
-                "transcript_mtime_utc": dt.datetime.fromtimestamp(
-                    path.stat().st_mtime, dt.UTC
-                ).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                "transcript_mtime_utc": dt.datetime.fromtimestamp(path.stat().st_mtime, dt.UTC)
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "generated_manifest_mtime_utc": dt.datetime.fromtimestamp(
                     GENERATED_MANIFEST.stat().st_mtime, dt.UTC
-                ).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+                )
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
                 "regeneration_command": (
                     'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
                     f"&& scripts/capture_chipyard_linux_evidence.sh {mode}"

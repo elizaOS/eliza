@@ -33,9 +33,7 @@ from benchmarks.mlperf.model import macs_per_inference  # noqa: E402
 RUNNER = ROOT / "benchmarks/mlperf/run_mlperf_inference.py"
 
 EXPECTED_SCHEMA = "eliza.mlperf_inference.v1"
-EXPECTED_CLAIM_BOUNDARY = (
-    "modeled_preSilicon_not_official_submission_and_not_measured_power"
-)
+EXPECTED_CLAIM_BOUNDARY = "modeled_preSilicon_not_official_submission_and_not_measured_power"
 EXPECTED_SCENARIOS = {"SingleStream", "Offline"}
 EXPECTED_PERCENTILES = {"p50", "p90", "p99"}
 ENERGY_REQUIRED_KEYS = {
@@ -111,9 +109,7 @@ def main() -> int:
     if not isinstance(workload, dict):
         errors.append("report must include workload block")
     elif workload.get("macs_per_inference") != expected_macs_per_inference:
-        errors.append(
-            f"workload.macs_per_inference must be {expected_macs_per_inference}"
-        )
+        errors.append(f"workload.macs_per_inference must be {expected_macs_per_inference}")
 
     fidelity = data.get("fidelity")
     if not isinstance(fidelity, dict):
@@ -188,9 +184,7 @@ def main() -> int:
         if not isinstance(blocked, list):
             errors.append("summary.blocked_axes must be a list")
         else:
-            blocker_ids = {
-                axis.get("blocker_id") for axis in blocked if isinstance(axis, dict)
-            }
+            blocker_ids = {axis.get("blocker_id") for axis in blocked if isinstance(axis, dict)}
             if "mlperf-power-closed" not in blocker_ids:
                 errors.append(
                     "summary.blocked_axes must keep the measured-silicon-power axis BLOCKED "

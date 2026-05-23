@@ -82,7 +82,7 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             tmp / "chip/sw/aosp-device/start-eliza-agent-riscv64.sh",
             "package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}\n"
             "service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentForegroundService}\n"
-            "adb shell am start-foreground-service -n \"$service\"\n"
+            'adb shell am start-foreground-service -n "$service"\n'
             "url=/api/agent/self-status\n",
         )
         smoke_script = write(

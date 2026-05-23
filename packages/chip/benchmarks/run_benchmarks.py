@@ -1449,9 +1449,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("MLPerf inference output is missing scenarios")
     by_name = {
-        scenario.get("scenario"): scenario
-        for scenario in scenarios
-        if isinstance(scenario, dict)
+        scenario.get("scenario"): scenario for scenario in scenarios if isinstance(scenario, dict)
     }
     missing_scenarios = {"SingleStream", "Offline"} - set(by_name)
     if missing_scenarios:
@@ -1477,7 +1475,10 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
         raise ValueError("MLPerf inference SingleStream scenario missing p90 latency")
     if not is_json_number(offline.get("throughput_samples_per_second")):
         raise ValueError("MLPerf inference Offline scenario missing throughput")
-    if not is_json_number(energy) or energy <= 0:
+    if not is_json_number(energy) or not isinstance(energy, (int, float)):
+        raise ValueError("MLPerf inference modeled energy must be positive")
+    energy_value = float(energy)
+    if energy_value <= 0:
         raise ValueError("MLPerf inference modeled energy must be positive")
     npu_macs_total = summary.get("npu_macs_total")
     npu_commands_total = summary.get("npu_commands_total")
@@ -1496,10 +1497,8 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
         "min_top1_accuracy": float(min_accuracy),
         "scenario_count": int(summary.get("scenario_count", len(scenarios))),
         "single_stream_p90_latency_ns": int(latency["p90"]),
-        "offline_throughput_samples_per_second": float(
-            offline["throughput_samples_per_second"]
-        ),
-        "energy_joules_per_inference": float(energy),
+        "offline_throughput_samples_per_second": float(offline["throughput_samples_per_second"]),
+        "energy_joules_per_inference": energy_value,
         "npu_macs_total": npu_macs_total,
         "npu_commands_total": npu_commands_total,
         "npu_cycles_total": npu_cycles_total,

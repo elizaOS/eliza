@@ -73,7 +73,10 @@ def test_structured_findings_cover_external_evidence_gaps() -> None:
         "software_bsp_error_",
         "software_bsp_scaffold_not_pass_",
     }
-    if not any(any(str(item.get("code", "")).startswith(prefix) for prefix in prefixes) for item in findings):
+    if not any(
+        any(str(item.get("code", "")).startswith(prefix) for prefix in prefixes)
+        for item in findings
+    ):
         raise AssertionError(f"software BSP findings must include target blockers: {findings}")
     print("PASS structured software BSP findings cover external evidence gaps")
 

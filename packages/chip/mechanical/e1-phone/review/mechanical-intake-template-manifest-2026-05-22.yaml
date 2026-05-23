@@ -1,0 +1,58 @@
+schema: eliza.e1_phone_mechanical_intake_template_manifest.v1
+date: "2026-05-22"
+status: blocked_templates_only_no_release_evidence
+claim_boundary: >-
+  Mechanical intake templates are checked in so routed-board, supplier,
+  validation, and factory evidence can be captured consistently. Blank
+  templates do not prove enclosure fit, routed-board release, supplier CAD
+  acceptance, physical validation, or production readiness.
+review_dir: packages/chip/mechanical/e1-phone/review
+required_release_evidence_absent:
+  - routed_board_step_with_component_models
+  - supplier_returned_step_and_2d_drawings
+  - full_cad_boolean_interference_results
+  - physical_fit_first_article_results
+  - process_validation_results
+templates:
+  - path: mechanical/e1-phone/review/routed-board-step-intake-template.csv
+    gate: routed_board_step_intake
+    required_before_release: true
+  - path: mechanical/e1-phone/review/routed-board-clearance-results-template.csv
+    gate: routed_board_clearance
+    required_before_release: true
+  - path: mechanical/e1-phone/review/supplier-response-template.csv
+    gate: supplier_return_evidence
+    required_before_release: true
+  - path: mechanical/e1-phone/review/full-cad-boolean-interference-results-template.csv
+    gate: full_cad_clearance
+    required_before_release: true
+  - path: mechanical/e1-phone/review/gdt-fai-template.csv
+    gate: first_article_inspection
+    required_before_release: true
+  - path: mechanical/e1-phone/review/acoustic-results-template.csv
+    gate: acoustic_validation
+    required_before_release: true
+  - path: mechanical/e1-phone/review/camera-results-template.csv
+    gate: camera_validation
+    required_before_release: true
+  - path: mechanical/e1-phone/review/display-results-template.csv
+    gate: display_touch_validation
+    required_before_release: true
+  - path: mechanical/e1-phone/review/environmental-results-template.csv
+    gate: environmental_validation
+    required_before_release: true
+  - path: mechanical/e1-phone/review/fixture-calibration-results-template.csv
+    gate: fixture_calibration
+    required_before_release: true
+  - path: mechanical/e1-phone/review/mechanical-lifecycle-results-template.csv
+    gate: mechanical_lifecycle
+    required_before_release: true
+  - path: mechanical/e1-phone/review/process-control-results-template.csv
+    gate: process_control
+    required_before_release: true
+  - path: mechanical/e1-phone/review/unit-traceability-results-template.csv
+    gate: unit_traceability
+    required_before_release: true
+  - path: mechanical/e1-phone/review/toolmaker-signoff-response-template.csv
+    gate: tooling_signoff
+    required_before_release: true
