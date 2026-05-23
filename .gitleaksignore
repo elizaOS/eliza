@@ -1,0 +1,13 @@
+# gitleaks fingerprint ignore-list
+#
+# Each line: <commit-sha>:<path>:<rule-id>:<line>
+# Entries here are reviewed false positives. Add a comment above each
+# fingerprint explaining why it is safe.
+
+# PEM envelope template wrapper in normalizePem(). The wrapper shapes
+# operator-provided env content into canonical PEM markers; no key
+# material is committed. A later commit splits the markers across string
+# concatenation and adds a path-scoped .gitleaks.toml allowlist, but the
+# fork CI workflow scans the full PR commit range, so the original
+# commit fingerprint must be explicitly suppressed here.
+3f807bbe1d0272cc1edcff3692f6617daf8e7159:packages/cloud-shared/src/lib/auth/agent-token.ts:private-key:32
