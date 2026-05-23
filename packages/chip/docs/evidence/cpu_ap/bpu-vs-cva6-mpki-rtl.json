@@ -1,0 +1,217 @@
+{
+  "aggregate": {
+    "cva6_model_geomean_mpki": 24.067304,
+    "e1_model_geomean_mpki": 2.641046,
+    "e1_rtl_geomean_mpki": 11.641707,
+    "rtl_corroborated_improvement_ratio_cva6_over_e1_rtl": 2.0673
+  },
+  "claim_policy": {
+    "android_claim": false,
+    "comparison_held_at_lower_level": true,
+    "cva6_side_is_model": true,
+    "e1_side_is_rtl": true,
+    "reason": "E1 MPKI measured on bpu_top.sv RTL via cocotb/Verilator over the same traces the behavioural head-to-head uses. CVA6 has no comparable open RTL predictor; its faithful behavioural model stands in. Synthetic generators are planning-only; CBP-5 traces back a CBP train-set comparison only; .btrace.json traces are the E1's own QEMU-RV64 duty-cycle workloads. This file does not back SPEC2017, AOSP, or JS-engine MPKI claims.",
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "comparison_claim_level": "L2_ARCH_SIM",
+  "comparison_status": "BLOCKED_RTL_NOT_CONVERGED",
+  "cva6_baseline": {
+    "model": "benchmarks/cpu/branch/baseline_predictors.py:Cva6BaselinePredictor",
+    "model_faithful_because": "CVA6/Ariane front-end is a simple in-order predictor: BHT(128) 2-bit counters PC-indexed, untagged BTB(32) for register-indirect jumps only, and a depth-2 RAS. There is no TAGE/SC/ITTAGE/loop predictor to model, so the behavioural model reproduces the RTL predictor exactly; running CVA6 RTL would add no fidelity.",
+    "no_open_rtl_predictor_to_run": true,
+    "predictor": "cva6_ariane_bht_btb_ras",
+    "rtl_citations": [
+      "external/cva6/cva6/core/include/cv64a6_imafdc_sv39_config_pkg.sv:62-64",
+      "external/cva6/cva6/core/frontend/bht.sv",
+      "external/cva6/cva6/core/frontend/btb.sv",
+      "external/cva6/cva6/core/frontend/ras.sv",
+      "external/cva6/cva6/core/frontend/frontend.sv:236-297"
+    ],
+    "rtl_sizing": {
+      "BHT_ENTRIES": 128,
+      "BTB_ENTRIES": 32,
+      "RAS_DEPTH": 2
+    }
+  },
+  "cva6_claim_level": "L2_ARCH_SIM",
+  "description": "RTL-corroborated MPKI comparison. The E1 side is measured on the synthesizable bpu_top.sv via the cocotb harness (L1_RTL_FULL_SOC); the CVA6 side is the behavioural BHT+BTB+RAS baseline model (L2_ARCH_SIM), sized directly from CVA6 RTL. The headline comparison is held at the lower of the two levels.",
+  "e1_claim_level": "L1_RTL_FULL_SOC",
+  "generated_at_utc": "2026-05-22T19:02:20.495042+00:00",
+  "harness": "benchmarks/cpu/branch/compare_mpki_rtl.py",
+  "headline_note": "E1 RTL does NOT currently track the E1 behavioural model on the shared traces (geomean relative gap exceeds the convergence band). The BPU RTL is mid-edit in the working tree (FTB multi-slot restructure, SC local history, ITTAGE token history), so the measured RTL MPKI regresses vs both the model and the last committed RTL evidence. This file records the measured RTL numbers honestly and FAILS CLOSED: it does not back an RTL-corroborated win until the RTL reconverges with the model. Re-run make mpki-eval-rtl + mpki-eval-workload-rtl after the RTL stabilises.",
+  "model_comparison_source": "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json",
+  "model_rtl_correlation": {
+    "converged": false,
+    "convergence_band_rel_gap": 0.5,
+    "e1_model_geomean_mpki": 2.641046,
+    "e1_rtl_geomean_mpki": 11.641707,
+    "geomean_relative_gap": 3.407991,
+    "pearson_r": 0.376249,
+    "spearman_rho": 0.756032
+  },
+  "per_trace": {
+    "alternating": {
+      "cva6_model_mpki": 100.0,
+      "e1_model_mpki": 1.0,
+      "e1_rtl_mpki": 3.0,
+      "e1_rtl_vs_model_rel_gap": 2.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 33.3333,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "always_not_taken": {
+      "cva6_model_mpki": 0.0,
+      "e1_model_mpki": 0.2,
+      "e1_rtl_mpki": 0.0,
+      "e1_rtl_vs_model_rel_gap": 1.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": null,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "always_taken": {
+      "cva6_model_mpki": 0.2,
+      "e1_model_mpki": 0.2,
+      "e1_rtl_mpki": 0.2,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.0,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "audio_frames": {
+      "cva6_model_mpki": 10.370996,
+      "e1_model_mpki": 8.347092,
+      "e1_rtl_mpki": 38.154971,
+      "e1_rtl_vs_model_rel_gap": 3.571,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.2718,
+      "rtl_group": "workload",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
+      "trace_class": "qemu_rv64_workload"
+    },
+    "deep_recursion": {
+      "cva6_model_mpki": 193.359375,
+      "e1_model_mpki": 12.5,
+      "e1_rtl_mpki": 25.0,
+      "e1_rtl_vs_model_rel_gap": 1.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 7.7344,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_command_processor": {
+      "cva6_model_mpki": 104.632153,
+      "e1_model_mpki": 12.098093,
+      "e1_rtl_mpki": 37.057221,
+      "e1_rtl_vs_model_rel_gap": 2.0631,
+      "improvement_ratio_cva6_model_over_e1_rtl": 2.8235,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_tile_kernel": {
+      "cva6_model_mpki": 6.502525,
+      "e1_model_mpki": 1.010101,
+      "e1_rtl_mpki": 1.515152,
+      "e1_rtl_vs_model_rel_gap": 0.5,
+      "improvement_ratio_cva6_model_over_e1_rtl": 4.2917,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_warp_divergence": {
+      "cva6_model_mpki": 84.765625,
+      "e1_model_mpki": 26.757812,
+      "e1_rtl_mpki": 21.679688,
+      "e1_rtl_vs_model_rel_gap": 0.1898,
+      "improvement_ratio_cva6_model_over_e1_rtl": 3.9099,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "jit_dispatch_warmup": {
+      "cva6_model_mpki": 8.77193,
+      "e1_model_mpki": 10.902256,
+      "e1_rtl_mpki": 10.902256,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.8046,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "loop_with_known_trip": {
+      "cva6_model_mpki": 12.695312,
+      "e1_model_mpki": 0.78125,
+      "e1_rtl_mpki": 2.929688,
+      "e1_rtl_vs_model_rel_gap": 2.75,
+      "improvement_ratio_cva6_model_over_e1_rtl": 4.3333,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "mixed_workload": {
+      "cva6_model_mpki": 54.545455,
+      "e1_model_mpki": 1.988636,
+      "e1_rtl_mpki": 15.056818,
+      "e1_rtl_vs_model_rel_gap": 6.5714,
+      "improvement_ratio_cva6_model_over_e1_rtl": 3.6226,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "sample_fp_trace": {
+      "cva6_model_mpki": 11.974049,
+      "e1_model_mpki": 1.838152,
+      "e1_rtl_mpki": 36.60469,
+      "e1_rtl_vs_model_rel_gap": 18.9139,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.3271,
+      "rtl_group": "cbp5",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+      "trace_class": "cbp5_train_traces_only"
+    },
+    "sample_int_trace": {
+      "cva6_model_mpki": 65.123769,
+      "e1_model_mpki": 2.027472,
+      "e1_rtl_mpki": 43.891463,
+      "e1_rtl_vs_model_rel_gap": 20.6484,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.4837,
+      "rtl_group": "cbp5",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+      "trace_class": "cbp5_train_traces_only"
+    },
+    "v8_indirect_dispatch": {
+      "cva6_model_mpki": 200.0,
+      "e1_model_mpki": 12.890625,
+      "e1_rtl_mpki": 123.4375,
+      "e1_rtl_vs_model_rel_gap": 8.5758,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.6203,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "video_blocks": {
+      "cva6_model_mpki": 9.983754,
+      "e1_model_mpki": 1.910429,
+      "e1_rtl_mpki": 12.640788,
+      "e1_rtl_vs_model_rel_gap": 5.6167,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.7898,
+      "rtl_group": "workload",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
+      "trace_class": "qemu_rv64_workload"
+    }
+  },
+  "provenance": "simulator",
+  "rtl_evidence_sources": [
+    "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
+    "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+    "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
+  ],
+  "rtl_traces_without_model_pair": [
+    "dual_branch_fetch_block"
+  ],
+  "schema": "eliza.bpu_vs_cva6_mpki_rtl.v1",
+  "shared_trace_count": 15,
+  "simulator": "verilator (oss-cad-suite) via cocotb on bpu_top.sv"
+}

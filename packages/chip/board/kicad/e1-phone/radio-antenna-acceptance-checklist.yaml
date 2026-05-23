@@ -7,6 +7,7 @@ claim_boundary: Acceptance checklist for cellular, Wi-Fi, Bluetooth, optional GN
 source_artifacts:
   - board/kicad/e1-phone/radio-module-integration.yaml
   - board/kicad/e1-phone/rf-connectivity-closure.yaml
+  - board/kicad/e1-phone/wireless-module-release-execution.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - package/cellular/quectel-5g-redcap.yaml
   - package/wifi/murata-type-2ea-wifi6e.yaml

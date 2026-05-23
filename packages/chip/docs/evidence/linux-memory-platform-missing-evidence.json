@@ -33,14 +33,14 @@
       "status": "blocked_missing_external_transcript",
       "path": "docs/evidence/linux/eliza_e1_serial_boot.log",
       "blocked_marker": "docs/evidence/linux/eliza_e1_serial_boot.log.BLOCKED",
-      "producer": "capture the real OpenSBI/Linux UART transcript from the chip or generated AP simulation"
+      "producer": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh"
     },
     {
       "id": "opensbi_handoff",
       "status": "blocked_missing_external_transcript",
       "path": "docs/evidence/linux/opensbi_fw_dynamic_handoff.log",
       "blocked_marker": "docs/evidence/linux/opensbi_fw_dynamic_handoff.log.BLOCKED",
-      "producer": "ELIZA_OPENSBI_HANDOFF_CMD='/exact boot command' sw/opensbi/capture-opensbi-evidence.sh /path/to/opensbi handoff"
+      "producer": "ELIZA_OPENSBI_HANDOFF_CMD='/exact boot command' docs/sw/opensbi/capture-opensbi-evidence.sh /path/to/opensbi handoff"
     },
     {
       "id": "buildroot_image_manifest",

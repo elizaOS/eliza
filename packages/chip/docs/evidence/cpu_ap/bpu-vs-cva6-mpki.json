@@ -2,31 +2,116 @@
   "aggregate": {
     "all": {
       "cva6_geomean_mpki": 18.63896,
-      "e1_geomean_mpki": 3.554963,
-      "geomean_improvement_ratio_cva6_over_e1": 5.2431,
+      "e1_geomean_mpki": 2.141132,
+      "e1_regression_count": 2,
+      "e1_regressions": [
+        {
+          "cva6_mpki": 8.77193,
+          "delta_mpki": 2.130326,
+          "e1_mpki": 10.902256,
+          "trace": "jit_dispatch_warmup"
+        },
+        {
+          "cva6_mpki": 0.0,
+          "delta_mpki": 0.2,
+          "e1_mpki": 0.2,
+          "trace": "always_not_taken"
+        }
+      ],
+      "e1_tie_count": 1,
+      "e1_ties": [
+        "always_taken"
+      ],
+      "e1_win_count": 17,
+      "e1_wins": [
+        "agent_decode",
+        "agent_loop",
+        "alternating",
+        "audio_frames",
+        "deep_recursion",
+        "file_tlv",
+        "gpu_command_processor",
+        "gpu_tile_kernel",
+        "gpu_warp_divergence",
+        "http_parser",
+        "loop_with_known_trip",
+        "mixed_workload",
+        "sample_fp_trace",
+        "sample_int_trace",
+        "text_log",
+        "v8_indirect_dispatch",
+        "video_blocks"
+      ],
+      "geomean_improvement_ratio_cva6_over_e1": 8.7052,
       "pooled_cva6_mpki": 6.015943,
-      "pooled_e1_mpki": 1.58128,
-      "pooled_improvement_ratio_cva6_over_e1": 3.8045,
+      "pooled_e1_mpki": 1.013209,
+      "pooled_improvement_ratio_cva6_over_e1": 5.9375,
       "pooled_instruction_count": 79294630,
       "trace_count": 20
     },
     "external_only": {
       "cva6_geomean_mpki": 11.97697,
-      "e1_geomean_mpki": 2.384726,
-      "geomean_improvement_ratio_cva6_over_e1": 5.0224,
+      "e1_geomean_mpki": 1.694005,
+      "e1_regression_count": 0,
+      "e1_regressions": [],
+      "e1_tie_count": 0,
+      "e1_ties": [],
+      "e1_win_count": 9,
+      "e1_wins": [
+        "agent_decode",
+        "agent_loop",
+        "audio_frames",
+        "file_tlv",
+        "http_parser",
+        "sample_fp_trace",
+        "sample_int_trace",
+        "text_log",
+        "video_blocks"
+      ],
+      "geomean_improvement_ratio_cva6_over_e1": 7.0702,
       "pooled_cva6_mpki": 5.978965,
-      "pooled_e1_mpki": 1.562028,
-      "pooled_improvement_ratio_cva6_over_e1": 3.8277,
+      "pooled_e1_mpki": 1.008586,
+      "pooled_improvement_ratio_cva6_over_e1": 5.9281,
       "pooled_instruction_count": 79227755,
       "trace_count": 9
     },
     "synthetic_only": {
       "cva6_geomean_mpki": 27.751658,
-      "e1_geomean_mpki": 4.928388,
-      "geomean_improvement_ratio_cva6_over_e1": 5.631,
+      "e1_geomean_mpki": 2.59344,
+      "e1_regression_count": 2,
+      "e1_regressions": [
+        {
+          "cva6_mpki": 8.77193,
+          "delta_mpki": 2.130326,
+          "e1_mpki": 10.902256,
+          "trace": "jit_dispatch_warmup"
+        },
+        {
+          "cva6_mpki": 0.0,
+          "delta_mpki": 0.2,
+          "e1_mpki": 0.2,
+          "trace": "always_not_taken"
+        }
+      ],
+      "e1_tie_count": 1,
+      "e1_ties": [
+        "always_taken"
+      ],
+      "e1_win_count": 8,
+      "e1_wins": [
+        "alternating",
+        "deep_recursion",
+        "gpu_command_processor",
+        "gpu_tile_kernel",
+        "gpu_warp_divergence",
+        "loop_with_known_trip",
+        "mixed_workload",
+        "v8_indirect_dispatch"
+      ],
+      "geomean_improvement_ratio_cva6_over_e1": 10.7007,
       "pooled_cva6_mpki": 49.824299,
-      "pooled_e1_mpki": 24.388785,
-      "pooled_improvement_ratio_cva6_over_e1": 2.0429,
+      "pooled_e1_mpki": 6.48972,
+      "pooled_improvement_ratio_cva6_over_e1": 7.6774,
       "pooled_instruction_count": 66875,
       "trace_count": 11
     }
@@ -46,7 +131,7 @@
     "note": "E1 RTL MPKI exists at L1_RTL_FULL_SOC via cocotb on bpu_top.sv. No CVA6 RTL is run here, so the headline comparison is held at the behavioural-model level (L2_ARCH_SIM) for both predictors; the E1 RTL evidence corroborates the E1 model side only."
   },
   "description": "Head-to-head MPKI of the Eliza E1 BPU (TAGE-SC-L + ITTAGE + FTB + RAS + SC + loop) against a CVA6/Ariane-class BHT+BTB+RAS baseline, both behavioural models replayed over the identical branch traces.",
-  "generated_at_utc": "2026-05-21T19:24:23.308623+00:00",
+  "generated_at_utc": "2026-05-22T01:01:15.590917+00:00",
   "harness": "benchmarks/cpu/branch/compare_mpki.py",
   "per_trace": {
     "agent_decode": {
@@ -67,13 +152,13 @@
       "e1_counters": {
         "call": 2650,
         "cond": 6615499,
-        "cond_misp": 13287,
+        "cond_misp": 13286,
         "ind": 1924,
-        "ind_misp": 118,
+        "ind_misp": 119,
         "misp": 13405,
         "pred": 6622719,
         "ret": 2646,
-        "sc_override": 1015
+        "sc_override": 988
       },
       "e1_misp": 13405,
       "e1_mpki": 0.348404,
@@ -100,19 +185,19 @@
       "e1_counters": {
         "call": 2046,
         "cond": 3833773,
-        "cond_misp": 6277,
+        "cond_misp": 6268,
         "ind": 1803,
-        "ind_misp": 166,
-        "misp": 6443,
+        "ind_misp": 165,
+        "misp": 6433,
         "pred": 3839663,
         "ret": 2041,
-        "sc_override": 1283
+        "sc_override": 1255
       },
-      "e1_misp": 6443,
-      "e1_mpki": 0.259613,
-      "improvement_ratio_cva6_over_e1": 11.7374,
+      "e1_misp": 6433,
+      "e1_mpki": 0.25921,
+      "improvement_ratio_cva6_over_e1": 11.7556,
       "instruction_count": 24817722,
-      "mpki_reduction": 2.787564,
+      "mpki_reduction": 2.787967,
       "trace_class": "qemu_rv64_workload"
     },
     "alternating": {
@@ -201,19 +286,19 @@
       "e1_counters": {
         "call": 1988,
         "cond": 426512,
-        "cond_misp": 50072,
+        "cond_misp": 23969,
         "ind": 1747,
         "ind_misp": 162,
-        "misp": 50234,
+        "misp": 24131,
         "pred": 432230,
         "ret": 1983,
-        "sc_override": 15238
+        "sc_override": 10648
       },
-      "e1_misp": 50234,
-      "e1_mpki": 17.376313,
-      "improvement_ratio_cva6_over_e1": 0.5968,
+      "e1_misp": 24131,
+      "e1_mpki": 8.347092,
+      "improvement_ratio_cva6_over_e1": 1.2425,
       "instruction_count": 2890947,
-      "mpki_reduction": -7.005317,
+      "mpki_reduction": 2.023904,
       "trace_class": "qemu_rv64_workload"
     },
     "deep_recursion": {
@@ -260,19 +345,19 @@
       "e1_counters": {
         "call": 1990,
         "cond": 465554,
-        "cond_misp": 12389,
+        "cond_misp": 12403,
         "ind": 1748,
         "ind_misp": 164,
-        "misp": 12553,
+        "misp": 12567,
         "pred": 471277,
         "ret": 1985,
-        "sc_override": 8015
+        "sc_override": 8012
       },
-      "e1_misp": 12553,
-      "e1_mpki": 3.998313,
-      "improvement_ratio_cva6_over_e1": 4.3408,
+      "e1_misp": 12567,
+      "e1_mpki": 4.002772,
+      "improvement_ratio_cva6_over_e1": 4.336,
       "instruction_count": 3139574,
-      "mpki_reduction": 13.357545,
+      "mpki_reduction": 13.353085,
       "trace_class": "qemu_rv64_workload"
     },
     "gpu_command_processor": {
@@ -289,18 +374,18 @@
       "cva6_mpki": 104.632153,
       "e1_counters": {
         "cond": 960,
-        "cond_misp": 93,
+        "cond_misp": 21,
         "ind": 875,
-        "ind_misp": 681,
-        "misp": 774,
+        "ind_misp": 90,
+        "misp": 111,
         "pred": 1835,
-        "sc_override": 21
+        "sc_override": 8
       },
-      "e1_misp": 774,
-      "e1_mpki": 84.359673,
-      "improvement_ratio_cva6_over_e1": 1.2403,
+      "e1_misp": 111,
+      "e1_mpki": 12.098093,
+      "improvement_ratio_cva6_over_e1": 8.6486,
       "instruction_count": 9175,
-      "mpki_reduction": 20.27248,
+      "mpki_reduction": 92.53406,
       "trace_class": "synthetic_planning_only"
     },
     "gpu_tile_kernel": {
@@ -315,16 +400,16 @@
       "cva6_mpki": 6.502525,
       "e1_counters": {
         "cond": 3168,
-        "cond_misp": 15,
-        "misp": 15,
+        "cond_misp": 16,
+        "misp": 16,
         "pred": 3168,
-        "sc_override": 13
+        "sc_override": 12
       },
-      "e1_misp": 15,
-      "e1_mpki": 0.94697,
-      "improvement_ratio_cva6_over_e1": 6.8667,
+      "e1_misp": 16,
+      "e1_mpki": 1.010101,
+      "improvement_ratio_cva6_over_e1": 6.4375,
       "instruction_count": 15840,
-      "mpki_reduction": 5.555556,
+      "mpki_reduction": 5.492424,
       "trace_class": "synthetic_planning_only"
     },
     "gpu_warp_divergence": {
@@ -339,16 +424,16 @@
       "cva6_mpki": 84.765625,
       "e1_counters": {
         "cond": 1024,
-        "cond_misp": 121,
-        "misp": 121,
+        "cond_misp": 137,
+        "misp": 137,
         "pred": 1024,
-        "sc_override": 71
+        "sc_override": 53
       },
-      "e1_misp": 121,
-      "e1_mpki": 23.632812,
-      "improvement_ratio_cva6_over_e1": 3.5868,
+      "e1_misp": 137,
+      "e1_mpki": 26.757812,
+      "improvement_ratio_cva6_over_e1": 3.1679,
       "instruction_count": 5120,
-      "mpki_reduction": 61.132812,
+      "mpki_reduction": 58.007812,
       "trace_class": "synthetic_planning_only"
     },
     "http_parser": {
@@ -369,19 +454,19 @@
       "e1_counters": {
         "call": 3389,
         "cond": 765522,
-        "cond_misp": 17448,
+        "cond_misp": 2976,
         "ind": 1747,
-        "ind_misp": 545,
-        "misp": 17993,
+        "ind_misp": 353,
+        "misp": 3329,
         "pred": 774042,
         "ret": 3384,
-        "sc_override": 660
+        "sc_override": 609
       },
-      "e1_misp": 17993,
-      "e1_mpki": 6.922911,
-      "improvement_ratio_cva6_over_e1": 2.7099,
+      "e1_misp": 3329,
+      "e1_mpki": 1.280852,
+      "improvement_ratio_cva6_over_e1": 14.6467,
       "instruction_count": 2599051,
-      "mpki_reduction": 11.837398,
+      "mpki_reduction": 17.479457,
       "trace_class": "qemu_rv64_workload"
     },
     "jit_dispatch_warmup": {
@@ -396,15 +481,15 @@
       "cva6_mpki": 8.77193,
       "e1_counters": {
         "ind": 1596,
-        "ind_misp": 125,
-        "misp": 125,
+        "ind_misp": 87,
+        "misp": 87,
         "pred": 1596
       },
-      "e1_misp": 125,
-      "e1_mpki": 15.66416,
-      "improvement_ratio_cva6_over_e1": 0.56,
+      "e1_misp": 87,
+      "e1_mpki": 10.902256,
+      "improvement_ratio_cva6_over_e1": 0.8046,
       "instruction_count": 7980,
-      "mpki_reduction": -6.892231,
+      "mpki_reduction": -2.130326,
       "trace_class": "synthetic_planning_only"
     },
     "loop_with_known_trip": {
@@ -419,16 +504,15 @@
       "cva6_mpki": 12.695312,
       "e1_counters": {
         "cond": 1024,
-        "cond_misp": 5,
-        "misp": 5,
-        "pred": 1024,
-        "sc_override": 2
+        "cond_misp": 4,
+        "misp": 4,
+        "pred": 1024
       },
-      "e1_misp": 5,
-      "e1_mpki": 0.976562,
-      "improvement_ratio_cva6_over_e1": 13.0,
+      "e1_misp": 4,
+      "e1_mpki": 0.78125,
+      "improvement_ratio_cva6_over_e1": 16.25,
       "instruction_count": 5120,
-      "mpki_reduction": 11.71875,
+      "mpki_reduction": 11.914062,
       "trace_class": "synthetic_planning_only"
     },
     "mixed_workload": {
@@ -450,16 +534,16 @@
         "cond": 512,
         "cond_misp": 2,
         "ind": 64,
-        "ind_misp": 50,
-        "misp": 52,
+        "ind_misp": 5,
+        "misp": 7,
         "pred": 704,
         "ret": 64
       },
-      "e1_misp": 52,
-      "e1_mpki": 14.772727,
-      "improvement_ratio_cva6_over_e1": 3.6923,
+      "e1_misp": 7,
+      "e1_mpki": 1.988636,
+      "improvement_ratio_cva6_over_e1": 27.4286,
       "instruction_count": 3520,
-      "mpki_reduction": 39.772727,
+      "mpki_reduction": 52.556818,
       "trace_class": "synthetic_planning_only"
     },
     "sample_fp_trace": {
@@ -480,20 +564,20 @@
       "e1_counters": {
         "call": 10589,
         "cond": 127544,
-        "cond_misp": 2965,
+        "cond_misp": 1829,
         "ind": 1,
         "ind_misp": 4,
-        "misp": 2970,
+        "misp": 1834,
         "pred": 148723,
         "ret": 10589,
         "ret_misp": 1,
-        "sc_override": 1262
+        "sc_override": 1046
       },
-      "e1_misp": 2970,
-      "e1_mpki": 2.976724,
-      "improvement_ratio_cva6_over_e1": 4.0226,
+      "e1_misp": 1834,
+      "e1_mpki": 1.838152,
+      "improvement_ratio_cva6_over_e1": 6.5142,
       "instruction_count": 997741,
-      "mpki_reduction": 8.997325,
+      "mpki_reduction": 10.135897,
       "trace_class": "cbp5_train_traces_only"
     },
     "sample_int_trace": {
@@ -514,20 +598,20 @@
       "e1_counters": {
         "call": 12900,
         "cond": 149840,
-        "cond_misp": 1867,
+        "cond_misp": 1840,
         "ind": 6235,
-        "ind_misp": 179,
-        "misp": 2050,
+        "ind_misp": 178,
+        "misp": 2022,
         "pred": 181877,
         "ret": 12902,
         "ret_misp": 4,
         "sc_override": 28
       },
-      "e1_misp": 2050,
-      "e1_mpki": 2.055548,
-      "improvement_ratio_cva6_over_e1": 31.682,
+      "e1_misp": 2022,
+      "e1_mpki": 2.027472,
+      "improvement_ratio_cva6_over_e1": 32.1207,
       "instruction_count": 997301,
-      "mpki_reduction": 63.068221,
+      "mpki_reduction": 63.096297,
       "trace_class": "cbp5_train_traces_only"
     },
     "text_log": {
@@ -548,19 +632,19 @@
       "e1_counters": {
         "call": 4690,
         "cond": 449979,
-        "cond_misp": 12880,
+        "cond_misp": 10976,
         "ind": 1748,
         "ind_misp": 165,
-        "misp": 13045,
+        "misp": 11141,
         "pred": 461102,
         "ret": 4685,
-        "sc_override": 9097
+        "sc_override": 8681
       },
-      "e1_misp": 13045,
-      "e1_mpki": 4.888276,
-      "improvement_ratio_cva6_over_e1": 6.5913,
+      "e1_misp": 11141,
+      "e1_mpki": 4.174801,
+      "improvement_ratio_cva6_over_e1": 7.7178,
       "instruction_count": 2668630,
-      "mpki_reduction": 27.332002,
+      "mpki_reduction": 28.045477,
       "trace_class": "qemu_rv64_workload"
     },
     "v8_indirect_dispatch": {
@@ -575,15 +659,15 @@
       "cva6_mpki": 200.0,
       "e1_counters": {
         "ind": 512,
-        "ind_misp": 500,
-        "misp": 500,
+        "ind_misp": 33,
+        "misp": 33,
         "pred": 512
       },
-      "e1_misp": 500,
-      "e1_mpki": 195.3125,
-      "improvement_ratio_cva6_over_e1": 1.024,
+      "e1_misp": 33,
+      "e1_mpki": 12.890625,
+      "improvement_ratio_cva6_over_e1": 15.5152,
       "instruction_count": 2560,
-      "mpki_reduction": 4.6875,
+      "mpki_reduction": 187.109375,
       "trace_class": "synthetic_planning_only"
     },
     "video_blocks": {
@@ -604,19 +688,19 @@
       "e1_counters": {
         "call": 1988,
         "cond": 270210,
-        "cond_misp": 4901,
+        "cond_misp": 4884,
         "ind": 1747,
         "ind_misp": 162,
-        "misp": 5063,
+        "misp": 5046,
         "pred": 275928,
         "ret": 1983,
-        "sc_override": 3874
+        "sc_override": 3860
       },
-      "e1_misp": 5063,
-      "e1_mpki": 1.916866,
-      "improvement_ratio_cva6_over_e1": 5.2084,
+      "e1_misp": 5046,
+      "e1_mpki": 1.910429,
+      "improvement_ratio_cva6_over_e1": 5.2259,
       "instruction_count": 2641291,
-      "mpki_reduction": 8.066889,
+      "mpki_reduction": 8.073325,
       "trace_class": "qemu_rv64_workload"
     }
   },
@@ -653,6 +737,7 @@
         "BIM_ENTRIES": 16384,
         "FETCH_BLOCK_BYTES": 32,
         "FTB_ENTRIES": 4096,
+        "FTB_TARGET_CONF_W": 2,
         "FTB_WAYS": 4,
         "ITTAGE_CTR_W": 3,
         "ITTAGE_ENTRIES": [
@@ -669,8 +754,11 @@
           16,
           32
         ],
+        "ITTAGE_REPLACE_MIN_PROVIDER": 4,
+        "ITTAGE_REPLACE_WEAK_CTR": 3,
         "ITTAGE_TABLES": 5,
         "ITTAGE_TAG_W": 9,
+        "ITTAGE_TARGET_HISTORY_BITS": 64,
         "LOOP_CONF_W": 3,
         "LOOP_CTR_W": 14,
         "LOOP_ENTRIES": 64,
@@ -686,7 +774,7 @@
           16
         ],
         "SC_TABLES": 4,
-        "SC_THRESH_INIT": 6,
+        "SC_THRESH_INIT": 8,
         "TAGE_ALLOC_DECREMENT": true,
         "TAGE_CTR_W": 3,
         "TAGE_ENTRIES_TABLE": 8192,

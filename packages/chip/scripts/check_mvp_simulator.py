@@ -22,6 +22,14 @@ REQUIRED_STEPS = {
     "android_sim_boot",
     "android_sim_report_check",
 }
+REQUIRED_ON_CHIP_BOOT_STEPS = {
+    "cpu_ap_linux_evidence",
+    "chipyard_verilator_preflight",
+    "chipyard_generated_ap",
+    "chipyard_payload_path",
+    "chipyard_verilator_linux_attempt",
+    "chipyard_verilator_linux_smoke",
+}
 
 
 def display_path(path: Path) -> str:
@@ -168,6 +176,18 @@ def main() -> int:
         for item in results
     ):
         errors.append("on_chip_os_boot_claim true without passing our-chip OS boot result")
+    if data.get("on_chip_os_boot_claim") is True:
+        passing = {
+            str(item.get("name"))
+            for item in results
+            if isinstance(item, dict) and item.get("status") == "pass"
+        }
+        missing_required = sorted(REQUIRED_ON_CHIP_BOOT_STEPS - passing)
+        if missing_required:
+            errors.append(
+                "on_chip_os_boot_claim true without passing required chip/AP steps: "
+                + ", ".join(missing_required)
+            )
     if data.get("reference_qemu_virt_os_boot_claim") is True and not any(
         isinstance(item, dict)
         and item.get("name") == "qemu_os_boot"
@@ -177,16 +197,23 @@ def main() -> int:
     ):
         errors.append("reference_qemu_virt_os_boot_claim true without passing qemu_os_boot")
     if data.get("on_chip_os_boot_claim") is False:
+        passing_required_steps = {
+            str(item.get("name"))
+            for item in results
+            if isinstance(item, dict)
+            and item.get("status") == "pass"
+            and str(item.get("name")) in REQUIRED_ON_CHIP_BOOT_STEPS
+        }
         blocker_names = {
             item.get("name")
             for item in data.get("blockers_to_on_chip_os_boot", [])
             if isinstance(item, dict)
         }
-        missing_blockers = {
-            "cpu_ap_linux_evidence",
-            "chipyard_payload_path",
-            "chipyard_verilator_linux_smoke",
-        } - blocker_names
+        missing_blockers = (
+            REQUIRED_ON_CHIP_BOOT_STEPS
+            - passing_required_steps
+            - {str(name) for name in blocker_names}
+        )
         if missing_blockers:
             errors.append(
                 "blockers_to_on_chip_os_boot missing: " + ", ".join(sorted(missing_blockers))

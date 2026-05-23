@@ -60,13 +60,13 @@
 		ranges;
 
 		clint0: clint@2000000 {
-			compatible = "riscv,clint0";
+			compatible = "sifive,clint0", "riscv,clint0";
 			reg = <0x0 0x02000000 0x0 0x00010000>;
 			interrupts-extended = <&cpu0_intc 3>, <&cpu0_intc 7>;
 		};
 
 		plic0: interrupt-controller@c000000 {
-			compatible = "riscv,plic0";
+			compatible = "sifive,plic-1.0.0", "riscv,plic0";
 			reg = <0x0 0x0c000000 0x0 0x04000000>;
 			interrupt-controller;
 			#address-cells = <0>;

@@ -12,6 +12,7 @@ software floor and stays release-blocked for product-grade TEE claims.
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -107,11 +108,57 @@ def run_checker(checker_id: str, script: str) -> dict[str, Any]:
     }
 
 
-def main() -> int:
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def structured_findings(
+    software_checks: list[dict[str, Any]],
+    blocked_hardware_gates: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for gate in blocked_hardware_gates:
+        gate_id = str(gate.get("id", "hardware_gate"))
+        findings.append(
+            {
+                "code": f"tee_software_missing_hardware_gate_{code_from_text(gate_id, 'gate')}",
+                "severity": "blocker",
+                "message": (
+                    f"{gate.get('claim', gate_id)} remains blocked by "
+                    f"{gate.get('missing_dependency', 'missing hardware evidence')}"
+                ),
+                "evidence": gate.get("proving_command"),
+                "next_step": (
+                    "Implement the missing TEE/security hardware dependency and "
+                    "capture the named proving command before promoting the "
+                    "software TEE floor to product-grade TEE evidence."
+                ),
+            }
+        )
+    for check in software_checks:
+        if check.get("status") == "pass":
+            continue
+        check_id = str(check.get("id", "software_check"))
+        findings.append(
+            {
+                "code": f"tee_software_check_failed_{code_from_text(check_id, 'check')}",
+                "severity": "blocker",
+                "message": f"{check_id} returned {check.get('returncode')}",
+                "evidence": check.get("script"),
+                "next_step": (
+                    "Repair the failing pure-software TEE checker before using "
+                    "the aggregate as a software-floor signal."
+                ),
+            }
+        )
+    return findings
+
+
+def build_report() -> dict[str, Any]:
     checks = [run_checker(checker_id, script) for checker_id, script in SOFTWARE_CHECKERS]
     failed = [check for check in checks if check["status"] != "pass"]
-
-    report = {
+    return {
         "schema": "eliza.tee_software_aggregate.v1",
         "status": "tee_software_floor_only_release_blocked",
         "claim_boundary": (
@@ -121,6 +168,7 @@ def main() -> int:
         ),
         "software_checks": checks,
         "blocked_hardware_gates": BLOCKED_HARDWARE_GATES,
+        "findings": structured_findings(checks, BLOCKED_HARDWARE_GATES),
         "summary": {
             "software_check_count": len(checks),
             "software_passing_count": len(checks) - len(failed),
@@ -128,6 +176,13 @@ def main() -> int:
             "release_claim_allowed": False,
         },
     }
+
+
+def main() -> int:
+    report = build_report()
+    checks = report["software_checks"]
+    failed = [check for check in checks if check["status"] != "pass"]
+
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

@@ -54,7 +54,14 @@ const {
     setBaseUrl: vi.fn(),
     setToken: vi.fn(),
   },
-  ElizaClientMock: vi.fn(() => clientMock),
+  // Regular function (not arrow) so the mock is callable AS A CONSTRUCTOR
+  // — RuntimeGate.tsx does `new ElizaClient(localApiBase)`. Arrow functions
+  // throw "is not a constructor" under vitest 4's strict construct check.
+  // Returning an object from a constructor overrides `this`, so the new-
+  // expression yields the shared clientMock instance.
+  ElizaClientMock: vi.fn(function ElizaClient() {
+    return clientMock;
+  }),
   completeOnboardingMock: vi.fn(),
   platformState: {
     isAndroid: false,

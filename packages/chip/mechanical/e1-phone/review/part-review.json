@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 132,
+  "part_count": 142,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
       1871,
-      5720
+      6240
     ],
     "mean_rgb": [
-      241.679,
-      235.436,
-      232.568
+      238.992,
+      233.28,
+      230.662
     ],
     "channel_spans": [
       255,
@@ -24,12 +24,12 @@
   "exploded_contact_sheet_check": {
     "size": [
       1871,
-      5720
+      6240
     ],
     "mean_rgb": [
-      25.238,
-      27.16,
-      31.36
+      25.377,
+      27.315,
+      31.524
     ],
     "channel_spans": [
       252,
@@ -871,7 +871,7 @@
         1.6
       ],
       "volume_mm3": 62.941,
-      "mass_placeholder": false,
+      "mass_placeholder": true,
       "obj": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.obj",
       "stl": "mechanical/e1-phone/out/rear_camera_optical_sight_tunnel.stl"
     },
@@ -3344,6 +3344,266 @@
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/radio_shield_can.obj",
       "stl": "mechanical/e1-phone/out/radio_shield_can.stl"
+    },
+    {
+      "name": "cellular_lga_module_keepout",
+      "role": "cellular module",
+      "material": "Quectel RG255C RedCap LGA module",
+      "bounds_mm": [
+        [
+          -30.0,
+          29.0,
+          -1.65
+        ],
+        [
+          -1.0,
+          61.0,
+          0.75
+        ]
+      ],
+      "span_mm": [
+        29.0,
+        32.0,
+        2.4
+      ],
+      "volume_mm3": 2227.2,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_lga_module_keepout.obj",
+      "stl": "mechanical/e1-phone/out/cellular_lga_module_keepout.stl"
+    },
+    {
+      "name": "wifi_bt_module_keepout",
+      "role": "Wi-Fi/Bluetooth module",
+      "material": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+      "bounds_mm": [
+        [
+          13.75,
+          37.3,
+          -1.6
+        ],
+        [
+          26.25,
+          46.7,
+          -0.4
+        ]
+      ],
+      "span_mm": [
+        12.5,
+        9.4,
+        1.2
+      ],
+      "volume_mm3": 141.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/wifi_bt_module_keepout.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_module_keepout.stl"
+    },
+    {
+      "name": "soc_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for application processor package under SoC shield",
+      "bounds_mm": [
+        [
+          -13.5,
+          48.5,
+          -0.18
+        ],
+        [
+          -0.5,
+          61.5,
+          0.06
+        ]
+      ],
+      "span_mm": [
+        13.0,
+        13.0,
+        0.24
+      ],
+      "volume_mm3": 40.56,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/soc_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/soc_package_marker.stl"
+    },
+    {
+      "name": "dram_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for LPDDR memory package near SoC",
+      "bounds_mm": [
+        [
+          -11.75,
+          64.0,
+          -0.18
+        ],
+        [
+          -2.25,
+          72.0,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        9.5,
+        8.0,
+        0.22
+      ],
+      "volume_mm3": 16.72,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/dram_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/dram_package_marker.stl"
+    },
+    {
+      "name": "storage_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for eMMC/UFS storage package",
+      "bounds_mm": [
+        [
+          5.25,
+          63.5,
+          -0.18
+        ],
+        [
+          16.75,
+          72.5,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        11.5,
+        9.0,
+        0.22
+      ],
+      "volume_mm3": 22.77,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/storage_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/storage_package_marker.stl"
+    },
+    {
+      "name": "pmic_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for PMIC package under power shield",
+      "bounds_mm": [
+        [
+          9.0,
+          51.5,
+          -0.18
+        ],
+        [
+          16.0,
+          58.5,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        7.0,
+        7.0,
+        0.22
+      ],
+      "volume_mm3": 10.78,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/pmic_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/pmic_package_marker.stl"
+    },
+    {
+      "name": "rf_transceiver_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for RF transceiver/front-end package under radio shield",
+      "bounds_mm": [
+        [
+          -25.75,
+          51.25,
+          -0.18
+        ],
+        [
+          -18.25,
+          58.75,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        7.5,
+        7.5,
+        0.22
+      ],
+      "volume_mm3": 12.375,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/rf_transceiver_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/rf_transceiver_package_marker.stl"
+    },
+    {
+      "name": "gnss_lna_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for GNSS/RF low-noise amplifier placement",
+      "bounds_mm": [
+        [
+          -31.5,
+          61.25,
+          -1.3
+        ],
+        [
+          -28.5,
+          63.75,
+          -1.1
+        ]
+      ],
+      "span_mm": [
+        3.0,
+        2.5,
+        0.2
+      ],
+      "volume_mm3": 1.5,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/gnss_lna_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/gnss_lna_package_marker.stl"
+    },
+    {
+      "name": "wifi_bt_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+      "bounds_mm": [
+        [
+          23.5,
+          41.775,
+          -1.175
+        ],
+        [
+          33.5,
+          42.225,
+          -0.825
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        0.45,
+        0.35
+      ],
+      "volume_mm3": 1.575,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.stl"
+    },
+    {
+      "name": "cellular_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from cellular module toward top antenna keepout",
+      "bounds_mm": [
+        [
+          -30.225,
+          53.5,
+          -1.175
+        ],
+        [
+          -29.775,
+          68.5,
+          -0.825
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        15.0,
+        0.35
+      ],
+      "volume_mm3": 2.363,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.obj",
+      "stl": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.stl"
     },
     {
       "name": "haptic_lra",

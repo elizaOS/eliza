@@ -90,7 +90,10 @@ BR_RET = 3
 
 VADDR_W = 39
 FTQ_IDX_W = 6  # $clog2(FTQ_ENTRIES=64)
+RAS_IDX_W = 6  # $clog2(RAS_SPEC_ENTRIES=64)
 BR_KIND_W = 3
+TAGE_PROVIDER_W = 3  # $clog2(TAGE_TABLES+1), TAGE_TABLES=5
+ITTAGE_PROVIDER_W = 3  # $clog2(ITTAGE_TABLES+1), ITTAGE_TABLES=5
 
 
 async def reset(dut):
@@ -168,7 +171,20 @@ async def read_csr(dut, addr):
     return int(dut.zihpm_csr_rdata_o.value)
 
 
-def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_return_pc=None):
+def encode_resolve(
+    *,
+    pc,
+    valid,
+    taken,
+    misp,
+    kind,
+    target,
+    ftq_idx=0,
+    call_return_pc=None,
+    ras_restore_top=0,
+    tage_provider=0,
+    ittage_provider=0,
+):
     """Pack a bpu_resolve_t.
 
     Packed struct order in `bpu_pkg` (declaration order = MSB-first):
@@ -180,8 +196,11 @@ def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_retu
       logic                 actual_taken;
       br_kind_e             actual_kind;   // 3 bits
       logic [FTQ_IDX_W-1:0] ftq_idx;       // 6 bits
+      logic [RAS_IDX_W:0]   ras_restore_top; // 7 bits
+      logic [$clog2(TAGE_TABLES+1)-1:0] tage_provider; // 3 bits
+      logic [$clog2(ITTAGE_TABLES+1)-1:0] ittage_provider; // 3 bits
 
-    Total width: 1+1+39+39+39+1+3+6 = 129 bits.
+    Total width: 1+1+39+39+39+1+3+6+7+3+3 = 142 bits.
     """
     if call_return_pc is None:
         call_return_pc = pc + 4
@@ -194,6 +213,10 @@ def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_retu
     bits = (bits << 1) | (1 if taken else 0)
     bits = (bits << BR_KIND_W) | (kind & ((1 << BR_KIND_W) - 1))
     bits = (bits << FTQ_IDX_W) | (ftq_idx & ((1 << FTQ_IDX_W) - 1))
+    ras_top_w = RAS_IDX_W + 1
+    bits = (bits << ras_top_w) | (ras_restore_top & ((1 << ras_top_w) - 1))
+    bits = (bits << TAGE_PROVIDER_W) | (tage_provider & ((1 << TAGE_PROVIDER_W) - 1))
+    bits = (bits << ITTAGE_PROVIDER_W) | (ittage_provider & ((1 << ITTAGE_PROVIDER_W) - 1))
     return bits
 
 

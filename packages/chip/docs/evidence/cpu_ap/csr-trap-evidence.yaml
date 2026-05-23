@@ -16,7 +16,7 @@ required_for_pass:
   - illegal-instruction trap records mcause=2, mepc=faulting PC, mtval=opcode
   - load/store/fetch access-fault traps with correct mcause/mtval
 fail_closed_until:
-  - DUT is the production CVA6 / Kunminghu / Ascalon wrapper
+  - DUT is the production CVA6 / Kunminghu wrapper
   - cocotb test_csr_trap.py runs the positive path and writes
     docs/evidence/cpu_ap/csr-trap.json with status=pass
 test_files:

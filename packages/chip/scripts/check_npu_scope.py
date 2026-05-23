@@ -109,6 +109,42 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    required_real_evidence: list[str], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in required_real_evidence:
+        findings.append(
+            {
+                "code": f"npu_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "required_real_evidence",
+                "next_step": "Capture the named target-side NPU evidence before allowing Android NNAPI, measured-silicon, or 2028 phone-class NPU claims.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"npu_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the NPU scope contract before using this report as runtime or optimization evidence.",
+            }
+        )
+    return findings
+
+
 def find_benchmark(config: dict[str, Any], name: str) -> dict[str, Any]:
     for bench in list_values(config.get("benchmarks")):
         if isinstance(bench, dict) and bench.get("name") == name:
@@ -333,6 +369,19 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(NNAPI_PROOF_CHECKER),
         },
     ]
+    required_real_evidence = [
+        "Android or Linux target enumerates a real e1-npu accelerator or delegate",
+        "adb devices transcript identifies the exact validation target",
+        "NNAPI accelerator query transcript lists e1-npu",
+        "benchmark_model transcript uses --use_nnapi=true and --nnapi_accelerator_name=e1-npu",
+        "DMA trace transcript records e1-npu bytes_read and bytes_written from hardware DMA",
+        "capability proof JSON pins model hashes, transcript hashes, MAC count, cycles, frequency, and observed TOPS",
+        "unsupported_op_count is zero and cpu_fallback_percent is zero for the released benchmark",
+        "Android proof manifest contains passing VTS, CTS, VINTF, SELinux, NNAPI query, and fail-closed absent-device artifacts",
+        "power/thermal manifest contains calibrated sustained workload traces and computed perf-per-watt",
+        "reviewed MLPerf Mobile or equivalent closed-loop workload evidence covers latency, power, thermals, clocks, memory, and process state",
+    ]
+    findings = structured_findings(required_real_evidence, checks)
     return {
         "schema": "eliza.npu_scope.v1",
         "status": "npu_scope_release_blocked",
@@ -355,18 +404,8 @@ def build_report() -> dict[str, Any]:
             "npu_scale_checker": rel(NPU_SCALE_CHECKER),
             "npu_context_queue_checker": rel(NPU_CONTEXT_QUEUE_CHECKER),
         },
-        "required_real_evidence": [
-            "Android or Linux target enumerates a real e1-npu accelerator or delegate",
-            "adb devices transcript identifies the exact validation target",
-            "NNAPI accelerator query transcript lists e1-npu",
-            "benchmark_model transcript uses --use_nnapi=true and --nnapi_accelerator_name=e1-npu",
-            "DMA trace transcript records e1-npu bytes_read and bytes_written from hardware DMA",
-            "capability proof JSON pins model hashes, transcript hashes, MAC count, cycles, frequency, and observed TOPS",
-            "unsupported_op_count is zero and cpu_fallback_percent is zero for the released benchmark",
-            "Android proof manifest contains passing VTS, CTS, VINTF, SELinux, NNAPI query, and fail-closed absent-device artifacts",
-            "power/thermal manifest contains calibrated sustained workload traces and computed perf-per-watt",
-            "reviewed MLPerf Mobile or equivalent closed-loop workload evidence covers latency, power, thermals, clocks, memory, and process state",
-        ],
+        "required_real_evidence": required_real_evidence,
+        "findings": findings,
         "proof_artifacts": {
             "required_capability_json": "benchmarks/capabilities/e1_npu_nnapi.proof.json",
             "required_android_manifest": "docs/evidence/android/e1-npu/android-proof-manifest.json",
@@ -435,6 +474,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("required_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 10:
         errors.append("NPU scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured NPU blockers")
     proof = data.get("proof_artifacts")
     if not isinstance(proof, dict):
         errors.append("proof_artifacts must be a mapping")

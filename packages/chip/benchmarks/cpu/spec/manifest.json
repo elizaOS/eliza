@@ -47,7 +47,8 @@
     "release_flags_default_source": "compiler/llvm-build/llvm-pin.json::release_flags_default",
     "rvv_intrinsics_allowed": true,
     "spec_config_filename": "eliza-rva23u64.cfg",
-    "blocked_until_built": "build/llvm-stage2/bin/clang does not yet exist; compiler agent must run scripts/build_llvm_riscv.sh inside the canonical Linux container"
+    "llvm_binary": "build/llvm-stage2/bin/clang",
+    "blocked_until_built": "resolved when build/llvm-stage2/bin/clang exists; remaining blockers are a licensed SPEC_DIR install and an implemented target runner for silicon or FireSim"
   },
   "expected_results": {
     "e1_ultra_target_4.0_ghz": {

@@ -62,9 +62,9 @@
         1350,
         1650
       ],
-      "nonwhite_pixel_ratio": 0.08478,
-      "orange_pixel_ratio_of_nonwhite": 0.00725,
-      "dark_pixel_ratio_of_nonwhite": 0.60256,
+      "nonwhite_pixel_ratio": 0.08634,
+      "orange_pixel_ratio_of_nonwhite": 0.00712,
+      "dark_pixel_ratio_of_nonwhite": 0.62376,
       "purpose": "PCB, battery, camera, audio, haptic, and I/O placement"
     },
     {
@@ -196,7 +196,7 @@
     },
     "component_stack_visible": {
       "pass": true,
-      "component_stack_nonwhite_ratio": 0.08478
+      "component_stack_nonwhite_ratio": 0.08634
     },
     "component_family_detail_views": {
       "pass": true,

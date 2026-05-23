@@ -4,8 +4,8 @@
   "tool": "cadquery",
   "tool_available": true,
   "assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-  "assembly_step_bytes": 2893017,
-  "part_count": 132,
+  "assembly_step_bytes": 3069504,
+  "part_count": 142,
   "parts": [
     {
       "name": "orange_back_shell",
@@ -3152,6 +3152,246 @@
       }
     },
     {
+      "name": "cellular_lga_module_keepout",
+      "role": "cellular module",
+      "material": "Quectel RG255C RedCap LGA module",
+      "step": "mechanical/e1-phone/out/cellular_lga_module_keepout.step",
+      "bytes": 15517,
+      "bbox_mm": {
+        "min": [
+          -30.0,
+          29.0,
+          -1.65
+        ],
+        "max": [
+          -1.0,
+          61.0,
+          0.75
+        ],
+        "span": [
+          29.0,
+          32.0,
+          2.4
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_module_keepout",
+      "role": "Wi-Fi/Bluetooth module",
+      "material": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+      "step": "mechanical/e1-phone/out/wifi_bt_module_keepout.step",
+      "bytes": 15565,
+      "bbox_mm": {
+        "min": [
+          13.75,
+          37.3,
+          -1.6
+        ],
+        "max": [
+          26.25,
+          46.7,
+          -0.4
+        ],
+        "span": [
+          12.5,
+          9.4,
+          1.2
+        ]
+      }
+    },
+    {
+      "name": "soc_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for application processor package under SoC shield",
+      "step": "mechanical/e1-phone/out/soc_package_marker.step",
+      "bytes": 15591,
+      "bbox_mm": {
+        "min": [
+          -13.5,
+          48.5,
+          -0.18
+        ],
+        "max": [
+          -0.5,
+          61.5,
+          0.06
+        ],
+        "span": [
+          13.0,
+          13.0,
+          0.24
+        ]
+      }
+    },
+    {
+      "name": "dram_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for LPDDR memory package near SoC",
+      "step": "mechanical/e1-phone/out/dram_package_marker.step",
+      "bytes": 15587,
+      "bbox_mm": {
+        "min": [
+          -11.75,
+          64.0,
+          -0.18
+        ],
+        "max": [
+          -2.25,
+          72.0,
+          0.04
+        ],
+        "span": [
+          9.5,
+          8.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "storage_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for eMMC/UFS storage package",
+      "step": "mechanical/e1-phone/out/storage_package_marker.step",
+      "bytes": 15583,
+      "bbox_mm": {
+        "min": [
+          5.25,
+          63.5,
+          -0.18
+        ],
+        "max": [
+          16.75,
+          72.5,
+          0.04
+        ],
+        "span": [
+          11.5,
+          9.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "pmic_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for PMIC package under power shield",
+      "step": "mechanical/e1-phone/out/pmic_package_marker.step",
+      "bytes": 15523,
+      "bbox_mm": {
+        "min": [
+          9.0,
+          51.5,
+          -0.18
+        ],
+        "max": [
+          16.0,
+          58.5,
+          0.04
+        ],
+        "span": [
+          7.0,
+          7.0,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "rf_transceiver_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for RF transceiver/front-end package under radio shield",
+      "step": "mechanical/e1-phone/out/rf_transceiver_package_marker.step",
+      "bytes": 15652,
+      "bbox_mm": {
+        "min": [
+          -25.75,
+          51.25,
+          -0.18
+        ],
+        "max": [
+          -18.25,
+          58.75,
+          0.04
+        ],
+        "span": [
+          7.5,
+          7.5,
+          0.22
+        ]
+      }
+    },
+    {
+      "name": "gnss_lna_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for GNSS/RF low-noise amplifier placement",
+      "step": "mechanical/e1-phone/out/gnss_lna_package_marker.step",
+      "bytes": 15583,
+      "bbox_mm": {
+        "min": [
+          -31.5,
+          61.25,
+          -1.3
+        ],
+        "max": [
+          -28.5,
+          63.75,
+          -1.1
+        ],
+        "span": [
+          3.0,
+          2.5,
+          0.2
+        ]
+      }
+    },
+    {
+      "name": "wifi_bt_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+      "step": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.step",
+      "bytes": 15647,
+      "bbox_mm": {
+        "min": [
+          23.5,
+          41.775,
+          -1.175
+        ],
+        "max": [
+          33.5,
+          42.225,
+          -0.825
+        ],
+        "span": [
+          10.0,
+          0.45,
+          0.35
+        ]
+      }
+    },
+    {
+      "name": "cellular_rf_feed_coax_stub",
+      "role": "RF feed",
+      "material": "concept coax/feed stub from cellular module toward top antenna keepout",
+      "step": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.step",
+      "bytes": 15673,
+      "bbox_mm": {
+        "min": [
+          -30.225,
+          53.5,
+          -1.175
+        ],
+        "max": [
+          -29.775,
+          68.5,
+          -0.825
+        ],
+        "span": [
+          0.45,
+          15.0,
+          0.35
+        ]
+      }
+    },
+    {
       "name": "sim_tray_keepout",
       "role": "service",
       "material": "side SIM tray keepout",
@@ -3257,6 +3497,16 @@
     "cellular_top_antenna_keepout": true,
     "cellular_bottom_antenna_keepout": true,
     "wifi_bt_side_antenna_keepout": true,
+    "cellular_lga_module_keepout": true,
+    "wifi_bt_module_keepout": true,
+    "soc_package_marker": true,
+    "dram_package_marker": true,
+    "storage_package_marker": true,
+    "pmic_package_marker": true,
+    "rf_transceiver_package_marker": true,
+    "gnss_lna_package_marker": true,
+    "wifi_bt_rf_feed_coax_stub": true,
+    "cellular_rf_feed_coax_stub": true,
     "soc_shield_can": true,
     "pmic_shield_can": true,
     "radio_shield_can": true,

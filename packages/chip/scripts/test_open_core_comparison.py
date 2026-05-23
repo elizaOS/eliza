@@ -32,10 +32,20 @@ def test_bpu_axis_is_a_measured_win() -> None:
     assert (ROOT / verdict["evidence"]).exists()
 
 
-def test_silicon_and_verification_axes_are_honest_losses() -> None:
+def test_silicon_axis_stays_an_honest_loss() -> None:
+    # E1 has no silicon; this axis must not be claimed as a win/parity until tapeout.
+    assert _data()["e1_vs_ariane_verdict"]["silicon_proven_frequency"]["verdict"] == "loss"
+
+
+def test_improved_axes_cite_measured_evidence() -> None:
+    # Axes that moved off "loss"/"unproven" must point at an evidence file on disk.
     verdicts = _data()["e1_vs_ariane_verdict"]
-    assert verdicts["silicon_proven_frequency"]["verdict"] == "loss"
-    assert verdicts["verification_maturity"]["verdict"] == "loss"
+    for axis in ("verification_maturity", "peak_single_thread", "linux_boot_readiness",
+                 "area_energy_efficiency", "vector_ai", "scalar_integer_throughput"):
+        v = verdicts[axis]
+        if v["verdict"] in ("win", "parity"):
+            assert v.get("evidence"), f"{axis} claims {v['verdict']} without evidence"
+            assert (ROOT / v["evidence"]).exists(), f"{axis} evidence missing: {v['evidence']}"
 
 
 def test_cohort_has_the_open_ceiling_core() -> None:

@@ -175,6 +175,33 @@ release_coupling:
   blocks_enclosure_clearance_release: true
   blocks_end_to_end_phone_readiness: true
 
+alternate_display_sample_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/procurement-readiness.yaml
+    - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
+    - board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_alternate_display_response_pack_samples_inspection_and_reviews_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      minimum_sample_lot: 5
+      required_before_layout_release:
+        - RFQ response pack with quote, lifecycle, MOQ, lead time, compliance, and supplier SKU
+        - signed drawing, 40-pin pinout, mating connector, recommended land pattern, and STEP/B-rep models
+        - sample receipt, incoming inspection, display/touch bring-up, and promotion review against CH550FH01A-CT
+        - pinout, symbol, footprint, 3D binding, routed layout, factory, and enclosure gates updated for selected branch
+      sample_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      minimum_sample_lot: 5
+      required_before_layout_release:
+        - RFQ response pack with quote, lifecycle, MOQ, lead time, compliance, and supplier SKU
+        - signed AMOLED drawing, FPC pinout, mating connector, recommended land pattern, STEP/B-rep models, and RM67191/GT1151 data
+        - sample receipt, incoming inspection, burn-in/luminance data, display/touch bring-up, and promotion review against CH550FH01A-CT
+        - pinout, symbol, footprint, 3D binding, routed layout, factory, and enclosure gates updated for selected branch
+      sample_release_allowed: false
+
 cross_checks:
   manifest_cites_gate: true
   source_artifacts_exist: true
@@ -184,11 +211,13 @@ cross_checks:
   every_required_evidence_path_is_absent: true
   no_record_allows_layout_without_samples: true
   release_coupling_remains_fail_closed: true
+  alternate_display_sample_release_gate_fail_closed: true
 
 release_blockers:
   - RFQ transmittals are drafts and have not been sent or archived as production evidence
   - supplier response packs, signed drawings, exact pinouts, land patterns, STEP models, and samples are missing
   - incoming sample inspection and compliance packs are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter layout release until RFQ response packs, samples, inspection, reviews, and promotion evidence exist
   - pinout, symbol, footprint, and 3D binding reviews are missing
   - routed layout, factory release, and enclosure clearance cannot close without supplier evidence
 

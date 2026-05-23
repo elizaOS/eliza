@@ -1,0 +1,118 @@
+{
+  "schema": "eliza.e1_phone_charger_cc_cv_cycle_template.v1",
+  "status": "template_empty_not_executed",
+  "date": "2026-05-22",
+  "claim_boundary": "Empty template for future MAX77860 charger CC/CV, JEITA, current-limit, and thermal evidence. This is not a passed charge cycle and not battery safety approval.",
+  "source_artifacts": [
+    "board/kicad/e1-phone/power-usb-sidekey-bench-bringup-execution-2026-05-22.yaml",
+    "board/kicad/e1-phone/selected-hardware-first-article-execution.yaml"
+  ],
+  "future_evidence_path": "board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json",
+  "release_flags": {
+    "charger_i2c_readback_passed": false,
+    "cc_cv_cycle_passed": false,
+    "jeita_cases_passed": false,
+    "thermal_soak_passed": false,
+    "charge_current_above_500ma_allowed": false,
+    "first_article_release_allowed": false
+  },
+  "traceability": {
+    "board_serial": "",
+    "board_revision": "",
+    "fixture_id": "",
+    "operator": "",
+    "test_software_revision": "",
+    "charger_mpn": "MAX77860",
+    "battery_pack_lot": "",
+    "battery_supplier_drawing_revision": ""
+  },
+  "test_conditions": {
+    "ambient_c": null,
+    "battery_start_voltage_v": null,
+    "battery_capacity_mah": null,
+    "supplier_max_charge_current_ma": null,
+    "configured_charge_current_ma": null,
+    "input_current_limit_ma": null
+  },
+  "register_readback": {
+    "transcript_ref": "",
+    "fault_registers": [],
+    "result": "not_run"
+  },
+  "charge_phases": [
+    {
+      "phase": "precharge",
+      "start_time": "",
+      "end_time": "",
+      "vbat_start_v": null,
+      "vbat_end_v": null,
+      "ibat_avg_ma": null,
+      "max_temp_c": null,
+      "result": "not_run"
+    },
+    {
+      "phase": "constant_current",
+      "start_time": "",
+      "end_time": "",
+      "vbat_start_v": null,
+      "vbat_end_v": null,
+      "ibat_avg_ma": null,
+      "max_temp_c": null,
+      "result": "not_run"
+    },
+    {
+      "phase": "constant_voltage",
+      "start_time": "",
+      "end_time": "",
+      "vbat_start_v": null,
+      "vbat_end_v": null,
+      "ibat_avg_ma": null,
+      "max_temp_c": null,
+      "result": "not_run"
+    },
+    {
+      "phase": "termination_recharge",
+      "start_time": "",
+      "end_time": "",
+      "vbat_start_v": null,
+      "vbat_end_v": null,
+      "ibat_avg_ma": null,
+      "max_temp_c": null,
+      "result": "not_run"
+    }
+  ],
+  "jeita_cases": [
+    {
+      "case_id": "cold",
+      "ntc_resistance_ohm": null,
+      "expected_action": "",
+      "observed_action": "",
+      "result": "not_run"
+    },
+    {
+      "case_id": "warm",
+      "ntc_resistance_ohm": null,
+      "expected_action": "",
+      "observed_action": "",
+      "result": "not_run"
+    },
+    {
+      "case_id": "hot",
+      "ntc_resistance_ohm": null,
+      "expected_action": "",
+      "observed_action": "",
+      "result": "not_run"
+    }
+  ],
+  "required_attachments": [],
+  "review": {
+    "reviewer": "",
+    "review_date": "",
+    "disposition": "not_reviewed",
+    "open_blockers": [
+      "real charger I2C readback missing",
+      "real CC/CV cycle missing",
+      "battery supplier pack rating and thermal evidence missing"
+    ]
+  }
+}

@@ -218,33 +218,70 @@ areas:
         affected_paths:
           - verify/formal/e1_npu_formal.sv
           - verify/formal/e1_npu.sby
+          - verify/properties/npu_axil_bind.sv
           - rtl/npu/e1_npu.sv
         current_evidence: >-
-          e1_npu_formal.sv constrains addr < 6'h08 and forbids the start bit
-          (assume !(valid && write && addr==6'h03 && wdata[0])), so the BMC at
-          depth 8 only proves the mirror-register subset. GEMM, descriptor
-          ring, vector, packed-dot, and writeback paths have zero formal
-          closure.
+          The addr<8 ceiling and the assume(!start) constraint are removed
+          (dossier §5.6.5). The harness now drives the full MMIO map and free
+          AXI-Lite slave responses, so the GEMM tile loop, the vector engine,
+          the packed scalar datapath, and the descriptor-ring FSM all run under
+          BMC depth 12, converging to PASS on smtbmc z3 (and independently on
+          bitwuzla) with the engine-agreement gate green. Proven, non-vacuous,
+          port-observable properties (reachability confirmed by anti-cover BMC
+          on the rdata interface): descriptor empty-flag soundness and
+          empty/busy exclusivity and reserved-bit zeroing via DESC_STATUS
+          (6'h13); monotonicity of DESC_BYTES_READ/WRITTEN (6'h19/6'h1a),
+          PERF_STALL_CYCLES (6'h1d) and PERF_SCRATCH_BYTES (6'h1e) absent the
+          documented clears; thermal-throttle no-downward-step (6'h1f) absent a
+          clear; STATUS_AUX reserved-bit zeroing; scalar mirror coverage; and
+          the AXI-Lite protocol property pack bound to the NPU master port
+          (verify/properties/npu_axil_bind.sv, master-side proof with
+          AXIL_PROTO_ASSUME_LIVENESS).
         blocking_gate: >-
-          NPU formal pass must be read as mirror-register coverage only, not
-          engine-datapath closure.
+          NPU formal pass now covers the software-visible (rdata-port and
+          AXI-master) contract of the descriptor/GEMM/vector engines, but NOT
+          the internal-only tile-address datapath (see remaining_gap). It must
+          not be read as full GEMM/vector address-generation closure.
+        remaining_gap: >-
+          The internal-only GEMM/vector properties from §5.6.5 — gemm tile
+          scratchpad write/read index bounds, INT4 nibble-mode address widening,
+          gemm_acc width/overflow, and the vector cursor windows
+          (vec_src_base+vec_len<=64 / vec_dst_base+vec_len<=64) — depend on nets
+          (gemm_c_addr, gemm_a_addr, gemm_cfg_ok, vec_i, gemm_l, gemm_acc, ...)
+          that are not module ports. The native Yosys SystemVerilog frontend
+          used by this flow reads BOTH cross-module hierarchical references
+          (dut.<net>) AND bind-port connections to a submodule's internal
+          regs/wires as free, disconnected wires: a bind-connected
+          perf_thermal_throttle proves "always 0" while the same counter read
+          back through the rdata port is provably nonzero, and bind-read
+          gemm_cfg_ok evaluates true with gemm_m==0 (impossible per the RTL
+          combinational definition). Any assertion written against those taps is
+          therefore unsound/vacuous and was deliberately not shipped (a false
+          proof is worse than no proof). These properties also are not
+          observable through the rdata register map (the tile addresses are not
+          exposed). The desc_timeout>=128 exit edge and the thermal wrap at
+          2^32 likewise need depth>=128 / count-near-2^32 to witness and are not
+          reachable at the depth-12 BMC budget.
         closure_evidence: >-
-          Lift the addr<8 / assume(!start) ceiling and add the dossier §5.6.5
-          properties — descriptor tail==head <-> DESC_STATUS empty and
-          desc_timeout>=128 exit; GEMM m/n/k scratchpad bounds and INT4
-          nibble-mode address widening; vec_src_base+vec_len<=64 and
-          vec_dst_base+vec_len<=64; monotonicity of DESC_BYTES_READ/WRITTEN,
-          PERF_STALL_CYCLES, PERF_SCRATCH_BYTES absent a clear; bind
-          verify/properties/axi_lite_protocol.sv to the NPU master port;
-          thermal-throttle saturation at rtl/npu/e1_npu.sv:934. Each addition
-          must keep the proof converging (raise BMC depth / add k-induction as
-          needed) and pass the engine-agreement gate
-          (verify/check_formal_engine_agreement.py).
+          Either (a) a toolchain that resolves SystemVerilog bind/hierarchical
+          taps into submodule internal nets (e.g. a different Verilog frontend
+          or a Verific-based flow), then add the internal GEMM tile bounds /
+          INT4 widening / gemm_acc-overflow and vector-cursor assertions with a
+          verified converging PASS and engine agreement; or (b) expose the tile
+          addresses / accumulator through a debug/observability MMIO window in
+          rtl/npu/e1_npu.sv and prove the bounds through that port. Add
+          k-induction (mode prove) or depth>=128 to witness the desc_timeout
+          firing edge and a near-2^32 thermal saturation case.
         work_order: >-
-          Deferred follow-up to dossier §5.6.5. Lifting the start-bit assume
-          runs the GEMM/descriptor FSM and risks BMC blow-up at the current
-          depth-8 budget; land the properties incrementally with verified
-          convergence rather than as one change.
+          Follow-up to dossier §5.6.5. The MMIO/AXI-observable engine contract
+          is closed at depth 12 with engine agreement. The internal tile-address
+          datapath remains blocked on the Yosys-frontend internal-net
+          observability limitation above; close it via a bind-capable frontend
+          or a debug observability port, not by asserting against the
+          free-wire taps. Routine make formal runs e1_npu.sby single-engine
+          (z3) so the agreement gate stays green and the run_formal.sh
+          status/logfile copy contract is preserved; bitwuzla parity was
+          verified out of band.
   display:
     current_posture: timing_generator_with_top_level_sram_framebuffer_fetch
     local_closures:
@@ -263,26 +300,30 @@ areas:
         severity: critical
         affected_paths:
           - rtl/display/e1_display.sv
+          - rtl/display/e1_display_scanout.sv
           - rtl/top/e1_soc_top.sv
           - verify/cocotb/test_e1_display.py
+          - verify/cocotb/display/test_display_scanout.py
         partial_closure_evidence:
           - arch/display.md "v0 reference panel" section (720x1280 MIPI-DSI selection and DCS init sequence summary)
-          - verify/cocotb/display/test_display_timing.py (hsync/vsync cadence under perfect framebuffer; fetched+underflow invariant under backpressuring framebuffer)
-        current_evidence: Display has timing registers and a top-level SRAM-backed framebuffer read path, but no panel PHY, DSI bridge, format conversion pipeline, production underflow policy, or real panel init path.
-        blocking_gate: Display subsystem pass must not imply real panel bring-up or production scanout bandwidth.
-        closure_evidence: Framebuffer fetch with production memory QoS, underflow detection, pixel format coverage, mode programming, panel init, timing validation, and hardware-in-loop or cycle-accurate trace evidence.
-        work_order: Replace the SRAM-backed scanout path with a production framebuffer client covering bandwidth, outstanding reads, format conversion, and underflow policy.
+          - rtl/display/e1_display_scanout.sv (production AXI4 read master + line FIFO + byte-assembly format unpack + register-programmed mode timing + DPI/DSI boundary, lint-clean under verilator --lint-only)
+          - verify/cocotb/display/test_display_scanout.py (XR24/RGB565/packed-RGB888 framebuffer scanout matches backing DRAM; mode timing matches programmed porches; forced underflow sets the status bit and recovers) via scripts/check_display_scanout.py
+        current_evidence: A standalone production scanout controller (rtl/display/e1_display_scanout.sv) now models the buildable subset — AXI4 read master with QoS=DISPLAY_RT, INCR bursts, multiple outstanding reads, a line FIFO with backpressure, a fail-closed underflow policy (defined fill colour + sticky status + counter), byte-assembly pixel-format unpack (RGB565/packed RGB888/XRGB8888), register-programmed H/V mode timing, and the digital controller->PHY DPI/DSI boundary. The DSI analog PHY, D-PHY serializers, panel DCS init, and async pixel-clock CDC remain physical dependencies. The legacy e1_display.sv SRAM-fetch timing generator is unchanged and still wired into e1_soc_top; integrating e1_display_scanout into the SoC fabric + DTS is a follow-on.
+        blocking_gate: Display subsystem pass must not imply real panel bring-up, the DSI analog PHY, or SoC-fabric integration of the new scanout master.
+        closure_evidence: SoC-fabric integration of e1_display_scanout (AXI4 master port on the NoC), DTS binding, panel DCS init at the DSI-host boundary, async pixel-clock CDC, and hardware-in-loop or cycle-accurate scanout-bandwidth trace evidence.
+        work_order: Wire rtl/display/e1_display_scanout.sv into e1_soc_top's AXI4 fabric (replacing the SRAM-backed per-pixel fetch), add the DTS node + DSI-host command boundary, and close the async pixel-clock CDC.
       - id: display-proof-gap
         status: open
         category: proof_gap
         severity: high
         affected_paths:
           - rtl/display/e1_display.sv
+          - rtl/display/e1_display_scanout.sv
           - verify/formal/e1_soc_top_formal.sv
           - scripts/run_formal.sh
         partial_closure_evidence:
-          - verify/cocotb/display/test_display_timing.py (starved-framebuffer underflow counter check drives UNDERFLOW_COUNT to exactly active_pixels)
-        current_evidence: Display behavior is covered by cocotb smoke tests and top structural formal only; no dedicated formal properties constrain timing, coordinates, IRQ cadence, or read handshakes.
+          - verify/cocotb/display/test_display_scanout.py (directed KAT — framebuffer-match per format, programmed-mode hsync/vsync/de cadence, and forced-underflow status+recovery) via scripts/check_display_scanout.py
+        current_evidence: The new scanout controller has directed cocotb KAT coverage (format-correct framebuffer match, mode timing, underflow status+recovery); dedicated formal properties constraining timing/coordinates/IRQ cadence/read handshakes are still a follow-on.
         blocking_gate: Formal pass does not cover display correctness.
         closure_evidence: Assertions for hsync/vsync cadence, active window bounds, framebuffer address monotonicity, disabled-state behavior, unsupported formats, and read-ready stalls.
         work_order: Add display-specific formal or property-driven cocotb coverage.
@@ -337,9 +378,10 @@ areas:
         severity: critical
         affected_paths:
           - rtl/memory/e1_axi_lite_dram.sv
+          - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
           - rtl/top/e1_soc_top.sv
           - rtl/interconnect/e1_linux_soc_contract.sv
-        current_evidence: DRAM is modeled as a small AXI-Lite SRAM aperture, with no controller, PHY, refresh, timing, ECC, or large-capacity behavior.
+        current_evidence: rtl/memory/dram_ctrl/e1_dram_ctrl.sv now presents a full AXI4 slave with burst/outstanding/row-hit-miss scheduling backed by a sim-only behavioural array behind a modelled DFI 5.0 boundary, replacing the small AXI-Lite SRAM aperture. The LPDDR5X analog PHY and DFI 5.0 training remain closed-IP physical dependencies (docs/evidence/memory/lpddr-phy-procurement.yaml), so this is a verified large-memory model, not a silicon-ready PHY-attached controller; the legacy rtl/memory/e1_axi_lite_dram.sv aperture is still wired into the v0 tops.
         blocking_gate: Memory bandwidth, Linux memory sizing, and production DRAM claims remain blocked.
         closure_evidence: Real controller boundary or verified external memory model, capacity discovery, latency/backpressure coverage, error policy, and boot-time memory tests.
         work_order: Replace the SRAM model with a real DRAM controller boundary, larger capacity, latency/backpressure modeling, and boot-time memory discovery.

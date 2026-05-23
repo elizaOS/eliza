@@ -6,10 +6,10 @@
   "reviewer": "automated_boolean_check",
   "aabb_prefilter_mm": 1.0,
   "min_target_gap_mm": 0.15,
-  "parts_loaded": 132,
+  "parts_loaded": 142,
   "parts_missing": [],
-  "pair_count_total": 8646,
-  "pair_count_brep_evaluated": 535,
+  "pair_count_total": 10011,
+  "pair_count_brep_evaluated": 586,
   "unintentional_clashes": [],
   "scope_results": [
     {
@@ -5500,5 +5500,5 @@
     ]
   },
   "overall_status": "pass",
-  "wall_seconds": 26.81
+  "wall_seconds": 15.48
 }

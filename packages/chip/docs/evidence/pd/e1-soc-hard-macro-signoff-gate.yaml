@@ -1,6 +1,32 @@
 schema: eliza.pd_soc_hard_macro_signoff_gate.v1
-status: rtl_fix_applied_signoff_run_pending
-release_use: prohibited_until_signoff_replay
+status: draft_local_evidence
+status_detail: second_rtl_frontend_blocker_found_in_bootrom_fix_proven_signoff_run_pending
+release_use: prohibited_until_external_review
+release_use_detail: prohibited_until_signoff_replay
+
+source_artifacts:
+  - pd/openlane/config.sky130.json
+  - rtl/top/e1_soc_top.sv
+  - rtl/top/e1_soc_pkg.sv
+  - rtl/memory/e1_behavioral_dram.sv
+  - external/pdks/volare/sky130/versions/c6d73a35f524070e85faff4a6a9eef49553ebc2b/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+
+release_blockers:
+  - |
+    e1_soc_top full LibreLane signoff has not reached final/. The original
+    SystemVerilog module-header package-import frontend blocker is RESOLVED and
+    was confirmed parsing clean in the actual flow (run RUN_2026-05-22_19-39-13),
+    but synthesis now stalls at the SAME step (05-yosys-jsonheader) on a NEW,
+    distinct frontend incompatibility: rtl/bootrom/e1_bootrom.sv uses the
+    SystemVerilog `string` data type (parameter type at line 24, initial-block
+    local at line 40) which the openlane2 image Yosys Verilog-2005 frontend
+    rejects. RTL is read-only for ws2; the exact two-line fix is identified and
+    PROVEN to let the full 20-file VERILOG_FILES list parse clean. See
+    second_rtl_frontend_blocker. The run is otherwise unblocked and the box is
+    busy with sibling-agent heavy-EDA jobs holding /tmp/eliza_heavy_eda.lock.
+  - downstream PPA labels must be treated as smoke provenance (macro_count=0,
+    e1_pd_smoke_top) until a SoC-with-hard-macro run reaches final/, per
+    label_provenance_warning below.
 
 rtl_fix_applied:
   description: |
@@ -18,18 +44,75 @@ rtl_fix_applied:
       action: deleted header import; scoped all DRAM_WORDS / DRAM_INDEX_BITS uses to e1_soc_pkg::*
   proof_result: three "Successfully finished Verilog frontend." zero errors (prove_rtl_fix_compiles command)
   verilator_lint: clean
+existing_routed_def_with_hard_macro:
+  discovered: 2026-05-22
+  status: routed_def_present_full_flow_not_yet_to_final
+  run: pd/openlane/runs/RUN_2026-05-21_10-21-34
+  design_name: e1_chip_top
+  carries_hard_macro: true
+  routed_def: pd/openlane/runs/RUN_2026-05-21_10-21-34/46-openroad-detailedrouting/e1_chip_top.def
+  def_path_written_to: /tmp/e1_soc_def_path.txt
+  description: |
+    A PRIOR e1_chip_top OpenLane run carrying the hard SRAM macro reached
+    detailed routing. This is the best routed DEF available for the autonomous
+    cloud AlphaChip PPO right now. It was built from the OLDER 16-file RTL list
+    (before ws2 expanded VERILOG_FILES to 20 with the MMIO decode / CLINT /
+    behavioral-DRAM modules), so it does NOT match the current
+    config.sky130.json file list — but it is a genuine SoC-with-hard-macro
+    placed-and-routed result, not a smoke top. It stopped after step 48
+    (OpenROAD.CheckAntennas-1) and never produced final/ or a final metrics.json
+    (so no validated eda.flow_run.v1 SoC label can be emitted from it yet — the
+    parser keys off RUN_*/final/metrics.json which does not exist for this run).
+  verified_facts:
+    design: e1_chip_top
+    die_area_um: "2900 x 2900 (DIEAREA 0 0 2900000 2900000, units 1000/um)"
+    macro_instance: "u_soc.u_weight_buffer.u_sram"
+    macro_cell: sky130_sram_2kbyte_1rw1r_32x512_8
+    macro_placement: "FIXED at (150000 150000) orient N — confirmed in DEF COMPONENTS"
+    components_in_def: 342754
+    detailed_route_drc_violations: 0
+    route_wirelength_um: 9859025
+    instance_count: 340770
+    stdcell_count: 340769
+    macro_count: 1
+    instance_area_um2: 1643930.0
+    die_area_um2: 8410000.0
+    core_area_um2: 7283310.0
+    utilization_pct: 0.225712
+    power_total_w_post_grt_sta: 0.00668842
+    setup_wns_ns_post_grt_nom_tt: 0
+    hold_wns_ns_post_grt_nom_tt: 0
+    setup_tns_ns_post_grt_nom_tt: 0
+    timing_corner_note: |
+      Timing/power above are from the last completed STA step (45-openroad-
+      stamidpnr-3, post-global-route) at the nom_tt_025C_1v80 corner only. Full
+      multi-corner post-route STA, RCX-extracted timing, IR-drop, magic/klayout
+      DRC, and LVS are the final-stage steps this run never reached. Final
+      signoff PPA must come from a run that reaches final/.
+  to_drive_this_to_final: |
+    This older-RTL run cannot simply be resumed to final/ because OpenLane runs
+    are not trivially resumable across a stopped flow without the original
+    process. The correct path is the full replay below (resume_command) on the
+    CURRENT 20-file config once the bootrom string blocker is fixed in-tree;
+    that produces a final/ for the current SoC RTL AND a fresh routed DEF that
+    matches the current netlist.
+
 scope: e1_soc_top_full_flow_with_hard_sram_macro_through_librelane_signoff
 owner_workstream: ws2_full_soc_flow
 description: |
   The full e1_chip_top / e1_soc_top OpenLane flow that carries the prebuilt
   sky130 hard SRAM macro (sky130_sram_2kbyte_1rw1r_32x512_8, instantiated as
-  e1_weight_buffer_sram) cannot reach `final/` signoff because synthesis fails
-  at the very first Yosys step. LibreLane 3.0.3's Yosys frontend (read_verilog,
-  no slang/surelog plugin available) rejects the SystemVerilog module-header
-  package import that two source files use. This is an RTL-frontend
-  compatibility blocker, not a PD-config blocker. The OpenLane config file list
-  and the hard-macro wiring are already correct and proven (lint clean,
-  frontend clean once the import form is fixed).
+  e1_weight_buffer_sram) cannot yet reach `final/` signoff on the CURRENT
+  20-file config because synthesis stalls at the Yosys jsonheader step. The
+  original package-import frontend blocker is RESOLVED and now parses clean; a
+  second, distinct RTL-frontend incompatibility surfaced in
+  rtl/bootrom/e1_bootrom.sv (SystemVerilog `string` data type — see
+  second_rtl_frontend_blocker). Both are RTL-frontend issues (read-only for
+  ws2), not PD-config blockers: the OpenLane config file list and hard-macro
+  wiring are correct and proven (lint clean; the full 20-file list parses clean
+  once the two bootrom edits are applied). A prior e1_chip_top run on the older
+  16-file RTL already routed the design WITH the hard macro to a 144 MB DEF at
+  0 detailed-route DRC violations — see existing_routed_def_with_hard_macro.
 
 config_under_test: pd/openlane/config.sky130.json
 design_name: e1_chip_top
@@ -45,10 +128,20 @@ flow_progress:
   lint_verilator: pass
   checker_lint_errors: pass
   checker_lint_warnings: pass
-  yosys_jsonheader: fail_read_verilog_package_import_syntax
-  furthest_run_dir: pd/openlane/runs/RUN_2026-05-21_13-47-05
+  yosys_jsonheader: fail_read_verilog_bootrom_sv_string_type
+  furthest_run_dir: pd/openlane/runs/RUN_2026-05-22_19-39-13
   furthest_step: 05-yosys-jsonheader
   final_metrics_produced: false
+  note: |
+    On 2026-05-22 the e1_soc_pkg/e1_behavioral_dram/e1_soc_top frontend blocker
+    (the original package-import issue) was confirmed RESOLVED in the actual
+    flow: in run RUN_2026-05-22_19-39-13 the Yosys jsonheader step parsed
+    e1_soc_pkg.sv, e1_chip_top.sv, e1_reset_sync.sv, e1_dbg_mmio_bridge.sv, and
+    e1_soc_top.sv all clean ("Successfully finished Verilog frontend.") and only
+    then hit a NEW, distinct SystemVerilog-frontend incompatibility in
+    rtl/bootrom/e1_bootrom.sv. See second_rtl_frontend_blocker below. This new
+    blocker is also RTL-read-only for ws2; the exact two-line fix is given and
+    proven to let the entire 20-file config VERILOG_FILES list parse clean.
 
 config_fixes_applied_this_workstream:
   description: |
@@ -118,6 +211,91 @@ required_rtl_fix_for_lead:
       import. This requires building/installing the slang plugin into the
       LibreLane Yosys, which is a toolchain change outside ws2 ownership and
       heavier than the two-line RTL fix above.
+
+second_rtl_frontend_blocker:
+  discovered: 2026-05-22
+  status: fix_identified_and_proven_rtl_read_only_for_ws2
+  kind: rtl_systemverilog_frontend_incompatibility
+  tool: LibreLane 2.4.0.dev1 / openlane2 Yosys read_verilog (Verilog-2005 frontend, no slang plugin)
+  run: pd/openlane/runs/RUN_2026-05-22_19-39-13
+  symptom: |
+    Step 05-yosys-jsonheader, file 10 of the read list:
+    /work/rtl/bootrom/e1_bootrom.sv:24: ERROR: syntax error, unexpected TOK_ID,
+    expecting ',' or '=' or ')'
+    After fixing line 24, a second error surfaces at:
+    /work/rtl/bootrom/e1_bootrom.sv:40: ERROR: syntax error, unexpected TOK_ID
+  root_cause: |
+    Yosys's read_verilog Verilog-2005 frontend (no slang plugin in the image)
+    does not accept the SystemVerilog `string` data type. e1_bootrom.sv uses it
+    in two places:
+      (1) module-header parameter type: `parameter string ROM_HEX = "..."`
+          (line 24) — `string` is lexed as a bare TOK_ID, so the next token
+          ROM_HEX is unexpected.
+      (2) initial-block local: `string rom_path;` (line 40), used only to hold a
+          $value$plusargs("BOOT_ROM_HEX=%s", rom_path) sim-time override path.
+    This is purely an unsynthesizable sim-only construct; nothing about the
+    synthesized boot-ROM aperture depends on `string`.
+  offending_rtl_read_only_for_ws2:
+    - file: rtl/bootrom/e1_bootrom.sv
+      line: 24
+      statement: 'parameter string ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"'
+    - file: rtl/bootrom/e1_bootrom.sv
+      line: 40
+      statement: "string rom_path;  (+ the $value$plusargs override block, lines 40-49)"
+  required_rtl_fix_for_lead:
+    description: |
+      RTL is READ-ONLY for ws2. The lead (or RTL owner) must apply BOTH edits
+      below to rtl/bootrom/e1_bootrom.sv. Both have been proven to make the
+      entire 20-file config.sky130.json VERILOG_FILES list parse clean in the
+      actual openlane2 image Yosys read_verilog frontend (see proof below: 20x
+      "Successfully finished Verilog frontend.", zero errors).
+    edits:
+      - file: rtl/bootrom/e1_bootrom.sv
+        line: 24
+        action: drop_string_type_keyword_on_parameter
+        from: 'parameter string ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"'
+        to: 'parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"'
+        detail: |
+          A bare untyped parameter initialized with a string literal is accepted
+          by the Yosys frontend and is functionally identical for $readmemh.
+      - file: rtl/bootrom/e1_bootrom.sv
+        lines: 40-49
+        action: remove_string_local_and_plusarg_override_read_rom_hex_directly
+        detail: |
+          The $value$plusargs("BOOT_ROM_HEX=%s", rom_path) path is simulator-only
+          and unsynthesizable. Replace the `string rom_path;` declaration and the
+          plusarg if/else block with a direct `$readmemh(ROM_HEX, mem);`. Concretely,
+          replace lines 40-49 (the `string rom_path;` decl, the zero-fill loop is
+          kept, the plusarg if/else, and `$readmemh(rom_path, mem);`) with:
+            for (int i = 0; i < WORDS; i++) begin
+                mem[i] = 32'h0000_0000;
+            end
+            $readmemh(ROM_HEX, mem);
+          This drops only the sim-time plusarg override (testbenches can override
+          the ROM_HEX parameter directly instead), preserving all synthesized
+          behaviour and the published header overlay.
+  alternative_fix:
+    description: |
+      Same slang-plugin alternative as the original blocker: install a
+      slang/surelog Yosys frontend that accepts the `string` data type. Heavier
+      than the two-line bootrom RTL fix and outside ws2 ownership.
+  proof_commands:
+    prove_full_list_compiles_with_fix: |
+      # ws2 proved the fix without editing the read-only RTL by bind-mounting a
+      # patched copy over the file inside the container. After the lead lands the
+      # fix in-tree, the bind-mount is unnecessary — read_verilog of the real
+      # VERILOG_FILES list parses clean.
+      FILES=$(python3 -c "import json; d=json.load(open('pd/openlane/config.sky130.json')); \
+        print(' '.join('/work/'+f.replace('dir::../../','') for f in d['VERILOG_FILES']))")
+      docker run --rm -v "$PWD":/work -w /work ghcr.io/efabless/openlane2:2.4.0.dev1 \
+        yosys -p "read_verilog -sv -DE1_PD_SMALL_DRAM -DE1_HAVE_HARD_SRAM $FILES" \
+        2>&1 | grep -c "Successfully finished Verilog frontend."
+      # expect: 20  (and zero ERROR lines)
+    proof_result_2026_05_22: |
+      With both bootrom edits applied (proven via bind-mounted patched copy):
+      20x "Successfully finished Verilog frontend.", zero ERROR lines, across the
+      full config.sky130.json VERILOG_FILES list. The package-import blocker is
+      gone and the bootrom `string` blocker is the only remaining frontend issue.
 
 proof_commands:
   macro_files_present: |

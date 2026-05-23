@@ -2,10 +2,10 @@
   "claim_boundary": "Automated STEP re-import and envelope validation; not supplier CAD approval.",
   "status": "pass",
   "tolerance_mm": 0.05,
-  "validated_count": 132,
+  "validated_count": 142,
   "assembly": {
     "step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
-    "bytes": 2893017,
+    "bytes": 3069504,
     "imported": true,
     "pass": true,
     "bbox_span_mm": [
@@ -1714,6 +1714,136 @@
         18.0,
         20.0,
         1.2
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "cellular_lga_module_keepout",
+      "step": "mechanical/e1-phone/out/cellular_lga_module_keepout.step",
+      "bytes": 15517,
+      "imported": true,
+      "bbox_span_mm": [
+        29.0,
+        32.0,
+        2.4
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "wifi_bt_module_keepout",
+      "step": "mechanical/e1-phone/out/wifi_bt_module_keepout.step",
+      "bytes": 15565,
+      "imported": true,
+      "bbox_span_mm": [
+        12.5,
+        9.4,
+        1.2
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "soc_package_marker",
+      "step": "mechanical/e1-phone/out/soc_package_marker.step",
+      "bytes": 15591,
+      "imported": true,
+      "bbox_span_mm": [
+        13.0,
+        13.0,
+        0.24
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "dram_package_marker",
+      "step": "mechanical/e1-phone/out/dram_package_marker.step",
+      "bytes": 15587,
+      "imported": true,
+      "bbox_span_mm": [
+        9.5,
+        8.0,
+        0.22
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "storage_package_marker",
+      "step": "mechanical/e1-phone/out/storage_package_marker.step",
+      "bytes": 15583,
+      "imported": true,
+      "bbox_span_mm": [
+        11.5,
+        9.0,
+        0.22
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "pmic_package_marker",
+      "step": "mechanical/e1-phone/out/pmic_package_marker.step",
+      "bytes": 15523,
+      "imported": true,
+      "bbox_span_mm": [
+        7.0,
+        7.0,
+        0.22
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "rf_transceiver_package_marker",
+      "step": "mechanical/e1-phone/out/rf_transceiver_package_marker.step",
+      "bytes": 15652,
+      "imported": true,
+      "bbox_span_mm": [
+        7.5,
+        7.5,
+        0.22
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "gnss_lna_package_marker",
+      "step": "mechanical/e1-phone/out/gnss_lna_package_marker.step",
+      "bytes": 15583,
+      "imported": true,
+      "bbox_span_mm": [
+        3.0,
+        2.5,
+        0.2
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "wifi_bt_rf_feed_coax_stub",
+      "step": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.step",
+      "bytes": 15647,
+      "imported": true,
+      "bbox_span_mm": [
+        10.0,
+        0.45,
+        0.35
+      ],
+      "max_span_error_mm": 0.0,
+      "pass": true
+    },
+    {
+      "name": "cellular_rf_feed_coax_stub",
+      "step": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.step",
+      "bytes": 15673,
+      "imported": true,
+      "bbox_span_mm": [
+        0.45,
+        15.0,
+        0.35
       ],
       "max_span_error_mm": 0.0,
       "pass": true

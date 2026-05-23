@@ -1,0 +1,35 @@
+eliza-evidence: target=buildroot artifact=eliza_e1_image_manifest
+eliza-evidence: buildroot_config=eliza_e1_defconfig
+eliza-evidence: command=find output/images -maxdepth 1 -type f -print -exec sha256sum {} ;
+eliza-evidence: started_utc=2026-05-21T22:23:42Z
+eliza-evidence: buildroot=external/buildroot-rv64
+eliza-evidence: br2_external=/home/shaw/milady/eliza/packages/chip/sw/buildroot
+EXTERNAL_TREE=external/buildroot-rv64
+COMMAND=find output/images -maxdepth 1 -type f -print -exec sha256sum {} ;
+START_UTC=2026-05-21T22:23:42Z
+output/images/rootfs.cpio
+963bd19552c1e52b4fac9a4f76964a2deb5f65130ac84b9171242a52c98a7400  output/images/rootfs.cpio
+output/images/Image
+05b222d6c5233cf29be7e21a309dddd0a7c407d13b3361cd1aaaa195dd65be07  output/images/Image
+output/images/start-qemu.sh
+015f29d2db8f55bf3256eabf218560f5a302cb673ab6c4342864c413d703926f  output/images/start-qemu.sh
+output/images/fw_jump.bin
+fa28585c49a00d38e81494cde46880e3d84ef61d9d080e3a010e3f46b11e57a3  output/images/fw_jump.bin
+output/images/rootfs.cpio.gz
+40571b5bb8c6ea877d0602972c3ef5bd12baea203e1b559dc4e8dd2de11ed48e  output/images/rootfs.cpio.gz
+output/images/rootfs.ext2
+f5e98f7a097a5c3df06a3497c775afb607f00c2afdd555f63f3558db670d6610  output/images/rootfs.ext2
+output/images/rootfs.tar
+5fb43438a0514f3531542bb0b72f612d091162ea165a02b5a00d5873422d4c35  output/images/rootfs.tar
+output/images/eliza-e1.dtb
+e2dc0ae355d018295f16f66f4d23b6c892e76488665d2b8cfade3a67f167081e  output/images/eliza-e1.dtb
+output/images/fw_jump.elf
+b5838e45698291a309a22cbf8b8f4dc3994b0955bab73173192ebcb124e7d5a6  output/images/fw_jump.elf
+output/images/fw_dynamic.bin
+0d66ee6df9382bbce43374ad403c85c7305ed38c7a9e88cb756c5a2640e8d54f  output/images/fw_dynamic.bin
+output/images/fw_dynamic.elf
+39eb75ffa80130d4bc427da4a666ea0bebf37fadbf06c500391c60a81d90ee02  output/images/fw_dynamic.elf
+eliza-evidence: status=PASS
+RESULT=PASS
+eliza-evidence: ended_utc=2026-05-21T22:23:43Z
+END_UTC=2026-05-21T22:23:43Z

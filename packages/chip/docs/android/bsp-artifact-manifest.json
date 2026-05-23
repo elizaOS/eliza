@@ -50,6 +50,19 @@
       ],
       "minimum_claim_to_clear_block": "external OpenSBI build and fw_dynamic handoff transcript captured"
     },
+    "u-boot": {
+      "external_tree": "U-Boot checkout with Eliza board/device-tree support from the generated AP boot path",
+      "source_command": "ELIZA_UBOOT_CMD='make eliza_defconfig && make' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot build; ELIZA_UBOOT_BOOT_CMD='/path/to/qemu-or-renode boot command' docs/sw/u-boot/capture-u-boot-evidence.sh /path/to/u-boot boot-chain",
+      "required_outputs": [
+        "u-boot.bin",
+        "external boot or simulator UART transcript containing OpenSBI handoff into U-Boot"
+      ],
+      "required_repo_evidence": [
+        "docs/evidence/linux/u_boot_eliza_build.log",
+        "docs/evidence/linux/u_boot_opensbi_boot_chain.log"
+      ],
+      "minimum_claim_to_clear_block": "external U-Boot build and OpenSBI-to-U-Boot boot-chain transcript captured"
+    },
     "aosp": {
       "external_tree": "AOSP checkout with sw/aosp-device imported to device/eliza/eliza_ai_soc",
       "source_command": "source build/envsetup.sh && lunch eliza_ai_soc-userdebug && m vendorimage vendor_sepolicy.cil sepolicy_neverallows && checkvintf",

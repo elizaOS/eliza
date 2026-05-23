@@ -296,7 +296,7 @@ The current `rtl/interrupts/e1_interrupt_controller.sv` is a 4-source PLIC-shape
 ### 5.4 Memory + fabric
 
 **5.4.1 TileLink-C real fabric — D-1**
-The current `tl_c_to_chi_bridge.sv` is **TL-C in name only** — a flat AXI4 line-burst FSM with no probe, no release, no probeAck data, no Branch/Trunk/Tip permission grants. Phase-B CPU AP (Saturn, KunMingHu, Ascalon-D8) cannot ship without a real TL-C fabric. The cluster sits in lite-tieoff mode (`rtl/cpu/cluster/e1_cluster_top.sv:179-265`), so multi-master MESI is structurally present but never exercised. This is the largest single missing fabric in the chip.
+The current `tl_c_to_chi_bridge.sv` is **TL-C in name only** — a flat AXI4 line-burst FSM with no probe, no release, no probeAck data, no Branch/Trunk/Tip permission grants. Phase-B CPU AP (Saturn, KunMingHu) cannot ship without a real TL-C fabric. The cluster sits in lite-tieoff mode (`rtl/cpu/cluster/e1_cluster_top.sv:179-265`), so multi-master MESI is structurally present but never exercised. This is the largest single missing fabric in the chip.
 *Research*: `research/downloads/memory_subsystem/{tilelink_spec, chipyard_constellation, chi_e_spec}.pdf`.
 *Effort*: XL.
 
@@ -499,8 +499,8 @@ Currently only ~5 of ~75 test files use Hypothesis. Schema validators, parser ro
 *Research*: `research/downloads/bench_sim_formal/hypothesis_python`.
 *Effort*: M.
 
-**5.9.4 MLPerf Power energy schema propagation — G-7**
-`docs/benchmarks/report-schema.yaml` declares `energy_joules_per_inference` but no parser produces it.
+**5.9.4 MLPerf Power energy schema propagation — G-7 — landed**
+`docs/benchmarks/report-schema.yaml` declares `energy_joules_per_inference`; a modeled MLPerf Inference harness now produces it. `benchmarks/mlperf/` runs a LoadGen-style scheduler (SingleStream + Offline) against the real E1 NPU sim (`E1NpuRuntime.gemm_s8`/`E1NpuMmioSim`) over a tiny INT8 MLP, scores accuracy/latency/throughput, and threads a scale-model-derived `energy_joules_per_inference` (provenance `simulator`, calibration `blocked-no-calibrated-assets`). Gate: `scripts/check_mlperf_inference.py`. Evidence: `docs/evidence/benchmarks/mlperf-inference-harness-evidence.yaml`. Measured silicon power (`mlperf-power-closed`) stays BLOCKED — needs Joulescope/Monsoon on fabricated silicon.
 *Research*: `research/downloads/bench_sim_formal/mlperf_power_spec`.
 *Effort*: M.
 
@@ -600,7 +600,7 @@ Verification SOTA roster (paragraph + research):
 - **AXI-Lite protocol properties — G-4 — landed; need AXI4 equivalent.**
 - **Accelergy + Timeloop — G-5 — landed but `make benchmark-sim-metrics` doesn't call Timeloop yet.**
 - **Hypothesis — G-6 — landed in 5 files; expand.**
-- **MLPerf Power schema — G-7 — landed as field; no parser produces it.**
+- **MLPerf Power schema — G-7 — landed; modeled harness (`benchmarks/mlperf/`) now produces `energy_joules_per_inference`. Measured silicon power stays BLOCKED (`mlperf-power-closed`).**
 - **DifuzzRTL / RTLfuzz** — research-grade, AI-EDA scaffolding exists.
 - **Sail / Spike differential testing** — checkouts in `external/`; no live lane.
 - **GLIFT info-flow** — for security properties once OpenTitan IP set lands.
@@ -614,7 +614,7 @@ Verification SOTA roster (paragraph + research):
 
 | # | Gate | Subsystem | Root cause | Owner |
 |---|---|---|---|---|
-| 1 | `cpu-big-procurement` | CPU | Ascalon-D8 license + foundry agreement | Procurement |
+| 1 | `cpu-big-integration` | CPU | open Kunminghu V3 8-wide scale-up: external XiangShan checkout + scale-up microbench (no license; Ascalon-D8 surveyed but rejected) | CPU/AP |
 | 2 | `chipyard-verilator-linux-smoke` | CPU/BSP | RV cross toolchain not installed | BSP |
 | 3 | `qemu-virt-linux-smoke` | BSP | Buildroot Image + rootfs.cpio not built | BSP (closest unblock per §5.8.1) |
 | 4 | `aosp-cuttlefish-rv64` | BSP | virtio-gpu blocker, commit `805a328650` | BSP |

@@ -5,12 +5,12 @@ scope: >
   triage. These reference existing regression intent, not generated tests.
 seeds:
   - id: seed_plic_claim_complete
-    source: verify/cocotb/test_plic_claim_threshold.py::plic_enable_claim_complete_smoke
+    source: verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
     status: EXISTING_TEST_REFERENCE
     covers:
       - plic_enable_claim_complete
-  - id: seed_plic_lowest_first
-    source: verify/cocotb/test_plic_claim_threshold.py::plic_priority_order_lowest_first_v0
+  - id: seed_plic_priority_order
+    source: verify/cocotb/test_plic_claim_threshold.py::plic_claim_returns_highest_priority
     status: EXISTING_TEST_REFERENCE
     covers:
       - plic_multiple_pending_priority_order

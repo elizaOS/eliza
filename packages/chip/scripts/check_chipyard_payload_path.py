@@ -35,7 +35,7 @@ REQUIRED_DTS_TOKENS = {
     "memory": "memory@80000000",
     "clint": "clint@2000000",
     "plic": "interrupt-controller@c000000",
-    "serial": "serial@10020000",
+    "serial": "serial@10001000",
     "chosen_stdout": "stdout-path",
 }
 

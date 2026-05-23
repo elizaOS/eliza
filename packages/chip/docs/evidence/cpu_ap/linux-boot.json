@@ -1,22 +1,7 @@
 {
   "schema": "eliza.cpu_linux_boot_evidence.v1",
   "status": "blocked",
+  "reason": "transcript missing: run scripts/run_linux_smoke.sh first",
   "transcript": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
-  "transcript_sha256": "4762a0bbd5dd87c145d29c077e0affb25be252eed8d5af59fdef3371e6a747f1",
-  "required_markers": [
-    "OpenSBI v",
-    "Booting Linux on physical CPU",
-    "Linux version",
-    "Run /init",
-    "Welcome to",
-    "console-uart"
-  ],
-  "missing_markers": [
-    "Booting Linux on physical CPU",
-    "Linux version",
-    "Run /init",
-    "Welcome to",
-    "console-uart"
-  ],
-  "checked_at": "2026-05-20T07:38:38Z"
+  "checked_at": "2026-05-22T19:56:51Z"
 }

@@ -152,6 +152,24 @@ CHECKS = {
             "FW_PAYLOAD",
         ],
     },
+    "u-boot": {
+        "local": "python3 scripts/check_software_bsp.py u-boot --scaffold-only",
+        "expected": "u-boot BSP scaffold check passed; external evidence remains BLOCKED.",
+        "blocker": "external U-Boot checkout plus generated AP OpenSBI-to-U-Boot boot-chain transcript",
+        "files": [
+            "docs/android/bsp-artifact-manifest.json",
+            "docs/sw/u-boot/README.md",
+            "docs/sw/u-boot/capture-u-boot-evidence.sh",
+        ],
+        "terms": [
+            "host_checkable_manifest_only_not_boot_evidence",
+            "sw/platform/e1_platform_contract.json",
+            "U-Boot",
+            "OpenSBI",
+            "ELIZA_UBOOT_CMD",
+            "ELIZA_UBOOT_BOOT_CMD",
+        ],
+    },
 }
 
 

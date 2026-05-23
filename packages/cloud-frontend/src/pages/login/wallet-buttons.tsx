@@ -2,6 +2,10 @@ import { useConnectModal } from "@rainbow-me/rainbowkit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
+import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
+import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
+import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
+import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import { useCallback, useEffect, useRef } from "react";
 import { type Connector, useAccount, useConnect, useSignMessage } from "wagmi";
 import { useT } from "@/providers/I18nProvider";
@@ -311,94 +315,35 @@ function SolanaButton({
 }
 
 // ── Icons ───────────────────────────────────────────────────────────────────
+//
+// Real brand marks via @web3icons/react. `variant="branded"` renders the
+// official multi-color logo (not a single-color stencil). Each ships as a
+// 24×24 viewBox SVG; we scale to h-4 w-4 to match the button text.
 
 function EvmIconRow() {
   return (
     <span aria-hidden="true" className="flex items-center -space-x-1">
-      <EthereumIcon />
-      <BaseIcon />
-      <BnbIcon />
+      <NetworkEthereum
+        variant="branded"
+        size={16}
+        className="rounded-full bg-white p-[1px] ring-1 ring-black/20"
+      />
+      <NetworkBase
+        variant="branded"
+        size={16}
+        className="rounded-full ring-1 ring-black/20"
+      />
+      <NetworkBinanceSmartChain
+        variant="branded"
+        size={16}
+        className="rounded-full bg-white ring-1 ring-black/20"
+      />
     </span>
   );
 }
 
-function EthereumIcon() {
-  return (
-    <svg
-      className="h-4 w-4 rounded-full bg-white p-[1px] ring-1 ring-black/20"
-      aria-hidden="true"
-      viewBox="0 0 256 417"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        fill="#343434"
-        d="M127.961 0l-2.795 9.5v275.668l2.795 2.79 127.962-75.638z"
-      />
-      <path fill="#8C8C8C" d="M127.962 0L0 212.32l127.962 75.639V154.158z" />
-      <path
-        fill="#3C3C3B"
-        d="M127.961 312.187l-1.575 1.92v98.199l1.575 4.6L256 236.587z"
-      />
-      <path fill="#8C8C8C" d="M127.962 416.905v-104.72L0 236.585z" />
-      <path fill="#141414" d="M127.961 287.958l127.96-75.637-127.96-58.162z" />
-      <path fill="#393939" d="M0 212.32l127.96 75.638v-133.8z" />
-    </svg>
-  );
-}
-
-function BaseIcon() {
-  return (
-    <svg
-      className="h-4 w-4 rounded-full ring-1 ring-black/20"
-      aria-hidden="true"
-      viewBox="0 0 111 111"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <circle cx="55.5" cy="55.5" r="55.5" fill="#0052FF" />
-      <path
-        fill="#fff"
-        d="M54.9 91.5c19.9 0 36-16.1 36-36s-16.1-36-36-36c-18.9 0-34.4 14.5-35.9 33h47.5v6H19c1.5 18.5 17 33 35.9 33Z"
-      />
-    </svg>
-  );
-}
-
-function BnbIcon() {
-  return (
-    <svg
-      className="h-4 w-4 rounded-full bg-white ring-1 ring-black/20"
-      aria-hidden="true"
-      viewBox="0 0 32 32"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        fill="#F0B90B"
-        d="M16 4 11.3 8.7 16 13.4l4.7-4.7L16 4Zm-7.3 7.3L4 16l4.7 4.7L13.4 16 8.7 11.3Zm14.6 0L18.6 16l4.7 4.7L28 16l-4.7-4.7ZM16 18.6l-4.7 4.7L16 28l4.7-4.7L16 18.6Zm0-5.2L13.4 16 16 18.6 18.6 16 16 13.4Z"
-      />
-    </svg>
-  );
-}
-
 function SolanaIcon() {
-  return (
-    <svg
-      className="h-4 w-4"
-      aria-hidden="true"
-      viewBox="0 0 128 128"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <linearGradient id="sol-a" x1="0%" x2="100%" y1="50%" y2="50%">
-          <stop offset="0%" stopColor="#9945FF" />
-          <stop offset="100%" stopColor="#14F195" />
-        </linearGradient>
-      </defs>
-      <path
-        fill="url(#sol-a)"
-        d="M23.9 87.3c.8-.8 1.9-1.3 3.1-1.3h97.8c1.9 0 2.9 2.3 1.5 3.7l-19.3 19.3c-.8.8-1.9 1.3-3.1 1.3H5.1c-1.9 0-2.9-2.3-1.5-3.7zm0-72.1c.8-.8 1.9-1.3 3.1-1.3h97.8c1.9 0 2.9 2.3 1.5 3.7L107.1 36.9c-.8.8-1.9 1.3-3.1 1.3H5.1c-1.9 0-2.9-2.3-1.5-3.7zm80.3 36c-.8-.8-1.9-1.3-3.1-1.3H3.3c-1.9 0-2.9 2.3-1.5 3.7l19.3 19.3c.8.8 1.9 1.3 3.1 1.3h97.8c1.9 0 2.9-2.3 1.5-3.7z"
-      />
-    </svg>
-  );
+  return <TokenSOL variant="branded" size={16} aria-hidden="true" />;
 }
 
 function Spinner() {

@@ -16,8 +16,8 @@ mode=$2
 repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_shell=${AOSP_SHELL:-bash}
-aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}
-aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}
+aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}
+aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_cf_riscv64_phone-trunk_staging-userdebug}
 aosp_target_product=${AOSP_TARGET_PRODUCT:-eliza_ai_soc}
 aosp_make_args=${AOSP_MAKE_ARGS:-}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}

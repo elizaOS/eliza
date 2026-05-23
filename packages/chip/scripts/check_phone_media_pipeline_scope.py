@@ -43,6 +43,54 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    display_blockers: list[str],
+    camera_blockers: list[str],
+    checks: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in display_blockers:
+        findings.append(
+            {
+                "code": f"media_display_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "display_scaffold.blocked_until_real_evidence",
+                "next_step": "Capture booted display/GPU/HWC/panel evidence before claiming phone-class display or no-issues UI runtime.",
+            }
+        )
+    for item in camera_blockers:
+        findings.append(
+            {
+                "code": f"media_camera_missing_real_evidence_{code_from_text(item, 'evidence')}",
+                "severity": "blocker",
+                "message": item,
+                "evidence": "camera_isp_scope.blocked_until_real_evidence",
+                "next_step": "Capture sensor/CSI/ISP/V4L2 or Android Camera HAL evidence before claiming phone-class camera readiness.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"media_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the media pipeline scope contract before using this report as runtime evidence.",
+            }
+        )
+    return findings
+
+
 def build_report() -> dict[str, Any]:
     min_blocks = load_yaml_object(MIN_BLOCKS)
     real_world = load_yaml_object(REAL_WORLD_GAPS)
@@ -135,6 +183,20 @@ def build_report() -> dict[str, Any]:
         },
     ]
     checks = display_checks + camera_checks
+    display_blockers = [
+        "GPU or 2D composition path",
+        "DRM/KMS or Android HWC runtime transcript",
+        "DSI/eDP/HDMI or panel bridge evidence",
+        "memory-pressure underflow measurement",
+    ]
+    camera_blockers = [
+        "sensor and lens selection",
+        "CSI lane and PHY evidence",
+        "ISP ownership and tuning package",
+        "Linux V4L2 or Android Camera HAL transcript",
+        "privacy indicator and permission evidence",
+    ]
+    findings = structured_findings(display_blockers, camera_blockers, checks)
     return {
         "schema": "eliza.phone_media_pipeline_scope.v1",
         "status": "media_pipeline_scope_release_blocked",
@@ -153,24 +215,14 @@ def build_report() -> dict[str, Any]:
                 "framebuffer ready backpressure",
                 "underflow counter",
             ],
-            "blocked_until_real_evidence": [
-                "GPU or 2D composition path",
-                "DRM/KMS or Android HWC runtime transcript",
-                "DSI/eDP/HDMI or panel bridge evidence",
-                "memory-pressure underflow measurement",
-            ],
+            "blocked_until_real_evidence": display_blockers,
         },
         "camera_isp_scope": {
             "gap_id": "camera_isp_stack",
             "current_state": "blocked_not_implemented",
-            "blocked_until_real_evidence": [
-                "sensor and lens selection",
-                "CSI lane and PHY evidence",
-                "ISP ownership and tuning package",
-                "Linux V4L2 or Android Camera HAL transcript",
-                "privacy indicator and permission evidence",
-            ],
+            "blocked_until_real_evidence": camera_blockers,
         },
+        "findings": findings,
         "checks": checks,
         "summary": {
             "check_count": len(checks),
@@ -225,6 +277,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("display must list blocked real-evidence items")
     if not isinstance(camera_blocked, list) or len(camera_blocked) < 5:
         errors.append("camera/ISP must list blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured media pipeline blockers")
     return errors
 
 

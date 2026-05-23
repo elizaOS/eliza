@@ -1,0 +1,289 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_contract.v1
+status: blocked_response_pack_intake_contract_ready_no_supplier_packs_received
+date: 2026-05-21
+claim_boundary: >
+  Acceptance contract for supplier RFQ response packs. This defines the exact
+  machine-readable package shape, evidence classes, review gates, and archive
+  paths required before supplier data can unlock KiCad symbols, footprints,
+  routing, enclosure clearance, production BOM/AVL, or first-article release.
+  This is not a supplier response, not a quote, not an AVL, not a signed drawing,
+  not a STEP/B-rep pack, and not approval to route or fabricate.
+
+source_artifacts:
+  - board/kicad/e1-phone/supplier-rfq-intake.yaml
+  - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+  - board/kicad/e1-phone/end-to-end-readiness.yaml
+  - board/kicad/e1-phone/sourcing-drafts/rfq-response-pack-template.yaml
+
+intake_contract:
+  archive_root: board/kicad/e1-phone/production/sourcing
+  response_pack_template: board/kicad/e1-phone/sourcing-drafts/rfq-response-pack-template.yaml
+  planned_response_pack_count: 10
+  selected_release_response_pack_count: 7
+  present_response_pack_count: 0
+  missing_response_pack_count: 10
+  every_planned_response_pack_absent: true
+  placeholder_or_partial_pack_unlocks_release: false
+  public_marketplace_listing_counts_as_supplier_pack: false
+  draft_transmittal_counts_as_supplier_pack: false
+  sample_lot_minimum: 5
+  quote_quantities: [10, 100, 1000]
+  required_response_format: supplier_signed_pdf_or_native_cad_plus_machine_readable_summary
+  accepted_document_languages: [english, bilingual_supplier_original_plus_english]
+
+required_response_fields:
+  - function
+  - candidate
+  - supplier_legal_name
+  - supplier_contact
+  - marketplace_or_vendor_url
+  - orderable_manufacturer_part_number
+  - supplier_sku
+  - lifecycle_status
+  - MOQ
+  - unit_price_10
+  - unit_price_100
+  - unit_price_1000
+  - lead_time_days_10
+  - lead_time_days_100
+  - lead_time_days_1000
+  - signed_2d_drawing_path
+  - pinout_or_pad_map_path
+  - mating_connector_mpn
+  - recommended_land_pattern_path
+  - step_or_brep_model_path
+  - electrical_specs_path
+  - reference_schematic_or_layout_path
+  - compliance_pack_index_path
+  - sample_lot_tracking
+  - incoming_inspection_path
+  - firmware_or_driver_pack_path
+  - regulatory_or_modular_grant_scope
+  - enclosure_datums_and_keepouts_path
+  - approved_by_ee
+  - approved_by_me
+  - approved_by_ops
+
+required_boolean_gates:
+  - orderable_mpn_received
+  - signed_2d_drawing_received
+  - pinout_or_pad_map_received
+  - recommended_land_pattern_received
+  - step_or_brep_model_received
+  - sample_received_and_inspected
+  - compliance_pack_received
+  - pinout_symbol_footprint_reviews_complete
+  - enclosure_datums_reviewed
+  - quote_approved_for_evt1_buy
+
+planned_response_packs:
+  - function: display_touch
+    selected_for_release: true
+    primary_candidate: CH550FH01A-CT
+    draft_path: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/display_touch/rfq-response-pack.yaml
+    required_specialized_returns:
+      - exact_fpc_pin_count_required
+      - display_cover_lens_datums_required
+      - mating_connector_mpn_required
+      - panel_init_sequence_required
+      - ctp_driver_and_i2c_address_required
+      - display_stack_step_required
+      - alternate_display_promotion_review_required
+    release_unlocks: [display_pinout, display_footprint, display_step, dsi_route, enclosure_clearance, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: rear_camera
+    selected_for_release: true
+    primary_candidate: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    draft_path: board/kicad/e1-phone/sourcing-drafts/rear_camera/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/rear_camera/rfq-response-pack.yaml
+    required_specialized_returns:
+      - exact_fpc_pin_count_required
+      - lens_axis_datum_required
+      - autofocus_vcm_pinout_required
+      - register_pack_or_driver_notes_required
+      - module_step_required
+      - image_sample_required
+    release_unlocks: [camera_pinout, camera_footprint, camera_step, csi_route, enclosure_clearance, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: front_camera
+    selected_for_release: true
+    primary_candidate: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    draft_path: board/kicad/e1-phone/sourcing-drafts/front_camera/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/front_camera/rfq-response-pack.yaml
+    required_specialized_returns:
+      - exact_fpc_pin_count_required
+      - lens_height_required
+      - cover_glass_clearance_required
+      - driver_notes_required
+      - module_step_required
+      - image_sample_required
+    release_unlocks: [camera_pinout, camera_footprint, camera_step, csi_route, enclosure_clearance, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: cellular
+    selected_for_release: true
+    primary_candidate: Quectel_RG255C_or_RM255C_5G_RedCap
+    draft_path: board/kicad/e1-phone/sourcing-drafts/cellular/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/cellular/rfq-response-pack.yaml
+    required_specialized_returns:
+      - region_sku_band_matrix_required
+      - compact_lte_cat1_bis_alternate_quote_required
+      - hardware_design_guide_required
+      - lga_pad_map_required
+      - reference_layout_required
+      - modular_grant_scope_required
+      - firmware_driver_scope_required
+    release_unlocks: [module_pad_map, module_footprint, rf_reference_layout, firmware_scope, carrier_scope, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: wifi_bluetooth
+    selected_for_release: true
+    primary_candidate: Murata_LBEE5XV2EA-802_Type_2EA
+    draft_path: board/kicad/e1-phone/sourcing-drafts/wifi_bluetooth/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/wifi_bluetooth/rfq-response-pack.yaml
+    required_specialized_returns:
+      - module_datasheet_required
+      - hardware_design_guide_required
+      - reference_layout_required
+      - modular_grant_scope_required
+      - firmware_nvram_clm_required
+      - certified_antenna_rules_required
+    release_unlocks: [module_pad_map, module_footprint, rf_reference_layout, firmware_scope, regulatory_scope, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: usb_c_receptacle_evt0
+    selected_for_release: true
+    primary_candidate: GCT_USB4105_class_USB2_Type_C
+    draft_path: board/kicad/e1-phone/sourcing-drafts/usb_c_receptacle_evt0/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/usb_c_receptacle_evt0/rfq-response-pack.yaml
+    required_specialized_returns:
+      - exact_connector_variant_required
+      - shell_stake_drawing_required
+      - recommended_footprint_required
+      - step_model_required
+      - insertion_force_required
+      - enclosure_aperture_guidance_required
+    release_unlocks: [usb_pinout, usb_footprint, usb_step, shell_load_path, enclosure_clearance, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: side_buttons
+    selected_for_release: true
+    primary_candidate: side_key_flex_or_enclosure_mounted_switch_subassembly
+    draft_path: board/kicad/e1-phone/sourcing-drafts/side_buttons/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/side_buttons/rfq-response-pack.yaml
+    required_specialized_returns:
+      - switch_or_flex_drawing_required
+      - force_travel_curve_required
+      - bend_radius_required
+      - mating_connector_required
+      - step_model_required
+      - life_cycle_test_required
+    release_unlocks: [side_key_pinout, side_key_footprint, side_key_step, force_travel, enclosure_clearance, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: battery_pack
+    selected_for_release: false
+    primary_candidate: 5727mAh_22p05Wh_64x87x5p6mm_pouch_class
+    draft_path: board/kicad/e1-phone/sourcing-drafts/battery_pack/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/battery_pack/rfq-response-pack.yaml
+    required_specialized_returns:
+      - signed_pack_drawing_required
+      - ntc_and_pack_id_required
+      - connector_polarity_required
+      - swelling_envelope_required
+      - safety_cert_pack_required
+      - capacity_ir_sample_report_required
+    release_unlocks: [battery_connector_pinout, battery_step, swelling_clearance, safety_pack, charger_limits, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: audio_speaker_microphone_flexes
+    selected_for_release: false
+    primary_candidate: codec_amp_mics_speaker_receiver_haptic_stack
+    draft_path: board/kicad/e1-phone/sourcing-drafts/audio_speaker_microphone_flexes/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/audio_speaker_microphone_flexes/rfq-response-pack.yaml
+    required_specialized_returns:
+      - acoustic_part_drawings_required
+      - flex_pinouts_required
+      - gasket_mesh_specs_required
+      - step_models_required
+      - spl_distortion_data_required
+      - sample_acoustic_report_required
+    release_unlocks: [audio_pinouts, acoustic_step, haptic_step, acoustic_clearance, functional_test_limits, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+  - function: top_bottom_interconnect
+    selected_for_release: false
+    primary_candidate: Hirose_BM28_class_board_to_board_or_flex_stack
+    draft_path: board/kicad/e1-phone/sourcing-drafts/top_bottom_interconnect/rfq-transmittal.yaml
+    response_pack_path: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+    required_specialized_returns:
+      - exact_connector_or_flex_stack_required
+      - pinout_and_stackup_required
+      - impedance_control_required
+      - bend_life_required
+      - step_model_required
+      - assembly_process_required
+    release_unlocks: [interconnect_pinout, interconnect_footprints, flex_stackup, split_route_si, assembly_drawing, bom_avl]
+    intake_status: blocked_waiting_supplier_response_normalized_pack
+
+intake_review_gates:
+  - id: schema_completeness
+    pass_required: true
+    release_allowed: false
+    required_before_unlock:
+      - every required response field is populated with a supplier-originated value or archived supplier document path
+      - every required boolean gate is true with reviewer initials and date
+  - id: document_authenticity
+    pass_required: true
+    release_allowed: false
+    required_before_unlock:
+      - signed 2D drawings, pinouts, land patterns, STEP/B-rep, compliance, and sample reports are supplier-originated
+      - public listing screenshots or draft RFQs are not accepted as release evidence
+  - id: engineering_review
+    pass_required: true
+    release_allowed: false
+    required_before_unlock:
+      - EE signs pinout and symbol review
+      - layout signs footprint, courtyard, paste, and assembly orientation review
+      - ME signs STEP/B-rep, enclosure datums, height, clearance, and load-path review
+  - id: ops_release
+    pass_required: true
+    release_allowed: false
+    required_before_unlock:
+      - orderable MPN, MOQ, price breaks, lead time, lifecycle, sample lot, compliance, and AVL/substitution policy are approved for EVT1
+      - quote approval is tied to supplier legal name, payment terms, delivery risk, and production archive path before any buy or release claim
+
+downstream_unlock_policy:
+  schematic_symbol_capture_allowed_without_packs: false
+  footprint_assignment_allowed_without_packs: false
+  routed_layout_allowed_without_packs: false
+  routed_step_export_allowed_without_packs: false
+  production_bom_avl_allowed_without_packs: false
+  enclosure_clearance_allowed_without_packs: false
+  first_article_release_allowed_without_packs: false
+
+cross_checks:
+  response_fields_match_normalization_schema: true
+  boolean_gates_match_normalization_schema: true
+  planned_response_packs_match_normalization_records: true
+  planned_response_packs_match_supplier_evidence_map: true
+  selected_release_pack_count_matches_final_readiness_gate: true
+  every_planned_response_pack_absent: true
+  all_intake_review_gates_fail_closed: true
+  downstream_unlock_policy_fail_closed: true
+  blank_response_pack_template_is_not_release_evidence: true
+
+release_blockers:
+  - supplier response packs have not been returned or archived
+  - selected display, camera, USB-C, side-key, cellular, and Wi-Fi/Bluetooth packs are absent
+  - battery, audio/haptic, and split-interconnect packs remain required before full routed release
+  - no response pack has passed schema, authenticity, EE, layout, ME, ops, sample, and compliance review
+  - placeholder or partial response packs cannot unlock schematic capture, footprint assignment, routing, STEP export, enclosure clearance, BOM/AVL, or first article
+
+forbidden_claims:
+  - supplier_pack_complete
+  - pinout_freeze_ready
+  - footprint_ready
+  - routed_layout_ready
+  - routed_board_step_ready
+  - production_bom_ready
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

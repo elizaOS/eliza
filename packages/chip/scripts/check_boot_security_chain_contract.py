@@ -131,6 +131,18 @@ def contract_boot_words(contract: Mapping[str, Any]) -> list[dict[str, Any]]:
     return [word for word in words if isinstance(word, dict)] if isinstance(words, list) else []
 
 
+def cpu_variant(contract: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    variant = contract.get("e1_chip_cpu_variant")
+    return variant if isinstance(variant, Mapping) else None
+
+
+def executable_bootrom_is_wired() -> bool:
+    if not BOOTROM_RTL.is_file():
+        return False
+    text = read_text(BOOTROM_RTL)
+    return "$readmemh" in text and "e1_secure_boot_rom.hex" in text
+
+
 def check_platform_contract(findings: list[Finding], contract: Mapping[str, Any]) -> None:
     e1_chip = contract.get("e1_chip")
     if not isinstance(e1_chip, Mapping):
@@ -145,12 +157,17 @@ def check_platform_contract(findings: list[Finding], contract: Mapping[str, Any]
         )
         return
 
+    variant = cpu_variant(contract)
     add_if(
         findings,
-        e1_chip.get("has_cpu") is not True,
+        not (isinstance(variant, Mapping) and variant.get("has_cpu") is True),
         "platform_contract_has_no_cpu_boot_target",
-        "platform contract still marks e1_chip as not CPU-capable",
-        f"{rel(PLATFORM_CONTRACT)} e1_chip.has_cpu={e1_chip.get('has_cpu')!r}",
+        "platform contract has no selected CPU-capable AP boot target",
+        (
+            f"{rel(PLATFORM_CONTRACT)} e1_chip.has_cpu={e1_chip.get('has_cpu')!r} "
+            f"e1_chip_cpu_variant.has_cpu="
+            f"{variant.get('has_cpu') if isinstance(variant, Mapping) else None!r}"
+        ),
         "Promote a selected CPU-capable AP target into the contract before claiming Linux/AOSP boot on chip.",
     )
 
@@ -159,12 +176,24 @@ def check_platform_contract(findings: list[Finding], contract: Mapping[str, Any]
         for word in contract_boot_words(contract)
         if "placeholder" in str(word.get("name", "")).lower()
     ]
+    boot = variant.get("boot") if isinstance(variant, Mapping) else {}
+    reset_vector = boot.get("reset_vector") if isinstance(boot, Mapping) else None
+    placeholder_is_variant_reset = any(
+        str(word.get("value", "")).lower() == str(reset_vector).lower()
+        for word in contract_boot_words(contract)
+        if "placeholder" in str(word.get("name", "")).lower()
+    )
     add_if(
         findings,
-        bool(placeholder_words),
+        bool(placeholder_words)
+        and not (placeholder_is_variant_reset and executable_bootrom_is_wired()),
         "platform_contract_boot_vector_placeholder",
-        "platform contract boot ROM still exposes a placeholder boot vector",
-        f"words={placeholder_words} path={rel(PLATFORM_CONTRACT)}",
+        "platform contract boot ROM still exposes a placeholder boot vector without executable ROM wiring",
+        (
+            f"words={placeholder_words} reset_vector={reset_vector!r} "
+            f"executable_bootrom_wired={executable_bootrom_is_wired()} "
+            f"path={rel(PLATFORM_CONTRACT)}"
+        ),
         "Replace placeholder boot words with the selected reset ROM handoff contract and simulator evidence.",
     )
 

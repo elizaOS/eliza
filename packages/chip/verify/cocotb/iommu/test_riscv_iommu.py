@@ -71,11 +71,8 @@ async def reset(dut):
     dut.mmio_bready.value = 0
     dut.mmio_arvalid.value = 0
     dut.mmio_rready.value = 0
-    dut.d_awready.value = 1
-    dut.d_wready.value = 1
-    dut.d_bvalid.value = 0
-    dut.d_arready.value = 1
-    dut.d_rvalid.value = 0
+    dut.u_rready.value = 0
+    dut.u_bready.value = 0
     for _ in range(8):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -391,3 +388,299 @@ async def translation_request_interface_round_trip(dut):
     rb_ctl = await mmio_read64(dut, OFFS_TR_REQ_CTL)
     # ctl read-back: at minimum, go bit honoured by the register
     assert rb_ctl & 0x1, f"TR_REQ_CTL go bit not latched: {rb_ctl:#x}"
+
+# ==========================================================================
+# Two-stage page-table walker KAT (Known-Answer Tests).
+#
+# These tests build a real Device Directory Table and RISC-V Sv39 / Sv39x4
+# page tables in the testbench backing memory (dut.mem, a flat 64-bit
+# doubleword array), program DDTP + iosatp + iohgatp through the device
+# context, and assert the walker produces the correct IOVA -> PA, faults
+# fail-closed with a correct fault-queue record, and the command queue
+# IOFENCE.C completes.
+#
+# Memory model: dut.mem[word] is byte_addr >> 3.  All physical addresses
+# fit within the 32 KiB backing store (PPNs 0..7).
+# ==========================================================================
+
+# PTE bit fields.
+PTE_V = 1 << 0
+PTE_R = 1 << 1
+PTE_W = 1 << 2
+PTE_X = 1 << 3
+PTE_U = 1 << 4
+PTE_A = 1 << 6
+PTE_D = 1 << 7
+
+OFFS_DDTP_FULL = 0x010
+OFFS_CQB = 0x018
+OFFS_CQT = 0x024
+OFFS_CQCSR = 0x048
+
+DDTP_PPN_SHIFT = 10  # ddtp.ppn occupies bits [53:10]
+
+
+def mem_write(dut, byte_addr, value):
+    """Poke a 64-bit doubleword into the backing memory."""
+    assert (byte_addr & 0x7) == 0, "doubleword-aligned only"
+    word = (byte_addr >> 3) % 16384
+    dut.mem[word].value = value & ((1 << 64) - 1)
+
+
+def mem_read(dut, byte_addr):
+    word = (byte_addr >> 3) % 16384
+    return int(dut.mem[word].value)
+
+
+def leaf_pte(ppn, perms):
+    return ((ppn & ((1 << 44) - 1)) << 10) | perms | PTE_V
+
+
+def nonleaf_pte(ppn):
+    return ((ppn & ((1 << 44) - 1)) << 10) | PTE_V
+
+
+def sv39_indices(va):
+    return [(va >> 12) & 0x1FF, (va >> 21) & 0x1FF, (va >> 30) & 0x1FF]
+
+
+def make_ddtp(ppn, mode):
+    return ((ppn & ((1 << 44) - 1)) << DDTP_PPN_SHIFT) | (mode & 0xF)
+
+
+def build_device_context(dut, ddt_ppn, devid, iosatp_dw, iohgatp_dw):
+    """1LVL DDT: DC (4 doublewords) at (ddt_ppn<<12) + (devid&0x7F)*32."""
+    dc_base = (ddt_ppn << 12) + (devid & 0x7F) * 32
+    mem_write(dut, dc_base + 0, 1)          # DW0 tc: V=1
+    mem_write(dut, dc_base + 8, iohgatp_dw)  # DW1 iohgatp
+    mem_write(dut, dc_base + 16, 0)          # DW2 ta
+    mem_write(dut, dc_base + 24, iosatp_dw)  # DW3 fsc (iosatp)
+
+
+def atp_dw(mode, ppn):
+    return ((mode & 0xF) << 60) | (ppn & ((1 << 44) - 1))
+
+
+async def upstream_read_capture(dut, master, devid, pasid, addr):
+    """Drive a single-beat read and capture rdata / rresp.
+
+    AR valid is held through the R phase so the IOMMU's per-grant response
+    forwarding stays bound to this master until the read data (or SLVERR)
+    returns; both AR and R are dropped once R completes.
+    """
+    bit = 1 << master
+    dut.u_rready.value = (int(dut.u_rready.value) & ~bit) | bit
+    dut.u_arvalid.value = (int(dut.u_arvalid.value) & ~bit) | bit
+    dut.u_arid[master].value = master
+    dut.u_araddr[master].value = addr
+    dut.u_arlen[master].value = 0
+    dut.u_arsize[master].value = 4
+    dut.u_arburst[master].value = 1
+    dut.u_arcache[master].value = 0x2
+    dut.u_arprot[master].value = 0x2
+    dut.u_arqos[master].value = 0
+    dut.u_aruser[master].value = 0
+    dut.u_ar_devid[master].value = devid
+    dut.u_ar_pasid[master].value = pasid
+    rdata = 0
+    rresp = 0
+    got_r = False
+    for _ in range(512):
+        await RisingEdge(dut.clk)
+        if ((int(dut.u_rvalid.value) >> master) & 1) and ((int(dut.u_rready.value) >> master) & 1):
+            rdata = int(dut.u_rdata[master].value)
+            rresp = int(dut.u_rresp[master].value)
+            got_r = True
+            break
+    dut.u_arvalid.value = int(dut.u_arvalid.value) & ~bit
+    dut.u_rready.value = int(dut.u_rready.value) & ~bit
+    assert got_r, "no read response returned"
+    return rdata, rresp
+
+
+@cocotb.test()
+async def walker_single_stage_iova_to_pa(dut):
+    """Real DDT + Sv39 first-stage walk (G-stage BARE): a mapped IOVA
+    translates to the correct PA, and the forwarded read returns the
+    sentinel stored at that PA."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    ddt_ppn = 1
+    devid = 0x5
+    iova = 0x0040_2000
+    target_ppn = 6
+    sentinel = 0xA5A5_1234_DEAD_BEEF
+
+    i = sv39_indices(iova)  # [vpn0, vpn1, vpn2]
+    # FS root PPN 2 -> L1 PPN 3 -> leaf PPN 5; leaf maps target_ppn.
+    mem_write(dut, (2 << 12) + i[2] * 8, nonleaf_pte(3))
+    mem_write(dut, (3 << 12) + i[1] * 8, nonleaf_pte(5))
+    mem_write(dut, (5 << 12) + i[0] * 8,
+              leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D))
+    mem_write(dut, target_ppn << 12, sentinel)
+
+    build_device_context(
+        dut, ddt_ppn, devid,
+        iosatp_dw=atp_dw(8, 2),   # Sv39, root PPN 2
+        iohgatp_dw=atp_dw(0, 0),  # G-stage BARE
+    )
+
+    await mmio_write64(dut, OFFS_DDTP_FULL, make_ddtp(ddt_ppn, DDTP_1LVL))
+    pre_faults = int(dut.fault_count_dbg.value)
+    rdata, rresp = await upstream_read_capture(dut, 0, devid, 0, iova)
+    assert int(dut.fault_count_dbg.value) == pre_faults, "mapped IOVA must not fault"
+    assert rresp == RESP_OKAY, f"mapped read returned resp {rresp}"
+    assert rdata == sentinel, (
+        f"IOVA {iova:#x} -> PA {(target_ppn<<12):#x} mismatch: "
+        f"read {rdata:#x}, expected sentinel {sentinel:#x}"
+    )
+
+
+@cocotb.test()
+async def walker_two_stage_iova_to_pa(dut):
+    """Full two-stage walk: Sv39 first-stage composed with Sv39x4 G-stage.
+    Each first-stage table base and the leaf PPN are G-stage translated.
+    For this KAT the G-stage is an identity gigapage at the top level, so
+    the composed result equals the first-stage PA — but every G-stage PTE
+    is really fetched and checked by the walker."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    ddt_ppn = 1
+    devid = 0x9
+    iova = 0x0020_1000
+    target_ppn = 7
+    sentinel = 0x1122_3344_5566_7788
+
+    i = sv39_indices(iova)
+    # First-stage tables.  Their PPNs (2,3,5) and the leaf PPN (7) are guest
+    # physical addresses; the G-stage maps each GPA identically to its SPA.
+    mem_write(dut, (2 << 12) + i[2] * 8, nonleaf_pte(3))
+    mem_write(dut, (3 << 12) + i[1] * 8, nonleaf_pte(5))
+    mem_write(dut, (5 << 12) + i[0] * 8,
+              leaf_pte(target_ppn, PTE_R | PTE_W | PTE_U | PTE_A | PTE_D))
+    mem_write(dut, target_ppn << 12, sentinel)
+
+    # G-stage: full 3-level Sv39x4 walk (root PPN 8 -> L1 PPN 9 -> L0 PPN 10)
+    # with 4 KiB identity leaves for every GPA the first-stage walk visits
+    # (the table bases 0x2000/0x3000/0x5000 and the final page 0x7000).  All
+    # those GPAs share gpn2=0, gpn1=0 and differ only in gpn0, so a single
+    # G L0 table holds an identity leaf at each gpn0 index.  Every G-stage
+    # PTE is really fetched and permission/A/D-checked by the walker.
+    perms = PTE_R | PTE_W | PTE_U | PTE_A | PTE_D
+    mem_write(dut, (8 << 12) + 0, nonleaf_pte(9))   # G root[gpn2=0] -> G L1
+    mem_write(dut, (9 << 12) + 0, nonleaf_pte(10))  # G L1[gpn1=0]  -> G L0
+    for gpn0 in (2, 3, 5, 7):
+        mem_write(dut, (10 << 12) + gpn0 * 8, leaf_pte(gpn0, perms))  # identity
+
+    build_device_context(
+        dut, ddt_ppn, devid,
+        iosatp_dw=atp_dw(8, 2),   # Sv39, FS root PPN 2 (a GPA)
+        iohgatp_dw=atp_dw(8, 8),  # Sv39x4, GS root PPN 8
+    )
+
+    await mmio_write64(dut, OFFS_DDTP_FULL, make_ddtp(ddt_ppn, DDTP_1LVL))
+    pre_faults = int(dut.fault_count_dbg.value)
+    rdata, rresp = await upstream_read_capture(dut, 0, devid, 0, iova)
+    assert int(dut.fault_count_dbg.value) == pre_faults, "two-stage mapped IOVA must not fault"
+    assert rresp == RESP_OKAY, f"two-stage read resp {rresp}"
+    assert rdata == sentinel, (
+        f"two-stage IOVA {iova:#x} -> PA {(target_ppn<<12):#x}: "
+        f"read {rdata:#x} expected {sentinel:#x}"
+    )
+
+
+@cocotb.test()
+async def walker_unmapped_iova_faults_with_record(dut):
+    """A valid device context whose first-stage leaf is invalid faults
+    fail-closed: SLVERR upstream, a load-page-fault cause in the fault
+    queue staging, and the correct device-id / iova in the record."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    ddt_ppn = 1
+    devid = 0x5
+    iova = 0x0040_2000
+
+    i = sv39_indices(iova)
+    # Valid descent to the leaf table, but the leaf PTE is invalid (V=0).
+    mem_write(dut, (2 << 12) + i[2] * 8, nonleaf_pte(3))
+    mem_write(dut, (3 << 12) + i[1] * 8, nonleaf_pte(5))
+    mem_write(dut, (5 << 12) + i[0] * 8, 0)  # leaf invalid (clears any residue)
+
+    build_device_context(
+        dut, ddt_ppn, devid,
+        iosatp_dw=atp_dw(8, 2),
+        iohgatp_dw=atp_dw(0, 0),
+    )
+
+    await mmio_write64(dut, OFFS_DDTP_FULL, make_ddtp(ddt_ppn, DDTP_1LVL))
+    pre_faults = int(dut.fault_count_dbg.value)
+    rdata, rresp = await upstream_read_capture(dut, 0, devid, 0, iova)
+    for _ in range(32):
+        await RisingEdge(dut.clk)
+        if int(dut.fault_count_dbg.value) > pre_faults:
+            break
+    assert int(dut.fault_count_dbg.value) == pre_faults + 1, "unmapped IOVA must fault once"
+    assert rresp == RESP_SLVERR, f"faulting read must return SLVERR, got {rresp}"
+    # Inspect the staged fault record (head of the staging ring).  Verilator
+    # flattens the packed fault_record_t into one vector; slice the fields
+    # by their packed positions (LSB-first):
+    #   iotval2[63:0], iotval[127:64], iotval_present[131:128], custom[132],
+    #   did[156:133], pid[176:157], rsvd_pid[177], priv[178], ttyp[184:179],
+    #   cause[196:185].
+    rec = int(dut.u_iommu.fq_stage[0].value)
+    cause = (rec >> 185) & 0xFFF
+    rec_did = (rec >> 133) & 0xFFFFFF
+    rec_iotval = (rec >> 64) & ((1 << 64) - 1)
+    CAUSE_LOAD_PAGE_FAULT = 13
+    assert cause == CAUSE_LOAD_PAGE_FAULT, f"fault cause {cause} != load-page-fault"
+    assert rec_did == devid, f"fault record did {rec_did:#x} != {devid:#x}"
+    assert rec_iotval == iova, f"fault record iotval {rec_iotval:#x} != iova {iova:#x}"
+
+
+@cocotb.test()
+async def walker_bare_mode_identity(dut):
+    """BARE mode forwards identity with no walk: the forwarded read hits
+    the same PA as the IOVA and returns the sentinel stored there."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    iova = 0x0000_3000  # PPN 3
+    sentinel = 0xCAFE_F00D_0BAD_F00D
+    mem_write(dut, iova, sentinel)
+
+    await mmio_write64(dut, OFFS_DDTP_FULL, DDTP_BARE)
+    pre_faults = int(dut.fault_count_dbg.value)
+    rdata, rresp = await upstream_read_capture(dut, 0, 0x123, 0, iova)
+    assert int(dut.fault_count_dbg.value) == pre_faults, "BARE must not fault"
+    assert rdata == sentinel, f"BARE identity read {rdata:#x} != {sentinel:#x}"
+
+
+@cocotb.test()
+async def command_queue_iofence_completes(dut):
+    """Program a memory-resident command queue with a single IOFENCE.C and
+    confirm the CQ engine fetches it, pulses cmd_complete_irq, and advances
+    CQH past the consumed entry."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    cq_ppn = 1
+    # IOFENCE.C: opcode field [6:0] == 0x02 (per the RTL CMD_OP_IOFENCE).
+    mem_write(dut, (cq_ppn << 12) + 0, 0x02)   # command word 0 (low 64b)
+    mem_write(dut, (cq_ppn << 12) + 8, 0x00)   # command word 1 (high 64b)
+
+    await mmio_write64(dut, OFFS_CQB, make_ddtp(cq_ppn, 0))  # cqb.ppn = cq_ppn
+    await mmio_write64(dut, OFFS_CQCSR, 0x1)                 # cqen
+    await mmio_write64(dut, OFFS_CQT, 0x1)                   # one command queued
+
+    seen_complete = False
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        if int(dut.cmd_complete_irq.value):
+            seen_complete = True
+            break
+    assert seen_complete, "IOFENCE.C did not pulse cmd_complete_irq"
+    cqh = await mmio_read64(dut, OFFS_CQH)
+    assert (cqh & 0xFFFF_FFFF) == 1, f"CQH did not advance past IOFENCE (got {cqh})"

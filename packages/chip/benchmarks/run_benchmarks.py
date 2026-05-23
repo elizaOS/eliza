@@ -55,6 +55,7 @@ HOST_SMOKE_CLAIM_LEVEL = "L2_ARCH_SIM"
 EXECUTABLE_MARKER_READ_BYTES = 256 * 1024
 VALID_PARSERS = {
     "coremark_v1",
+    "eliza_mlperf_inference_v1",
     "eliza_npu_scale_sim_v1",
     "stream_v5",
     "lmbench_bw_mem",
@@ -1429,9 +1430,87 @@ def parse_eliza_npu_scale_sim(output: str) -> dict[str, Any]:
     }
 
 
+def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
+    start = output.find("{")
+    data = json.loads(output[start:] if start >= 0 else output)
+    if data.get("schema") != "eliza.mlperf_inference.v1":
+        raise ValueError("MLPerf inference modeled output had an unexpected schema")
+    if data.get("claim_boundary") != (
+        "modeled_preSilicon_not_official_submission_and_not_measured_power"
+    ):
+        raise ValueError("MLPerf inference output claim boundary drifted")
+    if data.get("provenance") != "simulator":
+        raise ValueError("MLPerf inference modeled output must keep simulator provenance")
+    summary = data.get("summary", {})
+    workload = data.get("workload", {})
+    scenarios = data.get("scenarios", [])
+    if not isinstance(summary, dict) or not isinstance(workload, dict):
+        raise ValueError("MLPerf inference output is missing summary/workload")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise ValueError("MLPerf inference output is missing scenarios")
+    by_name = {
+        scenario.get("scenario"): scenario
+        for scenario in scenarios
+        if isinstance(scenario, dict)
+    }
+    missing_scenarios = {"SingleStream", "Offline"} - set(by_name)
+    if missing_scenarios:
+        raise ValueError(
+            "MLPerf inference output missing scenario(s): " + ", ".join(sorted(missing_scenarios))
+        )
+    blockers = summary.get("blocked_axes", [])
+    blocker_ids = {
+        blocker.get("blocker_id")
+        for blocker in blockers
+        if isinstance(blocker, dict) and blocker.get("blocker_id")
+    }
+    if "mlperf-power-closed" not in blocker_ids:
+        raise ValueError("MLPerf inference output must keep measured-power blocker")
+    min_accuracy = summary.get("min_top1_accuracy")
+    if min_accuracy != 1.0:
+        raise ValueError("MLPerf inference modeled output did not meet accuracy gate")
+    single_stream = by_name["SingleStream"]
+    offline = by_name["Offline"]
+    latency = single_stream.get("latency_percentiles_ns", {})
+    energy = summary.get("energy_joules_per_inference")
+    if not isinstance(latency, dict) or not is_json_number(latency.get("p90")):
+        raise ValueError("MLPerf inference SingleStream scenario missing p90 latency")
+    if not is_json_number(offline.get("throughput_samples_per_second")):
+        raise ValueError("MLPerf inference Offline scenario missing throughput")
+    if not is_json_number(energy) or energy <= 0:
+        raise ValueError("MLPerf inference modeled energy must be positive")
+    npu_macs_total = summary.get("npu_macs_total")
+    npu_commands_total = summary.get("npu_commands_total")
+    npu_cycles_total = summary.get("npu_cycles_total")
+    macs_per_inference = workload.get("macs_per_inference")
+    for name, value in (
+        ("npu_macs_total", npu_macs_total),
+        ("npu_commands_total", npu_commands_total),
+        ("npu_cycles_total", npu_cycles_total),
+        ("macs_per_inference", macs_per_inference),
+    ):
+        if not isinstance(value, int) or value <= 0:
+            raise ValueError(f"MLPerf inference output missing positive integer {name}")
+    return {
+        "benchmark_success_allowed": True,
+        "min_top1_accuracy": float(min_accuracy),
+        "scenario_count": int(summary.get("scenario_count", len(scenarios))),
+        "single_stream_p90_latency_ns": int(latency["p90"]),
+        "offline_throughput_samples_per_second": float(
+            offline["throughput_samples_per_second"]
+        ),
+        "energy_joules_per_inference": float(energy),
+        "npu_macs_total": npu_macs_total,
+        "npu_commands_total": npu_commands_total,
+        "npu_cycles_total": npu_cycles_total,
+        "macs_per_inference": macs_per_inference,
+    }
+
+
 def parse_benchmark_output(parser: str, output: str) -> dict[str, Any]:
     parsers = {
         "coremark_v1": parse_coremark,
+        "eliza_mlperf_inference_v1": parse_eliza_mlperf_inference,
         "eliza_npu_scale_sim_v1": parse_eliza_npu_scale_sim,
         "stream_v5": parse_stream,
         "lmbench_bw_mem": parse_lmbench_bw_mem,
@@ -2043,6 +2122,13 @@ def run_plan_or_real(args: argparse.Namespace) -> int:
                     f"{item['name']} ({item['reason']})" for item in result["blocked_requirements"]
                 )
             )
+
+    if any_failed:
+        report["status"] = "failed"
+    elif any_missing or any_blocked:
+        report["status"] = "blocked"
+    else:
+        report["status"] = "passed"
 
     errors = validate_report(report)
     if errors:

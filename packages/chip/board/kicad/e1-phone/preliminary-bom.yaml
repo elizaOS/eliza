@@ -34,10 +34,10 @@ major_items:
   - function: cellular
     qty: 1
     primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
-    alternates: [Quectel_RM520N_GL_M2_lab_fallback]
+    alternates: [Quectel_EG915Q_EG915U_LTE_Cat1bis_space_saving_branch, Quectel_EG916Q_GL_LTE_Cat1bis_global_branch, Fibocom_MC665_LTE_Cat1bis_second_vendor_branch, Quectel_RM520N_GL_M2_lab_fallback]
     sourcing: package/cellular/quectel-5g-redcap.yaml
     pcb_dependency: module_land_pattern_or_m2_socket_plus_sim_esim
-    freeze_blockers: [region_sku, bands, antenna_plan, carrier_certification_plan]
+    freeze_blockers: [region_sku, bands, antenna_plan, carrier_certification_plan, compact_module_quote, compact_module_reference_layout_step_and_firmware_pack]
 
   - function: wifi_bluetooth
     qty: 1
@@ -114,3 +114,66 @@ production_bom_requirements:
   - lifecycle_status_checked_for_12_month_supply
   - region_specific_cellular_sku_and_antenna_parts_selected
   - RoHS_REACH_and_battery_shipping_documents_collected
+
+selected_supplier_response_bom_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_define_production_bom_identity_and_approved_alternates
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_bom_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  bom_fields_blocked:
+    - orderable_manufacturer_part_number
+    - supplier_sku
+    - lifecycle_status
+    - MOQ
+    - unit_price_10
+    - unit_price_100
+    - unit_price_1000
+    - lead_time_days_10
+    - lead_time_days_100
+    - lead_time_days_1000
+    - compliance_pack_index_path
+    - sample_lot_tracking
+    - approved_by_ee
+    - approved_by_me
+    - approved_by_ops
+  selected_bom_decisions_blocked:
+    - preliminary public-source part names cannot become approved production BOM lines without normalized supplier response packs
+    - selected display and camera FPC connector identities, mating parts, lifecycle, and alternates remain unapproved
+    - selected USB-C and side-key MPNs, shell/mechanical variants, lifecycle, and actuator-stack alternates remain unapproved
+    - selected cellular branch cannot choose RedCap versus compact Cat 1 bis alternate without returned quote, reference layout, firmware, and regional SKU evidence
+    - selected Wi-Fi/Bluetooth module cannot become AVL-approved without lifecycle, firmware, reference-layout, antenna, and regulatory response evidence
+  all_selected_supplier_response_packs_absent: true
+  production_bom_allowed_without_selected_supplier_packs: false
+
+cross_checks:
+  selected_supplier_response_bom_gate_blocks_production_bom_release: true
+  cellular_space_saving_alternates_are_preserved_in_bom: true
+  preliminary_bom_remains_public_shortlist_not_avl: true
+
+release_blockers:
+  - selected_supplier_response_packs_for_bom_identity_and_alternates_missing
+  - production_orderable_mpns_supplier_skus_lifecycle_moq_lead_time_and_price_breaks_missing
+  - selected_cellular_compact_branch_quote_reference_layout_step_and_firmware_pack_missing
+  - EE_ME_Ops_approvals_for_selected_bom_lines_missing
+
+forbidden_claims:
+  - production_BOM_ready
+  - AVL_ready
+  - supplier_selected
+  - alternates_approved
+  - purchase_order_ready
+  - fabrication_ready
+  - enclosure_ready

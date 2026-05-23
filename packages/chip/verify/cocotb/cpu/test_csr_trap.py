@@ -5,7 +5,7 @@ This file is dual-purpose:
   - On the stub DUT (``rtl/cpu/e1_cpu_subsystem_stub.sv``) it pins
     fail-closed halt-on-illegal-CSR / MRET / SRET / ECALL / EBREAK.
   - On a real DUT compiled with ``+define+E1_HAVE_CVA6`` (or
-    ``E1_HAVE_KUNMINGHU`` / ``E1_HAVE_ASCALON`` when they land) the same
+    ``E1_HAVE_KUNMINGHU`` when it lands) the same
     test module re-runs the positive trap path: CSR writes succeed,
     illegal CSR accesses trap to ``mepc=PC``, ``mcause=2``, then the
     handler returns via MRET. Until that DUT is selectable the
@@ -229,7 +229,7 @@ if cocotb is not None:
             dut._log.info(
                 "STATUS: BLOCKED cpu.csr_trap_evidence - DUT is stub; "
                 "positive CSR/trap path requires +define+E1_HAVE_CVA6 (or "
-                "Kunminghu/Ascalon). See evidence_yaml_path()."
+                "Kunminghu). See evidence_yaml_path()."
             )
             return
         # Real-DUT body is the implementer's responsibility once a wrapper
@@ -248,7 +248,7 @@ if cocotb is not None:
 def csr_trap_evidence_blocked_note() -> str:
     return (
         "Real CSR/trap evidence is BLOCKED until a Linux-capable AP wrapper "
-        "(CVA6 / Kunminghu / Ascalon) is the DUT. The cocotb tests in this "
+        "(CVA6 / Kunminghu) is the DUT. The cocotb tests in this "
         "module confirm that the current tiny CPU fails closed on every "
         "privileged operation, which is the only safe behavior."
     )

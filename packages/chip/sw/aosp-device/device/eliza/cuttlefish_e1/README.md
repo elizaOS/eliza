@@ -25,8 +25,10 @@ the same service name on Cuttlefish.
   `aosp_cf_riscv64_phone-*`.
 - Replace the on-silicon HAL. The simulator binary has the `.sim`
   suffix; both can coexist in a tree.
-- Add camera/audio/radio/GNSS/NFC/bluetooth/wifi HALs. Cuttlefish
-  already provides those; we only add `vendor.eliza.e1_npu`.
+- Replace Cuttlefish's camera/audio/radio/GNSS/NFC/bluetooth/wifi HALs.
+  Cuttlefish already provides those simulator-backed phone surfaces; this
+  overlay only adds `vendor.eliza.e1_npu` and leaves the base phone HALs in
+  place for the peripheral evidence probes.
 
 ## Why a separate overlay
 

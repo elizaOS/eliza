@@ -71,10 +71,30 @@ alternate_policy:
     board_decision: not_promoted_supplier_request_only_until_signed_stack_pinout_connector_and_samples
   meta_display_055wu01_class:
     part: 055WU01
-    board_decision: not_promoted_missing_public_mechanical_outline_and_supplier_pack
+    observed_active_area_mm:
+      width: 68.04
+      height: 120.96
+    observed_signal_interface: MIPI_40_pins
+    observed_brightness_typ_cd_m2: 1000
+    board_decision: not_promoted_active_area_matches_primary_but_outline_fpc_exit_connector_step_and_supplier_pack_missing
   alibaba_ili7807d_5p5_1200nit_class:
     part: 5p5_1080x1920_MIPI_40pin_1200nit_class
     board_decision: not_promoted_missing_public_mechanical_outline_signed_supplier_pack_and_parseable_source_evidence
+  made_in_china_e549_amoled_parseable_class:
+    part: E549-HC01_RM67191_AMOLED_class
+    observed_outline_mm:
+      width: 70.66
+      height: 128.36
+      thickness: 0.82
+    observed_active_area_mm:
+      width: 68.299
+      height: 121.421
+    envelope_delta_vs_primary_outline_mm:
+      width_reduction_mm: 6.44
+      height_reduction_mm: 23.41
+      thickness_reduction_mm: 2.57
+    fits_current_envelope: true
+    board_decision: not_promoted_thinner_smaller_outline_but_touch_stack_power_sequence_fpc_connector_step_and_supplier_pack_missing
   lower_resolution_open_driver_alternates:
     parts:
       - BOE TV050QDM-N00
@@ -99,6 +119,8 @@ cross_checks:
   current_envelope_preserved_as_minimum_practical_concept: true
   board_bbox_fits_behind_primary_display_outline: true
   smaller_amoled_alternate_not_promoted_without_supplier_pack: true
+  parseable_alibaba_055wu01_active_area_matches_primary_but_missing_outline: true
+  parseable_e549_amoled_smaller_outline_not_promoted_without_supplier_pack: true
   missing_outline_alternates_not_promoted: true
   release_outputs_fail_closed: true
 release_blockers:

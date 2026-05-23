@@ -27,6 +27,7 @@ OS_VENDOR = WORKSPACE / "os/android/vendor/eliza"
 
 BUILD_SCRIPT = CHIP_AOSP / "build-aosp-riscv64.sh"
 BOOT_SCRIPT = ROOT / "scripts/boot_android_simulator.sh"
+CAPTURE_SCRIPT = CHIP_AOSP / "capture-aosp-evidence.sh"
 LOCAL_MANIFEST = CHIP_AOSP / "local_manifests/eliza.xml"
 CHIP_PRODUCT = CHIP_DEVICE / "eliza_ai_soc.mk"
 CHIP_DEVICE_MK = CHIP_DEVICE / "device.mk"
@@ -159,6 +160,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     inputs = (
         BUILD_SCRIPT,
         BOOT_SCRIPT,
+        CAPTURE_SCRIPT,
         LOCAL_MANIFEST,
         CHIP_PRODUCT,
         CHIP_DEVICE_MK,
@@ -183,6 +185,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
     build_text = read_text(BUILD_SCRIPT)
     boot_text = read_text(BOOT_SCRIPT)
+    capture_text = read_text(CAPTURE_SCRIPT)
     chip_product_text = read_text(CHIP_PRODUCT)
     chip_device_text = read_text(CHIP_DEVICE_MK)
     board_text = read_text(CHIP_BOARD)
@@ -193,6 +196,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     build_default = shell_default(build_text, "LUNCH_TARGET")
     boot_aosp_product = shell_env_default(boot_text, "AOSP_PRODUCT")
     boot_cuttlefish_product = shell_env_default(boot_text, "AOSP_CUTTLEFISH_PRODUCT")
+    capture_aosp_product = shell_env_default(capture_text, "AOSP_PRODUCT")
+    capture_cuttlefish_product = shell_env_default(capture_text, "AOSP_CUTTLEFISH_PRODUCT")
     chip_inherits = inherit_products(chip_product_text)
     openagent_inherits = inherit_products(openagent_text)
     chip_packages = makefile_product_packages(chip_device_text)
@@ -208,7 +213,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         re.findall(r"^\s*([A-Za-z0-9_]+-trunk_staging-userdebug)\b", os_products_text, re.MULTILINE)
     )
     build_targets = {
-        value for value in (build_default, boot_aosp_product, boot_cuttlefish_product) if value
+        value
+        for value in (
+            build_default,
+            boot_aosp_product,
+            boot_cuttlefish_product,
+            capture_aosp_product,
+            capture_cuttlefish_product,
+        )
+        if value
     }
 
     add_if(
@@ -233,6 +246,22 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             sort_keys=True,
         ),
         "Make the boot evidence flow select the fused product or explicitly block launcher claims for scaffold/reference products.",
+    )
+    add_if(
+        findings,
+        capture_aosp_product != ELIZA_FUSED_PRODUCT,
+        "aosp_capture_default_not_fused_eliza_product",
+        "AOSP evidence capture defaults to a product different from the fused Eliza chip-emulator product",
+        f"capture_aosp_product={capture_aosp_product!r}",
+        "Make capture-aosp-evidence.sh default to the same fused product used by build/boot flows before accepting its logs as launcher or chip-emulator evidence.",
+    )
+    add_if(
+        findings,
+        capture_cuttlefish_product != OS_ELIZA_CF_PRODUCT,
+        "aosp_capture_cuttlefish_default_not_eliza_product",
+        "AOSP evidence capture Cuttlefish default is an upstream reference product rather than the Eliza Cuttlefish product",
+        f"capture_cuttlefish_product={capture_cuttlefish_product!r}",
+        "Use the Eliza Cuttlefish product for reference Cuttlefish smoke, and keep upstream aosp_cf evidence explicitly out of Eliza launcher readiness claims.",
     )
     add_if(
         findings,
@@ -323,6 +352,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "build_default_lunch_target": build_default,
         "boot_aosp_product": boot_aosp_product,
         "boot_cuttlefish_product": boot_cuttlefish_product,
+        "capture_aosp_product": capture_aosp_product,
+        "capture_cuttlefish_product": capture_cuttlefish_product,
         "os_product_choices": sorted(os_product_choices),
         "chip_product_inherits": sorted(chip_inherits),
         "os_openagent_inherits": sorted(openagent_inherits),

@@ -30,6 +30,17 @@ WRAPPERS := \
 
 VERILOG_SOURCES := $(COMMON_SOURCES) $(WRAPPERS)
 
+ifeq ($(TOPLEVEL),e1_bpu_l1i_frontend_tb)
+VERILOG_SOURCES += \
+	$(REPO)/rtl/cache/cache_pkg.sv \
+	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
+	$(REPO)/rtl/cache/prefetch/e1_fdip_l1i_prefetcher.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \
+	$(REPO)/verify/cocotb/bpu/e1_bpu_l1i_frontend_tb.sv
+EXTRA_ARGS += -Wno-DECLFILENAME
+endif
+
 TOPLEVEL ?= bpu_top_tb
 MODULE ?= test_bpu_top
 

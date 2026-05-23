@@ -502,7 +502,7 @@ module e1_soc_integrated
 
     // ----------------------------------------------------------------------
     // CPU cluster.  Lite tie-off — every AXI4 master is quiet.  Production
-    // cores are gated by E1_HAVE_ASCALON / E1_HAVE_KUNMINGHU / E1_HAVE_BOOM
+    // cores are gated by E1_HAVE_KUNMINGHU / E1_HAVE_BOOM
     // / E1_HAVE_CVA6 inside `e1_cluster_top.sv`.  Until those defines are
     // set the cluster presents the contract interfaces only; this top
     // routes them to the AXI4 fabric so the moment a real core wrapper

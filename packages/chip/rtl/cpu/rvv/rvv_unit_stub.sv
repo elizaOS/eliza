@@ -1,25 +1,31 @@
-// rvv_unit_stub.sv  —  RVV 1.0 execution unit behavioral stub.
+// rvv_unit_stub.sv  —  RVV 1.0 dispatch-boundary stub for UNSUPPORTED ops.
 //
-// This module is a placeholder execution unit that exposes the dispatch
-// boundary the OoO back-end will use, but does NOT implement vector
-// arithmetic. It is sufficient for cocotb to drive vector dispatch tests
-// and for early verification that the surrounding OoO machinery accepts
-// vector instructions, but it must NOT be claimed as a real RVV unit.
+// This module exposes the dispatch/completion handshake the OoO back-end
+// uses, but does NOT implement vector arithmetic. The real element-wise
+// integer/logic core of RVV 1.0 now lives in `rvv_alu_subset.sv` (a verified
+// subset: vadd/vsub/vand/vor/vxor/vsll/vsrl/vsra/vmin*/vmax*/vmul/vmv with
+// real per-element arithmetic, vsew/vl/vstart/tail semantics, cocotb-checked
+// against a reference model in verify/cocotb/cpu/test_rvv_alu_subset.py).
 //
-// Status: BLOCKED — full RVV execution out of scope for this turn. The
-// canonical evidence path is
+// This stub remains as the handshake placeholder for the ops the subset
+// ALU does NOT cover (memory, reductions, gather/scatter, widening/narrowing,
+// fixed-point, floating-point, masking, permutation). It returns zeros and
+// must NOT be claimed as a real RVV unit. The canonical status is in
 //   docs/evidence/cpu_ap/rvv-1-0-execution.yaml
-// which records the blocked status until either an open RVV reference
-// (Saturn, Ara, Vicuna, or XiangShan vector backend) is forked in or a
-// from-scratch implementation lands.
+// and the full integration roadmap in docs/arch/rvv-integration-plan.md.
 //
-// What the stub provides:
+// Functional ISA-level vector evidence (RVV 1.0 on QEMU rva23u64, scalar-vs-
+// vector dynamic instruction reduction) is recorded separately in
+//   docs/evidence/cpu_ap/e1-rvv-vector.json   (claim_level: functional)
+// produced by scripts/run_e1_rvv_vector.sh.
+//
+// What this stub provides:
 //   - accepts a vector instruction descriptor and `vl`/`vtype`,
 //   - holds it for one cycle, asserts `done`,
-//   - returns a deterministic but unspecified result vector of zeros,
+//   - returns a deterministic result vector of zeros,
 //   - never raises an exception; always reports success.
 //
-// What the stub cannot do (anything that would form a real claim):
+// What this stub cannot do (route to rvv_alu_subset or a future backend):
 //   - any arithmetic, masking, narrowing, widening, reduction, gather,
 //     scatter, strided/indexed memory, or permutation,
 //   - any tail/mask agnostic semantics,

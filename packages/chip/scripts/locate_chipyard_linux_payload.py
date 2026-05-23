@@ -23,18 +23,28 @@ REPORT = ROOT / "build/chipyard/eliza_rocket/chipyard-linux-payload.json"
 PAYLOAD_ENV = "CHIPYARD_LINUX_BINARY"
 FIREMARSHAL = ROOT / "external/chipyard/software/firemarshal"
 DEFAULT_WORKLOAD = FIREMARSHAL / "example-workloads/linux-poweroff.json"
+ELIZA_WORKLOAD = ROOT / "sw/firemarshal/eliza-e1-linux-smoke.json"
+ELIZA_OUTPUT = FIREMARSHAL / (
+    "images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+)
 DEFAULT_OUTPUT = FIREMARSHAL / "images/firechip/linux-poweroff/linux-poweroff-bin-nodisk"
+QUIET_OUTPUT = FIREMARSHAL / (
+    "images/firechip/linux-poweroff-quiet/linux-poweroff-quiet-bin-nodisk"
+)
 
 DEFAULT_CANDIDATES = (
+    ELIZA_OUTPUT,
+    QUIET_OUTPUT,
     DEFAULT_OUTPUT,
     FIREMARSHAL / "images/firechip/linux-poweroff/linux-poweroff-bin-dwarf-nodisk",
     FIREMARSHAL / "images/firechip/br-base/br-base-bin",
 )
+LINUX_POWEROFF_QUIET_OUTPUT = QUIET_OUTPUT
 LINUX_POWEROFF_DWARF_OUTPUT = FIREMARSHAL / (
     "images/firechip/linux-poweroff/linux-poweroff-bin-dwarf-nodisk"
 )
 BR_BASE_OUTPUT = FIREMARSHAL / "images/firechip/br-base/br-base-bin"
-PREFERRED_LINUX_SMOKE_PAYLOADS = frozenset({DEFAULT_OUTPUT.resolve()})
+PREFERRED_LINUX_SMOKE_PAYLOADS = frozenset({ELIZA_OUTPUT.resolve()})
 
 
 @dataclass(frozen=True)
@@ -128,14 +138,15 @@ def candidate_paths(extra: list[str], *, defaults: bool) -> list[Path]:
 
 
 def firemarshal_build_command() -> str:
-    return (
-        "cd external/chipyard/software/firemarshal && "
-        "./marshal -v -d build example-workloads/linux-poweroff.json"
-    )
+    return "scripts/build_firemarshal_eliza_linux_smoke_payload.sh"
 
 
 def payload_role(path: Path) -> str:
     resolved = path.resolve()
+    if resolved == ELIZA_OUTPUT.resolve():
+        return "preferred_eliza_e1_linux_smoke_nodisk"
+    if resolved == LINUX_POWEROFF_QUIET_OUTPUT.resolve():
+        return "preferred_linux_poweroff_quiet_nodisk"
     if resolved == DEFAULT_OUTPUT.resolve():
         return "preferred_linux_poweroff_nodisk"
     if resolved == LINUX_POWEROFF_DWARF_OUTPUT.resolve():
@@ -176,10 +187,10 @@ def manifest_for(
             "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh"
         ),
         "firemarshal_build_command": firemarshal_build_command(),
-        "firemarshal_output": rel(DEFAULT_OUTPUT),
-        "preferred_linux_smoke_payload": rel(DEFAULT_OUTPUT),
+        "firemarshal_output": rel(ELIZA_OUTPUT),
+        "preferred_linux_smoke_payload": rel(ELIZA_OUTPUT),
         "preferred_linux_smoke_payload_available": any(
-            record.get("path") == rel(DEFAULT_OUTPUT) and record.get("status") == "pass"
+            record.get("path") == rel(ELIZA_OUTPUT) and record.get("status") == "pass"
             for record in candidates
         ),
         "host": {
@@ -266,12 +277,12 @@ def main() -> int:
         )
     elif not preferred_for_linux_smoke(selected.path):
         warnings.append(
-            "Selected payload is runnable but is not the preferred linux-poweroff nodisk "
-            f"smoke payload; build {rel(DEFAULT_OUTPUT)} with: {firemarshal_build_command()}"
+            "Selected payload is runnable but is not the preferred eliza-e1-linux-smoke nodisk "
+            f"smoke payload; build {rel(ELIZA_OUTPUT)} with: {firemarshal_build_command()}"
         )
         if args.require_preferred:
             errors.append(
-                "Preferred linux-poweroff nodisk smoke payload is unavailable; "
+                "Preferred eliza-e1-linux-smoke nodisk payload is unavailable; "
                 f"build it with: {firemarshal_build_command()}"
             )
 

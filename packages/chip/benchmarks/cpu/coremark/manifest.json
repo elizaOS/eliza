@@ -1,8 +1,8 @@
 {
   "schema": "eliza.cpu_benchmark_manifest.v1",
   "benchmark": "coremark",
-  "status": "pinned_not_run",
-  "claim_boundary": "build_only_until_real_core_runs_coremark_on_verilator_or_silicon",
+  "status": "verilator_passed",
+  "claim_boundary": "L1_RTL_FULL_SOC Verilator only until real phone/prototype silicon evidence exists",
   "upstream": {
     "name": "CoreMark",
     "vendor": "EEMBC",
@@ -62,10 +62,10 @@
   "result_artifact": "benchmarks/results/cpu/coremark/result.json",
   "result_schema": "eliza.cpu_benchmark_result.v1",
   "run_command": "scripts/run_coremark.sh",
-  "fail_closed_until": [
+  "fail_closed_for_phone_claim_until": [
     "external/coremark/ checkout at pinned tag",
     "xpack riscv-none-elf-gcc available on host",
-    "DUT verilator simulator or silicon",
+    "L5/L6 phone or prototype silicon DUT",
     "benchmarks/results/cpu/coremark/result.json exists and matches schema"
   ]
 }

@@ -148,9 +148,106 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
-        self.assertEqual(report["summary"]["detailed_blocker_entries"], 2)
+        self.assertEqual(report["summary"]["detailed_blocker_entries"], 3)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 1)
         self.assertIn("aosp_boot_absent", report["detailed_blocker_codes"])
         self.assertIn("no_launcher_trace", report["detailed_blocker_codes"])
+        self.assertIn("unstructured_nonpass_report_b", report["detailed_blocker_codes"])
+
+    def test_nonpass_report_without_structured_rows_is_quality_gap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "android_sim_boot.json",
+                {
+                    "status": "blocked",
+                    "summary": {"attempted": 0},
+                    "reason": "AOSP_DIR unset",
+                },
+            )
+            args = inv.parse_args(
+                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
+            )
+            report, exit_code = inv.build_inventory(args)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 1)
+        self.assertEqual(
+            report["nonpassing_reports_without_structured_details"][0]["source_report"],
+            str(report_dir / "android_sim_boot.json"),
+        )
+        self.assertIn(
+            "unstructured_nonpass_report_android_sim_boot",
+            report["detailed_blocker_codes"],
+        )
+
+    def test_legacy_gate_status_report_is_structured_closure_row(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "gate-board_fabrication_release.json",
+                {
+                    "schema": "eliza.gate_status.v1",
+                    "gate": "board_fabrication_release",
+                    "status": "FAIL",
+                    "blocker_id": None,
+                    "blocker_reason": None,
+                    "evidence_paths": ["pd/signoff/manifest.yaml"],
+                    "subsystem": "pd",
+                },
+            )
+            args = inv.parse_args(
+                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
+            )
+            report, exit_code = inv.build_inventory(args)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)
+        self.assertIn(
+            "gate_status_board_fabrication_release_fail",
+            report["detailed_blocker_codes"],
+        )
+
+    def test_structured_blockers_and_failures_become_stable_entries(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "mvp_simulator.json",
+                {
+                    "status": "fail",
+                    "failures": [
+                        {
+                            "name": "cpu_ap_linux_evidence",
+                            "detail": "STATUS: FAIL cpu_ap.linux_evidence",
+                            "next_command": "python3 scripts/check_cpu_ap_evidence.py --require-evidence",
+                        }
+                    ],
+                    "blockers_to_on_chip_os_boot": [
+                        {
+                            "name": "chipyard_payload_path",
+                            "detail": "STATUS: BLOCKED chipyard.payload_path",
+                            "next_command": "python3 scripts/check_chipyard_payload_path.py",
+                        }
+                    ],
+                },
+            )
+            args = inv.parse_args(
+                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
+            )
+            report, exit_code = inv.build_inventory(args)
+        self.assertEqual(exit_code, 0)
+        self.assertIn("failure_cpu_ap_linux_evidence", report["detailed_blocker_codes"])
+        self.assertIn(
+            "blockers_to_on_chip_os_boot_chipyard_payload_path",
+            report["detailed_blocker_codes"],
+        )
 
     def test_survey_only_reports_are_not_collected_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -187,6 +284,31 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                 },
             )
             write_json(
+                report_dir / "chip-os-evidence-provenance.json",
+                {
+                    "status": "blocked",
+                    "findings": [{"code": "host_local_path", "severity": "blocker"}],
+                },
+            )
+            write_json(
+                report_dir / "chip-os-optimization-gap-inventory.json",
+                {
+                    "status": "blocked",
+                    "findings": [
+                        {"code": "optimization_artifact_not_pass", "severity": "blocker"}
+                    ],
+                },
+            )
+            write_json(
+                report_dir / "chip-os-identity-contract.json",
+                {
+                    "status": "blocked",
+                    "findings": [
+                        {"code": "android_package_identity_mismatch", "severity": "blocker"}
+                    ],
+                },
+            )
+            write_json(
                 report_dir / "chip-os-report-freshness.json",
                 {
                     "status": "blocked",
@@ -201,6 +323,9 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
         self.assertNotIn("blocked_14", report["detailed_blocker_codes"])
         self.assertNotIn("blocked_phases_5", report["detailed_blocker_codes"])
         self.assertNotIn("findings_12", report["detailed_blocker_codes"])
+        self.assertNotIn("host_local_path", report["detailed_blocker_codes"])
+        self.assertNotIn("optimization_artifact_not_pass", report["detailed_blocker_codes"])
+        self.assertNotIn("android_package_identity_mismatch", report["detailed_blocker_codes"])
         self.assertNotIn("stale_reports_1", report["detailed_blocker_codes"])
 
     def test_gate_report_aliases_cover_differently_named_reports(self) -> None:

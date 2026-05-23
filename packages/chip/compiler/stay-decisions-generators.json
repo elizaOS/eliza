@@ -79,8 +79,9 @@
           "verified_in_repo": "external/qemu-src/target/riscv/cpu.c:3094"
         }
       ],
-      "bump_decision": "skip_no_rtl_bump_possible_but_evidence_path_now_unblocked",
-      "stub_action": "Updated stub README to record that Ascalon can be modeled today via QEMU `-cpu tt-ascalon` (functional ISA + tunable CPU spec) and LLVM `-mcpu=tt-ascalon-x` (scheduling model for compiler tuning), so compiler/SDK work can proceed without RTL. The license-gated RTL drop path remains identical: ascalon-license-check still fails closed.",
+      "bump_decision": "rejected_no_public_rtl_no_license; survey-only QEMU/LLVM model retained for cross-comparison",
+      "selection_status": "REJECTED_as_integrated_core_no_published_mobile_license. The integrated big core is the open XiangShan Kunminghu V3 scale-up (generators/chipyard/eliza-kunminghu-big-manifest.json).",
+      "stub_action": "Ascalon RTL is commercial-license-only and is NOT selected for integration. Its public QEMU `-cpu tt-ascalon` and LLVM `-mcpu=tt-ascalon-x` models are kept only as upstream cross-comparison references for compiler/SDK tuning; no Eliza core slot is filled by Ascalon.",
       "rides_along": null,
       "last_audited": "2026-05-20"
     },

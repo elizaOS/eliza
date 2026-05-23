@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -37,6 +38,63 @@ LADDER = [
         "required_artifacts": ["build/verilator/Ve1_chip_top"],
     },
 ]
+
+
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def structured_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    for item in results:
+        status = str(item.get("status", "unknown"))
+        if status == "pass":
+            continue
+        name = str(item.get("name", "sim_step"))
+        missing = item.get("missing_artifacts")
+        evidence = {
+            "step": name,
+            "status": status,
+            "command": item.get("command"),
+            "returncode": item.get("returncode"),
+            "missing_artifacts": missing if isinstance(missing, list) else [],
+            "log_tail": item.get("log_tail", [])[-10:]
+            if isinstance(item.get("log_tail"), list)
+            else [],
+        }
+        findings.append(
+            {
+                "code": f"sim_ladder_step_{code_from_text(status, 'status')}_{code_from_text(name, 'step')}",
+                "severity": "blocker" if status == "blocked" else "failure",
+                "message": f"simulation ladder step {name} is {status}",
+                "evidence": evidence,
+                "next_step": (
+                    "Repair the local RTL simulation dependency, failing test, "
+                    "or missing artifact, then rerun the ladder before treating "
+                    "local RTL simulation as chip-emulator bring-up evidence."
+                ),
+            }
+        )
+        for artifact in evidence["missing_artifacts"]:
+            findings.append(
+                {
+                    "code": (
+                        "sim_ladder_missing_artifact_"
+                        f"{code_from_text(name + '_' + str(artifact), 'artifact')}"
+                    ),
+                    "severity": "blocker",
+                    "message": f"simulation ladder step {name} did not produce {artifact}",
+                    "evidence": artifact,
+                    "next_step": (
+                        "Regenerate the required simulation artifact and keep it "
+                        "fresh against the ladder step before using this report "
+                        "as RTL simulation evidence."
+                    ),
+                }
+            )
+        break
+    return findings
 
 
 def run_step(step: dict[str, Any]) -> dict[str, Any]:
@@ -96,6 +154,7 @@ def main() -> int:
         else "fail",
         "results": results,
     }
+    manifest["findings"] = structured_findings(results)
     tmp = REPORT.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
     tmp.replace(REPORT)

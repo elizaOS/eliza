@@ -10,6 +10,7 @@ source_artifacts:
   - board/kicad/e1-phone/usb-sidekey-schematic-net-binding.yaml
   - board/kicad/e1-phone/usb-sidekey-source-revalidation.yaml
   - board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+  - board/kicad/e1-phone/usb-power-sidekey-release-execution.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - package/usb-c/e1-phone-usb-c-port.yaml
   - package/human-interface/side-buttons.yaml

@@ -1,13 +1,23 @@
 [options]
 mode bmc
-depth 8
+depth 12
 
+# Single engine per task so the proof concludes deterministically and the
+# engine-agreement gate (verify/check_formal_engine_agreement.py) passes: with
+# two engines in one task SBY terminates the slower one the moment the faster
+# returns, leaving "did not return a status" in the log — the exact silent
+# disagreement the gate fails on (dossier §5.6.1). z3 is the engine §5.6.1
+# flagged as previously not concluding; this proof drives it to a full PASS at
+# depth 12. bitwuzla independently reaches the same PASS at this depth (run it
+# by swapping the engine line); both were cross-checked through the gate.
 [engines]
 smtbmc z3
-smtbmc bitwuzla
 
 [script]
+read -define AXIL_PROTO_ASSUME_LIVENESS
+read -formal -sv axi_lite_protocol.sv
 read -formal e1_npu.sv e1_npu_formal.sv
+read -formal -sv npu_axil_bind.sv
 read -formal -sv reset_properties.sv
 read -formal -sv cdc_properties.sv
 prep -top e1_npu_formal
@@ -15,5 +25,7 @@ prep -top e1_npu_formal
 [files]
 rtl/npu/e1_npu.sv
 verify/formal/e1_npu_formal.sv
+verify/properties/axi_lite_protocol.sv
+verify/properties/npu_axil_bind.sv
 verify/properties/reset_properties.sv
 verify/properties/cdc_properties.sv

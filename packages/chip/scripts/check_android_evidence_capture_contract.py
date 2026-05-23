@@ -33,6 +33,8 @@ CLAIM_BOUNDARY = "static_android_evidence_capture_contract_only_not_runtime_evid
 LAUNCHER_EVIDENCE = "docs/evidence/android/eliza_launcher_runtime_evidence.json"
 EXPECTED_AGENT_PACKAGE = "ai.elizaos.app"
 EXPECTED_AGENT_SERVICE = "ai.elizaos.app/.ElizaAgentService"
+EXPECTED_LAUNCHER_SCHEMA = "eliza.android_launcher_runtime_evidence.v1"
+EXPECTED_LAUNCHER_CLAIM_BOUNDARY = "booted_android_launcher_agent_runtime_evidence_only"
 REQUIRED_BOOT_GATE_TOKENS = {
     "pm path": "adb PackageManager install proof",
     "resolve-activity": "HOME intent resolution proof",
@@ -42,6 +44,29 @@ REQUIRED_BOOT_GATE_TOKENS = {
     "/api/health": "local agent health endpoint proof",
     "logcat": "fatal/AVC log scan proof",
     "avc": "SELinux denial scan proof",
+}
+REQUIRED_LAUNCHER_JSON_TOKENS = {
+    '"device"': "device block",
+    '"sys_boot_completed"': "boot-completed property",
+    '"cpu_abi"': "runtime ABI",
+    '"app"': "app block",
+    '"package_name"': "package identity",
+    '"pm_path"': "PackageManager path",
+    '"role_holders"': "role-holder output",
+    '"home_resolve_activity"': "HOME intent resolution",
+    '"foreground_activity"': "foreground activity",
+    '"service_component"': "foreground service component",
+    '"service_pid"': "running service PID",
+    '"agent"': "agent block",
+    '"health_url"': "agent health URL",
+    '"health_http"': "agent health HTTP status",
+    '"health_ready"': "agent health readiness body",
+    '"logs"': "log block",
+    '"logcat_path"': "archived logcat artifact path",
+    '"fatal_crash_count"': "fatal/crash count",
+    '"avc_denial_count"': "SELinux AVC denial count",
+    '"artifacts"': "artifact block",
+    '"transcript_path"': "command transcript artifact path",
 }
 
 
@@ -137,6 +162,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     missing_boot_tokens = sorted(
         token for token in REQUIRED_BOOT_GATE_TOKENS if token.lower() not in boot_gate_text.lower()
     )
+    missing_launcher_json_tokens = sorted(
+        token for token in REQUIRED_LAUNCHER_JSON_TOKENS if token not in boot_gate_text
+    )
 
     add_if(
         findings,
@@ -182,6 +210,26 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        EXPECTED_LAUNCHER_SCHEMA not in boot_gate_text
+        or EXPECTED_LAUNCHER_CLAIM_BOUNDARY not in boot_gate_text,
+        "cuttlefish_boot_gate_launcher_evidence_boundary_mismatch",
+        "Cuttlefish boot gate writes launcher evidence with a schema or claim boundary the launcher-runtime checker will reject",
+        (
+            f"expected_schema={EXPECTED_LAUNCHER_SCHEMA} "
+            f"expected_claim_boundary={EXPECTED_LAUNCHER_CLAIM_BOUNDARY}"
+        ),
+        "Emit the exact launcher runtime schema and booted launcher/agent claim boundary, or stop writing the launcher-runtime evidence artifact from this gate.",
+    )
+    add_if(
+        findings,
+        bool(missing_launcher_json_tokens),
+        "cuttlefish_boot_gate_launcher_json_shape_mismatch",
+        "Cuttlefish boot gate launcher evidence JSON does not match the checker schema",
+        f"missing_tokens={missing_launcher_json_tokens}",
+        "Write nested device/app/agent/logs/artifacts fields with boot, package, HOME, foreground, service, health, logcat, SELinux, and transcript values required by check_android_launcher_runtime_evidence.py.",
+    )
+    add_if(
+        findings,
         LAUNCHER_EVIDENCE not in sim_boot_text,
         "android_sim_boot_gate_missing_launcher_evidence_check",
         "Android simulator boot checker does not require launcher runtime evidence before pass",
@@ -204,9 +252,12 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         rel(COMPLETION_GATE),
         "Replace SELF_STATUS markers with the Android app watchdog /api/health contract and service PID proof.",
     )
+    qemu_claims_pass = "eliza-evidence: status=PASS" in qemu_text or "RESULT=0" in qemu_text
+    cts_claims_pass = "eliza-evidence: status=PASS" in cts_text or "RESULT=0" in cts_text
     add_if(
         findings,
-        ("--version" in qemu_text or "requires kernel/system image wiring" in qemu_text)
+        qemu_claims_pass
+        and ("--version" in qemu_text or "requires kernel/system image wiring" in qemu_text)
         and "sys.boot_completed=1" not in qemu_text,
         "qemu_smoke_log_is_version_only",
         "QEMU riscv64 smoke log is marked PASS but only proves tool availability/version context",
@@ -215,7 +266,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        ("SOURCE_SCAN=true" in cts_text or "source scan" in cts_text)
+        cts_claims_pass
+        and ("SOURCE_SCAN=true" in cts_text or "source scan" in cts_text)
         and "Invocation finished" not in cts_text
         and "Test Result" not in cts_text,
         "cts_vts_plan_is_source_scan_only",
@@ -230,6 +282,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "capture_default_agent_package": agent_package,
         "capture_default_agent_service": agent_service,
         "missing_boot_gate_tokens": missing_boot_tokens,
+        "missing_launcher_json_tokens": missing_launcher_json_tokens,
+        "expected_launcher_schema": EXPECTED_LAUNCHER_SCHEMA,
+        "expected_launcher_claim_boundary": EXPECTED_LAUNCHER_CLAIM_BOUNDARY,
     }
     return payload(findings, evidence)
 

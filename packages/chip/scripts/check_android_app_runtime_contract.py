@@ -93,6 +93,25 @@ def extract_manifest_services(text: str) -> set[str]:
     return services
 
 
+def extract_manifest_service_attrs(text: str) -> dict[str, dict[str, str | None]]:
+    android = "{http://schemas.android.com/apk/res/android}"
+    try:
+        root = ElementTree.fromstring(text)
+    except ElementTree.ParseError:
+        return {}
+    services: dict[str, dict[str, str | None]] = {}
+    for service in root.findall(".//service"):
+        name = service.attrib.get(f"{android}name")
+        if not name:
+            continue
+        services[name] = {
+            "exported": service.attrib.get(f"{android}exported"),
+            "foregroundServiceType": service.attrib.get(f"{android}foregroundServiceType"),
+            "permission": service.attrib.get(f"{android}permission"),
+        }
+    return services
+
+
 def extract_permission_packages(path: Path) -> set[str]:
     root = ElementTree.fromstring(read_text(path))
     packages: set[str] = set()
@@ -221,6 +240,27 @@ def script_endpoint_literals(paths: Iterable[Path]) -> dict[str, set[str]]:
     return endpoints
 
 
+def scripts_use_adb_foreground_service(paths: Iterable[Path]) -> dict[str, bool]:
+    matches: dict[str, bool] = {}
+    for path in paths:
+        if not path.is_file():
+            continue
+        text = read_text(path)
+        if "am start-foreground-service" in text:
+            matches[rel(path)] = True
+    return matches
+
+
+def service_exported_for_name(
+    service_attrs: dict[str, dict[str, str | None]], expected_names: set[str]
+) -> str | None:
+    for name in expected_names:
+        attrs = service_attrs.get(name)
+        if attrs is not None:
+            return attrs.get("exported")
+    return None
+
+
 def add_if(
     findings: list[Finding],
     condition: bool,
@@ -277,11 +317,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     makefile_home = extract_makefile_home(VENDOR_COMMON_MK)
     script_packages = collect_script_defaults(CHIP_AOSP_SCRIPTS, "AOSP_AGENT_PACKAGE")
     script_services = collect_script_defaults(CHIP_AOSP_SCRIPTS, "AOSP_AGENT_SERVICE")
-    services = extract_manifest_services(read_text(APP_MANIFEST))
+    manifest_text = read_text(APP_MANIFEST)
+    services = extract_manifest_services(manifest_text)
+    service_attrs = extract_manifest_service_attrs(manifest_text)
     app_endpoints: set[str] = set()
     for java_file in sorted(APP_JAVA_DIR.glob("*.java")):
         app_endpoints.update(java_endpoint_literals(read_text(java_file)))
     script_endpoints = script_endpoint_literals(CHIP_AOSP_SCRIPTS)
+    adb_service_starters = scripts_use_adb_foreground_service(CHIP_AOSP_SCRIPTS)
 
     entries = apk_entries(apk_path)
     native_abis = apk_native_abis(entries)
@@ -335,6 +378,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
 
     expected_service = f"{gradle_id}.ElizaAgentService" if gradle_id else "ElizaAgentService"
+    expected_service_names = {
+        ".ElizaAgentService",
+        expected_service,
+    }
     expected_service_components = {
         f"{gradle_id}/.ElizaAgentService" if gradle_id else ".ElizaAgentService",
         f"{gradle_id}/{expected_service}" if gradle_id else expected_service,
@@ -359,6 +406,22 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "chip smoke scripts default to service components that do not match the app manifest",
         json.dumps(missing_service_defaults, sort_keys=True),
         "Align AOSP_AGENT_SERVICE defaults with the actual foreground service component in AndroidManifest.xml.",
+    )
+    service_exported = service_exported_for_name(service_attrs, expected_service_names)
+    add_if(
+        findings,
+        bool(adb_service_starters) and service_exported == "false",
+        "android_agent_service_not_exported_for_adb_smoke",
+        "chip smoke starts ElizaAgentService directly through adb, but the manifest marks that service android:exported=\"false\"",
+        json.dumps(
+            {
+                "adb_service_starters": sorted(adb_service_starters),
+                "expected_service_names": sorted(expected_service_names),
+                "service_exported": service_exported,
+            },
+            sort_keys=True,
+        ),
+        "Either start the agent through a boot/launcher/in-app path that can reach the private service, or add a guarded test-only exported entrypoint and prove the smoke can start the service on-device.",
     )
 
     script_endpoint_union: set[str] = set()
@@ -387,7 +450,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "apk_application_id_source": apk_id_source,
         "identity_sources": identity_sources,
         "manifest_services": sorted(services),
+        "manifest_service_attrs": service_attrs,
         "script_service_defaults": script_services,
+        "adb_foreground_service_starters": sorted(adb_service_starters),
         "apk_native_abis": sorted(native_abis),
         "apk_agent_asset_abis": sorted(agent_abis),
         "app_endpoints": sorted(app_endpoints),

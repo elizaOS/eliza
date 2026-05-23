@@ -199,10 +199,10 @@ These gate large amounts of downstream work and are not ours to assume:
 
 1. **Application core.** The current CVA6 little-core won't hit phone-class perf.
    Lane 05 recommends mid-core-first on **XiangShan (Kunminghu)** in XS-GEM5,
-   with the big core gated on a **licensing decision: Tenstorrent Ascalon vs
-   XiangShan Kunminghu** (Ascalon is already a BLOCKED licensing gate in the
-   Makefile). This choice drives the whole perf lane and the H-extension/TSM
-   integration target.
+   with the big core selected as the **open XiangShan Kunminghu V3 8-wide
+   scale-up** (no vendor IP license; Tenstorrent Ascalon was surveyed but
+   rejected for lack of published mobile-volume license terms). This choice
+   drives the whole perf lane and the H-extension/TSM integration target.
 2. **OpenTitan integration depth.** Vendored Earl Grey subsystem (fastest path to
    a real RoT, ~8 PM integration) vs a trimmed from-scratch RoT (smaller TCB,
    much slower). Lane 02 recommends vendored Earl Grey.

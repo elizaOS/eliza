@@ -39,7 +39,11 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
+import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
+import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
+import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
 interface BalanceData {
@@ -111,11 +115,36 @@ interface SystemStatus {
   message?: string;
 }
 
-const NETWORKS = [
-  { value: "base", label: "Base", icon: "🔵" },
-  { value: "solana", label: "Solana", icon: "🟣" },
-  { value: "ethereum", label: "Ethereum", icon: "⬛" },
-  { value: "bnb", label: "BNB Chain", icon: "🟡" },
+// Real brand marks via @web3icons/react `variant="branded"` (the official
+// multi-color logos, not single-color stencils or emoji placeholders).
+// Network icons stay at 16px to align with the surrounding text-sm label.
+const NETWORKS: Array<{ value: string; label: string; icon: ReactNode }> = [
+  {
+    value: "base",
+    label: "Base",
+    icon: <NetworkBase variant="branded" size={16} aria-hidden="true" />,
+  },
+  {
+    value: "solana",
+    label: "Solana",
+    icon: <TokenSOL variant="branded" size={16} aria-hidden="true" />,
+  },
+  {
+    value: "ethereum",
+    label: "Ethereum",
+    icon: <NetworkEthereum variant="branded" size={16} aria-hidden="true" />,
+  },
+  {
+    value: "bnb",
+    label: "BNB Chain",
+    icon: (
+      <NetworkBinanceSmartChain
+        variant="branded"
+        size={16}
+        aria-hidden="true"
+      />
+    ),
+  },
 ];
 
 const SOURCE_ICONS = {

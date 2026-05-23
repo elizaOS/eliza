@@ -7,11 +7,11 @@ selected with a real pinned upstream SHA for each cluster role
 (big_core_e1_ultra, mid_core_e1_premium, little_core_e1_pro, plus the
 linux_bringup_application_hart bootstrap role).
 
-The big-core slot is gated separately: if no big-core manifest has a real
-pinned SHA the gate writes a BLOCKED record explaining why, without
-failing the build, because Tenstorrent Ascalon-D8 license closure is
-expected to be a long lead. Every other role must have at least one
-manifest with a real pin or the gate fails closed.
+The big-core slot is selected as the open XiangShan Kunminghu V3 scale-up
+(no vendor IP license required). If no big-core manifest has a real
+pinned SHA the gate writes a BLOCKED record explaining the missing
+external integration step, without failing the build. Every other role
+must have at least one manifest with a real pin or the gate fails closed.
 """
 
 from __future__ import annotations
@@ -189,8 +189,8 @@ def build_report(
                 "code": "core_selection_big_core_pin_blocked",
                 "severity": "blocker",
                 "message": "no big_core_e1_ultra manifest has a real pinned upstream commit",
-                "evidence": "Tenstorrent Ascalon-D8 license and procurement remain blocked",
-                "next_step": "Close the big-core IP license/procurement decision and record a real pinned upstream commit, or select a different phone-class big-core path.",
+                "evidence": "XiangShan Kunminghu scale-up external checkout not yet recorded",
+                "next_step": "Record a real pinned upstream commit for the open Kunminghu big-core scale-up, or select a different open phone-class big-core path.",
             }
         )
     status = "fail" if errors and require_big_core_pin else ("blocked" if findings else "pass")
@@ -278,7 +278,7 @@ def main() -> int:
     if args.require_big_core_pin and not big_has_pin:
         errors.append(
             "no big_core_e1_ultra manifest has a real pinned commit; "
-            "Tenstorrent Ascalon-D8 license + procurement BLOCKED"
+            "open XiangShan Kunminghu scale-up checkout not yet recorded"
         )
 
     write_evidence(grouped, errors)
@@ -296,8 +296,8 @@ def main() -> int:
             print(f"  - {err}")
         if not big_has_pin and not args.require_big_core_pin:
             print(
-                "BLOCKED: big_core_e1_ultra has no real pin (Tenstorrent Ascalon "
-                "license pending); other roles passed-or-failed as above."
+                "BLOCKED: big_core_e1_ultra has no real pin (open Kunminghu "
+                "scale-up checkout pending); other roles passed-or-failed as above."
             )
         return 1
 
@@ -305,7 +305,7 @@ def main() -> int:
     if not big_has_pin:
         print(
             "STATUS: BLOCKED cpu.core_selection_big_core - "
-            "Ascalon-D8 license + procurement required for big-core pin"
+            "open Kunminghu scale-up checkout required for big-core pin"
         )
     return 0
 

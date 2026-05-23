@@ -78,6 +78,7 @@ CVA6_FILES   := $(shell cat $(CVA6_FLIST_OUT))
 
 VERILOG_SOURCES := \
 	$(CVA6_FILES) \
+	$(CVA6_REPO_DIR)/core/cva6_rvfi.sv \
 	$(REPO)/rtl/top/adapters/e1_cva6_to_e1axi4.sv \
 	$(REPO)/rtl/cpu/e1_cva6_wrapper.sv \
 	$(PWD)/e1_cva6_unit_tb.sv
@@ -86,7 +87,7 @@ TOPLEVEL ?= e1_cva6_unit_tb
 MODULE   ?= test_cva6_executes_bootrom_program
 PYTHON   ?= python3
 
-COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+WT_DCACHE
+COMPILE_ARGS += +define+E1_HAVE_CVA6 +define+E1_RVFI +define+E1_RVFI_NRET=2 +define+WT_DCACHE
 
 EXTRA_ARGS += $(CVA6_INCDIRS)
 EXTRA_ARGS += \

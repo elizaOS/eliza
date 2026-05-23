@@ -6,6 +6,7 @@ claim_boundary: EVT1 footprint capture work package only. This turns supplier in
   are complete, footprints are reviewed, the board is routed, or the enclosure is ready.
 source_artifacts:
   - board/kicad/e1-phone/supplier-drawing-intake-checklist.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
@@ -94,6 +95,27 @@ work_items:
       - connector footprint with pad numbering, courtyard, keepout, and mated-height model
       - DSI/touch/backlight/bias nets tied to routing constraints and power sequencing
       - ERC report plus pinout review signoff
+    alternate_display_capture_branches:
+      - source_id: display_alternate_alibaba_meta_055wu01
+        candidate: 055WU01
+        status: blocked_until_supplier_pack_and_promotion_review
+        capture_scope: possible_40pin_fpc_connector_variant_not_production_symbol_or_footprint
+        required_before_capture:
+          - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, and STEP model
+          - exact 40-pin FPC pinout, mating connector MPN, and recommended land pattern
+          - panel init, touch configuration, backlight/bias limits, and sample inspection
+          - promotion review before KiCad symbol, footprint, or enclosure branch replacement
+        kicad_capture_allowed: false
+      - source_id: display_alternate_made_in_china_e549_amoled
+        candidate: E549-HC01_RM67191_AMOLED_class
+        status: blocked_until_supplier_pack_and_promotion_review
+        capture_scope: possible_thin_amoled_branch_not_production_symbol_or_footprint
+        required_before_capture:
+          - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and STEP model
+          - exact AMOLED FPC pinout, mating connector MPN, and recommended land pattern
+          - RM67191 power sequence, GT1151 touch configuration, burn-in/luminance data, and sample inspection
+          - promotion review before KiCad symbol, footprint, or enclosure branch replacement
+        kicad_capture_allowed: false
     review_outputs:
       pinout_review: board/kicad/e1-phone/production/reports/pinout-review/display_touch.yaml
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
@@ -746,9 +768,11 @@ cross_checks:
   every_work_item_has_placement_region: true
   every_work_item_has_planned_nets: true
   every_work_item_has_symbol_footprint_and_3d_tasks: true
+  alternate_display_capture_branches_fail_closed: true
   all_work_items_blocked: true
 release_blockers:
   - supplier intake gates are still false
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter EVT1 footprint capture until supplier packs and promotion review close
   - production KiCad symbol and footprint libraries are missing
   - pinout, symbol, footprint, and 3D binding reviews are missing
   - placeholder footprints have not been replaced

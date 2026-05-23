@@ -7,6 +7,8 @@ claim_boundary: Supplier-to-KiCad evidence map only. It defines the exact produc
 source_artifacts:
   - board/kicad/e1-phone/supplier-rfq-intake.yaml
   - board/kicad/e1-phone/supplier-source-verification.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/pinout-footprint-freeze.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
@@ -57,9 +59,52 @@ evidence_records:
           - exact_40_pin_fpc_pinout_mating_connector_and_land_pattern
           - step_model_cover_lens_stack_and_touch_controller_data
           - sample_lot_and_panel_init_sequence
+      - id: display_alternate_alibaba_meta_055wu01
+        candidate: 055WU01_parseable_5p5_1080x1920_MIPI_40pin_CTP
+        supplier: META Display LLC or equivalent Alibaba 055WU01 display OEM
+        url: https://www.alibaba.com/product-detail/5-5-inch-1080x1920-mipi-interface_1601403260309.html
+        public_page_status: public_listing_observed_2026_05_21
+        board_use: parseable_brightness_and_40pin_display_branch_for_supplier_pack_comparison
+        still_missing_before_use:
+          - signed_2d_drawing_with_outline_fpc_exit_pin1_cover_lens_and_stiffener_datums
+          - exact_40_pin_fpc_pinout_mating_connector_recommended_land_pattern_and_step_model
+          - panel_init_touch_configuration_backlight_bias_and_sample_inspection
+          - explicit_promotion_review_before_symbol_footprint_or_enclosure_branch_release
+      - id: display_alternate_made_in_china_e549_amoled
+        candidate: E549-HC01_RM67191_AMOLED_class
+        supplier: Shenzhen Dayuan Display Technology / FET-class Made-in-China AMOLED supplier
+        url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+        public_page_status: public_listing_observed_2026_05_21
+        board_use: parseable_thin_amoled_branch_for_z_height_and_enclosure_comparison
+        still_missing_before_use:
+          - signed_2d_drawing_with_touch_stack_fpc_exit_cover_lens_and_active_area_datums
+          - exact_amoled_fpc_pinout_mating_connector_recommended_land_pattern_and_step_model
+          - rm67191_power_sequence_gt1151_touch_configuration_burn_in_and_sample_inspection
+          - explicit_promotion_review_before_symbol_footprint_or_enclosure_branch_release
     rfq_basis_traceability:
       - Made-in-China Chenghao 5.5 inch 1080x1920 MIPI CTP listing
       - Alibaba 5.5 inch 1080x1920 MIPI alternates
+      - Made-in-China E549/RM67191 5.49 inch AMOLED thin-display alternate
+    alternate_display_kicad_branch_gate:
+      status: blocked_until_selected_or_alternate_display_supplier_pack_is_reviewed
+      branch_count: 2
+      branches:
+        - source_id: display_alternate_alibaba_meta_055wu01
+          candidate: 055WU01
+          required_before_kicad_use:
+            - signed 2D drawing, FPC exit, pin-1 datum, cover-lens datum, and STEP model
+            - exact 40-pin FPC pinout, mating connector MPN, and recommended land pattern
+            - panel initialization, touch configuration, backlight/bias limits, and sample inspection
+            - promotion review comparing connector, enclosure, supply, and bring-up risk against CH550FH01A-CT
+          kicad_release_allowed: false
+        - source_id: display_alternate_made_in_china_e549_amoled
+          candidate: E549-HC01_RM67191_AMOLED_class
+          required_before_kicad_use:
+            - signed 2D drawing, FPC exit, active-area datum, touch-stack datum, and STEP model
+            - exact AMOLED FPC pinout, mating connector MPN, and recommended land pattern
+            - RM67191 power sequence, GT1151 touch configuration, burn-in/luminance data, and sample inspection
+            - promotion review comparing z-height, touch stack, power sequencing, enclosure, and bring-up risk against CH550FH01A-CT
+          kicad_release_allowed: false
     rfq_transmittal_draft:
       draft_id: e1_phone_display_touch_rfq_2026-05-21
       status: draft_not_sent_not_supplier_evidence

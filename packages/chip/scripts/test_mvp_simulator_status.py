@@ -7,6 +7,8 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+import run_mvp_simulator as runner
+
 ROOT = Path(__file__).resolve().parents[1]
 CHECK = ROOT / "scripts/check_mvp_simulator.py"
 REPORT = ROOT / "build/reports/mvp_simulator.status-test.json"
@@ -87,10 +89,28 @@ def report_payload(*, status: str = "blocked", on_chip: bool = False) -> dict:
             "next_command": "python3 scripts/check_cpu_ap_evidence.py --require-evidence",
         },
         {
+            "name": "chipyard_verilator_preflight",
+            "tier": "os_prereq",
+            "detail": "blocked",
+            "next_command": "python3 scripts/check_chipyard_verilator_preflight.py",
+        },
+        {
+            "name": "chipyard_generated_ap",
+            "tier": "os_prereq",
+            "detail": "blocked",
+            "next_command": "python3 scripts/check_chipyard_generator_manifest.py --require-generated",
+        },
+        {
             "name": "chipyard_payload_path",
             "tier": "os_prereq",
             "detail": "blocked",
             "next_command": "python3 scripts/check_chipyard_payload_path.py",
+        },
+        {
+            "name": "chipyard_verilator_linux_attempt",
+            "tier": "os_boot",
+            "detail": "blocked",
+            "next_command": "scripts/run_chipyard_eliza_linux_smoke.sh",
         },
         {
             "name": "chipyard_verilator_linux_smoke",
@@ -101,7 +121,7 @@ def report_payload(*, status: str = "blocked", on_chip: bool = False) -> dict:
     ]
     if on_chip:
         for item in results:
-            if item["name"] == "chipyard_verilator_linux_smoke":
+            if item["name"] in runner.ON_CHIP_OS_BOOT_REQUIRED_STEPS:
                 item["status"] = "pass"
                 item["returncode"] = 0
         blockers = []
@@ -170,8 +190,28 @@ def test_false_on_chip_claim_is_rejected() -> None:
             f"expected false claim rejection, got {result.returncode}\n{result.stdout}"
         )
     assert_contains(
-        result.stdout, "on_chip_os_boot_claim true without passing our-chip OS boot result"
+        result.stdout, "on_chip_os_boot_claim true without passing required chip/AP steps:"
     )
+    assert_contains(result.stdout, "chipyard_verilator_linux_smoke")
+
+
+def test_on_chip_claim_requires_prerequisite_steps() -> None:
+    payload = report_payload(status="pass", on_chip=True)
+    for item in payload["results"]:
+        if item["name"] == "cpu_ap_linux_evidence":
+            item["status"] = "fail"
+            item["returncode"] = 1
+    write_report(payload)
+    result = run_check()
+    if result.returncode != 1:
+        raise AssertionError(
+            f"expected required-step rejection, got {result.returncode}\n{result.stdout}"
+        )
+    assert_contains(
+        result.stdout,
+        "on_chip_os_boot_claim true without passing required chip/AP steps:",
+    )
+    assert_contains(result.stdout, "cpu_ap_linux_evidence")
 
 
 def test_on_chip_pass_report_is_valid() -> None:
@@ -203,6 +243,39 @@ def test_qemu_boot_cannot_be_best_executable_evidence() -> None:
     )
 
 
+def test_generator_treats_failed_chip_prereqs_as_on_chip_blockers() -> None:
+    results = required_results()
+    for item in results:
+        if item["name"] == "cpu_ap_linux_evidence":
+            item["status"] = "fail"
+            item["returncode"] = 1
+    blockers = [
+        item
+        for item in runner.nonpassing_items(results)
+        if any(
+            result.get("name") == item.get("name")
+            and result.get("scope") in {"our_chip_prereq", "our_chip_os_boot"}
+            for result in results
+        )
+    ]
+    names = {item["name"] for item in blockers}
+    if "cpu_ap_linux_evidence" not in names:
+        raise AssertionError(f"failed chip prereq missing from blockers: {blockers}")
+
+
+def test_generator_requires_chip_prereqs_for_on_chip_claim() -> None:
+    results = required_results()
+    for item in results:
+        if item["name"] == "chipyard_verilator_linux_smoke":
+            item["status"] = "pass"
+            item["returncode"] = 0
+        if item["name"] == "cpu_ap_linux_evidence":
+            item["status"] = "fail"
+            item["returncode"] = 1
+    if runner.on_chip_os_boot_claim(results):
+        raise AssertionError("on-chip claim passed with failed CPU/AP evidence")
+
+
 def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         global REPORT
@@ -210,8 +283,11 @@ def main() -> int:
         for test in (
             test_blocked_report_is_valid,
             test_false_on_chip_claim_is_rejected,
+            test_on_chip_claim_requires_prerequisite_steps,
             test_on_chip_pass_report_is_valid,
             test_qemu_boot_cannot_be_best_executable_evidence,
+            test_generator_treats_failed_chip_prereqs_as_on_chip_blockers,
+            test_generator_requires_chip_prereqs_for_on_chip_claim,
         ):
             test()
             print(f"PASS {test.__name__}")

@@ -14,6 +14,7 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/production-factory-release-execution.yaml
+  - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
   - board/kicad/e1-phone/display-envelope-downselect.yaml
   - board/kicad/e1-phone/camera-module-fit-downselect.yaml
   - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
@@ -227,6 +228,35 @@ selected_hardware_factory_acceptance:
         - first_article_traveler_measurements_and_signoff
       required_fixture_domains: [radios]
       status: blocked_missing_wifi_bt_fixture_rf_identity_and_first_article_signoff
+alternate_display_factory_acceptance_gate:
+  source_artifact: board/kicad/e1-phone/production-factory-release-execution.yaml
+  status: blocked_until_alternate_display_fixture_limits_identity_and_first_article_signoff_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - fixture_probe_coordinates_and_accessibility
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+        - routed_board_step_dfa_enclosure_and_dfm_quote
+      required_fixture_domains:
+        - display_touch
+      factory_acceptance_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_acceptance_items:
+        - supplier_avl_lifecycle_and_substitutes
+        - assembly_outputs_bom_pnp_drawings_stencil
+        - fixture_probe_coordinates_and_accessibility
+        - factory_test_limits_and_stop_on_fail
+        - first_article_traveler_measurements_and_signoff
+        - routed_board_step_dfa_enclosure_and_dfm_quote
+      required_fixture_domains:
+        - display_touch
+      factory_acceptance_allowed: false
 cross_checks:
   stackup_target_matches_production_readiness: true
   all_manufacturing_production_outputs_blocked: true
@@ -239,6 +269,7 @@ cross_checks:
   all_factory_probe_domains_blocked: true
   all_acceptance_items_blocked: true
   selected_hardware_factory_acceptance_fail_closed: true
+  alternate_display_factory_acceptance_gate_fail_closed: true
 release_blockers:
   - routed DRC-clean PCB and production fabrication outputs are missing
   - fabricator stackup, impedance coupon quote, DFM/DFA, and fab/assembly quote are missing
@@ -246,6 +277,7 @@ release_blockers:
   - factory fixture coordinates, factory limits, RF calibration, traceability, and first-article transcript are
     missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth factory acceptance evidence is missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter factory acceptance until AVL, assembly, fixture limits, routed STEP, first-article, and promotion evidence exist
   - routed board STEP, enclosure clearance rerun, and final mechanical production signoff are missing
 forbidden_claims:
   - production_ready

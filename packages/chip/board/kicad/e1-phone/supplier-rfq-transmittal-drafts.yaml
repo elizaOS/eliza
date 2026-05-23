@@ -40,14 +40,20 @@ drafts:
     source_basis:
       - Made-in-China Chenghao 5.5 inch 1080x1920 MIPI CTP listing
       - Alibaba 5.5 inch 1080x1920 MIPI alternates
+      - Made-in-China E549/RM67191 5.49 inch AMOLED thin-display alternate
     verified_public_source_ids:
       - display_primary_chenghao_ch550fh01a_ct
       - display_alternate_made_in_china_5p5_1080p_mipi_ctp
       - display_alternate_alibaba_youritech_5p5_1080p_40pin
+      - display_alternate_alibaba_meta_055wu01
+      - display_alternate_made_in_china_e549_amoled
     source_revalidation_trace:
       rfq_matrix_key: display_touch
       primary_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct
       supplemental_revalidated_source_id: display_primary_chenghao_ch550fh01a_ct_public_pdf
+      alternate_revalidated_source_ids:
+        - display_alternate_alibaba_meta_055wu01
+        - display_alternate_made_in_china_e549_amoled
       rfq_ready_from_public_page: true
       production_release_ready: false
       route_release_dependency: J_DISPLAY_TOUCH symbol_footprint_and_MIPI_DSI_route_remain_blocked_until_supplier_pack_received
@@ -64,6 +70,14 @@ drafts:
         candidate: 5p5_1080x1920_MIPI_40pin_CTP_class
         url: https://www.alibaba.com/product-detail/Youritech-OEM-5-5-Inch-TFT_1600495349630.html
         public_page_status: public_listing_observed_2026_05_20
+      - supplier: META Display LLC or equivalent Alibaba 055WU01 display OEM
+        candidate: 055WU01_parseable_5p5_1080x1920_MIPI_40pin_CTP
+        url: https://www.alibaba.com/product-detail/5-5-inch-1080x1920-mipi-interface_1601403260309.html
+        public_page_status: public_listing_observed_2026_05_21
+      - supplier: Shenzhen Dayuan Display Technology / FET-class Made-in-China AMOLED supplier
+        candidate: E549-HC01_RM67191_AMOLED_class
+        url: https://fetoled.en.made-in-china.com/product/RwKmavZJCtcS/China-5-5-Inch-Hight-Resolution-1080X1920-Amoled-Display-Screen-with-Mipi.html
+        public_page_status: public_listing_observed_2026_05_21
     request:
       quote_quantities: *id001
       minimum_sample_lot: 5

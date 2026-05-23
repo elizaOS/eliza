@@ -55,7 +55,7 @@
   "private_l1d_kb": 32,
   "shared_cluster_l2_kb": 256,
   "phone_class_claim_allowed": false,
-  "phone_class_claim_blocked_reason": "CVA6 is in-order single-issue and cannot match flagship big-core IPC alone. It is the little-core path in the 1+3+4 cluster; flagship big-core selection remains a Tenstorrent Ascalon-D8 / XiangShan Kunminghu fork decision.",
+  "phone_class_claim_blocked_reason": "CVA6 is in-order single-issue and cannot match flagship big-core IPC alone. It is the little-core path in the 1+3+4 cluster; the flagship big core is the open XiangShan Kunminghu V3 8-wide scale-up (eliza-kunminghu-big-manifest.json).",
   "rtl_integration": {
     "wrapper_path": "rtl/cpu/e1_cva6_wrapper.sv",
     "compile_define": "E1_HAVE_CVA6",

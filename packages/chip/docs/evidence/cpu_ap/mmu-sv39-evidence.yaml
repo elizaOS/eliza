@@ -14,7 +14,7 @@ required_for_pass:
   - fence.vma after PTE update invalidates the TLB entry
   - PMP / Smepmp interactions documented (or explicitly out-of-scope)
 fail_closed_until:
-  - DUT is the production CVA6 / Kunminghu / Ascalon wrapper
+  - DUT is the production CVA6 / Kunminghu wrapper
   - cocotb test_mmu_sv39.py runs the positive path and writes
     docs/evidence/cpu_ap/mmu-sv39.json with status=pass
 test_files:

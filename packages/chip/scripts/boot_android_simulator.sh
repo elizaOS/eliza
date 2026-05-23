@@ -141,6 +141,48 @@ print(json.dumps([
 PY
 }
 
+findings_json() {
+	status=$1
+	reason=$2
+	next=$3
+	host_requirements=$4
+	python3 - "$status" "$reason" "$next" "$host_requirements" <<'PY'
+import json
+import sys
+
+status, reason, next_step, host_requirements_text = sys.argv[1:5]
+
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+findings = []
+try:
+    host_requirements = json.loads(host_requirements_text)
+except json.JSONDecodeError:
+    host_requirements = {}
+for item in host_requirements.get("missing", []):
+    text = str(item)
+    findings.append({
+        "code": f"android_sim_host_{code_from_text(text, 'missing_requirement')}",
+        "severity": "blocker",
+        "message": text,
+        "evidence": "host_requirements.missing",
+        "next_step": next_step,
+    })
+if status != "pass" and reason:
+    findings.append({
+        "code": f"android_sim_status_{code_from_text(reason, 'blocked')}",
+        "severity": "blocker" if status == "blocked" else "fail",
+        "message": reason,
+        "evidence": "android_sim_boot.status",
+        "next_step": next_step,
+    })
+print(json.dumps(findings, indent=2))
+PY
+}
+
 host_requirements_json() {
 	python3 - "$host_os" "$host_arch" "$run_cuttlefish" "$run_qemu" "$run_renode" "${aosp_dir:-}" <<'PY'
 import json
@@ -257,6 +299,7 @@ write_report() {
 	host_requirements=$(host_requirements_json)
 	linux_requirements=$(linux_requirements_json)
 	handoff_commands=$(handoff_commands_json)
+	findings=$(findings_json "$status" "$reason" "$next" "$host_requirements")
 	required_evidence=$(evidence_json full)
 	attempted_evidence=$(evidence_json build)
 	if [ "$require_full_evidence" -eq 1 ]; then
@@ -282,6 +325,7 @@ write_report() {
   "required_evidence": $required_evidence,
   "attempted_evidence": $attempted_evidence,
   "host_requirements": $host_requirements,
+  "findings": $findings,
   "linux_requirements": $linux_requirements,
   "handoff_commands": $handoff_commands,
   "claim_boundary": "Android virtual-device evidence is software/reference evidence only; it is not e1-chip hardware ABI proof, CDD compliance, GMS certification, or a full Android compatibility claim."
@@ -344,9 +388,12 @@ capture_aosp_shell() {
 		cd "$aosp_dir"
 		set +e
 		env AOSP_PRODUCT="$aosp_product" \
+			AOSP_TARGET_PRODUCT="${AOSP_TARGET_PRODUCT:-eliza_ai_soc}" \
 			AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
 			AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
 			AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
+			AOSP_QEMU_SMOKE_COMMAND="${AOSP_QEMU_SMOKE_COMMAND:-}" \
+			AOSP_RENODE_SMOKE_COMMAND="${AOSP_RENODE_SMOKE_COMMAND:-}" \
 			"$aosp_shell" -lc "$command_script"
 		rc=$?
 		set -e
@@ -507,14 +554,15 @@ if [ "$run_qemu" -eq 1 ]; then
 	capture_aosp_shell \
 		qemu_riscv64_smoke \
 		"$evidence_dir/qemu_riscv64_smoke.log" \
-		"qemu-system-riscv64 with AOSP-built artifacts followed by console or adb smoke checks" \
+		"${AOSP_QEMU_SMOKE_COMMAND:-AOSP_QEMU_SMOKE_COMMAND}" \
 		'source build/envsetup.sh &&
 			lunch "$AOSP_PRODUCT" >/dev/null &&
-			echo "eliza_ai_soc" &&
-			command -v qemu-system-riscv64 &&
-			test -f out/target/product/eliza_ai_soc/vendor.img &&
-			echo "qemu-system-riscv64 AOSP riscv64 smoke requires kernel/system image wiring for this product" &&
-			qemu-system-riscv64 --version' \
+			echo "TARGET_PRODUCT=${AOSP_TARGET_PRODUCT:-eliza_ai_soc}" &&
+			if [ -z "${AOSP_QEMU_SMOKE_COMMAND:-}" ]; then
+				echo "error: set AOSP_QEMU_SMOKE_COMMAND to a real qemu-system-riscv64 boot smoke that records sys.boot_completed=1 or console boot markers" >&2
+				exit 2
+			fi &&
+			eval "$AOSP_QEMU_SMOKE_COMMAND"' \
 		virtual || true
 fi
 
@@ -522,13 +570,15 @@ if [ "$run_renode" -eq 1 ]; then
 	capture_aosp_shell \
 		renode_e1_soc_smoke \
 		"$evidence_dir/renode_e1_soc_smoke.log" \
-		"renode sim/renode/eliza_e1.resc with Android-capable firmware/kernel handoff when available" \
+		"${AOSP_RENODE_SMOKE_COMMAND:-AOSP_RENODE_SMOKE_COMMAND}" \
 		'source build/envsetup.sh &&
 			lunch "$AOSP_PRODUCT" >/dev/null &&
-			echo "eliza_ai_soc" &&
-			command -v renode &&
-			echo "renode Android-capable firmware/kernel handoff smoke requires a real Renode e1 SoC Android boot script" &&
-			renode --version' \
+			echo "TARGET_PRODUCT=${AOSP_TARGET_PRODUCT:-eliza_ai_soc}" &&
+			if [ -z "${AOSP_RENODE_SMOKE_COMMAND:-}" ]; then
+				echo "error: set AOSP_RENODE_SMOKE_COMMAND to a real Renode Android-capable firmware/kernel handoff smoke" >&2
+				exit 2
+			fi &&
+			eval "$AOSP_RENODE_SMOKE_COMMAND"' \
 		virtual || true
 fi
 

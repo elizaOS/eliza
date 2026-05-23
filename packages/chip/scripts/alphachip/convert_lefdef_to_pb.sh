@@ -130,9 +130,27 @@ while IFS= read -r lef; do
     abs_lef="$(CDPATH=; cd -- "$(dirname -- "$lef")" && pwd)/$(basename -- "$lef")"
     printf 'read_lef "%s"\n' "$(to_container_path "$abs_lef")" >> "$OUT_DIR/convert_lefdef_to_pb.tcl"
 done < "$OUT_DIR/lef_files.txt"
+# Locate the TILOS MacroPlacement OpenDB protobuf exporter. The repo lives
+# under external/repos/tilos-macroplacement/payload in this checkout; an older
+# layout used external/MacroPlacement. Resolve to a repo-relative path so it
+# maps correctly into the /work mount.
+GEN_PB_OR=""
+for cand in \
+    "external/repos/tilos-macroplacement/payload/CodeElements/FormatTranslators/src/gen_pb_or.tcl" \
+    "external/MacroPlacement/CodeElements/FormatTranslators/src/gen_pb_or.tcl"; do
+    if [ -f "$REPO_DIR/$cand" ]; then
+        GEN_PB_OR="$cand"
+        break
+    fi
+done
+if [ -z "$GEN_PB_OR" ]; then
+    echo "Could not find gen_pb_or.tcl under external/. TILOS MacroPlacement exporter missing." >&2
+    exit 1
+fi
+
 cat >> "$OUT_DIR/convert_lefdef_to_pb.tcl" <<EOF
 read_def "$DEF_CONTAINER"
-source "/work/external/MacroPlacement/CodeElements/FormatTranslators/src/gen_pb_or.tcl"
+source "/work/$GEN_PB_OR"
 gen_pb_netlist \$out_pb
 exit
 EOF

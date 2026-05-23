@@ -14,6 +14,10 @@ source_artifacts:
   - board/kicad/e1-phone/camera-module-fit-downselect.yaml
   - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
   - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+  - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
   - board/kicad/e1-phone/mechanical-overlay.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
@@ -37,6 +41,32 @@ export_contract:
   required_step_output: board/kicad/e1-phone/production/step/routed-board-with-components.step
   required_component_model_directory: board/kicad/e1-phone/production/step/component-models
   required_report_output: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
+  selected_supplier_response_step_gate:
+    source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+    status: blocked_until_selected_supplier_response_packs_provide_step_and_brep_models
+    required_response_gate_count: 3
+    blocked_response_gate_count: 3
+    required_response_gates:
+      - selected_display_camera_oem_response_gate
+      - selected_usb_sidekey_oem_response_gate
+      - selected_wireless_module_oem_response_gate
+    selected_step_functions:
+      - display_touch
+      - rear_camera
+      - front_camera
+      - usb_c_receptacle_evt0
+      - side_buttons
+      - cellular
+      - wifi_bluetooth
+    selected_response_pack_count: 7
+    required_supplier_geometry_fields:
+      - signed_2d_drawing_path
+      - recommended_land_pattern_path
+      - step_or_brep_model_path
+      - enclosure_datums_and_keepouts_path
+      - sample_lot_tracking
+    step_export_allowed_without_selected_supplier_models: false
+    all_selected_supplier_response_packs_absent: true
   export_command:
     tool: kicad-cli
     command: >
@@ -67,6 +97,33 @@ export_contract:
         - signed display/touch STEP or B-rep model with cover-lens, FPC exit, stiffener, and connector datum
         - exact display FPC connector MPN, land pattern, height, and mated STEP model
         - routed board placement with display FPC bend keepout and no manual CAD offset
+      alternate_display_step_branches:
+        - source_id: display_alternate_alibaba_meta_055wu01
+          candidate: 055WU01
+          source_gate: component_height_step_integration.alternate_display_height_step_gate
+          required_models:
+            - display_lcm
+            - display_fpc_connector
+            - display_fpc_tail
+            - display_cover_lens_stack
+          required_before_step_export:
+            - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, stiffener, and mated connector height
+            - exact 40-pin FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
+            - panel, touch, backlight, bias, sample inspection, promotion review, and routed-board clearance rerun
+          step_export_allowed: false
+        - source_id: display_alternate_made_in_china_e549_amoled
+          candidate: E549-HC01_RM67191_AMOLED_class
+          source_gate: component_height_step_integration.alternate_display_height_step_gate
+          required_models:
+            - amoled_stack
+            - amoled_fpc_connector
+            - amoled_fpc_tail
+            - amoled_touch_stack
+          required_before_step_export:
+            - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and mated connector height
+            - exact AMOLED FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
+            - RM67191 power sequence, GT1151 touch data, burn-in/luminance/sample evidence, promotion review, and routed-board clearance rerun
+          step_export_allowed: false
       status: blocked_missing_supplier_step_connector_pinout_and_routed_board
     - function: rear_front_cameras
       selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
@@ -149,6 +206,8 @@ post_export_acceptance:
 release_blockers:
   - routed KiCad PCB source is missing
   - production STEP export is missing
+  - selected supplier response packs with STEP/B-rep models for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter routed STEP export until supplier STEP/B-rep, connector, touch/power, sample, promotion review, and routed-clearance evidence exist
   - supplier component STEP/B-rep models are missing
   - placeholder footprints are still present in the concept board
   - routed-board clearance rerun is blocked

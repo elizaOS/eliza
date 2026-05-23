@@ -69,6 +69,7 @@ run_lint bpu_to_zihpm_remap bpu_to_zihpm_remap \
     rtl/cpu/bpu/bpu_pkg.sv rtl/cpu/csr/zihpm.sv rtl/cpu/csr/bpu_to_zihpm_remap.sv
 run_lint rvv_csr         rvv_csr         rtl/cpu/rvv/rvv_csr.sv
 run_lint rvv_unit_stub   rvv_unit_stub   rtl/cpu/rvv/rvv_csr.sv rtl/cpu/rvv/rvv_unit_stub.sv
+run_lint rvv_alu_subset  rvv_alu_subset  rtl/cpu/rvv/rvv_csr.sv rtl/cpu/rvv/rvv_alu_subset.sv
 run_lint e1_cluster_top  e1_cluster_top \
     rtl/interconnect/axi4/e1_axi4_pkg.sv \
     rtl/cache/ftq_to_l1i_pkg.sv \

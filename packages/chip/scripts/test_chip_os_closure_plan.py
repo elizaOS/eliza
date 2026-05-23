@@ -62,10 +62,69 @@ class ChipOsClosurePlanTests(unittest.TestCase):
         self.assertEqual(report["summary"]["first_blocked_phase"], "p0_workflow_evidence_plumbing")
         first = report["phases"][0]
         self.assertEqual(first["open_requirement_count"], 1)
+        self.assertEqual(first["open_source_reports"], ["build/reports/qemu_virt_smoke.json"])
+        self.assertEqual(first["open_requirements"][0]["id"], "os_rv64_qemu_tooling")
         self.assertEqual(
             first["top_blocker_codes"][0]["code"],
             "os_rv64_qemu_system_riscv64_missing",
         )
+
+    def test_phase_blocker_rollup_uses_open_requirements_first(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix = root / "matrix.json"
+            inventory = root / "inventory.json"
+            write_json(
+                matrix,
+                {
+                    "status": "blocked",
+                    "summary": {"blocked": 1, "proven": 1},
+                    "requirements": [
+                        {
+                            "id": "aggregate_blocker_traceability",
+                            "proof_state": "proven",
+                            "source_report": "build/reports/inventory.json",
+                            "current_status": "blocked",
+                            "source_finding_codes": ["should_not_lead"],
+                        },
+                        {
+                            "id": "os_rv64_qemu_tooling",
+                            "proof_state": "blocked",
+                            "source_report": "build/reports/qemu_virt_smoke.json",
+                            "current_status": "blocked",
+                            "closure_evidence": "qemu smoke must pass",
+                            "source_finding_codes": ["qemu_source_finding"],
+                        },
+                    ],
+                },
+            )
+            write_json(
+                inventory,
+                {
+                    "summary": {"detailed_blocker_entries": 2},
+                    "detailed_blockers": [
+                        {
+                            "source_report": "build/reports/inventory.json",
+                            "code": "proven_inventory_detail",
+                            "message": "inventory status is blocked but requirement is proven",
+                            "next_step": "do not lead with this",
+                        },
+                        {
+                            "source_report": "build/reports/qemu_virt_smoke.json",
+                            "code": "qemu_missing",
+                            "message": "qemu missing",
+                            "next_step": "install qemu",
+                        },
+                    ],
+                },
+            )
+            report = plan.build_plan(matrix, inventory)
+        first = report["phases"][0]
+        codes = [row["code"] for row in first["top_blocker_codes"]]
+        self.assertEqual(codes[0], "qemu_missing")
+        self.assertIn("qemu_source_finding", codes)
+        self.assertNotIn("proven_inventory_detail", codes)
+        self.assertNotIn("should_not_lead", codes)
 
     def test_all_proven_closes_phases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

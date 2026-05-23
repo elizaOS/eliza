@@ -95,6 +95,10 @@ const pluginRemoteManifestSrc = path.join(
   monorepoRoot,
   "packages/plugin-remote-manifest/src",
 );
+const pluginWorkerRuntimeSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-worker-runtime/src",
+);
 const pluginWorkflowSrc = path.join(
   monorepoRoot,
   "plugins/plugin-workflow/src",

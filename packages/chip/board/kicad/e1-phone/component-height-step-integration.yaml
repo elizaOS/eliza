@@ -9,8 +9,10 @@ source_artifacts:
   - board/kicad/e1-phone/enclosure-tolerance-stack-closure.yaml
   - board/kicad/e1-phone/route-feasibility-density.yaml
   - board/kicad/e1-phone/evt1-routing-work-package.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+  - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
   - board/kicad/e1-phone/schematic-symbol-footprint-closure.yaml
   - mechanical/e1-phone/review/board-step-readiness.json
   - mechanical/e1-phone/review/routed-board-clearance.json
@@ -30,7 +32,7 @@ compactness_context:
 concept_step_context:
   enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
   step_validation_status: pass
-  validated_step_count: 132
+  validated_step_count: 142
   assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
   assembly_step_imported: true
   assembly_step_bbox_span_mm:
@@ -162,6 +164,74 @@ supplier_geometry_context:
       pass: false
   supplier_to_kicad_status: blocked_supplier_evidence_not_ready_for_kicad_capture
   schematic_symbol_footprint_status: blocked_requires_real_kicad_symbols_supplier_footprints_and_erc
+selected_supplier_response_height_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_provide_height_and_step_evidence
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_height_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  selected_response_pack_count: 7
+  required_height_evidence_fields:
+    - signed_2d_drawing_path
+    - recommended_land_pattern_path
+    - step_or_brep_model_path
+    - enclosure_datums_and_keepouts_path
+    - sample_lot_tracking
+  affected_height_models:
+    - usb_c_receptacle
+    - display_fpc_connector
+    - rear_camera_module
+    - front_camera_module
+    - soc_shield_can
+    - pmic_shield_can
+    - radio_shield_can
+  all_selected_supplier_response_packs_absent: true
+  height_or_step_release_allowed_without_selected_supplier_packs: false
+alternate_display_height_step_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
+    - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
+    - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  status: blocked_until_alternate_display_supplier_step_connector_touch_stack_and_promotion_review_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_height_models:
+        - display_lcm
+        - display_fpc_connector
+        - display_fpc_tail
+        - display_cover_lens_stack
+      required_before_height_or_step_release:
+        - signed 2D drawing with FPC exit, pin-1 datum, cover-lens datum, stiffener, and mated connector height
+        - exact 40-pin FPC pinout, mating connector MPN, recommended land pattern, and STEP/B-rep models
+        - panel initialization, touch configuration, backlight/bias limits, sample inspection, and promotion review
+        - routed board STEP clearance rerun against selected enclosure before any branch release
+      height_or_step_release_allowed: false
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_height_models:
+        - amoled_stack
+        - amoled_fpc_connector
+        - amoled_fpc_tail
+        - amoled_touch_stack
+      required_before_height_or_step_release:
+        - signed 2D drawing with AMOLED outline, FPC exit, active-area datum, touch-stack datum, and mated connector height
+        - exact AMOLED FPC pinout, mating connector MPN, recommended land pattern, and STEP/B-rep models
+        - RM67191 power sequence, GT1151 touch configuration, burn-in/luminance data, sample inspection, and promotion review
+        - routed board STEP clearance rerun against selected enclosure before any branch release
+      height_or_step_release_allowed: false
 height_critical_models:
   - model: usb_c_receptacle
     concept_step_available: true
@@ -390,6 +460,8 @@ required_release_outputs:
   - mechanical/e1-phone/review/step-validation.json
   - mechanical/e1-phone/review/full-cad-boolean-interference.json
 release_blockers:
+  - selected supplier response packs with height, land-pattern, and STEP/B-rep evidence for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter height or STEP release until supplier STEP/B-rep, connector, touch/power, sample, promotion review, and routed-clearance evidence exist
   - supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling
     are missing
   - routed KiCad board STEP with component 3D models is missing

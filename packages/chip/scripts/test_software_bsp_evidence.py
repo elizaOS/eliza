@@ -103,10 +103,10 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("missing docs/evidence/buildroot/eliza_e1_defconfig.log", result.stdout)
-        self.assertIn("aosp BSP external evidence blocked", result.stdout)
-        self.assertIn("missing docs/evidence/linux/opensbi_eliza_build.log", result.stdout)
-        self.assertNotIn("missing docs/evidence/linux/u_boot_eliza_build.log", result.stdout)
+        self.assertIn("aosp BSP external evidence pending", result.stdout)
+        self.assertIn("u-boot BSP external evidence pending", result.stdout)
+        self.assertIn("missing docs/evidence/linux/u_boot_eliza_build.log", result.stdout)
+        self.assertNotIn("BSP BLOCKED:", result.stdout)
 
     def test_require_evidence_fails_closed_on_missing_external_logs(self) -> None:
         result = subprocess.run(
@@ -117,22 +117,22 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         )
 
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("buildroot BSP check failed", result.stdout)
-        self.assertIn("linux BSP check failed", result.stdout)
+        self.assertNotIn("buildroot BSP check failed", result.stdout)
+        self.assertNotIn("linux BSP check failed", result.stdout)
+        self.assertNotIn("opensbi BSP check failed", result.stdout)
+        self.assertIn("u-boot BSP check failed", result.stdout)
         self.assertIn("aosp BSP check failed", result.stdout)
-        self.assertIn("opensbi BSP check failed", result.stdout)
-        self.assertNotIn("u-boot BSP check failed", result.stdout)
 
     def test_status_helper_reports_missing_external_logs(self) -> None:
         result = subprocess.run(
-            [sys.executable, "scripts/check_software_bsp.py", "status", "buildroot"],
+            [sys.executable, "scripts/check_software_bsp.py", "status", "u-boot"],
             cwd=ROOT,
             text=True,
             capture_output=True,
         )
 
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        self.assertIn("[MISSING] Buildroot defconfig transcript", result.stdout)
+        self.assertIn("[MISSING] U-Boot Eliza build transcript", result.stdout)
         self.assertIn("capture:", result.stdout)
         self.assertIn("validate:", result.stdout)
 
@@ -187,6 +187,31 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
         )
         self.assertIn(
             "ELIZA_OPENSBI_HANDOFF_CMD='qemu-system-riscv64 -bios fw_dynamic.bin'",
+            result.stdout,
+        )
+
+    def test_capture_plan_renders_exact_uboot_commands(self) -> None:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "scripts/check_software_bsp.py",
+                "capture-plan",
+                "u-boot",
+                "--u-boot",
+                "/external/u-boot",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(
+            "docs/sw/u-boot/capture-u-boot-evidence.sh /external/u-boot build",
+            result.stdout,
+        )
+        self.assertIn(
+            "docs/sw/u-boot/capture-u-boot-evidence.sh /external/u-boot boot-chain",
             result.stdout,
         )
 

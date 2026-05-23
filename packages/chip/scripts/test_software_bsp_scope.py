@@ -45,12 +45,13 @@ def test_release_claim_flip_fails() -> None:
     print("PASS release-claim flip rejected")
 
 
-def test_target_evidence_pass_fails_until_external_logs_exist() -> None:
+def test_all_target_evidence_pass_fails_until_release_claim_allows_it() -> None:
     report = check_software_bsp_scope.build_report()
     mutated = copy.deepcopy(report)
-    mutated["targets"][0]["evidence_status"] = "PASS"
-    expect_error(mutated, "must remain blocked")
-    print("PASS target evidence pass rejected")
+    for target in mutated["targets"]:
+        target["evidence_status"] = "PASS"
+    expect_error(mutated, "must not all pass")
+    print("PASS all-target evidence pass rejected while release claim is false")
 
 
 def test_blocker_removal_fails() -> None:
@@ -61,12 +62,28 @@ def test_blocker_removal_fails() -> None:
     print("PASS blocker removal rejected")
 
 
-def test_failed_structural_check_fails() -> None:
+def test_structured_findings_cover_external_evidence_gaps() -> None:
+    report = check_software_bsp_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("software BSP scope report must expose structured findings")
+    prefixes = {
+        "software_bsp_missing_evidence_",
+        "software_bsp_invalid_evidence_",
+        "software_bsp_error_",
+        "software_bsp_scaffold_not_pass_",
+    }
+    if not any(any(str(item.get("code", "")).startswith(prefix) for prefix in prefixes) for item in findings):
+        raise AssertionError(f"software BSP findings must include target blockers: {findings}")
+    print("PASS structured software BSP findings cover external evidence gaps")
+
+
+def test_unstructured_check_status_fails() -> None:
     report = check_software_bsp_scope.build_report()
     mutated = copy.deepcopy(report)
-    mutated["checks"][0]["status"] = "fail"
-    expect_error(mutated, "structural scope check")
-    print("PASS structural check failure rejected")
+    mutated["checks"][0]["status"] = "maybe"
+    expect_error(mutated, "status must be pass or fail")
+    print("PASS unstructured check status rejected")
 
 
 def test_scaffold_removal_fails() -> None:
@@ -81,9 +98,10 @@ def main() -> None:
     test_valid_report_passes()
     test_claim_boundary_drift_fails()
     test_release_claim_flip_fails()
-    test_target_evidence_pass_fails_until_external_logs_exist()
+    test_all_target_evidence_pass_fails_until_release_claim_allows_it()
     test_blocker_removal_fails()
-    test_failed_structural_check_fails()
+    test_structured_findings_cover_external_evidence_gaps()
+    test_unstructured_check_status_fails()
     test_scaffold_removal_fails()
 
 

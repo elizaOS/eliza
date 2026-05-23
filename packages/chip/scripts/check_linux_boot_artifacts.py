@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -16,6 +17,23 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/evidence/linux/eliza-linux-boot-artifacts.json"
 LOCATOR = ROOT / "scripts/locate_chipyard_linux_payload.py"
 REPORT = ROOT / "build/reports/linux_boot_artifacts.json"
+SERIAL_ARTIFACT_ID = "serial_boot_log"
+SERIAL_BOOT_MARKERS = [
+    "OpenSBI",
+    "Linux version",
+    "Kernel command line:",
+]
+SERIAL_BOOT_INIT_MARKERS = [
+    "Run /init as init process",
+    "Freeing unused kernel memory",
+    "Welcome to",
+    "login:",
+]
+SERIAL_EVIDENCE_MARKERS = [
+    "eliza-evidence: target=linux artifact=eliza_e1_serial_boot",
+    "eliza-evidence: claim_boundary=generated_chipyard_ap_serial_boot_transcript_only_not_silicon_or_board_evidence",
+    "eliza-evidence: status=PASS",
+]
 
 
 def rel(path: Path) -> str:
@@ -159,6 +177,141 @@ def artifact_status(spec: dict[str, Any], forbidden: list[str]) -> dict[str, Any
     return status
 
 
+def local_serial_candidate_transcripts() -> list[dict[str, Any]]:
+    """Report nearby real boot transcripts without letting them substitute evidence.
+
+    The Linux boot-artifact gate requires a generated-AP serial evidence wrapper.
+    Other local OpenSBI/Linux transcripts are useful debugging context, but they
+    cannot close that artifact unless they carry the exact provenance markers.
+    """
+
+    paths = [
+        *sorted((ROOT / "docs/evidence/cpu_ap").glob("*.transcript")),
+        *sorted((ROOT / "build/reports").glob("linux_boot_cva6*.sim.log")),
+        *sorted((ROOT / "build/reports").glob("opensbi_cva6_boot*.sim.log")),
+    ]
+    seen: set[Path] = set()
+    candidates: list[dict[str, Any]] = []
+    for path in paths:
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        has_boot_markers = all(marker in text for marker in SERIAL_BOOT_MARKERS)
+        has_init_marker = any(marker in text for marker in SERIAL_BOOT_INIT_MARKERS)
+        has_evidence_wrapper = all(marker in text for marker in SERIAL_EVIDENCE_MARKERS)
+        if not (has_boot_markers or "OpenSBI" in text):
+            continue
+        digest = hashlib.sha256(text.encode("utf-8", errors="replace")).hexdigest()
+        candidates.append(
+            {
+                "path": rel(path),
+                "bytes": path.stat().st_size,
+                "sha256": digest,
+                "has_opensbi": "OpenSBI" in text,
+                "has_linux_version": "Linux version" in text,
+                "has_kernel_command_line": "Kernel command line:" in text,
+                "has_init_or_login_marker": has_init_marker,
+                "has_generated_ap_serial_evidence_wrapper": has_evidence_wrapper,
+                "satisfies_serial_boot_artifact": has_boot_markers
+                and has_init_marker
+                and has_evidence_wrapper,
+                "non_substitution_reason": (
+                    ""
+                    if has_boot_markers and has_init_marker and has_evidence_wrapper
+                    else "local transcript is debugging evidence only; it lacks the exact generated-AP serial evidence provenance required by docs/evidence/linux/eliza-linux-boot-artifacts.json"
+                ),
+            }
+        )
+    candidates.sort(
+        key=lambda item: (
+            not bool(item["satisfies_serial_boot_artifact"]),
+            not bool(item["has_linux_version"]),
+            not bool(item["has_init_or_login_marker"]),
+            str(item["path"]),
+        )
+    )
+    return candidates[:8]
+
+
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
+def structured_findings(
+    preflight: list[dict[str, Any]],
+    payload_locator: dict[str, Any],
+    artifacts: list[dict[str, Any]],
+    local_serial_candidates: list[dict[str, Any]] | None = None,
+) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for item in preflight:
+        if item.get("state") == "pass":
+            continue
+        for problem in item.get("problems", []):
+            text = str(problem)
+            ident = str(item.get("id", "preflight"))
+            findings.append(
+                {
+                    "code": f"linux_boot_preflight_{code_from_text(ident + '_' + text, 'blocked')}",
+                    "severity": "blocker",
+                    "message": text,
+                    "evidence": ident,
+                    "next_step": "Install the required tool or set the required external checkout path before collecting Linux boot artifacts.",
+                }
+            )
+    if payload_locator.get("state") != "pass":
+        for problem in payload_locator.get("problems", []):
+            text = str(problem)
+            findings.append(
+                {
+                    "code": f"linux_boot_payload_{code_from_text(text, 'blocked')}",
+                    "severity": "blocker",
+                    "message": text,
+                    "evidence": str(payload_locator.get("report", "")),
+                    "next_step": "Run python3 scripts/locate_chipyard_linux_payload.py --require-preferred and use the selected payload for the generated-AP Linux smoke.",
+                }
+            )
+    for item in artifacts:
+        state = str(item.get("state", ""))
+        if state == "pass":
+            continue
+        ident = str(item.get("id", "artifact"))
+        if state == "missing":
+            candidate_note = ""
+            if ident == SERIAL_ARTIFACT_ID and local_serial_candidates:
+                candidate_paths = ", ".join(
+                    str(item.get("path", "")) for item in local_serial_candidates[:4]
+                )
+                candidate_note = (
+                    f"; local non-substitutable boot transcript candidates: {candidate_paths}"
+                )
+            findings.append(
+                {
+                    "code": f"linux_boot_artifact_missing_{code_from_text(ident, 'artifact')}",
+                    "severity": "blocker",
+                    "message": f"required Linux boot artifact {ident} is missing{candidate_note}",
+                    "evidence": str(item.get("path", "")),
+                    "next_step": str(item.get("unblock_command") or item.get("producer") or ""),
+                }
+            )
+        for problem in item.get("problems", []):
+            text = str(problem)
+            findings.append(
+                {
+                    "code": f"linux_boot_artifact_invalid_{code_from_text(ident + '_' + text, 'artifact')}",
+                    "severity": "blocker" if state == "blocked" else "fail",
+                    "message": text,
+                    "evidence": str(item.get("path", "")),
+                    "next_step": str(item.get("unblock_command") or item.get("producer") or ""),
+                }
+            )
+    return findings
+
+
 def build_report() -> dict[str, Any]:
     manifest = load_manifest()
     forbidden = [str(item) for item in manifest.get("forbidden_strings", [])]
@@ -166,6 +319,7 @@ def build_report() -> dict[str, Any]:
         preflight_status(spec) for spec in manifest.get("preflight", []) if isinstance(spec, dict)
     ]
     payload_locator = payload_locator_status()
+    local_serial_candidates = local_serial_candidate_transcripts()
     artifacts = [
         artifact_status(spec, forbidden)
         for spec in manifest.get("artifacts", [])
@@ -181,13 +335,16 @@ def build_report() -> dict[str, Any]:
         state = "BLOCKED"
     else:
         state = "PASS"
+    findings = structured_findings(preflight, payload_locator, artifacts, local_serial_candidates)
     return {
         "schema": "eliza.linux_boot_artifacts.status.v1",
         "manifest": rel(MANIFEST),
         "claim_boundary": manifest.get("claim_boundary"),
         "status": state,
+        "findings": findings,
         "preflight": preflight,
         "payload_locator": payload_locator,
+        "local_serial_candidate_transcripts": local_serial_candidates,
         "command_plan": manifest.get("command_plan", []),
         "artifacts": artifacts,
     }
@@ -209,6 +366,17 @@ def print_text(report: dict[str, Any]) -> None:
         print(f"    selected_payload: {payload['selected_payload']}")
     for problem in payload.get("problems", []):
         print(f"    problem: {problem}")
+    if report.get("local_serial_candidate_transcripts"):
+        print("  local_serial_candidate_transcripts:")
+        for item in report["local_serial_candidate_transcripts"]:
+            print(
+                "    - "
+                + str(item["path"])
+                + " "
+                + ("[serial-artifact-ok]" if item["satisfies_serial_boot_artifact"] else "[debug-only]")
+            )
+            if item.get("non_substitution_reason"):
+                print(f"      reason: {item['non_substitution_reason']}")
     if report.get("command_plan"):
         print("  command_plan:")
         for command in report["command_plan"]:

@@ -1,0 +1,35 @@
+schema: eliza.e1_phone_supplier_response_pack_intake_template.v1
+status: outbound_template_not_supplier_evidence
+date: 2026-05-22
+lane: split_interconnect
+maps_to_gap_map_function: top_bottom_interconnect
+selected_hardware: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+package_binding: package/interconnect/e1-phone-top-bottom-flex.yaml
+expected_return_archive: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/rfq-response-pack.yaml
+required_supplier_returns:
+  - exact mating connector or flex-stack MPNs, signed drawings, circuit count, stack height, retention, and assembly process
+  - full top/bottom/flex pinout, FPC stackup, ground-return allocation, impedance targets, bend radius, bend life, and strain relief
+  - connector land patterns, keepouts, mated height, insertion path, retention, cycle rating, current rating, and temperature rise data
+  - STEP or B-rep model for both mating connectors, stiffeners, flex, mated pair, insertion path, and split-board clearance envelope
+  - continuity, USB2/audio SI, power drop, and factory inspection recommendations
+intake_fields:
+  supplier_legal_name: ""
+  supplier_contact: ""
+  orderable_mpn: ""
+  quote_quantities: [10, 100, 1000]
+  sample_lot_quantity: 5
+  signed_2d_drawing_path: ""
+  pinout_or_pad_map_path: ""
+  recommended_land_pattern_path: ""
+  step_or_brep_model_path: ""
+  lifecycle_stock_quote_path: ""
+  sample_lot_tracking_path: ""
+  incoming_inspection_path: ""
+release_flags:
+  supplier_response_received: false
+  signed_drawing_received: false
+  kicad_capture_allowed: false
+  route_release_allowed: false
+  enclosure_release_allowed: false
+  fabrication_release_allowed: false
+  end_to_end_phone_release_allowed: false

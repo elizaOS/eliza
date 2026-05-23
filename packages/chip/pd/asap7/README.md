@@ -126,7 +126,7 @@ mirrors the per-domain leaf shape needed for advanced-node area projection:
 - **`big_core_shell`** — `e1_cpu_subsystem_stub`, the self-contained
   32x64-bit RV64I subset in-order microcontroller stub (decoder + ALU +
   architectural RF + AXI4-Lite master FSM). Substitutes for the
-  Ascalon / Kunminghu / CVA6 big-core RTL until those land.
+  Kunminghu / CVA6 big-core RTL until those land.
 - **`slc_slice`** — shrunk `e1_slc` (2 KiB, 2-way, 2 banks, 64 B line)
   covering the cache lookup/install FSM, BDI compression form classifier,
   QoS-aware victim selection, and display-RT reservation counter.

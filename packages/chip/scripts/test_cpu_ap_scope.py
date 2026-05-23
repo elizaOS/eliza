@@ -60,6 +60,16 @@ def test_missing_transcript_blocker_removal_fails() -> None:
     print("PASS missing-transcript blocker removal rejected")
 
 
+def test_structured_findings_cover_missing_transcripts() -> None:
+    report = check_cpu_ap_scope.build_report()
+    findings = report.get("findings", [])
+    if not findings:
+        raise AssertionError("CPU/AP scope report must expose structured findings")
+    if not any(str(item.get("code", "")).startswith("cpu_ap_missing_transcript_") for item in findings):
+        raise AssertionError(f"CPU/AP scope findings must include missing transcripts: {findings}")
+    print("PASS structured CPU/AP findings cover missing transcripts")
+
+
 def test_failed_structural_check_fails() -> None:
     report = check_cpu_ap_scope.build_report()
     mutated = copy.deepcopy(report)
@@ -82,6 +92,7 @@ def main() -> None:
     test_release_claim_flip_fails()
     test_completion_claim_flip_fails()
     test_missing_transcript_blocker_removal_fails()
+    test_structured_findings_cover_missing_transcripts()
     test_failed_structural_check_fails()
     test_scaffold_removal_fails()
 

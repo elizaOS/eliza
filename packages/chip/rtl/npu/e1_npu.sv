@@ -27,6 +27,32 @@ module e1_npu (
     output logic        m_axil_rready,
     input  logic [31:0] m_axil_rdata,
     input  logic [1:0]  m_axil_rresp
+`ifdef E1_NPU_SECURE_SIDEBAND
+    ,
+    // The port group is `ifdef`-guarded (mirroring USE_POWER_PINS in
+    // e1_npu_weight_buffer_array.sv) so the secure-I/O integration RTL, the
+    // confidential-I/O cocotb test, and the npu-accelerator gate opt in by
+    // defining E1_NPU_SECURE_SIDEBAND, while the current e1_soc_top
+    // instantiation — not yet re-homed onto an IOMMU upstream port (the open
+    // RTL item in S6.x) — keeps a valid pin list with these ports absent.
+    // Confidential-I/O sideband (docs/security/tee-plan/03-secure-io-iommu-npu.md
+    // S4.2.3). Every NPU DRAM access carries a stable per-master source ID and
+    // the owning confidential-domain ID out-of-band so the RISC-V IOMMU
+    // (rtl/iommu/e1_riscv_iommu.sv ar_devid/aw_devid) and the IOPMP
+    // (rtl/iommu/e1_iopmp.sv source-ID-gated R/W/X table) can police it. The
+    // source ID is a fixed hardware constant; the domain ID is the monitor-
+    // programmed current owner. These are the SAME constant on AR and AW
+    // because a single master issues both.
+    output logic [23:0] m_axil_arsource,   // -> IOMMU ar_devid
+    output logic [23:0] m_axil_awsource,   // -> IOMMU aw_devid
+    output logic [19:0] m_axil_ardomain,   // -> IOMMU ar_pasid (owning domain)
+    output logic [19:0] m_axil_awdomain,   // -> IOMMU aw_pasid
+    output logic        m_axil_secure,     // -> IOPMP secure-transaction qualifier
+    // Current ownership state for the confidential-domain monitor / IOMMU DC
+    // installer to observe (S4.3 ownership state machine).
+    output logic [19:0] npu_owner_domain,
+    output logic        npu_owned
+`endif
 );
     localparam logic [3:0] OP_ADD      = 4'h0;
     localparam logic [3:0] OP_SUB      = 4'h1;
@@ -44,6 +70,13 @@ module e1_npu (
     localparam logic [3:0] OP_DOT16_S2 = 4'hd;
     localparam logic [3:0] OP_DOT4_FP8_E4M3 = 4'he;
     localparam logic [3:0] OP_EXP2_NEG_Q0_8 = 4'hf;
+
+    // Fixed hardware source ID for the NPU master. The confidential-domain
+    // monitor binds this ID to a device context (DC) in the IOMMU DDT and to a
+    // locked IOPMP region set (docs/security/tee-plan/03-secure-io-iommu-npu.md
+    // S1.2, S4.2.3). It is a build-time constant so the IOMMU/IOPMP policy can
+    // reference it independent of the descriptor contents the host programs.
+    localparam logic [23:0] NPU_SOURCE_ID = 24'h00_0004;
 
     localparam int unsigned SCRATCH_WORDS = 16;
     localparam int unsigned DESC_WORDS = 4;
@@ -134,6 +167,23 @@ module e1_npu (
     logic [2:0]  desc_tail_next;
     logic        gemm_busy;
     logic        vec_busy;
+
+    // Confidential-I/O ownership + perf-counter lockdown state
+    // (docs/security/tee-plan/03-secure-io-iommu-npu.md S4.2.2/4.2.5/4.3).
+    //   sec_owned       : NPU assigned to a confidential domain (owned-private).
+    //   sec_owner       : 20-bit owning domain ID (monitor-programmed).
+    //   sec_lock        : sticky monitor-programming lock; once set, the owner/
+    //                     domain and perf-lock policy cannot be changed by the
+    //                     host until reset (revoke happens only on reset/scrub).
+    //   sec_perf_lock   : when owned-private, PERF_* register reads return 0 to
+    //                     the host register port so inference timing/MAC counts
+    //                     are not a side channel; the monitor reads counters via
+    //                     a privileged path that is out of scope for this MMIO.
+    logic        sec_owned;
+    logic [19:0] sec_owner;
+    logic        sec_lock;
+    logic        sec_perf_lock;
+    logic        perf_hidden;
 
     logic [7:0] gemm_a_addr;
     logic [7:0] gemm_b_addr;
@@ -366,6 +416,28 @@ module e1_npu (
     endfunction
 
     assign irq = status[1];
+
+    // Confidential-I/O sideband: every outbound NPU AXI access is tagged with
+    // the fixed source ID and the active owning-domain ID, and marked secure
+    // when the NPU is owned-private. The IOMMU/IOPMP consume these to confine
+    // descriptor/tensor traffic to the owner's device-assigned private pages.
+`ifdef E1_NPU_SECURE_SIDEBAND
+    // Active owning-domain tag carried on every outbound access; 0 when unowned.
+    logic [19:0] active_domain;
+    assign active_domain   = sec_owned ? sec_owner : 20'h0;
+    assign m_axil_arsource = NPU_SOURCE_ID;
+    assign m_axil_awsource = NPU_SOURCE_ID;
+    assign m_axil_ardomain = active_domain;
+    assign m_axil_awdomain = active_domain;
+    assign m_axil_secure   = sec_owned;
+    assign npu_owner_domain = sec_owner;
+    assign npu_owned        = sec_owned;
+`endif
+
+    // Perf-counter lockdown: hide PERF_* from the host register port when the
+    // NPU is owned-private and the monitor has armed the perf lock.
+    assign perf_hidden = sec_owned && sec_perf_lock;
+
     assign desc_pending = desc_head - desc_tail;
     assign desc_opcode = desc_words[0][3:0];
     assign desc_valid = desc_words[0][31];
@@ -583,6 +655,13 @@ module e1_npu (
             desc_write_done <= 6'h0;
             gemm_busy <= 1'b0;
             vec_busy <= 1'b0;
+            // Reset is the revoke/scrub point (S4.3): NPU returns to unowned,
+            // owner/domain cleared, and the monitor-programming lock drops so a
+            // fresh measured launch can reprogram ownership.
+            sec_owned <= 1'b0;
+            sec_owner <= 20'h0;
+            sec_lock <= 1'b0;
+            sec_perf_lock <= 1'b0;
             for (int desc_idx = 0; desc_idx < DESC_WORDS; desc_idx++) begin
                 desc_words[desc_idx] <= 32'h0;
             end
@@ -909,6 +988,26 @@ module e1_npu (
                         gemm_c_stride <= wdata[19:16];
                     end
                     6'h0c: cmd_param <= wdata;
+                    // SEC_OWNER_CFG (monitor-only): assign/clear the owning
+                    // confidential domain and the perf-lock policy. Writable
+                    // ONLY while sec_lock is clear (the monitor-programming
+                    // window before the platform is released to a domain); once
+                    // locked the host cannot self-authorize ownership.
+                    6'h0d: begin
+                        if (!sec_lock) begin
+                            sec_owner <= wdata[19:0];
+                            sec_owned <= wdata[31];
+                            sec_perf_lock <= wdata[30];
+                        end
+                    end
+                    // SEC_LOCK (monitor-only): W1S sticky lock that freezes the
+                    // ownership/perf-lock policy until reset (the only revoke
+                    // path, per S4.3).
+                    6'h0e: begin
+                        if (wdata[0]) begin
+                            sec_lock <= 1'b1;
+                        end
+                    end
                     6'h10: desc_base <= wdata;
                     6'h11: desc_head <= wdata[2:0];
                     6'h12: desc_tail <= wdata[2:0];
@@ -936,7 +1035,19 @@ module e1_npu (
                         if (wdata[0] && busy_count == 3'h0 && !gemm_busy && !vec_busy && !desc_busy) begin
                             if (cmd_param[0]) begin
                                 desc_err_index <= desc_tail;
-                                if (desc_base[1:0] != 2'b00) begin
+                                // Private-queue ownership gate (S4.2.2): when the
+                                // NPU is owned-private and the policy is locked,
+                                // a doorbell must present the owning domain token
+                                // in CMD_PARAM[31:12]; a mismatched/host doorbell
+                                // is denied with OWNER_ERROR and never starts a
+                                // descriptor fetch.
+                                if (sec_owned && sec_lock &&
+                                    (cmd_param[31:12] != sec_owner)) begin
+                                    desc_status <= 32'h0000_0040;
+                                    status <= 32'h0000_0006;
+                                    perf_errors <= perf_errors + 32'd1;
+                                    perf_unsupported_ops <= perf_unsupported_ops + 32'd1;
+                                end else if (desc_base[1:0] != 2'b00) begin
                                     desc_status <= 32'h0000_0004;
                                     status <= 32'h0000_0006;
                                     perf_errors <= perf_errors + 32'd1;
@@ -1037,24 +1148,36 @@ module e1_npu (
             6'h08: rdata = {13'h0, gemm_k, 6'h0, gemm_n, 2'h0, vec_len};
             6'h09: rdata = {10'h0, gemm_c_base, 2'h0, vec_dst_base, 2'h0, vec_src_base};
             6'h0a: rdata = {12'h0, gemm_c_stride, 4'h0, gemm_b_stride, 4'h0, gemm_a_stride};
-            6'h0b: rdata = perf_unsupported_ops;
+            6'h0b: rdata = perf_hidden ? 32'h0 : perf_unsupported_ops;
             6'h0c: rdata = cmd_param;
+            // SEC_STATUS (read-only): ownership + lockdown observability for the
+            // monitor / IOMMU DC installer. Source ID is exposed read-only so
+            // platform bring-up can confirm the constant the IOMMU/IOPMP policy
+            // binds. Not gated by perf_hidden (it is policy state, not a timing
+            // side channel).
+            6'h0f: rdata = {NPU_SOURCE_ID,
+                            4'h0,
+                            sec_lock, sec_perf_lock, perf_hidden, sec_owned};
+            6'h0d: rdata = {sec_owned, sec_perf_lock, 10'h0, sec_owner};
             6'h10: rdata = desc_base;
             6'h11: rdata = {29'h0, desc_head};
             6'h12: rdata = {29'h0, desc_tail};
             6'h13: rdata = desc_status | {10'h0, desc_pending, 7'h0, desc_err_index, desc_busy, 8'h0};
-            6'h14: rdata = perf_cycles;
-            6'h15: rdata = perf_macs;
-            6'h16: rdata = perf_ops;
-            6'h17: rdata = perf_errors;
-            6'h18: rdata = desc_timeout_count;
-            6'h19: rdata = desc_bytes_read;
-            6'h1a: rdata = desc_bytes_written;
-            6'h1b: rdata = desc_read_beats;
-            6'h1c: rdata = desc_write_beats;
-            6'h1d: rdata = perf_stall_cycles;
-            6'h1e: rdata = perf_scratch_bytes;
-            6'h1f: rdata = perf_thermal_throttle;
+            // PERF_* counters are the inference timing/MAC-count side channel
+            // (S4.2.5). When the NPU is owned-private with the perf lock armed,
+            // host reads return 0; the monitor reads them out of band.
+            6'h14: rdata = perf_hidden ? 32'h0 : perf_cycles;
+            6'h15: rdata = perf_hidden ? 32'h0 : perf_macs;
+            6'h16: rdata = perf_hidden ? 32'h0 : perf_ops;
+            6'h17: rdata = perf_hidden ? 32'h0 : perf_errors;
+            6'h18: rdata = perf_hidden ? 32'h0 : desc_timeout_count;
+            6'h19: rdata = perf_hidden ? 32'h0 : desc_bytes_read;
+            6'h1a: rdata = perf_hidden ? 32'h0 : desc_bytes_written;
+            6'h1b: rdata = perf_hidden ? 32'h0 : desc_read_beats;
+            6'h1c: rdata = perf_hidden ? 32'h0 : desc_write_beats;
+            6'h1d: rdata = perf_hidden ? 32'h0 : perf_stall_cycles;
+            6'h1e: rdata = perf_hidden ? 32'h0 : perf_scratch_bytes;
+            6'h1f: rdata = perf_hidden ? 32'h0 : perf_thermal_throttle;
             6'h20: rdata = scratch[0];
             6'h21: rdata = scratch[1];
             6'h22: rdata = scratch[2];

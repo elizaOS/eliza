@@ -2,7 +2,7 @@
 
 Status: rough CAD estimate, not measured hardware mass.
 
-Total estimated mass: 183.28 g
+Total estimated mass: 183.15 g
 
 ## By Role
 
@@ -10,8 +10,11 @@ Total estimated mass: 183.28 g
 - `I/O`: 1.77 g
 - `I/O seal`: 0.02 g
 - `PCB`: 5.45 g
+- `PCB component marker`: 0.0 g
+- `RF feed`: 0.0 g
 - `RF keepout`: 0.0 g
 - `RF tuner`: 0.0 g
+- `Wi-Fi/Bluetooth module`: 0.0 g
 - `audio`: 1.75 g
 - `battery`: 82.63 g
 - `battery support`: 1.04 g
@@ -19,8 +22,9 @@ Total estimated mass: 183.28 g
 - `button seal`: 0.03 g
 - `camera`: 1.03 g
 - `camera aperture`: 0.0 g
-- `camera optical clearance`: 0.14 g
+- `camera optical clearance`: 0.0 g
 - `camera seal`: 0.04 g
+- `cellular module`: 0.0 g
 - `connector`: 0.21 g
 - `haptics`: 0.22 g
 - `molded enclosure`: 23.82 g

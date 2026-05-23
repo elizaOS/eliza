@@ -6,6 +6,7 @@ claim_boundary: Acceptance checklist for the selected display/touch stack and fr
   bring-up, not camera capture evidence, and not enclosure release.
 source_artifacts:
   - board/kicad/e1-phone/display-camera-oem-integration.yaml
+  - board/kicad/e1-phone/display-camera-oem-source-revalidation.yaml
   - board/kicad/e1-phone/supplier-rfq-transmittal-drafts.yaml
   - board/kicad/e1-phone/display-fit.yaml
   - board/kicad/e1-phone/display-envelope-downselect.yaml
@@ -41,7 +42,31 @@ interface_summary:
     - front_camera_module
   connector_pinout_execution_status: blocked_requires_supplier_display_camera_pinouts_connector_mpn_footprints_and_step
   connector_pinout_execution_record_count: 3
+  connector_alternate_display_branch_count: 2
   integration_status: blocked_requires_display_camera_supplier_pack_routed_mipi_and_capture_evidence
+  verified_display_source_count: 5
+  parseable_display_alternate_count: 2
+  parseable_display_alternates:
+    - branch_id: meta_055wu01_40pin
+      source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      marketplace: Alibaba
+      observed_active_area_mm:
+        width: 68.04
+        height: 120.96
+      connector_release_status: blocked_shortlist_only_until_signed_40pin_fpc_pinout_mating_connector_land_pattern_step_and_sample
+    - branch_id: e549_rm67191_amoled
+      source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      marketplace: Made-in-China
+      observed_outline_mm:
+        width: 70.66
+        height: 128.36
+        thickness: 0.82
+      observed_active_area_mm:
+        width: 68.299
+        height: 121.421
+      connector_release_status: blocked_shortlist_only_until_signed_amoled_touch_stack_power_sequence_fpc_pinout_connector_step_and_sample
 supplier_draft_links:
   display_touch: board/kicad/e1-phone/sourcing-drafts/display_touch/rfq-transmittal.yaml
   rear_camera: board/kicad/e1-phone/sourcing-drafts/rear_camera/rfq-transmittal.yaml
@@ -80,6 +105,15 @@ acceptance_items:
       - bias, backlight, reset, TE, and touch I2C power-sequence oscilloscope log
       - display image, touch probe, brightness, and inrush-current bring-up report
     blocker: Display/touch electrical bring-up and power sequencing are not measured.
+  - id: display_alternate_screen_branch_release_gate
+    owner: sourcing_display
+    status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
+    required_evidence:
+      - 055WU01 signed 40-pin FPC pinout, mating connector MPN, land pattern, STEP, panel init data, and sample
+      - E549/RM67191 AMOLED signed FPC pinout, touch stack, power sequence, mating connector, STEP, and sample
+      - side-by-side envelope, thickness, brightness, touch, and connector risk review against CH550FH01A-CT
+      - explicit promotion decision before any alternate display symbol, footprint, or enclosure branch is released
+    blocker: Parseable display alternates are shortlist-only and cannot replace the primary display without supplier packs.
   - id: rear_camera_supplier_pack_and_sample
     owner: sourcing_camera
     status: blocked_missing_supplier_route_bringup_capture_or_clearance_evidence
@@ -130,10 +164,13 @@ cross_checks:
   camera_clock_pairs_tracked: true
   height_models_include_display_and_cameras: true
   connector_pinout_execution_fail_closed: true
+  display_alternate_sources_tracked_fail_closed: true
+  connector_alternate_branches_match_integration: true
   release_outputs_fail_closed: true
   all_acceptance_items_blocked: true
 release_blockers:
   - Display/touch and camera supplier drawings, pinouts, connector land patterns, STEP models, and samples missing
+  - Parseable 055WU01 and E549/RM67191 display alternates require signed supplier packs, samples, and promotion review before use
   - Display/camera connector pinout execution package is blocked until supplier pinouts and connector MPNs arrive
   - Routed MIPI DSI/CSI length-skew, impedance, return-path, and DRC/SI evidence missing
   - Display touch bring-up, camera capture, image-quality, and calibration evidence missing

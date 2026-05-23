@@ -86,3 +86,11 @@ external/busybox/
 build/sim/tier2/Image
 build/sim/tier2/busybox
 build/sim/tier2/rootfs/
+
+# --- close build-artifact gaps (nested verilator sim_build, OpenRAM macro build, big reports) ---
+sim_build_*/
+**/sim_build_*/
+*.gch
+*.magic_drc.report
+pd/macros/**/build/
+**/build/

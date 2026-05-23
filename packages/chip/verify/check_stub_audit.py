@@ -20,12 +20,15 @@ REPORT = ROOT / "build/reports/stub_audit.json"
 OWNED_ROOTS = (ROOT / "rtl", ROOT / "sim", ROOT / "verify")
 SKIP_PARTS = {
     "__pycache__",
-    "sim_build_e1_chip_top_test_e1_chip.EkHwvK",
-    "sim_build",
     "model",
     "engine_0",
     "src",
 }
+# Verilator/cocotb generate build trees under sim_build* directories. They are
+# gitignored, contain only generated C++/object output, and surface vendored
+# submodule signal names (e.g. an OpenTitan entropy_src node literally named
+# "Stub") that are not Worker-A-authored placeholders.
+SKIP_DIR_PREFIXES = ("sim_build", "obj_dir")
 SKIP_SUFFIXES = {".pyc", ".sqlite", ".log", ".xml"}
 TERMS = re.compile(
     r"\b(stub|placeholder|TODO|FIXME|not implemented|dummy|mock|scaffold)\b", re.IGNORECASE
@@ -79,19 +82,9 @@ ALLOWLIST = (
         "QEMU README documents the compatibility alias while the preferred path is firmware.",
     ),
     AllowedFinding(
-        "verify/cocotb/test_clint_timer_irq.py",
-        "CLINT timer interrupt entry contract scaffold",
-        "Skipped fail-closed test contract for future CLINT integration.",
-    ),
-    AllowedFinding(
-        "verify/cocotb/test_plic_claim_threshold.py",
-        "PLIC enable/threshold/claim contract scaffold",
-        "Executable PLIC contract test plus documented future threshold extension.",
-    ),
-    AllowedFinding(
         "rtl/cpu/e1_cva6_wrapper.sv",
-        "same external port list as the stub",
-        "CVA6 wrapper documents compatibility with the executable tiny CPU model.",
+        "stub it is quiescent",
+        "RVFI surface is tied quiescent in CVA6-disabled mode (cpu:cpu-real-core-integration).",
     ),
     AllowedFinding(
         "rtl/cpu/e1_cva6_wrapper.sv",
@@ -159,14 +152,16 @@ ALLOWLIST = (
         "AXI4 interconnect currently preserves the existing AXI-Lite scaffold boundary.",
     ),
     AllowedFinding(
-        "rtl/iommu/e1_riscv_iommu.sv",
-        "stub",
-        "RISC-V IOMMU model is a bounded verification implementation.",
+        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+        "earlier scaffold",
+        "Header notes the real AXI4 controller replaced the SRAM scaffold; LPDDR5X PHY "
+        "remains a physical dependency (dram:dram-controller-and-capacity).",
     ),
     AllowedFinding(
-        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
-        "stub",
-        "DRAM controller is a DFI-facing scaffold with blocked production memory evidence.",
+        "rtl/peripherals/e1_uart_ns16550.sv",
+        "intentionally not implemented",
+        "NS16550 is the register-level console-sink subset OpenSBI's uart8250 driver needs; "
+        "the wire-level 8N1 serializer lives in e1_uart.sv (bootrom:bootrom-firmware-handoff).",
     ),
     AllowedFinding(
         "rtl/top/e1_soc_integrated.sv",
@@ -182,11 +177,6 @@ ALLOWLIST = (
         "rtl/peripherals/e1_clint.sv",
         "scaffold",
         "Bring-up CLINT register block extracted from both SoC tops' v0 MMIO debug scaffold.",
-    ),
-    AllowedFinding(
-        "rtl/peripherals/e1_mmio_decode.sv",
-        "scaffold",
-        "Shared MMIO address decode extracted from both SoC tops' v0 MMIO debug scaffold.",
     ),
     AllowedFinding(
         "rtl/memory/e1_behavioral_dram.sv",
@@ -219,11 +209,6 @@ ALLOWLIST = (
         "CPU cocotb README documents tests that remain blocked on a real core.",
     ),
     AllowedFinding(
-        "verify/cocotb/cpu/README.md",
-        "placeholder",
-        "CPU cocotb README documents tests that remain blocked on a real core.",
-    ),
-    AllowedFinding(
         "verify/cocotb/cpu/test_csr_trap.py",
         "stub",
         "CSR trap test is explicitly fail-closed until a real CPU wrapper is present.",
@@ -242,11 +227,6 @@ ALLOWLIST = (
         "verify/cocotb/integration/test_cross_domain_interfaces.py",
         "scaffold",
         "Cross-domain integration tests name the current AXI-Lite scaffold boundary.",
-    ),
-    AllowedFinding(
-        "verify/cocotb/integration/test_cross_domain_interfaces.py",
-        "stub",
-        "Cross-domain integration tests name the current safe-idle CPU fallback.",
     ),
     AllowedFinding(
         "verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py",
@@ -284,6 +264,8 @@ def iter_files() -> list[Path]:
             if path == ROOT / "verify/rtl_gap_work_order.yaml":
                 continue
             if any(part in SKIP_PARTS for part in path.parts):
+                continue
+            if any(part.startswith(SKIP_DIR_PREFIXES) for part in path.parts):
                 continue
             if path.suffix in SKIP_SUFFIXES:
                 continue

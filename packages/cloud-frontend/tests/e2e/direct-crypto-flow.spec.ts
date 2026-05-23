@@ -289,6 +289,16 @@ test("/bsc renders the promo purchase state from direct wallet config", async ({
     page.getByRole("button", { name: /Pay and add credits/i }),
   ).toBeEnabled();
 
+  // SIWE users with a verified account wallet but no live wagmi connection
+  // get the Connect modal auto-opened so they don't have to hunt for a
+  // tiny button. Dismiss it, then verify clicking Pay without a connected
+  // wallet surfaces the "Connect your BSC wallet first" toast.
+  const connectModal = page.getByRole("dialog", { name: /Connect/i });
+  if (await connectModal.isVisible().catch(() => false)) {
+    await page.keyboard.press("Escape");
+    await expect(connectModal).toBeHidden();
+  }
+
   await page.getByRole("button", { name: /Pay and add credits/i }).click();
   await expect(page.getByText("Connect your BSC wallet first.")).toBeVisible();
   expect(mocks.createPaymentCalls()).toBe(0);
@@ -451,7 +461,10 @@ test("Login with Ethereum (SIWE) excludes Phantom from the injected-provider pat
   await page.goto("/login");
 
   // The Ethereum SIWE button is present.
-  const ethereumButton = page.getByRole("button", { name: /^Ethereum$/i });
+  // The EVM SIWE button covers Ethereum + Base + BSC. Label is "EVM"
+  // rather than "Ethereum" since clicking it can SIWE-sign against any of
+  // those chains, but the Phantom-exclusion logic is the same as before.
+  const ethereumButton = page.getByRole("button", { name: /^EVM$/i });
   await expect(ethereumButton).toBeVisible();
 
   // Clicking it must not trigger Phantom's eth_requestAccounts. We don't

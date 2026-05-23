@@ -15,6 +15,7 @@ source_artifacts:
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
   - board/kicad/e1-phone/pcb-implementation-audit.yaml
+  - board/kicad/e1-phone/component-height-step-integration.yaml
   - board/kicad/e1-phone/routed-board-step-export-contract.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
   - board/kicad/e1-phone/manufacturing-closure.yaml
@@ -23,6 +24,7 @@ source_artifacts:
   - board/kicad/e1-phone/board-optimization-scorecard.yaml
   - board/kicad/e1-phone/layout-optimization-execution.yaml
   - board/kicad/e1-phone/post-route-validation-binding.yaml
+  - board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
 
 upstream_status:
   schematic_capture_readiness: blocked_schematic_capture_requires_real_symbols_supplier_pinouts_footprints_erc_and_trial_route
@@ -37,6 +39,7 @@ upstream_status:
   board_optimization_scorecard: blocked_concept_optimized_but_not_routed_or_enclosure_ready
   layout_optimization_execution: blocked_concept_layout_optimized_requires_supplier_footprints_trial_route_measurements_and_routed_step
   post_route_validation_binding: blocked_post_route_validation_requires_routed_drc_si_pi_rf_power_factory_and_enclosure_evidence
+  supplier_rfq_response_normalization: blocked_response_normalization_ready_no_supplier_responses_received
 
 current_live_layout_state:
   board_revision: EVT0-concept
@@ -97,6 +100,57 @@ layout_domain_gate:
     - battery
     - compute_storage
     - manufacturing
+selected_supplier_response_route_gate:
+  source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
+  status: blocked_until_selected_supplier_response_packs_unlock_route_release_inputs
+  required_response_gate_count: 3
+  blocked_response_gate_count: 3
+  required_response_gates:
+    - selected_display_camera_oem_response_gate
+    - selected_usb_sidekey_oem_response_gate
+    - selected_wireless_module_oem_response_gate
+  selected_route_functions:
+    - display_touch
+    - rear_camera
+    - front_camera
+    - usb_c_receptacle_evt0
+    - side_buttons
+    - cellular
+    - wifi_bluetooth
+  release_required_response_pack_count: 7
+  route_inputs_blocked_until_response_packs:
+    - supplier connector and module land patterns
+    - final courtyards and component keepouts
+    - pinout and pad-numbering reviews
+    - STEP/B-rep models for routed-board export
+    - reference layouts for RF and high-speed interfaces
+    - enclosure datums and load-path constraints
+  all_selected_supplier_response_packs_absent: true
+  blocks_routed_layout_release: true
+alternate_display_layout_release_gate:
+  source_artifacts:
+    - board/kicad/e1-phone/component-height-step-integration.yaml
+    - board/kicad/e1-phone/routed-board-step-export-contract.yaml
+    - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
+  status: blocked_until_alternate_display_supplier_pack_route_step_and_enclosure_clearance_exist
+  branch_count: 2
+  branches:
+    - source_id: display_alternate_alibaba_meta_055wu01
+      candidate: 055WU01
+      required_route_release_inputs:
+        - signed display drawing, 40-pin pinout, mating connector MPN, land pattern, and STEP/B-rep models
+        - display/touch/backlight/bias bring-up data, sample inspection, and promotion review against CH550FH01A-CT
+        - routed DSI/touch/backlight/bias nets, connector courtyard utilization, SI/PI report, and DRC evidence
+        - routed board STEP clearance rerun and physical fit report against the selected enclosure
+      blocks_routed_layout_release: true
+    - source_id: display_alternate_made_in_china_e549_amoled
+      candidate: E549-HC01_RM67191_AMOLED_class
+      required_route_release_inputs:
+        - signed AMOLED drawing, exact FPC pinout, mating connector MPN, land pattern, and STEP/B-rep models
+        - RM67191 power sequence, GT1151 touch data, burn-in/luminance/sample evidence, and promotion review
+        - routed MIPI/touch/power nets, connector courtyard utilization, SI/PI report, thermal review, and DRC evidence
+        - routed board STEP clearance rerun and physical fit report against the selected enclosure
+      blocks_routed_layout_release: true
 
 enclosure_gate:
   requires_routed_board_step: true
@@ -121,6 +175,8 @@ cross_checks:
   routed_step_contract_blocks_enclosure: true
   manufacturing_and_factory_gates_remain_blocked: true
   layout_optimization_remains_concept_only: true
+  selected_supplier_response_gate_blocks_routed_layout_release: true
+  alternate_display_layout_release_gate_blocks_release: true
   fail_closed_until_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance_exist: true
 
 release_blockers:
@@ -130,6 +186,8 @@ release_blockers:
   - PCB has no routed copper, filled zones, or DRC evidence
   - production STEP export is missing
   - supplier component STEP/B-rep models are missing
+  - selected supplier response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
+  - parseable 055WU01 and E549/RM67191 display alternates cannot enter routed layout release until supplier packs, route evidence, STEP/B-rep, promotion review, and enclosure clearance exist
   - routed-board clearance rerun is blocked
   - factory limits for rails, USB-C, radios, display, cameras, audio, buttons, and split interconnect missing
   - first-article traveler, current limits, stop-on-fail rules, and signoff missing

@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -28,6 +29,92 @@ def write_report(report: dict) -> None:
 def emit_json(report: dict) -> None:
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
+
+
+def code_from_text(text: str, fallback: str) -> str:
+    code = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return code or fallback
+
+
+def detail_failure_lines(detail_checks: dict) -> list[dict]:
+    rows: list[dict] = []
+    for name, detail in detail_checks.items():
+        if name == "release_checks" and isinstance(detail, list):
+            for check in detail:
+                if not isinstance(check, dict):
+                    continue
+                script = str(check.get("script", "release_check"))
+                for stream in ("stdout", "stderr"):
+                    for line in str(check.get(stream, "")).splitlines():
+                        stripped = line.strip()
+                        if stripped.startswith("- "):
+                            rows.append(
+                                {
+                                    "source": script,
+                                    "returncode": check.get("returncode"),
+                                    "line": stripped[2:],
+                                }
+                            )
+            continue
+        if not isinstance(detail, dict):
+            continue
+        source = name
+        command = detail.get("command")
+        if isinstance(command, list) and command:
+            source = " ".join(str(part) for part in command)
+        for stream in ("stdout", "stderr"):
+            for line in str(detail.get(stream, "")).splitlines():
+                stripped = line.strip()
+                if stripped.startswith("- "):
+                    rows.append(
+                        {
+                            "source": source,
+                            "returncode": detail.get("returncode"),
+                            "line": stripped[2:],
+                        }
+                    )
+    return rows
+
+
+def structured_findings(release_blockers: list[str], detail_checks: dict) -> list[dict]:
+    findings: list[dict] = []
+    for blocker in release_blockers:
+        findings.append(
+            {
+                "code": f"product_release_blocker_{code_from_text(blocker, 'blocker')}",
+                "severity": "blocker",
+                "message": blocker,
+                "evidence": "release_blockers",
+                "next_step": (
+                    "Close the named package, FPGA, KiCad, PD, manufacturing, "
+                    "or release-check blocker before making fabrication, tapeout, "
+                    "or no-issues product readiness claims."
+                ),
+            }
+        )
+    seen: set[str] = set()
+    for row in detail_failure_lines(detail_checks):
+        line = str(row["line"])
+        code = f"product_release_detail_{code_from_text(line, 'detail')}"
+        if code in seen:
+            continue
+        seen.add(code)
+        findings.append(
+            {
+                "code": code,
+                "severity": "blocker",
+                "message": line,
+                "evidence": {
+                    "source": row.get("source"),
+                    "returncode": row.get("returncode"),
+                },
+                "next_step": (
+                    "Repair or archive the exact release evidence named by this "
+                    "detail check and rerun product-release-check."
+                ),
+            }
+        )
+    return findings
 
 
 required = [
@@ -65,27 +152,40 @@ missing = [p for p in required if not Path(p).exists()]
 if missing:
     raise SystemExit("missing product artifacts: " + ", ".join(missing))
 
-subprocess.run(
-    [sys.executable, "package/scripts/validate_pinout_vs_rtl.py"],
-    check=True,
-)
-subprocess.run([sys.executable, "scripts/check_fpga_target.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_wifi_interface.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_padframe_contract.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_physical_closure_work_order.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_package_cross_probe.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_kicad_artifacts.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_fpga_release.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_openlane_run_preflight.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_antenna_metadata.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_pd_signoff.py", "--manifest-only"], check=True)
-subprocess.run([sys.executable, "scripts/check_manufacturing_artifacts.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_real_world_gates.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_product_feature_gates.py"], check=True)
-subprocess.run([sys.executable, "scripts/check_product_architecture_optimization.py"], check=True)
-subprocess.run([sys.executable, "scripts/run_product_evidence_command.py", "--list"], check=True)
-
 release_blockers: list[str] = []
+preflight_checks: list[dict] = []
+for command in [
+    [sys.executable, "package/scripts/validate_pinout_vs_rtl.py"],
+    [sys.executable, "scripts/check_fpga_target.py"],
+    [sys.executable, "scripts/check_wifi_interface.py"],
+    [sys.executable, "scripts/check_padframe_contract.py"],
+    [sys.executable, "scripts/check_physical_closure_work_order.py"],
+    [sys.executable, "scripts/check_package_cross_probe.py"],
+    [sys.executable, "scripts/check_kicad_artifacts.py"],
+    [sys.executable, "scripts/check_fpga_release.py"],
+    [sys.executable, "scripts/check_openlane_run_preflight.py"],
+    [sys.executable, "scripts/check_antenna_metadata.py"],
+    [sys.executable, "scripts/check_pd_signoff.py", "--manifest-only"],
+    [sys.executable, "scripts/check_manufacturing_artifacts.py"],
+    [sys.executable, "scripts/check_real_world_gates.py"],
+    [sys.executable, "scripts/check_product_feature_gates.py"],
+    [sys.executable, "scripts/check_product_architecture_optimization.py"],
+    [sys.executable, "scripts/run_product_evidence_command.py", "--list"],
+]:
+    result = subprocess.run(command, check=False, text=True, capture_output=True)
+    if result.stdout:
+        print(result.stdout, end="")
+    if result.stderr:
+        print(result.stderr, end="", file=sys.stderr)
+    check_row = {
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+    }
+    preflight_checks.append(check_row)
+    if result.returncode != 0:
+        release_blockers.append(f"product preflight check failed: {' '.join(command[1:])}")
 
 pinout = yaml.safe_load(Path("package/e1-demo-pinout.yaml").read_text())
 package_name = str(pinout.get("package", ""))
@@ -177,40 +277,43 @@ for release_check in [
         )
 
 if release_blockers:
+    detail_checks = {
+        "pd_signoff": {
+            "command": [sys.executable, "scripts/check_pd_signoff.py"],
+            "returncode": pd_signoff.returncode,
+            "stdout": pd_signoff.stdout,
+            "stderr": pd_signoff.stderr,
+        },
+        "manufacturing_release": {
+            "command": [
+                sys.executable,
+                "scripts/check_manufacturing_artifacts.py",
+                "--release",
+            ],
+            "returncode": manufacturing_release.returncode,
+            "stdout": manufacturing_release.stdout,
+            "stderr": manufacturing_release.stderr,
+        },
+        "release_checks": [
+            {
+                "command": [sys.executable, release_check, "--release"],
+                "returncode": returncode,
+                "script": release_check,
+                "stdout": stdout,
+                "stderr": stderr,
+            }
+            for release_check, returncode, stdout, stderr in release_check_outputs
+        ],
+    }
     report = {
         "schema": "eliza.product_release_status.v1",
         "status": "blocked",
         "release_mode": args.release,
         "claim_boundary": "product/package/board/PD scaffold only; not fabrication, bitstream, tapeout, or manufacturing release evidence",
         "release_blockers": release_blockers,
-        "detail_checks": {
-            "pd_signoff": {
-                "command": [sys.executable, "scripts/check_pd_signoff.py"],
-                "returncode": pd_signoff.returncode,
-                "stdout": pd_signoff.stdout,
-                "stderr": pd_signoff.stderr,
-            },
-            "manufacturing_release": {
-                "command": [
-                    sys.executable,
-                    "scripts/check_manufacturing_artifacts.py",
-                    "--release",
-                ],
-                "returncode": manufacturing_release.returncode,
-                "stdout": manufacturing_release.stdout,
-                "stderr": manufacturing_release.stderr,
-            },
-            "release_checks": [
-                {
-                    "command": [sys.executable, release_check, "--release"],
-                    "returncode": returncode,
-                    "script": release_check,
-                    "stdout": stdout,
-                    "stderr": stderr,
-                }
-                for release_check, returncode, stdout, stderr in release_check_outputs
-            ],
-        },
+        "detail_checks": detail_checks,
+        "preflight_checks": preflight_checks,
+        "findings": structured_findings(release_blockers, detail_checks),
         "next_step": "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
     }
     write_report(report)

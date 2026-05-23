@@ -86,6 +86,12 @@ def contains_all(text: str, tokens: tuple[str, ...]) -> bool:
     return all(token.lower() in lowered for token in tokens)
 
 
+def code_from_text(text: str, fallback: str) -> str:
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "_".join(parts[:10]) or fallback
+
+
 def cpu_scaffold_passes() -> bool:
     errors: list[str] = []
     check_cpu_ap_evidence.check_scaffold(errors)
@@ -99,6 +105,46 @@ def evidence_status() -> dict[str, Any]:
         "invalid_transcript_problems": problems,
         "evidence_status": "PASS" if not missing and not problems else "BLOCKED",
     }
+
+
+def structured_findings(evidence: dict[str, Any], checks: list[dict[str, Any]]) -> list[dict[str, str]]:
+    findings: list[dict[str, str]] = []
+    for path in list_values(evidence.get("missing_transcripts")):
+        text = str(path)
+        findings.append(
+            {
+                "code": f"cpu_ap_missing_transcript_{code_from_text(text, 'transcript')}",
+                "severity": "blocker",
+                "message": f"required CPU/AP transcript is missing: {text}",
+                "evidence": text,
+                "next_step": "Run python3 scripts/capture_cpu_ap_evidence.py plan all --format json, wire the exact external commands, then capture the missing transcript.",
+            }
+        )
+    for problem in list_values(evidence.get("invalid_transcript_problems")):
+        text = str(problem)
+        findings.append(
+            {
+                "code": f"cpu_ap_invalid_transcript_{code_from_text(text, 'problem')}",
+                "severity": "blocker",
+                "message": text,
+                "evidence": "invalid_transcript_problems",
+                "next_step": "Regenerate the transcript with the required CPU/AP evidence markers and rerun scripts/check_cpu_ap_evidence.py --require-evidence.",
+            }
+        )
+    for check in checks:
+        if check.get("status") == "pass":
+            continue
+        ident = str(check.get("id", "scope_check"))
+        findings.append(
+            {
+                "code": f"cpu_ap_scope_check_failed_{code_from_text(ident, 'scope_check')}",
+                "severity": "blocker",
+                "message": f"{ident} structural scope check is {check.get('status')}",
+                "evidence": str(check.get("evidence", "")),
+                "next_step": "Repair the CPU/AP scope contract before treating generated AP evidence as release evidence.",
+            }
+        )
+    return findings
 
 
 def manifest_is_fail_closed(manifest: dict[str, Any]) -> bool:
@@ -301,6 +347,7 @@ def build_report() -> dict[str, Any]:
             "evidence": rel(EVIDENCE_CHECKER),
         },
     ]
+    findings = structured_findings(evidence, checks)
     transcript_paths = [
         str(spec.get("path"))
         for spec in transcript_specs(manifest).values()
@@ -331,6 +378,7 @@ def build_report() -> dict[str, Any]:
         "required_transcripts": transcript_paths,
         "missing_transcripts": evidence["missing_transcripts"],
         "invalid_transcript_problems": evidence["invalid_transcript_problems"],
+        "findings": findings,
         "blocked_until_real_evidence": [
             "pinned Chipyard main-2026-05-20 checkout generates ElizaRocketConfig artifacts and manifest hashes",
             "generated Rocket AP Verilog, DTS, source tree, and simulator artifact exist and hash-match",
@@ -397,6 +445,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     transcripts = data.get("required_transcripts")
     if not isinstance(transcripts, list) or len(transcripts) < len(REQUIRED_TRANSCRIPTS):
         errors.append("required_transcripts must list all CPU/AP transcript paths")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or not findings:
+        errors.append("findings must list structured CPU/AP blockers")
     checks = data.get("checks")
     if not isinstance(checks, list) or not checks:
         errors.append("checks must be a non-empty list")

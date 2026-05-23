@@ -204,7 +204,9 @@ def main() -> int:
 
     report = build_report()
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp = REPORT.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(REPORT)
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

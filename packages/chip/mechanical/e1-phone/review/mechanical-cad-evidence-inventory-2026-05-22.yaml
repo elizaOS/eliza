@@ -1,0 +1,231 @@
+report: "E1 phone mechanical CAD evidence inventory"
+date: "2026-05-22"
+script: "packages/chip/scripts/e1_phone_mechanical_cad_evidence_inventory.py"
+scope:
+  mode: "read_only_inventory"
+  cad_output_dir: "packages/chip/mechanical/e1-phone/out"
+  review_dir: "packages/chip/mechanical/e1-phone/review"
+  claim_boundary: "Existing generated/concept CAD outputs are counted, but do not prove release-ready enclosure fit without routed-board, supplier, and physical evidence."
+cad_output_file_counts:
+  directory: "packages/chip/mechanical/e1-phone/out"
+  total_files_recursive: 1053
+  top_level_files: 537
+  recursive_by_extension:
+    .glb: 4
+    .json: 3
+    .mp4: 1
+    .obj: 190
+    .png: 516
+    .step: 149
+    .stl: 190
+  top_level_by_extension:
+    .glb: 4
+    .json: 3
+    .mp4: 1
+    .obj: 190
+    .step: 149
+    .stl: 190
+concept_generated_assets:
+  assembly_manifest_part_count: 142
+  solid_handoff_status: "generated"
+  solid_handoff_part_count: 142
+  solid_assembly_step: "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+  solid_assembly_step_bytes: 3069504
+  step_validation_status: "pass"
+  step_validation_validated_count: 142
+  concept_demo_board_steps_ignored:
+    - "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step"
+  classification: "generated_concept_or_evt0_envelope_not_release_ready"
+manifest_inventory:
+  assembly:
+    path: "packages/chip/mechanical/e1-phone/out/assembly-manifest.json"
+    present: true
+    item_count: 142
+    role_counts:
+      EMI shield: 3
+      I/O: 2
+      I/O seal: 6
+      PCB: 1
+      PCB component marker: 6
+      RF feed: 2
+      RF keepout: 3
+      RF tuner: 1
+      Wi-Fi/Bluetooth module: 1
+      audio: 20
+      battery: 1
+      battery support: 1
+      button: 2
+      button seal: 6
+      camera: 7
+      camera aperture: 2
+      camera optical clearance: 1
+      camera seal: 16
+      cellular module: 1
+      connector: 2
+      haptics: 1
+      molded enclosure: 39
+      screen: 2
+      screen retention: 8
+      service: 3
+      split-board interconnect: 5
+  evt_fixtures:
+    path: "packages/chip/mechanical/e1-phone/out/evt-fixture-manifest.json"
+    present: true
+    item_count: 7
+    role_counts:
+      EVT fixture: 7
+  tooling:
+    path: "packages/chip/mechanical/e1-phone/out/tooling-manifest.json"
+    present: true
+    item_count: 26
+    role_counts:
+      tooling: 16
+      tooling clearance: 10
+review_gate_inventory:
+  routed_board_step_intake:
+    path: "packages/chip/mechanical/e1-phone/review/board-step-readiness.json"
+    present: true
+    status: "blocked_concept_pcb_no_routed_step"
+    claim_boundary: "Mechanical intake gate for routed KiCad board STEP; concept PCB envelope does not count as routed-board evidence."
+    production_step_files:
+      []
+    demo_step_files_ignored:
+      - "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step"
+    required_routed_board_evidence_class: "physical_routed_board_release"
+    routed_board_forbidden_evidence_classes:
+      - "blank_template"
+      - "concept"
+      - "demo"
+      - "demo_routed_board_for_planning_not_release"
+      - "planning"
+      - "simulated_routed_board_release_for_planning_not_release"
+  routed_board_clearance:
+    path: "packages/chip/mechanical/e1-phone/review/routed-board-clearance.json"
+    present: true
+    status: "blocked_waiting_for_routed_board_step"
+    claim_boundary: "Fail-closed routed-board mechanical clearance intake. Concept PCB envelope clearance does not prove routed PCB/component clearance."
+    production_step_files:
+      []
+    expected_clearance_case_count: 12
+    complete_clearance_result_count: 0
+    release_rule: "Routed-board clearance passes only after routed KiCad STEP is available, all height-critical component models are present, every rerun case is measured, every minimum gap is met, every interference count is zero, and evidence_class=physical_routed_board_clearance_result."
+  supplier_evidence:
+    path: "packages/chip/mechanical/e1-phone/review/supplier-evidence-acceptance.json"
+    present: true
+    status: "blocked_no_supplier_evidence"
+    claim_boundary: "Fail-closed supplier evidence acceptance. Public shortlist entries and generated RFQs do not count; each functional family needs supplier-returned quote, 2D drawing, STEP, sample evidence, and reviewer identity before CAD lock."
+    expected_family_count: 6
+    complete_family_count: 0
+    missing_or_incomplete_families:
+      - "display_touch_stack"
+      - "usb_audio_bottom_io"
+      - "power_volume_buttons"
+      - "camera_modules"
+      - "wireless_modules"
+      - "orange_enclosure_tooling"
+    release_rule: "Each supplier family must have RFQ coverage, physical_supplier_response rows for all required supplier items, quote/drawing/STEP/sample/traceability artifacts, family-specific technical evidence, and reviewer identity before supplier CAD can replace EVT0 envelope geometry."
+  physical_process_validation:
+    path: "packages/chip/mechanical/e1-phone/review/physical-process-validation-acceptance.json"
+    present: true
+    status: "blocked_no_physical_process_validation_results"
+    claim_boundary: "Fail-closed finished-phone validation acceptance. CAD plans, fixtures, blank templates, and individual review files do not count as finished phone evidence until every lab, EVT, FAI, traceability, build, and process-control result family passes."
+    expected_gate_count: 11
+    complete_gate_count: 0
+    missing_or_incomplete_gates:
+      - "display_touch_lab_results"
+      - "acoustic_lab_results"
+      - "camera_optical_lab_results"
+      - "thermal_rf_drop_ingress_environmental_results"
+      - "button_usb_screen_evt_physical_results"
+      - "fixture_calibration_results"
+      - "mechanical_lifecycle_results"
+      - "gdt_first_article_results"
+      - "unit_traceability_records"
+      - "assembly_build_traveler_records"
+      - "factory_process_control_records"
+    release_rule: "Display/touch, acoustic, camera, environmental, EVT physical, fixture calibration, lifecycle, GD&T/FAI, unit traceability, assembly traveler, and process-control results must all be populated and passing before the phone can be treated as physically validated."
+  concept_fit_check:
+    path: "packages/chip/mechanical/e1-phone/review/fit-check-report.json"
+    present: true
+    status: "pass"
+    claim_boundary: "EVT0 mechanical concept; not released tooling CAD or fabricated hardware."
+  solid_cad_handoff:
+    path: "packages/chip/mechanical/e1-phone/review/solid-cad-handoff.json"
+    present: true
+    status: "generated"
+    claim_boundary: "CadQuery/OCP B-rep envelope handoff for EVT0 mechanical review; supplier STEP, routed-board STEP, filleted production surfaces, and toolmaker steel design are still required."
+    assembly_step: "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
+    assembly_step_bytes: 3069504
+    part_count: 142
+    remaining_blockers:
+      - "Solids are parametric envelopes, not final supplier STEP models."
+      - "PCB is still the concept KiCad outline, not a routed board STEP with component models."
+      - "Production surfaces still need toolmaker-approved draft, shutoffs, split lines, and texture."
+  step_validation:
+    path: "packages/chip/mechanical/e1-phone/review/step-validation.json"
+    present: true
+    status: "pass"
+    claim_boundary: "Automated STEP re-import and envelope validation; not supplier CAD approval."
+    validated_count: 142
+missing_release_ready_evidence:
+  -
+    gate: "routed_board_step_intake"
+    required_evidence: "physical routed-board release STEP with component height models"
+    status: "blocked_concept_pcb_no_routed_step"
+    path: "packages/chip/mechanical/e1-phone/review/board-step-readiness.json"
+    production_step_files:
+      []
+  -
+    gate: "routed_board_clearance"
+    required_evidence: "measured enclosure clearance against routed board STEP"
+    status: "blocked_waiting_for_routed_board_step"
+    path: "packages/chip/mechanical/e1-phone/review/routed-board-clearance.json"
+    production_step_files:
+      []
+    complete_clearance_result_count: 0
+    expected_clearance_case_count: 12
+  -
+    gate: "supplier_evidence"
+    required_evidence: "supplier-returned quote, 2D drawing, STEP, sample, and traceability artifacts"
+    status: "blocked_no_supplier_evidence"
+    path: "packages/chip/mechanical/e1-phone/review/supplier-evidence-acceptance.json"
+    complete_family_count: 0
+    expected_family_count: 6
+    missing_or_incomplete_families:
+      - "display_touch_stack"
+      - "usb_audio_bottom_io"
+      - "power_volume_buttons"
+      - "camera_modules"
+      - "wireless_modules"
+      - "orange_enclosure_tooling"
+  -
+    gate: "physical_fit_evidence"
+    required_evidence: "fabricated enclosure/board/display/battery/button/port fit-check results with reviewer identity"
+    status: "missing_release_physical_fit_evidence"
+    path: "packages/chip/mechanical/e1-phone/review/fit-check-report.json"
+    source_status: "pass"
+    source_claim_boundary: "EVT0 mechanical concept; not released tooling CAD or fabricated hardware."
+  -
+    gate: "physical_process_validation"
+    required_evidence: "finished-phone lab, EVT, FAI, build, traceability, and process-control results"
+    status: "blocked_no_physical_process_validation_results"
+    path: "packages/chip/mechanical/e1-phone/review/physical-process-validation-acceptance.json"
+    complete_gate_count: 0
+    expected_gate_count: 11
+    missing_or_incomplete_gates:
+      - "display_touch_lab_results"
+      - "acoustic_lab_results"
+      - "camera_optical_lab_results"
+      - "thermal_rf_drop_ingress_environmental_results"
+      - "button_usb_screen_evt_physical_results"
+      - "fixture_calibration_results"
+      - "mechanical_lifecycle_results"
+      - "gdt_first_article_results"
+      - "unit_traceability_records"
+      - "assembly_build_traveler_records"
+      - "factory_process_control_records"
+release_readiness:
+  release_ready: false
+  fail_closed: true
+  reason: "Release-ready enclosure evidence is absent until required routed-board STEP, routed-board clearance, supplier-returned evidence, and physical process validation gates are all present and passing."
+  missing_required_evidence_count: 5
