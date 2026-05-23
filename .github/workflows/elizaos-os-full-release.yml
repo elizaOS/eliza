@@ -102,6 +102,8 @@ jobs:
     needs: [verify-artifacts]
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
@@ -175,6 +177,37 @@ jobs:
           name: elizaos-os-release-manifest-published
           path: packages/os/release/beta-2026-05-16/manifest.json
           retention-days: 90
+
+      - name: Generate canonical SHA256SUMS via the in-repo tool
+        # Calls packages/os/scripts/generate-release-checksums.mjs (which
+        # already exists, has unit tests under __tests__, and is the
+        # repo's canonical checksum tool) against the populated manifest
+        # + downloaded artifacts. Produces sha256sum -c compatible output
+        # mirroring the Debian / Fedora / Tails / Arch convention.
+        run: |
+          set -euo pipefail
+          node packages/os/scripts/generate-release-checksums.mjs \
+            --manifest packages/os/release/beta-2026-05-16/manifest.json \
+            --artifact-root ./_artifacts \
+            --output ./_artifacts/SHA256SUMS
+          echo "Generated SHA256SUMS:"
+          cat ./_artifacts/SHA256SUMS
+
+      - name: Upload SHA256SUMS artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: elizaos-release-checksums
+          path: ./_artifacts/SHA256SUMS
+          retention-days: 90
+
+      - name: Attach SHA256SUMS to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v3
+        with:
+          files: ./_artifacts/SHA256SUMS
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish-apt:
     needs: [prepare, trigger-debian-package, verify-artifacts]
