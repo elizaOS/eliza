@@ -31,7 +31,14 @@ jobs:
     timeout-minutes: 90
 
     permissions:
+      # contents: write covers the existing softprops/action-gh-release
+      # release upload + checkout.
+      # id-token + attestations are required by
+      # actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      # SLSA build provenance for the .ova via GitHub OIDC.
       contents: write
+      id-token: write
+      attestations: write
 
     steps:
       - name: Checkout
@@ -142,6 +149,18 @@ jobs:
           echo "ova_sha256=$OVA_SHA256" >> "$GITHUB_OUTPUT"
           echo "ova_size=$OVA_SIZE" >> "$GITHUB_OUTPUT"
           echo "date=$DATE" >> "$GITHUB_OUTPUT"
+
+      - name: Attest SLSA build provenance for VM image
+        # Mints a Sigstore-signed in-toto/SLSA provenance attestation
+        # tied to this repo + workflow + commit, via GitHub OIDC.
+        # No long-lived secrets. Users verify with:
+        #   gh attestation verify <ova-file> --owner elizaOS
+        # Only fires when an OVA was actually produced (the convert
+        # step is gated on the format input).
+        if: steps.ova.outputs.ova_path != ''
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.ova.outputs.ova_path }}
 
       - name: Upload VM artifacts
         uses: actions/upload-artifact@v7
