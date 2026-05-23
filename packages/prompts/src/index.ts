@@ -688,6 +688,8 @@ simple shortcut: choose contexts=["simple"] when the user is asking for a direct
 
 For simple requests, replyText is the final answer itself, not a description of what the user asked for and not an internal plan. Write a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 
+Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible prior_message / reply_reference / provider context, say so plainly instead of fabricating an action.
+
 Platform mention/reply target/channel/room/connector alone can still be simple when only chat reply needed.
 
 Never simple when message:

@@ -2936,4 +2936,33 @@ android smoke model works`,
 		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
 	});
+
+	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi.",
+			}),
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent =
+			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain(
+			'Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context.',
+		);
+		expect(systemContent).toContain(
+			"Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content.",
+		);
+	});
 });

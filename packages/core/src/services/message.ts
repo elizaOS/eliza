@@ -2805,6 +2805,8 @@ direct/private rules:
 - Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
 - For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 - Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If the message refers to a specific name, person, nickname, or thing you cannot identify from the visible context, choose a non-simple context (such as general or memory) instead of guessing.
+- Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible context, say so plainly.
 - For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
 - contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
