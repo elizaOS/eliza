@@ -13870,7 +13870,9 @@ def check_end_to_end_readiness() -> None:
         "usb_c_power_volume_hardware": "board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml",
         "off_the_shelf_wireless_modules": "board/kicad/e1-phone/wireless-module-release-execution.yaml",
         "board_size_power_rf_thermal_optimization": "board/kicad/e1-phone/layout-optimization-execution.yaml",
+        "supplier_footprints_pinouts_and_3d_models": "board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml",
         "schematic_and_pcb_routed_release": "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml",
+        "component_height_and_enclosure_step": "board/kicad/e1-phone/enclosure-fit-execution-package.yaml",
         "manufacturing_and_factory_release": "board/kicad/e1-phone/production-factory-release-execution.yaml",
     }
     for objective, evidence_path in expected_evidence.items():
