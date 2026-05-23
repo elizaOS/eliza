@@ -317,10 +317,24 @@ async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function publishHeartbeat(logger: WorkerLogger): Promise<void> {
+  try {
+    const { publishProvisioningWorkerHeartbeat } = await import(
+      "@elizaos/cloud-shared/lib/services/provisioning-worker-health"
+    );
+    await publishProvisioningWorkerHeartbeat();
+  } catch (error) {
+    logger.warn("[provisioning-worker] heartbeat publish failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function pollCycle(
   logger: WorkerLogger,
   config: ProvisioningWorkerConfig,
 ): Promise<void> {
+  await publishHeartbeat(logger);
   try {
     const result = await processProvisioningWorkerCycle(config.batchSize);
     if (result.claimed > 0 || result.failed > 0) {
