@@ -133,6 +133,25 @@ function installLinux() {
     return;
   }
 
+  // `sudo apt-get install` will hang waiting for a password when stdin
+  // is not a TTY (Docker, WSL with no askpass, CI runners). Probe for a
+  // non-interactive sudo first; if it would prompt, warn and skip rather
+  // than block the dev orchestrator.
+  let canSudoNonInteractively = false;
+  try {
+    execSync("sudo -n true", { stdio: "ignore" });
+    canSudoNonInteractively = true;
+  } catch (_err) {
+    canSudoNonInteractively = false;
+  }
+
+  if (!canSudoNonInteractively && !process.stdout.isTTY) {
+    console.warn(
+      `  ${orange(logPrefix)} ${dim("fswebcam missing; skipping install (sudo needs a password and stdin is not a TTY). Install manually with: sudo apt-get install -y fswebcam — or set ELIZA_NO_VISION_DEPS=1 to silence this check.")}`,
+    );
+    return;
+  }
+
   console.log(`  ${green(logPrefix)} Installing fswebcam via apt-get...`);
   try {
     execSync("sudo apt-get install -y fswebcam", { stdio: "inherit" });
