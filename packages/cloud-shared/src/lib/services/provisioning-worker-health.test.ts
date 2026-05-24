@@ -21,11 +21,7 @@ describe("provisioning worker health (Redis heartbeat)", () => {
   // must start clean — but we snapshot and restore rather than delete outright,
   // otherwise NODE_ENV=test leaks away and pollutes later files in the shared
   // `bun test` process (e.g. crypto.test.ts resolving the steward KMS backend).
-  const MANAGED_ENV_KEYS = [
-    "NODE_ENV",
-    "REQUIRE_PROVISIONING_WORKER",
-    "MOCK_REDIS",
-  ] as const;
+  const MANAGED_ENV_KEYS = ["NODE_ENV", "REQUIRE_PROVISIONING_WORKER", "MOCK_REDIS"] as const;
   const savedEnv: Record<string, string | undefined> = {};
 
   const clearManagedEnv = () => {
