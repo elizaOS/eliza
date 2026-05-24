@@ -47,24 +47,29 @@ async function a2aCall<T>(
   return data.result as T;
 }
 
-describe("Local A2A Server E2E Tests", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch(`${A2A_URL}/health`);
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    `⚠️  Local A2A server not running on ${A2A_URL} — local E2E tests will be skipped (start with: cd packages/examples/local-a2a-server && bun run dev)`,
+  );
+}
+
+describe.skipIf(!serverAvailable)("Local A2A Server E2E Tests", () => {
   let wallet: ethers.Wallet;
   let agentId: string;
   let address: string;
   let tokenId: number;
 
   beforeAll(async () => {
-    // Check if server is running
-    try {
-      const health = await fetch(`${A2A_URL}/health`);
-      if (!health.ok) throw new Error("Server not healthy");
-    } catch {
-      throw new Error(`
-        Local A2A server not running!
-        Start it with: cd packages/examples/local-a2a-server && bun run dev
-      `);
-    }
-
     // Setup test wallet
     wallet = new ethers.Wallet(TEST_PRIVATE_KEY);
     address = wallet.address;

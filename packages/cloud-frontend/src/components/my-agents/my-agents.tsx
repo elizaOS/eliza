@@ -119,7 +119,7 @@ function AgentConsoleOverview({
             <button
               type="button"
               onClick={onCreateNew}
-              className="inline-flex h-10 items-center justify-center gap-2 border border-white/15 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/5"
+              className="inline-flex h-10 items-center justify-center gap-2 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white hover:text-black"
             >
               <Server className="h-4 w-4" />
               Runtime admin
@@ -159,7 +159,7 @@ function AgentConsoleOverview({
         {ADMIN_SECTIONS.map((section) => {
           const Icon = section.icon;
           const sectionClassName =
-            "group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[#FF5800]/40 hover:bg-white/[0.03]";
+            "group flex items-start gap-3 bg-black p-4 transition-colors hover:bg-white/5";
           const sectionInner = (
             <>
               <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[#FF5800]">
@@ -170,7 +170,7 @@ function AgentConsoleOverview({
                   <span className="text-sm font-medium text-white">
                     {section.title}
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-[#FF5800]" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-white" />
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-white/55">
                   {section.description}

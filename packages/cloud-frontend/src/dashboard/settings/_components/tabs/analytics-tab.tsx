@@ -150,7 +150,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                 onClick={() => setTimeRange("7days")}
                 disabled={loading}
                 className={`
-                  border border-[#303030] px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
+                  px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
                   ${timeRange === "7days" ? "bg-white/10" : "hover:bg-white/5"}
                 `}
               >
@@ -162,7 +162,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                 onClick={() => setTimeRange("30days")}
                 disabled={loading}
                 className={`
-                  border border-[#303030] px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
+                  px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
                   ${timeRange === "30days" ? "bg-white/10" : "hover:bg-white/5"}
                 `}
               >
@@ -174,7 +174,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                 onClick={() => setTimeRange("90days")}
                 disabled={loading}
                 className={`
-                  border border-[#303030] px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
+                  px-2 py-2 transition-colors text-xs sm:text-sm text-white/60 disabled:opacity-50 whitespace-nowrap
                   ${timeRange === "90days" ? "bg-white/10" : "hover:bg-white/5"}
                 `}
               >

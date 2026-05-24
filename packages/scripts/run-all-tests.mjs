@@ -198,7 +198,14 @@ const EXTRA_SCRIPT_NAMES = [
   "test:ui",
   "test:live",
 ];
-const NO_TEST_OUTPUT_PATTERNS = [/No test files found/i, /No tests found/i];
+const NO_TEST_OUTPUT_PATTERNS = [
+  /No test files found/i,
+  /No tests found/i,
+  // `bun test <dir>` exits non-zero with this message when a path filter
+  // matches no *.test/*.spec files. Treat it as "no tests" (skip), matching
+  // how vitest's --passWithNoTests packages are handled.
+  /did not match any test files/i,
+];
 const TEST_FILE_PATTERN = /\.(?:test|spec)\.[cm]?[tj]sx?$/;
 const TEST_FILE_SKIP_DIRS = new Set([
   ".git",

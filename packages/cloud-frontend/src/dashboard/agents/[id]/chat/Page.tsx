@@ -94,7 +94,7 @@ export default function AgentChatPage() {
           to={`/dashboard/agents/${agent.id}`}
           className="group inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
         >
-          <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[#FF5800]/40 transition-colors">
+          <div className="flex items-center justify-center w-7 h-7 bg-black/40 group-hover:bg-white/10 transition-colors">
             <ArrowLeft className="h-3.5 w-3.5" />
           </div>
           <span>
@@ -176,7 +176,7 @@ export default function AgentChatPage() {
             )}
             <Link
               to={`/dashboard/agents/${agent.id}`}
-              className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-white/15 bg-black text-white/80 hover:bg-white/5 transition-colors"
+              className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium bg-black text-white/80 hover:bg-white hover:text-black transition-colors"
             >
               {t("cloud.agents.chat.viewAdmin", {
                 defaultValue: "View agent admin",

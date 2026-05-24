@@ -194,6 +194,37 @@ async function installConversationStreamMock(page: Page): Promise<{
     },
   );
 
+  await page.route(
+    "**/api/conversations/always-on-conversation/greeting**",
+    async (route) => {
+      await fulfillJson(route, {
+        text: "Ready when you are.",
+        localInference: null,
+      });
+    },
+  );
+
+  await page.route(
+    "**/api/conversations/always-on-conversation",
+    async (route) => {
+      const method = route.request().method();
+      if (method === "PATCH") {
+        const timestamp = new Date().toISOString();
+        await fulfillJson(route, {
+          conversation: {
+            id: "always-on-conversation",
+            roomId: "always-on-room",
+            title: "Always-on browser voice",
+            updatedAt: timestamp,
+            createdAt: timestamp,
+          },
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
   await page.route("**/api/turns/always-on-room/abort", async (route) => {
     await fulfillJson(route, {
       aborted: true,
