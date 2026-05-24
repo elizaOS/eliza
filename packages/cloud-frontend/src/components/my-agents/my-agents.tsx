@@ -111,7 +111,7 @@ function AgentConsoleOverview({
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
             <Link
               to={chatPath}
-              className="inline-flex h-10 items-center justify-center gap-2 border border-[#FF5800] bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-[#FF5800]/90"
+              className="inline-flex h-10 items-center justify-center gap-2 bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white"
             >
               <MessageCircle className="h-4 w-4" />
               {primaryAgent ? "Open agent chat" : "Go to my agent"}
