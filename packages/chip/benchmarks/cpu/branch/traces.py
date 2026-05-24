@@ -1208,10 +1208,7 @@ def synthetic_android_runtime_inline_cache(objects: int = 640) -> Iterator[Branc
             kind=BR_COND,
         )
         yield BranchEvent(pc=deopt_pc, target=deopt_pc + 0x2C0, taken=deopt, kind=BR_COND)
-        if deopt:
-            target = deopt_base + (tier % 4) * 0x100
-        else:
-            target = handler_base + (tier * 8 + shape) * 0x80
+        target = deopt_base + (tier % 4) * 0x100 if deopt else handler_base + (tier * 8 + shape) * 0x80
         yield BranchEvent(pc=dispatch_pc, target=target, taken=True, kind=BR_IND)
 
 

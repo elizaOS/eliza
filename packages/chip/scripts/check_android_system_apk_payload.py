@@ -420,7 +420,6 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         RUNTIME_PROVENANCE_ENTRY in entries
         and runtime_provenance.get("schema")
         != RUNTIME_PROVENANCE_SCHEMA,
-        and runtime_provenance.get("schema") != "eliza.android_agent_runtime_provenance.v1",
         "runtime_provenance_schema_mismatch",
         "runtime payload provenance has the wrong schema",
         f"schema={runtime_provenance.get('schema')!r}",

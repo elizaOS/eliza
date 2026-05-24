@@ -898,12 +898,13 @@ def validate_full_trace_shard_sweep(
         if isinstance(baseline, dict) and isinstance(h2p_off, dict):
             base_mpki = baseline.get("weighted_mpki")
             off_mpki = h2p_off.get("weighted_mpki")
-            if isinstance(base_mpki, (int, float)) and isinstance(off_mpki, (int, float)):
-                if (
-                    require_baseline_not_worse_than_h2p_off
-                    and float(base_mpki) > float(off_mpki)
-                ):
-                    failures.append(f"{artifact} baseline must not regress versus h2p_off")
+            if (
+                isinstance(base_mpki, (int, float))
+                and isinstance(off_mpki, (int, float))
+                and require_baseline_not_worse_than_h2p_off
+                and float(base_mpki) > float(off_mpki)
+            ):
+                failures.append(f"{artifact} baseline must not regress versus h2p_off")
         for config in required_best_not_worse_than:
             best_name = data.get("best_config")
             best = results.get(best_name) if isinstance(best_name, str) else None
@@ -913,9 +914,12 @@ def validate_full_trace_shard_sweep(
                 continue
             best_mpki = best.get("weighted_mpki")
             other_mpki = other.get("weighted_mpki")
-            if isinstance(best_mpki, (int, float)) and isinstance(other_mpki, (int, float)):
-                if float(best_mpki) > float(other_mpki):
-                    failures.append(f"{artifact} best_config must not regress versus {config}")
+            if (
+                isinstance(best_mpki, (int, float))
+                and isinstance(other_mpki, (int, float))
+                and float(best_mpki) > float(other_mpki)
+            ):
+                failures.append(f"{artifact} best_config must not regress versus {config}")
 
 
 def validate_workload_class_bucket_promotion(
@@ -1267,10 +1271,7 @@ def evaluate_evidence_artifacts() -> list[str]:
     )
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
-    if cbp5_model_path.is_file():
-        data = read_json_object(cbp5_model_path, failures)
-    else:
-        data = None
+    data = read_json_object(cbp5_model_path, failures) if cbp5_model_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_cbp5.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
@@ -1294,10 +1295,7 @@ def evaluate_evidence_artifacts() -> list[str]:
 
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
     cbp5_rtl_generated: datetime | None = None
-    if cbp5_rtl_path.is_file():
-        data = read_json_object(cbp5_rtl_path, failures)
-    else:
-        data = None
+    data = read_json_object(cbp5_rtl_path, failures) if cbp5_rtl_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_cbp5_rtl.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
@@ -1312,21 +1310,21 @@ def evaluate_evidence_artifacts() -> list[str]:
         reject_stale_false_claim_reason(policy, ("cbp5_claim",), artifact, failures)
         evaluate_target_claim_semantics(data, artifact, policy, "cbp5_claim", failures)
 
-    if cbp5_model_generated is not None and cbp5_rtl_generated is not None:
-        if cbp5_model_generated < cbp5_rtl_generated:
-            failures.append(
-                "mpki_results_cbp5.json is older than mpki_results_cbp5_rtl.json; "
-                "refresh behavioural CBP-5 model evidence after the latest RTL CBP-5 run"
-            )
+    if (
+        cbp5_model_generated is not None
+        and cbp5_rtl_generated is not None
+        and cbp5_model_generated < cbp5_rtl_generated
+    ):
+        failures.append(
+            "mpki_results_cbp5.json is older than mpki_results_cbp5_rtl.json; "
+            "refresh behavioural CBP-5 model evidence after the latest RTL CBP-5 run"
+        )
     validate_cbp5_trace_manifest(failures)
 
     workload_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
     workload_trace_dir = ROOT / "external/workload-traces"
     workloads_for_manifest: dict[str, object] | None = None
-    if workload_mpki_path.is_file():
-        data = read_json_object(workload_mpki_path, failures)
-    else:
-        data = None
+    data = read_json_object(workload_mpki_path, failures) if workload_mpki_path.is_file() else None
     if data is not None:
         artifact = "mpki_results_workload_rtl.json"
         if data.get("schema") != "eliza.bpu_mpki.v1":
