@@ -30,6 +30,7 @@ import {
 } from "../src/platform/nut-driver.js";
 import { ComputerUseService } from "../src/services/computer-use-service.js";
 import type { ComputerActionResult } from "../src/types.js";
+import { assertScreenshotBase64NotBlank } from "./helpers/screenshot-quality.ts";
 
 const os = platform();
 const requestedDriver = (
@@ -108,9 +109,9 @@ describe("plugin-computeruse cross-platform driver e2e", () => {
           );
         }
         expect(screenshotBefore.success).toBe(true);
-        expect(screenshotBefore.screenshot).toBeTruthy();
-        expect((screenshotBefore.screenshot as string).length).toBeGreaterThan(
-          100,
+        assertScreenshotBase64NotBlank(
+          screenshotBefore.screenshot,
+          "screenshot before computer-use actions",
         );
 
         const move = (await service.executeCommand("mouse_move", {
@@ -130,7 +131,10 @@ describe("plugin-computeruse cross-platform driver e2e", () => {
         )) as ComputerActionResult;
         if (screenshotAfter.permissionDenied) return;
         expect(screenshotAfter.success).toBe(true);
-        expect(screenshotAfter.screenshot).toBeTruthy();
+        assertScreenshotBase64NotBlank(
+          screenshotAfter.screenshot,
+          "screenshot after computer-use actions",
+        );
       } finally {
         await service.stop();
       }

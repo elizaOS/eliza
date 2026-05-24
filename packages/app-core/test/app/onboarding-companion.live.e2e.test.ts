@@ -22,6 +22,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const LIVE_TESTS_ENABLED = process.env.ELIZA_LIVE_TEST === "1";
 const LIVE_PROVIDER =
@@ -844,7 +845,7 @@ describeLive("real onboarding handoff to companion mode", () => {
         });
         await page.waitForTimeout(UI_SETTLE_MS);
 
-        await page.screenshot({
+        await captureScreenshotWithQualityRetry(page, "onboarding companion", {
           path: path.join(
             SCREENSHOT_DIR,
             "onboarding-live-companion-after-enter.png",

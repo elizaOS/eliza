@@ -59,6 +59,37 @@ function classifyExample(example) {
   return "environment-or-dry-run";
 }
 
+function reviewCompleteness(example, reviewClass) {
+  const hasTokens = Number(example.totalTokens || 0) > 0;
+  const hasOutput = Boolean(String(example.outputPreview || "").trim());
+  if (!example.playbackExists) return "missing-playback";
+  if (!String(example.inputPreview || "").trim()) return "missing-input-preview";
+  if (hasOutput && hasTokens) return "full-inline-io-with-cache";
+  if (hasOutput) return "inline-output-no-token";
+  if (reviewClass === "tool-call-output") return "tool-call-only-inline";
+  if (hasTokens) return "empty-response-token-usage";
+  return "playback-only-environment";
+}
+
+function reviewLimitation(row) {
+  if (row.reviewCompleteness === "full-inline-io-with-cache") {
+    return "Inline input, output, token, cache, provider, and model metadata are present.";
+  }
+  if (row.reviewCompleteness === "inline-output-no-token") {
+    return "Inline input/output are present, but token/cache counters are absent.";
+  }
+  if (row.reviewCompleteness === "tool-call-only-inline") {
+    return "No text output preview was captured; inspect the playback/tool action for the command result.";
+  }
+  if (row.reviewCompleteness === "empty-response-token-usage") {
+    return "Token usage exists, but no text output preview was captured.";
+  }
+  if (row.reviewCompleteness === "playback-only-environment") {
+    return "Playback exists with input/environment transcript, but no inline output or token/cache counters.";
+  }
+  return "Missing inline evidence required for review.";
+}
+
 function buildPayload() {
   const sampler = readJson(
     "reports/benchmark-analysis/benchmark-five-example-sampler/five-example-sampler.json",
@@ -73,6 +104,7 @@ function buildPayload() {
     const outcomeRow = outcomeByBenchmark.get(benchmarkRow.benchmark);
     for (const [index, example] of (benchmarkRow.examples || []).entries()) {
       const reviewClass = classifyExample(example);
+      const completeness = reviewCompleteness(example, reviewClass);
       rows.push({
         id: `${benchmarkRow.benchmark}:${index + 1}`,
         benchmark: benchmarkRow.benchmark,
@@ -90,6 +122,10 @@ function buildPayload() {
         totalTokens: Number(example.totalTokens || 0),
         cacheReadTokens: Number(example.cacheReadTokens || 0),
         cachePercent: example.cachePercent,
+        inputSource: example.inputSource || "",
+        outputSource: example.outputSource || "",
+        responseChars: Number(example.responseChars || 0),
+        toolCallCount: Number(example.toolCallCount || 0),
         actions: example.actions || [],
         hasInputPreview: Boolean(String(example.inputPreview || "").trim()),
         hasOutputPreview: Boolean(String(example.outputPreview || "").trim()),
@@ -97,6 +133,7 @@ function buildPayload() {
         sourceHref: relSampler(example.sourceHref),
         playbackExists: Boolean(example.playbackExists),
         reviewClass,
+        reviewCompleteness: completeness,
         reviewReady:
           example.playbackExists &&
           Boolean(String(example.inputPreview || "").trim()) &&
@@ -114,11 +151,21 @@ function buildPayload() {
     rowsWithPlayback: rows.filter((row) => row.playbackExists).length,
     rowsWithTaskId: rows.filter((row) => row.taskId).length,
     reviewReadyRows: rows.filter((row) => row.reviewReady).length,
+    fullInlineReviewRows: rows.filter((row) => row.reviewCompleteness === "full-inline-io-with-cache").length,
+    inlineOutputRows: rows.filter((row) => row.hasOutputPreview).length,
+    playbackOnlyEnvironmentRows: rows.filter((row) => row.reviewCompleteness === "playback-only-environment").length,
+    toolCallOnlyInlineRows: rows.filter((row) => row.reviewCompleteness === "tool-call-only-inline").length,
+    rowsWithModelProvider: rows.filter((row) => row.model || row.provider).length,
+    rowsWithCachePercent: rows.filter((row) => Number.isFinite(row.cachePercent)).length,
     tokenRows: rows.filter((row) => row.totalTokens > 0).length,
     totalTokens: rows.reduce((sum, row) => sum + row.totalTokens, 0),
     cacheReadTokens: rows.reduce((sum, row) => sum + row.cacheReadTokens, 0),
     byReviewClass: rows.reduce((counts, row) => {
       counts[row.reviewClass] = (counts[row.reviewClass] || 0) + 1;
+      return counts;
+    }, {}),
+    byReviewCompleteness: rows.reduce((counts, row) => {
+      counts[row.reviewCompleteness] = (counts[row.reviewCompleteness] || 0) + 1;
       return counts;
     }, {}),
     byBenchmarkQualityBand: rows.reduce((counts, row) => {
@@ -145,10 +192,10 @@ function html(payload) {
       (row) => `<tr>
         <td><code>${escapeHtml(row.benchmark)}</code><br><span class="muted">sample ${row.sampleOrdinal}; ${escapeHtml(row.benchmarkQualityBand)}</span></td>
         <td>${escapeHtml(row.taskId || row.evidenceId || "sample-count-only")}</td>
-        <td><b>${escapeHtml(row.reviewClass)}</b><br><span class="muted">${row.reviewReady ? "review-ready" : "needs evidence"}</span></td>
-        <td>${row.totalTokens.toLocaleString("en-US")}<br><span class="muted">cache ${row.cacheReadTokens.toLocaleString("en-US")}</span></td>
+        <td><b>${escapeHtml(row.reviewClass)}</b><br><code>${escapeHtml(row.reviewCompleteness)}</code><br><span class="muted">${escapeHtml(reviewLimitation(row))}</span></td>
+        <td>${row.totalTokens.toLocaleString("en-US")}<br><span class="muted">cache ${row.cacheReadTokens.toLocaleString("en-US")}${Number.isFinite(row.cachePercent) ? ` (${escapeHtml(Number(row.cachePercent).toFixed(1))}%)` : ""}</span><br><span class="muted">${escapeHtml(row.provider || "provider n/a")} ${escapeHtml(row.model || "")}</span></td>
         <td>${link(row.playbackHref, "playback")} ${link(row.sourceHref, "source")}</td>
-        <td><span class="muted">${escapeHtml(row.inputPreview)}</span>${row.outputPreview ? `<br>${escapeHtml(row.outputPreview)}` : ""}</td>
+        <td><span class="muted">input ${escapeHtml(row.inputSource || "n/a")} / output ${escapeHtml(row.outputSource || "none")}; response chars ${escapeHtml(row.responseChars)}; tool calls ${escapeHtml(row.toolCallCount)}</span><br><span class="muted">${escapeHtml(row.inputPreview)}</span>${row.outputPreview ? `<br>${escapeHtml(row.outputPreview)}` : `<br><b>${escapeHtml(reviewLimitation(row))}</b>`}${row.actions.length ? `<br><span class="muted">actions: ${escapeHtml(row.actions.join(", "))}</span>` : ""}</td>
       </tr>`,
     )
     .join("\n");
@@ -183,6 +230,7 @@ function html(payload) {
       <div class="card"><span class="muted">Playback</span><b>${payload.summary.rowsWithPlayback}</b></div>
       <div class="card"><span class="muted">Task IDs</span><b>${payload.summary.rowsWithTaskId}</b></div>
       <div class="card"><span class="muted">Review-ready</span><b>${payload.summary.reviewReadyRows}</b></div>
+      <div class="card"><span class="muted">Full inline I/O</span><b>${payload.summary.fullInlineReviewRows}</b></div>
       <div class="card"><span class="muted">Token rows</span><b>${payload.summary.tokenRows}</b></div>
       <div class="card"><span class="muted">Tokens</span><b>${payload.summary.totalTokens.toLocaleString("en-US")}</b></div>
     </section>
@@ -206,16 +254,21 @@ function readme(payload) {
     `- Rows with playback: ${payload.summary.rowsWithPlayback}`,
     `- Rows with task ID: ${payload.summary.rowsWithTaskId}`,
     `- Review-ready rows: ${payload.summary.reviewReadyRows}`,
+    `- Full inline I/O rows: ${payload.summary.fullInlineReviewRows}`,
+    `- Inline output rows: ${payload.summary.inlineOutputRows}`,
+    `- Tool-call-only inline rows: ${payload.summary.toolCallOnlyInlineRows}`,
+    `- Playback-only environment rows: ${payload.summary.playbackOnlyEnvironmentRows}`,
     `- Token rows: ${payload.summary.tokenRows}`,
     `- Total tokens: ${payload.summary.totalTokens}`,
     `- Cache-read tokens: ${payload.summary.cacheReadTokens}`,
     `- Review classes: ${JSON.stringify(payload.summary.byReviewClass)}`,
+    `- Review completeness: ${JSON.stringify(payload.summary.byReviewCompleteness)}`,
     "",
-    "| benchmark | sample | task | review class | tokens |",
-    "|---|---:|---|---|---:|",
+    "| benchmark | sample | task | review class | completeness | tokens |",
+    "|---|---:|---|---|---|---:|",
     ...payload.rows.map(
       (row) =>
-        `| \`${row.benchmark}\` | ${row.sampleOrdinal} | \`${row.taskId || row.evidenceId || ""}\` | ${row.reviewClass} | ${row.totalTokens} |`,
+        `| \`${row.benchmark}\` | ${row.sampleOrdinal} | \`${row.taskId || row.evidenceId || ""}\` | ${row.reviewClass} | ${row.reviewCompleteness} | ${row.totalTokens} |`,
     ),
     "",
   ].join("\n");

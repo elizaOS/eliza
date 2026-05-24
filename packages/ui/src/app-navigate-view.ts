@@ -7,6 +7,7 @@ export type NavigateViewDetail = {
   viewLabel?: string;
   viewType?: "gui" | "tui";
   action?: string;
+  alwaysOnTop?: boolean;
 };
 
 export type DesktopTabOpen = (
@@ -100,7 +101,7 @@ export function createNavigateViewHandler({
         params: {
           title: viewLabel,
           path: viewPath,
-          alwaysOnTop: false,
+          alwaysOnTop: detail.alwaysOnTop === true,
         },
       })
         .then((result) => {

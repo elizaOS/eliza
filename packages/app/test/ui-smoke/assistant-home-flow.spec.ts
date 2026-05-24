@@ -1,11 +1,14 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Page, type Route, test } from "@playwright/test";
 import {
+  expectNoPageDiagnostics,
   installDefaultAppRoutes,
+  installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const SCREENSHOT_DIR = path.join(
   process.cwd(),
@@ -59,9 +62,13 @@ async function fulfillJson(
   });
 }
 
-async function installAssistantFlowRoutes(page: Page): Promise<void> {
+async function installAssistantFlowRoutes(page: Page): Promise<{
+  streamRequests: string[];
+}> {
   await installDefaultAppRoutes(page);
   let conversationCreated = false;
+  let messageSequence = 0;
+  const streamRequests: string[] = [];
   const messages: Array<{
     id: string;
     role: "user" | "assistant";
@@ -134,18 +141,20 @@ async function installAssistantFlowRoutes(page: Page): Promise<void> {
         text?: string;
       };
       const userText = body.text?.trim() || "voice test";
+      streamRequests.push(userText);
       const assistantText =
         "I heard you. Opening the right view now and keeping voice ready.";
       const now = Date.now();
+      messageSequence += 1;
       messages.push(
         {
-          id: `user-${now}`,
+          id: `user-${messageSequence}`,
           role: "user",
           text: userText,
           timestamp: now,
         },
         {
-          id: `assistant-${now}`,
+          id: `assistant-${messageSequence}`,
           role: "assistant",
           text: assistantText,
           timestamp: now + 1,
@@ -194,13 +203,16 @@ async function installAssistantFlowRoutes(page: Page): Promise<void> {
       await route.fallback();
     },
   );
+
+  return { streamRequests };
 }
 
 async function screenshot(page: Page, name: string): Promise<void> {
   await mkdir(SCREENSHOT_DIR, { recursive: true });
-  await page.screenshot({
+  await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(SCREENSHOT_DIR, `${name}.png`),
     fullPage: false,
+    attempts: 4,
   });
 }
 
@@ -269,9 +281,18 @@ async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
 }
 
 test.describe("assistant home app flow", () => {
+  test.beforeEach(({ page }) => {
+    installPageDiagnosticsGuard(page);
+  });
+
+  test.afterEach(async ({ page }, testInfo) => {
+    await expectNoPageDiagnostics(page, testInfo.title);
+  });
+
   test("captures onboarding, assistant home, chat suppression, and view pill states", async ({
     page,
   }) => {
+    await rm(SCREENSHOT_DIR, { force: true, recursive: true });
     await installAssistantFlowRoutes(page);
 
     await page.addInitScript(() => {
@@ -288,7 +309,7 @@ test.describe("assistant home app flow", () => {
 
     await page.unroute("**/api/onboarding/status");
     await seedAppStorage(page);
-    await installAssistantFlowRoutes(page);
+    const assistantApi = await installAssistantFlowRoutes(page);
 
     await openAppPath(page, "/");
     await expect(page.getByTestId("home-view")).toBeVisible();
@@ -315,7 +336,62 @@ test.describe("assistant home app flow", () => {
     await page.getByTestId("shell-home-pill").click();
     await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
     await expect(page.getByLabel("Message Eliza")).toBeVisible();
+    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
+      "aria-label",
+      "Close Eliza",
+    );
+
+    await page.getByLabel("Message Eliza").fill("open wallet from the pill");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByLabel("Message Eliza")).toHaveValue("");
+    await expect(page.getByText("open wallet from the pill")).toBeVisible();
+    await expect(page.getByText("I heard you.")).toBeVisible();
+    await expect(
+      page.getByText("Opening the right view now and keeping voice ready."),
+    ).toBeVisible();
+    expect(assistantApi.streamRequests).toEqual(["open wallet from the pill"]);
     await screenshot(page, "06-views-pill-open");
+
+    await page.getByTestId("shell-home-pill").click();
+    await expect(page.getByTestId("shell-assistant-overlay")).toHaveCount(0);
+    await expect(page.getByLabel("Message Eliza")).toHaveCount(0);
+    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
+      "aria-label",
+      "Open Eliza",
+    );
+    await screenshot(page, "06b-views-pill-closed");
+
+    await page.getByTestId("shell-home-pill").click();
+    await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
+    await expect(page.getByLabel("Message Eliza")).toBeVisible();
+    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
+      "aria-label",
+      "Close Eliza",
+    );
+    await screenshot(page, "06c-views-pill-reopened");
+
+    await page.getByLabel("Message Eliza").fill("open terminal after reopen");
+    await page.getByRole("button", { name: "Send message" }).click();
+    await expect(page.getByLabel("Message Eliza")).toHaveValue("");
+    await expect(page.getByText("open terminal after reopen")).toBeVisible();
+    await expect(page.getByText("I heard you.").last()).toBeVisible();
+    await expect(
+      page.getByText("Opening the right view now and keeping voice ready.").last(),
+    ).toBeVisible();
+    expect(assistantApi.streamRequests).toEqual([
+      "open wallet from the pill",
+      "open terminal after reopen",
+    ]);
+    await screenshot(page, "06d-views-pill-second-send");
+
+    await page.getByTestId("shell-home-pill").click();
+    await expect(page.getByTestId("shell-assistant-overlay")).toHaveCount(0);
+    await expect(page.getByLabel("Message Eliza")).toHaveCount(0);
+    await expect(page.getByTestId("shell-home-pill")).toHaveAttribute(
+      "aria-label",
+      "Open Eliza",
+    );
+    await screenshot(page, "06e-views-pill-reclosed");
 
     await openAppPath(page, "/wallet");
     await expect(page.getByTestId("shell-home-pill")).toBeVisible();
@@ -327,7 +403,7 @@ test.describe("assistant home app flow", () => {
   }) => {
     await seedAppStorage(page);
     await installHomeSpeechRecognitionShim(page);
-    await installAssistantFlowRoutes(page);
+    const assistantApi = await installAssistantFlowRoutes(page);
 
     await openAppPath(page, "/");
     await expect(page.getByTestId("home-view")).toBeVisible();
@@ -354,5 +430,6 @@ test.describe("assistant home app flow", () => {
     await expect(page.getByTestId("home-assistant-transcript")).toContainText(
       "Opening the right view now and keeping voice ready",
     );
+    expect(assistantApi.streamRequests).toEqual(["show me my pinned views"]);
   });
 });

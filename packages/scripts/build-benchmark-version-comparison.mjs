@@ -139,16 +139,23 @@ function attachPlayback(version, row, playbackByKey) {
   };
 }
 
-function compareRows(current, previous, playbackByKey) {
+function compareRows(current, previous, playbackByKey, rowCount = 1) {
   const currentVersion = attachPlayback(rowVersion(current), current, playbackByKey);
   if (!previous) {
+    const notes =
+      rowCount > 1
+        ? [
+            `${rowCount} indexed rows exist, but none are earlier than the selected current row.`,
+          ]
+        : ["Only one indexed row is available for this benchmark."];
     return {
       benchmark: current.benchmark,
       hasPrevious: false,
+      noEarlierPreviousRow: rowCount > 1,
       current: currentVersion,
       previous: null,
       deltas: {},
-      notes: ["Only one indexed row is available for this benchmark."],
+      notes,
     };
   }
   const notes = [];
@@ -168,6 +175,7 @@ function compareRows(current, previous, playbackByKey) {
   return {
     benchmark: current.benchmark,
     hasPrevious: true,
+    noEarlierPreviousRow: false,
     current: currentVersion,
     previous: previousVersion,
     deltas: {
@@ -213,7 +221,7 @@ function buildPayload() {
       benchmark,
       rowCount: rows.length,
       history: rows.map((row) => attachPlayback(rowVersion(row), row, playbackByKey)),
-      comparison: compareRows(current, previous, playbackByKey),
+      comparison: compareRows(current, previous, playbackByKey, rows.length),
     });
   }
   benchmarks.sort((a, b) => a.benchmark.localeCompare(b.benchmark));
@@ -246,6 +254,12 @@ function buildPayload() {
       indexedRuns: (indexData.runs || []).length,
       benchmarksWithPrevious: benchmarks.filter((entry) => entry.comparison.hasPrevious).length,
       benchmarksWithoutPrevious: benchmarks.filter((entry) => !entry.comparison.hasPrevious).length,
+      onlyOneIndexedRowBenchmarks: benchmarks.filter(
+        (entry) => !entry.comparison.hasPrevious && entry.rowCount === 1,
+      ).length,
+      noEarlierPreviousRowBenchmarks: benchmarks.filter(
+        (entry) => entry.comparison.noEarlierPreviousRow,
+      ).length,
       currentTargetPlaybackLinks: benchmarks.filter(
         (entry) => entry.comparison.current?.targetPlaybackHref,
       ).length,
@@ -323,7 +337,7 @@ function html() {
     const pct = v => typeof v === "number" ? (v * 100).toFixed(1) + "%" : "n/a";
     const num = v => typeof v === "number" ? (Math.round(v * 1000) / 1000).toString() : "";
     document.getElementById("meta").textContent = (data.generatedAt || "") + " · " + (data.sourceIndex || "");
-    document.getElementById("cards").innerHTML = [["benchmarks",data.summary.benchmarkCount],["rows",data.summary.benchmarkRows],["runs",data.summary.indexedRuns],["with previous",data.summary.benchmarksWithPrevious],["single row",data.summary.benchmarksWithoutPrevious],["current playback",data.summary.currentTargetPlaybackLinks],["previous playback",data.summary.previousTargetPlaybackLinks],["comparable playback",data.summary.comparablePlaybackPairs],["previous viewers",data.summary.previousViewerLinks],["comparable viewers",data.summary.comparableViewerPairs],["previous playback gaps",data.summary.previousPlaybackGapCount],["comparison status",data.summary.playbackComparisonStatus]].map(([k,v]) => '<div class="card"><span class="muted">' + esc(k) + '</span><b>' + esc(v ?? 0) + '</b></div>').join("");
+    document.getElementById("cards").innerHTML = [["benchmarks",data.summary.benchmarkCount],["rows",data.summary.benchmarkRows],["runs",data.summary.indexedRuns],["with previous",data.summary.benchmarksWithPrevious],["without previous",data.summary.benchmarksWithoutPrevious],["only one indexed row",data.summary.onlyOneIndexedRowBenchmarks],["no earlier previous row",data.summary.noEarlierPreviousRowBenchmarks],["current playback",data.summary.currentTargetPlaybackLinks],["previous playback",data.summary.previousTargetPlaybackLinks],["comparable playback",data.summary.comparablePlaybackPairs],["previous viewers",data.summary.previousViewerLinks],["comparable viewers",data.summary.comparableViewerPairs],["previous playback gaps",data.summary.previousPlaybackGapCount],["comparison status",data.summary.playbackComparisonStatus]].map(([k,v]) => '<div class="card"><span class="muted">' + esc(k) + '</span><b>' + esc(v ?? 0) + '</b></div>').join("");
     function filtered() {
       const q = document.getElementById("q").value.toLowerCase();
       const state = document.getElementById("state").value;
@@ -358,7 +372,9 @@ function renderMarkdown(payload) {
     `Rows: ${payload.summary.benchmarkRows}`,
     `Runs: ${payload.summary.indexedRuns}`,
     `Benchmarks with previous row: ${payload.summary.benchmarksWithPrevious}`,
-    `Benchmarks with only one row: ${payload.summary.benchmarksWithoutPrevious}`,
+    `Benchmarks without previous row: ${payload.summary.benchmarksWithoutPrevious}`,
+    `Benchmarks with only one indexed row: ${payload.summary.onlyOneIndexedRowBenchmarks}`,
+    `Benchmarks with no earlier previous row: ${payload.summary.noEarlierPreviousRowBenchmarks}`,
     `Current target playback links: ${payload.summary.currentTargetPlaybackLinks}`,
     `Previous target playback links: ${payload.summary.previousTargetPlaybackLinks}`,
     `Comparable playback pairs: ${payload.summary.comparablePlaybackPairs}`,

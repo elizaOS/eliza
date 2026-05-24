@@ -55,6 +55,7 @@ function rerunCommand(benchmarkId) {
 
 function buildPayload() {
   const corpus = readJson("reports/benchmarks/benchmark-results-corpus-review/corpus-review.json");
+  const credentialGaps = corpus.credentialGaps || {};
   const latestRows = corpus.latestRows || [];
   const findings = corpus.reviewFindings || [];
   const canonicalFiles = (corpus.canonicalFiles || []).filter(Boolean);
@@ -108,6 +109,10 @@ function buildPayload() {
         finding.disposition === "blocked"
           ? `gap-pages/${finding.benchmark_id}.html`
           : "";
+      const credentialReadiness =
+        finding.benchmark_id === "hyperliquid_bench"
+          ? credentialGaps.hyperliquid || null
+          : null;
       return {
         benchmarkId,
         disposition: finding.disposition,
@@ -153,6 +158,7 @@ function buildPayload() {
           outputFiles: (row.output_files || []).length,
         })),
         tokenlessTelemetry: tokenlessByFamily.get(benchmarkId) || null,
+        credentialReadiness,
         rerunCommand: rerunCommand(benchmarkId),
       };
     })
@@ -177,6 +183,12 @@ function buildPayload() {
       insufficientWarningLatestRows: corpus.summary?.insufficientLatestRows || 0,
       zeroMetricRows: rows.reduce((sum, row) => sum + row.zeroMetricRows.length, 0),
       tokenlessFamilies: rows.filter((row) => row.tokenlessTelemetry).length,
+      blockedCredentialFamilies: rows.filter(
+        (row) => row.disposition === "blocked" && row.credentialReadiness?.runnable === false,
+      ).length,
+      missingCredentialNames: [
+        ...new Set(rows.flatMap((row) => row.credentialReadiness?.missing || [])),
+      ].sort(),
       familyPagesLinked: rows.filter((row) => row.familyPageExists || row.gapPageExists).length,
       canonicalPlaybackFamilies: rows.filter((row) => row.canonicalPlaybackCount > 0).length,
       rerunCommands: rows.filter((row) => row.rerunCommand).length,
@@ -193,6 +205,13 @@ function buildPayload() {
 
 function pct(value) {
   return typeof value === "number" ? `${value.toFixed(1)}%` : "n/a";
+}
+
+function credentialHtml(row) {
+  if (!row.credentialReadiness) return "";
+  const present = row.credentialReadiness.present || {};
+  const missing = row.credentialReadiness.missing || [];
+  return `<br><span class="bad">credential gate</span><br><span class="muted">runnable=${escapeHtml(row.credentialReadiness.runnable)}; missing=${escapeHtml(missing.join(", ") || "none")}; present=${escapeHtml(JSON.stringify(present))}; secret values omitted</span>`;
 }
 
 function html(payload) {
@@ -239,7 +258,7 @@ function html(payload) {
       .map(([label, value]) => `<div class="card"><div class="muted">${escapeHtml(label)}</div><div class="metric">${escapeHtml(value)}</div></div>`)
       .join("")}</section>
     <section class="panel"><h2>Family Remediation</h2><div class="body"><table><thead><tr><th>family</th><th>disposition</th><th>evidence</th><th>warnings / zero metrics</th><th>links</th><th>rerun</th></tr></thead><tbody>${payload.rows
-      .map((row) => `<tr><td><code>${escapeHtml(row.benchmarkId)}</code></td><td class="${row.disposition === "blocked" ? "bad" : "warn"}">${escapeHtml(row.disposition)}</td><td>${escapeHtml(row.latestRows)} rows, ${escapeHtml(row.normalizedCalls)} calls<br>${escapeHtml(row.tokenTotal)} tokens, cache ${escapeHtml(pct(row.cachePercent))}<br>${escapeHtml(row.trajectoryLikeFiles)} trajectory-like files, ${escapeHtml(row.canonicalPlaybackCount)} playback files<br>${(row.reasons || []).map((reason) => `<div>${escapeHtml(reason)}</div>`).join("")}</td><td><strong>${escapeHtml(row.warningRows.length)}</strong> warning rows, <strong>${escapeHtml(row.zeroMetricRows.length)}</strong> zero-metric rows${row.tokenlessTelemetry ? `<br><span class="bad">tokenless telemetry family</span>` : ""}<pre>${escapeHtml(JSON.stringify({ warnings: row.warningRows.slice(0, 5), zeroMetricRows: row.zeroMetricRows.slice(0, 5) }, null, 2))}</pre></td><td>${row.familyPageHref ? `<a href="${escapeHtml(row.familyPageHref)}">family page</a><br>` : ""}${row.gapPageHref ? `<a href="${escapeHtml(row.gapPageHref)}">gap page</a><br>` : ""}${row.firstPlaybackHref ? `<a href="${escapeHtml(row.firstPlaybackHref)}">first playback</a>` : ""}</td><td><code>${escapeHtml(row.rerunCommand)}</code><br><span class="muted">then <code>bun run bench:analysis:build</code></span></td></tr>`)
+      .map((row) => `<tr><td><code>${escapeHtml(row.benchmarkId)}</code></td><td class="${row.disposition === "blocked" ? "bad" : "warn"}">${escapeHtml(row.disposition)}</td><td>${escapeHtml(row.latestRows)} rows, ${escapeHtml(row.normalizedCalls)} calls<br>${escapeHtml(row.tokenTotal)} tokens, cache ${escapeHtml(pct(row.cachePercent))}<br>${escapeHtml(row.trajectoryLikeFiles)} trajectory-like files, ${escapeHtml(row.canonicalPlaybackCount)} playback files<br>${(row.reasons || []).map((reason) => `<div>${escapeHtml(reason)}</div>`).join("")}${credentialHtml(row)}</td><td><strong>${escapeHtml(row.warningRows.length)}</strong> warning rows, <strong>${escapeHtml(row.zeroMetricRows.length)}</strong> zero-metric rows${row.tokenlessTelemetry ? `<br><span class="bad">tokenless telemetry family</span>` : ""}<pre>${escapeHtml(JSON.stringify({ warnings: row.warningRows.slice(0, 5), zeroMetricRows: row.zeroMetricRows.slice(0, 5) }, null, 2))}</pre></td><td>${row.familyPageHref ? `<a href="${escapeHtml(row.familyPageHref)}">family page</a><br>` : ""}${row.gapPageHref ? `<a href="${escapeHtml(row.gapPageHref)}">gap page</a><br>` : ""}${row.firstPlaybackHref ? `<a href="${escapeHtml(row.firstPlaybackHref)}">first playback</a>` : ""}</td><td><code>${escapeHtml(row.rerunCommand)}</code><br><span class="muted">then <code>bun run bench:analysis:build</code></span></td></tr>`)
       .join("")}</tbody></table></div></section>
   </main>
 </body>
@@ -257,6 +276,8 @@ function markdown(payload) {
     `Insufficient-warning latest rows: ${payload.summary.insufficientWarningLatestRows}`,
     `Telemetry-gap families: ${payload.summary.telemetryGapFamilies}`,
     `Blocked families: ${payload.summary.blockedFamilies}`,
+    `Blocked credential families: ${payload.summary.blockedCredentialFamilies}`,
+    `Missing credential names: ${payload.summary.missingCredentialNames.join(", ") || "none"}`,
     `Rerun commands: ${payload.summary.rerunCommands}`,
     "",
     "| family | disposition | warning rows | zero metrics | playback |",

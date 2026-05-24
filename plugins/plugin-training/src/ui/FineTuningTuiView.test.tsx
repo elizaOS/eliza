@@ -736,6 +736,8 @@ const sampleCollectionRun = {
             outputPath: "hf://elizaos/eliza-1-0_8b-base",
             baseModel: null,
             repoId: "elizaos/eliza-1-0_8b-base",
+            baseEvalScore: null,
+            trainedEvalScore: null,
             evalImprovementPercent: null,
           },
           {
@@ -748,6 +750,8 @@ const sampleCollectionRun = {
             outputPath: "hf://elizaos/eliza-1-0_8b-trained",
             baseModel: "eliza-1-0_8b-base",
             repoId: "elizaos/eliza-1-0_8b-trained",
+            baseEvalScore: 0.4,
+            trainedEvalScore: 0.5,
             evalImprovementPercent: 25,
           },
         ],
@@ -961,6 +965,16 @@ const sampleCollectionHistory = {
         partial: 2,
         missing: 6,
       },
+      readinessGaps: [
+        {
+          id: "all_eliza1_tiers_benchmark",
+          label: "All Eliza-1 tier benchmark coverage",
+          status: "missing",
+          note: "Run benchmark matrix coverage for every Eliza-1 tier.",
+          recommendedCapability: "terminal-training-run-collection",
+          recommendedParams: { actionBenchmarkPairs: "all" },
+        },
+      ],
       artifactCount: 8,
       stepCounts: { skipped: 0, succeeded: 9, failed: 0 },
       dataSources: {
@@ -971,6 +985,94 @@ const sampleCollectionHistory = {
         scenarioNativeDatasets: 1,
         testTrajectories: 1,
         trainingJsonlDatasets: 2,
+      },
+      sourceSamples: {
+        huggingFace: [
+          {
+            title: "hf-history",
+            path: "/tmp/training-collection/hf/manifest.json",
+            schema: "eliza_huggingface_dataset_ingest",
+            sourceKind: "huggingface_dataset",
+            trajectoryId: "hf-history-traj",
+            scenarioId: null,
+            task: "response",
+            input: "hf history input",
+            output: "hf history output",
+            model: "eliza-1-0_8b-base",
+          },
+        ],
+        feed: [
+          {
+            title: "feed-history",
+            path: "/tmp/training-collection/feed/feed-dry-run.manifest.json",
+            schema: "feed_parallel_generation",
+            sourceKind: "feed_train_parallel_generation",
+            trajectoryId: "feed-history-traj",
+            scenarioId: null,
+            task: "market_tick",
+            input: "feed history input",
+            output: "feed history output",
+            model: null,
+          },
+        ],
+        natural: [],
+        scenarios: [],
+        tests: [],
+        trainingJsonl: [],
+      },
+      sourceArtifacts: [
+        {
+          category: "feed",
+          title: "feed-history",
+          path: "/tmp/training-collection/feed/feed-dry-run.manifest.json",
+          schema: "feed_parallel_generation",
+        },
+        {
+          category: "training_jsonl",
+          title: "feed-history-trajectories.jsonl",
+          path: "/tmp/training-collection/feed/feed-history-trajectories.jsonl",
+          schema: "eliza_training_jsonl_dataset",
+        },
+      ],
+      evidenceArtifacts: [
+        {
+          category: "benchmark",
+          title: "benchmark-history",
+          path: "/tmp/training-collection/matrix/benchmark-matrix.json",
+          schema: "eliza_benchmark_matrix_artifact",
+        },
+        {
+          category: "eval",
+          title: "eval-history",
+          path: "/tmp/training-collection/eval/eval-comparison.json",
+          schema: "eliza_local_eval_comparison_artifact",
+        },
+        {
+          category: "model",
+          title: "eliza-1-0_8b-trained",
+          path: "/tmp/training-collection/models/0_8b-trained.json",
+          schema: "eliza1_model_registry_entry",
+        },
+      ],
+      training: {
+        trainingRuns: 1,
+        models: 2,
+        modelInventory: [
+          {
+            title: "eliza-1-0_8b-trained",
+            path: "/tmp/training-collection/models/0_8b-trained.json",
+            schema: "eliza1_model_registry_entry",
+            model: "eliza-1-0_8b-trained",
+            tier: "0_8b",
+            variant: "trained",
+            outputPath: "hf://elizaos/eliza-1-0_8b-trained",
+            baseModel: "eliza-1-0_8b-base",
+            repoId: "elizaos/eliza-1-0_8b-trained",
+            baseEvalScore: 0.4,
+            trainedEvalScore: 0.5,
+            evalImprovementPercent: 25,
+          },
+        ],
       },
       benchmarks: {
         actionBenchmarkPairs: 1,
@@ -1055,6 +1157,7 @@ const sampleCollectionHistory = {
         },
         models: {
           artifacts: 2,
+          stagedBundles: 0,
           inventoryCount: 2,
         },
       },
@@ -1183,8 +1286,28 @@ describe("FineTuningTuiView", () => {
     expect(await screen.findByText("7")).toBeTruthy();
     expect(await screen.findByText("Scored evals")).toBeTruthy();
     expect(await screen.findByText("Models")).toBeTruthy();
+    expect(await screen.findByText("Next gaps")).toBeTruthy();
+    expect(
+      await screen.findByText("all_eliza1_tiers_benchmark:missing"),
+    ).toBeTruthy();
+    expect(await screen.findByText(/established 0_8b \/ next 2b/)).toBeTruthy();
+    expect(await screen.findByText("2b, 4b, 9b, 27b")).toBeTruthy();
     expect(trainingClient.listTrainingCollections).toHaveBeenCalledWith({
       limit: 3,
+    });
+
+    fireEvent.click(
+      await screen.findByTitle("terminal-training-run-collection"),
+    );
+    await waitFor(() => {
+      expect(trainingClient.runTrainingCollection).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actionBenchmarkPairs: expect.arrayContaining([
+            expect.objectContaining({ tier: "0_8b" }),
+            expect.objectContaining({ tier: "27b" }),
+          ]),
+        }),
+      );
     });
 
     fireEvent.click(await screen.findByText("Open analysis"));
@@ -1546,8 +1669,46 @@ describe("FineTuningTuiView", () => {
       /baseline established:0_8b next:2b remaining:2b,4b,9b,27b/,
     );
     await screen.findByText(
+      /models:2 training-runs:1 inventory:1 0_8b trained eliza-1-0_8b-trained base:eliza-1-0_8b-base score:0\.4->0\.5 output:hf:\/\/elizaos\/eliza-1-0_8b-trained improvement:25%/,
+    );
+    await screen.findByText(
+      /gaps: all_eliza1_tiers_benchmark:missing->terminal-training-run-collection/,
+    );
+    fireEvent.click(
+      await screen.findByTitle(
+        "all_eliza1_tiers_benchmark: terminal-training-run-collection",
+      ),
+    );
+    await waitFor(() => {
+      expect(trainingClient.runTrainingCollection).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          actionBenchmarkPairs: expect.arrayContaining([
+            expect.objectContaining({ tier: "0_8b" }),
+            expect.objectContaining({ tier: "27b" }),
+          ]),
+        }),
+      );
+    });
+    await screen.findByText(
       /coverage samples:7 hf:1 feed:1 natural:1 scenarios:1 tests:1 jsonl:2 scored-evals:1\/1 scored-bench:1\/1 all-tiers:no/,
     );
+    await screen.findByText(
+      /source samples: huggingFace:hf-history-traj task:response input:hf history input output:hf history output/,
+    );
+    await screen.findByText(
+      /feed:feed-history-traj task:market_tick input:feed history input output:feed history output/,
+    );
+    await screen.findByText("feed:feed-history");
+    fireEvent.click(await screen.findByText("training_jsonl:feed-history-trajectories.jsonl"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "file:///tmp/training-collection/feed/feed-history-trajectories.jsonl",
+    );
+    await screen.findByText("benchmark:benchmark-history");
+    fireEvent.click(await screen.findByText("eval:eval-history"));
+    expect(openExternalUrl).toHaveBeenCalledWith(
+      "file:///tmp/training-collection/eval/eval-comparison.json",
+    );
+    await screen.findByText("model:eliza-1-0_8b-trained");
     fireEvent.click(await screen.findByText("Open summary"));
     expect(openExternalUrl).toHaveBeenCalledWith(
       "file:///tmp/training-collection/README.md",
@@ -1595,7 +1756,9 @@ describe("FineTuningTuiView", () => {
     await screen.findByText(
       /feed-traj-1 trader scenario:multi-archetype-trader score:0.87 steps:1 first:BUY/,
     );
-    await screen.findByText(/feed:feed-traj-1 task:n\/a input:BUY output:profitable and coherent/);
+    await screen.findByText(
+      /feed:feed-traj-1 task:n\/a model:n\/a input:BUY output:profitable and coherent/,
+    );
     await screen.findByText("Eval comparison evidence");
     await screen.findByText(
       /eliza-1-0_8b-base -> eliza-1-0_8b-trained backend:cpu base:0.4 trained:0.5 improvement:25% latency:120ms->150ms report:\/tmp\/eval\/local_model_comparison\.json/,

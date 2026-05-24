@@ -703,6 +703,7 @@ export async function handleViewsRoutes(
   //   action: "pin-tab"    — tells the shell to add to desktop tab bar
   //   action: "open-window" — tells the shell to open in a new Electrobun window
   //   path: string         — override the navigation path
+  //   alwaysOnTop: boolean — for open-window, ask the shell to keep it above normal windows
   if (method === "POST" && subResource === "navigate") {
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
@@ -719,6 +720,7 @@ export async function handleViewsRoutes(
       (id === "__view-manager__" ? "/apps" : null);
     const viewLabel = entry?.label ?? id;
     const action = typeof body?.action === "string" ? body.action : undefined;
+    const alwaysOnTop = body?.alwaysOnTop === true;
 
     logger.info(
       { src: "ViewsRoutes", viewId: id, viewPath, action },
@@ -732,6 +734,7 @@ export async function handleViewsRoutes(
       viewLabel,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
+      ...(alwaysOnTop ? { alwaysOnTop } : {}),
       updatedAt: new Date().toISOString(),
     };
 
@@ -742,6 +745,7 @@ export async function handleViewsRoutes(
       viewLabel,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
+      ...(alwaysOnTop ? { alwaysOnTop } : {}),
     });
 
     json(res, {
@@ -750,6 +754,7 @@ export async function handleViewsRoutes(
       viewPath,
       viewType: resolvedViewType,
       ...(action ? { action } : {}),
+      ...(alwaysOnTop ? { alwaysOnTop } : {}),
     });
     return true;
   }

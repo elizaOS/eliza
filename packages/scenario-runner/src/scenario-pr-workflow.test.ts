@@ -6,10 +6,95 @@ const workflowPath = resolve(
   import.meta.dirname,
   "../../../.github/workflows/scenario-pr.yml",
 );
+const cloudWorkflowPath = resolve(
+  import.meta.dirname,
+  "../../../.github/workflows/cloud-tests.yml",
+);
+const rootPackagePath = resolve(import.meta.dirname, "../../../package.json");
+const appAssistantFlowPath = resolve(
+  import.meta.dirname,
+  "../../app/test/ui-smoke/assistant-home-flow.spec.ts",
+);
+const appScreenshotQualityPath = resolve(
+  import.meta.dirname,
+  "../../app/test/ui-smoke/helpers/screenshot-quality.ts",
+);
+const appDesignReviewPaths = [
+  "../../app/test/design-review/run-design-review.ts",
+  "../../app/test/design-review/run-new-onboarding-review.ts",
+  "../../app/test/design-review/run-onboarding-review.ts",
+].map((relativePath) => resolve(import.meta.dirname, relativePath));
+const voiceFlowPath = resolve(
+  import.meta.dirname,
+  "../../ui/src/onboarding/__e2e__/assistant-voice-flow.test.tsx",
+);
+const appTtsSttFlowPath = resolve(
+  import.meta.dirname,
+  "../../app/test/ui-smoke/tts-stt-e2e.spec.ts",
+);
+const viewManagerFlowPath = resolve(
+  import.meta.dirname,
+  "../../ui/src/onboarding/__e2e__/assistant-view-manager-flow.test.tsx",
+);
+const appViewManagerFlowPath = resolve(
+  import.meta.dirname,
+  "../../app/test/ui-smoke/view-manager-actual-flow.spec.ts",
+);
+const appPackagedRegressionPath = resolve(
+  import.meta.dirname,
+  "../../app/test/electrobun-packaged/electrobun-packaged-regressions.e2e.spec.ts",
+);
+const appCoreLiveScreenshotPaths = [
+  "../../app-core/test/app/memory-relationships.real.e2e.test.ts",
+  "../../app-core/test/app/qa-checklist.real.e2e.test.ts",
+  "../../app-core/test/app/onboarding-companion.live.e2e.test.ts",
+].map((relativePath) => resolve(import.meta.dirname, relativePath));
+const computerUseBrowserPath = resolve(
+  import.meta.dirname,
+  "../../../plugins/plugin-computeruse/src/platform/browser.ts",
+);
+const computerUseScreenshotQualityPath = resolve(
+  import.meta.dirname,
+  "../../../plugins/plugin-computeruse/src/platform/screenshot-quality.ts",
+);
+const llmProxyPath = resolve(
+  import.meta.dirname,
+  "../../test/mocks/helpers/llm-proxy-plugin.ts",
+);
+const llmProxyTestPath = resolve(
+  import.meta.dirname,
+  "../../test/mocks/__tests__/llm-proxy-plugin.test.ts",
+);
+const deterministicPrScenarioPath = resolve(
+  import.meta.dirname,
+  "../test/scenarios/deterministic-pr-smoke.scenario.ts",
+);
+const appControlViewsManagementPath = resolve(
+  import.meta.dirname,
+  "../../../plugins/plugin-app-control/src/actions/views-management.test.ts",
+);
+const appVerificationIntegrationPath = resolve(
+  import.meta.dirname,
+  "../../../plugins/plugin-app-control/src/services/__tests__/app-verification.integration.test.ts",
+);
 
 describe("scenario PR workflow contract", () => {
   it("runs deterministic zero-cost coverage on every PR without path filtering", () => {
     const workflow = readFileSync(workflowPath, "utf8");
+    const deterministicPrScenario = readFileSync(
+      deterministicPrScenarioPath,
+      "utf8",
+    );
+    const appControlViewsManagement = readFileSync(
+      appControlViewsManagementPath,
+      "utf8",
+    );
+    const appVerificationIntegration = readFileSync(
+      appVerificationIntegrationPath,
+      "utf8",
+    );
+    const llmProxy = readFileSync(llmProxyPath, "utf8");
+    const llmProxyTest = readFileSync(llmProxyTestPath, "utf8");
 
     expect(workflow).toContain("pull_request:");
     expect(workflow).not.toMatch(/\n\s+paths:\s*\n/);
@@ -21,13 +106,290 @@ describe("scenario PR workflow contract", () => {
       "bun run --cwd packages/ui test:slow -- src/onboarding/__e2e__/assistant-view-manager-flow.test.tsx src/onboarding/__e2e__/assistant-voice-flow.test.tsx",
     );
     expect(workflow).toContain(
+      "src/components/shell/__tests__/shell-assistant-flow.test.tsx",
+    );
+    expect(workflow).toContain("bunx playwright install --with-deps chromium");
+    expect(workflow).toContain(
+      'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures onboarding, assistant home, chat suppression, and view pill states"',
+    );
+    expect(workflow).toContain(
+      'bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"',
+    );
+    expect(workflow).toContain(
+      "bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium",
+    );
+    expect(workflow).toContain(
       "bun run --cwd packages/scenario-runner test:pr:e2e",
     );
     expect(workflow).toContain(
       "bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts",
     );
     expect(workflow).toContain(
+      "bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd packages/app test -- test/screenshot-quality.test.ts",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts",
+    );
+    expect(workflow).toContain(
+      "bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts",
+    );
+    expect(workflow).toContain(
       "bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts",
+    );
+    expect(llmProxy).toContain("failOnUnhandledAction");
+    expect(llmProxy).toContain(
+      "Expected: the E2E prompt must clearly match exactly one provided action/tool.",
+    );
+    expect(llmProxyTest).toContain(
+      "fails closed with actual-vs-expected diagnostics when no planner tool matches",
+    );
+    expect(llmProxyTest).toContain(
+      "fails closed with actual-vs-expected diagnostics when planner tools tie",
+    );
+    expect(llmProxyTest).toContain(
+      "fails Stage 1 with actual-vs-expected diagnostics when no candidate action matches",
+    );
+    expect(llmProxyTest).toContain(
+      "fails Stage 1 with actual-vs-expected diagnostics when candidate actions tie",
+    );
+    expect(deterministicPrScenario).toContain(
+      "Open the remote ledger view in a separate always on top window",
+    );
+    expect(deterministicPrScenario).toContain(
+      "stub local view API for deterministic shell actions",
+    );
+    expect(deterministicPrScenario).toContain(
+      "Interacted with view \"remote-ledger\"",
+    );
+    expect(deterministicPrScenario).toContain(
+      "view shell API received exact deterministic requests",
+    );
+    expect(deterministicPrScenario).not.toContain(
+      "Failed to interact with view",
+    );
+    expect(deterministicPrScenario).not.toContain("network error.");
+    expect(deterministicPrScenario).toContain(
+      "deterministic-test-response: hello deterministic proxy",
+    );
+    expect(deterministicPrScenario).toContain(
+      "expected exact deterministic reply",
+    );
+    expect(deterministicPrScenario).toContain("alwaysOnTop: true");
+    expect(deterministicPrScenario).toContain("/alwaysOnTop/");
+    expect(appControlViewsManagement).toContain(
+      "owner-gates mutating view management modes but allows window navigation validation",
+    );
+    expect(appControlViewsManagement).toContain(
+      "includes explicit TUI view type and always-on-top false in window navigation payloads",
+    );
+    expect(appControlViewsManagement).toContain(
+      "http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=tui",
+    );
+    expect(appControlViewsManagement).toContain("alwaysOnTop: false");
+    expect(appVerificationIntegration).toContain(
+      "fails structured proof with explicit expected-vs-actual kind and name-field diagnostics",
+    );
+    expect(appVerificationIntegration).toContain(
+      "structured proof kind must be APP_CREATE_DONE; received PLUGIN_CREATE_DONE",
+    );
+    expect(appVerificationIntegration).toContain(
+      "structured proof pluginName is invalid for APP_CREATE_DONE",
+    );
+  });
+
+  it("keeps cloud Playwright CI wired to real Playwright, including visual screenshot checks", () => {
+    const workflow = readFileSync(cloudWorkflowPath, "utf8");
+    const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8")) as {
+      scripts?: Record<string, string>;
+    };
+
+    expect(workflow).toContain("pull_request:");
+    expect(workflow).toContain("Run Playwright tests");
+    expect(workflow).toContain("bun run test:cloud:playwright");
+    expect(rootPackage.scripts?.["test:cloud:playwright"]).toBe(
+      "bun run --cwd packages/cloud-frontend test:e2e",
+    );
+    expect(rootPackage.scripts?.["test:cloud:playwright"]).not.toBe(
+      "bun run --cwd packages/cloud-frontend test",
+    );
+  });
+
+  it("keeps actual app screenshots failing on blank or one-color captures", () => {
+    const appAssistantFlow = readFileSync(appAssistantFlowPath, "utf8");
+    const screenshotQuality = readFileSync(appScreenshotQualityPath, "utf8");
+
+    expect(appAssistantFlow).toContain("captureScreenshotWithQualityRetry");
+    expect(screenshotQuality).toContain("screenshot is one color");
+    expect(screenshotQuality).toContain("screenshot is effectively one color");
+    expect(screenshotQuality).toContain("assertScreenshotNotBlank");
+    expect(appAssistantFlow).toContain("installPageDiagnosticsGuard");
+    expect(appAssistantFlow).toContain("expectNoPageDiagnostics");
+  });
+
+  it("keeps design-review screenshots on the same one-color failure guard", () => {
+    for (const scriptPath of appDesignReviewPaths) {
+      const script = readFileSync(scriptPath, "utf8");
+      expect(script).toContain("captureScreenshotWithQualityRetry");
+      expect(script).not.toContain(".screenshot({ path:");
+    }
+  });
+
+  it("keeps packaged desktop screenshots failing on blank or one-color captures", () => {
+    const packagedRegression = readFileSync(appPackagedRegressionPath, "utf8");
+
+    expect(packagedRegression).toContain("assertScreenshotNotBlank");
+    expect(packagedRegression).toContain("throw error");
+  });
+
+  it("keeps app-core live screenshots failing on blank or one-color captures", () => {
+    for (const scriptPath of appCoreLiveScreenshotPaths) {
+      const script = readFileSync(scriptPath, "utf8");
+      expect(script).toContain("captureScreenshotWithQualityRetry");
+      expect(script).not.toContain("await page.screenshot");
+    }
+  });
+
+  it("keeps computer-use browser screenshots failing on blank or one-color captures", () => {
+    const browser = readFileSync(computerUseBrowserPath, "utf8");
+    const screenshotQuality = readFileSync(
+      computerUseScreenshotQualityPath,
+      "utf8",
+    );
+
+    expect(browser).toContain("assertScreenshotBase64NotBlank");
+    expect(browser).toContain('page.screenshot({ encoding: "base64", type: "png" })');
+    expect(screenshotQuality).toContain("screenshot is one color");
+    expect(screenshotQuality).toContain("screenshot is effectively one color");
+    expect(screenshotQuality).toContain("screenshot quality failed");
+  });
+
+  it("keeps actual app pill/chat coverage on repeated open-close-send cycles", () => {
+    const appAssistantFlow = readFileSync(appAssistantFlowPath, "utf8");
+
+    for (const required of [
+      "shell-home-pill",
+      "Message Eliza",
+      "Send message",
+      "open wallet from the pill",
+      "06b-views-pill-closed",
+      "06c-views-pill-reopened",
+      "open terminal after reopen",
+      "06d-views-pill-second-send",
+      "06e-views-pill-reclosed",
+      "Close Eliza",
+      "Open Eliza",
+      "streamRequests",
+      "toHaveValue(\"\")",
+      "show me my pinned views",
+    ]) {
+      expect(appAssistantFlow).toContain(required);
+    }
+  });
+
+  it("keeps bidirectional and always-on voice coverage in the PR gate", () => {
+    const voiceFlow = readFileSync(voiceFlowPath, "utf8");
+    const appTtsSttFlow = readFileSync(appTtsSttFlowPath, "utf8");
+
+    for (const required of [
+      "hmm, okay, that's a good idea, let me think for a second, and then the agent will wait",
+      "uses the real mic button to submit browser speech and speak the wait phrase back",
+      "uses the real continuous-chat Live control for always-on passive capture during the wait phrase",
+      "keeps Live capture open across assistant playback and submits a second spoken turn",
+      "button[data-mode='always-on']",
+      "speechSynthesisMock.speak",
+      "recognition?.stopped).toBe(false)",
+    ]) {
+      expect(voiceFlow).toContain(required);
+    }
+
+    for (const required of [
+      "TTS cloud endpoint receives the assistant text + voiceId payload",
+      "STT capture path fires onTranscript with the recognized string",
+      "always-on chat mode starts passive browser STT and keeps capture open after a final turn",
+      "chat SSE stream emits token + done events for assistant message",
+      "Voice input",
+      "VOICE_DM",
+      "hello world from the STT shim",
+      "always on browser turn",
+      "Always-on assistant heard the browser turn",
+      "eliza:voice:continuous-chat-mode",
+      "chat-view-continuous-chat-toggle",
+      "voiceSource: \"browser\"",
+      "audio/mpeg",
+      "types).toEqual([\"token\", \"done\"])",
+      "outputFormat: \"mp3_44100_128\"",
+      "similarity_boost: 0.75",
+      "installPageDiagnosticsGuard",
+      "expectNoPageDiagnostics",
+    ]) {
+      expect(appTtsSttFlow).toContain(required);
+    }
+  });
+
+  it("keeps PR-gated view manager coverage on local and remote create/edit/delete flows", () => {
+    const viewManagerFlow = readFileSync(viewManagerFlowPath, "utf8");
+    const appViewManagerFlow = readFileSync(appViewManagerFlowPath, "utf8");
+
+    for (const required of [
+      "Create a new remote ledger view and pin it as a tab",
+      "Remote ledger remote module loaded",
+      "Edit the remote ledger view title to Remote Ledger Updated and pin it as a tab",
+      "Delete the stale remote ledger dynamic view",
+      "Create a new local agent run trace view",
+      "Agent Run Trace local module loaded",
+      "Edit the local agent run trace view title to Agent Run Trace Updated",
+      "Agent Run Trace Updated local module loaded",
+      "Delete the local agent run trace dynamic view",
+      "DYNAMIC_VIEW_REGISTER",
+      "DYNAMIC_VIEW_UNREGISTER",
+      "Remote Ledger Updated",
+      "Agent Run Trace Updated",
+    ]) {
+      expect(viewManagerFlow).toContain(required);
+    }
+
+    expect(viewManagerFlow).toContain(
+      'expect(window.location.pathname).toBe("/apps/remote-ledger")',
+    );
+    expect(viewManagerFlow).toContain(
+      'expect(window.location.pathname).toBe("/apps/agent-run-trace")',
+    );
+    expect(viewManagerFlow).toContain("remoteBundleImport).toHaveBeenCalledWith");
+    expect(viewManagerFlow).toContain("remoteBundleImport).not.toHaveBeenCalled");
+
+    for (const required of [
+      "actual app view manager creates, updates, switches, opens, and deletes local and remote dynamic views",
+      "Dynamic view management",
+      "actual-local-ledger",
+      "Actual Local Ledger Updated",
+      "actual-remote-ledger",
+      "Actual remote ledger module loaded",
+      "dynamicViewRegister",
+      "dynamicViewUnregister",
+      "captureScreenshotWithQualityRetry",
+      "registerCalls",
+      "unregisterCalls",
+      "installPageDiagnosticsGuard",
+      "expectNoPageDiagnostics",
+      "opening the local dynamic view must not import the remote bundle",
+      "05-remote-updated-reopened",
+    ]) {
+      expect(appViewManagerFlow).toContain(required);
+    }
+    expect(appViewManagerFlow).toContain(
+      "03-local-switched",
+    );
+    expect(appViewManagerFlow).toContain(
+      "04-remote-module-loaded",
     );
   });
 });

@@ -194,6 +194,17 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-training-import-model",
     "terminal-training-activate-model",
     "terminal-training-benchmark-model",
+    "terminal-training-build-analysis-index",
+    "terminal-training-build-readiness-report",
+    "terminal-training-ingest-hf-dataset",
+    "terminal-training-feed-generate",
+    "terminal-training-run-scenarios",
+    "terminal-training-run-eval-comparison",
+    "terminal-training-run-collection",
+    "terminal-training-write-benchmark-matrix",
+    "terminal-training-run-benchmark-vs-cerebras",
+    "terminal-training-stage-eliza1-bundle",
+    "terminal-training-run-action-benchmark",
   ],
 };
 

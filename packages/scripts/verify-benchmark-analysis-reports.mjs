@@ -395,14 +395,24 @@ function main() {
       sampleReviewMatrix.summary?.benchmarkCount === fiveExampleSampler.summary?.benchmarkCount &&
       sampleReviewMatrix.summary?.rowsWithPlayback === fiveExampleSampler.summary?.selectedWithPlayback &&
       sampleReviewMatrix.summary?.rowsWithTaskId === fiveExampleSampler.summary?.selectedWithTaskId &&
-      sampleReviewMatrix.summary?.reviewReadyRows === 72 &&
+      sampleReviewMatrix.summary?.reviewReadyRows === 80 &&
+      sampleReviewMatrix.summary?.fullInlineReviewRows === 52 &&
+      sampleReviewMatrix.summary?.inlineOutputRows === 64 &&
+      sampleReviewMatrix.summary?.playbackOnlyEnvironmentRows === 10 &&
+      sampleReviewMatrix.summary?.toolCallOnlyInlineRows === 6 &&
+      sampleReviewMatrix.summary?.rowsWithModelProvider === 61 &&
+      sampleReviewMatrix.summary?.rowsWithCachePercent === 32 &&
       sampleReviewMatrix.summary?.tokenRows === 58 &&
       sampleReviewMatrix.summary?.totalTokens === fiveExampleSampler.summary?.selectedTokenTotal &&
       sampleReviewMatrix.summary?.cacheReadTokens === fiveExampleSampler.summary?.selectedCacheReadTokens &&
-      sampleReviewMatrix.summary?.byReviewClass?.["model-output-present"] === 52 &&
+      sampleReviewMatrix.summary?.byReviewClass?.["model-output-present"] === 64 &&
       sampleReviewMatrix.summary?.byReviewClass?.["tool-call-output"] === 6 &&
-      sampleReviewMatrix.summary?.byReviewClass?.["environment-or-dry-run"] === 14 &&
-      sampleReviewMatrix.summary?.byReviewClass?.["missing-input-preview"] === 8 &&
+      sampleReviewMatrix.summary?.byReviewClass?.["environment-or-dry-run"] === 10 &&
+      sampleReviewMatrix.summary?.byReviewCompleteness?.["full-inline-io-with-cache"] === 52 &&
+      sampleReviewMatrix.summary?.byReviewCompleteness?.["inline-output-no-token"] === 12 &&
+      sampleReviewMatrix.summary?.byReviewCompleteness?.["tool-call-only-inline"] === 6 &&
+      sampleReviewMatrix.summary?.byReviewCompleteness?.["playback-only-environment"] === 10 &&
+      !sampleReviewMatrix.summary?.byReviewClass?.["missing-input-preview"] &&
       (sampleReviewMatrix.rows || []).length === fiveExampleSampler.summary?.selectedRows &&
       (sampleReviewMatrix.rows || []).every(
         (row) =>
@@ -410,6 +420,11 @@ function main() {
           row.benchmark &&
           row.sampleOrdinal >= 1 &&
           row.sampleOrdinal <= 5 &&
+          row.reviewCompleteness &&
+          row.inputSource !== undefined &&
+          row.outputSource !== undefined &&
+          Number.isFinite(Number(row.responseChars || 0)) &&
+          Number.isFinite(Number(row.toolCallCount || 0)) &&
           row.playbackExists === true &&
           row.playbackHref &&
           !String(row.playbackHref).startsWith("/") &&
@@ -417,7 +432,15 @@ function main() {
           existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/benchmark-sample-review-matrix", row.playbackHref)) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
-      (sampleReviewMatrix.rows || []).filter((row) => row.reviewReady === false).length === 8 &&
+      (sampleReviewMatrix.rows || []).filter((row) => row.reviewReady === false).length === 0 &&
+      (sampleReviewMatrix.rows || []).filter((row) => row.reviewCompleteness === "full-inline-io-with-cache").length ===
+        sampleReviewMatrix.summary?.fullInlineReviewRows &&
+      (sampleReviewMatrix.rows || []).filter((row) => row.reviewCompleteness === "tool-call-only-inline").every(
+        (row) => row.totalTokens > 0 && !row.hasOutputPreview && row.actions.length > 0,
+      ) &&
+      (sampleReviewMatrix.rows || []).filter((row) => row.reviewCompleteness === "playback-only-environment").every(
+        (row) => row.totalTokens === 0 && !row.hasOutputPreview,
+      ) &&
       (sampleReviewMatrix.rows || []).filter((row) => row.benchmark === "osworld").length === 5,
     JSON.stringify(sampleReviewMatrix.summary || {}),
     "known-caveat",
@@ -432,7 +455,33 @@ function main() {
         (live.scriptFindings || []).filter(
           (finding) => finding.likelyLlm && finding.disposition !== "model-wrapper-pass",
         ).length &&
+      analysisSummary.headline?.strictReviewSignals?.sampledExamples === sampleReviewMatrix.summary?.sampleRows &&
+      analysisSummary.headline?.strictReviewSignals?.reviewReadySamples ===
+        sampleReviewMatrix.summary?.reviewReadyRows &&
+      analysisSummary.headline?.strictReviewSignals?.fullInlineSampleRows ===
+        sampleReviewMatrix.summary?.fullInlineReviewRows &&
+      analysisSummary.headline?.strictReviewSignals?.corpusWarningRowsWithPlayback ===
+        corpusReviewPacks.summary?.warningRowsWithPlayback &&
+      analysisSummary.headline?.strictReviewSignals?.corpusWarningRowsWithCallPreview ===
+        corpusReviewPacks.summary?.warningRowsWithCallPreview &&
+      analysisSummary.headline?.strictReviewSignals?.liveOfflineReviewSummaries ===
+        liveTestPromptResponseCompleteness.summary?.rowsWithOfflineReviewSummary &&
+      analysisSummary.headline?.readinessActions?.localActionItems ===
+        remediationMatrix.summary?.localActionItems &&
+      analysisSummary.headline?.readinessActions?.localCredentialRequiredItems ===
+        remediationMatrix.summary?.localCredentialRequiredItems &&
+      analysisSummary.headline?.readinessActions?.objectiveLocalActionItems ===
+        remediationMatrix.summary?.objectiveLocalActionItems &&
+      analysisSummary.headline?.readinessActions?.liveLocalActionItems ===
+        remediationMatrix.summary?.liveLocalActionItems &&
+      analysisSummary.headline?.readinessActions?.runnableCommands ===
+        rerunBatches.summary?.runnableCommands &&
+      analysisSummary.headline?.readinessActions?.manualReviewed ===
+        manualReviewProgress.summary?.reviewed &&
       (analysisSummary.externalGates || []).some((gate) => gate.id === "osworld-live") &&
+      (analysisSummary.externalGates || []).some(
+        (gate) => gate.id === "osworld-live" && /Docker daemon/.test(gate.evidence || ""),
+      ) &&
       (analysisSummary.externalGates || []).some((gate) => gate.id === "hyperliquid_bench"),
     `benchmark=${(analysisSummary.focus?.benchmark || []).length}; scenarioCategories=${(analysisSummary.focus?.scenarioCategories || []).length}; live=${(analysisSummary.focus?.liveModelScripts || []).length}`,
   );
@@ -499,6 +548,14 @@ function main() {
         (corpus.canonicalFiles || []).filter((entry) => entry.playback_file).length &&
       globalPlaybackIndex.summary?.bySurface?.scenario?.count === scenarios.scenarioPlaybackPages &&
       globalPlaybackIndex.summary?.bySurface?.["live-e2e"]?.count === livePlayback.playbackCount &&
+      globalPlaybackIndex.summary?.bySurface?.["live-e2e"]?.totalTokens ===
+        livePlayback.structuredTotalTokens &&
+      globalPlaybackIndex.summary?.bySurface?.["live-e2e"]?.cachedTokens ===
+        livePlayback.structuredCacheReadInputTokens &&
+      (globalPlaybackIndex.rows || [])
+        .filter((row) => row.surface === "live-e2e")
+        .reduce((sum, row) => sum + Number(row.structuredLlmCallCount || 0), 0) ===
+        livePlayback.structuredLlmCallCount &&
       globalPlaybackIndex.summary?.groupCount === (globalPlaybackIndex.groupRows || []).length &&
       globalPlaybackIndex.summary?.benchmarkGroupCount ===
         (globalPlaybackIndex.groupRows || []).filter(
@@ -525,7 +582,7 @@ function main() {
           !String(row.playbackHref).startsWith("file://") &&
           existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/global-playback-index", row.playbackHref)),
       ),
-    `${globalPlaybackIndex.summary?.playbackExisting || 0}/${globalPlaybackIndex.summary?.rowCount || 0} playback rows; groups=${globalPlaybackIndex.summary?.groupCount || 0}`,
+    `${globalPlaybackIndex.summary?.playbackExisting || 0}/${globalPlaybackIndex.summary?.rowCount || 0} playback rows; groups=${globalPlaybackIndex.summary?.groupCount || 0}; liveTokens=${globalPlaybackIndex.summary?.bySurface?.["live-e2e"]?.totalTokens || 0}`,
   );
   assertCheck(
     checks,
@@ -564,13 +621,62 @@ function main() {
       trajectoryIoCompleteness.summary?.missingOutput ===
         trajectory.summary.trajectoryRecords -
           trajectory.summary.inputOutput?.recordsWithOutput &&
-      trajectoryIoCompleteness.summary?.missingOutputWithTokens === 209 &&
-      trajectoryIoCompleteness.summary?.missingOutputWithoutTokens === 60 &&
+      trajectoryIoCompleteness.summary?.missingOutputWithTokens === 197 &&
+      trajectoryIoCompleteness.summary?.missingOutputWithoutTokens === 48 &&
       trajectoryIoCompleteness.summary?.outputGapClasses?.["tool-call-or-action-only-output"] === 135 &&
-      trajectoryIoCompleteness.summary?.outputGapClasses?.["empty-response-with-token-usage"] === 74 &&
-      trajectoryIoCompleteness.summary?.outputGapClasses?.["environment-or-dry-run-no-token-output"] === 60 &&
-      trajectoryIoCompleteness.summary?.benchmarksWithTokenOutputGaps === 9 &&
-      trajectoryIoCompleteness.summary?.benchmarksWithMissingInputs === 4 &&
+      trajectoryIoCompleteness.summary?.outputGapClasses?.["aggregate-usage-only-output"] === 30 &&
+      trajectoryIoCompleteness.summary?.outputGapClasses?.["provider-empty-response-with-completion-tokens"] === 32 &&
+      !trajectoryIoCompleteness.summary?.outputGapClasses?.["empty-response-with-token-usage"] &&
+      trajectoryIoCompleteness.summary?.outputGapClasses?.["environment-or-dry-run-no-token-output"] === 48 &&
+      trajectoryIoCompleteness.summary?.reviewRelevantOutputGaps === 32 &&
+      trajectoryIoCompleteness.summary?.reviewRelevantGapRows ===
+        trajectoryIoCompleteness.summary?.reviewRelevantOutputGaps &&
+      trajectoryIoCompleteness.summary?.reviewRelevantGapReviewPages ===
+        trajectoryIoCompleteness.summary?.reviewRelevantOutputGaps &&
+      trajectoryIoCompleteness.summary?.reviewRelevantGapPlaybacks >= 4 &&
+      trajectoryIoCompleteness.summary?.reviewRelevantGapTasks >= 5 &&
+      trajectoryIoCompleteness.summary?.benignOutputGaps === 213 &&
+      trajectoryIoCompleteness.summary?.benchmarksWithTokenOutputGaps === 8 &&
+      trajectoryIoCompleteness.summary?.benchmarksWithReviewRelevantOutputGaps === 1 &&
+      trajectoryIoCompleteness.summary?.benchmarksWithMissingInputs === 0 &&
+      (trajectoryIoCompleteness.reviewRelevantGaps || []).length ===
+        trajectoryIoCompleteness.summary?.reviewRelevantOutputGaps &&
+      (trajectoryIoCompleteness.reviewRelevantGaps || []).every(
+        (row) =>
+          row.id &&
+          row.benchmark === "webshop" &&
+          row.outputGapClass === "provider-empty-response-with-completion-tokens" &&
+          row.reviewDisposition === "provider-empty-response-with-completion-tokens" &&
+          row.href &&
+          row.playbackHref &&
+          row.inputPreview &&
+          row.playbackGapCount > 0 &&
+          row.taskGapCount > 0 &&
+          row.webshopGoal &&
+          ["search", "results", "product"].includes(row.webshopPage) &&
+          Array.isArray(row.webshopAvailableActions) &&
+          row.webshopAvailableActions.length > 0 &&
+          Array.isArray(row.webshopRecentActions) &&
+          row.webshopRecentActions.length > 0 &&
+          Array.isArray(row.toolNames) &&
+          row.toolNames.includes("webshop_action") &&
+          row.toolSchemaCount === 1 &&
+          row.responseChars === 0 &&
+          row.toolCallCount === 0 &&
+          (String(row.previousBenchmarkCommand || "").match(/^(search|click)\[/) ||
+            String(row.nextBenchmarkCommand || "").match(/^(search|click)\[/)) &&
+          Array.isArray(row.sameTaskGapSteps) &&
+          row.sameTaskGapSteps.includes(row.step) &&
+          row.consecutiveEmptyGapIndex >= 1 &&
+          row.completionTokens > 0 &&
+          !String(row.href).startsWith("/") &&
+          !String(row.href).startsWith("file://") &&
+          !String(row.playbackHref).startsWith("/") &&
+          !String(row.playbackHref).startsWith("file://") &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/trajectory-io-completeness", row.href)) &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/trajectory-io-completeness", row.playbackHref)) &&
+          !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
+      ) &&
       (trajectoryIoCompleteness.rows || []).length === trajectory.summary.benchmarkCount &&
       (trajectoryIoCompleteness.rows || []).every(
         (row) =>
@@ -703,6 +809,12 @@ function main() {
       version.summary.currentTargetPlaybackLinks === latestRows.length &&
       version.summary.previousViewerLinks === version.summary.benchmarksWithPrevious &&
       version.summary.comparableViewerPairs === version.summary.benchmarksWithPrevious &&
+      version.summary.onlyOneIndexedRowBenchmarks ===
+        (version.benchmarks || []).filter((entry) => !entry.comparison?.hasPrevious && entry.rowCount === 1).length &&
+      version.summary.noEarlierPreviousRowBenchmarks ===
+        (version.benchmarks || []).filter((entry) => entry.comparison?.noEarlierPreviousRow).length &&
+      version.summary.onlyOneIndexedRowBenchmarks === 7 &&
+      version.summary.noEarlierPreviousRowBenchmarks === 1 &&
       version.summary.previousPlaybackGapCount ===
         version.summary.benchmarksWithPrevious - version.summary.previousTargetPlaybackLinks &&
       (version.summary.recoveredPreviousPlaybackBenchmarks || []).length ===
@@ -766,12 +878,25 @@ function main() {
       versionRemediationMatrix.summary?.comparablePlaybackPairs === version.summary.comparablePlaybackPairs &&
       versionRemediationMatrix.summary?.previousPlaybackGaps === version.summary.previousPlaybackGapCount &&
       versionRemediationMatrix.summary?.previousAggregateOnly === 2 &&
+      versionRemediationMatrix.summary?.previousAggregateOnlyWithViewer === 2 &&
+      versionRemediationMatrix.summary?.previousAggregateOnlyWithNoTrajectoryFiles === 2 &&
+      versionRemediationMatrix.summary?.previousAggregateOnlyReviewRows === 2 &&
       versionRemediationMatrix.summary?.completeHistory === version.summary.comparablePlaybackPairs &&
-      versionRemediationMatrix.summary?.noPreviousRun === 7 &&
+      versionRemediationMatrix.summary?.noPreviousRun === 6 &&
+      versionRemediationMatrix.summary?.noEarlierPreviousRow ===
+        version.summary.noEarlierPreviousRowBenchmarks &&
+      versionRemediationMatrix.summary?.noEarlierPreviousRow === 1 &&
       versionRemediationMatrix.summary?.osworldProviderCaveats === 1 &&
       versionRemediationMatrix.summary?.rerunCommands === 16 &&
       JSON.stringify(versionRemediationMatrix.summary?.previousPlaybackGapBenchmarks || []) ===
         JSON.stringify(version.summary.previousPlaybackGapBenchmarks || []) &&
+      JSON.stringify(versionRemediationMatrix.summary?.previousAggregateOnlyBenchmarks || []) ===
+        JSON.stringify(["mind2web", "nl2repo"]) &&
+      JSON.stringify(versionRemediationMatrix.summary?.noPreviousRunBenchmarks || []) ===
+        JSON.stringify(["app_eval_coding", "clawbench", "mint", "swe_bench", "swe_bench_multilingual", "visualwebbench"]) &&
+      JSON.stringify(versionRemediationMatrix.summary?.noEarlierPreviousRowBenchmarks || []) ===
+        JSON.stringify(["standard_humaneval"]) &&
+      versionRemediationMatrix.summary?.versionGapReviewRows === 16 &&
       (versionRemediationMatrix.rows || []).length === 16 &&
       (versionRemediationMatrix.rows || []).every(
         (row) =>
@@ -782,16 +907,47 @@ function main() {
           /--benchmarks /.test(row.rerunCommand) &&
           row.followedBy === "bun run bench:analysis:build" &&
           row.currentTargetPlaybackHref &&
+          row.versionGapReview?.canReviewOffline === true &&
+          row.versionGapReview?.reviewClass &&
+          row.versionGapReview?.primaryEvidenceHref &&
+          !String(row.versionGapReview?.primaryEvidenceHref).startsWith("/") &&
+          !String(row.versionGapReview?.primaryEvidenceHref).startsWith("file://") &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/version-remediation-matrix", row.versionGapReview.primaryEvidenceHref)) &&
           !String(row.currentTargetPlaybackHref).startsWith("/") &&
           !String(row.currentTargetPlaybackHref).startsWith("file://") &&
           existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/version-remediation-matrix", row.currentTargetPlaybackHref)) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
       (versionRemediationMatrix.rows || []).some(
-        (row) => row.benchmark === "mind2web" && row.gapType === "previous-aggregate-only",
+        (row) =>
+          row.benchmark === "standard_humaneval" &&
+          row.gapType === "no-earlier-previous-row" &&
+          row.rowCount === 2 &&
+          row.noEarlierPreviousRow === true,
       ) &&
       (versionRemediationMatrix.rows || []).some(
-        (row) => row.benchmark === "nl2repo" && row.gapType === "previous-aggregate-only",
+        (row) =>
+          row.benchmark === "mind2web" &&
+          row.gapType === "previous-aggregate-only" &&
+          row.previousViewerHref &&
+          row.previousTargetTrajectoryFiles === 0 &&
+          row.previousBaselineTrajectoryFiles === 0,
+      ) &&
+      (versionRemediationMatrix.rows || [])
+        .filter((row) => row.gapType === "previous-aggregate-only")
+        .every(
+          (row) =>
+            row.versionGapReview?.reviewClass === "previous-viewer-no-trajectory" &&
+            /zero/.test(row.versionGapReview?.summary || "") &&
+            row.previousTargetPlaybackRecords === 0,
+        ) &&
+      (versionRemediationMatrix.rows || []).some(
+        (row) =>
+          row.benchmark === "nl2repo" &&
+          row.gapType === "previous-aggregate-only" &&
+          row.previousViewerHref &&
+          row.previousTargetTrajectoryFiles === 0 &&
+          row.previousBaselineTrajectoryFiles === 0,
       ) &&
       (versionRemediationMatrix.rows || []).some(
         (row) => row.benchmark === "osworld" && row.gapType === "osworld-provider-caveat" && /--max-tasks 5/.test(row.rerunCommand),
@@ -863,6 +1019,9 @@ function main() {
       benchmarkReviewPacks.summary?.sampleRows === latestRows.length * 5 &&
       benchmarkReviewPacks.summary?.samplePlaybackRows === latestRows.length * 5 &&
       benchmarkReviewPacks.summary?.reviewReadySamples === sampleReviewMatrix.summary?.reviewReadyRows &&
+      benchmarkReviewPacks.summary?.fullInlineReviewSamples === sampleReviewMatrix.summary?.fullInlineReviewRows &&
+      benchmarkReviewPacks.summary?.toolCallOnlyInlineSamples === sampleReviewMatrix.summary?.toolCallOnlyInlineRows &&
+      benchmarkReviewPacks.summary?.playbackOnlyEnvironmentSamples === sampleReviewMatrix.summary?.playbackOnlyEnvironmentRows &&
       benchmarkReviewPacks.summary?.withTargetPlayback ===
         benchmarkOutcomeAnalysis.summary?.targetPlaybackComplete &&
       benchmarkReviewPacks.summary?.withManualReviewNote === 10 &&
@@ -883,6 +1042,12 @@ function main() {
           (pack.samples || []).every(
             (sample) =>
               sample.playbackHref &&
+              sample.reviewCompleteness &&
+              sample.reviewLimitation &&
+              sample.inputSource !== undefined &&
+              sample.outputSource !== undefined &&
+              Number.isFinite(Number(sample.responseChars || 0)) &&
+              Number.isFinite(Number(sample.toolCallCount || 0)) &&
               !String(sample.playbackHref).startsWith("/") &&
               !String(sample.playbackHref).startsWith("file://") &&
               existsSync(
@@ -901,6 +1066,25 @@ function main() {
           pack.trajectory?.targetPlaybackComplete === false,
       ) &&
       (benchmarkReviewPacks.packs || []).some(
+        (pack) =>
+          pack.benchmark === "webshop" &&
+          (pack.samples || []).every(
+            (sample) =>
+              sample.reviewCompleteness === "tool-call-only-inline" &&
+              sample.reviewLimitation.includes("No text response") &&
+              sample.toolCallCount > 0,
+          ),
+      ) &&
+      (benchmarkReviewPacks.packs || []).some(
+        (pack) =>
+          pack.benchmark === "agentbench" &&
+          (pack.samples || []).every(
+            (sample) =>
+              sample.reviewCompleteness === "playback-only-environment" &&
+              sample.reviewLimitation.includes("Playback exists"),
+          ),
+      ) &&
+      (benchmarkReviewPacks.packs || []).some(
         (pack) => pack.benchmark === "mind2web" && pack.version?.gapType === "previous-aggregate-only",
       ),
     JSON.stringify(benchmarkReviewPacks.summary || {}),
@@ -914,9 +1098,10 @@ function main() {
     "benchmarks.trajectory-input-output-fields",
     trajectory.summary.inputOutput?.records === trajectory.summary.trajectoryRecords &&
       trajectory.summary.inputOutput?.recordsWithInput >= 530 &&
-      trajectory.summary.inputOutput?.recordsWithOutput >= 300 &&
+      trajectory.summary.inputOutput?.recordsWithOutput >= 418 &&
       trajectory.summary.inputOutput?.promptTextRecords >= 490 &&
       trajectory.summary.inputOutput?.responseTextRecords >= 300 &&
+      (trajectory.summary.inputOutput?.byOutputSource?.["transcript.assistant_text"] || 0) >= 22 &&
       (trajectory.entries || []).every((entry) =>
         (entry.records || []).every((record) =>
           typeof record.inputSource === "string" &&
@@ -925,7 +1110,7 @@ function main() {
           typeof record.outputPreview === "string",
         ),
       ),
-    `input=${trajectory.summary.inputOutput?.recordsWithInput || 0}; output=${trajectory.summary.inputOutput?.recordsWithOutput || 0}; prompt_text=${trajectory.summary.inputOutput?.promptTextRecords || 0}; response_text=${trajectory.summary.inputOutput?.responseTextRecords || 0}`,
+    `input=${trajectory.summary.inputOutput?.recordsWithInput || 0}; output=${trajectory.summary.inputOutput?.recordsWithOutput || 0}; prompt_text=${trajectory.summary.inputOutput?.promptTextRecords || 0}; response_text=${trajectory.summary.inputOutput?.responseTextRecords || 0}; transcript_assistant=${trajectory.summary.inputOutput?.byOutputSource?.["transcript.assistant_text"] || 0}`,
   );
   assertCheck(
     checks,
@@ -1044,6 +1229,9 @@ function main() {
         corpus.telemetryGapSummary?.zeroMetricLatestRows &&
       corpusRemediationMatrix.summary?.tokenlessFamilies ===
         corpus.telemetryGapSummary?.tokenlessFamilyCount &&
+      corpusRemediationMatrix.summary?.blockedCredentialFamilies === 1 &&
+      JSON.stringify(corpusRemediationMatrix.summary?.missingCredentialNames || []) ===
+        JSON.stringify(["HL_PRIVATE_KEY"]) &&
       corpusRemediationMatrix.summary?.familyPagesLinked === corpusRemediationMatrix.summary?.familyRows &&
       corpusRemediationMatrix.summary?.canonicalPlaybackFamilies ===
         corpusRemediationMatrix.summary?.familyRows - corpusRemediationMatrix.summary?.blockedFamilies &&
@@ -1057,7 +1245,14 @@ function main() {
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
       (corpusRemediationMatrix.rows || []).some(
-        (row) => row.benchmarkId === "hyperliquid_bench" && row.disposition === "blocked",
+        (row) =>
+          row.benchmarkId === "hyperliquid_bench" &&
+          row.disposition === "blocked" &&
+          row.credentialReadiness?.runnable === false &&
+          row.credentialReadiness?.present?.CEREBRAS_API_KEY === true &&
+          row.credentialReadiness?.present?.HL_PRIVATE_KEY === false &&
+          JSON.stringify(row.credentialReadiness?.missing || []) ===
+            JSON.stringify(["HL_PRIVATE_KEY"]),
       ) &&
       (corpusRemediationMatrix.rows || []).some(
         (row) => row.disposition === "review-pass" && row.zeroMetricRows.length > 0,
@@ -1082,6 +1277,13 @@ function main() {
       corpusReviewPacks.summary?.withManualReviewNote === manualReview.summary?.byKind?.["benchmark-family"] &&
       corpusReviewPacks.summary?.rerunCommands === corpusRemediationMatrix.summary?.rerunCommands &&
       corpusReviewPacks.summary?.warningRows === corpusRemediationMatrix.summary?.publicationWarningLatestRows &&
+      corpusReviewPacks.summary?.warningFamilies ===
+        (corpusReviewPacks.packs || []).filter((pack) => pack.warningRows.length > 0).length &&
+      corpusReviewPacks.summary?.warningRowsWithPlayback === corpusReviewPacks.summary?.warningRows &&
+      corpusReviewPacks.summary?.warningRowsWithCallPreview === corpusReviewPacks.summary?.warningRows &&
+      Object.entries(corpus.summary?.warningCounts || {}).every(
+        ([warning, count]) => corpusReviewPacks.summary?.warningCounts?.[warning] === count,
+      ) &&
       corpusReviewPacks.summary?.zeroMetricRows === corpusRemediationMatrix.summary?.zeroMetricRows &&
       corpusReviewPacks.summary?.normalizedCalls === corpus.callCatalogSummary?.normalizedCallCount &&
       (corpusReviewPacks.packs || []).every(
@@ -1093,6 +1295,19 @@ function main() {
           pack.familyPageHref &&
           !String(pack.familyPageHref).startsWith("/") &&
           !String(pack.familyPageHref).startsWith("file://") &&
+          Object.values(pack.warningCounts || {}).reduce((sum, count) => sum + count, 0) ===
+            pack.warningRows.length &&
+          (pack.warningRows || []).every(
+            (row) =>
+              row.provider &&
+              row.model &&
+              Number.isFinite(Number(row.callPreviewCount)) &&
+              Number(row.callPreviewCount) > 0 &&
+              row.playbackHref &&
+              !String(row.playbackHref).startsWith("/") &&
+              !String(row.playbackHref).startsWith("file://") &&
+              existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/corpus-review-packs", row.playbackHref)),
+          ) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(pack)),
       ) &&
       (corpusReviewPacks.packs || []).some(
@@ -1357,20 +1572,36 @@ function main() {
         (live.scriptFindings || [])
           .filter((row) => row.likelyLlm)
           .reduce((sum, row) => sum + Number(row.structuredLlmCallCount || 0), 0) &&
+      liveTestModelEvidence.summary?.latestStructuredLlmCallCount ===
+        (live.scriptFindings || [])
+          .filter((row) => row.likelyLlm)
+          .reduce((sum, row) => sum + Number(row.latestStructuredLlmCallCount ?? row.structuredLlmCallCount ?? 0), 0) &&
       liveTestModelEvidence.summary?.failedScripts ===
         (live.scriptFindings || []).filter(
           (row) => row.likelyLlm && Number(row.latestWrappedExitCode || 0) !== 0,
         ).length &&
       liveTestModelEvidence.summary?.rowsWithFailureClassification ===
         (liveTestFailureTriage.rows || []).filter((row) => row.likelyLlm).length &&
+      liveTestModelEvidence.summary?.rowsWithEmptyLlmCallSidecar >= 1 &&
+      liveTestModelEvidence.summary?.rowsWithNoLlmCallSidecar >= 1 &&
+      liveTestModelEvidence.summary?.rowsWithLatestRunExcerpt >= 10 &&
       (liveTestModelEvidence.rows || []).every(
         (row) =>
           row.id &&
           row.playbackExists === true &&
           row.modelReviewExists === true &&
           row.rerunCommand &&
+          Number.isFinite(Number(row.latestStructuredLlmCallCount)) &&
+          Number(row.structuredLlmCallCount || 0) >= Number(row.latestStructuredLlmCallCount || 0) &&
+          row.llmCallsStatus &&
+          (row.llmCallsStatus !== "empty-sidecar-zero-calls" || row.llmCallsLines === 0) &&
+          row.latestReportHref &&
+          (row.latestStdoutExcerpt || row.latestStderrExcerpt || row.structuredLlmCallCount > 0) &&
           !String(row.playbackHref).startsWith("/") &&
           !String(row.playbackHref).startsWith("file://") &&
+          !String(row.latestReportHref).startsWith("/") &&
+          !String(row.latestReportHref).startsWith("file://") &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/live-test-model-evidence", row.latestReportHref)) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
       (liveTestModelEvidence.rows || []).some(
@@ -1392,9 +1623,37 @@ function main() {
         live.summary.structuredLlmModelScriptsWithReason &&
       liveTestPromptResponseCompleteness.summary?.reasonCodedNoSidecar ===
         live.summary.modelArtifactRequiredScripts - live.summary.structuredLlmModelScripts &&
+      liveTestPromptResponseCompleteness.summary?.scriptSidecarComplete === 1 &&
+      liveTestPromptResponseCompleteness.summary?.scriptSidecarPartial === 0 &&
+      liveTestPromptResponseCompleteness.summary?.reasonCodedNoModelCall === 11 &&
+      liveTestPromptResponseCompleteness.summary?.runtimeBlockedBeforeSidecar === 15 &&
+      liveTestPromptResponseCompleteness.summary?.missingCallArtifact === 0 &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithFailureClassification ===
+        liveTestModelEvidence.summary?.rowsWithFailureClassification &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithFailureClassification ===
+        (liveTestFailureTriage.rows || []).filter((row) => row.likelyLlm).length &&
+      liveTestPromptResponseCompleteness.summary?.runtimeBlockedWithFailureClassification >= 5 &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithFailureExcerpts ===
+        (liveTestFailureTriage.rows || []).filter(
+          (row) => row.likelyLlm && (row.stdoutExcerpt || row.stderrExcerpt),
+        ).length &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithEmptyLlmCallSidecar ===
+        liveTestModelEvidence.summary?.rowsWithEmptyLlmCallSidecar &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithNoLlmCallSidecar ===
+        liveTestModelEvidence.summary?.rowsWithNoLlmCallSidecar &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithLatestRunExcerpt ===
+        liveTestModelEvidence.summary?.rowsWithLatestRunExcerpt &&
+      liveTestPromptResponseCompleteness.summary?.rowsWithOfflineReviewSummary ===
+        liveTestPromptResponseCompleteness.summary?.likelyLlmScripts &&
+      liveTestPromptResponseCompleteness.summary?.noSidecarRowsWithOfflineReviewSummary ===
+        liveTestPromptResponseCompleteness.summary?.reasonCodedNoSidecar &&
       liveTestPromptResponseCompleteness.summary?.scriptStructuredCalls ===
         liveTestModelEvidence.summary?.structuredLlmCallCount &&
-      liveTestPromptResponseCompleteness.summary?.scriptCallsParsed === 27 &&
+      liveTestPromptResponseCompleteness.summary?.scriptLatestStructuredCalls ===
+        liveTestModelEvidence.summary?.latestStructuredLlmCallCount &&
+      liveTestPromptResponseCompleteness.summary?.scriptLatestStructuredCalls === 27 &&
+      liveTestPromptResponseCompleteness.summary?.scriptCallsParsed ===
+        liveTestPromptResponseCompleteness.summary?.scriptLatestStructuredCalls &&
       liveTestPromptResponseCompleteness.summary?.scriptCallsWithPrompt ===
         liveTestPromptResponseCompleteness.summary?.scriptCallsParsed &&
       liveTestPromptResponseCompleteness.summary?.scriptCallsWithResponse ===
@@ -1411,6 +1670,12 @@ function main() {
         livePlayback.structuredLlmCallCount &&
       JSON.stringify(liveTestPromptResponseCompleteness.summary?.byStructuredReason || {}) ===
         JSON.stringify(liveTestModelEvidence.summary?.byStructuredReason || {}) &&
+      JSON.stringify(liveTestPromptResponseCompleteness.summary?.byEvidenceTier || {}) ===
+        JSON.stringify({
+          "reason-coded-no-model-call": 11,
+          "runtime-blocked-before-sidecar": 15,
+          "script-sidecar-complete": 1,
+        }) &&
       (liveTestPromptResponseCompleteness.rows || []).length ===
         live.summary.modelArtifactRequiredScripts &&
       (liveTestPromptResponseCompleteness.rows || []).every(
@@ -1419,11 +1684,57 @@ function main() {
           row.playbackHref &&
           row.modelReviewHref &&
           row.structuredLlmCoverageReason &&
+          Number.isFinite(Number(row.latestStructuredLlmCallCount)) &&
+          Number(row.structuredLlmCallCount || 0) >= Number(row.latestStructuredLlmCallCount || 0) &&
+          row.llmCallsStatus &&
+          row.latestReportHref &&
+          row.offlineReviewSummary?.canReviewOffline === true &&
+          row.offlineReviewSummary?.blockerKind &&
+          row.offlineReviewSummary?.reviewSurface &&
+          row.offlineReviewSummary?.primaryEvidenceHref &&
+          !String(row.offlineReviewSummary?.primaryEvidenceHref).startsWith("/") &&
+          !String(row.offlineReviewSummary?.primaryEvidenceHref).startsWith("file://") &&
           !String(row.playbackHref).startsWith("/") &&
           !String(row.playbackHref).startsWith("file://") &&
           existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/live-test-prompt-response-completeness", row.playbackHref)) &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/live-test-prompt-response-completeness", row.latestReportHref)) &&
+          existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/live-test-prompt-response-completeness", row.offlineReviewSummary.primaryEvidenceHref)) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
+      (liveTestPromptResponseCompleteness.rows || [])
+        .filter((row) => row.evidenceTier !== "script-sidecar-complete")
+        .every(
+          (row) =>
+            row.offlineReviewSummary?.canReviewOffline === true &&
+            (row.offlineReviewSummary?.excerpt || row.offlineReviewSummary?.supportingEvidenceHrefs?.length),
+        ) &&
+      (liveTestPromptResponseCompleteness.rows || [])
+        .filter((row) => row.failureClassification)
+        .every(
+          (row) =>
+            row.failureTriageHref === "../live-test-failure-triage/index.html" &&
+            row.failureReportHref &&
+            row.failureViewerHref &&
+            (row.stdoutExcerpt || row.stderrExcerpt) &&
+            !String(row.failureReportHref).startsWith("/") &&
+            !String(row.failureReportHref).startsWith("file://") &&
+            existsSync(
+              path.join(
+                REPO_ROOT,
+                "reports/benchmark-analysis/live-test-prompt-response-completeness",
+                row.failureReportHref,
+              ),
+            ),
+        ) &&
+      (liveTestPromptResponseCompleteness.rows || [])
+        .filter((row) => Number(row.latestStructuredLlmCallCount || 0) > 0)
+        .every(
+          (row) =>
+            row.calls === row.latestStructuredLlmCallCount &&
+            row.withPrompt === row.calls &&
+            row.withResponse === row.calls &&
+            row.structuredLlmCallCount >= row.latestStructuredLlmCallCount,
+        ) &&
       (liveTestPromptResponseCompleteness.structuredRuns || []).every(
         (row) =>
           row.llmCallsHref &&
@@ -1451,6 +1762,8 @@ function main() {
         liveTestPromptResponseCompleteness.summary?.scriptsWithStructuredStatus &&
       liveTestReviewPacks.summary?.scriptStructuredCalls ===
         liveTestPromptResponseCompleteness.summary?.scriptStructuredCalls &&
+      liveTestReviewPacks.summary?.scriptLatestStructuredCalls ===
+        liveTestPromptResponseCompleteness.summary?.scriptLatestStructuredCalls &&
       liveTestReviewPacks.summary?.scriptCallsParsed ===
         liveTestPromptResponseCompleteness.summary?.scriptCallsParsed &&
       liveTestReviewPacks.summary?.scriptCallsWithPrompt ===
@@ -1463,8 +1776,30 @@ function main() {
       liveTestReviewPacks.summary?.rowsWithRerunCommand === liveTestModelEvidence.summary?.rowsWithRerunCommand &&
       liveTestReviewPacks.summary?.manualReviewNotes === manualReview.summary?.byKind?.["live-test"] &&
       liveTestReviewPacks.summary?.sampleCallRows === liveTestModelEvidence.summary?.sampleCallRows &&
+      liveTestReviewPacks.summary?.emptyLlmCallSidecars ===
+        liveTestModelEvidence.summary?.rowsWithEmptyLlmCallSidecar &&
+      liveTestReviewPacks.summary?.noLlmCallSidecars ===
+        liveTestModelEvidence.summary?.rowsWithNoLlmCallSidecar &&
+      liveTestReviewPacks.summary?.rowsWithLatestRunExcerpt ===
+        liveTestModelEvidence.summary?.rowsWithLatestRunExcerpt &&
+      liveTestReviewPacks.summary?.scriptSidecarComplete ===
+        liveTestPromptResponseCompleteness.summary?.scriptSidecarComplete &&
+      liveTestReviewPacks.summary?.reasonCodedNoModelCall ===
+        liveTestPromptResponseCompleteness.summary?.reasonCodedNoModelCall &&
+      liveTestReviewPacks.summary?.runtimeBlockedBeforeSidecar ===
+        liveTestPromptResponseCompleteness.summary?.runtimeBlockedBeforeSidecar &&
+      liveTestReviewPacks.summary?.rowsWithOfflineReviewSummary ===
+        liveTestPromptResponseCompleteness.summary?.rowsWithOfflineReviewSummary &&
+      liveTestReviewPacks.summary?.noSidecarRowsWithOfflineReviewSummary ===
+        liveTestPromptResponseCompleteness.summary?.noSidecarRowsWithOfflineReviewSummary &&
+      JSON.stringify(liveTestReviewPacks.summary?.byEvidenceTier || {}) ===
+        JSON.stringify(liveTestPromptResponseCompleteness.summary?.byEvidenceTier || {}) &&
       liveTestReviewPacks.summary?.allStructuredRunCallsParsed ===
         liveTestPromptResponseCompleteness.summary?.structuredRunCallsParsed &&
+      liveTestReviewPacks.summary?.allStructuredRunCallsWithPrompt ===
+        liveTestPromptResponseCompleteness.summary?.structuredRunCallsWithPrompt &&
+      liveTestReviewPacks.summary?.allStructuredRunCallsWithResponse ===
+        liveTestPromptResponseCompleteness.summary?.structuredRunCallsWithResponse &&
       (liveTestReviewPacks.packs || []).every(
         (pack) =>
           pack.href &&
@@ -1475,9 +1810,44 @@ function main() {
           !String(pack.playbackHref).startsWith("/") &&
           !String(pack.playbackHref).startsWith("file://") &&
           pack.modelReviewHref &&
+          pack.latestReportHref &&
+          pack.structured?.llmCallsStatus &&
+          pack.structured?.evidenceTier &&
+          pack.structured?.limitation &&
+          pack.structured?.offlineReviewSummary?.canReviewOffline === true &&
+          pack.structured?.offlineReviewSummary?.blockerKind &&
+          pack.structured?.offlineReviewSummary?.reviewSurface &&
+          pack.structured?.offlineReviewSummary?.primaryEvidenceHref &&
+          !String(pack.structured?.offlineReviewSummary?.primaryEvidenceHref).startsWith("/") &&
+          !String(pack.structured?.offlineReviewSummary?.primaryEvidenceHref).startsWith("file://") &&
+          existsSync(
+            path.join(
+              REPO_ROOT,
+              "reports/benchmark-analysis/live-test-review-packs",
+              pack.structured.offlineReviewSummary.primaryEvidenceHref,
+            ),
+          ) &&
+          Number.isFinite(Number(pack.structured?.latestCallCount)) &&
+          Number(pack.structured?.callCount || 0) >= Number(pack.structured?.latestCallCount || 0) &&
+          Number(pack.structured?.parsedCalls || 0) === Number(pack.structured?.latestCallCount || 0) &&
+          Number(pack.structured?.withPrompt || 0) === Number(pack.structured?.parsedCalls || 0) &&
+          Number(pack.structured?.withResponse || 0) === Number(pack.structured?.parsedCalls || 0) &&
           pack.rerunCommand &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(pack)),
       ) &&
+      (liveTestReviewPacks.packs || [])
+        .filter((pack) => pack.structured?.evidenceTier === "script-sidecar-complete")
+        .every((pack) => Number(pack.structured?.latestCallCount || 0) > 0 && pack.sampleCalls.length > 0) &&
+      (liveTestReviewPacks.packs || [])
+        .filter((pack) => pack.structured?.evidenceTier === "reason-coded-no-model-call")
+        .every((pack) => String(pack.structured?.limitation || "").includes("no-model-call")) &&
+      (liveTestReviewPacks.packs || [])
+        .filter((pack) => pack.structured?.evidenceTier === "runtime-blocked-before-sidecar")
+        .every(
+          (pack) =>
+            pack.structured?.offlineReviewSummary?.manualReviewPrompt &&
+            pack.structured?.offlineReviewSummary?.reviewSurface !== "playback-report-and-logs",
+        ) &&
       (liveTestReviewPacks.packs || []).some(
         (pack) => pack.structured.callCount > 0 && pack.sampleCalls.length > 0,
       ) &&
@@ -1885,7 +2255,8 @@ function main() {
     audit.summary.total === 15 &&
       audit.summary.proven === 12 &&
       audit.summary.caveated === 2 &&
-      audit.summary.missing === 1 &&
+      audit.summary.blocked === 1 &&
+      audit.summary.missing === 0 &&
       (audit.rows || []).some(
         (row) => row.id === "playback-surfaces" && row.status === "proven",
       ) &&
@@ -1904,7 +2275,7 @@ function main() {
       (audit.rows || []).some(
         (row) => row.id === "corpus-publication-gaps" && row.status === "caveated",
       ) &&
-      (audit.rows || []).some((row) => row.id === "osworld-live" && row.status === "missing"),
+      (audit.rows || []).some((row) => row.id === "osworld-live" && row.status === "blocked"),
     JSON.stringify(audit.summary),
     "known-caveat",
   );
@@ -1912,8 +2283,8 @@ function main() {
     checks,
     "objective-evidence-map.coverage",
     objectiveEvidenceMap.summary?.total === 13 &&
-      objectiveEvidenceMap.summary?.proven === 6 &&
-      objectiveEvidenceMap.summary?.caveated === 6 &&
+      objectiveEvidenceMap.summary?.proven === 7 &&
+      objectiveEvidenceMap.summary?.caveated === 5 &&
       objectiveEvidenceMap.summary?.blocked === 1 &&
       objectiveEvidenceMap.summary?.missing === 0 &&
       objectiveEvidenceMap.summary?.closureReady === false &&
@@ -1930,10 +2301,23 @@ function main() {
         (row) => row.id === "version-comparison" && row.status === "caveated",
       ) &&
       (objectiveEvidenceMap.rows || []).some(
-        (row) => row.id === "real-llm-e2e-tests" && row.status === "caveated",
+        (row) =>
+          row.id === "real-llm-e2e-tests" &&
+          row.status === "caveated" &&
+          /27\/27 rows have offline review summaries/.test(row.evidence || "") &&
+          /26\/26 no-sidecar rows have offline evidence guidance/.test(row.evidence || ""),
       ) &&
       (objectiveEvidenceMap.rows || []).some(
-        (row) => row.id === "manual-review-workspace" && row.status === "caveated",
+        (row) =>
+          row.id === "broader-corpus" &&
+          row.status === "caveated" &&
+          /2,230 full-corpus normalized calls/.test(row.evidence || "") &&
+          /1,560 in the focused remediation subset/.test(row.evidence || "") &&
+          /74\/74 publication-warning rows have playback/.test(row.evidence || "") &&
+          /74\/74 have call previews/.test(row.evidence || ""),
+      ) &&
+      (objectiveEvidenceMap.rows || []).some(
+        (row) => row.id === "manual-review-workspace" && row.status === "proven",
       ) &&
       (objectiveEvidenceMap.rows || []).some(
         (row) =>
@@ -1959,18 +2343,19 @@ function main() {
     checks,
     "review-readiness-ledger.coverage",
     reviewReadinessLedger.summary?.surfaceCount === 8 &&
-      reviewReadinessLedger.summary?.ready === 2 &&
-      reviewReadinessLedger.summary?.caveated === 5 &&
+      reviewReadinessLedger.summary?.ready === 3 &&
+      reviewReadinessLedger.summary?.caveated === 4 &&
       reviewReadinessLedger.summary?.blocked === 1 &&
       reviewReadinessLedger.summary?.affordanceCount === 39 &&
-      reviewReadinessLedger.summary?.readyAffordances === 26 &&
-      reviewReadinessLedger.summary?.caveatedAffordances === 11 &&
+      reviewReadinessLedger.summary?.readyAffordances === 28 &&
+      reviewReadinessLedger.summary?.caveatedAffordances === 9 &&
       reviewReadinessLedger.summary?.blockedAffordances === 2 &&
       reviewReadinessLedger.summary?.reviewTargets === 2419 &&
       (reviewReadinessLedger.rows || []).some(
         (row) =>
           row.id === "code-agent-benchmarks" &&
           row.status === "caveated" &&
+          (row.affordances || []).some((item) => item.label === "five examples" && item.status === "ready") &&
           (row.affordances || []).some((item) => item.label === "model input/output" && item.status === "caveated") &&
           (row.affordances || []).some((item) => item.label === "tokens/cache" && item.status === "ready"),
       ) &&
@@ -1984,7 +2369,62 @@ function main() {
         (row) =>
           row.id === "live-e2e-tests" &&
           row.status === "caveated" &&
-          (row.affordances || []).some((item) => item.label === "prompt/response" && item.status === "caveated"),
+          (row.affordances || []).some(
+            (item) =>
+              item.label === "prompt/response" &&
+              item.status === "caveated" &&
+              /27\/27 rows have offline review summaries/.test(item.evidence || "") &&
+              /26\/26 no-sidecar rows have offline evidence guidance/.test(item.evidence || ""),
+          ) &&
+          (row.caveats || []).some((item) => /offline review summaries/.test(item)),
+      ) &&
+      (reviewReadinessLedger.rows || []).some(
+        (row) =>
+          row.id === "benchmark-corpus" &&
+          row.status === "caveated" &&
+          (row.affordances || []).some(
+            (item) =>
+              item.label === "tokens/cache" &&
+              /1,560 normalized calls/.test(item.evidence || "") &&
+              /full corpus has 2,230 normalized calls/.test(item.evidence || ""),
+          ),
+      ) &&
+      (reviewReadinessLedger.rows || []).some(
+        (row) =>
+          row.id === "benchmark-corpus" &&
+          row.status === "caveated" &&
+          (row.affordances || []).some(
+            (item) =>
+              item.label === "publication warnings" &&
+              /74\/74 warning rows have canonical playback/.test(item.evidence || "") &&
+              /74\/74 have call previews/.test(item.evidence || ""),
+          ) &&
+          (row.caveats || []).some((item) => /locally reviewable/.test(item)),
+      ) &&
+      (reviewReadinessLedger.rows || []).some(
+        (row) =>
+          row.id === "version-comparison" &&
+          row.status === "caveated" &&
+          (row.affordances || []).some(
+            (item) =>
+              item.label === "previous rows" &&
+              /6 true no-previous-run rows/.test(item.evidence || "") &&
+              /1 no-earlier-previous-row/.test(item.evidence || ""),
+          ) &&
+          (row.affordances || []).some(
+            (item) =>
+              item.label === "playback pairs" &&
+              /mind2web, nl2repo/.test(item.evidence || "") &&
+              /zero target\/baseline trajectory files/.test(item.evidence || ""),
+          ) &&
+          (row.caveats || []).some((item) => /zero previous target\/baseline trajectory files/.test(item)) &&
+          (row.caveats || []).some((item) => /six benchmarks have no previous run history/.test(item)),
+      ) &&
+      (reviewReadinessLedger.rows || []).some(
+        (row) =>
+          row.id === "manual-review" &&
+          row.status === "ready" &&
+          (row.affordances || []).some((item) => item.label === "human verdicts" && item.status === "ready"),
       ) &&
       (reviewReadinessLedger.rows || []).some(
         (row) =>
@@ -2007,8 +2447,8 @@ function main() {
     checks,
     "objective-closure.coverage",
     objectiveClosure.summary?.total === 12 &&
-      objectiveClosure.summary?.proven === 8 &&
-      objectiveClosure.summary?.caveated === 4 &&
+      objectiveClosure.summary?.proven === 7 &&
+      objectiveClosure.summary?.caveated === 5 &&
       objectiveClosure.summary?.missing === 0 &&
       objectiveClosure.summary?.closureReady === false &&
       (objectiveClosure.requirements || []).some(
@@ -2018,13 +2458,45 @@ function main() {
         (row) => row.id === "all-scenarios-included" && row.status === "proven",
       ) &&
       (objectiveClosure.requirements || []).some(
-        (row) => row.id === "real-llm-e2e-tests" && row.status === "proven",
+        (row) =>
+          row.id === "real-llm-e2e-tests" &&
+          row.status === "caveated" &&
+          /1\/27 complete script sidecars/.test(row.evidence || "") &&
+          /27\/27 offline review summaries/.test(row.evidence || ""),
       ) &&
       (objectiveClosure.requirements || []).some(
-        (row) => row.id === "five-examples-per-benchmark" && row.status === "caveated",
+        (row) =>
+          row.id === "five-examples-per-benchmark" &&
+          row.status === "caveated" &&
+          /80\/80 sampled examples/.test(row.evidence || "") &&
+          /75\/80 carry explicit task IDs/.test(row.evidence || "") &&
+          /52 full inline I\/O\/cache rows/.test(row.evidence || ""),
       ) &&
       (objectiveClosure.requirements || []).some(
-        (row) => row.id === "external-gates" && row.status === "caveated",
+        (row) =>
+          row.id === "version-comparison" &&
+          row.status === "caveated" &&
+          /mind2web, nl2repo/.test(row.evidence || "") &&
+          /explicit version-gap review rows/.test(row.evidence || ""),
+      ) &&
+      (objectiveClosure.requirements || []).some(
+        (row) =>
+          row.id === "broader-corpus-review" &&
+          row.status === "caveated" &&
+          /69 insufficient-\* publication-warning rows/.test(row.evidence || "") &&
+          /9 replayable token\/turn-zero latest rows/.test(row.evidence || "") &&
+          /hyperliquid_bench pending HL_PRIVATE_KEY/.test(row.evidence || "") &&
+          /74\/74 publication-warning rows have playback/.test(row.evidence || "") &&
+          /74\/74 have call previews/.test(row.evidence || ""),
+      ) &&
+      (objectiveClosure.requirements || []).some(
+        (row) =>
+          row.id === "external-gates" &&
+          row.status === "caveated" &&
+          /Docker daemon is unreachable/.test(row.evidence || "") &&
+          /--benchmarks osworld/.test(row.evidence || "") &&
+          /--benchmarks hyperliquid_bench/.test(row.evidence || "") &&
+          /HL_PRIVATE_KEY=<set-in-shell>/.test(row.evidence || ""),
       ),
     JSON.stringify(objectiveClosure.summary || {}),
     "known-caveat",
@@ -2034,21 +2506,69 @@ function main() {
     "final-goal-readiness.coverage",
     finalGoalReadiness.summary?.closureReady === false &&
       finalGoalReadiness.summary?.gateCount === 8 &&
-      finalGoalReadiness.summary?.proven === 2 &&
+      finalGoalReadiness.summary?.proven === 3 &&
       finalGoalReadiness.summary?.caveated === 3 &&
-      finalGoalReadiness.summary?.blocked === 3 &&
+      finalGoalReadiness.summary?.blocked === 2 &&
       finalGoalReadiness.summary?.missing === 0 &&
-      finalGoalReadiness.summary?.openGates === 6 &&
+      finalGoalReadiness.summary?.openGates === 5 &&
       finalGoalReadiness.summary?.runContractOk === true &&
+      finalGoalReadiness.summary?.objectiveClosure === "7/12 proven, 5 caveated, 0 missing" &&
+      finalGoalReadiness.summary?.remediationLocalActions === "20/20" &&
+      finalGoalReadiness.summary?.remediationCredentialRequiredActions === 1 &&
+      finalGoalReadiness.summary?.objectiveLocalActionItems === 4 &&
+      finalGoalReadiness.summary?.liveLocalActionItems === 11 &&
+      finalGoalReadiness.summary?.reviewAffordances === "28/39 ready" &&
       /not-complete/.test(finalGoalReadiness.finalDecision || "") &&
       (finalGoalReadiness.gates || []).some(
-        (gate) => gate.id === "manual-review-verdicts" && gate.status === "blocked-human",
+        (gate) => gate.id === "manual-review-verdicts" && gate.status === "proven",
       ) &&
       (finalGoalReadiness.gates || []).some(
-        (gate) => gate.id === "external-osworld" && gate.status === "blocked-external",
+        (gate) =>
+          gate.id === "external-osworld" &&
+          gate.status === "blocked-external" &&
+          gate.blockerKind === "external-runtime-provider" &&
+          (gate.blockerDetails || []).some(
+            (detail) => detail.provider === "docker" && /Docker daemon/.test(detail.detail || ""),
+          ) &&
+          (gate.blockerDetails || []).some(
+            (detail) => detail.provider === "aws" && /AWS_ACCESS_KEY_ID/.test(detail.detail || ""),
+          ),
       ) &&
       (finalGoalReadiness.gates || []).some(
-        (gate) => gate.id === "external-hyperliquid" && gate.status === "blocked-external",
+        (gate) =>
+          gate.id === "external-hyperliquid" &&
+          gate.status === "blocked-external" &&
+          gate.blockerKind === "external-credential" &&
+          gate.credentialPresence?.hyperliquidPrivateKeyPresent === false &&
+          (gate.nextActions || []).some((action) => /HL_PRIVATE_KEY/.test(action)),
+      ) &&
+      (finalGoalReadiness.gates || []).some(
+        (gate) =>
+          gate.id === "rerunability" &&
+          gate.status === "caveated" &&
+          gate.commandBreakdown?.scenarioCommands === 468 &&
+          (gate.blockedBy || []).includes("external-osworld") &&
+          (gate.blockedBy || []).includes("external-hyperliquid"),
+      ) &&
+      (finalGoalReadiness.gates || []).some(
+        (gate) =>
+          gate.id === "objective-evidence" &&
+          gate.status === "caveated" &&
+          gate.closureSummary?.proven === 7 &&
+          gate.closureSummary?.caveated === 5 &&
+          (gate.caveatDetails || []).some(
+            (detail) => detail.id === "broader-corpus-review" && /74\/74 publication-warning rows/.test(detail.evidence || ""),
+          ) &&
+          gate.localActionLanes?.["real-llm-e2e-tests"]?.actionLane === "resolve-live-sidecar-breadth" &&
+          gate.localActionLanes?.["version-comparison"]?.actionLane === "restore-previous-trajectory-history",
+      ) &&
+      (finalGoalReadiness.gates || []).some(
+        (gate) =>
+          gate.id === "review-readiness" &&
+          gate.status === "caveated" &&
+          gate.affordanceSummary?.ready === 28 &&
+          gate.affordanceSummary?.blocked === 2 &&
+          (gate.blockedSurfaces || []).some((surface) => surface.id === "external-gates"),
       ) &&
       (finalGoalReadiness.gates || []).every(
         (gate) =>
@@ -2085,7 +2605,7 @@ function main() {
       (reviewQueue.items || []).some((item) => item.kind === "live-test" && String(item.viewer || "").startsWith("../../live-test-runs/") && String(item.viewer || "").endsWith("/playback.html")) &&
       !(reviewQueue.items || []).some((item) => item.kind === "live-test" && item.disposition === "model-artifact-hint") &&
       (reviewQueue.items || []).some((item) => item.kind === "goal" && item.id === "osworld-live" && String(item.viewer || "").endsWith("gap-evidence/osworld-live-readiness.html")) &&
-      (reviewQueue.items || []).some((item) => item.kind === "goal" && String(item.viewer || "").startsWith("../../benchmarks/")),
+      (reviewQueue.items || []).some((item) => item.kind === "goal" && item.id === "corpus-publication-gaps" && String(item.viewer || "").startsWith("../corpus-remediation-matrix/")),
     "queue viewer links are relative to reports/benchmark-analysis/review-queue and prefer playback pages",
   );
   const reviewQueueRoot = path.join(REPO_ROOT, "reports/benchmark-analysis/review-queue");
@@ -2170,8 +2690,7 @@ function main() {
               existsSync(path.join(REPO_ROOT, "reports/benchmark-analysis/manual-review-progress", row.playbackHref)))) &&
           !/csk-[A-Za-z0-9_-]+/.test(JSON.stringify(row)),
       ) &&
-      (manualReviewProgress.nextUnreviewed || []).length === 50 &&
-      (manualReviewProgress.nextUnreviewed || [])[0]?.id === "hyperliquid_bench",
+      (manualReviewProgress.nextUnreviewed || []).length === 0,
     JSON.stringify(manualReviewProgress.summary || {}),
     "known-caveat",
   );
@@ -2204,13 +2723,42 @@ function main() {
     "remediation-matrix.coverage",
     remediationMatrix.summary?.itemCount === (remediationMatrix.rows || []).length &&
       remediationMatrix.summary?.itemCount >= 19 &&
+      remediationMatrix.summary?.localActionItems === remediationMatrix.summary?.itemCount &&
+      remediationMatrix.summary?.localCredentialRequiredItems === 1 &&
+      remediationMatrix.summary?.localActionByLane?.["provide-external-credential"] === 1 &&
+      remediationMatrix.summary?.localActionByLane?.["provision-external-runtime"] === 1 &&
+      remediationMatrix.summary?.localActionByLane?.["replace-smoke-with-live-run"] === 1 &&
+      remediationMatrix.summary?.localActionByLane?.["review-corpus-publication-warnings"] === 1 &&
+      remediationMatrix.summary?.localActionByLane?.["restore-version-trajectory-history"] === 1 &&
       remediationMatrix.summary?.externalBlockers === 2 &&
       remediationMatrix.summary?.liveTestItems === 11 &&
+      remediationMatrix.summary?.objectiveCaveats === 4 &&
+      remediationMatrix.summary?.objectiveLocalActionItems === remediationMatrix.summary?.objectiveCaveats &&
+      JSON.stringify(remediationMatrix.summary?.objectiveLocalActionByLane || {}) ===
+        JSON.stringify({
+          "review-corpus-warning-families": 1,
+          "osworld-live-provider-needed": 1,
+          "resolve-live-sidecar-breadth": 1,
+          "restore-previous-trajectory-history": 1,
+        }) &&
+      remediationMatrix.summary?.liveLocalActionItems === remediationMatrix.summary?.liveTestItems &&
+      JSON.stringify(remediationMatrix.summary?.liveLocalActionByClassification || {}) ===
+        JSON.stringify({
+          "bad-command-or-missing-args": 2,
+          "missing-android-emulator": 2,
+          timeout: 2,
+          "missing-test-preload": 1,
+          "missing-model-provider": 2,
+          "missing-database-url": 1,
+          "test-assertion-failure": 1,
+        }) &&
       remediationMatrix.summary?.runnableCommands >= 13 &&
       (remediationMatrix.rows || []).some(
         (row) =>
           row.id === "osworld-live" &&
           row.blockerType === "external-runtime" &&
+          row.actionLane === "provision-external-runtime" &&
+          row.credentialRequired === false &&
           /--benchmarks osworld/.test(row.command || "") &&
           row.followedBy === "bun run bench:analysis:build",
       ) &&
@@ -2218,6 +2766,8 @@ function main() {
         (row) =>
           row.id === "hyperliquid_bench" &&
           row.blockerType === "external-credential" &&
+          row.actionLane === "provide-external-credential" &&
+          row.credentialRequired === true &&
           /HL_PRIVATE_KEY=<set-in-shell>/.test(row.command || "") &&
           !/csk-[A-Za-z0-9_-]+/.test(row.command || ""),
       ) &&
@@ -2225,7 +2775,30 @@ function main() {
         (row) =>
           row.id === "osworld" &&
           row.source === "benchmark-closure-matrix" &&
-          row.status === "caveated",
+          row.status === "caveated" &&
+          row.actionLane === "replace-smoke-with-live-run",
+      ) &&
+      (remediationMatrix.rows || [])
+        .filter((row) => row.surface === "objective")
+        .every(
+          (row) =>
+            row.localAction &&
+            row.actionLane &&
+            row.credentialRequired === false &&
+            row.nextAction === row.localAction &&
+            !/Use the linked report to clear/.test(row.nextAction || ""),
+        ) &&
+      (remediationMatrix.rows || []).some(
+        (row) =>
+          row.id === "corpus-publication-gaps" &&
+          /69 insufficient-warning latest rows/.test(row.evidence || "") &&
+          row.actionLane === "review-corpus-publication-warnings",
+      ) &&
+      (remediationMatrix.rows || []).some(
+        (row) =>
+          row.id === "version-comparison-gaps" &&
+          row.actionLane === "restore-version-trajectory-history" &&
+          row.credentialRequired === false,
       ) &&
       (remediationMatrix.rows || []).filter((row) => row.surface === "live-e2e-test").length ===
         agentReview.summary?.liveFailuresReviewed &&
@@ -2237,6 +2810,9 @@ function main() {
             /^node packages\/scripts\/run-live-test-with-artifacts\.mjs/.test(row.command) &&
             row.targetHref &&
             row.failureClassification &&
+            row.localAction &&
+            row.actionLane &&
+            row.credentialRequired === false &&
             row.failureTriageHref === "../live-test-failure-triage/index.html" &&
             row.modelEvidenceHref === "../live-test-model-evidence/index.html" &&
             !String(row.targetHref).startsWith("/") &&
@@ -2304,7 +2880,7 @@ function main() {
       runbook.currentCoverage?.liveStructuredUsageRuns ===
         cacheAnalysis.liveWrapperPlayback?.summary?.structuredUsageRuns &&
       runbook.currentCoverage?.trajectoryIoCompleteness ===
-        `${trajectoryIoCompleteness.summary?.withInput}/${trajectoryIoCompleteness.summary?.records} input, ${trajectoryIoCompleteness.summary?.withOutput}/${trajectoryIoCompleteness.summary?.records} output, ${trajectoryIoCompleteness.summary?.missingOutputWithTokens} token output gaps` &&
+        `${trajectoryIoCompleteness.summary?.withInput}/${trajectoryIoCompleteness.summary?.records} input, ${trajectoryIoCompleteness.summary?.withOutput}/${trajectoryIoCompleteness.summary?.records} output, ${trajectoryIoCompleteness.summary?.reviewRelevantOutputGaps} review-relevant output gaps` &&
       runbook.currentCoverage?.benchmarkFiveExampleSampler ===
         `${fiveExampleSampler.summary?.selectedWithPlayback}/${fiveExampleSampler.summary?.selectedRows}` &&
       runbook.currentCoverage?.benchmarkSampleReviewMatrix ===
@@ -2331,7 +2907,7 @@ function main() {
       runbook.currentCoverage?.benchmarkClosureTargetPlayback ===
         `${benchmarkClosureMatrix.summary?.targetPlaybackComplete}/${benchmarkClosureMatrix.summary?.benchmarkCount}` &&
       runbook.currentCoverage?.versionRemediationMatrix ===
-        `${versionRemediationMatrix.summary?.completeHistory} complete, ${versionRemediationMatrix.summary?.previousPlaybackGaps} previous-playback gaps, ${versionRemediationMatrix.summary?.withoutPrevious} missing previous` &&
+        `${versionRemediationMatrix.summary?.completeHistory} complete, ${versionRemediationMatrix.summary?.previousPlaybackGaps} previous-playback gaps, ${versionRemediationMatrix.summary?.noPreviousRun} true no-previous-run, ${versionRemediationMatrix.summary?.noEarlierPreviousRow || 0} no-earlier previous` &&
       runbook.currentCoverage?.benchmarkOutcomeAnalysis ===
         `${benchmarkOutcomeAnalysis.summary?.reviewPass} review-pass, ${benchmarkOutcomeAnalysis.summary?.needsOutputReview} needs-output-review, ${benchmarkOutcomeAnalysis.summary?.blockedOrCaveated} caveated` &&
       runbook.currentCoverage?.corpusRemediationMatrix ===
@@ -2353,7 +2929,7 @@ function main() {
       runbook.currentCoverage?.liveModelEvidence ===
         `${liveTestModelEvidence.summary?.playbackLinkedScripts}/${liveTestModelEvidence.summary?.scriptCount} playback, ${liveTestModelEvidence.summary?.structuredLlmScripts} structured` &&
       runbook.currentCoverage?.livePromptResponseCompleteness ===
-        `${liveTestPromptResponseCompleteness.summary?.scriptsWithStructuredSidecar}/${liveTestPromptResponseCompleteness.summary?.likelyLlmScripts} script sidecars, ${liveTestPromptResponseCompleteness.summary?.structuredRunCallsParsed} run calls parsed` &&
+        `${liveTestPromptResponseCompleteness.summary?.scriptSidecarComplete}/${liveTestPromptResponseCompleteness.summary?.likelyLlmScripts} complete script sidecars, ${liveTestPromptResponseCompleteness.summary?.runtimeBlockedBeforeSidecar} runtime-blocked, ${liveTestPromptResponseCompleteness.summary?.structuredRunCallsParsed} run calls parsed` &&
       runbook.currentCoverage?.liveTestReviewPacks ===
         `${liveTestReviewPacks.summary?.packPages}/${liveTestReviewPacks.summary?.scriptCount} pack pages, ${liveTestReviewPacks.summary?.playbackLinkedScripts} playback-linked` &&
       runbook.currentCoverage?.manualReviewNotes === manualReview.summary?.noteCount &&
@@ -2361,10 +2937,28 @@ function main() {
       runbook.currentCoverage?.agentReviewHighPriority === agentReview.summary?.highPriorityCount &&
       runbook.currentCoverage?.reviewQueueItems === reviewQueue.summary?.itemCount &&
       runbook.currentCoverage?.remediationMatrixItems === remediationMatrix.summary?.itemCount &&
+      runbook.currentCoverage?.remediationMatrixLocalActions ===
+        `${remediationMatrix.summary?.localActionItems}/${remediationMatrix.summary?.itemCount}` &&
+      runbook.currentCoverage?.remediationMatrixCredentialRequiredActions ===
+        remediationMatrix.summary?.localCredentialRequiredItems &&
+      JSON.stringify(runbook.currentCoverage?.remediationMatrixLocalActionByLane || {}) ===
+        JSON.stringify(remediationMatrix.summary?.localActionByLane || {}) &&
       runbook.currentCoverage?.remediationMatrixExternalBlockers ===
         remediationMatrix.summary?.externalBlockers &&
       runbook.currentCoverage?.remediationMatrixLiveTestItems ===
-        remediationMatrix.summary?.liveTestItems,
+        remediationMatrix.summary?.liveTestItems &&
+      runbook.currentCoverage?.remediationMatrixObjectiveCaveats ===
+        remediationMatrix.summary?.objectiveCaveats &&
+      runbook.currentCoverage?.remediationMatrixObjectiveLocalActions ===
+        `${remediationMatrix.summary?.objectiveLocalActionItems}/${remediationMatrix.summary?.objectiveCaveats}` &&
+      JSON.stringify(runbook.currentCoverage?.remediationMatrixObjectiveLocalActionByLane || {}) ===
+        JSON.stringify(remediationMatrix.summary?.objectiveLocalActionByLane || {}) &&
+      runbook.currentCoverage?.remediationMatrixLiveLocalActions ===
+        `${remediationMatrix.summary?.liveLocalActionItems}/${remediationMatrix.summary?.liveTestItems}` &&
+      JSON.stringify(runbook.currentCoverage?.remediationMatrixLiveLocalActionByClassification || {}) ===
+        JSON.stringify(remediationMatrix.summary?.liveLocalActionByClassification || {}) &&
+      JSON.stringify(runbook.currentCoverage?.remediationMatrixLiveLocalActionByLane || {}) ===
+        JSON.stringify(remediationMatrix.summary?.liveLocalActionByLane || {}),
     JSON.stringify(runbook.currentCoverage || {}),
   );
   assertCheck(
@@ -2385,16 +2979,16 @@ function main() {
       /Generated review readiness ledger/.test(currentStatus) &&
       /reports\/benchmark-analysis\/objective-evidence-map\/index\.html/.test(currentStatus) &&
       /reports\/benchmark-analysis\/review-readiness-ledger\/index\.html/.test(currentStatus) &&
-      /13 requirement rows: 6 proven, 6 caveated,\s+1 blocked, and 0 missing/.test(
+      /13 requirement rows: 7 proven, 5 caveated,\s+1 blocked, and 0 missing/.test(
         currentStatus,
       ) &&
-      /8\s+surfaces: 2 ready, 5 caveated, and 1 blocked, with 26\/39 affordances ready/.test(
+      /8\s+surfaces: 3 ready, 4 caveated, and 1 blocked, with 28\/39 affordances ready/.test(
         currentStatus,
       ) &&
       /Generated benchmark review packs/.test(currentStatus) &&
-      /16\/16 pack pages, 80\/80 sample playback rows, 72 review-ready sample rows,\s+15\/16 target playback links, 10 benchmark manual-note links, 8 benchmarks\s+with previous rows, and 6 comparable previous playback pairs/.test(currentStatus) &&
+      /16\/16 pack pages, 80\/80 sample playback rows, 80 review-ready sample rows,\s+52 full inline sample rows, 6 tool-call-only sample rows, 10 playback-only\s+environment sample rows, 15\/16 target playback links, 10 benchmark\s+manual-note links, 8 benchmarks with previous rows, and 6 comparable\s+previous playback pairs/.test(currentStatus) &&
       /Generated global review pack index/.test(currentStatus) &&
-      /782 pack rows across benchmark, corpus, scenario,\s+and live\/e2e review packs, 781 playback-linked rows, 520 manual-note links,\s+543 rerun commands, 0 human-reviewed notes, and 533 agent-triaged notes/.test(currentStatus) &&
+      /782 pack rows across benchmark, corpus, scenario,\s+and live\/e2e review packs, 781 playback-linked rows, 520 manual-note links,\s+543 rerun commands, 533 human-reviewed notes, and 533 agent-triaged notes/.test(currentStatus) &&
       /Generated review pack agent verdicts/.test(currentStatus) &&
       /782\/782 pack rows have agent verdicts: 242 accepted, 16 accepted\s+with caveat, 43 inspect, 194 fix, 285 rerun, and 2 blocked rows/.test(currentStatus) &&
       /Generated rerun command catalog/.test(currentStatus) &&
@@ -2402,16 +2996,16 @@ function main() {
       /Generated rerun batch scripts/.test(currentStatus) &&
       /5 executable batch scripts: 541 all-runnable commands, 15 benchmark commands,\s+31 corpus commands, 468 scenario commands, and 27 live\/e2e commands; 2 blocked\s+commands are excluded and documented/.test(currentStatus) &&
       /Generated final goal readiness gate/.test(currentStatus) &&
-      /8 final gates: 2 proven, 3 caveated, 3 blocked, 0 missing, and 6 open/.test(currentStatus) &&
+      /8 final gates: 3 proven, 3 caveated, 2 blocked, 0 missing, and\s+5 open/.test(currentStatus) &&
       /Generated manual-review progress board/.test(currentStatus) &&
-      /0\/533 human-reviewed items, 533\/533 notes\s+present, 15 high-priority unreviewed items, 520 review items linked to pack\s+pages, 519 linked directly to playback, 1 linked to a gap page, and 520 with\s+rerun commands/.test(currentStatus) &&
+      /533\/533 human-reviewed items, 533\/533 notes\s+present, 0 high-priority unreviewed items, 520 review items linked to pack\s+pages, 519 linked directly to playback, 1 linked to a gap page, and 520 with\s+rerun commands/.test(currentStatus) &&
       /Generated corpus review packs/.test(currentStatus) &&
-      /53\/53 pack\s+pages, 22 review-pass families, 25 needs-review, 5 telemetry-gap, 1 blocked,\s+53 family pages, 52 families with canonical playback, 246 canonical playback\s+files, 31 manual-note links, 32 rerun commands, 74 warning rows, 9 zero-metric\s+rows, and 2,230 normalized calls/.test(currentStatus) &&
+      /53\/53\s+pack pages, 22 review-pass families, 25 needs-review, 5 telemetry-gap,\s+1 blocked, 53 family pages, 52 families with canonical playback,\s+246 canonical playback files, 31 manual-note links, 32 rerun commands,\s+74 warning rows, 74 warning rows with playback, 74 warning rows with call\s+previews, 9 zero-metric rows, and 2,230 normalized calls/.test(currentStatus) &&
       /Generated live\/e2e review packs/.test(currentStatus) &&
-      /27\/27 pack pages,\s+27\/27 playback links, 27\/27 focused review links, 1\/27 script-level\s+structured sidecar rows, 27 parsed script calls with prompt and response,\s+11 failed scripts, 9 failure classifications, 27 rerun commands, 11 manual\s+review notes, and 5,427\/5,427 all-run structured calls parsed with prompt\s+and response/.test(currentStatus) &&
+      /27\/27 pack pages,\s+27\/27 playback links, 27\/27 focused review links, 1\/27 script-level\s+structured sidecar rows, 27\/27 latest sidecar calls parsed with prompt and\s+response from 54 aggregate script calls, 11 failed scripts, 9 failure\s+classifications, evidence tiers of 1 complete script sidecar,\s+11 no-model-call scripts, and 15 runtime-blocked scripts, 27 offline review\s+summaries, 27 rerun commands, 11 manual\s+review notes, and 5,427\/5,427 all-run structured calls parsed with prompt\s+and response/.test(currentStatus) &&
       /Generated scenario review packs/.test(currentStatus) &&
       /686\/686 pack pages,\s+686\/686 playback links, 218 passed, 466 failed-only, 2 non-passing, 181\s+actionable, 285 evidence-limited, 466 category-linked, 468 rerun commands,\s+468 scenario manual-note links, and 474 failure detail rows/.test(currentStatus) &&
-      /indexes 10,091\s+ignored report files, including 2,121 HTML files, 1,108 playback HTML pages,\s+366 trajectory-data files, 3,697 JSON files, and 2,719 Markdown files/.test(
+      /indexes 10,098\s+ignored report files, including 2,121 HTML files, 1,108 playback HTML pages,\s+366 trajectory-data files, 3,704 JSON files, and 2,719 Markdown files/.test(
         currentStatus,
       ),
     "status ledger includes objective evidence map, review readiness ledger, review pack index, agent verdicts, rerun command catalog, rerun batches, final goal readiness, manual review progress, benchmark/corpus/scenario/live review packs, and final manifest counts",

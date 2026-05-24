@@ -397,12 +397,15 @@ export interface TrainingAnalysisCoverageSummary {
   };
   models: {
     artifacts: number;
+    stagedBundles: number;
     inventory: Array<{
       model: string | null;
       tier: string | null;
       variant: string | null;
       baseModel: string | null;
       outputPath: string | null;
+      baseEvalScore: number | null;
+      trainedEvalScore: number | null;
       evalImprovementPercent: number | null;
     }>;
   };
@@ -806,12 +809,14 @@ export interface RunTrainingCollectionOptions {
     base?: RunActionBenchmarkOptions;
     trained?: RunActionBenchmarkOptions;
   };
-  actionBenchmarkPairs?: Array<{
-    label?: string;
-    tier?: string;
-    base?: RunActionBenchmarkOptions;
-    trained?: RunActionBenchmarkOptions;
-  }>;
+  actionBenchmarkPairs?:
+    | string
+    | Array<{
+        label?: string;
+        tier?: string;
+        base?: RunActionBenchmarkOptions;
+        trained?: RunActionBenchmarkOptions;
+      }>;
   benchmarkVsCerebras?: RunBenchmarkVsCerebrasOptions;
   eliza1BundleStage?: StageEliza1BundleOptions;
   benchmarkMatrix?: WriteBenchmarkMatrixFromArtifactsOptions;
@@ -912,6 +917,7 @@ export interface TrainingCollectionCoverageSummary {
   };
   models: {
     artifacts: number;
+    stagedBundles: number;
     inventoryCount: number;
   };
 }
@@ -962,6 +968,14 @@ export interface TrainingCollectionRunSummary {
     testTrajectories: number;
     trainingJsonlDatasets: number;
   };
+  sourceSamples?: {
+    huggingFace: TrainingCollectionSourceSample[];
+    feed: TrainingCollectionSourceSample[];
+    natural: TrainingCollectionSourceSample[];
+    scenarios: TrainingCollectionSourceSample[];
+    tests: TrainingCollectionSourceSample[];
+    trainingJsonl: TrainingCollectionSourceSample[];
+  };
   sourceArtifacts: Array<{
     category:
       | "huggingface"
@@ -993,6 +1007,8 @@ export interface TrainingCollectionRunSummary {
       outputPath: string | null;
       baseModel: string | null;
       repoId: string | null;
+      baseEvalScore: number | null;
+      trainedEvalScore: number | null;
       evalImprovementPercent: number | null;
     }>;
   };
@@ -1214,6 +1230,8 @@ export interface RunTrainingCollectionResponse {
           outputPath: string | null;
           baseModel: string | null;
           repoId: string | null;
+          baseEvalScore: number | null;
+          trainedEvalScore: number | null;
           evalImprovementPercent: number | null;
         }>;
       };

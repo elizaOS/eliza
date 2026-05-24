@@ -21,6 +21,7 @@ import {
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { startMockApiServer } from "../electrobun-packaged/mock-api";
 import { getFreePort } from "../utils/get-free-port.mjs";
+import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -589,9 +590,11 @@ async function captureOnboardingFlow(
         diagnosticsRoot,
         `initial-load--${viewport.id}.png`,
       );
-      await page
-        .screenshot({ path: diagPath, fullPage: false })
-        .catch(() => {});
+      await captureScreenshotWithQualityRetry(
+        page,
+        `onboarding initial-load ${viewport.id}`,
+        { path: diagPath, fullPage: false },
+      ).catch(() => {});
       const html = await page.content().catch(() => "");
       await writeFile(
         path.join(diagnosticsRoot, `initial-load--${viewport.id}.html`),
@@ -640,7 +643,11 @@ async function captureOnboardingFlow(
         );
         const absolutePath = path.join(outputRoot, relativePath);
         await mkdir(path.dirname(absolutePath), { recursive: true });
-        await page.screenshot({ path: absolutePath, fullPage: false });
+        await captureScreenshotWithQualityRetry(
+          page,
+          `onboarding ${step.id} ${viewport.id}`,
+          { path: absolutePath, fullPage: false },
+        );
 
         captures.push({
           stepId: step.id,
@@ -661,9 +668,11 @@ async function captureOnboardingFlow(
         const stem = `${step.id}--${viewport.id}`;
         const diagScreenshot = path.join(diagnosticsRoot, `${stem}.png`);
         const diagConsole = path.join(diagnosticsRoot, `${stem}.log`);
-        await page
-          .screenshot({ path: diagScreenshot, fullPage: false })
-          .catch(() => {});
+        await captureScreenshotWithQualityRetry(
+          page,
+          `onboarding diagnostic ${step.id} ${viewport.id}`,
+          { path: diagScreenshot, fullPage: false },
+        ).catch(() => {});
         await writeFile(diagConsole, `${consoleLines.join("\n")}\n`, "utf8");
 
         failures.push({

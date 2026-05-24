@@ -56,6 +56,12 @@ function requirementRows() {
       "reports/benchmarks/code-agent-version-comparison/version-comparison.json",
     ),
   );
+  const versionRemediation = readJson(
+    path.join(
+      REPO_ROOT,
+      "reports/benchmark-analysis/version-remediation-matrix/version-remediation.json",
+    ),
+  );
   const gapEvidence = readJson(
     path.join(REPO_ROOT, "reports/benchmark-analysis/gap-evidence/gap-evidence.json"),
   );
@@ -81,6 +87,18 @@ function requirementRows() {
     path.join(
       REPO_ROOT,
       "reports/benchmarks/benchmark-results-corpus-review/corpus-review.json",
+    ),
+  );
+  const corpusRemediation = readJson(
+    path.join(
+      REPO_ROOT,
+      "reports/benchmark-analysis/corpus-remediation-matrix/corpus-remediation.json",
+    ),
+  );
+  const corpusReviewPacks = readJson(
+    path.join(
+      REPO_ROOT,
+      "reports/benchmark-analysis/corpus-review-packs/corpus-review-packs.json",
     ),
   );
   const agentBenchmarkReview = readJson(
@@ -215,15 +233,15 @@ function requirementRows() {
         versionComparison.summary.benchmarksWithPrevious > 0 &&
           corpusReview.runHistory.summary.pairsWithPrevious > 0,
       ),
-      evidence: `${versionComparison.summary.benchmarksWithPrevious}/${versionComparison.summary.benchmarkCount} code-agent benchmarks have previous indexed rows for latest-vs-previous comparison; ${versionComparison.summary.benchmarksWithoutPrevious} have only one available row. Broader corpus history covers ${corpusReview.runHistory.summary.runCount} runs across ${corpusReview.runHistory.summary.benchmarkAgentPairs} benchmark/agent pairs; ${corpusReview.runHistory.summary.pairsWithPrevious} pairs have a previous comparable run and ${corpusReview.runHistory.summary.pairsWithSuccessfulPrevious} have a previous successful run.`,
+      evidence: `${versionComparison.summary.benchmarksWithPrevious}/${versionComparison.summary.benchmarkCount} code-agent benchmarks have previous indexed rows for latest-vs-previous comparison; ${versionRemediation.summary.noPreviousRun} true no-previous-run rows, ${versionRemediation.summary.noEarlierPreviousRow || 0} no-earlier-previous-row, and ${versionRemediation.summary.osworldProviderCaveats} OSWorld provider caveat remain. Broader corpus history covers ${corpusReview.runHistory.summary.runCount} runs across ${corpusReview.runHistory.summary.benchmarkAgentPairs} benchmark/agent pairs; ${corpusReview.runHistory.summary.pairsWithPrevious} pairs have a previous comparable run and ${corpusReview.runHistory.summary.pairsWithSuccessfulPrevious} have a previous successful run.`,
       link: rel(path.join(REPO_ROOT, "reports/benchmarks/benchmark-results-corpus-review/index.html")),
     },
     {
       id: "corpus-publication-gaps",
       requirement: "Broader benchmark corpus gaps are explicit and reviewable.",
       status: "caveated",
-      evidence: `Corpus family summary covers ${(corpusReview.benchmarkFamilies || []).length} matrix families with ${(corpusReview.reviewFindingSummary || {}).findingCount || 0} per-benchmark findings and ${corpusReview.summary.familyReviewPages || 0} focused family review pages: ${(corpusReview.reviewFindingSummary || {}).reviewPass || 0} review-pass, ${(corpusReview.reviewFindingSummary || {}).needsReview || 0} needs-review, ${(corpusReview.reviewFindingSummary || {}).telemetryGap || 0} telemetry-gap, and ${(corpusReview.reviewFindingSummary || {}).blocked || 0} blocked. The normalized corpus catalog now covers ${corpusReview.callCatalogSummary?.normalizedCallCount || 0} records across ${corpusReview.callCatalogSummary?.rowsWithNormalizedCalls || 0} latest rows and ${corpusReview.callCatalogSummary?.benchmarksWithNormalizedCalls || 0} published benchmark families, with ${corpusReview.summary.canonicalTrajectoryFiles} canonical playback files; only hyperliquid_bench lacks playback because it has no latest rows and ${(corpusReview.benchmarkFamilies || []).find((family) => family.benchmark_id === "hyperliquid_bench")?.unsupported_cells || 0} unsupported cells. Remaining corpus caveats: ${corpusReview.summary.insufficientLatestRows} latest rows carry insufficient-* warnings, ${corpusReview.telemetryGapSummary?.zeroMetricLatestRows || corpusReview.summary.missingTrajectoryLatestRows} latest rows have zero calls or zero trajectory turns (${corpusReview.telemetryGapSummary?.replayableButTokenlessRows || 0} still have replayable previews/files; ${corpusReview.telemetryGapSummary?.evidenceAbsentLatestRows || 0} lack previews/files), and ${(corpusReview.reviewFindingSummary || {}).telemetryGap || 0} families have replayable summary records without token totals.`,
-      link: rel(path.join(REPO_ROOT, "reports/benchmarks/benchmark-results-corpus-review/index.html")),
+      evidence: `Corpus family summary covers ${(corpusReview.benchmarkFamilies || []).length} matrix families with ${(corpusReview.reviewFindingSummary || {}).findingCount || 0} per-benchmark findings and ${corpusReview.summary.familyReviewPages || 0} focused family review pages: ${(corpusReview.reviewFindingSummary || {}).reviewPass || 0} review-pass, ${(corpusReview.reviewFindingSummary || {}).needsReview || 0} needs-review, ${(corpusReview.reviewFindingSummary || {}).telemetryGap || 0} telemetry-gap, and ${(corpusReview.reviewFindingSummary || {}).blocked || 0} blocked. The normalized corpus catalog now covers ${corpusReview.callCatalogSummary?.normalizedCallCount || 0} records across ${corpusReview.callCatalogSummary?.rowsWithNormalizedCalls || 0} latest rows and ${corpusReview.callCatalogSummary?.benchmarksWithNormalizedCalls || 0} published benchmark families, with ${corpusReview.summary.canonicalTrajectoryFiles} canonical playback files; only hyperliquid_bench lacks playback because it has no latest rows and ${(corpusReview.benchmarkFamilies || []).find((family) => family.benchmark_id === "hyperliquid_bench")?.unsupported_cells || 0} unsupported cells. Remaining corpus caveats: ${corpusReview.summary.insufficientLatestRows} latest rows carry insufficient-* warnings, ${corpusReview.telemetryGapSummary?.zeroMetricLatestRows || corpusReview.summary.missingTrajectoryLatestRows} latest rows have zero calls or zero trajectory turns (${corpusReview.telemetryGapSummary?.replayableButTokenlessRows || 0} still have replayable previews/files; ${corpusReview.telemetryGapSummary?.evidenceAbsentLatestRows || 0} lack previews/files), and ${(corpusReview.reviewFindingSummary || {}).telemetryGap || 0} families have replayable summary records without token totals. Focused action targets are generated: ${corpusRemediation.summary.familyRows || 0} remediation families, ${corpusRemediation.summary.rerunCommands || 0} rerun commands, ${corpusRemediation.summary.insufficientWarningLatestRows || 0} insufficient-warning rows, ${corpusRemediation.summary.blockedCredentialFamilies || 0} blocked credential family with missing credentials ${(corpusRemediation.summary.missingCredentialNames || []).join(", ") || "none"}, plus ${corpusReviewPacks.summary.packPages || 0}/${corpusReviewPacks.summary.familyCount || 0} corpus review pack pages, ${corpusReviewPacks.summary.withCanonicalPlayback || 0} with canonical playback, and ${corpusReviewPacks.summary.withManualReviewNote || 0} manual-note links.`,
+      link: rel(path.join(REPO_ROOT, "reports/benchmark-analysis/corpus-remediation-matrix/index.html")),
     },
     {
       id: "agent-review-every-benchmark",
@@ -299,7 +317,7 @@ function requirementRows() {
     {
       id: "osworld-live",
       requirement: "OSWorld has live scored execution, not only smoke evidence.",
-      status: "missing",
+      status: "blocked",
       evidence: `Current OSWorld row is smoke-only. Gap evidence: ${gapEvidence.osworld?.blockerSummary || "runtime prerequisites unavailable"}`,
       link: rel(path.join(REPO_ROOT, "reports/benchmark-analysis/gap-evidence/index.html")),
     },
@@ -335,7 +353,8 @@ function html() {
     const data = window.BENCHMARK_GOAL_AUDIT || { rows: [] };
     const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     document.getElementById("meta").textContent = data.generatedAt || "";
-    document.getElementById("table").innerHTML = '<table><thead><tr><th>requirement</th><th>status</th><th>evidence</th><th>link</th></tr></thead><tbody>' + data.rows.map(r => '<tr><td><code>' + esc(r.id) + '</code><br>' + esc(r.requirement) + '</td><td class="' + esc(r.status) + '">' + esc(r.status) + '</td><td>' + esc(r.evidence) + '</td><td><a href="' + esc(r.link) + '">open</a></td></tr>').join("") + '</tbody></table>';
+    const statusClass = value => value === "blocked" ? "missing" : value;
+    document.getElementById("table").innerHTML = '<table><thead><tr><th>requirement</th><th>status</th><th>evidence</th><th>link</th></tr></thead><tbody>' + data.rows.map(r => '<tr><td><code>' + esc(r.id) + '</code><br>' + esc(r.requirement) + '</td><td class="' + esc(statusClass(r.status)) + '">' + esc(r.status) + '</td><td>' + esc(r.evidence) + '</td><td><a href="' + esc(r.link) + '">open</a></td></tr>').join("") + '</tbody></table>';
   </script>
 </body>
 </html>`;
@@ -371,6 +390,7 @@ function main() {
       total: rows.length,
       proven: rows.filter((row) => row.status === "proven").length,
       caveated: rows.filter((row) => row.status === "caveated").length,
+      blocked: rows.filter((row) => row.status === "blocked").length,
       missing: rows.filter((row) => row.status === "missing").length,
     },
     rows,
@@ -388,7 +408,7 @@ function main() {
   writeFileSync(path.join(reportDir, "goal-audit.md"), renderMarkdown(payload), "utf8");
   writeFileSync(path.join(reportDir, "goal-audit.html"), html(), "utf8");
   process.stdout.write(
-    `benchmark goal audit ${payload.summary.proven}/${payload.summary.total} proven; ${payload.summary.caveated} caveated; ${payload.summary.missing} missing\n`,
+    `benchmark goal audit ${payload.summary.proven}/${payload.summary.total} proven; ${payload.summary.caveated} caveated; ${payload.summary.blocked} blocked; ${payload.summary.missing} missing\n`,
   );
 }
 

@@ -87,6 +87,10 @@ const NON_MODEL_EXCLUSION_RULES = [
   },
 ];
 
+function excerpt(value, max = 900) {
+  return String(value || "").replace(/\s+/g, " ").trim().slice(0, max);
+}
+
 function parseArgs(argv) {
   const options = { reportDir: DEFAULT_REPORT_DIR, json: false };
   for (let i = 0; i < argv.length; i += 1) {
@@ -230,6 +234,8 @@ function readWrappedRuns() {
         structuredCacheReadInputTokens: Number(
           structuredSummary.cacheReadInputTokens || 0,
         ),
+        stdoutExcerpt: excerpt(report.stdout),
+        stderrExcerpt: excerpt(report.stderr),
         reportJson: reportPath,
       });
     } catch {
@@ -328,6 +334,13 @@ function structuredCoverage(row) {
       detail: "The wrapped run is gated on mobile, simulator, voice, or device runtime behavior and produced runtime logs rather than LLM sidecar rows.",
     };
   }
+  const latestOutput = `${latest.stdoutExcerpt || ""} ${latest.stderrExcerpt || ""}`;
+  if (/SKIP .*server is unavailable|server is unavailable|fetch failed|ECONNREFUSED|connection refused/i.test(latestOutput)) {
+    return {
+      reason: "runtime-service-unavailable-no-sidecar",
+      detail: "The wrapped run completed as a runtime skip because a required local service was unavailable before any model-call sidecar rows could be emitted.",
+    };
+  }
   if (Number(latest.exitCode) !== 0) {
     return {
       reason: "wrapper-failed-before-sidecar",
@@ -376,6 +389,8 @@ function inventoryScripts(wrappedRuns = []) {
           structuredLlmCallCount: run.structuredLlmCallCount,
           structuredTotalTokens: run.structuredTotalTokens,
           structuredCacheReadInputTokens: run.structuredCacheReadInputTokens,
+          stdoutExcerpt: run.stdoutExcerpt,
+          stderrExcerpt: run.stderrExcerpt,
           reportJson: run.reportJson,
         }),
       );

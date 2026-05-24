@@ -1,6 +1,5 @@
 import { expect, type Page, test } from "playwright/test";
-
-const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", heading: /The agentic operating system/i },
@@ -71,8 +70,9 @@ async function expectCleanRoute(page: Page, route: (typeof ROUTES)[number]) {
     page.getByRole("heading", { name: /^Page Not Found$/i }),
   ).toHaveCount(0);
 
-  const screenshot = await page.screenshot({ fullPage: true });
-  expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+  await captureScreenshotWithQualityRetry(page, `route ${route.path}`, {
+    fullPage: true,
+  });
 
   const problems: string[] = [];
   if (captured.pageErrors.length) {

@@ -53,10 +53,15 @@ async function prepare(page: Page) {
     window.scrollTo(0, 0);
   });
   // Wait for all images to finish loading (best-effort — lazy images may still be resolving)
-  await page.waitForFunction(
-    () => [...document.images].every((img) => img.complete && img.naturalWidth > 0),
-    { timeout: 8000 },
-  ).catch(() => {});
+  await page
+    .waitForFunction(
+      () =>
+        [...document.images].every(
+          (img) => img.complete && img.naturalWidth > 0,
+        ),
+      { timeout: 8000 },
+    )
+    .catch(() => {});
   await page.waitForTimeout(250);
 }
 

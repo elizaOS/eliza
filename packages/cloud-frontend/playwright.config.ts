@@ -12,6 +12,7 @@ const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testMatch: "**/*.spec.ts",
   fullyParallel: true,
   reporter: [["list"], ["html", { open: "never" }]],
   expect: {

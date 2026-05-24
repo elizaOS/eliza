@@ -1,6 +1,6 @@
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { type ToolSet, generateText } from "ai";
+import { generateText, type ToolSet } from "ai";
 import { createNearAIClient, type NearAIFetch } from "../providers";
 import type { ModelName, ProviderOptions } from "../types";
 import { getExperimentalTelemetry, getLargeModel, getSmallModel } from "../utils/config";
@@ -23,7 +23,7 @@ interface ResolvedTextParams {
 function resolveTextParams(params: GenerateTextParams): ResolvedTextParams {
   // All fields read here are direct properties of GenerateTextParams — no cast needed.
   const providerOptions: ProviderOptions =
-    (params.providerOptions?.["nearai"] as ProviderOptions | undefined) ?? {};
+    (params.providerOptions?.nearai as ProviderOptions | undefined) ?? {};
 
   return {
     prompt: params.prompt ?? "",

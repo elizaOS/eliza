@@ -174,7 +174,7 @@ function categoryFor(details, scenario) {
   if (/Expected .* via|selectedAction|instead of expected|no selected action|Expected action|actionCalled|expected .* result data|Expected .* to fire|Expected .* payload|result payload missing|saw 0\. Called: REPLY/i.test(text)) {
     return "wrong-or-missing-action";
   }
-  if (/responseJudge|rubric|score\s+0|expected .*mentioned|No .*mentioned|responseIncludesAny|response missing/i.test(text)) {
+  if (/responseJudge|rubric|score\s+0|expected .*mentioned|No .*mentioned|responseIncludesAny|response missing|expected responseText|saw ".*"/i.test(text)) {
     return "response-rubric";
   }
   if (/no handler registered|turn kind .* not supported/i.test(text)) {

@@ -25,6 +25,22 @@ function link(href, label) {
   return href ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>` : "";
 }
 
+function compactList(values) {
+  return values.filter((value) => value !== undefined && value !== null && value !== "");
+}
+
+function byId(rows, id) {
+  return (rows || []).find((row) => row.id === id);
+}
+
+function osworldProviderDetails(providerReadiness) {
+  return Object.entries(providerReadiness?.providers || {}).map(([provider, detail]) => ({
+    provider,
+    runnable: detail?.runnable === true,
+    detail: detail?.detail || "",
+  }));
+}
+
 function buildPayload() {
   const objectiveEvidence = readJson(
     "reports/benchmark-analysis/objective-evidence-map/objective-evidence-map.json",
@@ -43,6 +59,22 @@ function buildPayload() {
   );
   const rerunBatches = readJson("reports/benchmark-analysis/rerun-batches/rerun-batches.json");
   const gap = readJson("reports/benchmark-analysis/gap-evidence/gap-evidence.json");
+  const remediation = readJson("reports/benchmark-analysis/remediation-matrix/remediation-matrix.json");
+
+  const closureRequirements = closure.requirements || [];
+  const remediationRows = remediation.rows || [];
+  const fiveExamples = byId(closureRequirements, "five-examples-per-benchmark");
+  const versionComparison = byId(closureRequirements, "version-comparison");
+  const broaderCorpus = byId(closureRequirements, "broader-corpus-review");
+  const realLlm = byId(closureRequirements, "real-llm-e2e-tests");
+  const externalGates = byId(closureRequirements, "external-gates");
+  const objectiveCaveatRows = [
+    byId(remediationRows, "five-examples-per-benchmark"),
+    byId(remediationRows, "version-comparison"),
+    byId(remediationRows, "broader-corpus-review"),
+    byId(remediationRows, "real-llm-e2e-tests"),
+  ].filter(Boolean);
+  const osworldProviders = osworldProviderDetails(gap.osworld?.providerReadiness);
 
   const gates = [
     {
@@ -73,12 +105,27 @@ function buildPayload() {
       id: "external-osworld",
       status: gap.osworld?.providerReadiness?.runnableProviderCount > 0 ? "proven" : "blocked-external",
       evidence: `OSWorld runnable providers: ${gap.osworld?.providerReadiness?.runnableProviderCount || 0}.`,
+      summary: "OSWorld live evidence is blocked until at least one local or cloud execution provider is runnable.",
+      blockerKind: "external-runtime-provider",
+      blockerDetails: osworldProviders,
+      nextActions: compactList([
+        "Start Docker or another OSWorld-compatible provider, or configure AWS credentials for the cloud provider path.",
+        "Rerun the recorded OSWorld benchmark command once a provider is available.",
+      ]),
       href: "../gap-evidence/osworld-live-readiness.html",
     },
     {
       id: "external-hyperliquid",
       status: gap.credentials?.hyperliquidPrivateKeyPresent ? "proven" : "blocked-external",
       evidence: `HL_PRIVATE_KEY present: ${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}.`,
+      summary: "Hyperliquid publication evidence is blocked by a missing local private-key credential.",
+      blockerKind: "external-credential",
+      credentialPresence: {
+        hyperliquidPrivateKeyPresent: gap.credentials?.hyperliquidPrivateKeyPresent === true,
+      },
+      nextActions: [
+        "Set HL_PRIVATE_KEY in the shell only, then rerun the recorded Hyperliquid benchmark command.",
+      ],
       href: "../../benchmarks/benchmark-results-corpus-review/gap-pages/hyperliquid_bench.html",
     },
     {
@@ -87,18 +134,58 @@ function buildPayload() {
         ? "caveated"
         : "missing",
       evidence: `${rerunBatches.summary?.runnableCommands || 0} runnable commands in ${rerunBatches.summary?.batchCount || 0} batch scripts; ${rerunBatches.summary?.blockedCommands || 0} commands excluded due to external blockers.`,
+      summary: "Rerun scripts are generated for all locally runnable coverage; only OSWorld and Hyperliquid are intentionally excluded until their external gates clear.",
+      commandBreakdown: {
+        benchmarkCommands: rerunBatches.summary?.benchmarkCommands || 0,
+        corpusCommands: rerunBatches.summary?.corpusCommands || 0,
+        scenarioCommands: rerunBatches.summary?.scenarioCommands || 0,
+        liveE2eCommands: rerunBatches.summary?.liveE2eCommands || 0,
+      },
+      blockedBy: ["external-osworld", "external-hyperliquid"],
       href: "../rerun-batches/index.html",
     },
     {
       id: "objective-evidence",
       status: objectiveEvidence.summary?.missing === 0 ? "caveated" : "missing",
       evidence: `${objectiveEvidence.summary?.proven || 0} proven, ${objectiveEvidence.summary?.caveated || 0} caveated, ${objectiveEvidence.summary?.blocked || 0} blocked, ${objectiveEvidence.summary?.missing || 0} missing objective rows.`,
+      summary: `${closure.summary?.proven || 0}/${closure.summary?.total || 0} objective-closure requirements are proven; ${closure.summary?.caveated || 0} are caveated and ${closure.summary?.missing || 0} are missing.`,
+      closureSummary: closure.summary || {},
+      caveatDetails: compactList([
+        fiveExamples && { id: fiveExamples.id, evidence: fiveExamples.evidence },
+        versionComparison && { id: versionComparison.id, evidence: versionComparison.evidence },
+        broaderCorpus && { id: broaderCorpus.id, evidence: broaderCorpus.evidence },
+        realLlm && { id: realLlm.id, evidence: realLlm.evidence },
+        externalGates && { id: externalGates.id, evidence: externalGates.evidence },
+      ]),
+      localActionLanes: Object.fromEntries(
+        objectiveCaveatRows.map((row) => [row.id, {
+          actionLane: row.actionLane,
+          localAction: row.localAction,
+          credentialRequired: row.credentialRequired === true,
+          href: row.targetHref,
+        }]),
+      ),
       href: "../objective-evidence-map/index.html",
     },
     {
       id: "review-readiness",
       status: reviewReadiness.summary?.blocked === 0 ? "proven" : "caveated",
       evidence: `${reviewReadiness.summary?.ready || 0} ready, ${reviewReadiness.summary?.caveated || 0} caveated, ${reviewReadiness.summary?.blocked || 0} blocked review surfaces.`,
+      summary: `${reviewReadiness.summary?.readyAffordances || 0}/${reviewReadiness.summary?.affordanceCount || 0} review affordances are ready across ${reviewReadiness.summary?.reviewTargets || 0} targets.`,
+      affordanceSummary: {
+        ready: reviewReadiness.summary?.readyAffordances || 0,
+        caveated: reviewReadiness.summary?.caveatedAffordances || 0,
+        blocked: reviewReadiness.summary?.blockedAffordances || 0,
+        total: reviewReadiness.summary?.affordanceCount || 0,
+        reviewTargets: reviewReadiness.summary?.reviewTargets || 0,
+      },
+      blockedSurfaces: (reviewReadiness.rows || [])
+        .filter((row) => row.status === "blocked")
+        .map((row) => ({
+          id: row.id,
+          affordances: (row.affordances || []).filter((affordance) => affordance.status === "blocked"),
+          caveats: row.caveats || [],
+        })),
       href: "../review-readiness-ledger/index.html",
     },
   ];
@@ -116,11 +203,17 @@ function buildPayload() {
       missing: gates.filter((gate) => gate.status === "missing").length,
       openGates: openGates.length,
       objectiveClosureReady: closure.summary?.closureReady === true,
+      objectiveClosure: `${closure.summary?.proven || 0}/${closure.summary?.total || 0} proven, ${closure.summary?.caveated || 0} caveated, ${closure.summary?.missing || 0} missing`,
+      remediationLocalActions: `${remediation.summary?.localActionItems || 0}/${remediation.summary?.itemCount || 0}`,
+      remediationCredentialRequiredActions: remediation.summary?.localCredentialRequiredItems || 0,
+      objectiveLocalActionItems: remediation.summary?.objectiveLocalActionItems || 0,
+      liveLocalActionItems: remediation.summary?.liveLocalActionItems || 0,
+      reviewAffordances: `${reviewReadiness.summary?.readyAffordances || 0}/${reviewReadiness.summary?.affordanceCount || 0} ready`,
       runContractOk: runContract.summary?.ok === true,
       artifactFiles: artifactManifest.summary?.totalFiles || 0,
     },
     finalDecision:
-      "not-complete: generated viewers, evidence, rerun scripts, and agent review are present; OSWorld, Hyperliquid, and human verdict gates remain open.",
+      "not-complete: generated viewers, evidence, rerun scripts, agent review, and manual review verdicts are present; OSWorld, Hyperliquid, and caveated evidence/readiness gates remain open.",
     gates,
   };
 }
@@ -130,7 +223,13 @@ function renderHtml(payload) {
     <tr>
       <td>${escapeHtml(gate.status)}</td>
       <td><code>${escapeHtml(gate.id)}</code></td>
-      <td>${escapeHtml(gate.evidence)}</td>
+      <td>
+        ${gate.summary ? `<div><strong>${escapeHtml(gate.summary)}</strong></div>` : ""}
+        <div>${escapeHtml(gate.evidence)}</div>
+        ${gate.nextActions ? `<div class="muted">Next: ${escapeHtml(gate.nextActions.join(" "))}</div>` : ""}
+        ${gate.blockerDetails ? `<ul>${gate.blockerDetails.map((detail) => `<li><code>${escapeHtml(detail.provider)}</code>: ${escapeHtml(detail.detail)}</li>`).join("")}</ul>` : ""}
+        ${gate.localActionLanes ? `<ul>${Object.entries(gate.localActionLanes).map(([id, action]) => `<li><code>${escapeHtml(id)}</code>: ${escapeHtml(action.actionLane)} - ${escapeHtml(action.localAction)}</li>`).join("")}</ul>` : ""}
+      </td>
       <td>${link(gate.href, "open")}</td>
     </tr>`).join("");
   return `<!doctype html>
@@ -150,6 +249,8 @@ function renderHtml(payload) {
     th { background:#eef2ea; }
     code { font:12px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace; }
     a { color:#245b3d; font-weight:600; }
+    .muted { color:#51614f; margin-top:4px; }
+    ul { margin:6px 0 0 18px; padding:0; }
   </style>
 </head>
 <body>
@@ -186,6 +287,12 @@ Decision: ${payload.finalDecision}
 - Blocked: ${payload.summary.blocked}
 - Missing: ${payload.summary.missing}
 - Open gates: ${payload.summary.openGates}
+- Objective closure: ${payload.summary.objectiveClosure}
+- Remediation local actions: ${payload.summary.remediationLocalActions}
+- Credential-required remediation actions: ${payload.summary.remediationCredentialRequiredActions}
+- Objective local action items: ${payload.summary.objectiveLocalActionItems}
+- Live/e2e local action items: ${payload.summary.liveLocalActionItems}
+- Review affordances: ${payload.summary.reviewAffordances}
 `,
     "utf8",
   );

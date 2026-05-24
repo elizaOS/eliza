@@ -16,6 +16,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const envPath = path.resolve(
   import.meta.dirname,
@@ -2576,7 +2577,14 @@ async function navigate(page: Page, url: string) {
 async function saveScreenshot(page: Page, profile: Profile, step: string) {
   const filename = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.png`);
   try {
-    await page.screenshot({ path: filename, fullPage: true });
+    await captureScreenshotWithQualityRetry(
+      page,
+      `${profile.id} ${step}`,
+      {
+        path: filename,
+        fullPage: true,
+      },
+    );
   } catch (error) {
     const noteFile = path.join(QA_ARTIFACT_DIR, `${profile.id}-${step}.txt`);
     await fs.writeFile(
@@ -2584,6 +2592,7 @@ async function saveScreenshot(page: Page, profile: Profile, step: string) {
       `Screenshot unavailable: ${error instanceof Error ? error.message : String(error)}\n`,
       "utf8",
     );
+    throw error;
   }
 }
 

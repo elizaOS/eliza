@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { mockInstallerApi } from "./mock-installer-api";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [{ path: "/", name: "landing" }] as const;
 const ENABLE_VISUAL_SNAPSHOTS =
@@ -40,6 +41,15 @@ for (const viewport of VIEWPORTS) {
         await expect(page.getByText("elizaOS Test USB")).toBeVisible();
 
         if (ENABLE_VISUAL_SNAPSHOTS) {
+          await captureScreenshotWithQualityRetry(
+            page,
+            `${route.name} ${viewport.name}`,
+            {
+              fullPage: true,
+              mask: dynamicMask(page),
+              animations: "disabled",
+            },
+          );
           await expect(page).toHaveScreenshot(
             `${route.name}-${viewport.name}.png`,
             {

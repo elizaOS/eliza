@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -41,6 +41,41 @@ function slug(value) {
 function verdictFromText(text) {
   const match = String(text || "").match(/^verdict:\s*(\S+)/m);
   return match ? match[1] : "unreviewed";
+}
+
+function frontmatterValue(text, key) {
+  const match = String(text || "").match(new RegExp(`^${key}:\\s*(.+)$`, "m"));
+  if (!match) return "";
+  const raw = match[1].trim();
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function existingNotesByKey() {
+  if (!existsSync(NOTES_DIR)) return new Map();
+  const byKey = new Map();
+  for (const filename of readdirSync(NOTES_DIR)) {
+    if (!filename.endsWith(".md")) continue;
+    const notePath = path.join(NOTES_DIR, filename);
+    const text = readFileSync(notePath, "utf8");
+    const kind = frontmatterValue(text, "kind");
+    const id = frontmatterValue(text, "id");
+    if (!kind || !id) continue;
+    const key = `${kind}:${id}`;
+    const entry = {
+      filename,
+      verdict: verdictFromText(text),
+      text,
+    };
+    const existing = byKey.get(key);
+    if (!existing || (existing.verdict === "unreviewed" && entry.verdict !== "unreviewed")) {
+      byKey.set(key, entry);
+    }
+  }
+  return byKey;
 }
 
 function agentTriage(item) {
@@ -205,6 +240,7 @@ function noteTemplate(item, viewerHref, triage) {
 function buildPayload() {
   const queue = readJson("reports/benchmark-analysis/review-queue/review-queue.json");
   mkdirSync(NOTES_DIR, { recursive: true });
+  const reusableNotes = existingNotesByKey();
   const used = new Set();
   const items = (queue.items || []).map((item, index) => {
     let base = `${String(index + 1).padStart(4, "0")}-${slug(item.kind)}-${slug(item.id)}`;
@@ -213,6 +249,10 @@ function buildPayload() {
     }
     let filename = `${base}.md`;
     let dedupe = 2;
+    const reusable = reusableNotes.get(`${item.kind}:${item.id}`);
+    if (reusable && !used.has(reusable.filename)) {
+      filename = reusable.filename;
+    }
     while (used.has(filename)) {
       filename = `${base}-${dedupe}.md`;
       dedupe += 1;

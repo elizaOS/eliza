@@ -217,12 +217,29 @@ function scoreFor(
   variant: BenchmarkMatrixVariant,
   tier?: string,
 ): BenchmarkMatrixCell | null {
+  if (variant === "reference") {
+    return (
+      rows.find(
+        (row) =>
+          row.benchmark === benchmark &&
+          row.variant === "reference" &&
+          row.tier === tier,
+      ) ??
+      rows.find(
+        (row) =>
+          row.benchmark === benchmark &&
+          row.variant === "reference" &&
+          row.tier === null,
+      ) ??
+      null
+    );
+  }
   return (
     rows.find(
       (row) =>
         row.benchmark === benchmark &&
         row.variant === variant &&
-        (variant === "reference" || row.tier === tier),
+        row.tier === tier,
     ) ?? null
   );
 }
@@ -234,7 +251,6 @@ function buildComparisons(
   const tiers = Array.from(
     new Set(
       rows
-        .filter((row) => row.variant !== "reference")
         .map((row) => row.tier)
         .filter((tier): tier is string => tier !== null),
     ),

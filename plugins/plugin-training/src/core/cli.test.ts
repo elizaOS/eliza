@@ -38,6 +38,8 @@ describe("training CLI collection options", () => {
       benchmarkVsCerebras: {
         tiers: "0_8b",
         benchmark: "eliza_harness_action_selection",
+        variants: "both",
+        maxSamples: 50,
         dryRun: true,
       },
       evalComparison: {
@@ -103,6 +105,67 @@ describe("training CLI collection options", () => {
     const options = buildRunCollectionOptionsFromCliArgs(["--skip-matrix"]);
 
     expect(options.includeBenchmarkMatrix).toBe(false);
+  });
+
+  it("accepts a Cerebras prompt cap for live reference smoke runs", () => {
+    const options = buildRunCollectionOptionsFromCliArgs([
+      "--live",
+      "--skip-hf",
+      "--skip-feed",
+      "--skip-natural",
+      "--skip-tests",
+      "--skip-scenarios",
+      "--skip-action-benchmark",
+      "--skip-model-registry",
+      "--skip-bundle-stage",
+      "--tiers",
+      "0_8b",
+      "--cerebras-max-samples",
+      "1",
+      "--cerebras-variants",
+      "trained",
+    ]);
+
+    expect(options.includeBenchmarkVsCerebras).toBe(true);
+    expect(options.benchmarkVsCerebras).toMatchObject({
+      tiers: "0_8b",
+      benchmark: "eliza_harness_action_selection",
+      variants: "trained",
+      maxSamples: 1,
+      dryRun: false,
+    });
+  });
+
+  it("allows focused live Hugging Face ingestion without benchmarks", () => {
+    const options = buildRunCollectionOptionsFromCliArgs([
+      "--live",
+      "--hf-files",
+      "sft/0_8b/train.jsonl, sft/0_8b/val.jsonl",
+      "--skip-feed",
+      "--skip-natural",
+      "--skip-tests",
+      "--skip-scenarios",
+      "--skip-action-benchmark",
+      "--skip-cerebras",
+      "--skip-model-registry",
+      "--skip-bundle-stage",
+      "--skip-matrix",
+    ]);
+
+    expect(options.includeHuggingFace).toBe(true);
+    expect(options.includeFeed).toBe(false);
+    expect(options.includeNaturalTrajectories).toBe(false);
+    expect(options.includeTestTrajectories).toBe(false);
+    expect(options.includeScenarios).toBe(false);
+    expect(options.includeActionBenchmark).toBe(false);
+    expect(options.includeBenchmarkVsCerebras).toBe(false);
+    expect(options.includeEliza1ModelRegistry).toBe(false);
+    expect(options.includeEliza1BundleStage).toBe(false);
+    expect(options.includeBenchmarkMatrix).toBe(false);
+    expect(options.huggingFace).toMatchObject({
+      dryRun: false,
+      files: ["sft/0_8b/train.jsonl", "sft/0_8b/val.jsonl"],
+    });
   });
 
   it("allows explicitly skipping dry-run eval comparison generation", () => {
@@ -349,6 +412,8 @@ describe("training CLI collection options", () => {
                 outputPath: "hf://elizaos/eliza-1-0_8b-trained",
                 baseModel: "eliza-1-0_8b-base",
                 repoId: "elizaos/eliza-1-0_8b-trained",
+                baseEvalScore: null,
+                trainedEvalScore: null,
                 evalImprovementPercent: null,
               },
             ],
@@ -441,11 +506,13 @@ describe("training CLI collection options", () => {
               id: "all_eliza1_tier_improvements",
               status: "partial",
               recommendedCapability: "terminal-training-run-collection",
+              recommendedParams: { actionBenchmarkPairs: "all" },
             },
             {
               id: "eval_comparison",
               status: "partial",
               recommendedCapability: "terminal-training-run-collection",
+              recommendedParams: { includeEvalComparison: true },
             },
             {
               id: "model_tracking",
@@ -490,8 +557,103 @@ describe("training CLI collection options", () => {
     expect(lines).toContain(
       "[run-collection] source-samples huggingFace=1 feed=1 natural=1 scenarios=0 tests=1 trainingJsonl=0 examples=huggingFace:hf-traj-1:response feed:feed-traj-1 natural:natural-traj-1:response tests:test:action_planner",
     );
+    expect(lines).toContain("[run-collection] failed-steps none");
     expect(lines).toContain(
-      "[run-collection] readiness-gaps feed_generation:missing->terminal-training-feed-generate cerebras_reference:missing->terminal-training-run-benchmark-vs-cerebras all_eliza1_tier_improvements:partial->terminal-training-run-collection eval_comparison:partial->terminal-training-run-collection model_tracking:missing->terminal-training-register-model",
+      '[run-collection] readiness-gaps feed_generation:missing->terminal-training-feed-generate cerebras_reference:missing->terminal-training-run-benchmark-vs-cerebras all_eliza1_tier_improvements:partial->terminal-training-run-collection params={"actionBenchmarkPairs":"all"} eval_comparison:partial->terminal-training-run-collection params={"includeEvalComparison":true} model_tracking:missing->terminal-training-register-model',
+    );
+  });
+
+  it("surfaces failed collection steps in run summaries", () => {
+    const lines = formatRunCollectionSummary({
+      outputDir: "/tmp/collection",
+      manifestPath: "/tmp/collection/collection-manifest.json",
+      readmePath: "/tmp/collection/README.md",
+      collectionIndex: {
+        schema: "eliza_training_collection_index",
+        schemaVersion: 1,
+        generatedAt: "2026-01-02T03:04:05.000Z",
+        root: "/tmp",
+        indexJsonPath: "/tmp/collection-index.json",
+        indexHtmlPath: "/tmp/collection-index.html",
+        collections: [],
+      },
+      manifest: {
+        analysis: { indexHtmlPath: "/tmp/collection/analysis/index.html" },
+        readiness: {
+          status: "partial",
+          ready: 1,
+          partial: 0,
+          missing: 1,
+        },
+        steps: [
+          {
+            id: "feed",
+            status: "failed",
+            outputDir: "/tmp/collection/feed",
+            error:
+              "feed train parallel exited with code 1: [WARN] No LLM API key configured. Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
+            result: null,
+          },
+        ],
+        evidence: {
+          dataSources: {
+            huggingFaceDatasets: 0,
+            feedDatasets: 0,
+            naturalTrajectoryBundles: 0,
+            scenarioRuns: 0,
+            scenarioNativeDatasets: 0,
+            testTrajectories: 0,
+            trainingJsonlDatasets: 0,
+          },
+          benchmarks: {
+            actionBenchmarkPairs: 0,
+            benchmarkRows: 0,
+            benchmarkComparisons: 0,
+            tiers: [],
+            comparisonInventory: [],
+            improvementComparisons: [],
+            baselineProgress: {
+              tierOrder: ["0_8b", "2b", "4b", "9b", "27b"],
+              establishedTiers: [],
+              remainingTiers: ["0_8b", "2b", "4b", "9b", "27b"],
+              nextTier: "0_8b",
+              smallestTierEstablished: false,
+              allTiersEstablished: false,
+            },
+          },
+          evals: {
+            evalArtifacts: 0,
+            evalComparisons: 0,
+            actionBenchmarks: 0,
+            benchmarkMatrices: 0,
+          },
+          training: {
+            models: 0,
+            trainingRuns: 0,
+            modelInventory: [],
+          },
+          sourceSamples: {
+            huggingFace: [],
+            feed: [],
+            natural: [],
+            scenarios: [],
+            tests: [],
+            trainingJsonl: [],
+          },
+          benchmarkReadiness: {
+            smallestTier: "missing",
+            allEliza1Tiers: "missing",
+            baseTrainedImprovement: "missing",
+            allEliza1TierImprovements: "missing",
+            cerebrasReference: "missing",
+          },
+          readinessGaps: [],
+        },
+      },
+    } as TrainingCollectionRunResult);
+
+    expect(lines).toContain(
+      "[run-collection] failed-steps feed:Database not initialized. Check DATABASE_URL or use initializeJsonMode().",
     );
   });
 
@@ -619,6 +781,16 @@ describe("training CLI collection options", () => {
             partial: 2,
             missing: 1,
           },
+          readinessGaps: [
+            {
+              id: "all_eliza1_tiers_benchmark",
+              label: "All Eliza-1 tier benchmark coverage",
+              status: "missing",
+              note: "Run benchmark matrix coverage for every Eliza-1 tier.",
+              recommendedCapability: "terminal-training-run-collection",
+              recommendedParams: { actionBenchmarkPairs: "all" },
+            },
+          ],
           artifactCount: 24,
           stepCounts: { skipped: 1, succeeded: 10, failed: 0 },
           dataSources: {
@@ -629,6 +801,114 @@ describe("training CLI collection options", () => {
             scenarioNativeDatasets: 1,
             testTrajectories: 1,
             trainingJsonlDatasets: 2,
+          },
+          sourceSamples: {
+            huggingFace: [
+              {
+                title: "hf",
+                path: "/tmp/training/collections/run-1/hf/manifest.json",
+                schema: "eliza_huggingface_dataset_ingest",
+                sourceKind: "huggingface_dataset",
+                trajectoryId: "hf-traj-1",
+                scenarioId: null,
+                task: "response",
+                input: "hf input",
+                output: "hf output",
+                model: null,
+              },
+            ],
+            feed: [
+              {
+                title: "feed",
+                path: "/tmp/training/collections/run-1/feed/manifest.json",
+                schema: "feed_parallel_generation",
+                sourceKind: "feed_train_parallel_generation",
+                trajectoryId: "feed-traj-1",
+                scenarioId: null,
+                task: null,
+                input: "feed input",
+                output: "feed output",
+                model: null,
+              },
+            ],
+            natural: [
+              {
+                title: "natural",
+                path: "/tmp/training/collections/run-1/natural/manifest.json",
+                schema: null,
+                sourceKind: "training_collection_natural_trajectories",
+                trajectoryId: "natural-traj-1",
+                scenarioId: null,
+                task: "action_planner",
+                input: "natural input",
+                output: "natural output",
+                model: "eliza-1-0_8b-trained",
+              },
+            ],
+            scenarios: [
+              {
+                title: "scenario",
+                path: "/tmp/training/collections/run-1/scenarios/matrix.json",
+                schema: null,
+                sourceKind: null,
+                trajectoryId: null,
+                scenarioId: "scenario-1",
+                task: "turn-1",
+                input: "scenario input",
+                output: "scenario output",
+                model: null,
+              },
+            ],
+            tests: [],
+            trainingJsonl: [],
+          },
+          sourceArtifacts: [
+            {
+              category: "feed",
+              title: "feed-export",
+              path: "/tmp/training/collections/run-1/feed/manifest.json",
+              schema: "feed_training_trajectory_export",
+            },
+          ],
+          evidenceArtifacts: [
+            {
+              category: "benchmark",
+              title: "benchmark-matrix",
+              path: "/tmp/training/collections/run-1/matrix/benchmark-matrix.json",
+              schema: "eliza_benchmark_matrix_artifact",
+            },
+            {
+              category: "eval",
+              title: "eval-comparison",
+              path: "/tmp/training/collections/run-1/eval/eval-comparison.json",
+              schema: "eliza_local_eval_comparison_artifact",
+            },
+            {
+              category: "model",
+              title: "eliza-1-0_8b-trained",
+              path: "/tmp/training/collections/run-1/models/0_8b-trained.json",
+              schema: "eliza1_model_registry_entry",
+            },
+          ],
+          training: {
+            trainingRuns: 1,
+            models: 2,
+            modelInventory: [
+              {
+                title: "eliza-1-0_8b-trained",
+                path: "/tmp/training/collections/run-1/models/0_8b-trained.json",
+                schema: "eliza1_model_registry_entry",
+                model: "eliza-1-0_8b-trained",
+                tier: "0_8b",
+                variant: "trained",
+                outputPath: "hf://elizaos/eliza-1-0_8b-trained",
+                baseModel: "eliza-1-0_8b-base",
+                repoId: "elizaos/eliza-1-0_8b-trained",
+                baseEvalScore: 0.4,
+                trainedEvalScore: 0.5,
+                evalImprovementPercent: 25,
+              },
+            ],
           },
           benchmarks: {
             actionBenchmarkPairs: 5,
@@ -677,7 +957,7 @@ describe("training CLI collection options", () => {
     expect(lines).toEqual([
       "[list-collections] root=/tmp/training/collections",
       "[list-collections] count=1",
-      "[list-collections] run=2026-01-02T03:04:05.000Z readiness=partial ready=8 partial=2 missing=1 artifacts=24 sources=hf:1,feed:1,natural:1,scenarios:1,native:1,tests:1,jsonl:2 benchmarks=pairs:5,comparisons:5,cases:8,tiers:0_8b,2b,4b,9b,27b baseline=established:0_8b,2b,next:4b,remaining:4b,9b,27b evals=artifacts:12,comparisons:1,action:10,matrices:1,first:eliza-1-0_8b-base->eliza-1-0_8b-trained,improvement:25% output=/tmp/training/collections/run-1 readme=/tmp/training/collections/run-1/README.md viewer=/tmp/training/collections/run-1/analysis/index.html",
+      '[list-collections] run=2026-01-02T03:04:05.000Z readiness=partial ready=8 partial=2 missing=1 artifacts=24 sources=hf:1,feed:1,natural:1,scenarios:1,native:1,tests:1,jsonl:2 benchmarks=pairs:5,comparisons:5,cases:8,tiers:0_8b,2b,4b,9b,27b baseline=established:0_8b,2b,next:4b,remaining:4b,9b,27b evals=artifacts:12,comparisons:1,action:10,matrices:1,first:eliza-1-0_8b-base->eliza-1-0_8b-trained,improvement:25% models=runs:1,models:2,inventory:1,first:0_8b/trained/eliza-1-0_8b-trained,improvement:25% samples=huggingFace:1,feed:1,natural:1,scenarios:1,tests:0,trainingJsonl:0,examples:huggingFace:hf-traj-1:response,feed:feed-traj-1,natural:natural-traj-1:action_planner,scenarios:scenario-1:turn-1 artifact-links=source:1,evidence:3 gaps=all_eliza1_tiers_benchmark:missing->terminal-training-run-collection params={"actionBenchmarkPairs":"all"} output=/tmp/training/collections/run-1 readme=/tmp/training/collections/run-1/README.md viewer=/tmp/training/collections/run-1/analysis/index.html',
     ]);
   });
 });

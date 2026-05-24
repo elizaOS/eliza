@@ -20,6 +20,7 @@ import type {
   ClickableElement,
 } from "../types.js";
 import { currentPlatform } from "./helpers.js";
+import { assertScreenshotBase64NotBlank } from "./screenshot-quality.js";
 
 // Lazy-load puppeteer-core so the plugin still loads if it's not installed
 let puppeteer: typeof import("puppeteer-core") | null = null;
@@ -430,6 +431,7 @@ export async function getBrowserClickables(): Promise<ClickableElement[]> {
 export async function screenshotBrowser(): Promise<string> {
   const page = await ensureBrowser();
   const buffer = await page.screenshot({ encoding: "base64", type: "png" });
+  assertScreenshotBase64NotBlank(buffer as string, "browser screenshot");
   return buffer as string;
 }
 

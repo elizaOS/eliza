@@ -47,10 +47,12 @@
  *   bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts
  */
 
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Page, type Route, test } from "@playwright/test";
 import {
   assertReadyChecks,
+  expectNoPageDiagnostics,
   installDefaultAppRoutes,
+  installPageDiagnosticsGuard,
   openAppPath,
   seedAppStorage,
 } from "./helpers";
@@ -72,6 +74,135 @@ interface TtsCloudCall {
   url: string;
   bodyText: string;
   headers: Record<string, string>;
+}
+
+async function fulfillJson(
+  route: Route,
+  body: Record<string, unknown>,
+): Promise<void> {
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+async function installConversationStreamMock(page: Page): Promise<{
+  streamCalls: () => Array<Record<string, unknown>>;
+}> {
+  let conversationCreated = false;
+  let messageSequence = 0;
+  const streamCalls: Array<Record<string, unknown>> = [];
+  const messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }> = [];
+
+  await page.route("**/api/conversations", async (route) => {
+    const method = route.request().method();
+    const timestamp = new Date().toISOString();
+    if (method === "GET") {
+      await fulfillJson(route, {
+        conversations: conversationCreated
+          ? [
+              {
+                id: "always-on-conversation",
+                roomId: "always-on-room",
+                title: "Always-on browser voice",
+                updatedAt: timestamp,
+                createdAt: timestamp,
+              },
+            ]
+          : [],
+      });
+      return;
+    }
+    if (method === "POST") {
+      conversationCreated = true;
+      await fulfillJson(route, {
+        conversation: {
+          id: "always-on-conversation",
+          roomId: "always-on-room",
+          title: "Always-on browser voice",
+          updatedAt: timestamp,
+          createdAt: timestamp,
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route(
+    "**/api/conversations/always-on-conversation/messages",
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await fulfillJson(route, { messages });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+
+  await page.route(
+    "**/api/conversations/always-on-conversation/messages/stream",
+    async (route) => {
+      const body = JSON.parse(route.request().postData() ?? "{}") as Record<
+        string,
+        unknown
+      >;
+      streamCalls.push(body);
+      const userText =
+        typeof body.text === "string" && body.text.trim()
+          ? body.text.trim()
+          : "voice test";
+      const assistantText =
+        "Always-on assistant heard the browser turn and kept listening.";
+      const now = Date.now();
+      messageSequence += 1;
+      messages.push(
+        {
+          id: `always-on-user-${messageSequence}`,
+          role: "user",
+          text: userText,
+          timestamp: now,
+        },
+        {
+          id: `always-on-assistant-${messageSequence}`,
+          role: "assistant",
+          text: assistantText,
+          timestamp: now + 1,
+        },
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          `data: ${JSON.stringify({
+            type: "token",
+            text: "Always-on assistant heard the browser turn",
+            fullText: "Always-on assistant heard the browser turn",
+          })}\n\n` +
+          `data: ${JSON.stringify({
+            type: "done",
+            fullText: assistantText,
+            agentName: "Eliza",
+          })}\n\n`,
+      });
+    },
+  );
+
+  await page.route("**/api/turns/always-on-room/abort", async (route) => {
+    await fulfillJson(route, {
+      aborted: true,
+      roomId: "always-on-room",
+      reason: "ui-chat-abort",
+    });
+  });
+
+  return { streamCalls: () => [...streamCalls] };
 }
 
 async function installTtsCloudMock(page: Page): Promise<{
@@ -136,6 +267,7 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
       interimResults: boolean;
       lang: string;
       started: boolean;
+      stopCount: number;
     }> = [];
 
     function makeRecognition() {
@@ -148,16 +280,19 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
         interimResults: false,
         lang: "en-US",
         started: false,
+        stopCount: 0,
         start() {
           this.started = true;
           this.onstart?.({});
         },
         stop() {
           this.started = false;
+          this.stopCount += 1;
           this.onend?.({});
         },
         abort() {
           this.started = false;
+          this.stopCount += 1;
           this.onend?.({});
         },
         addEventListener(name: string, handler: Listener) {
@@ -196,12 +331,29 @@ async function installSpeechRecognitionShim(page: Page): Promise<void> {
       });
       return true;
     };
+    (window as unknown as Record<string, unknown>).__sttState = () => {
+      const rec = instances[instances.length - 1];
+      return rec
+        ? {
+            continuous: rec.continuous,
+            interimResults: rec.interimResults,
+            lang: rec.lang,
+            started: rec.started,
+            stopCount: rec.stopCount,
+          }
+        : null;
+    };
   });
 }
 
 test.beforeEach(async ({ page }) => {
+  installPageDiagnosticsGuard(page);
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
+});
+
+test.afterEach(async ({ page }, testInfo) => {
+  await expectNoPageDiagnostics(page, testInfo.title);
 });
 
 test("voice provider matrix returns documented combos for each device + runtime mode", async ({
@@ -354,8 +506,27 @@ test("chat SSE stream emits token + done events for assistant message", async ({
       }
     })
     .filter(Boolean) as string[];
-  expect(types).toContain("token");
-  expect(types).toContain("done");
+  expect(types).toEqual(["token", "done"]);
+  const parsedEvents = sseEvents.events.map((event) => JSON.parse(event)) as Array<{
+    type: string;
+    text?: string;
+    fullText?: string;
+    agentName?: string;
+  }>;
+  expect(parsedEvents).toEqual([
+    expect.objectContaining({
+      type: "token",
+      text: "This is a stubbed QA response. The app surface is loaded and interactive.",
+      fullText:
+        "This is a stubbed QA response. The app surface is loaded and interactive.",
+    }),
+    expect.objectContaining({
+      type: "done",
+      fullText:
+        "This is a stubbed QA response. The app surface is loaded and interactive.",
+      agentName: "Eliza",
+    }),
+  ]);
 });
 
 test("TTS cloud endpoint receives the assistant text + voiceId payload", async ({
@@ -411,10 +582,24 @@ test("TTS cloud endpoint receives the assistant text + voiceId payload", async (
     text?: string;
     voiceId?: string;
     modelId?: string;
+    outputFormat?: string;
+    voice_settings?: {
+      stability?: number;
+      similarity_boost?: number;
+      speed?: number;
+    };
   };
-  expect(parsed.text).toMatch(/assistant speaking/);
-  expect(parsed.voiceId).toBe("21m00Tcm4TlvDq8ikWAM");
-  expect(parsed.modelId).toBe("eleven_turbo_v2_5");
+  expect(parsed).toEqual({
+    text: "Hello! This is the assistant speaking through cloud TTS.",
+    voiceId: "21m00Tcm4TlvDq8ikWAM",
+    modelId: "eleven_turbo_v2_5",
+    outputFormat: "mp3_44100_128",
+    voice_settings: {
+      stability: 0.5,
+      similarity_boost: 0.75,
+      speed: 1.0,
+    },
+  });
 });
 
 test("STT capture path fires onTranscript with the recognized string", async ({
@@ -490,4 +675,103 @@ test("STT capture path fires onTranscript with the recognized string", async ({
       )
       .toContain("hello world from the STT shim");
   }
+});
+
+test("always-on chat mode starts passive browser STT and keeps capture open after a final turn", async ({
+  page,
+}) => {
+  const conversations = await installConversationStreamMock(page);
+  await installSpeechRecognitionShim(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("eliza:voice:continuous-chat-mode", "always-on");
+  });
+
+  await openAppPath(page, "/chat");
+  await assertReadyChecks(
+    page,
+    "chat shell ready",
+    [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    "all",
+  );
+
+  const toggle = page.getByTestId("chat-view-continuous-chat-toggle");
+  await expect(toggle).toBeVisible({ timeout: 15_000 });
+  await expect(toggle).toHaveAttribute("data-mode", "always-on");
+
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(() => {
+          const state = (
+            window as unknown as {
+              __sttState?: () => {
+                continuous: boolean;
+                interimResults: boolean;
+                started: boolean;
+                stopCount: number;
+              } | null;
+            }
+          ).__sttState?.();
+          return state ?? null;
+        }),
+      { timeout: 5_000 },
+    )
+    .toMatchObject({
+      continuous: true,
+      interimResults: true,
+      started: true,
+      stopCount: 0,
+    });
+
+  const simulated = await page.evaluate(() => {
+    const fn = (window as unknown as Record<string, unknown>).__sttSimulate as
+      | ((text: string, isFinal: boolean) => boolean)
+      | undefined;
+    return fn?.("always on browser turn", true) ?? false;
+  });
+  expect(simulated, "always-on STT shim must receive a final turn").toBe(true);
+
+  await expect
+    .poll(
+      async () => page.locator("body").innerText(),
+      { timeout: 5_000 },
+    )
+    .toContain("always on browser turn");
+
+  await expect
+    .poll(
+      async () => conversations.streamCalls(),
+      { timeout: 5_000 },
+    )
+    .toEqual([
+      expect.objectContaining({
+        text: "always on browser turn",
+        channelType: "VOICE_DM",
+        metadata: expect.objectContaining({
+          voiceSource: "browser",
+        }),
+      }),
+    ]);
+
+  await expect(page.getByText("Always-on assistant heard the browser turn")).toBeVisible({
+    timeout: 5_000,
+  });
+
+  const afterFinal = await page.evaluate(() => {
+    const state = (
+      window as unknown as {
+        __sttState?: () => {
+          continuous: boolean;
+          interimResults: boolean;
+          started: boolean;
+          stopCount: number;
+        } | null;
+      }
+    ).__sttState?.();
+    return state ?? null;
+  });
+  expect(afterFinal).toMatchObject({
+    started: true,
+    stopCount: 0,
+  });
 });

@@ -30,15 +30,6 @@ function rel(target, from = REPORT_DIR) {
 }
 
 function scenarioVerdict(finding, failureById, categoryByKey) {
-  if (finding.disposition === "passed") {
-    return {
-      verdict: "passed",
-      action: "Keep as current execution evidence; use playback for spot-check review.",
-      category: "",
-      categoryDisposition: "",
-      categoryPageHref: "",
-    };
-  }
   const failure = failureById.get(finding.id);
   const category = failure ? categoryByKey.get(failure.category) : null;
   if (category) {
@@ -48,6 +39,15 @@ function scenarioVerdict(finding, failureById, categoryByKey) {
       category: category.key,
       categoryDisposition: category.disposition,
       categoryPageHref: category.pageHref ? rel(`reports/scenarios/failure-analysis/${category.pageHref}`) : "",
+    };
+  }
+  if (finding.disposition === "passed") {
+    return {
+      verdict: "passed",
+      action: "Keep as current execution evidence; use playback for spot-check review.",
+      category: "",
+      categoryDisposition: "",
+      categoryPageHref: "",
     };
   }
   if (finding.disposition === "non-passing") {

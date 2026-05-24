@@ -137,6 +137,7 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewLabel: "Remote Ledger",
       viewType: "gui",
       action: "pin-tab",
+      alwaysOnTop: true,
     });
 
     expect(navHandler).toHaveBeenCalledTimes(1);
@@ -147,6 +148,7 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewLabel: "Remote Ledger",
       viewType: "gui",
       action: "pin-tab",
+      alwaysOnTop: true,
     });
 
     cleanup();
@@ -164,6 +166,7 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewLabel: null,
       viewType: "web",
       action: ["pin-tab"],
+      alwaysOnTop: "true",
     });
 
     expect(navHandler).toHaveBeenCalledTimes(1);
@@ -174,6 +177,7 @@ describe("bindReadyPhase view interaction bridge", () => {
       viewLabel: undefined,
       viewType: undefined,
       action: undefined,
+      alwaysOnTop: false,
     });
 
     cleanup();

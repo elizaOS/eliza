@@ -11,9 +11,16 @@ import {
 describe("action benchmark runner", () => {
   it("builds the app-core action benchmark command", () => {
     expect(buildActionBenchmarkCommand()).toEqual([
+      "x",
+      "vitest",
       "run",
-      "test",
+      "--config",
+      "../test/vitest/real.config.ts",
       "test/benchmarks/action-selection.real.test.ts",
+      "--exclude",
+      ".git/**",
+      "--exclude",
+      ".eliza/**",
     ]);
   });
 
@@ -86,9 +93,16 @@ describe("action benchmark runner", () => {
     });
 
     expect(result.command.slice(1)).toEqual([
+      "x",
+      "vitest",
       "run",
-      "test",
+      "--config",
+      "../test/vitest/real.config.ts",
       "test/benchmarks/action-selection.real.test.ts",
+      "--exclude",
+      ".git/**",
+      "--exclude",
+      ".eliza/**",
     ]);
     expect(result.outputDir).toBe(outputDir);
     expect(result.reportJsonPath).toBe(

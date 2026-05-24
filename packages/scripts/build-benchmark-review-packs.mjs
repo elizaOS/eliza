@@ -57,6 +57,25 @@ function link(href, label) {
   return href ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>` : "";
 }
 
+function sampleLimitation(sample) {
+  if (sample.reviewCompleteness === "full-inline-io-with-cache") {
+    return "Inline input/output, token/cache, provider, and model metadata are present.";
+  }
+  if (sample.reviewCompleteness === "inline-output-no-token") {
+    return "Inline input/output are present, but token/cache counters are absent.";
+  }
+  if (sample.reviewCompleteness === "tool-call-only-inline") {
+    return "No text response was captured; inspect the tool action and playback for command/result detail.";
+  }
+  if (sample.reviewCompleteness === "playback-only-environment") {
+    return "Playback exists with environment transcript, but no inline model output or token/cache counters.";
+  }
+  if (sample.reviewCompleteness === "empty-response-token-usage") {
+    return "Token usage exists, but no text response was captured.";
+  }
+  return "Inline evidence is incomplete; use playback/source links.";
+}
+
 function buildPayload() {
   const outcome = readJson("reports/benchmark-analysis/benchmark-outcome-analysis/outcome-analysis.json");
   const samples = readJson(
@@ -135,10 +154,19 @@ function buildPayload() {
           taskId: sample.taskId,
           evidenceId: sample.evidenceId,
           reviewClass: sample.reviewClass,
+          reviewCompleteness: sample.reviewCompleteness || "",
+          reviewLimitation: sampleLimitation(sample),
           reviewReady: sample.reviewReady,
           totalTokens: sample.totalTokens,
           cacheReadTokens: sample.cacheReadTokens,
           cachePercent: sample.cachePercent,
+          model: sample.model || "",
+          provider: sample.provider || "",
+          inputSource: sample.inputSource || "",
+          outputSource: sample.outputSource || "",
+          responseChars: Number(sample.responseChars || 0),
+          toolCallCount: Number(sample.toolCallCount || 0),
+          actions: sample.actions || [],
           playbackHref: relFromReport(sample.playbackHref, PACK_DIR),
           sourceHref: relFromReport(sample.sourceHref, PACK_DIR),
           hasInputPreview: sample.hasInputPreview,
@@ -187,6 +215,18 @@ function buildPayload() {
     ),
     reviewReadySamples: packs.reduce(
       (sum, pack) => sum + pack.samples.filter((sample) => sample.reviewReady).length,
+      0,
+    ),
+    fullInlineReviewSamples: packs.reduce(
+      (sum, pack) => sum + pack.samples.filter((sample) => sample.reviewCompleteness === "full-inline-io-with-cache").length,
+      0,
+    ),
+    toolCallOnlyInlineSamples: packs.reduce(
+      (sum, pack) => sum + pack.samples.filter((sample) => sample.reviewCompleteness === "tool-call-only-inline").length,
+      0,
+    ),
+    playbackOnlyEnvironmentSamples: packs.reduce(
+      (sum, pack) => sum + pack.samples.filter((sample) => sample.reviewCompleteness === "playback-only-environment").length,
       0,
     ),
     withTargetPlayback: packs.filter((pack) => pack.trajectory.targetPlaybackComplete).length,
@@ -244,7 +284,7 @@ function packHtml(payload, pack) {
       <div class="metric"><span>target/baseline</span><strong>${escapeHtml(pack.success.targetAccuracy)} / ${escapeHtml(pack.success.baselineAccuracy)}</strong></div>
       <div class="metric"><span>trajectory cache</span><strong>${escapeHtml(pct(pack.tokens.trajectoryCachePercent))}</strong></div>
       <div class="metric"><span>sample playback</span><strong>${pack.samples.filter((sample) => sample.playbackHref).length}/${pack.samples.length}</strong></div>
-      <div class="metric"><span>input/output reps</span><strong>${pack.trajectory.representativeWithInput}/${pack.trajectory.representativeWithOutput}</strong></div>
+      <div class="metric"><span>input/output reps</span><strong>${pack.trajectory.representativeWithInput}/${pack.trajectory.representativeRecords} in / ${pack.trajectory.representativeWithOutput}/${pack.trajectory.representativeRecords} out</strong></div>
       <div class="metric"><span>version</span><strong>${escapeHtml(pack.version.gapType || "none")}</strong></div>
     </section>
     <section class="panel"><h2>Primary Links</h2><div class="body">
@@ -258,7 +298,7 @@ function packHtml(payload, pack) {
       <tr><th>trajectory</th><td>${pack.trajectory.files} files, ${pack.trajectory.records} records, ${pack.trajectory.representativeRecords} representative records</td></tr>
     </tbody></table></div></section>
     <section class="panel"><h2>Five Sampled Examples</h2><div class="body"><table><thead><tr><th>#</th><th>task</th><th>class</th><th>tokens/cache</th><th>links</th><th>preview</th></tr></thead><tbody>
-      ${pack.samples.map((sample) => `<tr><td>${sample.sampleOrdinal}</td><td><code>${escapeHtml(sample.taskId || sample.evidenceId || "")}</code></td><td>${escapeHtml(sample.reviewClass)}<br><span class="muted">${sample.reviewReady ? "review-ready" : "needs evidence"}</span></td><td>${fmt(sample.totalTokens)}<br><span class="muted">${fmt(sample.cacheReadTokens)} cached, ${escapeHtml(pct(sample.cachePercent))}</span></td><td>${link(sample.playbackHref, "playback")} ${link(sample.sourceHref, "source")}</td><td><b>input</b><pre>${escapeHtml(sample.inputPreview)}</pre>${sample.outputPreview ? `<b>output</b><pre>${escapeHtml(sample.outputPreview)}</pre>` : ""}</td></tr>`).join("")}
+      ${pack.samples.map((sample) => `<tr><td>${sample.sampleOrdinal}</td><td><code>${escapeHtml(sample.taskId || sample.evidenceId || "")}</code></td><td>${escapeHtml(sample.reviewClass)}<br><code>${escapeHtml(sample.reviewCompleteness || "")}</code><br><span class="muted">${escapeHtml(sample.reviewLimitation)}</span></td><td>${fmt(sample.totalTokens)}<br><span class="muted">${fmt(sample.cacheReadTokens)} cached, ${escapeHtml(pct(sample.cachePercent))}</span><br><span class="muted">${escapeHtml(sample.provider || "provider n/a")} ${escapeHtml(sample.model || "")}</span></td><td>${link(sample.playbackHref, "playback")} ${link(sample.sourceHref, "source")}</td><td><span class="muted">input ${escapeHtml(sample.inputSource || "n/a")} / output ${escapeHtml(sample.outputSource || "none")}; response chars ${escapeHtml(sample.responseChars)}; tool calls ${escapeHtml(sample.toolCallCount)}</span><br><b>input</b><pre>${escapeHtml(sample.inputPreview)}</pre>${sample.outputPreview ? `<b>output</b><pre>${escapeHtml(sample.outputPreview)}</pre>` : `<b>${escapeHtml(sample.reviewLimitation)}</b>`}${sample.actions.length ? `<br><span class="muted">actions: ${escapeHtml(sample.actions.join(", "))}</span>` : ""}</td></tr>`).join("")}
     </tbody></table></div></section>
     <section class="panel"><h2>Version And Manual Review</h2><div class="body"><table><tbody>
       <tr><th>version</th><td>${escapeHtml(pack.version.disposition)}; previous=${pack.version.hasPrevious ? "yes" : "no"}; playback pair=${pack.version.comparablePlaybackPair ? "yes" : "no"}; ${pack.version.notes.map(escapeHtml).join("; ")}</td></tr>
@@ -303,7 +343,7 @@ function indexHtml(payload) {
       ${Object.entries(payload.summary).slice(0, 8).map(([key, value]) => `<div class="card"><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
     </section>
     <section class="panel"><table><thead><tr><th>benchmark</th><th>quality</th><th>success</th><th>cache</th><th>samples</th><th>version</th><th>links</th></tr></thead><tbody>
-      ${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.benchmark)}</code><br><span class="muted">${escapeHtml(pack.runId)}</span></td><td>${escapeHtml(pack.qualityBand)}<br>${escapeHtml(pack.disposition)}</td><td>${escapeHtml(pack.success.targetAccuracy)} / ${escapeHtml(pack.success.baselineAccuracy)}</td><td>${pct(pack.tokens.trajectoryCachePercent)}</td><td>${pack.samples.filter((sample) => sample.playbackHref).length}/${pack.samples.length} playback<br>${pack.samples.filter((sample) => sample.reviewReady).length} review-ready</td><td>${escapeHtml(pack.version.gapType || "")}</td><td><a href="${escapeHtml(pack.href)}">pack</a> ${link(pack.trajectory.targetPlaybackHref ? `benchmarks/${pack.fileName}` : "", "")}</td></tr>`).join("")}
+      ${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.benchmark)}</code><br><span class="muted">${escapeHtml(pack.runId)}</span></td><td>${escapeHtml(pack.qualityBand)}<br>${escapeHtml(pack.disposition)}</td><td>${escapeHtml(pack.success.targetAccuracy)} / ${escapeHtml(pack.success.baselineAccuracy)}</td><td>${pct(pack.tokens.trajectoryCachePercent)}</td><td>${pack.samples.filter((sample) => sample.playbackHref).length}/${pack.samples.length} playback<br>${pack.samples.filter((sample) => sample.reviewReady).length} review-ready<br><span class="muted">${pack.samples.filter((sample) => sample.reviewCompleteness === "full-inline-io-with-cache").length} full inline; ${pack.samples.filter((sample) => sample.reviewCompleteness === "tool-call-only-inline").length} tool-only; ${pack.samples.filter((sample) => sample.reviewCompleteness === "playback-only-environment").length} playback-only</span></td><td>${escapeHtml(pack.version.gapType || "")}</td><td><a href="${escapeHtml(pack.href)}">pack</a> ${link(pack.trajectory.targetPlaybackHref ? `benchmarks/${pack.fileName}` : "", "")}</td></tr>`).join("")}
     </tbody></table></section>
   </main>
 </body>
@@ -316,13 +356,13 @@ function markdown(payload) {
     "",
     `Generated: ${payload.generatedAt}`,
     "",
-    `Summary: ${payload.summary.packPages}/${payload.summary.benchmarkCount} pack pages, ${payload.summary.samplePlaybackRows}/${payload.summary.sampleRows} sample playback rows, ${payload.summary.withManualReviewNote} manual-review notes, ${payload.summary.withComparablePlaybackPair} comparable playback pairs.`,
+    `Summary: ${payload.summary.packPages}/${payload.summary.benchmarkCount} pack pages, ${payload.summary.samplePlaybackRows}/${payload.summary.sampleRows} sample playback rows, ${payload.summary.fullInlineReviewSamples} full inline sample rows, ${payload.summary.toolCallOnlyInlineSamples} tool-call-only sample rows, ${payload.summary.playbackOnlyEnvironmentSamples} playback-only environment sample rows, ${payload.summary.withManualReviewNote} manual-review notes, ${payload.summary.withComparablePlaybackPair} comparable playback pairs.`,
     "",
     "| Benchmark | Pack | Quality | Samples | Cache | Version |",
     "| --- | --- | --- | ---: | ---: | --- |",
     ...payload.packs.map(
       (pack) =>
-        `| \`${pack.benchmark}\` | \`${pack.href}\` | ${pack.qualityBand} | ${pack.samples.length} | ${pct(pack.tokens.trajectoryCachePercent)} | ${pack.version.gapType || ""} |`,
+        `| \`${pack.benchmark}\` | \`${pack.href}\` | ${pack.qualityBand} | ${pack.samples.length} (${pack.samples.filter((sample) => sample.reviewCompleteness === "full-inline-io-with-cache").length} full inline) | ${pct(pack.tokens.trajectoryCachePercent)} | ${pack.version.gapType || ""} |`,
     ),
     "",
   ].join("\n");

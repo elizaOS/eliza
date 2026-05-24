@@ -399,9 +399,17 @@ export function bindReadyPhase(
           ? data.viewType
           : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
+      const alwaysOnTop = data.alwaysOnTop === true;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
-          detail: { viewId, viewPath, viewLabel, viewType, action },
+          detail: {
+            viewId,
+            viewPath,
+            viewLabel,
+            viewType,
+            action,
+            alwaysOnTop,
+          },
         }),
       );
     },

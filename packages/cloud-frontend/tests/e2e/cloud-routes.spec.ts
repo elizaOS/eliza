@@ -2,6 +2,10 @@ import { readdirSync, statSync } from "node:fs";
 import pathModule from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
+import {
+  assertScreenshotNotBlank,
+  captureScreenshotWithQualityRetry,
+} from "./_helpers/screenshot-quality";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
 // 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.
@@ -12,7 +16,6 @@ test.skip(
 
 test.describe.configure({ mode: "serial" });
 
-const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
 const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
 
@@ -608,7 +611,11 @@ async function captureRouteScreenshot(page: Page): Promise<Buffer> {
   for (const fullPage of [true, false]) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {
-        return await page.screenshot({ fullPage });
+        return await captureScreenshotWithQualityRetry(
+          page,
+          `route ${page.url()} ${fullPage ? "full-page" : "viewport"}`,
+          { fullPage },
+        );
       } catch (error) {
         lastError = error;
         await page.waitForTimeout(150);
@@ -635,7 +642,7 @@ for (const route of publicRoutes) {
       page.getByRole("heading", { name: /^Page Not Found$/i }),
     ).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
-    expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+    await assertScreenshotNotBlank(screenshot, route);
 
     // Title rule: each route should set a route-specific <title>; sub-pages
     // must not silently fall back to the homepage title.
@@ -671,8 +678,10 @@ for (const route of dashboardRoutes) {
     await expect(
       page.getByRole("heading", { name: /^Page Not Found$/i }),
     ).toHaveCount(0);
-    const screenshot = await page.screenshot({ fullPage: true });
-    expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+    const screenshot = await captureScreenshotWithQualityRetry(page, route, {
+      fullPage: true,
+    });
+    await assertScreenshotNotBlank(screenshot, route);
     assertNoFailures(route, captured);
   });
 }

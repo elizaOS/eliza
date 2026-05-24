@@ -280,7 +280,15 @@ def _benchmark_score_or_dry_run_zero(bench_result: dict[str, Any]) -> float | No
 def matrix_rows_from_results(results: list[dict[str, Any]], cerebras_model: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for tier_result in results:
-        benchmark_names: set[str] = set()
+        tier_slug = _tier_slug(
+            str(tier_result.get("tier") or ""),
+            str(tier_result.get("eliza_short_name") or "") or None,
+        )
+        benchmark_names: set[str] = {
+            str(benchmark)
+            for benchmark in (tier_result.get("requested_benchmarks") or [])
+            if isinstance(benchmark, str) and benchmark
+        }
         for variant_result in _variant_results_for_tier(tier_result):
             variant = str(variant_result.get("variant") or "trained")
             model_id = str(variant_result.get("model_id") or "")
@@ -327,6 +335,7 @@ def matrix_rows_from_results(results: list[dict[str, Any]], cerebras_model: str)
                             "modelId": model_id,
                             "variant": "reference",
                             "provider": "cerebras",
+                            "tier": tier_slug,
                             "benchmark": str(benchmark),
                             "score": float(c_score) if isinstance(c_score, (int, float)) else 0.0,
                             **({"metrics": {"dryRun": True}} if c_dry_run else {}),
@@ -564,6 +573,7 @@ def benchmark_tier(
         "tier": tier,
         "eliza_short_name": entry.eliza_short_name,
         "base_model_id": entry.hf_id,
+        "requested_benchmarks": benchmarks,
         "checkpoint": str(ckpt) if ckpt else None,
         "benchmarks": {},
         "variant_results": [],

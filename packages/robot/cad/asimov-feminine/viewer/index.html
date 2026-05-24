@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASIMOV-1 Femme Viewer</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#111; color:#eee; font-family:'Courier New',monospace; display:flex; height:100vh; overflow:hidden; }
+#sidebar {
+  width:260px; min-width:260px; background:#1a1a1a; padding:12px; overflow-y:auto;
+  border-right:1px solid #333; font-size:12px; flex-shrink:0;
+}
+#viewport { flex:1; position:relative; }
+canvas { display:block; }
+h2 { color:#f90; margin-bottom:8px; font-size:13px; letter-spacing:1px; text-transform:uppercase; }
+h3 { color:#aaa; margin:12px 0 4px; font-size:11px; letter-spacing:1px; text-transform:uppercase; border-top:1px solid #333; padding-top:8px; }
+.row { display:flex; align-items:center; justify-content:space-between; margin:3px 0; }
+.row label { color:#ccc; flex:1; cursor:pointer; }
+.row input[type=checkbox] { accent-color:#f90; }
+.row input[type=range] { flex:1; height:12px; }
+.row span { color:#888; font-size:10px; min-width:32px; text-align:right; }
+button {
+  width:100%; padding:6px; margin:3px 0; background:#222; border:1px solid #444;
+  color:#eee; cursor:pointer; font-size:11px; text-transform:uppercase; letter-spacing:1px;
+  font-family:inherit;
+}
+button:hover { background:#f90; color:#000; }
+button.active { background:#f90; color:#000; }
+#status { position:absolute; bottom:8px; left:8px; color:#888; font-size:10px; pointer-events:none; }
+#loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:#f90; font-size:18px; letter-spacing:2px; pointer-events:none; }
+.link-group { margin-left:12px; }
+select { background:#222; color:#eee; border:1px solid #444; padding:3px; font-size:11px; width:100%; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h2>⚙ ASIMOV-1 Femme</h2>
+
+  <button id="btn-femme" class="active" onclick="toggleFemme()">FEMME MODE: ON</button>
+  <button onclick="toggleWireframe()">WIREFRAME: OFF</button>
+  <button onclick="screenshot()">SCREENSHOT</button>
+
+  <h3>Reference Overlay</h3>
+  <div class="row"><label>Meshy GLB</label><input type="checkbox" id="chk-ref" checked onchange="toggleRef(this.checked)"></div>
+  <div class="row"><label>Opacity</label><input type="range" id="ref-opacity" min="0" max="100" value="40" oninput="setRefOpacity(this.value)"><span id="ref-opacity-val">40%</span></div>
+  <div class="row"><label>Scale</label><input type="range" id="ref-scale" min="1" max="200" value="80" oninput="setRefScale(this.value)"><span id="ref-scale-val">0.80</span></div>
+  <div class="row"><label>Y Offset</label><input type="range" id="ref-y" min="-500" max="500" value="0" oninput="setRefY(this.value)"><span id="ref-y-val">0</span></div>
+
+  <h3>Visibility</h3>
+  <button onclick="allOn()">ALL ON</button>
+  <button onclick="allOff()">ALL OFF</button>
+
+  <h3>Torso</h3>
+  <div class="link-group" id="grp-torso"></div>
+  <h3>Left Leg</h3>
+  <div class="link-group" id="grp-left-leg"></div>
+  <h3>Right Leg</h3>
+  <div class="link-group" id="grp-right-leg"></div>
+  <h3>Left Arm</h3>
+  <div class="link-group" id="grp-left-arm"></div>
+  <h3>Right Arm</h3>
+  <div class="link-group" id="grp-right-arm"></div>
+  <h3>Head</h3>
+  <div class="link-group" id="grp-head"></div>
+  <h3>Feet</h3>
+  <div class="link-group" id="grp-feet"></div>
+</div>
+
+<div id="viewport">
+  <div id="loading">LOADING ROBOT...</div>
+  <div id="status"></div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+// ── MJCF world positions (metres, all joints at zero, pelvis at world Z=0.630) ──
+// [name, stl_file, world_pos_xyz, group_id]
+const LINKS = [
+  // Torso
+  ['IMU_ORIGIN',         'IMU_ORIGIN.STL',          [0,      0,       0.630], 'torso'],
+  ['WAIST_YAW',          'WAIST_YAW.STL',           [-0.052, 0,       0.704755], 'torso'],
+  // Head
+  ['NECK_YAW',           'NECK_YAW.STL',            [-0.0686,0,       1.082922], 'head'],
+  ['NECK_PITCH',         'NECK_PITCH.STL',           [-0.0686,0,       1.120272], 'head'],
+  // Left leg
+  ['LEFT_HIP_PITCH',     'LEFT_HIP_PITCH.STL',      [-0.052,  0.0675,  0.585955], 'left-leg'],
+  ['LEFT_HIP_ROLL',      'LEFT_HIP_ROLL.STL',       [-0.00975,0.1075,  0.585955], 'left-leg'],
+  ['LEFT_HIP_YAW',       'LEFT_HIP_YAW.STL',        [-0.052,  0.1075,  0.533955], 'left-leg'],
+  ['LEFT_KNEE',          'LEFT_KNEE.STL',            [-0.052,  0.1075,  0.338315], 'left-leg'],
+  ['LEFT_ANKLE_A',       'LEFT_ANKLE_A.STL',         [-0.052,  0.1075,  0.043653], 'feet'],
+  ['LEFT_ANKLE_B',       'LEFT_ANKLE_B.STL',         [-0.0535, 0.1075,  0.033653], 'feet'],
+  ['LEFT_TOE',           'LEFT_TOE.STL',             [ 0.0490, 0.10313, 0.026920], 'feet'],
+  // Right leg
+  ['RIGHT_HIP_PITCH',    'RIGHT_HIP_PITCH.STL',     [-0.052, -0.0675,  0.585955], 'right-leg'],
+  ['RIGHT_HIP_ROLL',     'RIGHT_HIP_ROLL.STL',      [-0.00975,-0.1075, 0.585955], 'right-leg'],
+  ['RIGHT_HIP_YAW',      'RIGHT_HIP_YAW.STL',       [-0.052, -0.1075,  0.533955], 'right-leg'],
+  ['RIGHT_KNEE',         'RIGHT_KNEE.STL',           [-0.052, -0.1075,  0.338315], 'right-leg'],
+  ['RIGHT_ANKLE_A',      'RIGHT_ANKLE_A.STL',        [-0.052, -0.1075,  0.043653], 'feet'],
+  ['RIGHT_ANKLE_B',      'RIGHT_ANKLE_B.STL',        [-0.0535,-0.1075,  0.033653], 'feet'],
+  ['RIGHT_TOE',          'RIGHT_TOE.STL',            [ 0.0490,-0.10313, 0.026920], 'feet'],
+  // Left arm
+  ['LEFT_SHOULDER_PITCH','LEFT_SHOULDER_PITCH.STL',  [-0.07821, 0.0965,  0.965895], 'left-arm'],
+  ['LEFT_SHOULDER_ROLL', 'LEFT_SHOULDER_ROLL.STL',   [-0.07811, 0.16185, 0.965895], 'left-arm'],
+  ['LEFT_SHOULDER_YAW',  'LEFT_SHOULDER_YAW.STL',    [-0.07811, 0.16185, 0.836895], 'left-arm'],
+  ['LEFT_ELBOW',         'LEFT_ELBOW.STL',            [-0.07811, 0.16185, 0.740595], 'left-arm'],
+  ['LEFT_WRIST_YAW',     'LEFT_WRIST_YAW.STL',       [ 0.00845, 0.16185, 0.667960], 'left-arm'],
+  // Right arm
+  ['RIGHT_SHOULDER_PITCH','RIGHT_SHOULDER_PITCH.STL',[-0.07821,-0.0965,  0.965895], 'right-arm'],
+  ['RIGHT_SHOULDER_ROLL', 'RIGHT_SHOULDER_ROLL.STL', [-0.07821,-0.16185, 0.965895], 'right-arm'],
+  ['RIGHT_SHOULDER_YAW',  'RIGHT_SHOULDER_YAW.STL',  [-0.07821,-0.16185, 0.836895], 'right-arm'],
+  ['RIGHT_ELBOW',         'RIGHT_ELBOW.STL',          [-0.07821,-0.16185, 0.740595], 'right-arm'],
+  ['RIGHT_WRIST_YAW',     'RIGHT_WRIST_YAW.STL',     [ 0.00835,-0.16185, 0.667960], 'right-arm'],
+];
+
+// All links have femme versions — full set generated
+const FEMME_DONE = new Set([
+  'IMU_ORIGIN','WAIST_YAW','NECK_YAW','NECK_PITCH',
+  'LEFT_HIP_PITCH','LEFT_HIP_ROLL','LEFT_HIP_YAW','LEFT_KNEE',
+  'LEFT_ANKLE_A','LEFT_ANKLE_B','LEFT_TOE',
+  'RIGHT_HIP_PITCH','RIGHT_HIP_ROLL','RIGHT_HIP_YAW','RIGHT_KNEE',
+  'RIGHT_ANKLE_A','RIGHT_ANKLE_B','RIGHT_TOE',
+  'LEFT_SHOULDER_PITCH','LEFT_SHOULDER_ROLL','LEFT_SHOULDER_YAW','LEFT_ELBOW','LEFT_WRIST_YAW',
+  'RIGHT_SHOULDER_PITCH','RIGHT_SHOULDER_ROLL','RIGHT_SHOULDER_YAW','RIGHT_ELBOW','RIGHT_WRIST_YAW',
+]);
+
+// Served from packages/robot/; viewer is at cad/asimov-feminine/viewer/
+// Three levels up from viewer/ to reach packages/robot/ root
+const ORIG_BASE  = '../../../assets/profiles/asimov-1/meshes/';
+const FEMME_BASE = '../output/stl/';
+
+// ── Scene Setup ──────────────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.shadowMap.enabled = true;
+const vp = document.getElementById('viewport');
+vp.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x151515);
+scene.fog = new THREE.Fog(0x151515, 3, 8);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 20);
+// MJCF is Z-up; robot stands at Z=0..1.2m range
+// After rotating group by -90° X: MJCF Z→Y, so robot height spans Y=0..1.2
+camera.position.set(1.5, 0.6, 1.8);
+camera.lookAt(0, 0.6, 0);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 0.6, 0);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+
+// Lights
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const dir1 = new THREE.DirectionalLight(0xfff0e0, 1.2);
+dir1.position.set(2, 3, 2);
+dir1.castShadow = true;
+scene.add(dir1);
+const dir2 = new THREE.DirectionalLight(0xe0f0ff, 0.6);
+dir2.position.set(-2, 1, -1);
+scene.add(dir2);
+scene.add(new THREE.HemisphereLight(0x404060, 0x202020, 0.4));
+
+// Floor grid (Y=0 plane in three.js = MJCF Z=0 = ground)
+const grid = new THREE.GridHelper(3, 30, 0x333333, 0x222222);
+scene.add(grid);
+
+// Robot group: rotate -90° around X to convert MJCF Z-up to three.js Y-up
+const robotGroup = new THREE.Group();
+robotGroup.rotation.x = -Math.PI / 2;
+scene.add(robotGroup);
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let femmeMode = true;
+let wireframe = false;
+const meshObjects = {};   // name → THREE.Mesh
+const checkboxes = {};    // name → checkbox element
+let refGroup = null;
+let loaded = 0;
+const total = LINKS.length;
+
+// ── Material factory ──────────────────────────────────────────────────────────
+function makeMat(isFemme) {
+  return new THREE.MeshStandardMaterial({
+    color: isFemme ? 0xddccbb : 0xaaaaaa,
+    roughness: 0.55,
+    metalness: 0.3,
+    side: THREE.DoubleSide,
+  });
+}
+
+// ── STL Loader ────────────────────────────────────────────────────────────────
+const stlLoader = new STLLoader();
+
+function loadLink(name, file, pos) {
+  const femme = femmeMode && FEMME_DONE.has(name);
+  const url = femme ? FEMME_BASE + name + '.STL' : ORIG_BASE + file;
+  stlLoader.load(url, (geo) => {
+    geo.computeVertexNormals();
+    const mat = makeMat(femme);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(...pos);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.userData.linkName = name;
+    mesh.userData.origPos = pos.slice();
+    robotGroup.add(mesh);
+    meshObjects[name] = mesh;
+    loaded++;
+    document.getElementById('loading').textContent = `LOADING ${loaded}/${total}...`;
+    if (loaded === total) document.getElementById('loading').style.display='none';
+    document.getElementById('status').textContent =
+      `${loaded}/${total} links • femme: ${[...FEMME_DONE].filter(n=>n in meshObjects).length} modified`;
+  }, undefined, () => {
+    // fallback: try original if femme failed
+    if (femme) {
+      stlLoader.load(ORIG_BASE + file, (geo) => {
+        geo.computeVertexNormals();
+        const mat = makeMat(false);
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.position.set(...pos);
+        robotGroup.add(mesh);
+        meshObjects[name] = mesh;
+        loaded++;
+        if (loaded === total) document.getElementById('loading').style.display='none';
+      });
+    } else {
+      loaded++;
+      if (loaded === total) document.getElementById('loading').style.display='none';
+    }
+  });
+}
+
+// ── GLB Reference ────────────────────────────────────────────────────────────
+const gltfLoader = new GLTFLoader();
+gltfLoader.load('reference.glb', (gltf) => {
+  refGroup = gltf.scene;
+  // Estimate bounding box and auto-scale to ~1.2m height
+  const bb = new THREE.Box3().setFromObject(refGroup);
+  const sz = new THREE.Vector3(); bb.getSize(sz);
+  const maxDim = Math.max(sz.x, sz.y, sz.z);
+  const targetH = 1.2;
+  const autoScale = targetH / maxDim;
+  const initScale = parseFloat(document.getElementById('ref-scale').value) / 100 * autoScale * 100;
+  refGroup.scale.setScalar(autoScale * 0.8);
+  // Center bottom at origin
+  const center = new THREE.Vector3(); bb.getCenter(center);
+  refGroup.position.set(-center.x * autoScale * 0.8, -bb.min.y * autoScale * 0.8, -center.z * autoScale * 0.8);
+  setRefMat(refGroup, 0.4);
+  scene.add(refGroup);
+}, undefined, (err) => {
+  console.warn('GLB load failed:', err);
+  document.getElementById('chk-ref').disabled = true;
+  document.getElementById('chk-ref').parentElement.querySelector('label').textContent = 'Meshy GLB (not found)';
+});
+
+function setRefMat(obj, opacity) {
+  obj.traverse(c => {
+    if (c.isMesh) {
+      c.material = c.material.clone();
+      c.material.transparent = opacity < 1;
+      c.material.opacity = opacity;
+      c.material.depthWrite = opacity >= 0.95;
+    }
+  });
+}
+
+// ── Build Sidebar ─────────────────────────────────────────────────────────────
+const groups = { torso:[], 'left-leg':[], 'right-leg':[], 'left-arm':[], 'right-arm':[], head:[], feet:[] };
+LINKS.forEach(([name,,,grp]) => groups[grp].push(name));
+
+Object.entries(groups).forEach(([grp, names]) => {
+  const container = document.getElementById(`grp-${grp}`);
+  if (!container) return;
+  names.forEach(name => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const isFemme = FEMME_DONE.has(name);
+    row.innerHTML = `
+      <label style="color:${isFemme?'#f90':'#ccc'}">${isFemme?'★ ':''}${name.toLowerCase().replace(/_/g,' ')}</label>
+      <input type="checkbox" checked onchange="window.toggleLink('${name}',this.checked)">
+    `;
+    container.appendChild(row);
+    checkboxes[name] = row.querySelector('input');
+  });
+});
+
+// ── Load all links ────────────────────────────────────────────────────────────
+LINKS.forEach(([name, file, pos]) => loadLink(name, file, pos));
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+window.toggleLink = (name, visible) => {
+  if (meshObjects[name]) meshObjects[name].visible = visible;
+};
+
+window.toggleFemme = () => {
+  femmeMode = !femmeMode;
+  document.getElementById('btn-femme').textContent = `FEMME MODE: ${femmeMode?'ON':'OFF'}`;
+  document.getElementById('btn-femme').classList.toggle('active', femmeMode);
+  // Reload all links
+  Object.values(meshObjects).forEach(m => robotGroup.remove(m));
+  Object.keys(meshObjects).forEach(k => delete meshObjects[k]);
+  loaded = 0;
+  document.getElementById('loading').style.display = '';
+  document.getElementById('loading').textContent = 'RELOADING...';
+  LINKS.forEach(([name, file, pos]) => loadLink(name, file, pos));
+};
+
+let wf = false;
+window.toggleWireframe = () => {
+  wf = !wf;
+  document.querySelector('[onclick="toggleWireframe()"]').textContent = `WIREFRAME: ${wf?'ON':'OFF'}`;
+  Object.values(meshObjects).forEach(m => {
+    if (m.material) m.material.wireframe = wf;
+  });
+};
+
+window.toggleRef = (v) => { if (refGroup) refGroup.visible = v; };
+
+window.setRefOpacity = (v) => {
+  document.getElementById('ref-opacity-val').textContent = v + '%';
+  if (refGroup) setRefMat(refGroup, v/100);
+};
+
+window.setRefScale = (v) => {
+  document.getElementById('ref-scale-val').textContent = (v/100).toFixed(2);
+  if (refGroup) {
+    const bb = new THREE.Box3().setFromObject(refGroup);
+    const sz = new THREE.Vector3(); bb.getSize(sz);
+    const maxDim = Math.max(sz.x/refGroup.scale.x, sz.y/refGroup.scale.y, sz.z/refGroup.scale.z);
+    const s = (1.2 / maxDim) * (v / 100);
+    refGroup.scale.setScalar(s);
+  }
+};
+
+window.setRefY = (v) => {
+  document.getElementById('ref-y-val').textContent = v;
+  if (refGroup) refGroup.position.y = parseFloat(v)/1000;
+};
+
+window.allOn = () => {
+  LINKS.forEach(([n]) => { if (meshObjects[n]) meshObjects[n].visible = true; if(checkboxes[n]) checkboxes[n].checked=true; });
+};
+window.allOff = () => {
+  LINKS.forEach(([n]) => { if (meshObjects[n]) meshObjects[n].visible = false; if(checkboxes[n]) checkboxes[n].checked=false; });
+};
+
+window.screenshot = () => {
+  renderer.render(scene, camera);
+  const a = document.createElement('a');
+  a.href = renderer.domElement.toDataURL('image/png');
+  a.download = `asimov-femme-${Date.now()}.png`;
+  a.click();
+};
+
+// ── Resize ────────────────────────────────────────────────────────────────────
+function resize() {
+  const w = vp.clientWidth, h = vp.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(vp);
+resize();
+
+// ── Render loop ───────────────────────────────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

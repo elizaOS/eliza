@@ -11,6 +11,7 @@ import { desktopMouseMove } from "../platform/desktop.js";
 import { currentPlatform } from "../platform/helpers.js";
 import { captureScreenshot } from "../platform/screenshot.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
+import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 
 type RawActionParams = { action: string };
 
@@ -226,11 +227,10 @@ describeIfDesktop("ComputerUseService desktop actions (real)", () => {
     expect(result).toHaveProperty("success");
     if (hasScreenCapture) {
       expect(result.success).toBe(true);
-      expect(result.screenshot).toBeDefined();
-      expect(typeof result.screenshot).toBe("string");
-      const buf = Buffer.from(result.screenshot!, "base64");
-      expect(buf[0]).toBe(0x89);
-      expect(buf[1]).toBe(0x50); // P
+      assertScreenshotBase64NotBlank(
+        result.screenshot,
+        "ComputerUseService screenshot action",
+      );
     }
   });
 

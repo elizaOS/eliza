@@ -16,6 +16,10 @@ import {
   test,
 } from "@playwright/test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import {
+  assertScreenshotNotBlank,
+  captureScreenshotWithQualityRetry,
+} from "./_helpers/screenshot-quality";
 
 const LIVE_AUTH_ENABLED = process.env.CLOUD_E2E_LIVE_AUTH === "1";
 const LIVE_STEWARD_ENABLED = process.env.CLOUD_E2E_LIVE_STEWARD === "1";
@@ -192,11 +196,10 @@ async function expectNoRenderFailures(page: Page, route: string) {
     page.getByRole("button", { name: /Create API Key/i }).first(),
   ).toBeVisible();
 
-  const screenshot = await page.screenshot({ fullPage: true });
-  expect(
-    screenshot.length,
-    `${route} rendered a blank screenshot`,
-  ).toBeGreaterThan(1_000);
+  const screenshot = await captureScreenshotWithQualityRetry(page, route, {
+    fullPage: true,
+  });
+  await assertScreenshotNotBlank(screenshot, route);
 }
 
 async function exerciseApiKeyCreateAndDelete(page: Page) {

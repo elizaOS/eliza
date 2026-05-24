@@ -133,6 +133,85 @@ describe("benchmark matrix artifacts", () => {
     ]);
   });
 
+  it("keeps tiered reference-only rows as benchmark comparisons", () => {
+    const artifact = buildBenchmarkMatrixArtifactPayload({
+      rows: [
+        {
+          modelId: "cerebras/gpt-oss-120b",
+          provider: "cerebras",
+          tier: "0_8b",
+          variant: "reference",
+          benchmark: "eliza_harness_action_selection",
+          score: 1,
+        },
+      ],
+    });
+
+    expect(artifact.tiers).toEqual(["0_8b"]);
+    expect(artifact.counts).toMatchObject({
+      rows: 1,
+      comparisons: 1,
+      tiers: 1,
+      benchmarks: 1,
+    });
+    expect(artifact.comparisons).toEqual([
+      expect.objectContaining({
+        tier: "0_8b",
+        benchmark: "eliza_harness_action_selection",
+        baseScore: null,
+        trainedScore: null,
+        referenceScore: 1,
+        dryRun: false,
+      }),
+    ]);
+  });
+
+  it("matches tier-specific reference rows before global references", () => {
+    const artifact = buildBenchmarkMatrixArtifactPayload({
+      rows: [
+        {
+          modelId: "cerebras/gpt-oss-120b",
+          provider: "cerebras",
+          variant: "reference",
+          benchmark: "eliza_harness_action_selection",
+          score: 0.8,
+        },
+        {
+          modelId: "cerebras/gpt-oss-120b",
+          provider: "cerebras",
+          tier: "2b",
+          variant: "reference",
+          benchmark: "eliza_harness_action_selection",
+          score: 0.7,
+        },
+        {
+          modelId: "eliza-1-0_8b-trained",
+          tier: "0_8b",
+          variant: "trained",
+          benchmark: "eliza_harness_action_selection",
+          score: 0.5,
+        },
+        {
+          modelId: "eliza-1-2b-trained",
+          tier: "2b",
+          variant: "trained",
+          benchmark: "eliza_harness_action_selection",
+          score: 0.55,
+        },
+      ],
+    });
+
+    expect(
+      artifact.comparisons.map((comparison) => [
+        comparison.tier,
+        comparison.referenceScore,
+      ]),
+    ).toEqual([
+      ["0_8b", 0.8],
+      ["2b", 0.7],
+    ]);
+  });
+
   it("marks comparisons as dry-run when any source row is simulated", () => {
     const artifact = buildBenchmarkMatrixArtifactPayload({
       rows: [

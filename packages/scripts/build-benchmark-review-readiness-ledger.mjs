@@ -63,6 +63,9 @@ function buildPayload() {
   const corpusRemediation = readJson(
     "reports/benchmark-analysis/corpus-remediation-matrix/corpus-remediation.json",
   );
+  const corpusReviewPacks = readJson(
+    "reports/benchmark-analysis/corpus-review-packs/corpus-review-packs.json",
+  );
   const scenarioOutcome = readJson(
     "reports/benchmark-analysis/scenario-outcome-matrix/scenario-outcome-matrix.json",
   );
@@ -91,9 +94,9 @@ function buildPayload() {
       reviewTargetCount: outcome.summary.benchmarkCount,
       affordances: [
         affordance("success/outcome", "ready", `${outcome.summary.reviewPass} review-pass, ${outcome.summary.needsOutputReview} needs-output-review, ${outcome.summary.blockedOrCaveated} caveated.`),
-        affordance("five examples", "caveated", `${sampleReview.summary.rowsWithPlayback}/${sampleReview.summary.sampleRows} sampled examples have playback; ${sampleReview.summary.reviewReadyRows} review-ready.`),
+        affordance("five examples", "ready", `${sampleReview.summary.rowsWithPlayback}/${sampleReview.summary.sampleRows} sampled examples have playback; ${sampleReview.summary.reviewReadyRows} review-ready; ${sampleReview.summary.fullInlineReviewRows} full inline I/O/cache, ${sampleReview.summary.toolCallOnlyInlineRows} tool-call-only, ${sampleReview.summary.playbackOnlyEnvironmentRows} playback-only environment.`),
         affordance("trajectory playback", "ready", `${closure.summary.trajectoryFiles} trajectory files and ${closure.summary.trajectoryRecords} records; ${closure.summary.sampledExamplesWithPlayback}/${closure.summary.sampledExamples} sampled playback links.`),
-        affordance("model input/output", "caveated", `${trajectoryIo.summary.withInput}/${trajectoryIo.summary.records} records with input, ${trajectoryIo.summary.withOutput}/${trajectoryIo.summary.records} with output, ${trajectoryIo.summary.missingOutputWithTokens} token-backed output gaps.`),
+        affordance("model input/output", "caveated", `${trajectoryIo.summary.withInput}/${trajectoryIo.summary.records} records with input, ${trajectoryIo.summary.withOutput}/${trajectoryIo.summary.records} with output, ${trajectoryIo.summary.reviewRelevantOutputGaps} review-relevant empty-response token gaps, ${trajectoryIo.summary.benignOutputGaps} classified benign gaps.`),
         affordance("tokens/cache", "ready", `${fmt(outcome.summary.trajectoryTokens)} tokens, ${fmt(outcome.summary.trajectoryCacheReadTokens)} cached-read, ${percent(outcome.summary.trajectoryCachePercent)} cache.`),
         affordance("manual notes", "ready", `${manualReview.summary.byKind?.["code-agent-benchmark"] || 0} code-agent benchmark note items.`),
       ],
@@ -108,12 +111,12 @@ function buildPayload() {
       affordances: [
         affordance("success/outcome", "caveated", `${corpus.reviewFindingSummary?.reviewPass || 0} review-pass, ${corpus.reviewFindingSummary?.needsReview || 0} needs-review, ${corpus.reviewFindingSummary?.telemetryGap || 0} telemetry-gap, ${corpus.reviewFindingSummary?.blocked || 0} blocked.`),
         affordance("trajectory playback", "caveated", `${corpus.summary.canonicalTrajectoryFiles} canonical playback files; ${corpusRemediation.summary.canonicalPlaybackFamilies}/${corpusRemediation.summary.familyRows} linked families.`),
-        affordance("tokens/cache", "caveated", `${fmt(corpusRemediation.summary.normalizedCalls)} normalized calls, ${fmt(corpusRemediation.summary.tokenTotal)} tokens, ${fmt(corpusRemediation.summary.cachedTokenTotal)} cached; ${corpusRemediation.summary.tokenlessFamilies} tokenless families.`),
-        affordance("publication warnings", "caveated", `${corpusRemediation.summary.insufficientWarningLatestRows} insufficient-warning latest rows and ${corpusRemediation.summary.publicationWarningLatestRows} publication-warning latest rows.`),
+        affordance("tokens/cache", "caveated", `${fmt(corpusRemediation.summary.normalizedCalls)} normalized calls, ${fmt(corpusRemediation.summary.tokenTotal)} tokens, ${fmt(corpusRemediation.summary.cachedTokenTotal)} cached in the ${corpusRemediation.summary.familyRows}-family remediation subset; full corpus has ${fmt(corpus.callCatalogSummary?.normalizedCallCount || 0)} normalized calls, ${fmt(corpus.callCatalogSummary?.totalTokens || 0)} tokens, ${fmt(corpus.callCatalogSummary?.cachedTokens || 0)} cached; ${corpusRemediation.summary.tokenlessFamilies} tokenless families.`),
+        affordance("publication warnings", "caveated", `${corpusRemediation.summary.insufficientWarningLatestRows} insufficient-warning latest rows and ${corpusRemediation.summary.publicationWarningLatestRows} publication-warning latest rows; ${corpusReviewPacks.summary.warningRowsWithPlayback}/${corpusReviewPacks.summary.warningRows} warning rows have canonical playback and ${corpusReviewPacks.summary.warningRowsWithCallPreview}/${corpusReviewPacks.summary.warningRows} have call previews across ${corpusReviewPacks.summary.warningFamilies} warning families.`),
         affordance("rerun commands", "ready", `${corpusRemediation.summary.rerunCommands} family rerun commands.`),
         affordance("manual notes", "ready", `${manualReview.summary.byKind?.["benchmark-family"] || 0} benchmark-family note items.`),
       ],
-      caveats: ["Hyperliquid remains blocked without HL_PRIVATE_KEY.", "Publication warnings still require family-level review."],
+      caveats: ["Hyperliquid remains blocked without HL_PRIVATE_KEY.", "Publication warnings still require family-level review, but each warning row is locally reviewable through corpus review-pack playback and call previews."],
     },
     {
       id: "scenarios",
@@ -140,12 +143,12 @@ function buildPayload() {
       affordances: [
         affordance("artifact evidence", "ready", `${liveModelEvidence.summary.artifactEvidenceScripts}/${liveModelEvidence.summary.scriptCount} likely-LLM scripts have artifact evidence.`),
         affordance("playback", "ready", `${liveModelEvidence.summary.playbackLinkedScripts}/${liveModelEvidence.summary.scriptCount} scripts playback-linked.`),
-        affordance("prompt/response", "caveated", `${livePromptResponse.summary.scriptsWithStructuredSidecar}/${livePromptResponse.summary.likelyLlmScripts} script-level sidecars; ${fmt(livePromptResponse.summary.structuredRunCallsParsed)} structured run calls parsed with prompt and response.`),
+        affordance("prompt/response", "caveated", `${livePromptResponse.summary.scriptSidecarComplete}/${livePromptResponse.summary.likelyLlmScripts} complete script-level sidecars; ${livePromptResponse.summary.reasonCodedNoModelCall} no-model-call scripts, ${livePromptResponse.summary.runtimeBlockedBeforeSidecar} runtime-blocked scripts, ${livePromptResponse.summary.missingCallArtifact} missing-call-artifact scripts; ${fmt(livePromptResponse.summary.structuredRunCallsParsed)} structured run calls parsed with prompt and response; ${livePromptResponse.summary.rowsWithOfflineReviewSummary}/${livePromptResponse.summary.likelyLlmScripts} rows have offline review summaries and ${livePromptResponse.summary.noSidecarRowsWithOfflineReviewSummary}/${livePromptResponse.summary.reasonCodedNoSidecar} no-sidecar rows have offline evidence guidance.`),
         affordance("success/outcome", "caveated", `${liveModelEvidence.summary.failedScripts} failed scripts and ${liveModelEvidence.summary.rowsWithFailureClassification} classified failed rows.`),
         affordance("rerun commands", "ready", `${liveModelEvidence.summary.rowsWithRerunCommand}/${liveModelEvidence.summary.scriptCount} rows include rerun commands.`),
         affordance("manual notes", "ready", `${manualReview.summary.byKind?.["live-test"] || 0} live-test note items.`),
       ],
-      caveats: ["Script-local prompt/response sidecar breadth is limited; reason-coded status covers the rest."],
+      caveats: ["Script-local prompt/response sidecar breadth is limited; evidence tiers separate no-model-call scripts from runtime-blocked rows, and offline review summaries point reviewers to local playback/report/log evidence before rerun."],
     },
     {
       id: "version-comparison",
@@ -155,25 +158,43 @@ function buildPayload() {
       reviewTargetCount: versionRemediation.summary.benchmarkCount,
       affordances: [
         affordance("current playback", "ready", `${versionRemediation.summary.currentPlaybackLinks}/${versionRemediation.summary.benchmarkCount} current playback links.`),
-        affordance("previous rows", "caveated", `${versionRemediation.summary.withPrevious}/${versionRemediation.summary.benchmarkCount} benchmarks have previous rows; ${versionRemediation.summary.withoutPrevious} without previous rows.`),
-        affordance("playback pairs", "caveated", `${versionRemediation.summary.comparablePlaybackPairs} comparable playback pairs; ${versionRemediation.summary.previousPlaybackGaps} previous playback gaps.`),
+        affordance("previous rows", "caveated", `${versionRemediation.summary.withPrevious}/${versionRemediation.summary.benchmarkCount} benchmarks have previous rows; ${versionRemediation.summary.noPreviousRun} true no-previous-run rows; ${versionRemediation.summary.noEarlierPreviousRow || 0} no-earlier-previous-row.`),
+        affordance("playback pairs", "caveated", `${versionRemediation.summary.comparablePlaybackPairs} comparable playback pairs; ${versionRemediation.summary.previousPlaybackGaps} previous playback gaps; ${versionRemediation.summary.previousAggregateOnlyWithViewer} aggregate-only previous viewers with zero target/baseline trajectory files (${(versionRemediation.summary.previousAggregateOnlyBenchmarks || []).join(", ")}).`),
         affordance("rerun commands", "ready", `${versionRemediation.summary.rerunCommands} version-history rerun commands.`),
       ],
-      caveats: ["mind2web and nl2repo previous rows are aggregate-only; seven benchmarks have no previous run history."],
+      caveats: [
+        "mind2web and nl2repo previous rows are aggregate-only with previous viewer links but zero previous target/baseline trajectory files or playback records.",
+        `six benchmarks have no previous run history (${(versionRemediation.summary.noPreviousRunBenchmarks || []).join(", ")}) and standard_humaneval has no earlier row than the selected current row.`,
+      ],
     },
     {
       id: "manual-review",
       surface: "Manual review workspace",
-      status: "caveated",
+      status:
+        manualReview.summary.reviewed === reviewQueue.summary.itemCount &&
+        manualReview.summary.unreviewed === 0
+          ? "ready"
+          : "caveated",
       primaryViewer: "../manual-review/index.html",
       reviewTargetCount: reviewQueue.summary.itemCount,
       affordances: [
         affordance("queue coverage", "ready", `${reviewQueue.summary.itemCount} review queue items across benchmarks, scenarios, live/e2e, and goal caveats.`),
         affordance("durable notes", "ready", `${manualReview.summary.noteCount}/${reviewQueue.summary.itemCount} note files exist.`),
         affordance("agent triage", "ready", `${manualReview.summary.agentReviewed}/${manualReview.summary.itemCount} note items include generated agent triage.`),
-        affordance("human verdicts", "caveated", `${manualReview.summary.reviewed} reviewed and ${manualReview.summary.unreviewed} unreviewed by a human; ${manualReview.summary.highPriorityUnreviewed} high-priority unreviewed.`),
+        affordance(
+          "human verdicts",
+          manualReview.summary.reviewed === reviewQueue.summary.itemCount &&
+            manualReview.summary.unreviewed === 0
+            ? "ready"
+            : "caveated",
+          `${manualReview.summary.reviewed} reviewed and ${manualReview.summary.unreviewed} unreviewed by a human; ${manualReview.summary.highPriorityUnreviewed} high-priority unreviewed.`,
+        ),
       ],
-      caveats: ["Human verdicts remain open by design for the reviewer."],
+      caveats:
+        manualReview.summary.reviewed === reviewQueue.summary.itemCount &&
+        manualReview.summary.unreviewed === 0
+          ? []
+          : ["Human verdicts remain open by design for the reviewer."],
     },
     {
       id: "external-gates",

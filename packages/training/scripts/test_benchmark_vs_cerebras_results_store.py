@@ -228,6 +228,7 @@ def test_matrix_rows_preserve_dry_run_attempts() -> None:
             "modelId": "cerebras/gpt-oss-120b",
             "variant": "reference",
             "provider": "cerebras",
+            "tier": "0_8b",
             "benchmark": "eliza_harness_action_selection",
             "score": 0.0,
             "metrics": {"dryRun": True},
@@ -272,6 +273,39 @@ def test_benchmark_tier_dry_run_preserves_trained_variant_without_checkpoint(
     ]
     assert result["variant_results"][1]["model_id"] == "eliza-1-0_8b"
     assert result["variant_results"][1]["model_path"] == "eliza-1-0_8b"
+
+
+def test_matrix_artifact_preserves_live_reference_without_local_variant(
+    tmp_path: Path,
+) -> None:
+    path = bench.write_matrix_artifact(
+        [
+            {
+                "tier": "qwen3.5-0.8b",
+                "eliza_short_name": "eliza-1-0_8b",
+                "checkpoint": None,
+                "requested_benchmarks": ["eliza_harness_action_selection"],
+                "variant_results": [],
+                "benchmarks": {},
+                "cerebras": {
+                    "model": "gpt-oss-120b",
+                    "response_quality_proxy": 1.0,
+                    "avg_latency_ms": 475.7,
+                },
+                "error": "no checkpoint found",
+            }
+        ],
+        output_dir=tmp_path,
+        cerebras_model="gpt-oss-120b",
+    )
+
+    artifact = json.loads(path.read_text())
+    assert artifact["counts"]["rows"] == 1
+    assert artifact["counts"]["comparisons"] == 1
+    assert artifact["comparisons"][0]["tier"] == "0_8b"
+    assert artifact["comparisons"][0]["baseScore"] is None
+    assert artifact["comparisons"][0]["trainedScore"] is None
+    assert artifact["comparisons"][0]["referenceScore"] == 1.0
 
 
 def test_record_results_to_store_writes_base_trained_and_reference_rows(tmp_path: Path) -> None:

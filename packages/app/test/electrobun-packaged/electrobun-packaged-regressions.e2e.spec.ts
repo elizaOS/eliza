@@ -8,6 +8,7 @@ import {
   resolvePackagedLauncher,
 } from "./packaged-app-helpers";
 import { hasPackagedRendererBootstrapRequests } from "./windows-bootstrap";
+import { assertScreenshotNotBlank } from "../ui-smoke/helpers/screenshot-quality";
 
 type EvalOk<T> = T & { ok: true };
 type EvalErr = { ok: false; error: string };
@@ -119,10 +120,9 @@ async function writeHarnessScreenshot(
   try {
     const data = await harness.screenshot();
     const base64 = data.replace(/^data:image\/png;base64,/, "");
-    await fs.writeFile(
-      testInfo.outputPath(`${name}.png`),
-      Buffer.from(base64, "base64"),
-    );
+    const buffer = Buffer.from(base64, "base64");
+    await assertScreenshotNotBlank(buffer, `packaged ${name}`);
+    await fs.writeFile(testInfo.outputPath(`${name}.png`), buffer);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await testInfo
@@ -131,6 +131,7 @@ async function writeHarnessScreenshot(
         contentType: "text/plain",
       })
       .catch(() => undefined);
+    throw error;
   }
 }
 

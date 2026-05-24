@@ -48,6 +48,16 @@ function link(href, label) {
   return href ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>` : "";
 }
 
+function countWarnings(rows) {
+  const counts = {};
+  for (const row of rows || []) {
+    for (const warning of row.warnings || []) {
+      counts[warning] = (counts[warning] || 0) + 1;
+    }
+  }
+  return Object.fromEntries(Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])));
+}
+
 function buildPayload() {
   const corpus = readJson("reports/benchmarks/benchmark-results-corpus-review/corpus-review.json");
   const remediation = readJson("reports/benchmark-analysis/corpus-remediation-matrix/corpus-remediation.json");
@@ -62,6 +72,8 @@ function buildPayload() {
     if (!canonicalById.has(row.benchmark_id)) canonicalById.set(row.benchmark_id, []);
     canonicalById.get(row.benchmark_id).push(row);
   }
+  const canonicalByRunId = new Map((corpus.canonicalFiles || []).map((row) => [row.run_id, row]));
+  const latestByRunId = new Map((corpus.latestRows || []).map((row) => [row.run_id, row]));
 
   const packs = (corpus.reviewFindings || [])
     .slice()
@@ -71,6 +83,20 @@ function buildPayload() {
       const manualItem = manualById.get(finding.benchmark_id) || null;
       const canonical = canonicalById.get(finding.benchmark_id) || [];
       const fileName = `${slug(finding.benchmark_id)}.html`;
+      const warningRows = (rem.warningRows || []).map((row) => {
+        const latest = latestByRunId.get(row.runId) || {};
+        const canonicalRow = canonicalByRunId.get(row.runId) || {};
+        return {
+          ...row,
+          provider: latest.provider || "",
+          model: latest.model || "",
+          cachePercent: Number.isFinite(Number(latest.cache_hit_ratio))
+            ? Number(latest.cache_hit_ratio) * 100
+            : null,
+          callPreviewCount: (latest.call_previews || []).length,
+          playbackHref: relHref(canonicalRow.playback_file, PACK_DIR, CORPUS_DIR),
+        };
+      });
       return {
         benchmarkId: finding.benchmark_id,
         fileName,
@@ -96,7 +122,8 @@ function buildPayload() {
           .filter((row) => row.playback_file)
           .slice(0, 8)
           .map((row) => relHref(row.playback_file, PACK_DIR, CORPUS_DIR)),
-        warningRows: rem.warningRows || [],
+        warningRows,
+        warningCounts: countWarnings(warningRows),
         zeroMetricRows: rem.zeroMetricRows || [],
         tokenlessTelemetry: rem.tokenlessTelemetry || null,
         rerunCommand: rem.rerunCommand || "",
@@ -126,6 +153,16 @@ function buildPayload() {
     withManualReviewNote: packs.filter((pack) => pack.manualReview?.noteHref).length,
     rerunCommands: packs.filter((pack) => pack.rerunCommand).length,
     warningRows: packs.reduce((sum, pack) => sum + pack.warningRows.length, 0),
+    warningFamilies: packs.filter((pack) => pack.warningRows.length > 0).length,
+    warningRowsWithPlayback: packs.reduce(
+      (sum, pack) => sum + pack.warningRows.filter((row) => row.playbackHref).length,
+      0,
+    ),
+    warningRowsWithCallPreview: packs.reduce(
+      (sum, pack) => sum + pack.warningRows.filter((row) => row.callPreviewCount > 0).length,
+      0,
+    ),
+    warningCounts: countWarnings(packs.flatMap((pack) => pack.warningRows)),
     zeroMetricRows: packs.reduce((sum, pack) => sum + pack.zeroMetricRows.length, 0),
     normalizedCalls: packs.reduce((sum, pack) => sum + pack.normalizedCalls, 0),
     tokenTotal: packs.reduce((sum, pack) => sum + pack.tokenTotal, 0),
@@ -158,7 +195,8 @@ body{margin:0;background:#f7f8f5;color:#172017;font:13px/1.45 -apple-system,Blin
     <tr><th>artifacts</th><td>${pack.trajectoryLikeFiles} trajectory-like files, ${pack.outputFiles} output files, ${pack.canonicalPlaybackCount} canonical playback files</td></tr>
     <tr><th>history</th><td>${pack.historyPairs} history pairs, ${pack.previousPairs} previous pairs, ${pack.regressionPairs} regressions</td></tr>
     <tr><th>reasons</th><td>${pack.reasons.map(escapeHtml).join("<br>")}</td></tr>
-    <tr><th>warnings</th><td>${pack.warningRows.length ? `<pre>${escapeHtml(JSON.stringify(pack.warningRows.slice(0, 5), null, 2))}</pre>` : "none"}</td></tr>
+    <tr><th>warning counts</th><td>${Object.keys(pack.warningCounts).length ? Object.entries(pack.warningCounts).map(([warning, count]) => `<div><code>${escapeHtml(warning)}</code>: ${escapeHtml(count)}</div>`).join("") : "none"}</td></tr>
+    <tr><th>warnings</th><td>${pack.warningRows.length ? `<table><thead><tr><th>run</th><th>agent</th><th>warning</th><th>score/tasks</th><th>model/cache</th><th>review</th></tr></thead><tbody>${pack.warningRows.map((row) => `<tr><td><code>${escapeHtml(row.runId)}</code></td><td>${escapeHtml(row.agent)}</td><td>${(row.warnings || []).map((warning) => `<code>${escapeHtml(warning)}</code>`).join("<br>")}</td><td>${escapeHtml(row.score ?? "n/a")}/${escapeHtml(row.totalTasks ?? "n/a")}</td><td>${escapeHtml(row.provider || "n/a")} ${escapeHtml(row.model || "")}<br>${fmt(row.llmCallCount)} calls; ${fmt(row.totalTokens)} tokens; cache ${pct(row.cachePercent)}</td><td>${link(row.playbackHref, "playback")}<span class="muted">${escapeHtml(row.callPreviewCount)} previews</span></td></tr>`).join("")}</tbody></table>` : "none"}</td></tr>
     <tr><th>zero metrics</th><td>${pack.zeroMetricRows.length ? `<pre>${escapeHtml(JSON.stringify(pack.zeroMetricRows.slice(0, 5), null, 2))}</pre>` : "none"}</td></tr>
     <tr><th>tokenless telemetry</th><td>${pack.tokenlessTelemetry ? `<pre>${escapeHtml(JSON.stringify(pack.tokenlessTelemetry, null, 2))}</pre>` : "none"}</td></tr>
   </tbody></table></div></section>
@@ -176,8 +214,8 @@ function indexHtml(payload) {
 <title>Corpus Review Packs</title>
 <style>body{margin:0;background:#f7f8f5;color:#172017;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}header{background:#fff;border-bottom:1px solid #d7ded1;padding:16px 20px}main{padding:16px 20px}h1{margin:0 0 5px;font-size:22px;letter-spacing:0}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:12px}.card{background:#fff;border:1px solid #d7ded1;border-radius:8px;padding:10px}.card strong{display:block;font-size:20px}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #d7ded1}th,td{border-bottom:1px solid #d7ded1;padding:8px;text-align:left;vertical-align:top}th{background:#f2f5ef}a{color:#116b5b;text-decoration:none}a:hover{text-decoration:underline}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px}.muted{color:#5f685d}</style></head><body>
 <header><h1>Corpus Review Packs</h1><div class="muted">${escapeHtml(payload.generatedAt)}</div></header>
-<main><section class="cards">${["familyCount", "needsReview", "reviewPass", "telemetryGap", "blocked", "withCanonicalPlayback", "withManualReviewNote", "rerunCommands"].map((key) => `<div class="card"><span>${escapeHtml(key)}</span><strong>${escapeHtml(payload.summary[key])}</strong></div>`).join("")}</section>
-<table><thead><tr><th>family</th><th>disposition</th><th>calls/cache</th><th>playback</th><th>links</th></tr></thead><tbody>${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.benchmarkId)}</code></td><td>${escapeHtml(pack.disposition)}</td><td>${fmt(pack.normalizedCalls)}<br><span class="muted">${pct(pack.cachePercent)}</span></td><td>${pack.canonicalPlaybackCount}</td><td><a href="${escapeHtml(pack.href)}">pack</a></td></tr>`).join("")}</tbody></table></main></body></html>`;
+<main><section class="cards">${["familyCount", "needsReview", "reviewPass", "warningRows", "warningRowsWithPlayback", "warningRowsWithCallPreview", "telemetryGap", "blocked"].map((key) => `<div class="card"><span>${escapeHtml(key)}</span><strong>${escapeHtml(payload.summary[key])}</strong></div>`).join("")}</section>
+<table><thead><tr><th>family</th><th>disposition</th><th>calls/cache</th><th>warnings</th><th>playback</th><th>links</th></tr></thead><tbody>${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.benchmarkId)}</code></td><td>${escapeHtml(pack.disposition)}</td><td>${fmt(pack.normalizedCalls)}<br><span class="muted">${pct(pack.cachePercent)}</span></td><td>${pack.warningRows.length}<br><span class="muted">${Object.keys(pack.warningCounts).join(", ")}</span></td><td>${pack.canonicalPlaybackCount}</td><td><a href="${escapeHtml(pack.href)}">pack</a></td></tr>`).join("")}</tbody></table></main></body></html>`;
 }
 
 function markdown(payload) {
@@ -186,7 +224,7 @@ function markdown(payload) {
     "",
     `Generated: ${payload.generatedAt}`,
     "",
-    `Summary: ${payload.summary.packPages}/${payload.summary.familyCount} pack pages, ${payload.summary.withCanonicalPlayback} with canonical playback, ${payload.summary.withManualReviewNote} manual notes, ${payload.summary.rerunCommands} rerun commands.`,
+    `Summary: ${payload.summary.packPages}/${payload.summary.familyCount} pack pages, ${payload.summary.withCanonicalPlayback} with canonical playback, ${payload.summary.warningRows} warning rows, ${payload.summary.warningRowsWithPlayback} warning rows with playback, ${payload.summary.warningRowsWithCallPreview} warning rows with call previews, ${payload.summary.withManualReviewNote} manual notes, ${payload.summary.rerunCommands} rerun commands.`,
     "",
     "| Family | Pack | Disposition | Calls | Cache |",
     "| --- | --- | --- | ---: | ---: |",

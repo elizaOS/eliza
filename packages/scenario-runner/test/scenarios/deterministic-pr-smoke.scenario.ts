@@ -12,10 +12,40 @@ function readParameters(action: CapturedAction): Record<string, unknown> {
     : {};
 }
 
+const viewApiRequests: Array<{
+  body: unknown;
+  method: string;
+  pathname: string;
+  search: string;
+}> = [];
+
+function isViewApiUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === "127.0.0.1" &&
+      parsed.pathname.startsWith("/api/views")
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function parseJsonBody(init?: RequestInit): Promise<unknown> {
+  const body = init?.body;
+  if (typeof body !== "string") return undefined;
+  try {
+    return JSON.parse(body);
+  } catch {
+    return body;
+  }
+}
+
 function expectViewsAction(
   execution: ScenarioTurnExecution,
   expected: {
     action: string;
+    alwaysOnTop?: boolean;
     capability?: string;
     responseText?: string;
     view?: string;
@@ -48,6 +78,12 @@ function expectViewsAction(
   if (expected.capability && params.capability !== expected.capability) {
     return `expected VIEWS capability=${expected.capability}, saw ${String(params.capability)}`;
   }
+  if (
+    expected.alwaysOnTop !== undefined &&
+    params.alwaysOnTop !== expected.alwaysOnTop
+  ) {
+    return `expected VIEWS alwaysOnTop=${expected.alwaysOnTop}, saw ${String(params.alwaysOnTop)}`;
+  }
   if (expected.paramValue) {
     const capabilityParams =
       params.params &&
@@ -71,6 +107,58 @@ export default scenario({
   requires: {
     plugins: ["@elizaos/plugin-app-control"],
   },
+  seed: [
+    {
+      type: "custom",
+      name: "stub local view API for deterministic shell actions",
+      apply: () => {
+        viewApiRequests.length = 0;
+        const originalFetch = globalThis.fetch.bind(globalThis);
+        globalThis.fetch = (async (
+          input: string | URL | Request,
+          init?: RequestInit,
+        ) => {
+          const rawUrl =
+            typeof input === "string"
+              ? input
+              : input instanceof URL
+                ? input.toString()
+                : input.url;
+          if (!isViewApiUrl(rawUrl)) {
+            return originalFetch(input as Parameters<typeof fetch>[0], init);
+          }
+
+          const url = new URL(rawUrl);
+          viewApiRequests.push({
+            body: await parseJsonBody(init),
+            method: init?.method ?? "GET",
+            pathname: url.pathname,
+            search: url.search,
+          });
+
+          if (url.pathname.endsWith("/interact")) {
+            return new Response(
+              JSON.stringify({
+                ok: true,
+                capability: "fill-input",
+                value: "Remote Ledger Updated",
+              }),
+              {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              },
+            );
+          }
+
+          return new Response(JSON.stringify({ ok: true }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }) as typeof fetch;
+        return undefined;
+      },
+    },
+  ],
   rooms: [
     {
       id: "main",
@@ -83,7 +171,14 @@ export default scenario({
       kind: "message",
       name: "deterministic reply",
       text: "hello deterministic proxy",
-      responseIncludesAny: ["hello deterministic proxy", "On it."],
+      responseIncludesAny: [
+        "deterministic-test-response: hello deterministic proxy",
+      ],
+      assertTurn: (execution) =>
+        execution.responseText ===
+        "deterministic-test-response: hello deterministic proxy"
+          ? undefined
+          : `expected exact deterministic reply, saw ${JSON.stringify(execution.responseText)}`,
     },
     {
       kind: "action",
@@ -99,7 +194,7 @@ export default scenario({
       assertTurn: (execution) =>
         expectViewsAction(execution, {
           action: "manager",
-          responseText: "Opened View Manager at /views.",
+          responseText: "Navigated to View Manager.",
         }),
     },
     {
@@ -112,21 +207,22 @@ export default scenario({
       assertTurn: (execution) =>
         expectViewsAction(execution, {
           action: "pin",
-          responseText: 'Requested desktop tab pin for gui view "remote-ledger".',
+          responseText: 'Pinned gui view "remote-ledger" as a desktop tab.',
           view: "remote-ledger",
         }),
     },
     {
       kind: "action",
       name: "open remote ledger window",
-      text: "Open the remote ledger view in a separate window",
+      text: "Open the remote ledger view in a separate always on top window",
       actionName: "VIEWS",
-      options: { action: "window", view: "remote-ledger" },
+      options: { action: "window", alwaysOnTop: true, view: "remote-ledger" },
       responseIncludesAny: ["separate window", "Requested separate window"],
       assertTurn: (execution) =>
         expectViewsAction(execution, {
           action: "window",
-          responseText: 'Requested separate window for gui view "remote-ledger".',
+          alwaysOnTop: true,
+          responseText: 'Opened gui view "remote-ledger" in a separate window.',
           view: "remote-ledger",
         }),
     },
@@ -143,8 +239,8 @@ export default scenario({
       },
       responseIncludesAny: [
         "remote-ledger",
-        "Failed to interact",
-        "did not respond",
+        "Interacted with view",
+        "Remote Ledger Updated",
       ],
       assertTurn: (execution) =>
         expectViewsAction(execution, {
@@ -152,7 +248,7 @@ export default scenario({
           capability: "fill-input",
           paramValue: "Remote Ledger Updated",
           responseText:
-            'Failed to interact with view "remote-ledger": network error.',
+            'Interacted with view "remote-ledger" — capability "fill-input": {"ok":true,"capability":"fill-input","value":"Remote Ledger Updated"}.',
           view: "remote-ledger",
         }),
     },
@@ -170,10 +266,58 @@ export default scenario({
         /manager/,
         /pin/,
         /window/,
+        /alwaysOnTop/,
         /interact/,
         /remote-ledger/,
         /fill-input/,
       ],
+    },
+    {
+      type: "custom",
+      name: "view shell API received exact deterministic requests",
+      predicate: () => {
+        const expected = [
+          {
+            body: { path: "/views" },
+            method: "POST",
+            pathname: "/api/views/__view-manager__/navigate",
+            search: "",
+          },
+          {
+            body: { action: "pin-tab", alwaysOnTop: false },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            search: "",
+          },
+          {
+            body: { action: "open-window", alwaysOnTop: true },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/navigate",
+            search: "",
+          },
+          {
+            body: {
+              capability: "fill-input",
+              params: { name: "view-title", value: "Remote Ledger Updated" },
+              timeoutMs: 5000,
+            },
+            method: "POST",
+            pathname: "/api/views/remote-ledger/interact",
+            search: "",
+          },
+        ];
+
+        const actual = viewApiRequests.map((request) => ({
+          body: request.body,
+          method: request.method,
+          pathname: request.pathname,
+          search: request.search,
+        }));
+
+        return JSON.stringify(actual) === JSON.stringify(expected)
+          ? undefined
+          : `expected exact view shell API requests ${JSON.stringify(expected)}, saw ${JSON.stringify(actual)}`;
+      },
     },
   ],
 });
