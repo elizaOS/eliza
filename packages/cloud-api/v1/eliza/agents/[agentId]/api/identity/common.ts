@@ -21,7 +21,8 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { resolveStewardAgentId } from "../wallet/[...path]/route";
 
-export { policiesAllowRegister } from "./policy";
+import type { StewardPolicyRule } from "./policy";
+export { policiesAllowRegister, type StewardPolicyRule } from "./policy";
 
 export const CORS_METHODS = "GET, POST, PUT, OPTIONS";
 export const STANDARD = "erc-8004";

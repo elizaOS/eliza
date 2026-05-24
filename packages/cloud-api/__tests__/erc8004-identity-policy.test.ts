@@ -1,10 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { ERC8004_IDENTITY_REGISTRY_ADDRESSES } from "@/lib/services/erc8004/identity-client";
-import { policiesAllowRegister } from "../v1/eliza/agents/[agentId]/api/identity/policy";
+import {
+  policiesAllowRegister,
+  type StewardPolicyRule,
+} from "../v1/eliza/agents/[agentId]/api/identity/policy";
 
 const registry = ERC8004_IDENTITY_REGISTRY_ADDRESSES[56];
 
-function policies(opts: { chain?: string; address?: string }) {
+function policies(opts: {
+  chain?: string;
+  address?: string;
+}): StewardPolicyRule[] {
   return [
     {
       id: "allowed-chains",
