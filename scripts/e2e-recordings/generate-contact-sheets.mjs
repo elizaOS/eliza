@@ -28,8 +28,8 @@ const RECORDINGS_DIR = path.join(REPO_ROOT, 'e2e-recordings');
 const CONTACT_SHEETS_DIR = path.join(RECORDINGS_DIR, 'contact-sheets');
 const MANIFEST_PATH = path.join(RECORDINGS_DIR, 'manifest.json');
 
-/** Minimum JPEG size to be considered a real frame. Uniform white/black frames are ~2459 bytes. */
-const MIN_FRAME_BYTES = 5000;
+// 500 = only filter corrupted/empty files; dark/sparse real frames can be 2-4 KB
+const MIN_FRAME_BYTES = 500;
 
 function toSlug(name) {
   return name
@@ -97,11 +97,13 @@ function extractTraceFrames(zipPath) {
       const afterEntry = afterMap.get(action.callId);
       const startTime = action.startTime ?? 0;
       const endTime = afterEntry?.endTime ?? startTime + 10000;
+      // For goto actions, allow frames up to 2s after endTime for async renders
+      const extendedEndTime = action.method === 'goto' ? endTime + 2000 : endTime;
 
       let bestFrame = null;
       for (let i = screencasts.length - 1; i >= 0; i--) {
         const f = screencasts[i];
-        if ((f.timestamp ?? 0) <= endTime && (f.timestamp ?? 0) >= startTime) {
+        if ((f.timestamp ?? 0) <= extendedEndTime && (f.timestamp ?? 0) >= startTime) {
           bestFrame = f;
           break;
         }

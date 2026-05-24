@@ -5,8 +5,23 @@
  * endpoints to obtain an API key, then exercises the real
  * /api/v1/eliza/agents create + provision contract.
  *
- * Skips when the local cloud API is not reachable so CI without the dev
- * stack stays green.
+ * WHY THIS FILE SHOWS "0 FRAMES" IN LOCAL / MOCK MODE:
+ * All tests in this file require a live Solana-capable cloud backend
+ * (real /api/auth/siws/nonce and /api/auth/siws/verify endpoints). They
+ * are auto-skipped via `requireLocalCloud()` when the backend is not
+ * reachable at TEST_API_BASE_URL (default: http://127.0.0.1:8787). They
+ * cannot be mocked: the whole point is to exercise the real SIWS
+ * signature-verification path. In recording runs without the backend
+ * standing up, the beforeEach skip fires before any page is opened, so
+ * no browser frames are recorded.
+ *
+ * TO RUN THESE TESTS:
+ *   1. Start the cloud API dev server (bun run dev in packages/cloud-api).
+ *   2. Set TEST_API_BASE_URL=http://127.0.0.1:8787 (or the correct port).
+ *   3. bun run --cwd packages/cloud-frontend test:e2e --grep "SIWS"
+ *
+ * Full provision tests additionally require E2E_FULL_PROVISION=1, a
+ * running Docker daemon, and the eliza-cloud-agent:local image.
  */
 
 import { execFile } from "node:child_process";

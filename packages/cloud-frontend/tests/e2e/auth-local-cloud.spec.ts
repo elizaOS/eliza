@@ -1,3 +1,20 @@
+// Local app ↔ cloud authentication E2E tests.
+//
+// WHY THIS FILE SHOWS "0 FRAMES" IN LOCAL / MOCK MODE:
+// All tests require a live cloud Worker running at TEST_API_BASE_URL
+// (default: http://127.0.0.1:8787) AND a valid TEST_API_KEY that can be
+// exchanged for a real steward session via POST /api/test/auth/session.
+// They are auto-skipped via `requireLocalCloud()` in beforeEach when
+// either condition is not met. These tests exercise the real session
+// cookie + JWT flow and cannot be replaced with synthetic tokens — that
+// would defeat their purpose.
+//
+// TO RUN THESE TESTS:
+//   1. Start the cloud API dev server.
+//   2. Set TEST_API_KEY=<a valid dev API key>.
+//   3. Set TEST_API_BASE_URL=http://127.0.0.1:8787 (or the correct port).
+//   4. bun run --cwd packages/cloud-frontend test:e2e --grep "local app to cloud"
+
 import { type BrowserContext, expect, type Page, test } from "@playwright/test";
 
 const apiBaseUrl =

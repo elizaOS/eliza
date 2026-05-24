@@ -1,3 +1,18 @@
+// Code-coverage meta-test — no browser, no frames.
+//
+// These tests statically analyse the source tree (App.tsx, page components,
+// and sibling spec files) to verify:
+//   1. Every page.tsx under src/pages/ and src/dashboard/ is lazy-imported
+//      by the router.
+//   2. Every concrete router path in App.tsx has a matching smoke URL in
+//      cloud-routes.spec.ts.
+//   3. Every top-level /dashboard/* path has live authenticated smoke
+//      coverage in live-auth-dashboard.spec.ts or live-steward-wallet-login.spec.ts.
+//
+// Because these tests use only Node.js fs APIs and zero page.goto() calls,
+// E2E recording tools report "0 frames" for this file. That is intentional —
+// the tests are structural, not visual.
+
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

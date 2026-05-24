@@ -6,9 +6,14 @@
 // Implementation: for each route, tab through the first 12 focusable
 // elements and assert at least one of {outline-width, box-shadow,
 // border-color delta} is non-trivial on the focused element.
+//
+// Auth strategy: dashboard routes use a synthetic JWT token injected
+// directly into localStorage + an eliza-test-auth cookie (same pattern
+// as cross-page-hover-audit.spec.ts). This avoids the full SIWE flow
+// which is slow, requires mocked endpoints, and is fragile under rapid
+// tab-through timing.
 
 import { expect, test } from "@playwright/test";
-import { loginWithInjectedEthereum } from "./_helpers/siwe-session";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -25,10 +30,58 @@ const ROUTES: { path: string; auth: boolean }[] = [
   { path: "/dashboard/agents", auth: true },
 ];
 
+function buildSyntheticToken(): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+    "utf8",
+  )
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "11111111-1111-4111-8111-111111111111",
+      userId: "11111111-1111-4111-8111-111111111111",
+      address: "0xF1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1F1",
+      email: "focus-rings-test@example.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    }),
+    "utf8",
+  )
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  return `${header}.${payload}.focus-rings-fake-signature`;
+}
+
 for (const { path: route, auth } of ROUTES) {
   test(`focus rings visible on ${route}`, async ({ page, context }) => {
     if (auth) {
-      await loginWithInjectedEthereum(page, context);
+      const syntheticToken = buildSyntheticToken();
+      await context.addCookies([
+        {
+          name: "eliza-test-auth",
+          value: "1",
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await context.addInitScript((t: string) => {
+        window.localStorage.setItem("steward_session_token", t);
+      }, syntheticToken);
+      // Mock dashboard API calls so auth routes load without a real backend.
+      await context.route(/\/api\/v1\//, (r) =>
+        r.fulfill({
+          json: {},
+          headers: { "content-type": "application/json" },
+        }),
+      );
     }
     await page.goto(route);
     await page

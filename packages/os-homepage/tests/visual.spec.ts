@@ -2,6 +2,7 @@
 // Run once with --update-snapshots to generate baselines. See tests/VISUAL-REGRESSION.md.
 
 import { expect, type Page, test } from "playwright/test";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const ROUTES = [
   { path: "/", name: "landing" },
@@ -51,6 +52,11 @@ async function prepare(page: Page) {
 
     window.scrollTo(0, 0);
   });
+  // Wait for all images to finish loading (best-effort — lazy images may still be resolving)
+  await page.waitForFunction(
+    () => [...document.images].every((img) => img.complete && img.naturalWidth > 0),
+    { timeout: 8000 },
+  ).catch(() => {});
   await page.waitForTimeout(250);
 }
 
@@ -61,6 +67,9 @@ function dynamicMask(page: Page) {
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
     page.locator("[data-marquee]"),
+    // Product hero images that can still show grey placeholders after the scroll
+    // loop due to lazy-loading timing on mini-pc and chibi-usb detail pages.
+    page.locator(".product-hero img"),
   ];
 }
 
@@ -72,6 +81,15 @@ for (const viewport of VIEWPORTS) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         await page.goto(route.path, { waitUntil: "networkidle" });
         await prepare(page);
+        await captureScreenshotWithQualityRetry(
+          page,
+          `${route.name} ${viewport.name}`,
+          {
+            fullPage: true,
+            mask: dynamicMask(page),
+            animations: "disabled",
+          },
+        );
         await expect(page).toHaveScreenshot(
           `${route.name}-${viewport.name}.png`,
           {

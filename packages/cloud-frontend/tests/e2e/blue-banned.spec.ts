@@ -10,14 +10,26 @@
 // non-trivial saturation/lightness so dark navy backgrounds and pure
 // black don't false-positive.
 //
+// Note on /bsc: the page's background-image (a sky photo) contains blue
+// pixels. background-image color is NOT captured by getComputedStyle
+// `backgroundColor` — it returns the CSS background-color property, not
+// the rendered image content. So the scanner correctly does not flag it.
+// If a blue overlay or background-color is added behind the image, it
+// will be caught. The photo itself is a brand decision and is exempt
+// from the computed-style check.
+//
 // Skipped in live-prod mode; pair with `aesthetic-audit.spec.ts` which
 // already records palette violations into `report.json`.
+//
+// Auth strategy: dashboard routes use a synthetic JWT token injected
+// directly into localStorage + an eliza-test-auth cookie (same pattern
+// as cross-page-hover-audit.spec.ts). This avoids the full SIWE flow
+// which is slow and fragile.
 
 import { execSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
-import { loginWithInjectedEthereum } from "./_helpers/siwe-session";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -50,6 +62,33 @@ test("source: no `*-blue-*` Tailwind classes in src/", () => {
   ).toEqual([]);
 });
 
+function buildSyntheticToken(): string {
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+    "utf8",
+  )
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  const payload = Buffer.from(
+    JSON.stringify({
+      sub: "33333333-3333-4333-8333-333333333333",
+      userId: "33333333-3333-4333-8333-333333333333",
+      address: "0xB1UEB1UEB1UEB1UEB1UEB1UEB1UEB1UEB1UEB1UE",
+      email: "blue-banned-test@example.com",
+      exp: Math.floor(Date.now() / 1000) + 3600,
+      iat: Math.floor(Date.now() / 1000),
+    }),
+    "utf8",
+  )
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+  return `${header}.${payload}.blue-banned-fake-signature`;
+}
+
 const RUNTIME_PAGES: { path: string; auth: boolean }[] = [
   { path: "/", auth: false },
   { path: "/login", auth: false },
@@ -67,7 +106,28 @@ for (const { path: route, auth } of RUNTIME_PAGES) {
     context,
   }) => {
     if (auth) {
-      await loginWithInjectedEthereum(page, context);
+      const syntheticToken = buildSyntheticToken();
+      await context.addCookies([
+        {
+          name: "eliza-test-auth",
+          value: "1",
+          domain: "127.0.0.1",
+          path: "/",
+          httpOnly: false,
+          secure: false,
+          sameSite: "Lax",
+        },
+      ]);
+      await context.addInitScript((t: string) => {
+        window.localStorage.setItem("steward_session_token", t);
+      }, syntheticToken);
+      // Mock dashboard API calls so auth routes load without a real backend.
+      await context.route(/\/api\/v1\//, (apiRoute) =>
+        apiRoute.fulfill({
+          json: {},
+          headers: { "content-type": "application/json" },
+        }),
+      );
     }
     await page.goto(route);
     await page
