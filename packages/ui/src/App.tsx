@@ -1593,12 +1593,6 @@ export function App() {
     return (
       <BugReportProvider value={bugReport}>
         <CloudVideoBackground
-          speed="8x"
-          basePath="/clouds"
-          poster="/clouds/poster-960.jpg"
-          posterSrcSet="/clouds/poster-640.jpg 640w, /clouds/poster-960.jpg 960w"
-          posterSizes="100vw"
-          animated={false}
           scrim={0.05}
           style={{ position: "fixed", inset: 0 }}
         >

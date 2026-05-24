@@ -50,7 +50,7 @@ function AuthErrorContent() {
           <div className="w-full space-y-3">
             <Button
               onClick={handleLogin}
-              className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+              className="w-full h-11  bg-[#FF5800] hover:bg-black hover:text-white text-white"
             >
               <RefreshCw className="h-4 w-4 mr-2" />
               Try Again

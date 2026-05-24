@@ -1,0 +1,442 @@
+{
+  "accepted": false,
+  "body_groups": [
+    {
+      "accepted": false,
+      "blocking_reason": "candidate STEP folders are classified, but generated fembot parts do not yet have measured wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance, mass, or inertia proofs",
+      "candidate_count": 29,
+      "classification_ok": true,
+      "fabrication_class_counts": {
+        "ALU_7075": 3,
+        "MJF_PA12": 12,
+        "OFF_THE_SHELF": 10,
+        "SML_316L": 4
+      },
+      "group": "torso",
+      "manufacturing_records": {
+        "ALU_7075": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.001,
+          "minimum_wall_thickness_m": 0.0015,
+          "process": "CNC machining or sheet/plate fabrication",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "machined functional fits require drawing-specific tolerances"
+        },
+        "MJF_PA12": {
+          "draft_angle_deg": 1.0,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0012,
+          "process": "MJF additive manufacturing or reconstructed molded shell",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": true,
+          "requires_tool_access_check": false,
+          "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+        },
+        "OFF_THE_SHELF": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": null,
+          "minimum_wall_thickness_m": null,
+          "process": "purchased component",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": false,
+          "tolerance_class": "vendor datasheet controls envelope and mounting pattern"
+        },
+        "SML_316L": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0008,
+          "process": "sheet metal/laser cut or machined stainless",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+        }
+      },
+      "material_records": {
+        "ALU_7075": {
+          "allowable_stress_pa": 250000000.0,
+          "density_kg_m3": 2810,
+          "elastic_modulus_pa": 71700000000.0,
+          "material": "7075 aluminum",
+          "source": "conservative common 7075-T6 engineering baseline; verify exact temper before release",
+          "yield_strength_pa": 503000000.0
+        },
+        "MJF_PA12": {
+          "allowable_stress_pa": 18000000.0,
+          "density_kg_m3": 1010,
+          "elastic_modulus_pa": 1600000000.0,
+          "material": "PA12 nylon",
+          "source": "conservative MJF PA12 baseline; replace with vendor build-direction data before release",
+          "yield_strength_pa": 45000000.0
+        },
+        "OFF_THE_SHELF": {
+          "allowable_stress_pa": null,
+          "density_kg_m3": null,
+          "elastic_modulus_pa": null,
+          "material": "vendor-defined off-the-shelf component",
+          "source": "vendor component; do not scale or infer material without datasheet",
+          "yield_strength_pa": null
+        },
+        "SML_316L": {
+          "allowable_stress_pa": 85000000.0,
+          "density_kg_m3": 8000,
+          "elastic_modulus_pa": 193000000000.0,
+          "material": "316L stainless steel",
+          "source": "conservative annealed/low-strength 316L engineering baseline; verify stock/process before release",
+          "yield_strength_pa": 170000000.0
+        }
+      }
+    },
+    {
+      "accepted": false,
+      "blocking_reason": "candidate STEP folders are classified, but generated fembot parts do not yet have measured wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance, mass, or inertia proofs",
+      "candidate_count": 13,
+      "classification_ok": true,
+      "fabrication_class_counts": {
+        "ALU_7075": 2,
+        "MJF_PA12": 6,
+        "OFF_THE_SHELF": 5
+      },
+      "group": "head",
+      "manufacturing_records": {
+        "ALU_7075": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.001,
+          "minimum_wall_thickness_m": 0.0015,
+          "process": "CNC machining or sheet/plate fabrication",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "machined functional fits require drawing-specific tolerances"
+        },
+        "MJF_PA12": {
+          "draft_angle_deg": 1.0,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0012,
+          "process": "MJF additive manufacturing or reconstructed molded shell",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": true,
+          "requires_tool_access_check": false,
+          "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+        },
+        "OFF_THE_SHELF": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": null,
+          "minimum_wall_thickness_m": null,
+          "process": "purchased component",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": false,
+          "tolerance_class": "vendor datasheet controls envelope and mounting pattern"
+        }
+      },
+      "material_records": {
+        "ALU_7075": {
+          "allowable_stress_pa": 250000000.0,
+          "density_kg_m3": 2810,
+          "elastic_modulus_pa": 71700000000.0,
+          "material": "7075 aluminum",
+          "source": "conservative common 7075-T6 engineering baseline; verify exact temper before release",
+          "yield_strength_pa": 503000000.0
+        },
+        "MJF_PA12": {
+          "allowable_stress_pa": 18000000.0,
+          "density_kg_m3": 1010,
+          "elastic_modulus_pa": 1600000000.0,
+          "material": "PA12 nylon",
+          "source": "conservative MJF PA12 baseline; replace with vendor build-direction data before release",
+          "yield_strength_pa": 45000000.0
+        },
+        "OFF_THE_SHELF": {
+          "allowable_stress_pa": null,
+          "density_kg_m3": null,
+          "elastic_modulus_pa": null,
+          "material": "vendor-defined off-the-shelf component",
+          "source": "vendor component; do not scale or infer material without datasheet",
+          "yield_strength_pa": null
+        }
+      }
+    },
+    {
+      "accepted": false,
+      "blocking_reason": "candidate STEP folders are classified, but generated fembot parts do not yet have measured wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance, mass, or inertia proofs",
+      "candidate_count": 46,
+      "classification_ok": true,
+      "fabrication_class_counts": {
+        "ALU_7075": 16,
+        "MJF_PA12": 8,
+        "OFF_THE_SHELF": 14,
+        "SML_316L": 8
+      },
+      "group": "arm",
+      "manufacturing_records": {
+        "ALU_7075": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.001,
+          "minimum_wall_thickness_m": 0.0015,
+          "process": "CNC machining or sheet/plate fabrication",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "machined functional fits require drawing-specific tolerances"
+        },
+        "MJF_PA12": {
+          "draft_angle_deg": 1.0,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0012,
+          "process": "MJF additive manufacturing or reconstructed molded shell",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": true,
+          "requires_tool_access_check": false,
+          "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+        },
+        "OFF_THE_SHELF": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": null,
+          "minimum_wall_thickness_m": null,
+          "process": "purchased component",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": false,
+          "tolerance_class": "vendor datasheet controls envelope and mounting pattern"
+        },
+        "SML_316L": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0008,
+          "process": "sheet metal/laser cut or machined stainless",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+        }
+      },
+      "material_records": {
+        "ALU_7075": {
+          "allowable_stress_pa": 250000000.0,
+          "density_kg_m3": 2810,
+          "elastic_modulus_pa": 71700000000.0,
+          "material": "7075 aluminum",
+          "source": "conservative common 7075-T6 engineering baseline; verify exact temper before release",
+          "yield_strength_pa": 503000000.0
+        },
+        "MJF_PA12": {
+          "allowable_stress_pa": 18000000.0,
+          "density_kg_m3": 1010,
+          "elastic_modulus_pa": 1600000000.0,
+          "material": "PA12 nylon",
+          "source": "conservative MJF PA12 baseline; replace with vendor build-direction data before release",
+          "yield_strength_pa": 45000000.0
+        },
+        "OFF_THE_SHELF": {
+          "allowable_stress_pa": null,
+          "density_kg_m3": null,
+          "elastic_modulus_pa": null,
+          "material": "vendor-defined off-the-shelf component",
+          "source": "vendor component; do not scale or infer material without datasheet",
+          "yield_strength_pa": null
+        },
+        "SML_316L": {
+          "allowable_stress_pa": 85000000.0,
+          "density_kg_m3": 8000,
+          "elastic_modulus_pa": 193000000000.0,
+          "material": "316L stainless steel",
+          "source": "conservative annealed/low-strength 316L engineering baseline; verify stock/process before release",
+          "yield_strength_pa": 170000000.0
+        }
+      }
+    },
+    {
+      "accepted": false,
+      "blocking_reason": "candidate STEP folders are classified, but generated fembot parts do not yet have measured wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance, mass, or inertia proofs",
+      "candidate_count": 82,
+      "classification_ok": true,
+      "fabrication_class_counts": {
+        "ALU_7075": 18,
+        "MJF_PA12": 18,
+        "OFF_THE_SHELF": 38,
+        "SML_316L": 8
+      },
+      "group": "leg",
+      "manufacturing_records": {
+        "ALU_7075": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.001,
+          "minimum_wall_thickness_m": 0.0015,
+          "process": "CNC machining or sheet/plate fabrication",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "machined functional fits require drawing-specific tolerances"
+        },
+        "MJF_PA12": {
+          "draft_angle_deg": 1.0,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0012,
+          "process": "MJF additive manufacturing or reconstructed molded shell",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": true,
+          "requires_tool_access_check": false,
+          "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+        },
+        "OFF_THE_SHELF": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": null,
+          "minimum_wall_thickness_m": null,
+          "process": "purchased component",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": false,
+          "tolerance_class": "vendor datasheet controls envelope and mounting pattern"
+        },
+        "SML_316L": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0008,
+          "process": "sheet metal/laser cut or machined stainless",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+        }
+      },
+      "material_records": {
+        "ALU_7075": {
+          "allowable_stress_pa": 250000000.0,
+          "density_kg_m3": 2810,
+          "elastic_modulus_pa": 71700000000.0,
+          "material": "7075 aluminum",
+          "source": "conservative common 7075-T6 engineering baseline; verify exact temper before release",
+          "yield_strength_pa": 503000000.0
+        },
+        "MJF_PA12": {
+          "allowable_stress_pa": 18000000.0,
+          "density_kg_m3": 1010,
+          "elastic_modulus_pa": 1600000000.0,
+          "material": "PA12 nylon",
+          "source": "conservative MJF PA12 baseline; replace with vendor build-direction data before release",
+          "yield_strength_pa": 45000000.0
+        },
+        "OFF_THE_SHELF": {
+          "allowable_stress_pa": null,
+          "density_kg_m3": null,
+          "elastic_modulus_pa": null,
+          "material": "vendor-defined off-the-shelf component",
+          "source": "vendor component; do not scale or infer material without datasheet",
+          "yield_strength_pa": null
+        },
+        "SML_316L": {
+          "allowable_stress_pa": 85000000.0,
+          "density_kg_m3": 8000,
+          "elastic_modulus_pa": 193000000000.0,
+          "material": "316L stainless steel",
+          "source": "conservative annealed/low-strength 316L engineering baseline; verify stock/process before release",
+          "yield_strength_pa": 170000000.0
+        }
+      }
+    },
+    {
+      "accepted": false,
+      "blocking_reason": "candidate STEP folders are classified, but generated fembot parts do not yet have measured wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance, mass, or inertia proofs",
+      "candidate_count": 82,
+      "classification_ok": true,
+      "fabrication_class_counts": {
+        "ALU_7075": 18,
+        "MJF_PA12": 18,
+        "OFF_THE_SHELF": 38,
+        "SML_316L": 8
+      },
+      "group": "foot",
+      "manufacturing_records": {
+        "ALU_7075": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.001,
+          "minimum_wall_thickness_m": 0.0015,
+          "process": "CNC machining or sheet/plate fabrication",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "machined functional fits require drawing-specific tolerances"
+        },
+        "MJF_PA12": {
+          "draft_angle_deg": 1.0,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0012,
+          "process": "MJF additive manufacturing or reconstructed molded shell",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": true,
+          "requires_tool_access_check": false,
+          "tolerance_class": "process/vendor dependent; molded shell requires draft and undercut analysis"
+        },
+        "OFF_THE_SHELF": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": null,
+          "minimum_wall_thickness_m": null,
+          "process": "purchased component",
+          "requires_flatness_check": false,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": false,
+          "tolerance_class": "vendor datasheet controls envelope and mounting pattern"
+        },
+        "SML_316L": {
+          "draft_angle_deg": null,
+          "minimum_feature_size_m": 0.0008,
+          "minimum_wall_thickness_m": 0.0008,
+          "process": "sheet metal/laser cut or machined stainless",
+          "requires_flatness_check": true,
+          "requires_smoothness_check": false,
+          "requires_tool_access_check": true,
+          "tolerance_class": "sheet/plate process dependent; bend allowance required if formed"
+        }
+      },
+      "material_records": {
+        "ALU_7075": {
+          "allowable_stress_pa": 250000000.0,
+          "density_kg_m3": 2810,
+          "elastic_modulus_pa": 71700000000.0,
+          "material": "7075 aluminum",
+          "source": "conservative common 7075-T6 engineering baseline; verify exact temper before release",
+          "yield_strength_pa": 503000000.0
+        },
+        "MJF_PA12": {
+          "allowable_stress_pa": 18000000.0,
+          "density_kg_m3": 1010,
+          "elastic_modulus_pa": 1600000000.0,
+          "material": "PA12 nylon",
+          "source": "conservative MJF PA12 baseline; replace with vendor build-direction data before release",
+          "yield_strength_pa": 45000000.0
+        },
+        "OFF_THE_SHELF": {
+          "allowable_stress_pa": null,
+          "density_kg_m3": null,
+          "elastic_modulus_pa": null,
+          "material": "vendor-defined off-the-shelf component",
+          "source": "vendor component; do not scale or infer material without datasheet",
+          "yield_strength_pa": null
+        },
+        "SML_316L": {
+          "allowable_stress_pa": 85000000.0,
+          "density_kg_m3": 8000,
+          "elastic_modulus_pa": 193000000000.0,
+          "material": "316L stainless steel",
+          "source": "conservative annealed/low-strength 316L engineering baseline; verify stock/process before release",
+          "yield_strength_pa": 170000000.0
+        }
+      }
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-material-manufacturing-proof-v1",
+  "summary": {
+    "body_groups": 5,
+    "classification_ok": true,
+    "fabrication_candidates": 252,
+    "manufacturing_process_accepted": false,
+    "material_properties_accepted": false,
+    "unknown_candidate_count": 0
+  },
+  "unknown_candidates": []
+}

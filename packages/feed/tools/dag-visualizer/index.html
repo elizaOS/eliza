@@ -556,6 +556,8 @@ body {
 let currentTrace = null;
 let selectedNodeId = null;
 let _dagLayout = null;
+// Disarms the post-load auto-select once the user (or a test) interacts.
+let autoSelectArmed = false;
 
 const PHASE_COLORS = {
   Bootstrap: '#3b82f6',
@@ -936,12 +938,14 @@ function renderDAG() {
 // NODE SELECTION -> DETAIL PANEL
 // ============================================================
 function selectNode(nodeId) {
+  autoSelectArmed = false;
   selectedNodeId = nodeId;
   renderDAG();
   showNodeDetail(nodeId);
 }
 
 function closeDetail() {
+  autoSelectArmed = false;
   selectedNodeId = null;
   renderDAG();
   document.getElementById('detailTitle').textContent = 'Select a node';
@@ -1417,8 +1421,13 @@ function loadDemo() {
   const now = Date.now();
   const trace = generateDemoTrace(now);
   loadTrace(trace);
-  // Auto-select the first interesting node
-  setTimeout(() => selectNode('market-decisions'), 100);
+  // Auto-select the first interesting node, but only if the user (or a test)
+  // hasn't already interacted with the DAG in the meantime. Any selectNode/
+  // closeDetail call disarms this so it can't clobber an explicit selection.
+  autoSelectArmed = true;
+  setTimeout(() => {
+    if (autoSelectArmed) selectNode('market-decisions');
+  }, 100);
 }
 // Keep alias in case linter renames
 const _loadDemo = loadDemo;

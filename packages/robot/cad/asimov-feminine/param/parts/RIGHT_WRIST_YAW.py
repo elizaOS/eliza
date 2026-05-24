@@ -1,33 +1,47 @@
-"""RIGHT_WRIST_YAW — exact Y-mirror of the LEFT_WRIST_YAW femme mesh.
+"""RIGHT_WRIST_YAW — dainty wrist/hand slim from the right source mesh.
 
-Build the LEFT femme hand once and reflect it across Y so the RIGHT hand is a
-true mirror by construction (the LEFT/RIGHT source meshes have slightly
-different triangulations, so independent warps would not match exactly). The
-wrist mate at z=0 is unaffected by a Y reflection, so it stays pinned.
+Build from the right source STL directly so proof hashes and surface-distance
+checks are bound to the actual right-hand geometry, not a mirrored left mesh.
 """
 import sys
 sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param')
-sys.path.insert(0, '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/param/parts')
+import numpy as np
 import trimesh
-import LEFT_WRIST_YAW as LW
+import warp2 as W
+from connections import reserved_levels
 
 PART = 'RIGHT_WRIST_YAW'
 ROOT = '/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot'
+SRC = f'{ROOT}/assets/profiles/asimov-1/meshes/{PART}.STL'
 OUT = f'{ROOT}/cad/asimov-feminine/output/stl/{PART}.STL'
+reserved = reserved_levels(PART)
+
+
+def femme_hand(z):
+    base = 0.80
+    t = np.clip(z / 0.017, 0.0, 1.0)
+    return base - 0.06 * t
 
 
 def build():
-    left = LW.build()  # writes LEFT, returns the femme mesh
-    right = left.copy()
-    right.apply_scale([1.0, -1.0, 1.0])  # reflect across Y
-    trimesh.repair.fix_normals(right)
-    if right.volume < 0:
-        right.invert()
+    orig = trimesh.load(SRC)
+    right = W.warp_similarity(
+        orig,
+        axis='z',
+        scale_fn=femme_hand,
+        reserved=reserved,
+        ramp=0.012,
+        step=0.0025,
+        smooth_m=5,
+    )
     right.export(OUT)
+    ob = orig.bounds
     rb = right.bounds
-    print(f"=== {PART} (Y-mirror of LEFT_WRIST_YAW) ===")
+    print(f"=== {PART} femme warp ===")
     for i, ax in enumerate('XYZ'):
-        print(f"  {ax}: femme={(rb[1][i]-rb[0][i])*1000:.1f}mm")
+        osp = (ob[1][i] - ob[0][i]) * 1000
+        rsp = (rb[1][i] - rb[0][i]) * 1000
+        print(f"  {ax}: orig={osp:.1f}mm femme={rsp:.1f}mm ratio={rsp/osp:.3f}")
     print(f"  watertight={right.is_watertight} vol={right.volume*1e6:.2f}cm3")
     return right
 

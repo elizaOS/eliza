@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertLocalBenchmarkModelAvailable,
   buildActionBenchmarkCommand,
   buildActionBenchmarkEnv,
   runActionBenchmark,
@@ -75,6 +76,51 @@ describe("action benchmark runner", () => {
 
     expect(env.ELIZA_BENCHMARK_USE_MOCKS).toBeUndefined();
     expect(env.ELIZA_LIVE_TEST_LARGE_MODEL).toBe("eliza-1-0_8b-trained");
+  });
+
+  it("requires requested local benchmark models to be served before live runs", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: "gemma2:2b" },
+            { id: "llama3.2:3b" },
+            { id: "eliza-1-0_8b:latest" },
+          ],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      )) as typeof fetch;
+    try {
+      await expect(
+        assertLocalBenchmarkModelAvailable({
+          provider: "local-llama-cpp",
+          runtimeModel: "eliza-1-0_8b-trained",
+          baseUrl: "http://localhost:11434/v1/",
+          dryRun: false,
+        }),
+      ).rejects.toThrow(
+        'local action benchmark model "eliza-1-0_8b-trained" is not available',
+      );
+      await expect(
+        assertLocalBenchmarkModelAvailable({
+          provider: "local-llama-cpp",
+          runtimeModel: "gemma2:2b",
+          baseUrl: "http://localhost:11434/v1/",
+          dryRun: false,
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        assertLocalBenchmarkModelAvailable({
+          provider: "local-llama-cpp",
+          runtimeModel: "eliza-1-0_8b",
+          baseUrl: "http://localhost:11434/v1/",
+          dryRun: false,
+        }),
+      ).resolves.toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("returns output locations without spawning in dry-run mode", async () => {

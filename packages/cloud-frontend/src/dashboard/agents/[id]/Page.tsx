@@ -449,7 +449,7 @@ export default function AgentDetailPage() {
                   href={agent.bridgeUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 flex items-center gap-1 transition-colors font-mono break-all"
+                  className="text-sm text-white/70 hover:text-white flex items-center gap-1 transition-colors font-mono break-all"
                 >
                   {agent.bridgeUrl}
                   <ExternalLink className="h-3 w-3 shrink-0" />

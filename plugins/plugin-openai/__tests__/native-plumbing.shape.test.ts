@@ -230,6 +230,35 @@ describe("OpenAI native text plumbing", () => {
     });
   }, 180_000);
 
+  it("marks unconsumed streaming companion promises as handled", async () => {
+    const noOutputError = Object.assign(
+      new Error("No output generated. Check the stream for errors."),
+      { name: "AI_NoOutputGeneratedError" },
+    );
+    aiMocks.streamText.mockResolvedValue({
+      textStream: (async function* textStream() {
+        // Empty stream: the runtime consumes this path and records an empty
+        // response, while the AI SDK `text` promise rejects during flush.
+      })(),
+      text: Promise.reject(noOutputError),
+      toolCalls: Promise.resolve([]),
+      finishReason: Promise.resolve("stop"),
+      usage: Promise.resolve({ inputTokens: 1, outputTokens: 0 }),
+    });
+
+    const { handleTextSmall } = await import("../models/text");
+    const stream = (await handleTextSmall(createRuntime(), {
+      prompt: "empty stream",
+      stream: true,
+    } as never)) as { textStream: AsyncIterable<string>; text: Promise<string> };
+
+    for await (const _chunk of stream.textStream) {
+      // consume the primary stream path
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await expect(stream.text).rejects.toThrow("No output generated");
+  });
+
   it("preserves Cerebras cache keys while stripping OpenAI-only cache retention", async () => {
     aiMocks.generateText.mockResolvedValue({
       text: "ok",

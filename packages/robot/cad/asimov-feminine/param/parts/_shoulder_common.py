@@ -17,6 +17,7 @@ import trimesh
 PARAM_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PARAM_DIR)
 import paramlib as P  # noqa: E402
+import warp2 as W  # noqa: E402
 from connections import LINKS, reserved_levels  # noqa: E402
 
 ROBOT_DIR = os.path.abspath(os.path.join(PARAM_DIR, "..", "..", ".."))
@@ -42,11 +43,21 @@ def build(part, render=False):
     slim = SLIM[part]
 
     orig = trimesh.load(os.path.join(SRC_DIR, part + ".STL"))
-    param = P.slice_to_rings(orig, axis=axis, step=0.01, n_angular=72)
-    w = P.connection_weight(param, reserved, ramp=0.035)
-    P.radial_scale(param, lambda _z: slim, weight=w)
-
-    femme = P.rings_to_mesh(param)
+    if part.endswith("SHOULDER_YAW"):
+        femme = W.warp_similarity(
+            orig,
+            axis=axis,
+            scale_fn=lambda _z: slim,
+            reserved=reserved,
+            ramp=0.03,
+            step=0.0025,
+            smooth_m=5,
+        )
+    else:
+        param = P.slice_to_rings(orig, axis=axis, step=0.01, n_angular=72)
+        w = P.connection_weight(param, reserved, ramp=0.035)
+        P.radial_scale(param, lambda _z: slim, weight=w)
+        femme = P.rings_to_mesh(param)
     out_path = os.path.join(OUT_DIR, part + ".STL")
     femme.export(out_path)
 

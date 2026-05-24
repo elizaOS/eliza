@@ -174,7 +174,7 @@ export function InviteMemberDialog({
               type="button"
               onClick={handleClose}
               disabled={isSubmitting}
-              className="px-4 py-2 border border-[#303030] text-white hover:bg-white/5 transition-colors disabled:opacity-50 order-2 sm:order-1"
+              className="px-4 py-2 text-white hover:bg-white/5 transition-colors disabled:opacity-50 order-2 sm:order-1"
             >
               Cancel
             </button>

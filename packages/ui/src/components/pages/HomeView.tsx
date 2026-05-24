@@ -47,14 +47,7 @@ export function HomeView(): React.JSX.Element {
   const draftPreview = draft.trim();
 
   return (
-    <CloudVideoBackground
-      speed="8x"
-      basePath="/clouds"
-      poster="/clouds/poster-960.jpg"
-      posterSrcSet="/clouds/poster-640.jpg 640w, /clouds/poster-960.jpg 960w"
-      posterSizes="100vw"
-      scrim={0.08}
-      style={{ height: "100%" }}
+    <CloudVideoBackground scrim={0.08} style={{ height: "100%" }}
     >
       <div
         data-testid="home-view"

@@ -133,7 +133,6 @@ describe("DflashLlamaServer P3 per-slot single-flight lock", () => {
 		const mock = await startSerializationMockServer({ holdMs: 150 });
 		const patch = patchTarget(mock.baseUrl);
 		try {
-			const start = performance.now();
 			await Promise.all([
 				dflashLlamaServer.generateWithUsage({
 					prompt: "a",
@@ -146,13 +145,17 @@ describe("DflashLlamaServer P3 per-slot single-flight lock", () => {
 					onTextChunk: () => {},
 				}),
 			]);
-			const elapsed = performance.now() - start;
-			// If unlocked, both run in parallel ≈ 150 ms total; serialized would
-			// be ≈ 300 ms. 225 ms gives a wide margin both ways so neither
-			// CI scheduler jitter (pushing parallel up) nor faster-than-budgeted
-			// hold (pushing serial down) flip the assertion.
-			expect(elapsed).toBeLessThan(225);
 			expect(mock.records).toHaveLength(2);
+			// Non-serialization is proven by overlap, not by a wall-clock budget:
+			// the later-starting request reached the server BEFORE the
+			// earlier-finishing one drained. A serialized lock would force the
+			// second request to start only after the first fully finished, so the
+			// two windows could never overlap. Asserting overlap instead of an
+			// elapsed-time threshold avoids flaking under heavy parallel load.
+			const [first, second] = mock.records;
+			const latestStart = Math.max(first.startedAt, second.startedAt);
+			const earliestFinish = Math.min(first.finishedAt, second.finishedAt);
+			expect(latestStart).toBeLessThan(earliestFinish);
 		} finally {
 			patch.restore();
 			await mock.close();

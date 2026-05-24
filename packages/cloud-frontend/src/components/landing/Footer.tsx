@@ -37,13 +37,13 @@ export default function Footer() {
             >
               <a
                 href="/privacy-policy"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:opacity-75"
               >
                 {t("cloud.footer.privacy", { defaultValue: "Privacy" })}
               </a>
               <a
                 href="/terms-of-service"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:opacity-75"
               >
                 {t("cloud.footer.terms", { defaultValue: "Terms" })}
               </a>
@@ -60,7 +60,7 @@ export default function Footer() {
               href="https://docs.elizaos.ai/cloud"
               target="_blank"
               rel="noreferrer"
-              className="text-base text-white transition-colors hover:text-[#FF5800]"
+              className="text-base text-white transition-colors hover:opacity-75"
             >
               {t("cloud.footer.docs", { defaultValue: "Docs" })}
             </a>
@@ -68,7 +68,7 @@ export default function Footer() {
               href={EXTERNAL_URLS.github}
               target="_blank"
               rel="noreferrer"
-              className="text-base text-white transition-colors hover:text-[#FF5800]"
+              className="text-base text-white transition-colors hover:opacity-75"
             >
               {t("cloud.footer.github", { defaultValue: "Github" })}
             </a>

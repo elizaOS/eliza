@@ -1,0 +1,43 @@
+{
+  "links": [],
+  "load": {
+    "attempted": false,
+    "compiled": false,
+    "error": "ModuleNotFoundError: No module named 'mujoco'",
+    "forward_ok": false,
+    "import_ok": false,
+    "model": null,
+    "step_ok": false
+  },
+  "mjcf_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "ok": false,
+  "schema": "asimov-1-mujoco-load-proof-v1",
+  "static": {
+    "actuator_joints_match_firmware_order": true,
+    "body_collision_geoms": 23,
+    "compiler_meshdir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/../meshes",
+    "compiler_meshdir_exists": true,
+    "expected_actuators": 25,
+    "foot_collision_geoms": 10,
+    "joints": 27,
+    "mesh_files_found": 28,
+    "mesh_files_missing": [],
+    "mesh_refs": 28,
+    "missing_firmware_joints": [],
+    "mjcf_exists": true,
+    "ok": true,
+    "position_actuators": 25
+  },
+  "summary": {
+    "actuator_order_ok": true,
+    "compiler_meshdir_exists": true,
+    "expected_actuators": 25,
+    "mesh_files_found": 28,
+    "mesh_refs": 28,
+    "mujoco_compiled": false,
+    "mujoco_forward_ok": false,
+    "mujoco_import_ok": false,
+    "mujoco_step_ok": false,
+    "position_actuators": 25
+  }
+}

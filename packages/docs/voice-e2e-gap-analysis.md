@@ -5,7 +5,94 @@
 
 ---
 
-## 1. What We Have (Confirmed Installed & Working)
+## 0. VERIFIED FINDINGS (2026-05-24, post-execution) — supersedes §1–§6 below
+
+Sections 1–6 were the *pre-execution* assessment and contain several wrong
+assumptions. The verified state after running every model on this machine:
+
+### 0.1 Every core model has a real, working forward pass on darwin-arm64
+
+| Model | Path | Verified result |
+|-------|------|-----------------|
+| OmniVoice TTS | `omnivoice-tts` CLI (NOT llama-server) | Generates distinct designed voices. `--instruct "female, young adult, high pitch"` vs `"male, elderly, very low pitch"`. ~0.35x RTF warm. Cold start ~60s (Metal shader compile). |
+| Eliza-1 ASR | FFI `eliza_inference_asr_transcribe` | WER 0.18 on short phrases, 0.46 on long (truncates >7-word OmniVoice sentences). RTF ~14x. |
+| Silero VAD | `libsilero_vad.dylib` (prebuilt, `build-darwin/`) | available=true, detects speech boundaries. |
+| WeSpeaker ResNet34-LM encoder | `libvoice_classifier.dylib` (built this session) | Real 256-dim embeddings. **Separates real voices: same-voice cos 0.35, female-vs-male cos 0.05, gap 0.30.** |
+| pyannote-segmentation-3.0 diarizer | `libvoice_classifier.dylib` | Real SincNet+BiLSTM forward. **Detected 2 speakers at correct boundaries (734-2474ms female, 2969-4915ms male) from real mixed audio in 852ms.** |
+| OWNER voice verification | `voice-profiles/` TS | 47 tests pass. Prompt-injection via transcript has zero effect; voice alone (0.33) never reaches the 0.6 OWNER grant floor. |
+
+Verification scripts (run with `ELIZA_VOICE_CLASSIFIER_LIB` pointing at the built dylib):
+- `packages/benchmarks/voice/verify-native-ggml.mjs` — encoder + diarizer load + forward
+- `packages/benchmarks/voice/verify-real-voice-separation.mjs` — real-voice cosine separation
+- `packages/benchmarks/voice/verify-real-diarization.mjs` — real 2-speaker diarization in one window
+- `packages/benchmarks/voice/owner-voice-onboarding.mjs` — OWNER enroll/recognize/reject/attack
+- `packages/benchmarks/voice/three-voice-scenario.mjs` — 7-turn scene, synthetic audio (superseded)
+- `packages/benchmarks/voice/three-voice-e2e-real.mjs` — **integrated real-audio scenario** (see §0.6)
+- `packages/benchmarks/voice/verify-enrollment-attribution.mjs` — enrollment-based speaker attribution (3/3 humans)
+- `packages/benchmarks/voice/verify-kokoro-agent-voice.mjs` — **Kokoro agent voice** (ONNX) + ASR round-trip
+
+### 0.6 Integrated three-voice scenario (real audio, real models)
+
+`three-voice-e2e-real.mjs` runs the full loop end-to-end with no fallbacks:
+2 human OmniVoice voices (Alice female, Bob male) + agent voice, merged into
+one 14.8s stream, through real pyannote diarizer + real WeSpeaker encoder +
+real eliza-1 ASR. Report: `reports/three-voice-e2e-real-report.md`.
+
+- **ASR transcripts recorded:** mean WER 0.171 (5/7 turns WER 0; 2 truncated on long clauses).
+- **Should-respond: 5/5 correct** on the *real ASR text* — agent replies on "Eliza" turns (1,4,6), silent on ambient (2,5).
+- **Diarizer: 2 speakers detected in every window** — real separation of 2 people on one stream.
+- **Speaker re-ID:** naive per-turn cosine clustering over-segments (4 entities, not 2 — within-speaker 0.135 overlaps between-speaker 0.044-0.147 on short single clips). **Enrollment averaging fixes it: `verify-enrollment-attribution.mjs` attributes held-out human turns 3/3** (Alice 0.30 vs Bob 0.08; Bob 0.33 vs Alice 0.13). This is the production path (same as OWNER onboarding). **Caveat:** two *same-gender* OmniVoice designs (Alice vs the agent's female voice) land close (0.36 vs 0.30) and confuse — same-gender separation needs voice cloning (`--ref-wav`) or distinct recorded speakers; gender is the strong cue. Enroll only real human speakers, not the agent's own (known) voice.
+- **Agent voice via Kokoro: WORKING** (`verify-kokoro-agent-voice.mjs`). Kokoro v1.0 ONNX via onnxruntime-node + npm phonemizer + af_bella; agent lines synthesized and ASR round-trip WER 0 (short) / 0.375 mean. RTF ~7.7 on CPU. The integrated scenario can use Kokoro for agent turns and OmniVoice for the two humans.
+- **Perf:** OmniVoice CLI reloads the model per call (~20s each); production must use the resident FFI TTS path (`eliza_inference_tts_synthesize`).
+
+### 0.2 The ONE real wiring bug
+
+`libvoice_classifier` and `libsilero_vad` are located by a resolver that
+searches `packages/native-plugins/<lib>/build/` — **but that directory does
+not exist**; the real path is `packages/native/plugins/<lib>/build-darwin/`
+(slash, not dash; `build-darwin`, not `build`). Affected resolvers:
+- `plugins/plugin-local-inference/src/services/voice/vad-ggml.ts`
+- `plugins/plugin-local-inference/src/services/voice/speaker/encoder-ggml.ts`
+- `plugins/plugin-local-inference/src/services/voice/speaker/diarizer-ggml.ts`
+
+Fix: change the path segment to `native`,`plugins` and check both `build` and
+`build-darwin`. Until then, set `ELIZA_VOICE_CLASSIFIER_LIB` /
+`ELIZA_SILERO_VAD_LIB` env vars. The native forward passes themselves are
+correct — this is purely library discovery.
+
+### 0.3 Build step required (one-time)
+
+`libvoice_classifier.dylib` ships no darwin build (only a stale linux `.so`).
+Build it:
+```
+cmake -B packages/native/plugins/voice-classifier-cpp/build-darwin \
+      -DCMAKE_BUILD_TYPE=Release packages/native/plugins/voice-classifier-cpp
+cmake --build packages/native/plugins/voice-classifier-cpp/build-darwin -j
+```
+Pure scalar C, `-lm` only, builds in <2s. 5/7 ctests pass (1 gguf-loader
+fixture failure, 1 parity test skipped without fixtures).
+
+### 0.4 Corrected gap statuses
+
+- **GAP-1 (multi-speaker diarization not wired):** RESOLVED. Native pyannote forward works; the `MOCK_DIARIZATION_PIPELINE` in app-core is a separate stub, but `PyannoteDiarizer`/`DiarizerGgml` run real segmentation.
+- **GAP-2 (Kokoro broken):** RESOLVED. Kokoro v1.0 (`model_q4.onnx`) runs end-to-end via `KokoroOnnxRuntime` + `onnxruntime-node` (which DOES load under Bun) + the npm `phonemizer` package + `af_bella` voice pack. Verified: `verify-kokoro-agent-voice.mjs` synthesizes agent lines, ASR round-trip WER 0 on the short line / 0.375 mean (longer line truncated by ASR, not Kokoro). RTF ~7.7 on CPU (slow vs OmniVoice 0.35× — acceptable for occasional agent replies, not high-throughput). The earlier "onnxruntime-node not installed" finding was wrong. llama-server still cannot load OmniVoice GGUF (custom schema) — OmniVoice uses its CLI/FFI path.
+- **GAP-3 (VAD missing from 0_8b):** WRONG — VAD was always present (all 3 formats in `vad/`). Real issue was the resolver path (§0.2).
+- **GAP-7 (diarizer/encoder native lib unbuilt):** RESOLVED this session (§0.3).
+- **GAP-4/5/6 (3-voice scene, OWNER verification, should-respond):** COVERED by the scripts in §0.1.
+
+### 0.5 Honest limitation
+
+The synthetic speech fixtures (`makeSpeechWithSilenceFixture`) use **one fixed
+voice** (formants 700/1220/2600, f0 110Hz) regardless of seed, so the real
+encoder/diarizer correctly collapse them to a single speaker. Meaningful
+multi-speaker tests require genuinely distinct audio — use OmniVoice designed
+voices (as the `verify-real-*` scripts do), not the synthetic fixtures. Earlier
+"0.33 separation" numbers from the pure-JS fallback keyed on seed noise, not
+real speaker identity, and are not valid.
+
+---
+
+## 1. What We Have (Confirmed Installed & Working) — PRE-EXECUTION ASSESSMENT (see §0 for corrections)
 
 ### 1.1 TTS Engines
 

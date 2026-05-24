@@ -32,7 +32,23 @@ interface AgentIdentity {
   agentId: string;
 }
 
-describe("E2E - Autonomous Agent Live Tests", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch("http://localhost:3000/api/health");
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    "⚠️  Feed server not running on :3000 — live E2E tests will be skipped",
+  );
+}
+
+describe.skipIf(!serverAvailable)("E2E - Autonomous Agent Live Tests", () => {
   // Shared state across tests
   let agentIdentity: AgentIdentity;
   let a2aClient: FeedA2AClient;

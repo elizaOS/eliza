@@ -770,6 +770,23 @@ function buildNativeTextResult(
   };
 }
 
+function handledPromise<T>(value: T | PromiseLike<T>): Promise<T> {
+  const promise = Promise.resolve(value);
+  promise.catch(() => {
+    // The streaming path primarily consumes `textStream`. AI SDK companion
+    // promises such as `text` can reject later on empty streams even when no
+    // caller requested them, which otherwise surfaces as an unhandled rejection.
+  });
+  return promise;
+}
+
+function handledMappedPromise<T, U>(
+  value: T | PromiseLike<T>,
+  mapper: (resolved: T) => U | PromiseLike<U>,
+): Promise<U> {
+  return handledPromise(handledPromise(value).then(mapper));
+}
+
 function mergeProviderModelName(providerMetadata: unknown, modelName?: string): unknown {
   if (!modelName) {
     return providerMetadata;
@@ -997,10 +1014,10 @@ async function generateTextByModelType(
 
     return {
       textStream: result.textStream,
-      text: Promise.resolve(result.text),
-      ...(shouldReturnNativeResult ? { toolCalls: Promise.resolve(result.toolCalls) } : {}),
-      usage: Promise.resolve(result.usage).then(convertUsage),
-      finishReason: Promise.resolve(result.finishReason).then((r) => r as string | undefined),
+      text: handledPromise(result.text),
+      ...(shouldReturnNativeResult ? { toolCalls: handledPromise(result.toolCalls) } : {}),
+      usage: handledMappedPromise(result.usage, convertUsage),
+      finishReason: handledMappedPromise(result.finishReason, (r) => r as string | undefined),
     };
   }
 

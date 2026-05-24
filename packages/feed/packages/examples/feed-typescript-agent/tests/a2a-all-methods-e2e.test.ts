@@ -22,7 +22,23 @@ const TEST_CONFIG = {
   apiKey: process.env.FEED_API_KEY || "test-api-key",
 };
 
-describe("A2A Client Coverage E2E Tests", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch("http://localhost:3000/api/health");
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    "⚠️  Feed server not running on :3000 — A2A coverage E2E tests will be skipped",
+  );
+}
+
+describe.skipIf(!serverAvailable)("A2A Client Coverage E2E Tests", () => {
   let client: FeedA2AClient;
 
   beforeAll(async () => {

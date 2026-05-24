@@ -219,7 +219,9 @@ const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
-const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud-e2e")]);
+const NO_CLOUD_PACKAGE_DIRS = new Set([
+  path.join("packages", "test", "cloud-e2e"),
+]);
 
 // Combine --filter, --pattern, and TEST_PACKAGE_FILTER. All three (when set)
 // must match a task's label for it to run — they intersect rather than
@@ -285,8 +287,29 @@ function collectPackageJsonPaths() {
   );
   const packageJsonPaths = new Set();
 
-  for (const pattern of rootPackageJson.workspaces ?? []) {
+  // Honor `!`-negated workspace patterns the same way bun/npm/yarn do: a
+  // negated dir is NOT a workspace member even if an earlier glob matched it
+  // (e.g. `packages/*` + `!packages/feed` keeps the nested feed monorepo root
+  // out — it has its own install/CI and its `test` runs the full feed suite).
+  const patterns = rootPackageJson.workspaces ?? [];
+  const excludedDirs = new Set();
+  for (const pattern of patterns) {
+    if (!pattern.startsWith("!")) {
+      continue;
+    }
+    for (const packageDir of expandWorkspacePattern(pattern.slice(1))) {
+      excludedDirs.add(packageDir);
+    }
+  }
+
+  for (const pattern of patterns) {
+    if (pattern.startsWith("!")) {
+      continue;
+    }
     for (const packageDir of expandWorkspacePattern(pattern)) {
+      if (excludedDirs.has(packageDir)) {
+        continue;
+      }
       const packageJsonPath = path.join(packageDir, "package.json");
       if (fs.existsSync(packageJsonPath)) {
         packageJsonPaths.add(packageJsonPath);

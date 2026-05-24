@@ -77,12 +77,13 @@ beforeEach(() => {
 
 afterEach(() => cleanup());
 
+import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
 const APP_TSX = readFileSync(resolve(__dirname, "./App.tsx"), "utf8");
 
 describe("App pre-agent cloud wiring", () => {
-  it("wraps the pre-agent StartupShell in CloudVideoBackground", () => {
+  it("wraps the pre-agent StartupShell in a full-screen CloudVideoBackground", () => {
     // Pull the contents of the `if (startupCoordinator.phase !== "ready" …)`
     // pre-agent gate and assert clouds are wired there. We grep for the
     // testid we added so the assertion fails loudly if the wrapper is moved.
@@ -93,43 +94,40 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(
       /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
     );
-    // Brand rules: 8x speed, /clouds basePath, light scrim, themed text.
-    expect(APP_TSX).toMatch(/speed="8x"/);
-    expect(APP_TSX).toMatch(/basePath="\/clouds"/);
-    expect(APP_TSX).toMatch(/animated=\{false\}/);
+    // The clouds are a true full-viewport background (fixed inset:0) with a
+    // light scrim and theme-aware black text layered above.
+    expect(APP_TSX).toMatch(/position: "fixed"/);
     expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
-    // text-txt is the theme-aware class for black text on the cloud background.
     expect(APP_TSX).toMatch(/text-txt/);
   });
 
-  it("CloudVideoBackground renders a <video> with cloud sources", async () => {
+  it("shows the poster first, then streams the cloud loop video over it", async () => {
     const { container } = render(
-      <CloudVideoBackground
-        speed="8x"
-        basePath="/clouds"
-        poster="/clouds/poster-960.jpg"
-        scrim={0.05}
-      >
+      <CloudVideoBackground scrim={0.05}>
         <div data-testid="welcome">welcome</div>
       </CloudVideoBackground>,
     );
 
-    const video = container.querySelector("video");
-    expect(video).not.toBeNull();
-    expect(video?.getAttribute("poster")).toBe("/clouds/poster-960.jpg");
-    await waitFor(() => {
-      expect(container.querySelector("video")?.getAttribute("preload")).toBe(
-        "metadata",
-      );
-    });
+    // Poster image is present immediately (jpeg-first).
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "/clouds/poster-960.jpg",
+      CLOUD_BACKGROUND_ASSETS.poster,
     );
 
-    const sources = container.querySelectorAll("video > source");
-    expect(sources.length).toBeGreaterThan(0);
-    const srcAttrs = Array.from(sources).map((s) => s.getAttribute("src"));
-    expect(srcAttrs.some((s) => s?.includes("/clouds/clouds_8x_"))).toBe(true);
+    // The video layer mounts after the deferred post-load tick.
+    await waitFor(
+      () => {
+        expect(container.querySelector("video")).not.toBeNull();
+      },
+      { timeout: 2000 },
+    );
+    const video = container.querySelector("video");
+    expect(video?.getAttribute("preload")).toBe("auto");
+    expect(video?.getAttribute("poster")).toBe(CLOUD_BACKGROUND_ASSETS.poster);
+
+    const srcAttrs = Array.from(
+      container.querySelectorAll("video > source"),
+    ).map((s) => s.getAttribute("src"));
+    expect(srcAttrs).toContain(CLOUD_BACKGROUND_ASSETS.source1080pMp4);
 
     // children still rendered above the video
     expect(
@@ -137,13 +135,11 @@ describe("App pre-agent cloud wiring", () => {
     ).toBe("welcome");
   });
 
-  it("CloudVideoBackground can render a static poster without video decode", () => {
+  it("renders only the poster when not animated", () => {
     const { container } = render(
       <CloudVideoBackground
-        speed="8x"
-        basePath="/clouds"
-        poster="/clouds/poster.jpg"
         animated={false}
+        poster={CLOUD_BACKGROUND_ASSETS.poster}
       >
         <div data-testid="welcome">welcome</div>
       </CloudVideoBackground>,
@@ -151,7 +147,7 @@ describe("App pre-agent cloud wiring", () => {
 
     expect(container.querySelector("video")).toBeNull();
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "/clouds/poster.jpg",
+      CLOUD_BACKGROUND_ASSETS.poster,
     );
     expect(
       container.querySelector('[data-testid="welcome"]')?.textContent,

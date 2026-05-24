@@ -202,7 +202,7 @@ export function AutoTopUpCard() {
             type="button"
             onClick={handleSave}
             disabled={saving || !!validationError || !!noPaymentMethod}
-            className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white font-mono"
+            className="bg-[#FF5800] hover:bg-black hover:text-white text-white font-mono"
           >
             {saving ? (
               <>

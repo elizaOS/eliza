@@ -12,9 +12,12 @@
  * exercised: OmniVoice TTS goes through the in-process `bun:ffi` binding in
  * `plugin-omnivoice`, not over HTTP.
  *
- * It SKIPS when no fused build is on disk for this host's backend or no
- * staged text GGUF is found — this is a smoke test against real artifacts,
- * not a hermetic unit test.
+ * It SKIPS when no fused build is on disk for this host's backend, when no
+ * staged text GGUF is found, or when the fast unit/PR lane is active
+ * (`VITEST_UNIT_ONLY`). This is a smoke test that spawns a real llama-server
+ * and loads real weights — it is not a hermetic unit test and must not run in
+ * the fast lane where its multi-second model load flakes against the suite
+ * timeout.
  */
 
 import { existsSync, readdirSync } from "node:fs";
@@ -85,7 +88,13 @@ function findSmallTextGguf(): string | null {
 
 const FUSED_BIN = path.join(fusedDir(), "llama-server");
 const TEXT_GGUF = findSmallTextGguf();
-const haveArtifacts = existsSync(FUSED_BIN) && TEXT_GGUF !== null;
+// The fast unit/PR lane (`VITEST_UNIT_ONLY=1`) excludes spawn-based integration
+// smokes: loading real weights into a real llama-server takes seconds and flakes
+// against the suite timeout under parallel load. The test still runs in the
+// dedicated integration lane (no `VITEST_UNIT_ONLY`) when the artifacts exist.
+const unitOnlyLane = process.env.VITEST_UNIT_ONLY === "1";
+const haveArtifacts =
+	!unitOnlyLane && existsSync(FUSED_BIN) && TEXT_GGUF !== null;
 
 // eslint-disable-next-line vitest/no-conditional-tests
 const maybe = haveArtifacts ? describe : describe.skip;

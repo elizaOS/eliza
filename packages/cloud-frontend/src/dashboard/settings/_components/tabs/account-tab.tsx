@@ -144,7 +144,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               <button
                 type="button"
                 onClick={() => onTabChange("analytics")}
-                className="bg-[rgba(10,10,10,0.5)] border border-[#e1e1e1] px-4 py-2.5 hover:bg-[rgba(255,255,255,0.05)] transition-colors w-full sm:w-auto"
+                className="bg-[rgba(10,10,10,0.5)] px-4 py-2.5 hover:bg-[rgba(255,255,255,0.05)] transition-colors w-full sm:w-auto"
               >
                 <span className="text-[#e1e1e1] font-mono font-medium text-sm md:text-base whitespace-nowrap">
                   View analytics

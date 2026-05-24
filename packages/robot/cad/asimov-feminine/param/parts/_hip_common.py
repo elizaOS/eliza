@@ -37,6 +37,7 @@ sys.path.insert(0, PARAM_DIR)
 
 import paramlib as P  # noqa: E402
 import connections as C  # noqa: E402
+import warp2 as W  # noqa: E402
 
 ROBOT_ROOT = os.path.abspath(os.path.join(PARAM_DIR, "..", "..", ".."))
 MESH_DIR = os.path.join(ROBOT_ROOT, "assets/profiles/asimov-1/meshes")
@@ -129,7 +130,18 @@ def process(name, render=False):
                                    n_angular=len(param.angles))
     ident = P.rings_to_mesh(ident_param)
 
-    rebuilt = P.rings_to_mesh(param)
+    if kind == "HIP_ROLL":
+        rebuilt = W.warp_similarity(
+            orig,
+            axis=spec["spine"],
+            scale_fn=lambda _z: 0.97,
+            reserved=reserved,
+            ramp=0.03,
+            step=0.0025,
+            smooth_m=5,
+        )
+    else:
+        rebuilt = P.rings_to_mesh(param)
     out_path = os.path.join(OUT_DIR, name + ".STL")
     rebuilt.export(out_path)
 

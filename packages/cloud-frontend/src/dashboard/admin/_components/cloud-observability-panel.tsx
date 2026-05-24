@@ -72,7 +72,7 @@ export function CloudObservabilityPanel() {
           <button
             type="button"
             onClick={() => void load()}
-            className="inline-flex h-9 items-center gap-2 border border-[#303030] px-3 text-xs font-mono text-white/70 hover:bg-white/5"
+            className="inline-flex h-9 items-center gap-2 px-3 text-xs font-mono text-white/70 hover:bg-white/5"
           >
             <RefreshCw className="h-3.5 w-3.5" />
             {loading ? "Loading" : "Refresh"}

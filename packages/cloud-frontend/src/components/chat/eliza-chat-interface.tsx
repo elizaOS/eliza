@@ -1802,7 +1802,7 @@ export function ElizaChatInterface({
                     <button
                       type="button"
                       onClick={() => setCreateImageEnabled(false)}
-                      className="flex items-center gap-1 h-7 px-3 rounded-sm bg-transparent hover:bg-[var(--brand-orange)]/10 text-[var(--brand-orange)] text-sm transition-colors"
+                      className="flex items-center gap-1 h-7 px-3 rounded-sm bg-transparent hover:bg-white/10 text-white/70 text-sm transition-colors"
                     >
                       <span>{selectedImageModel.name}</span>
                       <X className="h-3.5 w-3.5" />

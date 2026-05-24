@@ -542,6 +542,10 @@ export function buildRunCollectionOptionsFromCliArgs(
       provider: { type: "string", default: "local-llama-cpp" },
       "base-url": { type: "string", default: "http://localhost:11434/v1" },
       "runs-per-case": { type: "string", default: "1" },
+      "benchmark-filter": { type: "string" },
+      "benchmark-model": { type: "string" },
+      "benchmark-runtime-model": { type: "string" },
+      "benchmark-variant": { type: "string" },
       "dataset-version": { type: "string", default: "eliza-native-v1" },
       "hf-repo": { type: "string", default: "elizaos/eliza-1-training" },
       "hf-revision": { type: "string", default: "main" },
@@ -603,6 +607,26 @@ export function buildRunCollectionOptionsFromCliArgs(
     baseUrl,
     benchmark,
     datasetVersion,
+    modelId:
+      typeof values["benchmark-model"] === "string"
+        ? values["benchmark-model"]
+        : undefined,
+    runtimeModel:
+      typeof values["benchmark-runtime-model"] === "string"
+        ? values["benchmark-runtime-model"]
+        : typeof values["benchmark-model"] === "string"
+          ? values["benchmark-model"]
+          : undefined,
+    variant:
+      values["benchmark-variant"] === "reference" ||
+      values["benchmark-variant"] === "base" ||
+      values["benchmark-variant"] === "trained"
+        ? values["benchmark-variant"]
+        : undefined,
+    filter:
+      typeof values["benchmark-filter"] === "string"
+        ? values["benchmark-filter"]
+        : undefined,
     runsPerCase: optionalPositiveInteger(
       typeof values["runs-per-case"] === "string"
         ? values["runs-per-case"]
@@ -726,7 +750,10 @@ export function buildRunCollectionOptionsFromCliArgs(
     },
     actionBenchmark,
     actionBenchmarkPair:
-      tiers.length === 1
+      tiers.length === 1 &&
+      actionBenchmark.modelId === undefined &&
+      actionBenchmark.runtimeModel === undefined &&
+      actionBenchmark.variant === undefined
         ? {
             tier: tiers[0],
             base: {
@@ -742,7 +769,12 @@ export function buildRunCollectionOptionsFromCliArgs(
           }
         : undefined,
     actionBenchmarkPairs:
-      tiers.length > 1 ? elizaOneActionBenchmarkPairs(tiers) : undefined,
+      tiers.length > 1 &&
+      actionBenchmark.modelId === undefined &&
+      actionBenchmark.runtimeModel === undefined &&
+      actionBenchmark.variant === undefined
+        ? elizaOneActionBenchmarkPairs(tiers)
+        : undefined,
     benchmarkVsCerebras: {
       tiers: tiers.join(","),
       benchmark,
@@ -1233,6 +1265,10 @@ Commands:
     --skip-tests       Skip test trajectory collection
     --skip-scenarios   Skip scenario trajectories
     --skip-action-benchmark Skip Eliza harness action benchmark execution
+    --benchmark-filter LIST Comma-separated action benchmark case ids
+    --benchmark-model ID  Run action benchmark for one explicit model id
+    --benchmark-runtime-model ID Served local/provider model id (defaults to --benchmark-model)
+    --benchmark-variant V reference, base, or trained label for the explicit model
     --cerebras-max-samples N Max prompts for benchmark-vs-Cerebras (default: 50)
     --cerebras-variants V   Eliza variants for benchmark-vs-Cerebras: trained, base, both (default: both)
     --natural-sanitized-jsonl PATH Existing sanitized app trajectory JSONL

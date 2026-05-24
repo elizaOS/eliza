@@ -19,7 +19,23 @@ const TEST_CONFIG: FeedA2AClientConfig = {
   apiKey: process.env.FEED_API_KEY || "test-api-key",
 };
 
-describe("A2A Routes Live Verification", () => {
+// Top-level await: evaluated before describe.skipIf() so the skip condition is correct
+const serverAvailable = await (async () => {
+  try {
+    const r = await fetch("http://localhost:3000/api/health");
+    return r.ok;
+  } catch {
+    return false;
+  }
+})();
+
+if (!serverAvailable) {
+  console.log(
+    "⚠️  Feed server not running on :3000 — live A2A route tests will be skipped",
+  );
+}
+
+describe.skipIf(!serverAvailable)("A2A Routes Live Verification", () => {
   const client = new FeedA2AClient(TEST_CONFIG);
 
   it("should connect to Feed A2A HTTP endpoint", async () => {
@@ -116,7 +132,7 @@ describe("A2A Client Method Availability", () => {
 });
 
 // Moderation operations tests
-describe("A2A Moderation Operations", () => {
+describe.skipIf(!serverAvailable)("A2A Moderation Operations", () => {
   const client = new FeedA2AClient(TEST_CONFIG);
 
   it("should block a user via A2A", async () => {

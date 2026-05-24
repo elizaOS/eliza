@@ -473,7 +473,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#FF5800]/85 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-black hover:text-white disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />}{" "}
             {t("cloud.login.button.passkey", { defaultValue: "Passkey" })}
