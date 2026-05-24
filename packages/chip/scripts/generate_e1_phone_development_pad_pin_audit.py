@@ -308,7 +308,9 @@ def main() -> None:
         if pinout_file:
             pinout = load_yaml(PINOUT_DIR / pinout_file)
             expected = pinout_expected_pins(pinout, name)
-            pinout_status = pinout.get("procurement_status", pinout.get("evidence_class", "captured"))
+            pinout_status = pinout.get(
+                "procurement_status", pinout.get("evidence_class", "captured")
+            )
             pinout_signal_group_count = signal_group_count(pinout)
             if coverage == "public_som_pinout_pad_count_aligned" and not expected:
                 expected = list(electrical_pads)
@@ -332,27 +334,23 @@ def main() -> None:
             local_terminal_contract = [
                 str(item) for item in support_basis.get("terminal_contract", [])
             ]
-            local_terminal_contract_source = record.get(
-                "local_terminal_contract_source", ""
-            )
+            local_terminal_contract_source = record.get("local_terminal_contract_source", "")
         npth_feature_contract = [
             dict(item)
             for item in support_basis.get("npth_mechanical_feature_contract", [])
             if isinstance(item, dict)
         ]
-        npth_feature_contract_matches_footprint = (
-            len(npth_feature_contract) == len(npth_features)
-            and all(
-                any(
-                    feature.get("hole_type") == contract.get("hole_type")
-                    and feature.get("drill_mm") == contract.get("drill_mm")
-                    and feature.get("plating") == contract.get("plating")
-                    and feature.get("electrical_terminal")
-                    is contract.get("electrical_terminal")
-                    for feature in npth_features
-                )
-                for contract in npth_feature_contract
+        npth_feature_contract_matches_footprint = len(npth_feature_contract) == len(
+            npth_features
+        ) and all(
+            any(
+                feature.get("hole_type") == contract.get("hole_type")
+                and feature.get("drill_mm") == contract.get("drill_mm")
+                and feature.get("plating") == contract.get("plating")
+                and feature.get("electrical_terminal") is contract.get("electrical_terminal")
+                for feature in npth_features
             )
+            for contract in npth_feature_contract
         )
         audit_records.append(
             {
@@ -428,9 +426,7 @@ def main() -> None:
         "pending_supplier_pad_map_or_order_count": blocked,
         "pinout_bound_footprint_count": sum(1 for item in audit_records if item["pinout_file"]),
         "all_pinout_bound_footprints_have_terminal_contract": all(
-            bool(item["local_terminal_contract"])
-            for item in audit_records
-            if item["pinout_file"]
+            bool(item["local_terminal_contract"]) for item in audit_records if item["pinout_file"]
         ),
         "explicit_support_pattern_count": sum(
             1 for item in audit_records if item["support_pattern_has_explicit_provenance"]
@@ -461,8 +457,7 @@ def main() -> None:
             1 for item in audit_records if item["npth_mechanical_feature_contract"]
         ),
         "all_npth_mechanical_features_have_contract": all(
-            item["npth_mechanical_feature_count"]
-            == len(item["npth_mechanical_feature_contract"])
+            item["npth_mechanical_feature_count"] == len(item["npth_mechanical_feature_contract"])
             and item["npth_mechanical_feature_contract_matches_footprint"] is True
             for item in audit_records
             if item["npth_mechanical_feature_count"] > 0

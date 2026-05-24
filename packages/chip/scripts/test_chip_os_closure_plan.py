@@ -140,7 +140,9 @@ class ChipOsClosurePlanTests(unittest.TestCase):
         self.assertIn("qemu_source_finding", codes)
         self.assertNotIn("proven_inventory_detail", codes)
         self.assertNotIn("should_not_lead", codes)
-        source_row = next(row for row in first["top_blocker_codes"] if row["code"] == "qemu_source_finding")
+        source_row = next(
+            row for row in first["top_blocker_codes"] if row["code"] == "qemu_source_finding"
+        )
         self.assertEqual(source_row["message"], "source report message")
         self.assertEqual(source_row["next_step"], "source report next step")
         self.assertEqual(source_row["capture_command"], "run qemu capture")

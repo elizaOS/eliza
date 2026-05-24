@@ -382,8 +382,7 @@ def cocotb_test_count(path: Path) -> int:
 
 def expected_bpu_cocotb_total() -> int:
     return sum(
-        cocotb_test_count(ROOT / "verify/cocotb/bpu" / source)
-        for source in BPU_COCOTB_TEST_SOURCES
+        cocotb_test_count(ROOT / "verify/cocotb/bpu" / source) for source in BPU_COCOTB_TEST_SOURCES
     )
 
 
@@ -881,7 +880,9 @@ def validate_full_trace_shard_sweep(
                 failures.append(f"{artifact} trace_set rows must be objects")
                 continue
             if not isinstance(row.get("branches"), int) or row["branches"] <= 0:
-                failures.append(f"{artifact} trace_set row {row.get('name')} branches must be positive")
+                failures.append(
+                    f"{artifact} trace_set row {row.get('name')} branches must be positive"
+                )
             if not isinstance(row.get("instructions"), int) or row["instructions"] <= 0:
                 failures.append(
                     f"{artifact} trace_set row {row.get('name')} instructions must be positive"
@@ -971,8 +972,7 @@ def validate_workload_class_bucket_promotion(
     missing = sorted(required - seen)
     if missing:
         failures.append(
-            f"{artifact} class_bucket_promotion missing required buckets: "
-            + ", ".join(missing)
+            f"{artifact} class_bucket_promotion missing required buckets: " + ", ".join(missing)
         )
 
 
@@ -1216,8 +1216,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             if positive:
                 failures.append(
                     "mpki_results_synthetic.json cannot assert release MPKI claims from "
-                    "synthetic_planning_only evidence: "
-                    + ", ".join(positive)
+                    "synthetic_planning_only evidence: " + ", ".join(positive)
                 )
     sweep_path = ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json"
     if sweep_path.is_file():
@@ -1289,9 +1288,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             if not isinstance(workload, dict):
                 failures.append(f"mpki_results_cbp5.json workload {name} must be an object")
             elif workload.get("trace_class") != "cbp5_train_traces_only":
-                failures.append(
-                    f"mpki_results_cbp5.json workload {name} has non-CBP5 trace_class"
-                )
+                failures.append(f"mpki_results_cbp5.json workload {name} has non-CBP5 trace_class")
 
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
     cbp5_rtl_generated: datetime | None = None
@@ -1347,8 +1344,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             missing = sorted(expected - set(workloads))
             if missing:
                 failures.append(
-                    "mpki_results_workload_rtl.json missing workload traces: "
-                    + ", ".join(missing)
+                    "mpki_results_workload_rtl.json missing workload traces: " + ", ".join(missing)
                 )
         for name, workload in workloads.items():
             if workload.get("trace_class") != "qemu_rv64_workload":
@@ -1363,8 +1359,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             failures.append(
                 "mpki_results_workload_rtl.json cannot assert workload/SPEC/AOSP/JS MPKI "
                 "claims until full external trace evidence and class-bucket promotion "
-                "gates are present: "
-                + ", ".join(positive)
+                "gates are present: " + ", ".join(positive)
             )
         full_trace_claims = [
             key
@@ -1435,7 +1430,10 @@ def evaluate_verification_reports() -> list[str]:
                 failures.append("BPU cocotb aggregate schema drifted")
             if data.get("status") != "PASS":
                 failures.append("BPU cocotb aggregate status must be PASS")
-            if data.get("expected_total_tests") != expected_total or data.get("total_tests") != expected_total:
+            if (
+                data.get("expected_total_tests") != expected_total
+                or data.get("total_tests") != expected_total
+            ):
                 failures.append(
                     f"BPU cocotb aggregate must record {expected_total}/{expected_total} target-module tests"
                 )
@@ -1479,7 +1477,9 @@ def evaluate_verification_reports() -> list[str]:
                 if module_test_sum != data.get("total_tests"):
                     failures.append("BPU cocotb aggregate total_tests must equal module test sum")
                 if module_expected_sum != data.get("expected_total_tests"):
-                    failures.append("BPU cocotb aggregate expected_total_tests must equal module expected-test sum")
+                    failures.append(
+                        "BPU cocotb aggregate expected_total_tests must equal module expected-test sum"
+                    )
     return failures
 
 
@@ -1511,8 +1511,10 @@ def workload_replay_warnings(workload_mpki_path: Path) -> list[dict[str, object]
             continue
         if not isinstance(replayed_branches, int):
             continue
-        fraction = float(replay_fraction) if isinstance(replay_fraction, (int, float)) else (
-            replayed_branches / total_branches
+        fraction = (
+            float(replay_fraction)
+            if isinstance(replay_fraction, (int, float))
+            else (replayed_branches / total_branches)
         )
         if fraction < 0.10:
             warnings.append(
@@ -1562,7 +1564,9 @@ def build_evidence(
         synthetic_mpki_ref["sha256"] = sha256_path(synthetic_mpki_path)
         synthetic_mpki_ref["present"] = True
         synthetic_mpki_ref.update(
-            artifact_metric_ref(synthetic_mpki_path, load_json_object_if_present(synthetic_mpki_path))
+            artifact_metric_ref(
+                synthetic_mpki_path, load_json_object_if_present(synthetic_mpki_path)
+            )
         )
     else:
         synthetic_mpki_ref["present"] = False

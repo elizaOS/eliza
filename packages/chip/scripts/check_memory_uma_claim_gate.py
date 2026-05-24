@@ -547,7 +547,11 @@ def check_gate(errors: list[str]) -> None:
                 )
 
     actual = data.get("linux_scaffold_current_capability")
-    require(isinstance(actual, dict), "memory/UMA gate missing linux_scaffold_current_capability", errors)
+    require(
+        isinstance(actual, dict),
+        "memory/UMA gate missing linux_scaffold_current_capability",
+        errors,
+    )
     if isinstance(actual, dict):
         for key in (
             "reset_rom",
@@ -589,12 +593,22 @@ def check_gate(errors: list[str]) -> None:
         )
 
     local_rtl = data.get("separate_local_rtl_evidence")
-    require(isinstance(local_rtl, dict), "memory/UMA gate missing separate_local_rtl_evidence", errors)
+    require(
+        isinstance(local_rtl, dict), "memory/UMA gate missing separate_local_rtl_evidence", errors
+    )
     if isinstance(local_rtl, dict):
         dram = local_rtl.get("dram_controller_boundary")
-        require(isinstance(dram, dict), "separate_local_rtl_evidence missing dram_controller_boundary", errors)
+        require(
+            isinstance(dram, dict),
+            "separate_local_rtl_evidence missing dram_controller_boundary",
+            errors,
+        )
         if isinstance(dram, dict):
-            require(dram.get("gate") == "make dram-controller-check", "DRAM local RTL evidence gate drifted", errors)
+            require(
+                dram.get("gate") == "make dram-controller-check",
+                "DRAM local RTL evidence gate drifted",
+                errors,
+            )
             require(
                 dram.get("report") == "build/reports/dram_controller.json",
                 "DRAM local RTL evidence report path drifted",
@@ -607,12 +621,32 @@ def check_gate(errors: list[str]) -> None:
             )
             report = load_json_report(DRAM_CONTROLLER_REPORT, errors)
             if report is not None:
-                require(report.get("schema") == "eliza.gate_status.v1", "dram_controller.json schema drifted", errors)
-                require(report.get("gate") == "dram-controller-check", "dram_controller.json gate drifted", errors)
+                require(
+                    report.get("schema") == "eliza.gate_status.v1",
+                    "dram_controller.json schema drifted",
+                    errors,
+                )
+                require(
+                    report.get("gate") == "dram-controller-check",
+                    "dram_controller.json gate drifted",
+                    errors,
+                )
                 require(report.get("status") == "PASS", "dram_controller.json must be PASS", errors)
-                require(report.get("subsystem") == "memory", "dram_controller.json subsystem must be memory", errors)
-                require(report.get("phone_claim_allowed") is False, "dram_controller.json must not allow phone claims", errors)
-                require(report.get("release_claim_allowed") is False, "dram_controller.json must not allow release claims", errors)
+                require(
+                    report.get("subsystem") == "memory",
+                    "dram_controller.json subsystem must be memory",
+                    errors,
+                )
+                require(
+                    report.get("phone_claim_allowed") is False,
+                    "dram_controller.json must not allow phone claims",
+                    errors,
+                )
+                require(
+                    report.get("release_claim_allowed") is False,
+                    "dram_controller.json must not allow release claims",
+                    errors,
+                )
                 require(
                     "not phone" in str(report.get("claim_boundary", "")).lower()
                     and "lpddr" in str(report.get("claim_boundary", "")).lower(),
@@ -620,21 +654,37 @@ def check_gate(errors: list[str]) -> None:
                     errors,
                 )
                 evidence_paths = report.get("evidence_paths")
-                require(isinstance(evidence_paths, list), "dram_controller.json must list evidence_paths", errors)
+                require(
+                    isinstance(evidence_paths, list),
+                    "dram_controller.json must list evidence_paths",
+                    errors,
+                )
                 if isinstance(evidence_paths, list):
                     for rel_path in (
                         "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
                         "verify/cocotb/memory/test_dram_memory.py",
                     ):
-                        require(rel_path in evidence_paths, f"dram_controller.json missing evidence path {rel_path}", errors)
+                        require(
+                            rel_path in evidence_paths,
+                            f"dram_controller.json missing evidence path {rel_path}",
+                            errors,
+                        )
                     for rel_path in evidence_paths:
                         if isinstance(rel_path, str):
-                            require((ROOT / rel_path).exists(), f"dram_controller.json evidence path missing on disk: {rel_path}", errors)
+                            require(
+                                (ROOT / rel_path).exists(),
+                                f"dram_controller.json evidence path missing on disk: {rel_path}",
+                                errors,
+                            )
                 detail = report.get("detail")
                 cocotb_result = detail.get("cocotb_result") if isinstance(detail, dict) else None
                 if isinstance(cocotb_result, str) and cocotb_result:
                     result_path = ROOT / cocotb_result
-                    require(result_path.is_file(), f"dram controller cocotb result missing: {cocotb_result}", errors)
+                    require(
+                        result_path.is_file(),
+                        f"dram controller cocotb result missing: {cocotb_result}",
+                        errors,
+                    )
                     if result_path.is_file():
                         root = ET.parse(result_path).getroot()
                         failures = int(root.attrib.get("failures", "0") or 0)
@@ -643,15 +693,32 @@ def check_gate(errors: list[str]) -> None:
                         tests = {tc.attrib.get("name") for tc in root.iter("testcase")}
                         required_tests = report.get("required_tests")
                         if isinstance(required_tests, list):
-                            missing = sorted(str(test) for test in required_tests if test not in tests)
-                            require(not missing, "dram controller cocotb result missing tests: " + ", ".join(missing), errors)
-                        require(failures == 0 and errors_count == 0 and skipped == 0, "dram controller cocotb result must have zero failures/errors/skips", errors)
+                            missing = sorted(
+                                str(test) for test in required_tests if test not in tests
+                            )
+                            require(
+                                not missing,
+                                "dram controller cocotb result missing tests: "
+                                + ", ".join(missing),
+                                errors,
+                            )
+                        require(
+                            failures == 0 and errors_count == 0 and skipped == 0,
+                            "dram controller cocotb result must have zero failures/errors/skips",
+                            errors,
+                        )
                 else:
                     errors.append("dram_controller.json detail.cocotb_result missing")
         iommu = local_rtl.get("iommu_boundary")
-        require(isinstance(iommu, dict), "separate_local_rtl_evidence missing iommu_boundary", errors)
+        require(
+            isinstance(iommu, dict), "separate_local_rtl_evidence missing iommu_boundary", errors
+        )
         if isinstance(iommu, dict):
-            require(iommu.get("gate") == "make iommu-evidence-check", "IOMMU local RTL evidence gate drifted", errors)
+            require(
+                iommu.get("gate") == "make iommu-evidence-check",
+                "IOMMU local RTL evidence gate drifted",
+                errors,
+            )
             require(
                 "not non-identity G-stage" in str(iommu.get("claim_boundary")),
                 "IOMMU local RTL evidence must not claim non-identity G-stage/PDT/Linux",

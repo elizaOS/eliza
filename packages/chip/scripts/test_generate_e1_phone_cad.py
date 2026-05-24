@@ -881,7 +881,9 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
         "split_interconnect_side_flex",
     }.issubset(connection_ids)
     assert all(row["cad_step_bytes"] > 1000 for row in connection_coverage["connections"])
-    assert all(row["all_nets_in_routed_development_board"] for row in connection_coverage["connections"])
+    assert all(
+        row["all_nets_in_routed_development_board"] for row in connection_coverage["connections"]
+    )
     assert (cad.REVIEW_DIR / "cad-connection-coverage.json").is_file()
     assert (cad.REVIEW_DIR / "cad-connection-coverage.md").is_file()
     validation = cad.write_step_validation_artifacts(solid_cad)
@@ -2616,9 +2618,7 @@ def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, m
         is True
     )
     assert report["development_board_local_review_state"]["routed_development_route_count"] == 153
-    assert (
-        report["development_board_local_review_state"]["routed_development_segment_count"] == 306
-    )
+    assert report["development_board_local_review_state"]["routed_development_segment_count"] == 306
     assert (
         report["development_board_local_review_state"][
             "routed_development_missing_required_shared_net_count"
@@ -2754,9 +2754,10 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
     assert report["required_evidence_class"] == "physical_routed_board_clearance_result"
     assert report["development_clearance_context"]["release_credit"] is False
     assert report["development_clearance_context"]["candidate_ready_for_local_review"] is True
-    assert report["development_clearance_context"]["cases_mapped_to_candidate_step"] == report[
-        "expected_clearance_case_count"
-    ]
+    assert (
+        report["development_clearance_context"]["cases_mapped_to_candidate_step"]
+        == report["expected_clearance_case_count"]
+    )
     assert report["cases"][0]["id"] == "routed_board_step_available_for_import"
     assert report["cases"][0]["pass"] is False
     assert report["result_cases"][0]["evidence_class_allowed"] is False

@@ -97,9 +97,7 @@ def manufacturing_release_blocker_message() -> str:
             artifact_state_counts.items(),
             key=lambda item: (-bucket_count(item), str(item[0])),
         )
-        state_text = "; " + ", ".join(
-            f"{name}={count}" for name, count in ordered_states[:4]
-        )
+        state_text = "; " + ", ".join(f"{name}={count}" for name, count in ordered_states[:4])
     blocker_count = summary.get("blockers", "unknown")
     manifest_count = summary.get("blocked_manifest_count", "unknown")
     return (
@@ -506,9 +504,7 @@ REPO_ARTIFACT_COMMAND_GUIDANCE = {
 }
 
 
-PATH_TOKEN = re.compile(
-    r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.@:+-]+(?:\.[A-Za-z0-9_.+-]+)?)"
-)
+PATH_TOKEN = re.compile(r"(?P<path>(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.@:+-]+(?:\.[A-Za-z0-9_.+-]+)?)")
 
 
 def paths_from_text(text: object) -> list[str]:
@@ -527,11 +523,7 @@ def paths_from_text(text: object) -> list[str]:
             continue
         if not path.startswith(allowed_prefixes):
             continue
-        if not (
-            "." in Path(path).name
-            or path.endswith("/")
-            or "/runs/" in path
-        ):
+        if not ("." in Path(path).name or path.endswith("/") or "/runs/" in path):
             continue
         if path not in seen:
             seen.add(path)
@@ -651,7 +643,11 @@ def _safe_read_json(path: str) -> dict[str, object]:
 def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
     summaries: list[dict[str, object]] = []
     for path in guidance.get("primary_paths", []):
-        if not isinstance(path, str) or not path.startswith("build/reports/") or not path.endswith(".json"):
+        if (
+            not isinstance(path, str)
+            or not path.startswith("build/reports/")
+            or not path.endswith(".json")
+        ):
             continue
         report = _safe_read_json(path)
         if not report:
@@ -713,9 +709,7 @@ def repo_artifact_generation_groups(findings: list[dict]) -> list[dict]:
             },
         )
         group["count"] += 1
-        group["repo_generation_category_counts"][
-            repo_generation_bucket_for_finding(finding)
-        ] += 1
+        group["repo_generation_category_counts"][repo_generation_bucket_for_finding(finding)] += 1
         evidence = finding.get("evidence")
         if isinstance(evidence, dict):
             source = str(evidence.get("source") or "")
@@ -896,9 +890,7 @@ def product_release_execution_plan(
             "primary_paths": phase.get("primary_paths", []),
             "acceptance_commands": phase["acceptance_commands"],
             "sample_findings": [
-                str(finding.get("message"))
-                for finding in matched[:8]
-                if finding.get("message")
+                str(finding.get("message")) for finding in matched[:8] if finding.get("message")
             ],
         }
         if phase["phase"] == "manufacturing_package_release" and manufacturing_details:
@@ -951,9 +943,7 @@ def structured_findings(release_blockers: list[str], detail_checks: dict) -> lis
                     "detail check and rerun product-release-check."
                 ),
                 "next_command": detail_next_command(row.get("source")),
-                "blocker_dependency": blocker_dependency_category(
-                    f"{row.get('source')} {line}"
-                ),
+                "blocker_dependency": blocker_dependency_category(f"{row.get('source')} {line}"),
             }
         )
     return findings
@@ -1181,10 +1171,7 @@ if release_blockers:
             "stderr": manufacturing_release.stderr,
             "blocked_status": manufacturing_release_blocked,
         },
-        "release_checks": [
-            dict(check)
-            for check in release_check_outputs
-        ],
+        "release_checks": [dict(check) for check in release_check_outputs],
     }
     findings = structured_findings(release_blockers, detail_checks)
     manufacturing_details = manufacturing_action_details(manufacturing_release_report)

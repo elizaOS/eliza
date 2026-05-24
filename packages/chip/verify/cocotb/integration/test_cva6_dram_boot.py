@@ -34,7 +34,6 @@ Pass criteria (all must hold):
 from __future__ import annotations
 
 import os
-from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
@@ -139,8 +138,7 @@ async def test_cva6_executes_from_real_dram(dut):
         f"(AR={dram_ar}, R={dram_r}). The instruction-fetch datapath is broken."
     )
     assert dram_aw >= 1 and dram_w >= 1 and dram_b >= 1, (
-        f"CVA6 never wrote real DRAM through the fabric "
-        f"(AW={dram_aw}, W={dram_w}, B={dram_b})."
+        f"CVA6 never wrote real DRAM through the fabric (AW={dram_aw}, W={dram_w}, B={dram_b})."
     )
     assert clint_aw >= 1, (
         f"CVA6 never programmed the CLINT through the fabric (CLINT AW={clint_aw})."
@@ -164,17 +162,13 @@ async def test_cva6_executes_from_real_dram(dut):
         f"(mtip_o={int(dut.mtip_o.value)}, mtime={int(dut.mtime_o.value)})"
     )
     mcause = _read_dram_u64(dut, MARK_BASE + OFF_MCAUSE)
-    assert (mcause >> 63) & 1 == 1, (
-        f"mcause 0x{mcause:016x} is not an interrupt (bit63 clear)."
-    )
+    assert (mcause >> 63) & 1 == 1, f"mcause 0x{mcause:016x} is not an interrupt (bit63 clear)."
     assert (mcause & 0x7FFF_FFFF_FFFF_FFFF) == 7, (
-        f"mcause low bits 0x{mcause & 0x7FFFFFFFFFFFFFFF:x} != 7 "
-        "(machine timer interrupt)."
+        f"mcause low bits 0x{mcause & 0x7FFFFFFFFFFFFFFF:x} != 7 (machine timer interrupt)."
     )
     mepc = _read_dram_u64(dut, MARK_BASE + OFF_MEPC)
     assert DRAM_BASE <= mepc < (DRAM_BASE + 0x1000), (
-        f"mepc 0x{mepc:016x} not in the program text — the trap was taken "
-        "from an unexpected PC."
+        f"mepc 0x{mepc:016x} not in the program text — the trap was taken from an unexpected PC."
     )
 
     # --- boot-OK marker ---

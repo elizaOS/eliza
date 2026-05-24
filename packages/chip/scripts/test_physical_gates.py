@@ -145,9 +145,7 @@ class PhysicalGateTests(unittest.TestCase):
                             },
                             "drc_report": {
                                 "min_bytes": 4,
-                                "globs": [
-                                    f"{run_root.as_posix()}/*/reports/signoff/*drc*.rpt"
-                                ],
+                                "globs": [f"{run_root.as_posix()}/*/reports/signoff/*drc*.rpt"],
                             },
                         },
                     }
@@ -169,10 +167,7 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertFalse(summary["closest_artifact_runs"][0]["release_credit"])
             self.assertIn(
                 "drc_report",
-                {
-                    row["artifact"]
-                    for row in summary["selected_run"]["missing_artifact_classes"]
-                },
+                {row["artifact"] for row in summary["selected_run"]["missing_artifact_classes"]},
             )
             self.assertEqual(summary["blocked_release_gates"][0]["gate"], "pd_release")
             self.assertIn("single e1_chip_top release run", summary["primary_action"])
@@ -216,9 +211,7 @@ class PhysicalGateTests(unittest.TestCase):
             )
 
             magic = next(
-                finding
-                for finding in report["findings"]
-                if finding["code"] == "magic_drc_blocked"
+                finding for finding in report["findings"] if finding["code"] == "magic_drc_blocked"
             )
             summary = magic["evidence"]["rule_summary"]
             self.assertEqual(summary["parsed_box_count"], 4)
@@ -335,7 +328,9 @@ class PhysicalGateTests(unittest.TestCase):
                 wirelength_pressure["top_long_nets"][0],
                 {"net": "clknet_1_0_0_clk", "length_um": 4366.51},
             )
-            self.assertEqual(wirelength_pressure["top_synthesized_numbered_nets"][0]["net"], "net963")
+            self.assertEqual(
+                wirelength_pressure["top_synthesized_numbered_nets"][0]["net"], "net963"
+            )
             self.assertIn("SRAM macro output-to-top-port", timing["next_step"])
 
     def test_openlane_pd_blocker_summary_keeps_latest_incomplete_diagnostic(self) -> None:
@@ -761,12 +756,12 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertEqual(antenna["heuristic_diodes_inserted"], None)
             self.assertEqual(antenna["pre_repair_state_metrics"]["antenna__violating__nets"], 80)
             self.assertEqual(
-                antenna["pre_repair_state_metrics"][
-                    "design__instance__count__class:antenna_cell"
-                ],
+                antenna["pre_repair_state_metrics"]["design__instance__count__class:antenna_cell"],
                 119063,
             )
-            self.assertIn("Input-port diode protection has now been exercised", antenna["next_pd_action"])
+            self.assertIn(
+                "Input-port diode protection has now been exercised", antenna["next_pd_action"]
+            )
 
     def test_openlane_pd_blocker_summary_parses_heuristic_diode_bloat(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -877,7 +872,9 @@ class PhysicalGateTests(unittest.TestCase):
             self.assertTrue(antenna["heuristic_diode_step_skipped"])
             self.assertIsNone(antenna["heuristic_diodes_inserted"])
             self.assertEqual(antenna["config_values"]["RUN_HEURISTIC_DIODE_INSERTION"], False)
-            self.assertIn("Input-port diode protection has now been exercised", antenna["next_pd_action"])
+            self.assertIn(
+                "Input-port diode protection has now been exercised", antenna["next_pd_action"]
+            )
 
     def test_openlane_pd_blocker_summary_records_completed_margin40_segment(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -977,7 +974,9 @@ class PhysicalGateTests(unittest.TestCase):
                 old_run_root,
             )
             run_dir = Path(tmpdir) / "RUN_2099-01-01_00-00-03_diodein_noheuristic_margin30_segment"
-            prior_run = Path(tmpdir) / "RUN_2099-01-01_00-00-02_diodein_noheuristic_margin40_segment"
+            prior_run = (
+                Path(tmpdir) / "RUN_2099-01-01_00-00-02_diodein_noheuristic_margin40_segment"
+            )
             prior_repair_dir = prior_run / "02-openroad-repairantennas"
             prior_stage_dir = prior_repair_dir / "1-diodeinsertion"
             prior_check_dir = prior_repair_dir / "2-openroad-checkantennas"
@@ -1177,9 +1176,7 @@ class PhysicalGateTests(unittest.TestCase):
                 },
             )
             self.assertEqual(
-                antenna["next_bounded_experiment"]["diagnostic_targets"][
-                    "primary_strategy"
-                ],
+                antenna["next_bounded_experiment"]["diagnostic_targets"]["primary_strategy"],
                 "mixed_route_and_diode_review",
             )
             self.assertEqual(

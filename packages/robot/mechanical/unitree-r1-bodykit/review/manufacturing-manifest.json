@@ -3541,20 +3541,20 @@
               -0.658
             ]
           },
-          "minimum_non_adjacent_clearance_mm": 37.78,
-          "worst_non_adjacent_part": "right_shin_shell",
+          "minimum_non_adjacent_clearance_mm": 35.049,
+          "worst_non_adjacent_part": "right_shin_side_armor",
           "worst_non_adjacent_clearance": {
-            "part": "right_shin_shell",
+            "part": "right_shin_side_armor",
             "part_body": "right_knee_link",
             "base_geom": "geom_18",
             "base_body": "left_knee_link",
             "base_geom_type": "mesh",
             "body_tree_distance": 8,
-            "clearance_mm": 37.78,
+            "clearance_mm": 35.049,
             "part_sample_point_m": [
-              -0.03903,
-              0.01591,
-              0.27078
+              -0.04265,
+              0.02134,
+              0.2662
             ],
             "base_sample_point_m": [
               -0.02279,
@@ -3562,14 +3562,14 @@
               0.26968
             ],
             "part_to_base_vector_m": [
-              0.01623,
-              0.0341,
-              -0.00109
+              0.01986,
+              0.02867,
+              0.00349
             ],
             "part_to_base_vector_mm": [
-              16.234,
-              34.097,
-              -1.094
+              19.855,
+              28.672,
+              3.488
             ]
           },
           "non_adjacent_samples_checked": 13168
@@ -4940,35 +4940,35 @@
               -0.658
             ]
           },
-          "minimum_non_adjacent_clearance_mm": 19.186,
-          "worst_non_adjacent_part": "right_shin_shell",
+          "minimum_non_adjacent_clearance_mm": 19.71,
+          "worst_non_adjacent_part": "right_thigh_front_armor",
           "worst_non_adjacent_clearance": {
-            "part": "right_shin_shell",
-            "part_body": "right_knee_link",
+            "part": "right_thigh_front_armor",
+            "part_body": "right_hip_yaw_link",
             "base_geom": "geom_18",
             "base_body": "left_knee_link",
             "base_geom_type": "mesh",
-            "body_tree_distance": 8,
-            "clearance_mm": 19.186,
+            "body_tree_distance": 7,
+            "clearance_mm": 19.71,
             "part_sample_point_m": [
-              0.00907,
-              -0.06189,
-              0.24161
+              0.07748,
+              -0.0557,
+              0.40691
             ],
             "base_sample_point_m": [
-              0.00961,
-              -0.07648,
-              0.25406
+              0.05923,
+              -0.055,
+              0.39949
             ],
             "part_to_base_vector_m": [
-              0.00054,
-              -0.01459,
-              0.01245
+              -0.01825,
+              0.0007,
+              -0.00742
             ],
             "part_to_base_vector_mm": [
-              0.543,
-              -14.589,
-              12.449
+              -18.247,
+              0.7,
+              -7.42
             ]
           },
           "non_adjacent_samples_checked": 13168
@@ -5798,7 +5798,7 @@
               -0.658
             ]
           },
-          "minimum_non_adjacent_clearance_mm": 17.199,
+          "minimum_non_adjacent_clearance_mm": 17.836,
           "worst_non_adjacent_part": "right_shin_shell",
           "worst_non_adjacent_clearance": {
             "part": "right_shin_shell",
@@ -5807,11 +5807,11 @@
             "base_body": "left_knee_link",
             "base_geom_type": "mesh",
             "body_tree_distance": 8,
-            "clearance_mm": 17.199,
+            "clearance_mm": 17.836,
             "part_sample_point_m": [
-              0.01553,
-              0.11056,
-              0.32475
+              0.01517,
+              0.11211,
+              0.32101
             ],
             "base_sample_point_m": [
               0.01471,
@@ -5819,14 +5819,14 @@
               0.33207
             ],
             "part_to_base_vector_m": [
-              -0.00082,
-              0.01554,
-              0.00732
+              -0.00046,
+              0.01398,
+              0.01106
             ],
             "part_to_base_vector_mm": [
-              -0.819,
-              15.543,
-              7.318
+              -0.461,
+              13.985,
+              11.061
             ]
           },
           "non_adjacent_samples_checked": 13168
@@ -9324,8 +9324,8 @@
       "right_rear_glute_armor_skin": 49.771,
       "right_rear_hip_fairing": 81.602,
       "right_shin_front_armor": 37.714,
-      "right_shin_shell": 6.176,
-      "right_shin_side_armor": 5.982,
+      "right_shin_shell": 5.391,
+      "right_shin_side_armor": 2.012,
       "right_shoulder_cap": 1.002,
       "right_shoulder_fastener_front": 50.312,
       "right_thigh_front_armor": 59.104,
@@ -9397,8 +9397,8 @@
       "right_rear_glute_armor_skin": 49.771,
       "right_rear_hip_fairing": 81.602,
       "right_shin_front_armor": 113.699,
-      "right_shin_shell": 105.731,
-      "right_shin_side_armor": 108.77,
+      "right_shin_shell": 106.603,
+      "right_shin_side_armor": 104.791,
       "right_shoulder_cap": 46.355,
       "right_shoulder_fastener_front": 59.725,
       "right_thigh_front_armor": 59.104,
@@ -9470,8 +9470,8 @@
       "right_rear_glute_armor_skin": 144.193,
       "right_rear_hip_fairing": 130.1,
       "right_shin_front_armor": 139.919,
-      "right_shin_shell": 105.731,
-      "right_shin_side_armor": 108.77,
+      "right_shin_shell": 106.603,
+      "right_shin_side_armor": 104.791,
       "right_shoulder_cap": 169.602,
       "right_shoulder_fastener_front": 183.725,
       "right_thigh_front_armor": 130.489,
@@ -9670,6 +9670,20 @@
         "interface_type": "seated_detail",
         "gap_gate_mm": 0.1,
         "below_nominal_gap": true,
+        "below_gap_gate": false
+      },
+      {
+        "part_a": "right_shin_shell",
+        "body_a": "right_knee_link",
+        "role_a": "underbody",
+        "part_b": "right_shin_side_armor",
+        "body_b": "right_knee_link",
+        "role_b": "armor",
+        "minimum_sampled_gap_mm": 2.591,
+        "articulated_interface": false,
+        "interface_type": "rigid_panel",
+        "gap_gate_mm": 2.5,
+        "below_nominal_gap": false,
         "below_gap_gate": false
       },
       {
@@ -9893,20 +9907,6 @@
         "articulated_interface": true,
         "interface_type": "articulated",
         "gap_gate_mm": 1.0,
-        "below_nominal_gap": false,
-        "below_gap_gate": false
-      },
-      {
-        "part_a": "right_shin_shell",
-        "body_a": "right_knee_link",
-        "role_a": "underbody",
-        "part_b": "right_shin_side_armor",
-        "body_b": "right_knee_link",
-        "role_b": "armor",
-        "minimum_sampled_gap_mm": 6.04,
-        "articulated_interface": false,
-        "interface_type": "rigid_panel",
-        "gap_gate_mm": 2.5,
         "below_nominal_gap": false,
         "below_gap_gate": false
       },
@@ -10232,13 +10232,13 @@
           "panel_gap_verdict": "pass",
           "worst_panel_pairs": [
             {
-              "part_a": "left_shin_shell",
-              "body_a": "left_knee_link",
+              "part_a": "right_shin_shell",
+              "body_a": "right_knee_link",
               "role_a": "underbody",
-              "part_b": "left_shin_side_armor",
-              "body_b": "left_knee_link",
+              "part_b": "right_shin_side_armor",
+              "body_b": "right_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 4.008,
+              "minimum_sampled_gap_mm": 2.591,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -10246,13 +10246,13 @@
               "below_gap_gate": false
             },
             {
-              "part_a": "right_shin_shell",
-              "body_a": "right_knee_link",
+              "part_a": "left_shin_shell",
+              "body_a": "left_knee_link",
               "role_a": "underbody",
-              "part_b": "right_shin_side_armor",
-              "body_b": "right_knee_link",
+              "part_b": "left_shin_side_armor",
+              "body_b": "left_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 6.04,
+              "minimum_sampled_gap_mm": 4.008,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -18247,6 +18247,7 @@
       "left_glute_backside",
       "left_hand_keepout",
       "left_hip_upper_leg",
+      "left_knee_shin",
       "left_rear_hip_fairing",
       "left_shoulder",
       "left_upper_arm",
@@ -18260,6 +18261,7 @@
       "right_glute_backside",
       "right_hand_keepout",
       "right_hip_upper_leg",
+      "right_knee_shin",
       "right_rear_hip_fairing",
       "right_shoulder",
       "right_upper_arm",
@@ -18760,14 +18762,14 @@
         "configured_source_subassembly": false,
         "source_subassembly_anchor": null,
         "part_count": 12,
-        "total_solid_volume_cm3": 172.8194,
+        "total_solid_volume_cm3": 169.9896,
         "volume_by_material_cm3": {
-          "black_underbody": 99.7815,
+          "black_underbody": 96.9517,
           "orange_armor": 73.0378
         },
         "volume_by_role_cm3": {
           "armor": 73.0378,
-          "underbody": 99.7815
+          "underbody": 96.9517
         },
         "mounted_robot_bodies": [
           "left_hip_yaw_link",
@@ -18909,7 +18911,7 @@
           ]
         },
         "fit_review": {
-          "minimum_bodykit_to_base_clearance_mm": 3.36,
+          "minimum_bodykit_to_base_clearance_mm": 2.012,
           "minimum_non_mounted_clearance_mm": 26.406,
           "minimum_non_adjacent_clearance_mm": 100.061,
           "dynamic_clearance_target_mm": 18.0
@@ -18918,13 +18920,13 @@
           "verdict": "pass",
           "worst_pairs": [
             {
-              "part_a": "left_shin_shell",
-              "body_a": "left_knee_link",
+              "part_a": "right_shin_shell",
+              "body_a": "right_knee_link",
               "role_a": "underbody",
-              "part_b": "left_shin_side_armor",
-              "body_b": "left_knee_link",
+              "part_b": "right_shin_side_armor",
+              "body_b": "right_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 4.008,
+              "minimum_sampled_gap_mm": 2.591,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -18932,13 +18934,13 @@
               "below_gap_gate": false
             },
             {
-              "part_a": "right_shin_shell",
-              "body_a": "right_knee_link",
+              "part_a": "left_shin_shell",
+              "body_a": "left_knee_link",
               "role_a": "underbody",
-              "part_b": "right_shin_side_armor",
-              "body_b": "right_knee_link",
+              "part_b": "left_shin_side_armor",
+              "body_b": "left_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 6.04,
+              "minimum_sampled_gap_mm": 4.008,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -18954,9 +18956,9 @@
           "blockers": [
             {
               "pose": "right_hip_roll_joint_high",
-              "clearance_mm": 17.199,
+              "clearance_mm": 17.836,
               "target_mm": 18.0,
-              "shortfall_mm": 0.801,
+              "shortfall_mm": 0.164,
               "part": "right_shin_shell",
               "region": "legs",
               "part_body": "right_knee_link",
@@ -18965,9 +18967,9 @@
               "base_geom_type": "mesh",
               "body_tree_distance": 8,
               "part_sample_point_m": [
-                0.01553,
-                0.11056,
-                0.32475
+                0.01517,
+                0.11211,
+                0.32101
               ],
               "base_sample_point_m": [
                 0.01471,
@@ -18975,14 +18977,14 @@
                 0.33207
               ],
               "part_to_base_vector_m": [
-                -0.00082,
-                0.01554,
-                0.00732
+                -0.00046,
+                0.01398,
+                0.01106
               ],
               "part_to_base_vector_mm": [
-                -0.819,
-                15.543,
-                7.318
+                -0.461,
+                13.985,
+                11.061
               ]
             }
           ]
@@ -19271,7 +19273,7 @@
               "part_centroid_to_body_origin_mm": [
                 -4.0,
                 48.0,
-                -120.0
+                -124.0
               ]
             },
             "oem_baseline_meshes": [
@@ -19279,12 +19281,12 @@
               "right_knee_collision.STL"
             ],
             "local_bbox_mm": [
-              25.0,
-              6.0,
+              23.0,
+              4.4,
               100.0
             ],
-            "solid_volume_cm3": 8.8288,
-            "surface_area_cm2": 47.1736,
+            "solid_volume_cm3": 5.999,
+            "surface_area_cm2": 42.689,
             "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
             "step_solid_exported": true
           },
@@ -19308,7 +19310,7 @@
               ],
               "part_centroid_to_body_origin_mm": [
                 -6.0,
-                48.0,
+                52.0,
                 -176.0
               ]
             },
@@ -22111,11 +22113,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "central chest bridge and black trim inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 5,
@@ -22480,11 +22485,14 @@
             "head_yaw_link",
             "head_pitch_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "head_pitch_link.STL",
             "head_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "donor-derived hard-plastic face and seated eye/lip inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -22837,10 +22845,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "front pelvis shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -23065,11 +23076,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left mirrored chest side panel",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -23341,10 +23355,13 @@
           "source_bodies": [
             "left_ankle_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_ankle_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left ankle roll boot shell and outsole",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -23605,7 +23622,7 @@
         "name": "left_forearm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_elbow_link",
@@ -23616,10 +23633,17 @@
             "left_shoulder_yaw_link",
             "left_elbow_link"
           ],
+          "keepout_bodies": [
+            "left_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "left_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
           "anchor_role": "left elbow-link forearm sleeve",
+          "connection_method": "offset shell to elbow-link OEM body envelope before wrist roll",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -23889,10 +23913,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left glute/backside skin",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -24025,12 +24052,15 @@
             "left_hip_roll_link",
             "left_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_hip_pitch_link.STL",
             "left_hip_roll_link.STL",
             "left_hip_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left hip yaw upper-leg shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -24238,8 +24268,25 @@
         "broad_region": "legs",
         "worker_package": "legs_knees_shins_worker",
         "panel_split_strategy": "left knee-link mounted shin sleeve plus front and side armor skins",
-        "configured_source_subassembly": false,
-        "source_subassembly_anchor": null,
+        "configured_source_subassembly": true,
+        "source_subassembly_anchor": {
+          "mounted_body": "left_knee_link",
+          "mounted_bodies": [
+            "left_knee_link"
+          ],
+          "source_bodies": [
+            "left_knee_link"
+          ],
+          "keepout_bodies": [],
+          "oem_baseline_meshes": [
+            "left_knee_collision.STL",
+            "left_knee_link.STL"
+          ],
+          "keepout_oem_meshes": [],
+          "anchor_role": "left knee-link shin sleeve and split armor skins",
+          "connection_method": "offset shell to knee/shin OEM body envelope",
+          "anchor_connected": true
+        },
         "part_count": 3,
         "total_solid_volume_cm3": 34.4485,
         "volume_by_material_cm3": {
@@ -24449,7 +24496,7 @@
             "step_solid_exported": true
           }
         ],
-        "connection_review": "source-connected-parametric-subassembly",
+        "connection_review": "source-anchor-connected-parametric-subassembly",
         "mount_design_status": "needs-fastener-boss-rib-insert-detail"
       },
       "left_rear_hip_fairing": {
@@ -24467,10 +24514,13 @@
             "pelvis",
             "left_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left posterior hip fairing",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -24591,7 +24641,7 @@
         "name": "left_shoulder",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_shoulder_pitch_link",
@@ -24603,11 +24653,14 @@
             "left_shoulder_pitch_link",
             "left_shoulder_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_shoulder_pitch_link.STL",
             "left_shoulder_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left shoulder pitch/roll cap",
+          "connection_method": "source-body-mounted shoulder cosmetic shell",
           "anchor_connected": true
         },
         "part_count": 2,
@@ -24773,7 +24826,7 @@
         "name": "left_upper_arm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left upper-arm sleeve and armor mounted to the shoulder-yaw source body",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_shoulder_yaw_link",
@@ -24785,10 +24838,13 @@
             "left_shoulder_roll_link",
             "left_shoulder_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_shoulder_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left shoulder-yaw upper-arm sleeve",
+          "connection_method": "offset shell to shoulder-yaw OEM body envelope",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -25046,7 +25102,7 @@
         "name": "left_wrist_cuff",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left slim cuff mounted to forearm end with left_wrist_roll_link reserved as a keepout, not a cosmetic mount",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_elbow_link",
@@ -25057,10 +25113,17 @@
             "left_elbow_link",
             "left_wrist_roll_link"
           ],
+          "keepout_bodies": [
+            "left_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "left_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
           "anchor_role": "left forearm-end wrist cuff",
+          "connection_method": "forearm-end collar with moving wrist roll kept clear",
           "anchor_connected": true
         },
         "part_count": 1,
@@ -25193,12 +25256,15 @@
             "head_yaw_link",
             "head_pitch_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "head_pitch_link.STL",
             "head_yaw_link.STL",
             "torso_collision.stl"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "black neck carrier between R1 torso and head envelope",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -25350,10 +25416,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "rear seat bridge",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -25500,11 +25569,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "rear torso back spine panel and black cut inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -25787,11 +25859,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right mirrored chest side panel",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -26063,10 +26138,13 @@
           "source_bodies": [
             "right_ankle_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_ankle_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right ankle roll boot shell and outsole",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -26355,7 +26433,7 @@
         "name": "right_forearm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_elbow_link",
@@ -26366,10 +26444,17 @@
             "right_shoulder_yaw_link",
             "right_elbow_link"
           ],
+          "keepout_bodies": [
+            "right_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "right_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
           "anchor_role": "right elbow-link forearm sleeve",
+          "connection_method": "offset shell to elbow-link OEM body envelope before wrist roll",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -26639,10 +26724,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right glute/backside skin",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -26775,12 +26863,15 @@
             "right_hip_roll_link",
             "right_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_hip_pitch_link.STL",
             "right_hip_roll_link.STL",
             "right_hip_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right hip yaw upper-leg shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -26988,17 +27079,34 @@
         "broad_region": "legs",
         "worker_package": "legs_knees_shins_worker",
         "panel_split_strategy": "right knee-link mounted shin sleeve plus front and side armor skins",
-        "configured_source_subassembly": false,
-        "source_subassembly_anchor": null,
+        "configured_source_subassembly": true,
+        "source_subassembly_anchor": {
+          "mounted_body": "right_knee_link",
+          "mounted_bodies": [
+            "right_knee_link"
+          ],
+          "source_bodies": [
+            "right_knee_link"
+          ],
+          "keepout_bodies": [],
+          "oem_baseline_meshes": [
+            "right_knee_collision.STL",
+            "right_knee_link.STL"
+          ],
+          "keepout_oem_meshes": [],
+          "anchor_role": "right knee-link shin sleeve and split armor skins",
+          "connection_method": "offset shell to knee/shin OEM body envelope",
+          "anchor_connected": true
+        },
         "part_count": 3,
-        "total_solid_volume_cm3": 22.5005,
+        "total_solid_volume_cm3": 19.6707,
         "volume_by_material_cm3": {
-          "black_underbody": 8.8288,
+          "black_underbody": 5.999,
           "orange_armor": 13.6717
         },
         "volume_by_role_cm3": {
           "armor": 13.6717,
-          "underbody": 8.8288
+          "underbody": 5.999
         },
         "mounted_robot_bodies": [
           "right_knee_link"
@@ -27039,25 +27147,25 @@
         "disconnected_parts": [],
         "world_bbox_home_pose": {
           "min_m": [
-            -0.0018,
+            -0.0008,
             -0.09641,
             0.12961
           ],
           "max_m": [
             0.0907,
-            -0.05591,
-            0.29161
+            -0.05411,
+            0.28761
           ],
           "extents_mm": [
-            92.5,
-            40.5,
-            162.0
+            91.5,
+            42.3,
+            158.0
           ]
         },
         "fit_review": {
-          "minimum_bodykit_to_base_clearance_mm": 5.982,
-          "minimum_non_mounted_clearance_mm": 105.731,
-          "minimum_non_adjacent_clearance_mm": 105.731,
+          "minimum_bodykit_to_base_clearance_mm": 2.012,
+          "minimum_non_mounted_clearance_mm": 104.791,
+          "minimum_non_adjacent_clearance_mm": 104.791,
           "dynamic_clearance_target_mm": 18.0
         },
         "panel_gap_review": {
@@ -27070,7 +27178,7 @@
               "part_b": "right_shin_side_armor",
               "body_b": "right_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 6.04,
+              "minimum_sampled_gap_mm": 2.591,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -27086,9 +27194,9 @@
           "blockers": [
             {
               "pose": "right_hip_roll_joint_high",
-              "clearance_mm": 17.199,
+              "clearance_mm": 17.836,
               "target_mm": 18.0,
-              "shortfall_mm": 0.801,
+              "shortfall_mm": 0.164,
               "part": "right_shin_shell",
               "region": "legs",
               "part_body": "right_knee_link",
@@ -27097,9 +27205,9 @@
               "base_geom_type": "mesh",
               "body_tree_distance": 8,
               "part_sample_point_m": [
-                0.01553,
-                0.11056,
-                0.32475
+                0.01517,
+                0.11211,
+                0.32101
               ],
               "base_sample_point_m": [
                 0.01471,
@@ -27107,14 +27215,14 @@
                 0.33207
               ],
               "part_to_base_vector_m": [
-                -0.00082,
-                0.01554,
-                0.00732
+                -0.00046,
+                0.01398,
+                0.01106
               ],
               "part_to_base_vector_mm": [
-                -0.819,
-                15.543,
-                7.318
+                -0.461,
+                13.985,
+                11.061
               ]
             }
           ]
@@ -27178,7 +27286,7 @@
               "part_centroid_to_body_origin_mm": [
                 -4.0,
                 48.0,
-                -120.0
+                -124.0
               ]
             },
             "oem_baseline_meshes": [
@@ -27186,12 +27294,12 @@
               "right_knee_collision.STL"
             ],
             "local_bbox_mm": [
-              25.0,
-              6.0,
+              23.0,
+              4.4,
               100.0
             ],
-            "solid_volume_cm3": 8.8288,
-            "surface_area_cm2": 47.1736,
+            "solid_volume_cm3": 5.999,
+            "surface_area_cm2": 42.689,
             "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
             "step_solid_exported": true
           },
@@ -27215,7 +27323,7 @@
               ],
               "part_centroid_to_body_origin_mm": [
                 -6.0,
-                48.0,
+                52.0,
                 -176.0
               ]
             },
@@ -27233,7 +27341,7 @@
             "step_solid_exported": true
           }
         ],
-        "connection_review": "source-connected-parametric-subassembly",
+        "connection_review": "source-anchor-connected-parametric-subassembly",
         "mount_design_status": "needs-fastener-boss-rib-insert-detail"
       },
       "right_rear_hip_fairing": {
@@ -27251,10 +27359,13 @@
             "pelvis",
             "right_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right posterior hip fairing",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -27390,7 +27501,7 @@
         "name": "right_shoulder",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_shoulder_pitch_link",
@@ -27402,11 +27513,14 @@
             "right_shoulder_pitch_link",
             "right_shoulder_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_shoulder_pitch_link.STL",
             "right_shoulder_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right shoulder pitch/roll cap",
+          "connection_method": "source-body-mounted shoulder cosmetic shell",
           "anchor_connected": true
         },
         "part_count": 2,
@@ -27572,7 +27686,7 @@
         "name": "right_upper_arm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right upper-arm sleeve and armor mounted to the shoulder-yaw source body",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_shoulder_yaw_link",
@@ -27584,10 +27698,13 @@
             "right_shoulder_roll_link",
             "right_shoulder_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_shoulder_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right shoulder-yaw upper-arm sleeve",
+          "connection_method": "offset shell to shoulder-yaw OEM body envelope",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -27831,7 +27948,7 @@
         "name": "right_wrist_cuff",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right slim cuff mounted to forearm end with right_wrist_roll_link reserved as a keepout, not a cosmetic mount",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_elbow_link",
@@ -27842,10 +27959,17 @@
             "right_elbow_link",
             "right_wrist_roll_link"
           ],
+          "keepout_bodies": [
+            "right_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "right_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
           "anchor_role": "right forearm-end wrist cuff",
+          "connection_method": "forearm-end collar with moving wrist roll kept clear",
           "anchor_connected": true
         },
         "part_count": 1,
@@ -27977,11 +28101,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "front torso chest core shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -28132,12 +28259,15 @@
             "waist_yaw_link",
             "waist_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_roll_link.STL",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "waist torso bridge",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -28489,7 +28619,93 @@
         "alignment_use": "Hair is retained only as reference context for head silhouette and face framing. No hair, ponytail, glasses, or related collision volume is generated.",
         "connection_review": "reference-only-no-generated-robot-subassembly",
         "mount_design_status": "not-applicable-reference-only"
+      },
+      "left_hand_keepout": {
+        "name": "left_hand_keepout",
+        "broad_region": "arms",
+        "worker_package": "arms_shoulders_wrists_worker",
+        "part_count": 0,
+        "total_solid_volume_cm3": 0.0,
+        "mounted_robot_bodies": [],
+        "source_subassembly_anchor": {
+          "mounted_body": null,
+          "mounted_bodies": [],
+          "source_bodies": [
+            "left_wrist_roll_link"
+          ],
+          "keepout_bodies": [
+            "left_wrist_roll_link"
+          ],
+          "oem_baseline_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
+          "keepout_oem_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
+          "anchor_role": "left hand/wrist source keepout",
+          "connection_method": "reference-only end-effector keepout; no cosmetic hand shell generated",
+          "anchor_connected": true
+        },
+        "source_robot_anchors": [],
+        "oem_baseline_meshes": [
+          "left_wrist_roll_link.STL"
+        ],
+        "generated_geometry": false,
+        "connection_review": "reference-only-source-keepout",
+        "mount_design_status": "not-applicable-reference-only"
+      },
+      "right_hand_keepout": {
+        "name": "right_hand_keepout",
+        "broad_region": "arms",
+        "worker_package": "arms_shoulders_wrists_worker",
+        "part_count": 0,
+        "total_solid_volume_cm3": 0.0,
+        "mounted_robot_bodies": [],
+        "source_subassembly_anchor": {
+          "mounted_body": null,
+          "mounted_bodies": [],
+          "source_bodies": [
+            "right_wrist_roll_link"
+          ],
+          "keepout_bodies": [
+            "right_wrist_roll_link"
+          ],
+          "oem_baseline_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
+          "keepout_oem_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
+          "anchor_role": "right hand/wrist source keepout",
+          "connection_method": "reference-only end-effector keepout; no cosmetic hand shell generated",
+          "anchor_connected": true
+        },
+        "source_robot_anchors": [],
+        "oem_baseline_meshes": [
+          "right_wrist_roll_link.STL"
+        ],
+        "generated_geometry": false,
+        "connection_review": "reference-only-source-keepout",
+        "mount_design_status": "not-applicable-reference-only"
       }
+    },
+    "foot_ankle_balance": {
+      "subassemblies": [
+        "left_foot_ankle",
+        "right_foot_ankle"
+      ],
+      "mounted_robot_bodies": [
+        "left_ankle_roll_link",
+        "right_ankle_roll_link"
+      ],
+      "volume_by_side_cm3": {
+        "left": 43.5296,
+        "right": 51.0222
+      },
+      "left_right_volume_ratio": 1.1721,
+      "panel_gap_verdict": "pass",
+      "mechanical_stress_verdict": "pass",
+      "verdict": "pass"
     },
     "subassemblies": {
       "central_chest_bridge_trim": {
@@ -28507,11 +28723,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "central chest bridge and black trim inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 5,
@@ -28876,11 +29095,14 @@
             "head_yaw_link",
             "head_pitch_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "head_pitch_link.STL",
             "head_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "donor-derived hard-plastic face and seated eye/lip inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -29233,10 +29455,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "front pelvis shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -29461,11 +29686,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left mirrored chest side panel",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -29737,10 +29965,13 @@
           "source_bodies": [
             "left_ankle_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_ankle_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left ankle roll boot shell and outsole",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -30001,7 +30232,7 @@
         "name": "left_forearm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_elbow_link",
@@ -30012,10 +30243,17 @@
             "left_shoulder_yaw_link",
             "left_elbow_link"
           ],
+          "keepout_bodies": [
+            "left_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "left_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
           "anchor_role": "left elbow-link forearm sleeve",
+          "connection_method": "offset shell to elbow-link OEM body envelope before wrist roll",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -30285,10 +30523,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left glute/backside skin",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -30421,12 +30662,15 @@
             "left_hip_roll_link",
             "left_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_hip_pitch_link.STL",
             "left_hip_roll_link.STL",
             "left_hip_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left hip yaw upper-leg shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -30634,8 +30878,25 @@
         "broad_region": "legs",
         "worker_package": "legs_knees_shins_worker",
         "panel_split_strategy": "left knee-link mounted shin sleeve plus front and side armor skins",
-        "configured_source_subassembly": false,
-        "source_subassembly_anchor": null,
+        "configured_source_subassembly": true,
+        "source_subassembly_anchor": {
+          "mounted_body": "left_knee_link",
+          "mounted_bodies": [
+            "left_knee_link"
+          ],
+          "source_bodies": [
+            "left_knee_link"
+          ],
+          "keepout_bodies": [],
+          "oem_baseline_meshes": [
+            "left_knee_collision.STL",
+            "left_knee_link.STL"
+          ],
+          "keepout_oem_meshes": [],
+          "anchor_role": "left knee-link shin sleeve and split armor skins",
+          "connection_method": "offset shell to knee/shin OEM body envelope",
+          "anchor_connected": true
+        },
         "part_count": 3,
         "total_solid_volume_cm3": 34.4485,
         "volume_by_material_cm3": {
@@ -30845,7 +31106,7 @@
             "step_solid_exported": true
           }
         ],
-        "connection_review": "source-connected-parametric-subassembly",
+        "connection_review": "source-anchor-connected-parametric-subassembly",
         "mount_design_status": "needs-fastener-boss-rib-insert-detail"
       },
       "left_rear_hip_fairing": {
@@ -30863,10 +31124,13 @@
             "pelvis",
             "left_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left posterior hip fairing",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -30987,7 +31251,7 @@
         "name": "left_shoulder",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_shoulder_pitch_link",
@@ -30999,11 +31263,14 @@
             "left_shoulder_pitch_link",
             "left_shoulder_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_shoulder_pitch_link.STL",
             "left_shoulder_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left shoulder pitch/roll cap",
+          "connection_method": "source-body-mounted shoulder cosmetic shell",
           "anchor_connected": true
         },
         "part_count": 2,
@@ -31169,7 +31436,7 @@
         "name": "left_upper_arm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left upper-arm sleeve and armor mounted to the shoulder-yaw source body",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_shoulder_yaw_link",
@@ -31181,10 +31448,13 @@
             "left_shoulder_roll_link",
             "left_shoulder_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "left_shoulder_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "left shoulder-yaw upper-arm sleeve",
+          "connection_method": "offset shell to shoulder-yaw OEM body envelope",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -31442,7 +31712,7 @@
         "name": "left_wrist_cuff",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "left slim cuff mounted to forearm end with left_wrist_roll_link reserved as a keepout, not a cosmetic mount",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "left_elbow_link",
@@ -31453,10 +31723,17 @@
             "left_elbow_link",
             "left_wrist_roll_link"
           ],
+          "keepout_bodies": [
+            "left_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "left_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "left_wrist_roll_link.STL"
+          ],
           "anchor_role": "left forearm-end wrist cuff",
+          "connection_method": "forearm-end collar with moving wrist roll kept clear",
           "anchor_connected": true
         },
         "part_count": 1,
@@ -31589,12 +31866,15 @@
             "head_yaw_link",
             "head_pitch_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "head_pitch_link.STL",
             "head_yaw_link.STL",
             "torso_collision.stl"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "black neck carrier between R1 torso and head envelope",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -31746,10 +32026,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "rear seat bridge",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -31896,11 +32179,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "rear torso back spine panel and black cut inserts",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -32183,11 +32469,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right mirrored chest side panel",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -32459,10 +32748,13 @@
           "source_bodies": [
             "right_ankle_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_ankle_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right ankle roll boot shell and outsole",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -32751,7 +33043,7 @@
         "name": "right_forearm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_elbow_link",
@@ -32762,10 +33054,17 @@
             "right_shoulder_yaw_link",
             "right_elbow_link"
           ],
+          "keepout_bodies": [
+            "right_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "right_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
           "anchor_role": "right elbow-link forearm sleeve",
+          "connection_method": "offset shell to elbow-link OEM body envelope before wrist roll",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -33035,10 +33334,13 @@
           "source_bodies": [
             "pelvis"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right glute/backside skin",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -33171,12 +33473,15 @@
             "right_hip_roll_link",
             "right_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_hip_pitch_link.STL",
             "right_hip_roll_link.STL",
             "right_hip_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right hip yaw upper-leg shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 3,
@@ -33384,17 +33689,34 @@
         "broad_region": "legs",
         "worker_package": "legs_knees_shins_worker",
         "panel_split_strategy": "right knee-link mounted shin sleeve plus front and side armor skins",
-        "configured_source_subassembly": false,
-        "source_subassembly_anchor": null,
+        "configured_source_subassembly": true,
+        "source_subassembly_anchor": {
+          "mounted_body": "right_knee_link",
+          "mounted_bodies": [
+            "right_knee_link"
+          ],
+          "source_bodies": [
+            "right_knee_link"
+          ],
+          "keepout_bodies": [],
+          "oem_baseline_meshes": [
+            "right_knee_collision.STL",
+            "right_knee_link.STL"
+          ],
+          "keepout_oem_meshes": [],
+          "anchor_role": "right knee-link shin sleeve and split armor skins",
+          "connection_method": "offset shell to knee/shin OEM body envelope",
+          "anchor_connected": true
+        },
         "part_count": 3,
-        "total_solid_volume_cm3": 22.5005,
+        "total_solid_volume_cm3": 19.6707,
         "volume_by_material_cm3": {
-          "black_underbody": 8.8288,
+          "black_underbody": 5.999,
           "orange_armor": 13.6717
         },
         "volume_by_role_cm3": {
           "armor": 13.6717,
-          "underbody": 8.8288
+          "underbody": 5.999
         },
         "mounted_robot_bodies": [
           "right_knee_link"
@@ -33435,25 +33757,25 @@
         "disconnected_parts": [],
         "world_bbox_home_pose": {
           "min_m": [
-            -0.0018,
+            -0.0008,
             -0.09641,
             0.12961
           ],
           "max_m": [
             0.0907,
-            -0.05591,
-            0.29161
+            -0.05411,
+            0.28761
           ],
           "extents_mm": [
-            92.5,
-            40.5,
-            162.0
+            91.5,
+            42.3,
+            158.0
           ]
         },
         "fit_review": {
-          "minimum_bodykit_to_base_clearance_mm": 5.982,
-          "minimum_non_mounted_clearance_mm": 105.731,
-          "minimum_non_adjacent_clearance_mm": 105.731,
+          "minimum_bodykit_to_base_clearance_mm": 2.012,
+          "minimum_non_mounted_clearance_mm": 104.791,
+          "minimum_non_adjacent_clearance_mm": 104.791,
           "dynamic_clearance_target_mm": 18.0
         },
         "panel_gap_review": {
@@ -33466,7 +33788,7 @@
               "part_b": "right_shin_side_armor",
               "body_b": "right_knee_link",
               "role_b": "armor",
-              "minimum_sampled_gap_mm": 6.04,
+              "minimum_sampled_gap_mm": 2.591,
               "articulated_interface": false,
               "interface_type": "rigid_panel",
               "gap_gate_mm": 2.5,
@@ -33482,9 +33804,9 @@
           "blockers": [
             {
               "pose": "right_hip_roll_joint_high",
-              "clearance_mm": 17.199,
+              "clearance_mm": 17.836,
               "target_mm": 18.0,
-              "shortfall_mm": 0.801,
+              "shortfall_mm": 0.164,
               "part": "right_shin_shell",
               "region": "legs",
               "part_body": "right_knee_link",
@@ -33493,9 +33815,9 @@
               "base_geom_type": "mesh",
               "body_tree_distance": 8,
               "part_sample_point_m": [
-                0.01553,
-                0.11056,
-                0.32475
+                0.01517,
+                0.11211,
+                0.32101
               ],
               "base_sample_point_m": [
                 0.01471,
@@ -33503,14 +33825,14 @@
                 0.33207
               ],
               "part_to_base_vector_m": [
-                -0.00082,
-                0.01554,
-                0.00732
+                -0.00046,
+                0.01398,
+                0.01106
               ],
               "part_to_base_vector_mm": [
-                -0.819,
-                15.543,
-                7.318
+                -0.461,
+                13.985,
+                11.061
               ]
             }
           ]
@@ -33574,7 +33896,7 @@
               "part_centroid_to_body_origin_mm": [
                 -4.0,
                 48.0,
-                -120.0
+                -124.0
               ]
             },
             "oem_baseline_meshes": [
@@ -33582,12 +33904,12 @@
               "right_knee_collision.STL"
             ],
             "local_bbox_mm": [
-              25.0,
-              6.0,
+              23.0,
+              4.4,
               100.0
             ],
-            "solid_volume_cm3": 8.8288,
-            "surface_area_cm2": 47.1736,
+            "solid_volume_cm3": 5.999,
+            "surface_area_cm2": 42.689,
             "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
             "step_solid_exported": true
           },
@@ -33611,7 +33933,7 @@
               ],
               "part_centroid_to_body_origin_mm": [
                 -6.0,
-                48.0,
+                52.0,
                 -176.0
               ]
             },
@@ -33629,7 +33951,7 @@
             "step_solid_exported": true
           }
         ],
-        "connection_review": "source-connected-parametric-subassembly",
+        "connection_review": "source-anchor-connected-parametric-subassembly",
         "mount_design_status": "needs-fastener-boss-rib-insert-detail"
       },
       "right_rear_hip_fairing": {
@@ -33647,10 +33969,13 @@
             "pelvis",
             "right_hip_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "pelvis_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right posterior hip fairing",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -33786,7 +34111,7 @@
         "name": "right_shoulder",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_shoulder_pitch_link",
@@ -33798,11 +34123,14 @@
             "right_shoulder_pitch_link",
             "right_shoulder_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_shoulder_pitch_link.STL",
             "right_shoulder_roll_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right shoulder pitch/roll cap",
+          "connection_method": "source-body-mounted shoulder cosmetic shell",
           "anchor_connected": true
         },
         "part_count": 2,
@@ -33968,7 +34296,7 @@
         "name": "right_upper_arm",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right upper-arm sleeve and armor mounted to the shoulder-yaw source body",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_shoulder_yaw_link",
@@ -33980,10 +34308,13 @@
             "right_shoulder_roll_link",
             "right_shoulder_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "right_shoulder_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "right shoulder-yaw upper-arm sleeve",
+          "connection_method": "offset shell to shoulder-yaw OEM body envelope",
           "anchor_connected": true
         },
         "part_count": 3,
@@ -34227,7 +34558,7 @@
         "name": "right_wrist_cuff",
         "broad_region": "arms",
         "worker_package": "arms_shoulders_wrists_worker",
-        "panel_split_strategy": "source-body-mounted bodykit subassembly",
+        "panel_split_strategy": "right slim cuff mounted to forearm end with right_wrist_roll_link reserved as a keepout, not a cosmetic mount",
         "configured_source_subassembly": true,
         "source_subassembly_anchor": {
           "mounted_body": "right_elbow_link",
@@ -34238,10 +34569,17 @@
             "right_elbow_link",
             "right_wrist_roll_link"
           ],
+          "keepout_bodies": [
+            "right_wrist_roll_link"
+          ],
           "oem_baseline_meshes": [
             "right_elbow_link.STL"
           ],
+          "keepout_oem_meshes": [
+            "right_wrist_roll_link.STL"
+          ],
           "anchor_role": "right forearm-end wrist cuff",
+          "connection_method": "forearm-end collar with moving wrist roll kept clear",
           "anchor_connected": true
         },
         "part_count": 1,
@@ -34373,11 +34711,14 @@
             "torso_link",
             "waist_yaw_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "front torso chest core shell",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 1,
@@ -34528,12 +34869,15 @@
             "waist_yaw_link",
             "waist_roll_link"
           ],
+          "keepout_bodies": [],
           "oem_baseline_meshes": [
             "torso_collision.stl",
             "waist_roll_link.STL",
             "waist_yaw_link.STL"
           ],
+          "keepout_oem_meshes": [],
           "anchor_role": "waist torso bridge",
+          "connection_method": null,
           "anchor_connected": true
         },
         "part_count": 4,
@@ -34801,7 +35145,7 @@
       },
       "legs_knees_shins_worker": {
         "broad_region": "legs",
-        "regional_volume_cm3": 172.8194,
+        "regional_volume_cm3": 169.9896,
         "source_body_subassemblies": [
           "left_hip_upper_leg",
           "left_knee_shin",
@@ -34879,8 +35223,8 @@
         "review_contract": "Own these source-body-mounted subassemblies as connected replacement shells. Preserve source robot body anchors, STEP export, volume accounting, fit clearance, panel-gap gates, and mechanical-stress blocker evidence."
       }
     },
-    "total_solid_volume_cm3": 5143.5804,
-    "note": "Subassembly grouping is evidence that parts are mounted to source robot bodies and reference OEM meshes. It is not final fastening, screw-boss, insert, or molded-rib design."
+    "total_solid_volume_cm3": 5140.7506,
+    "note": "Subassembly grouping is evidence that parts are mounted to source robot bodies and reference OEM meshes. Wrist cuffs are forearm-end collars with wrist-roll bodies reserved as moving keepouts, and configured hand subassemblies are source keepouts because this bodykit pass does not generate cosmetic hand shells. It is not final fastening, screw-boss, insert, or molded-rib design."
   },
   "print_layout": [
     {
@@ -35907,10 +36251,10 @@
       "name": "right_shin_shell",
       "material": "black_underbody",
       "role": "underbody",
-      "bbox_x_mm": 25.0,
-      "bbox_y_mm": 6.0,
+      "bbox_x_mm": 23.0,
+      "bbox_y_mm": 4.4,
       "bbox_z_mm": 100.0,
-      "approx_solid_volume_cm3": 8.83,
+      "approx_solid_volume_cm3": 6.0,
       "recommended_print_axis_up": "z",
       "shapeways_pa12_standard_bbox_ok": true,
       "shapeways_pa12_smooth_color_bbox_ok": true,
@@ -37266,8 +37610,8 @@
     {
       "part": "right_shin_shell",
       "bbox_mm": [
-        25.0,
-        6.0,
+        23.0,
+        4.4,
         100.0
       ],
       "service_print_bbox_ok": true,

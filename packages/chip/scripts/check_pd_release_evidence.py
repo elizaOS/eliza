@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 EVIDENCE_DIR = ROOT / "docs/evidence/pd"
@@ -30,7 +28,14 @@ BLOCKER_CLASS_PATTERNS = {
     "antenna": ("antenna",),
     "timing": ("sta", "timing", "wns", "tns", "slack", "setup", "hold", "spef", "sdf"),
     "drv": ("drv", "slew", "cap", "fanout", "congestion"),
-    "release_artifacts": ("artifact", "manifest", "evidence", "external", "review", "signoff replay"),
+    "release_artifacts": (
+        "artifact",
+        "manifest",
+        "evidence",
+        "external",
+        "review",
+        "signoff replay",
+    ),
 }
 
 BLOCKER_BUCKET_PATTERNS = {
@@ -64,7 +69,15 @@ BLOCKER_BUCKET_PATTERNS = {
     "drc_lvs_antenna_signoff": ("drc", "lvs", "antenna", "klayout", "magic", "netgen"),
     "dfx_or_test_insertion": ("dft", "scan", "mbist", "jtag", "atpg", "fault"),
     "macro_or_pdk_reference": ("openram", "sram", "macro", "lef", "gds", "liberty", "pdk"),
-    "placement_ppa_training": ("alphachip", "dreamplace", "ppo", "h200", "gpu", "autotuner", "optuna"),
+    "placement_ppa_training": (
+        "alphachip",
+        "dreamplace",
+        "ppo",
+        "h200",
+        "gpu",
+        "autotuner",
+        "optuna",
+    ),
     "external_review_required": ("external review", "externally reviewed", "review"),
 }
 
@@ -148,7 +161,9 @@ def source_bootrom_string_blocker_resolved() -> bool:
     return "parameter string" not in text and "string rom_path" not in text
 
 
-def stale_or_misclassified_markers(path: Path, data: dict[str, Any], blockers: list[str]) -> list[dict[str, Any]]:
+def stale_or_misclassified_markers(
+    path: Path, data: dict[str, Any], blockers: list[str]
+) -> list[dict[str, Any]]:
     markers: list[dict[str, Any]] = []
     blocker_text = "\n".join(blockers).lower()
     if path.name == "e1-soc-hard-macro-signoff-gate.yaml":
@@ -157,9 +172,9 @@ def stale_or_misclassified_markers(path: Path, data: dict[str, Any], blockers: l
             isinstance(flow_progress, dict)
             and flow_progress.get("yosys_jsonheader") == "fail_read_verilog_bootrom_sv_string_type"
         )
-        stale_blocker_text = any(token in blocker_text for token in STALE_BOOTROM_STRING_TOKENS) and not (
-            "now fixed" in blocker_text or "fixed in the current" in blocker_text
-        )
+        stale_blocker_text = any(
+            token in blocker_text for token in STALE_BOOTROM_STRING_TOKENS
+        ) and not ("now fixed" in blocker_text or "fixed in the current" in blocker_text)
         if (stale_flow_progress or stale_blocker_text) and source_bootrom_string_blocker_resolved():
             markers.append(
                 {
@@ -193,7 +208,9 @@ def stale_or_misclassified_markers(path: Path, data: dict[str, Any], blockers: l
     return markers
 
 
-def blocker_records(path: Path, data: dict[str, Any], release_blockers: list[Any]) -> list[dict[str, Any]]:
+def blocker_records(
+    path: Path, data: dict[str, Any], release_blockers: list[Any]
+) -> list[dict[str, Any]]:
     records = []
     for index, blocker in enumerate(release_blockers, start=1):
         text = str(blocker)
@@ -204,11 +221,15 @@ def blocker_records(path: Path, data: dict[str, Any], release_blockers: list[Any
                 "text": text,
                 "buckets": buckets,
                 "primary_bucket": buckets[0],
-                "next_command": BUCKET_COMMANDS.get(buckets[0], BUCKET_COMMANDS["release_artifacts"]),
+                "next_command": BUCKET_COMMANDS.get(
+                    buckets[0], BUCKET_COMMANDS["release_artifacts"]
+                ),
                 "release_credit": False,
             }
         )
-    for marker in stale_or_misclassified_markers(path, data, [str(item) for item in release_blockers]):
+    for marker in stale_or_misclassified_markers(
+        path, data, [str(item) for item in release_blockers]
+    ):
         records.append(
             {
                 "index": len(records) + 1,
@@ -355,7 +376,11 @@ def main() -> int:
             release_blockers = data.get("release_blockers") or []
             if not isinstance(release_blockers, list):
                 raise ValueError(f"{rel(path)}: release_blockers must be a list")
-            if status in RELEASE_READY_STATUSES and release_use not in PROHIBITED_RELEASE_USE and not release_blockers:
+            if (
+                status in RELEASE_READY_STATUSES
+                and release_use not in PROHIBITED_RELEASE_USE
+                and not release_blockers
+            ):
                 release_ready += 1
                 continue
             if release_use in PROHIBITED_RELEASE_USE:
@@ -423,9 +448,7 @@ def main() -> int:
                 "release_blockers": release_blocker_count,
                 "bucket_counts": bucket_counts,
                 "bucket_next_actions": release_bucket_next_actions(bucket_counts),
-                "repo_artifact_generation_summary": repo_artifact_generation_summary(
-                    bucket_counts
-                ),
+                "repo_artifact_generation_summary": repo_artifact_generation_summary(bucket_counts),
                 "stale_or_misclassified_diagnostics": stale_or_misclassified_count,
                 "failures": 0,
             },

@@ -270,9 +270,7 @@ def main() -> int:
     record["sku_threshold_context"] = {
         "sku_peak_bandwidth_gbps": sku_data.get("peak_bandwidth_gbps"),
         "sku_sustained_target_gbps_min": sku_data.get("sustained_target_gbps_min"),
-        "phone_profile_peak_bandwidth_gbps_min": external_memory.get(
-            "peak_bandwidth_gbps_min"
-        ),
+        "phone_profile_peak_bandwidth_gbps_min": external_memory.get("peak_bandwidth_gbps_min"),
         "phone_profile_sustained_bandwidth_gbps_min": external_memory.get(
             "sustained_bandwidth_gbps_min"
         ),
@@ -308,9 +306,7 @@ def main() -> int:
         else:
             pass_fail["peak_bandwidth_gbps_min_180"] = "downgraded"
         sku_sustained_min = sku_data.get("sustained_target_gbps_min")
-        if isinstance(sustained_min, (int, float)) and isinstance(
-            sku_sustained_min, (int, float)
-        ):
+        if isinstance(sustained_min, (int, float)) and isinstance(sku_sustained_min, (int, float)):
             sustained_floor = max(sustained_min, sku_sustained_min)
             if metrics["sustained_bandwidth_gbps"] >= sustained_floor:
                 pass_fail["sustained_bandwidth_gbps_min_120"] = "pass"
@@ -329,9 +325,10 @@ def main() -> int:
                     "sustained_bandwidth_gbps "
                     f"{metrics['sustained_bandwidth_gbps']} < required {sustained_floor}"
                 )
-        elif isinstance(sustained_min, (int, float)) and metrics[
-            "sustained_bandwidth_gbps"
-        ] < sustained_min:
+        elif (
+            isinstance(sustained_min, (int, float))
+            and metrics["sustained_bandwidth_gbps"] < sustained_min
+        ):
             pass_fail["sustained_bandwidth_gbps_min_120"] = "fail"
             threshold_failures.append(
                 "sustained_bandwidth_gbps "
@@ -339,7 +336,10 @@ def main() -> int:
             )
         else:
             pass_fail["sustained_bandwidth_gbps_min_120"] = "pass"
-        if isinstance(latency_max, (int, float)) and metrics["p95_random_read_latency_ns"] > latency_max:
+        if (
+            isinstance(latency_max, (int, float))
+            and metrics["p95_random_read_latency_ns"] > latency_max
+        ):
             pass_fail["p95_random_read_latency_ns_max_120"] = "fail"
             threshold_failures.append(
                 f"p95_random_read_latency_ns {metrics['p95_random_read_latency_ns']} > target {latency_max}"

@@ -184,7 +184,9 @@ def load_json_artifact(path: Path, errors: list[str]) -> dict[str, Any] | None:
     return data
 
 
-def validate_scoped_artifact_freshness(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
+def validate_scoped_artifact_freshness(
+    artifact: str, data: dict[str, Any], errors: list[str]
+) -> None:
     captured = parse_utc_timestamp(data.get("captured_utc"))
     if captured is None:
         return
@@ -221,7 +223,9 @@ def validate_source_artifact_hashes(artifact: str, data: dict[str, Any], errors:
             continue
         sha = item.get("sha256")
         if not isinstance(sha, str) or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
-            errors.append(f"{artifact}: provenance.source_artifacts[{index}].sha256 must be lowercase SHA-256")
+            errors.append(
+                f"{artifact}: provenance.source_artifacts[{index}].sha256 must be lowercase SHA-256"
+            )
         elif sha256_file(path) != sha:
             errors.append(f"{artifact}: provenance source hash mismatch: {item.get('path')}")
 
@@ -291,22 +295,46 @@ def is_number(value: Any) -> bool:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def validate_champsim_sweep_artifact(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
+def validate_champsim_sweep_artifact(
+    artifact: str, data: dict[str, Any], errors: list[str]
+) -> None:
     trace_files = data.get("trace_files")
     trace_count = data.get("trace_count")
     variants = data.get("variants_requested")
     missing = data.get("variants_missing")
     results = data.get("results")
     aggregate = data.get("aggregate")
-    require(isinstance(trace_count, int) and trace_count > 0, f"{artifact}: trace_count must be positive", errors)
-    require(isinstance(trace_files, list) and len(trace_files) == trace_count, f"{artifact}: trace_files must match trace_count", errors)
-    require(isinstance(variants, list) and bool(variants), f"{artifact}: variants_requested must be non-empty", errors)
+    require(
+        isinstance(trace_count, int) and trace_count > 0,
+        f"{artifact}: trace_count must be positive",
+        errors,
+    )
+    require(
+        isinstance(trace_files, list) and len(trace_files) == trace_count,
+        f"{artifact}: trace_files must match trace_count",
+        errors,
+    )
+    require(
+        isinstance(variants, list) and bool(variants),
+        f"{artifact}: variants_requested must be non-empty",
+        errors,
+    )
     require(missing == [], f"{artifact}: variants_missing must be empty", errors)
-    require(isinstance(results, list) and bool(results), f"{artifact}: results must be non-empty", errors)
-    if not (isinstance(trace_count, int) and isinstance(variants, list) and isinstance(results, list)):
+    require(
+        isinstance(results, list) and bool(results),
+        f"{artifact}: results must be non-empty",
+        errors,
+    )
+    if not (
+        isinstance(trace_count, int) and isinstance(variants, list) and isinstance(results, list)
+    ):
         return
     expected_runs = trace_count * len(variants)
-    require(len(results) == expected_runs, f"{artifact}: results must cover every trace/variant pair", errors)
+    require(
+        len(results) == expected_runs,
+        f"{artifact}: results must cover every trace/variant pair",
+        errors,
+    )
     seen: set[tuple[str, str]] = set()
     for index, row in enumerate(results):
         if not isinstance(row, dict):
@@ -316,14 +344,25 @@ def validate_champsim_sweep_artifact(artifact: str, data: dict[str, Any], errors
         label = row.get("label")
         if isinstance(trace, str) and isinstance(label, str):
             seen.add((trace, label))
-        require(row.get("returncode") == 0, f"{artifact}: results[{index}] returncode must be 0", errors)
-        require(row.get("parsed") is True, f"{artifact}: results[{index}] parsed must be true", errors)
+        require(
+            row.get("returncode") == 0, f"{artifact}: results[{index}] returncode must be 0", errors
+        )
+        require(
+            row.get("parsed") is True, f"{artifact}: results[{index}] parsed must be true", errors
+        )
         for metric in ("ipc", "instructions", "cycles", "llc_mpki", "l2c_mpki"):
-            require(is_number(row.get(metric)) and row[metric] > 0, f"{artifact}: results[{index}].{metric} must be positive", errors)
+            require(
+                is_number(row.get(metric)) and row[metric] > 0,
+                f"{artifact}: results[{index}].{metric} must be positive",
+                errors,
+            )
         for path_key in ("json_path", "log_path"):
             path_value = row.get(path_key)
             require(
-                isinstance(path_value, str) and path_value and not Path(path_value).is_absolute() and ".." not in Path(path_value).parts,
+                isinstance(path_value, str)
+                and path_value
+                and not Path(path_value).is_absolute()
+                and ".." not in Path(path_value).parts,
                 f"{artifact}: results[{index}].{path_key} must be a relative artifact path",
                 errors,
             )
@@ -335,25 +374,47 @@ def validate_champsim_sweep_artifact(artifact: str, data: dict[str, Any], errors
             if isinstance(trace, str) and isinstance(variant, str)
         }
         missing_pairs = sorted(expected_pairs - seen)
-        require(not missing_pairs, f"{artifact}: missing trace/variant result pairs: {missing_pairs[:3]}", errors)
+        require(
+            not missing_pairs,
+            f"{artifact}: missing trace/variant result pairs: {missing_pairs[:3]}",
+            errors,
+        )
     require(isinstance(aggregate, dict), f"{artifact}: aggregate must be an object", errors)
     if isinstance(aggregate, dict) and isinstance(variants, list):
         for variant in variants:
             if not isinstance(variant, str):
                 continue
             row = aggregate.get(variant)
-            require(isinstance(row, dict), f"{artifact}: aggregate.{variant} must be an object", errors)
+            require(
+                isinstance(row, dict), f"{artifact}: aggregate.{variant} must be an object", errors
+            )
             if isinstance(row, dict):
-                require(row.get("runs") == trace_count, f"{artifact}: aggregate.{variant}.runs must equal trace_count", errors)
-                require(row.get("parsed_runs") == trace_count, f"{artifact}: aggregate.{variant}.parsed_runs must equal trace_count", errors)
+                require(
+                    row.get("runs") == trace_count,
+                    f"{artifact}: aggregate.{variant}.runs must equal trace_count",
+                    errors,
+                )
+                require(
+                    row.get("parsed_runs") == trace_count,
+                    f"{artifact}: aggregate.{variant}.parsed_runs must equal trace_count",
+                    errors,
+                )
                 for metric in ("mean_ipc", "mean_llc_mpki", "mean_l2c_mpki"):
-                    require(is_number(row.get(metric)) and row[metric] > 0, f"{artifact}: aggregate.{variant}.{metric} must be positive", errors)
+                    require(
+                        is_number(row.get(metric)) and row[metric] > 0,
+                        f"{artifact}: aggregate.{variant}.{metric} must be positive",
+                        errors,
+                    )
 
 
-def validate_mockingjay_cocotb_artifact(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
+def validate_mockingjay_cocotb_artifact(
+    artifact: str, data: dict[str, Any], errors: list[str]
+) -> None:
     result = data.get("result")
     threshold = data.get("pass_threshold_abs_or_rel")
-    require(data.get("passed_threshold") is True, f"{artifact}: passed_threshold must be true", errors)
+    require(
+        data.get("passed_threshold") is True, f"{artifact}: passed_threshold must be true", errors
+    )
     require(data.get("test_status") == "PASS", f"{artifact}: test_status must be PASS", errors)
     require(isinstance(result, dict), f"{artifact}: result must be an object", errors)
     if isinstance(result, dict):
@@ -361,26 +422,49 @@ def validate_mockingjay_cocotb_artifact(artifact: str, data: dict[str, Any], err
         abs_gain = result.get("abs_gain")
         mj = result.get("mockingjay_hit_rate")
         lru = result.get("lru_hit_rate")
-        require(is_number(threshold) and threshold > 0, f"{artifact}: pass_threshold_abs_or_rel must be positive", errors)
-        require(is_number(rel_gain) and is_number(abs_gain), f"{artifact}: result gains must be numeric", errors)
+        require(
+            is_number(threshold) and threshold > 0,
+            f"{artifact}: pass_threshold_abs_or_rel must be positive",
+            errors,
+        )
+        require(
+            is_number(rel_gain) and is_number(abs_gain),
+            f"{artifact}: result gains must be numeric",
+            errors,
+        )
         if is_number(threshold) and is_number(rel_gain) and is_number(abs_gain):
             require(
                 rel_gain >= threshold or abs_gain >= threshold,
                 f"{artifact}: passed_threshold requires abs_gain or rel_gain to meet threshold",
                 errors,
             )
-        require(is_number(mj) and is_number(lru) and mj > lru, f"{artifact}: Mockingjay hit rate must exceed LRU", errors)
+        require(
+            is_number(mj) and is_number(lru) and mj > lru,
+            f"{artifact}: Mockingjay hit rate must exceed LRU",
+            errors,
+        )
     stream = data.get("stream")
     require(isinstance(stream, dict), f"{artifact}: stream must be an object", errors)
     if isinstance(stream, dict):
-        require(stream.get("measure_ops", 0) > 0 and stream.get("num_ops", 0) >= stream.get("measure_ops", 0), f"{artifact}: stream measurement window must be positive", errors)
+        require(
+            stream.get("measure_ops", 0) > 0
+            and stream.get("num_ops", 0) >= stream.get("measure_ops", 0),
+            f"{artifact}: stream measurement window must be positive",
+            errors,
+        )
 
 
-def validate_external_prefetchers_artifact(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
+def validate_external_prefetchers_artifact(
+    artifact: str, data: dict[str, Any], errors: list[str]
+) -> None:
     required = {"berti", "ipcp", "bingo", "bop", "pythia"}
     modules = data.get("ported_modules")
     require(isinstance(modules, list), f"{artifact}: ported_modules must be a list", errors)
-    names = {module.get("name") for module in modules if isinstance(module, dict)} if isinstance(modules, list) else set()
+    names = (
+        {module.get("name") for module in modules if isinstance(module, dict)}
+        if isinstance(modules, list)
+        else set()
+    )
     missing = sorted(required - names)
     require(not missing, f"{artifact}: missing ported modules: " + ", ".join(missing), errors)
     if isinstance(modules, list):
@@ -388,29 +472,63 @@ def validate_external_prefetchers_artifact(artifact: str, data: dict[str, Any], 
             if not isinstance(module, dict):
                 continue
             name = module.get("name", "<unknown>")
-            require(isinstance(module.get("path"), str) and (ROOT / module["path"]).is_dir(), f"{artifact}: ported module {name} path must exist", errors)
-            require(isinstance(module.get("loc_total"), int) and module["loc_total"] > 0, f"{artifact}: ported module {name} loc_total must be positive", errors)
+            require(
+                isinstance(module.get("path"), str) and (ROOT / module["path"]).is_dir(),
+                f"{artifact}: ported module {name} path must exist",
+                errors,
+            )
+            require(
+                isinstance(module.get("loc_total"), int) and module["loc_total"] > 0,
+                f"{artifact}: ported module {name} loc_total must be positive",
+                errors,
+            )
     results_artifact = data.get("results_artifact")
-    require(results_artifact == "docs/evidence/cache/champsim_prefetch_sweep_report.json", f"{artifact}: results_artifact must link to prefetch sweep report", errors)
+    require(
+        results_artifact == "docs/evidence/cache/champsim_prefetch_sweep_report.json",
+        f"{artifact}: results_artifact must link to prefetch sweep report",
+        errors,
+    )
     if isinstance(results_artifact, str):
-        require((ROOT / results_artifact).is_file(), f"{artifact}: linked results_artifact missing", errors)
+        require(
+            (ROOT / results_artifact).is_file(),
+            f"{artifact}: linked results_artifact missing",
+            errors,
+        )
 
 
 def validate_pythia_artifact(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
-    require(data.get("results_artifact") == "docs/evidence/cache/champsim_prefetch_sweep_report.json", f"{artifact}: results_artifact must link to prefetch sweep report", errors)
+    require(
+        data.get("results_artifact") == "docs/evidence/cache/champsim_prefetch_sweep_report.json",
+        f"{artifact}: results_artifact must link to prefetch sweep report",
+        errors,
+    )
     for key in ("port_location", "binary", "build_config"):
         value = data.get(key)
-        require(isinstance(value, str) and bool(value), f"{artifact}: {key} must be populated", errors)
+        require(
+            isinstance(value, str) and bool(value), f"{artifact}: {key} must be populated", errors
+        )
         if isinstance(value, str):
-            require((ROOT / value).exists(), f"{artifact}: {key} path does not exist: {value}", errors)
+            require(
+                (ROOT / value).exists(), f"{artifact}: {key} path does not exist: {value}", errors
+            )
     scope = data.get("algorithmic_scope")
     require(isinstance(scope, dict), f"{artifact}: algorithmic_scope must be an object", errors)
     if isinstance(scope, dict):
-        require(scope.get("num_states") == 16384, f"{artifact}: Pythia num_states must remain 16384", errors)
-        require(scope.get("action_space_size") == 16, f"{artifact}: Pythia action_space_size must remain 16", errors)
+        require(
+            scope.get("num_states") == 16384,
+            f"{artifact}: Pythia num_states must remain 16384",
+            errors,
+        )
+        require(
+            scope.get("action_space_size") == 16,
+            f"{artifact}: Pythia action_space_size must remain 16",
+            errors,
+        )
 
 
-def validate_scoped_artifact_semantics(artifact: str, data: dict[str, Any], errors: list[str]) -> None:
+def validate_scoped_artifact_semantics(
+    artifact: str, data: dict[str, Any], errors: list[str]
+) -> None:
     schema = data.get("schema")
     if schema in {
         "eliza.cache.champsim_prefetch_sweep.v1",
@@ -471,9 +589,7 @@ def check_pkg_minimums(gate: dict, errors: list[str]) -> dict[str, int]:
             continue
         actual[name] = value
         if value < minimum:
-            errors.append(
-                f"cache_pkg.sv {name}={value} is below 2028 minimum {minimum}"
-            )
+            errors.append(f"cache_pkg.sv {name}={value} is below 2028 minimum {minimum}")
 
     # Line bytes must match the gate
     line_bytes = parse_pkg_localparam(text, "LINE_BYTES_DEFAULT")
@@ -555,19 +671,33 @@ def check_coherence_report(errors: list[str]) -> None:
     )
     require(data.get("gate") == "cache-coherence-check", "cache coherence gate drifted", errors)
     require(data.get("status") == "PASS", "cache coherence report must be PASS", errors)
-    require(is_utc_timestamp(data.get("as_of")), "cache coherence report as_of must be timestamped", errors)
+    require(
+        is_utc_timestamp(data.get("as_of")),
+        "cache coherence report as_of must be timestamped",
+        errors,
+    )
     evidence_paths = data.get("evidence_paths")
-    require(isinstance(evidence_paths, list), "cache coherence report must list evidence_paths", errors)
+    require(
+        isinstance(evidence_paths, list), "cache coherence report must list evidence_paths", errors
+    )
     if isinstance(evidence_paths, list):
         for rel_path in (
             "rtl/cache/coherence/e1_coherence_dir.sv",
             "verify/cocotb/cache/test_smp_coherence.py",
             "verify/cocotb/cache/test_coherence_vectors.py",
         ):
-            require(rel_path in evidence_paths, f"cache coherence report missing evidence path {rel_path}", errors)
+            require(
+                rel_path in evidence_paths,
+                f"cache coherence report missing evidence path {rel_path}",
+                errors,
+            )
         for rel_path in evidence_paths:
             if isinstance(rel_path, str):
-                require((ROOT / rel_path).exists(), f"cache coherence evidence path missing on disk: {rel_path}", errors)
+                require(
+                    (ROOT / rel_path).exists(),
+                    f"cache coherence evidence path missing on disk: {rel_path}",
+                    errors,
+                )
     for rel_path in (
         "verify/cocotb/cache/results_smp_coherence.xml",
         "verify/cocotb/cache/results_coherence_vectors.xml",
@@ -643,7 +773,9 @@ def check_gate_yaml(errors: list[str]) -> dict:
             name = check.get("name")
             command = check.get("command")
             if not isinstance(name, str) or not name:
-                errors.append(f"cache gate executable_checks[{index}].name must be a non-empty check id")
+                errors.append(
+                    f"cache gate executable_checks[{index}].name must be a non-empty check id"
+                )
                 continue
             if name not in EXPECTED_EXECUTABLE_CHECKS:
                 errors.append(f"cache gate has unexpected executable check id: {name}")
@@ -721,17 +853,14 @@ def check_gate_yaml(errors: list[str]) -> dict:
                 errors,
             )
             if (ROOT / artifact).exists():
-                errors.append(
-                    f"claim {item.get('id')} is blocked but artifact exists: {artifact}"
-                )
+                errors.append(f"claim {item.get('id')} is blocked but artifact exists: {artifact}")
 
     scoped = data.get("scoped_local_evidence_claims") or []
     scoped_ids = {item.get("id") for item in scoped if isinstance(item, dict)}
     missing_scoped = sorted(set(REQUIRED_SCOPED_EVIDENCE_IDS) - scoped_ids)
     require(
         not missing_scoped,
-        "cache gate missing scoped local evidence claim ids: "
-        + ", ".join(missing_scoped),
+        "cache gate missing scoped local evidence claim ids: " + ", ".join(missing_scoped),
         errors,
     )
     for item in scoped:
@@ -747,8 +876,7 @@ def check_gate_yaml(errors: list[str]) -> dict:
             errors,
         )
         require(
-            isinstance(item.get("status"), str)
-            and str(item.get("status")).startswith("scoped_"),
+            isinstance(item.get("status"), str) and str(item.get("status")).startswith("scoped_"),
             f"claim {cid} must carry a scoped_* status",
             errors,
         )
@@ -827,9 +955,7 @@ def main() -> int:
         "blocked_claim_count": len(REQUIRED_BLOCKED_IDS),
         "scoped_local_evidence_claim_count": len(REQUIRED_SCOPED_EVIDENCE_IDS),
     }
-    (out_dir / "cache_hierarchy_gate.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (out_dir / "cache_hierarchy_gate.json").write_text(json.dumps(report, indent=2) + "\n")
     print("Cache hierarchy claim gate passed.")
     print(f"  rtl_modules: {len(REQUIRED_RTL)}")
     print(

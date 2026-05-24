@@ -24,7 +24,9 @@ OUT = ROOT / "build/chipyard/eliza_rocket"
 WORK = OUT / "isa-cache-mmu-probe"
 REPORT = ROOT / "build/reports/cpu_ap_isa_cache_mmu_probe.json"
 RAW_LOG = ROOT / "build/evidence/cpu_ap/isa_cache_mmu_probe/isa_cache_mmu_probe.raw.log"
-COMBINED_SOURCE_LOG = ROOT / "build/evidence/cpu_ap/isa_cache_mmu_probe/isa_cache_mmu.combined-source.log"
+COMBINED_SOURCE_LOG = (
+    ROOT / "build/evidence/cpu_ap/isa_cache_mmu_probe/isa_cache_mmu.combined-source.log"
+)
 FINAL_EVIDENCE = ROOT / "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"
 LINUX_SMOKE_LOG = ROOT / "build/chipyard/eliza_rocket/verilator-linux-smoke.log"
 LINUX_SMOKE_REPORT = ROOT / "build/reports/chipyard_verilator_linux_smoke.json"
@@ -39,9 +41,7 @@ DEFAULT_SIMULATOR = (
 )
 MANIFEST = OUT / "ElizaRocketConfig.manifest.json"
 DTS = OUT / "eliza-e1.dts"
-DRAMSIM_INI = (
-    ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
-)
+DRAMSIM_INI = ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
 FINAL_RAW_MARKERS = (
     "ISA profile",
     "RV64GC",
@@ -312,7 +312,9 @@ def scan_text_markers(path: Path, markers: tuple[str, ...]) -> tuple[list[str], 
                     remaining.remove(marker)
                     found.add(marker)
             carry = text[-max_marker:] if max_marker else ""
-    return [marker for marker in markers if marker in found], [marker for marker in markers if marker in remaining]
+    return [marker for marker in markers if marker in found], [
+        marker for marker in markers if marker in remaining
+    ]
 
 
 def linux_smoke_report_summary() -> dict[str, object]:
@@ -389,7 +391,8 @@ def linux_hwprobe_scan() -> dict[str, object]:
             "workload_packages_helper": "eliza-riscv-hwprobe" in workload_json_text,
             "source": rel(HWPROBE_SOURCE),
             "source_exists": HWPROBE_SOURCE.is_file(),
-            "source_uses_syscall": "__NR_riscv_hwprobe" in (
+            "source_uses_syscall": "__NR_riscv_hwprobe"
+            in (
                 HWPROBE_SOURCE.read_text(encoding="utf-8", errors="ignore")
                 if HWPROBE_SOURCE.is_file()
                 else ""
@@ -596,11 +599,10 @@ def main(argv: list[str]) -> int:
                 "evidence_log_created": FINAL_EVIDENCE.is_file(),
                 "timeout_seconds": args.timeout_seconds,
                 "max_cycles": args.max_cycles,
-                "problems": ["generated-AP bare-metal ISA/cache/MMU probe timed out before completion"],
-                "linux_userspace_hwprobe": linux_hwprobe_scan(),
                 "problems": [
                     "generated-AP bare-metal ISA/cache/MMU probe timed out before completion"
                 ],
+                "linux_userspace_hwprobe": linux_hwprobe_scan(),
                 "updated_utc": utc_now(),
             }
         )
@@ -644,16 +646,8 @@ def main(argv: list[str]) -> int:
         ),
         encoding="utf-8",
     )
-    observed_baremetal = [
-        marker
-        for marker in BAREMETAL_MARKERS
-        if marker in sim_stdout
-    ]
-    missing_baremetal = [
-        marker
-        for marker in BAREMETAL_MARKERS
-        if marker not in sim_stdout
-    ]
+    observed_baremetal = [marker for marker in BAREMETAL_MARKERS if marker in sim_stdout]
+    missing_baremetal = [marker for marker in BAREMETAL_MARKERS if marker not in sim_stdout]
     linux_hwprobe = linux_hwprobe_scan()
     if missing_baremetal:
         status = "fail"
@@ -713,7 +707,9 @@ def main(argv: list[str]) -> int:
                 }
             )
             print(archive_output)
-            print("STATUS: PASS chipyard.isa_cache_mmu_probe - archived final ISA/cache/MMU evidence")
+            print(
+                "STATUS: PASS chipyard.isa_cache_mmu_probe - archived final ISA/cache/MMU evidence"
+            )
             return 0
         status = "fail"
         problems = [

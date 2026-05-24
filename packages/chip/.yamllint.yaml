@@ -27,4 +27,12 @@ rules:
       board/kicad/e1-phone/e1-phone-objective-completion-audit-*.yaml
       board/kicad/e1-phone/e1-phone-readiness-unblock-register-*.yaml
       board/kicad/e1-phone/kicad-route-readiness-inventory-*.yaml
+      board/kicad/e1-phone/kicad-cad-traceability-matrix-*.yaml
+      board/kicad/e1-phone/development-footprint-library-manifest-*.yaml
+      board/kicad/e1-phone/development-pad-pin-coverage-audit-*.yaml
+      board/kicad/e1-phone/real-footprint-development-board-binding-*.yaml
+      board/kicad/e1-phone/real-footprint-development-step-intake-*.yaml
+      board/kicad/e1-phone/routed-development-board-intake-*.yaml
+      board/kicad/e1-phone/pcb/*.metadata.yaml
+      board/kicad/e1-phone/supplier-pinouts/
       docs/evidence/pd/e1-soc-pd-input-contract.yaml

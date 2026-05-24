@@ -1,18 +1,17 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
-import yaml
-
 import check_cache_coherence as coherence
 import check_cache_hierarchy as cache
+import yaml
 
 
 def valid_scoped_artifact() -> dict:
@@ -20,7 +19,7 @@ def valid_scoped_artifact() -> dict:
         "schema": "eliza.cache.local.v1",
         "status": "scoped_local",
         "evidence_class": "local_scoped_class",
-        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "captured_utc": datetime.now(UTC).isoformat(),
         "claim_boundary": "Local cache evidence only; not phone, silicon, or release evidence.",
         "phone_claim_allowed": False,
         "release_claim_allowed": False,
@@ -93,17 +92,13 @@ class CacheHierarchyGateTest(unittest.TestCase):
             source.write_text("local cache source\n", encoding="utf-8")
             gate_path = evidence_dir / "cache-evidence-gate.yaml"
             gate_path.write_text(yaml.safe_dump(gate_data), encoding="utf-8")
-            (evidence_dir / "local.json").write_text(
-                json.dumps(artifact_data), encoding="utf-8"
-            )
+            (evidence_dir / "local.json").write_text(json.dumps(artifact_data), encoding="utf-8")
 
             errors: list[str] = []
             with (
                 mock.patch.object(cache, "ROOT", root),
                 mock.patch.object(cache, "GATE", gate_path),
-                mock.patch.object(
-                    cache, "REQUIRED_BLOCKED_IDS", {"blocked_phone_claim"}
-                ),
+                mock.patch.object(cache, "REQUIRED_BLOCKED_IDS", {"blocked_phone_claim"}),
                 mock.patch.object(
                     cache,
                     "REQUIRED_SCOPED_EVIDENCE_IDS",
@@ -130,7 +125,9 @@ class CacheHierarchyGateTest(unittest.TestCase):
 
         errors = self.run_gate(valid_gate(), artifact)
 
-        self.assertTrue(any("status must explicitly be scoped" in error for error in errors), errors)
+        self.assertTrue(
+            any("status must explicitly be scoped" in error for error in errors), errors
+        )
 
     def test_scoped_artifact_without_claim_flags_is_rejected(self) -> None:
         artifact = valid_scoped_artifact()
@@ -149,9 +146,7 @@ class CacheHierarchyGateTest(unittest.TestCase):
 
         errors = self.run_gate(gate, valid_scoped_artifact())
 
-        self.assertTrue(
-            any("required_artifact_schemas" in error for error in errors), errors
-        )
+        self.assertTrue(any("required_artifact_schemas" in error for error in errors), errors)
 
     def test_blocked_claim_without_artifact_list_is_rejected(self) -> None:
         gate = valid_gate()

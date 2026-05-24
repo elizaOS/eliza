@@ -3518,7 +3518,7 @@ def write_subassembly_volume_report(
         }
     }
     for name, configured_spec in sorted(configured_subassemblies.items()):
-        if name in source_body_subassemblies or configured_spec.get("parts"):
+        if name in source_body_subassemblies or name in reference_only_subassemblies or configured_spec.get("parts"):
             continue
         configured_anchor = dict(configured_spec.get("source_robot_anchor", {}))
         reference_only_subassemblies[name] = {
@@ -3546,6 +3546,47 @@ def write_subassembly_volume_report(
             "mount_design_status": "not-applicable-reference-only",
         }
 
+    foot_ankle_pair = {
+        side: source_body_subassemblies.get(f"{side}_foot_ankle")
+        for side in ("left", "right")
+    }
+    foot_volumes = {
+        side: assembly["total_solid_volume_cm3"]
+        for side, assembly in foot_ankle_pair.items()
+        if assembly is not None
+    }
+    foot_volume_values = list(foot_volumes.values())
+    foot_volume_ratio = (
+        max(foot_volume_values) / min(foot_volume_values)
+        if len(foot_volume_values) == 2 and min(foot_volume_values) > 0
+        else None
+    )
+    foot_ankle_balance = {
+        "subassemblies": sorted(name for name in ["left_foot_ankle", "right_foot_ankle"] if name in source_body_subassemblies),
+        "mounted_robot_bodies": sorted(
+            {
+                body
+                for assembly in foot_ankle_pair.values()
+                if assembly is not None
+                for body in assembly["mounted_robot_bodies"]
+            }
+        ),
+        "volume_by_side_cm3": {side: round(volume, 4) for side, volume in sorted(foot_volumes.items())},
+        "left_right_volume_ratio": round(float(foot_volume_ratio), 4) if foot_volume_ratio is not None else None,
+        "panel_gap_verdict": assemblies["feet_ankles"]["panel_gap_review"]["verdict"],
+        "mechanical_stress_verdict": assemblies["feet_ankles"]["mechanical_stress_review"]["verdict"],
+    }
+    foot_ankle_balance["verdict"] = (
+        "pass"
+        if foot_ankle_balance["subassemblies"] == ["left_foot_ankle", "right_foot_ankle"]
+        and foot_ankle_balance["mounted_robot_bodies"] == ["left_ankle_roll_link", "right_ankle_roll_link"]
+        and foot_ankle_balance["left_right_volume_ratio"] is not None
+        and foot_ankle_balance["left_right_volume_ratio"] < 2.0
+        and foot_ankle_balance["panel_gap_verdict"] == "pass"
+        and foot_ankle_balance["mechanical_stress_verdict"] == "pass"
+        else "needs-work"
+    )
+
     report = {
         "verdict": (
             "pass"
@@ -3566,6 +3607,7 @@ def write_subassembly_volume_report(
         "regional_subassemblies": assemblies,
         "source_body_subassemblies": source_body_subassemblies,
         "reference_only_subassemblies": reference_only_subassemblies,
+        "foot_ankle_balance": foot_ankle_balance,
         "subassemblies": source_body_subassemblies,
         "worker_work_packages": {
             worker_by_region[region]: {

@@ -90,9 +90,7 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
         )
         self.assertGreater(categories["counts"]["present_unapproved_or_placeholder"], 0)
         self.assertGreater(categories["counts"]["candidate_present_but_blocked"], 0)
-        stackup_category = categories["by_path"][
-            "board/kicad/e1-phone/production/stackup"
-        ]
+        stackup_category = categories["by_path"]["board/kicad/e1-phone/production/stackup"]
         self.assertEqual(stackup_category["category"], "present_unapproved_or_placeholder")
         self.assertTrue(stackup_category["release_credit_false"])
         self.assertIn("failure_buckets", stackup_category)

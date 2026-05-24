@@ -495,9 +495,7 @@ def _integrated_top_check(verilator: str, defines: list[str]) -> dict:
     # single Ibex-style host via the vendored tlul_adapter_host + tlul_socket_1n.
     # tlul_adapter_host is the only TL-UL fabric file no block closure pulls in
     # on its own; tlul_socket_1n already comes in via the block flists.
-    adapter_host = str(
-        ROOT / "external/opentitan/opentitan/hw/ip/tlul/rtl/tlul_adapter_host.sv"
-    )
+    adapter_host = str(ROOT / "external/opentitan/opentitan/hw/ip/tlul/rtl/tlul_adapter_host.sv")
     cmd = [
         verilator,
         "--lint-only",
@@ -610,7 +608,7 @@ def check_datapath_kat() -> dict:
     return {
         "id": "datapath_kat_hmac",
         "status": "pass",
-        "detail": "real OpenTitan HMAC computed SHA-256(\"abc\") = "
+        "detail": 'real OpenTitan HMAC computed SHA-256("abc") = '
         "ba7816bf...f20015ad (FIPS 180-4 KAT) through e1_rot_xbar "
         "(tlul_adapter_host -> tlul_socket_1n -> hmac); host->datapath->block "
         "proven functional",
@@ -671,7 +669,7 @@ def check_entropy_kat() -> dict:
         "id": "entropy_stack_functional",
         "status": "pass",
         "detail": "real OpenTitan entropy_src -> csrng -> edn delivered masking "
-        "entropy to KMAC, which computed SHA3-256(\"\") = "
+        'entropy to KMAC, which computed SHA3-256("") = '
         "f8c6ffa7...4a43f880 (FIPS 202 KAT) through e1_rot_xbar; entropy stack "
         "proven functional in BOOT-BYPASS mode (deterministic behavioral RNG, "
         "NOT a FIPS/SP800-90B entropy claim)",
@@ -937,8 +935,7 @@ def main() -> int:
             "SHA3-256 KAT (entropy_stack_functional); AND the real OpenTitan "
             "keymgr advances its key ladder Reset->Init->CreatorRootKey through "
             "the real KMAC KDF and emits an input-bound key "
-            "(keymgr_ladder_functional). Remaining named blocker: "
-            + MISSING_FIPS_ENTROPY_PHYSICAL
+            "(keymgr_ladder_functional). Remaining named blocker: " + MISSING_FIPS_ENTROPY_PHYSICAL
         )
     elif all_crypto_real and kat_pass and entropy_kat_pass:
         # The HMAC datapath and the EDN entropy stack are proven, but the keymgr
@@ -983,8 +980,7 @@ def main() -> int:
         blocker_reason = (
             "All 9 OpenTitan crypto/security blocks elaborate as REAL RTL, but "
             "no functional crypto result is proven through the datapath "
-            f"(datapath_kat_hmac: {kat_detail}). Missing dependency: "
-            + MISSING_DATAPATH
+            f"(datapath_kat_hmac: {kat_detail}). Missing dependency: " + MISSING_DATAPATH
         )
     else:
         status, blocker_id, blocker_reason = "PASS", None, None
@@ -996,11 +992,11 @@ def main() -> int:
             "RTL in e1_rot_top and their TL-UL register ports are WIRED into the "
             "Ibex-style host through e1_rot_xbar (vendored tlul_adapter_host + "
             "tlul_socket_1n). THREE functional datapaths are PROVEN: (a) the HMAC "
-            "datapath -- a FIPS 180-4 SHA-256(\"abc\") KAT computed by the real "
+            'datapath -- a FIPS 180-4 SHA-256("abc") KAT computed by the real '
             "hmac block and read back through the crossbar (datapath_kat_hmac); "
             "(b) the EDN entropy sideband stack -- the real entropy_src -> csrng "
             "-> edn chain delivers masking entropy to the real KMAC, which "
-            "computes a FIPS 202 SHA3-256(\"\") KAT (entropy_stack_functional); "
+            'computes a FIPS 202 SHA3-256("") KAT (entropy_stack_functional); '
             "(c) the keymgr key ladder -- the real OpenTitan keymgr advances "
             "Reset->Init->CreatorRootKey (DONE_SUCCESS, ERR_CODE=0) KDFing each "
             "stage through the real KMAC with EDN-sourced masking entropy, and "

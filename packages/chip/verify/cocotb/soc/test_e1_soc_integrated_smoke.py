@@ -36,7 +36,7 @@ CLINT_MTIME_LO = 0xBFF8
 CLINT_MTIME_HI = 0xBFFC
 
 # PLIC register offsets (RISC-V PLIC v1.0.0 map), context 0 = hart0 M-mode.
-PLIC_PRIORITY = 0x00_0000     # +4*src
+PLIC_PRIORITY = 0x00_0000  # +4*src
 PLIC_ENABLE_CTX0 = 0x00_2000  # bitfield, bit s = source s
 PLIC_THRESHOLD_CTX0 = 0x20_0000
 PLIC_CLAIM_CTX0 = 0x20_0004

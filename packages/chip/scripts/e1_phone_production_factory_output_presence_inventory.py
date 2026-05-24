@@ -26,6 +26,7 @@ DEFAULT_REPORT = (
 DEFAULT_CANDIDATE_MANIFEST = (
     ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml"
 )
+DEFAULT_MANUFACTURING_CLOSURE = ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml"
 REPORT_DATE = "2026-05-22"
 PATH_FIELD_NAMES = {
     "required_outputs",
@@ -180,9 +181,12 @@ def build_report(
     burndown_path: Path,
     report_path: Path,
     candidate_manifest_path: Path = DEFAULT_CANDIDATE_MANIFEST,
+    manufacturing_closure_path: Path = DEFAULT_MANUFACTURING_CLOSURE,
 ) -> dict[str, Any]:
     burndown = read_yaml(burndown_path)
     candidate_manifest = load_candidate_manifest(candidate_manifest_path)
+    manufacturing_closure = read_yaml(manufacturing_closure_path)
+    manufacturing_state = manufacturing_closure.get("board_state_detected", {})
     raw_records = list(walk_required_output_paths(burndown))
     required_outputs = annotate_candidate_rows(
         presence_rows(dedupe_records(raw_records)),
@@ -215,6 +219,7 @@ def build_report(
             "production_factory_output_burndown": display_rel(burndown_path),
             "report_path": display_rel(report_path),
             "factory_output_candidate_manifest": display_rel(candidate_manifest_path),
+            "manufacturing_closure": display_rel(manufacturing_closure_path),
             "source_schema": burndown.get("schema"),
             "source_status": burndown.get("status"),
             "source_date": burndown.get("date"),
@@ -223,9 +228,7 @@ def build_report(
             "required_output_path_count": len(required_outputs),
             "present_required_output_path_count": len(present),
             "missing_required_output_path_count": len(missing),
-            "candidate_present_blocked_required_output_path_count": len(
-                candidate_present_blocked
-            ),
+            "candidate_present_blocked_required_output_path_count": len(candidate_present_blocked),
             "truly_missing_required_output_path_count": len(truly_missing),
             "candidate_manifest_cad_connection_assembly_manifest_part_count": (
                 cad_connection_coverage.get("assembly_manifest_part_count")
@@ -240,6 +243,18 @@ def build_report(
                 cad_connection_coverage.get(
                     "assembly_manifest_missing_connection_solid_step_part_count"
                 )
+            ),
+            "manufacturing_closure_has_production_outputs": manufacturing_state.get(
+                "has_production_outputs"
+            ),
+            "manufacturing_closure_release_output_count": manufacturing_state.get(
+                "release_output_count"
+            ),
+            "manufacturing_closure_has_blocked_candidate_outputs": manufacturing_state.get(
+                "has_blocked_candidate_outputs"
+            ),
+            "manufacturing_closure_blocked_candidate_output_file_count": (
+                manufacturing_state.get("blocked_candidate_output_file_count")
             ),
             "all_required_output_paths_present": not missing,
             "release_state": "blocked_fail_closed",

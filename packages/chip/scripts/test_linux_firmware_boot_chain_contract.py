@@ -90,9 +90,7 @@ def manifest() -> dict:
     }
 
 
-def multiarch_matrix(
-    *, status: str = "candidate-reference", gaps: list[str] | None = None
-) -> dict:
+def multiarch_matrix(*, status: str = "candidate-reference", gaps: list[str] | None = None) -> dict:
     return {
         "schema": "eliza.os.linux.multiarch_boot_matrix.v1",
         "debian_riscv64_port_contract": {

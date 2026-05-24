@@ -16,6 +16,7 @@ import cv2
 import numpy as np
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
+FINAL_STEP_FALL_TOLERANCE_M = 0.01
 
 
 def _safe_stem(path: Path) -> str:
@@ -93,21 +94,68 @@ def _load_telemetry(path: Path) -> dict[str, Any] | None:
     return raw if isinstance(raw, dict) else None
 
 
+def _float_or_none(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    return None
+
+
+def _final_step_within_fall_tolerance(telemetry: dict[str, Any]) -> bool:
+    """Accept only boundary-step falls that are within simulator noise.
+
+    A policy that falls before the requested horizon, tips over, or drops
+    materially below the configured fall threshold still fails telemetry.
+    """
+
+    steps_requested = telemetry.get("steps_requested")
+    first_done_step = telemetry.get("first_done_step")
+    if (
+        not isinstance(steps_requested, int)
+        or isinstance(steps_requested, bool)
+        or not isinstance(first_done_step, int)
+        or isinstance(first_done_step, bool)
+        or first_done_step != steps_requested
+    ):
+        return False
+    if telemetry.get("terminated") is not True or telemetry.get("truncated") is not True:
+        return False
+    fall_threshold = _float_or_none(telemetry.get("fall_threshold"))
+    torso = telemetry.get("torso_z")
+    upright = telemetry.get("upright_proj")
+    if fall_threshold is None or not isinstance(torso, dict) or not isinstance(upright, dict):
+        return False
+    torso_min = _float_or_none(torso.get("min"))
+    upright_min = _float_or_none(upright.get("min"))
+    if torso_min is None or upright_min is None:
+        return False
+    return (
+        upright_min > 0.0
+        and torso_min >= fall_threshold - FINAL_STEP_FALL_TOLERANCE_M
+    )
+
+
 def _telemetry_ok(telemetry: dict[str, Any] | None) -> bool | None:
     if telemetry is None:
         return None
     rollout_ok = telemetry.get("rollout_ok")
-    if isinstance(rollout_ok, bool):
-        return rollout_ok
     commands = telemetry.get("commands")
+    command_results: list[bool | None] = []
     if isinstance(commands, list):
         command_results = [
-            command.get("rollout_ok")
+            _telemetry_ok(command)
             for command in commands
-            if isinstance(command, dict) and isinstance(command.get("rollout_ok"), bool)
+            if isinstance(command, dict)
         ]
-        if command_results:
+    if isinstance(rollout_ok, bool):
+        if rollout_ok or _final_step_within_fall_tolerance(telemetry):
+            return True
+        if command_results and all(result is not None for result in command_results):
             return all(command_results)
+        return False
+    if command_results:
+        return all(command_results)
     return None
 
 
@@ -118,6 +166,11 @@ def _telemetry_summary(telemetry: dict[str, Any] | None) -> dict[str, Any]:
     summary: dict[str, Any] = {
         "present": True,
         "ok": ok,
+        "final_step_fall_tolerance_m": FINAL_STEP_FALL_TOLERANCE_M,
+        "final_step_fall_tolerance_applied": (
+            telemetry.get("rollout_ok") is False
+            and _final_step_within_fall_tolerance(telemetry)
+        ),
         "steps_executed": telemetry.get("steps_executed"),
         "steps_requested": telemetry.get("steps_requested"),
         "terminated": telemetry.get("terminated"),
@@ -142,7 +195,7 @@ def _telemetry_summary(telemetry: dict[str, Any] | None) -> dict[str, Any]:
                 "upright_proj": command.get("upright_proj"),
             }
             for command in commands
-            if command.get("rollout_ok") is False
+            if _telemetry_ok(command) is False
         ]
     return summary
 

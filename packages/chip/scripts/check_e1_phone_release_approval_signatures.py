@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import sys
 import json
 from collections import Counter
 from datetime import datetime
@@ -25,23 +24,16 @@ EXPECTED_SCHEMA = "eliza.e1_phone_release_evidence_content_contract.v1"
 ROW_SCHEMA = "eliza.e1_phone_release_evidence_artifact_content_requirement.v1"
 REPORT = ROOT / "build/reports/e1_phone_release_approval_signatures.json"
 READINESS_MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/readiness/"
+    ROOT / "board/kicad/e1-phone/production/readiness/"
     "release-approval-signature-blocker-matrix-2026-05-23.yaml"
 )
 REPORT_SCHEMA = "eliza.e1_phone_release_approval_signatures.v1"
 READINESS_MATRIX_SCHEMA = "eliza.e1_phone_release_approval_signature_blocker_matrix.v1"
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_release_approval_signatures.py"
-SUPPLIER_RETURN_VALIDATION_COMMAND = (
-    "python3 scripts/check_e1_phone_supplier_return_content.py"
-)
+SUPPLIER_RETURN_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_supplier_return_content.py"
 FIRST_ARTICLE_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_first_article_content.py"
-ENCLOSURE_VALIDATION_COMMAND = (
-    "python3 scripts/check_e1_phone_enclosure_mechanical_content.py"
-)
-ROUTED_OUTPUT_VALIDATION_COMMAND = (
-    "python3 scripts/check_e1_phone_routed_output_content.py"
-)
+ENCLOSURE_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_enclosure_mechanical_content.py"
+ROUTED_OUTPUT_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_routed_output_content.py"
 REQUIRED_SIGNED_METADATA_FIELDS = {
     "owner",
     "reviewer",
@@ -336,9 +328,7 @@ def validation_commands_for_row(row: dict[str, Any]) -> list[str]:
 
 
 def missing_signed_metadata_fields(failures: list[str]) -> list[str]:
-    return sorted(
-        field for field, failure in FIELD_FAILURES.items() if failure in failures
-    )
+    return sorted(field for field, failure in FIELD_FAILURES.items() if failure in failures)
 
 
 def accepted_record_paths_for_row(row: dict[str, Any]) -> list[str]:
@@ -387,16 +377,12 @@ def approval_track_summary(
         }
 
     return {
-        "track_counts": {
-            track: summary["blocked_rows"] for track, summary in tracks.items()
-        },
+        "track_counts": {track: summary["blocked_rows"] for track, summary in tracks.items()},
         "tracks": tracks,
-        "repo_generated_evidence_approval_count": tracks[
-            "repo_generated_evidence_approvals"
-        ]["blocked_rows"],
-        "external_supplier_approval_count": tracks[
-            "external_supplier_approvals"
-        ]["blocked_rows"],
+        "repo_generated_evidence_approval_count": tracks["repo_generated_evidence_approvals"][
+            "blocked_rows"
+        ],
+        "external_supplier_approval_count": tracks["external_supplier_approvals"]["blocked_rows"],
         "template_only_row_count": tracks["template_only_rows"]["blocked_rows"],
     }
 
@@ -426,13 +412,13 @@ def signed_metadata_field_summary(
 def blocked_row_diagnostics(
     blocked_rows: list[tuple[str, dict[str, Any], list[str]]],
 ) -> dict[str, Any]:
-    failure_counts = Counter(
-        failure for _, _row, failures in blocked_rows for failure in failures
-    )
+    failure_counts = Counter(failure for _, _row, failures in blocked_rows for failure in failures)
     category_counts = Counter(
         evidence_category(evidence_id) for evidence_id, _row, _failures in blocked_rows
     )
-    owner_counts = Counter(str(row.get("owner") or "unassigned") for _id, row, _failures in blocked_rows)
+    owner_counts = Counter(
+        str(row.get("owner") or "unassigned") for _id, row, _failures in blocked_rows
+    )
     bucket_counts = Counter(
         FAILURE_BUCKETS.get(failure, {"bucket": "uncategorized"})["bucket"]
         for _, _row, failures in blocked_rows
@@ -450,9 +436,7 @@ def blocked_row_diagnostics(
     next_unblock_groups = []
     for bucket, count in sorted(bucket_counts.items()):
         failures_for_bucket = sorted(
-            failure
-            for failure, metadata in FAILURE_BUCKETS.items()
-            if metadata["bucket"] == bucket
+            failure for failure, metadata in FAILURE_BUCKETS.items() if metadata["bucket"] == bucket
         )
         action = next(
             (
@@ -497,16 +481,13 @@ def blocked_row_diagnostics(
         "repo_generated_evidence_approval_count": track_summary[
             "repo_generated_evidence_approval_count"
         ],
-        "external_supplier_approval_count": track_summary[
-            "external_supplier_approval_count"
-        ],
+        "external_supplier_approval_count": track_summary["external_supplier_approval_count"],
         "template_only_row_count": track_summary["template_only_row_count"],
         "signed_metadata_field_summary": metadata_summary,
         "blocked_category_counts": dict(sorted(category_counts.items())),
         "blocked_owner_counts": dict(sorted(owner_counts.items())),
         "top_failure_examples": {
-            failure: examples[:5]
-            for failure, examples in sorted(first_examples.items())
+            failure: examples[:5] for failure, examples in sorted(first_examples.items())
         },
         "next_unblock_groups": next_unblock_groups,
     }
@@ -547,9 +528,7 @@ def blocked_row_inventory(
                     "Capture validated release evidence with owner, reviewer, timestamp, "
                     "revision or lot, SHA-256, approval, and top-level release gate clearance."
                 ),
-                "owner_action_summary": APPROVAL_TRACKS[
-                    approval_track_for_row(row)
-                ]["action"],
+                "owner_action_summary": APPROVAL_TRACKS[approval_track_for_row(row)]["action"],
                 "validation_command": VALIDATION_COMMAND,
                 "validation_commands": validation_commands_for_row(row),
                 "release_credit": False,

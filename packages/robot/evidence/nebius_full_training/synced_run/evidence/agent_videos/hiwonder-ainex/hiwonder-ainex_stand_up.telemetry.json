@@ -2,7 +2,7 @@
   "profile": "hiwonder-ainex",
   "label": "stand up",
   "task_id": "stand_up",
-  "policy_source": "sb3_smoke",
+  "policy_source": "scripted_smoke",
   "steps_requested": 40,
   "steps_executed": 40,
   "terminated": false,
@@ -11,27 +11,58 @@
   "done_reason": "truncated",
   "fall_threshold": 0.15,
   "torso_z": {
-    "min": 0.23637564580729475,
-    "max": 0.27787594392164006,
-    "final": 0.2425573377181782,
-    "mean": 0.2442985748209024
+    "min": 0.23654185848454226,
+    "max": 0.27784002688252235,
+    "final": 0.24250494834147782,
+    "mean": 0.24424901563880982
   },
   "upright_proj": {
-    "min": 0.9974133808167539,
-    "max": 0.9999996317902244,
-    "final": 0.9974133808167539,
-    "mean": 0.9987986514135458
+    "min": 0.998227843858532,
+    "max": 0.9999997743343031,
+    "final": 0.998227843858532,
+    "mean": 0.9991173624880727
   },
   "reward": {
-    "min": 3.487772051869153,
-    "max": 3.4998897147612067,
-    "final": 3.4983423854166835,
-    "mean": 3.4970838814939222
+    "min": 3.4595529715625526,
+    "max": 3.4998829357522814,
+    "final": 3.4936106715337174,
+    "mean": 3.493988445331503
   },
+  "delta_x_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_y_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_yaw_rad": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "action_norm": {
+    "min": 0.0,
+    "max": 0.0,
+    "final": 0.0,
+    "mean": 0.0
+  },
+  "nonzero_action_steps": 0,
+  "attempted_action": true,
+  "goal_success": false,
+  "goal_failed": false,
+  "goal_reason": "",
   "rollout_ok": true,
   "checks": {
     "no_termination": true,
     "torso_above_fall_threshold": true,
-    "upright_positive": true
+    "upright_positive": true,
+    "attempted_action": true,
+    "goal_success": false
   }
 }

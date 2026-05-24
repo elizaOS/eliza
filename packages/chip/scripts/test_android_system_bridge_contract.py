@@ -83,9 +83,8 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             "PRODUCT_PACKAGES += Eliza\n",
         )
         launcher_main = write(
-            tmp
-            / "app-core/platforms/android/app/src/main/java/ai/milady/milady/MainActivity.java",
-            "class MainActivity { void onCreate(){ webView.addJavascriptInterface(new ElizaNativeBridge(), \"ElizaNative\"); } }\n",
+            tmp / "app-core/platforms/android/app/src/main/java/ai/milady/milady/MainActivity.java",
+            'class MainActivity { void onCreate(){ webView.addJavascriptInterface(new ElizaNativeBridge(), "ElizaNative"); } }\n',
         )
         local_manifest = write(
             chip / "sw/aosp-device/local_manifests/eliza.xml",
@@ -180,12 +179,12 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                 gate.BRIDGE_SERVICE_KT.write_text(
                     "class SystemBridgeService: android.app.Service() {\n"
                     "  override fun onBind(intent: android.content.Intent?) = null\n"
-                    "  fun marker() = \"ElizaSystemBridge: bound\"\n"
+                    '  fun marker() = "ElizaSystemBridge: bound"\n'
                     "}\n",
                     encoding="utf-8",
                 )
                 gate.LAUNCHER_MAIN_ACTIVITY.write_text(
-                    "class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, \"__elizaAndroidBridge\"); } }\n",
+                    'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
                 gate.BRIDGE_GRADLE.write_text(
@@ -217,14 +216,14 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
 """,
                 )
                 gate.LOCAL_MANIFEST.write_text(
-                    '<manifest><project>'
+                    "<manifest><project>"
                     f'<linkfile dest="vendor/{gate.VENDOR_DIR_NAME}/system-ui/native/build.gradle.kts" />'
                     f'<linkfile dest="vendor/{gate.VENDOR_DIR_NAME}/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
-                    + ''.join(
+                    + "".join(
                         f'<copyfile dest="{dest}" />'
                         for dest in sorted(gate.REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS)
                     )
-                    + '</project></manifest>\n',
+                    + "</project></manifest>\n",
                     encoding="utf-8",
                 )
                 write(
@@ -280,12 +279,12 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                 gate.BRIDGE_SERVICE_KT.write_text(
                     "class SystemBridgeService: android.app.Service() {\n"
                     "  override fun onBind(intent: android.content.Intent?) = null\n"
-                    "  fun marker() = \"ElizaSystemBridge: bound\"\n"
+                    '  fun marker() = "ElizaSystemBridge: bound"\n'
                     "}\n",
                     encoding="utf-8",
                 )
                 gate.LAUNCHER_MAIN_ACTIVITY.write_text(
-                    "class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, \"__elizaAndroidBridge\"); } }\n",
+                    'class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, "__elizaAndroidBridge"); } }\n',
                     encoding="utf-8",
                 )
                 gate.BRIDGE_GRADLE.write_text(
@@ -317,7 +316,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
 """,
                 )
                 gate.LOCAL_MANIFEST.write_text(
-                    '<manifest><project>'
+                    "<manifest><project>"
                     '<linkfile dest="vendor/milady/system-ui/native/build.gradle.kts" />'
                     '<linkfile dest="vendor/milady/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
                     '<copyfile dest="vendor/milady/apps/Milady/Milady.apk" />'
@@ -326,7 +325,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     '<copyfile dest="vendor/milady/permissions/default-permissions-ai.milady.milady.xml" />'
                     '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml" />'
                     '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />'
-                    '</project></manifest>\n',
+                    "</project></manifest>\n",
                     encoding="utf-8",
                 )
                 write(

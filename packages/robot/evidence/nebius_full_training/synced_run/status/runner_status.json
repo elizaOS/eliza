@@ -1,22 +1,22 @@
 {
   "schema": "robot-nebius-full-training-runner-v1",
-  "ok": false,
+  "ok": true,
   "state": "complete",
   "bundle_dir": "/root/robot/evidence/full_training_preflight",
   "package_root": "/root/robot",
   "upload_uri": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360",
   "endpoint": "https://storage.eu-north1.nebius.cloud",
-  "started_at": "2026-05-24T03:52:19.424693Z",
+  "started_at": "2026-05-24T07:17:31.872717Z",
   "stages": [
     {
       "schema": "robot-nebius-stage-status-v1",
-      "stage": "00_local_preflight",
-      "script": "/root/robot/evidence/full_training_preflight/scripts/00_local_preflight.sh",
+      "stage": "50_post_train_validation",
+      "script": "/root/robot/evidence/full_training_preflight/scripts/50_post_train_validation.sh",
       "state": "complete",
-      "started_at": "2026-05-24T03:52:19.424829Z",
-      "heartbeat_at": "2026-05-24T03:53:02.467269Z",
-      "log": "/root/robot/logs/00_local_preflight.log",
-      "ended_at": "2026-05-24T03:53:02.467269Z",
+      "started_at": "2026-05-24T07:17:31.872992Z",
+      "heartbeat_at": "2026-05-24T07:20:29.908678Z",
+      "log": "/root/robot/logs/50_post_train_validation.log",
+      "ended_at": "2026-05-24T07:20:29.908678Z",
       "returncode": 0,
       "upload_results": [
         {
@@ -24,7 +24,7 @@
           "source": "/root/robot/logs",
           "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
           "returncode": 0,
-          "stdout_tail": "Completed 38.3 KiB/38.3 KiB (1.4 MiB/s) with 1 file(s) remaining\nupload: logs/00_local_preflight.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/00_local_preflight.log\n",
+          "stdout_tail": "Completed 141.1 KiB/141.1 KiB (8.5 MiB/s) with 1 file(s) remaining\nupload: logs/50_post_train_validation.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/50_post_train_validation.log\n",
           "stderr_tail": ""
         },
         {
@@ -32,21 +32,23 @@
           "source": "/root/robot/status",
           "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
           "returncode": 0,
-          "stdout_tail": "Completed 388 Bytes/793 Bytes (22.1 KiB/s) with 2 file(s) remaining\nupload: status/runner_status.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/runner_status.json\nCompleted 388 Bytes/793 Bytes (22.1 KiB/s) with 1 file(s) remaining\nCompleted 793 Bytes/793 Bytes (28.6 KiB/s) with 1 file(s) remaining\nupload: status/00_local_preflight.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/00_local_preflight.json\n",
+          "stdout_tail": "Completed 423 Bytes/423 Bytes (34.0 KiB/s) with 1 file(s) remaining\nupload: status/50_post_train_validation.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/50_post_train_validation.json\n",
           "stderr_tail": ""
         },
         {
           "ok": true,
-          "skipped": true,
           "source": "/root/robot/checkpoints",
-          "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints"
+          "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+          "returncode": 0,
+          "stdout_tail": "",
+          "stderr_tail": ""
         },
         {
           "ok": true,
           "source": "/root/robot/evidence",
           "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
           "returncode": 0,
-          "stdout_tail": "14.2 MiB/14.5 MiB (20.6 MiB/s) with 6 file(s) remaining\nCompleted 14.2 MiB/14.5 MiB (20.5 MiB/s) with 6 file(s) remaining\nupload: evidence/video_review/video_review.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/video_review.json\nCompleted 14.2 MiB/14.5 MiB (20.5 MiB/s) with 5 file(s) remaining\nCompleted 14.3 MiB/14.5 MiB (20.5 MiB/s) with 5 file(s) remaining\nupload: evidence/video_review/unitree-r1_unitree-r1_walk_forward_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/unitree-r1_unitree-r1_walk_forward_contact.jpg\nCompleted 14.3 MiB/14.5 MiB (20.5 MiB/s) with 4 file(s) remaining\nCompleted 14.4 MiB/14.5 MiB (20.6 MiB/s) with 4 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg\nCompleted 14.4 MiB/14.5 MiB (20.6 MiB/s) with 3 file(s) remaining\nCompleted 14.4 MiB/14.5 MiB (20.7 MiB/s) with 3 file(s) remaining\nupload: evidence/video_review/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg\nCompleted 14.4 MiB/14.5 MiB (20.7 MiB/s) with 2 file(s) remaining\nCompleted 14.4 MiB/14.5 MiB (20.7 MiB/s) with 2 file(s) remaining\nupload: evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg\nCompleted 14.4 MiB/14.5 MiB (20.7 MiB/s) with 1 file(s) remaining\nCompleted 14.5 MiB/14.5 MiB (20.8 MiB/s) with 1 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg\n",
+          "stdout_tail": "ean-1779556360/evidence/agent_videos/asimov-1/asimov-1_turn_left.telemetry.json\nCompleted 2.5 MiB/2.9 MiB (27.3 MiB/s) with 6 file(s) remaining\nCompleted 2.6 MiB/2.9 MiB (25.7 MiB/s) with 6 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_combined_actions_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_combined_actions_contact.jpg\nCompleted 2.6 MiB/2.9 MiB (25.7 MiB/s) with 5 file(s) remaining\nCompleted 2.6 MiB/2.9 MiB (26.3 MiB/s) with 5 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg\nCompleted 2.6 MiB/2.9 MiB (26.3 MiB/s) with 4 file(s) remaining\nCompleted 2.7 MiB/2.9 MiB (27.1 MiB/s) with 4 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_turn_left_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_turn_left_contact.jpg\nCompleted 2.7 MiB/2.9 MiB (27.1 MiB/s) with 3 file(s) remaining\nCompleted 2.7 MiB/2.9 MiB (26.9 MiB/s) with 3 file(s) remaining\nupload: evidence/video_review/video_review.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/video_review.json\nCompleted 2.7 MiB/2.9 MiB (26.9 MiB/s) with 2 file(s) remaining\nCompleted 2.8 MiB/2.9 MiB (27.7 MiB/s) with 2 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_stand_up_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_stand_up_contact.jpg\nCompleted 2.8 MiB/2.9 MiB (27.7 MiB/s) with 1 file(s) remaining\nCompleted 2.9 MiB/2.9 MiB (28.5 MiB/s) with 1 file(s) remaining\nupload: evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg\n",
           "stderr_tail": ""
         }
       ],
@@ -54,6 +56,42 @@
       "final_status_upload_ok": true
     }
   ],
-  "last_stage": "00_local_preflight",
-  "heartbeat_at": "2026-05-24T03:53:06.459311Z"
+  "last_stage": "50_post_train_validation",
+  "heartbeat_at": "2026-05-24T07:20:33.967174Z",
+  "ended_at": "2026-05-24T07:20:33.967362Z",
+  "upload_results": [
+    {
+      "ok": true,
+      "source": "/root/robot/logs",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/status",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
+      "returncode": 0,
+      "stdout_tail": "Completed 3.8 KiB/8.3 KiB (185.2 KiB/s) with 3 file(s) remaining\nupload: status/50_post_train_validation.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/50_post_train_validation.json\nCompleted 3.8 KiB/8.3 KiB (185.2 KiB/s) with 2 file(s) remaining\nCompleted 3.8 KiB/8.3 KiB (115.2 KiB/s) with 2 file(s) remaining\nupload: status/success.txt to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/success.txt\nCompleted 3.8 KiB/8.3 KiB (115.2 KiB/s) with 1 file(s) remaining\nCompleted 8.3 KiB/8.3 KiB (174.5 KiB/s) with 1 file(s) remaining\nupload: status/runner_status.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/runner_status.json\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/checkpoints",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/evidence",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    }
+  ],
+  "upload_ok": true
 }

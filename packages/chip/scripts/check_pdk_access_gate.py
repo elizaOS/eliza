@@ -4,12 +4,10 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 ROOT = Path(__file__).resolve().parents[1]
 ACCESS_GATE = ROOT / "docs/evidence/process/pdk-access-gate.yaml"
@@ -155,7 +153,9 @@ def main() -> int:
             raise ValueError("unblock_requires_global must be a list")
         missing_global = REQUIRED_GLOBAL_UNBLOCKS - set(global_unblocks)
         if missing_global:
-            raise ValueError("missing global unblock requirements: " + ", ".join(sorted(missing_global)))
+            raise ValueError(
+                "missing global unblock requirements: " + ", ".join(sorted(missing_global))
+            )
         configs = portability.get("configs")
         if not isinstance(configs, list):
             raise ValueError("portability configs must be a list")

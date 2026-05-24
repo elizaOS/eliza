@@ -41,7 +41,14 @@
 			"@elizaos/ui": ["../../packages/ui/src/index.ts"],
 			"@elizaos/ui/*": ["../../packages/ui/src/*"],
 			"@elizaos/plugin-wallet": ["../plugin-wallet/src/index.ts"],
-			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"]
+			"@elizaos/plugin-wallet/*": ["../plugin-wallet/src/*"],
+			"react": ["../../node_modules/@types/react/index.d.ts"],
+			"react/jsx-runtime": ["../../node_modules/@types/react/jsx-runtime.d.ts"],
+			"react/jsx-dev-runtime": [
+				"../../node_modules/@types/react/jsx-dev-runtime.d.ts"
+			],
+			"react-dom": ["../../node_modules/@types/react-dom/index.d.ts"],
+			"react-dom/client": ["../../node_modules/@types/react-dom/client.d.ts"]
 		}
 	},
 	"include": ["src/**/*"],

@@ -114,7 +114,8 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             "const url = process.env.ELIZA_BUN_RISCV64_URL;\n",
         )
         android_service = write(
-            app_core / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java",
+            app_core
+            / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java",
             'private static final String HEALTH_URL = "http://127.0.0.1:31337/api/health";\n',
         )
         linux_agent_hook = write(
@@ -254,9 +255,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gate.BUN_RISCV64_BUILD.write_text(
-                    good_bun_riscv64_build_sh().replace(
-                        'WK_LINKER_FLAGS="-fuse-ld=lld"\n', ""
-                    ),
+                    good_bun_riscv64_build_sh().replace('WK_LINKER_FLAGS="-fuse-ld=lld"\n', ""),
                     encoding="utf-8",
                 )
                 report = gate.run_check(Namespace())

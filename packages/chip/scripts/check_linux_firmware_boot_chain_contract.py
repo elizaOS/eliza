@@ -214,7 +214,9 @@ def evidence_next_command(target: str, items: list[dict[str, Any]]) -> str:
         if str(item.get("capture_command", "")).strip()
     ]
     if commands:
-        return " && ".join([*commands, "python3 scripts/check_linux_firmware_boot_chain_contract.py"])
+        return " && ".join(
+            [*commands, "python3 scripts/check_linux_firmware_boot_chain_contract.py"]
+        )
     return f"python3 scripts/check_software_bsp.py {target} --evidence-plan"
 
 
@@ -273,14 +275,12 @@ def selected_grub_chain_declared(matrix: Mapping[str, Any]) -> bool:
         return False
     return (
         contract.get("firmware_chain") == SELECTED_RISCV64_FIRMWARE_CHAIN
-        and SELECTED_RISCV64_BOOTLOADER_PACKAGES <= set(packages)
+        and set(packages) >= SELECTED_RISCV64_BOOTLOADER_PACKAGES
         and contract.get("removable_uefi_path") == "EFI/boot/bootriscv64.efi"
     )
 
 
-def check_selected_grub_chain(
-    findings: list[Finding], matrix: Mapping[str, Any]
-) -> bool:
+def check_selected_grub_chain(findings: list[Finding], matrix: Mapping[str, Any]) -> bool:
     if not selected_grub_chain_declared(matrix):
         findings.append(
             Finding(
@@ -312,8 +312,7 @@ def check_selected_grub_chain(
             ]
             if blocking_gaps:
                 problems.append(
-                    "riscv64 still has production-blocking gaps: "
-                    + "; ".join(blocking_gaps)
+                    "riscv64 still has production-blocking gaps: " + "; ".join(blocking_gaps)
                 )
         iso = row.get("iso")
         sha = row.get("sha256")
@@ -503,9 +502,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         "manifest": rel(EVIDENCE_MANIFEST),
         "preflight_report": rel(PREFLIGHT_REPORT),
         "software_bsp_checker": rel(CHECK_SOFTWARE_BSP),
-        "elizaos_multiarch_boot_matrix": str(
-            ELIZAOS_MULTIARCH_BOOT_MATRIX.relative_to(REPO_ROOT)
-        ),
+        "elizaos_multiarch_boot_matrix": str(ELIZAOS_MULTIARCH_BOOT_MATRIX.relative_to(REPO_ROOT)),
         "selected_riscv64_firmware_chain": SELECTED_RISCV64_FIRMWARE_CHAIN,
         "selected_grub_ready": selected_grub_ready if manifest and boot_matrix else False,
         "targets": list(TARGETS),

@@ -5,7 +5,6 @@ import sys
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/package_cross_probe.json"
 
@@ -35,9 +34,7 @@ class PackageCrossProbeReleaseTests(unittest.TestCase):
             len(payload["release_artifact_contract"]),
             5,
         )
-        contract = {
-            row["artifact"]: row for row in payload["release_artifact_contract"]
-        }
+        contract = {row["artifact"]: row for row in payload["release_artifact_contract"]}
         self.assertIn("vendor_package_drawing", contract)
         self.assertFalse(contract["vendor_package_drawing"]["release_credit"])
         self.assertEqual(
@@ -60,14 +57,15 @@ class PackageCrossProbeReleaseTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
 
         payload = json.loads(REPORT.read_text())
-        buckets = {
-            row["bucket"]: row for row in payload["release_unblock_action_inventory"]
-        }
+        buckets = {row["bucket"]: row for row in payload["release_unblock_action_inventory"]}
         self.assertIn("vendor_package_drawing", buckets)
         self.assertIn("bond_diagram", buckets)
         self.assertIn("package_padframe_board_cross_probe", buckets)
         self.assertTrue(
-            all(row["release_credit"] is False for row in payload["release_unblock_action_inventory"])
+            all(
+                row["release_credit"] is False
+                for row in payload["release_unblock_action_inventory"]
+            )
         )
 
     def test_report_separates_vendor_gaps_from_local_planning_evidence(self) -> None:
@@ -84,7 +82,10 @@ class PackageCrossProbeReleaseTests(unittest.TestCase):
         self.assertTrue(payload["present_local_planning_evidence"])
         self.assertTrue(payload["release_credit_false_artifacts"])
         self.assertTrue(
-            all(row["release_use"] == "prohibited" for row in payload["release_credit_false_artifacts"])
+            all(
+                row["release_use"] == "prohibited"
+                for row in payload["release_credit_false_artifacts"]
+            )
         )
 
 

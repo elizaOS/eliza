@@ -14,10 +14,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 PROCESS_EFFECTS_CONTRACT_PATH = "docs/spec-db/process-14a-effects.yaml"
-TEMPLATE = (
-    ROOT
-    / "docs/evidence/memory/templates/bandwidth-latency-contended-access.template.json"
-)
+TEMPLATE = ROOT / "docs/evidence/memory/templates/bandwidth-latency-contended-access.template.json"
 UMA_GATE = ROOT / "docs/evidence/memory/uma-dram-evidence-gate.yaml"
 DRAM_SIM_EVIDENCE = ROOT / "docs/evidence/memory/dram_sim_evidence.yaml"
 
@@ -142,14 +139,20 @@ def load_uma_gate_contract() -> tuple[dict[str, str], list[str]]:
     if not isinstance(data, dict):
         return {}, []
     schemas = data.get("required_artifact_schemas")
-    schema_map = {
-        key: value
-        for key, value in schemas.items()
-        if isinstance(key, str) and isinstance(value, str)
-    } if isinstance(schemas, dict) else {}
+    schema_map = (
+        {
+            key: value
+            for key, value in schemas.items()
+            if isinstance(key, str) and isinstance(value, str)
+        }
+        if isinstance(schemas, dict)
+        else {}
+    )
     contract = data.get("bandwidth_latency_evidence_contract")
     fields = contract.get("minimum_report_fields") if isinstance(contract, dict) else None
-    minimum_fields = [field for field in fields if isinstance(field, str)] if isinstance(fields, list) else []
+    minimum_fields = (
+        [field for field in fields if isinstance(field, str)] if isinstance(fields, list) else []
+    )
     return schema_map, minimum_fields
 
 
@@ -177,9 +180,7 @@ def validate_uma_gate(errors: list[str]) -> None:
         errors.append(f"missing gate {UMA_GATE.relative_to(ROOT)}")
         return
     data = load_yaml(UMA_GATE)
-    require(
-        isinstance(data, dict), "UMA DRAM evidence gate must be a YAML mapping", errors
-    )
+    require(isinstance(data, dict), "UMA DRAM evidence gate must be a YAML mapping", errors)
     if not isinstance(data, dict):
         return
 
@@ -202,9 +203,7 @@ def validate_uma_gate(errors: list[str]) -> None:
     )
     if isinstance(target, dict):
         external = target.get("external_memory")
-        require(
-            isinstance(external, dict), "UMA DRAM gate missing external_memory", errors
-        )
+        require(isinstance(external, dict), "UMA DRAM gate missing external_memory", errors)
         if isinstance(external, dict):
             for key in (
                 "capacity_gib_min",
@@ -264,9 +263,7 @@ def validate_uma_gate(errors: list[str]) -> None:
             continue
         for artifact in artifacts:
             if not isinstance(artifact, str):
-                errors.append(
-                    f"memory claim {claim_id} has non-string evidence artifact"
-                )
+                errors.append(f"memory claim {claim_id} has non-string evidence artifact")
                 continue
             declared_artifacts.add(artifact)
             expected_schema = schema_map.get(artifact)
@@ -276,9 +273,7 @@ def validate_uma_gate(errors: list[str]) -> None:
                 errors,
             )
             if (ROOT / artifact).exists():
-                errors.append(
-                    f"memory claim {claim_id} is blocked but artifact exists: {artifact}"
-                )
+                errors.append(f"memory claim {claim_id} is blocked but artifact exists: {artifact}")
 
     extra_schema_artifacts = sorted(set(schema_map) - declared_artifacts)
     require(
@@ -321,9 +316,7 @@ def validate_uma_gate(errors: list[str]) -> None:
         )
 
 
-def validate_dramsim_aggregate(
-    errors: list[str], path: Path = DRAM_SIM_EVIDENCE
-) -> None:
+def validate_dramsim_aggregate(errors: list[str], path: Path = DRAM_SIM_EVIDENCE) -> None:
     if not path.is_file():
         rel = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
         errors.append(f"missing DRAMSim aggregate {rel}")
@@ -365,9 +358,7 @@ def validate_dramsim_aggregate(
         f"{rel}: simulator_limitations incomplete",
         errors,
     )
-    combined_boundary = " ".join(
-        flatten_strings([context, limitations, data.get("claim_rules")])
-    )
+    combined_boundary = " ".join(flatten_strings([context, limitations, data.get("claim_rules")]))
     for token in DRAMSIM_CLAIM_BOUNDARY_TOKENS:
         require(
             token in combined_boundary.lower(),
@@ -507,8 +498,7 @@ def validate_dramsim_aggregate(
             for report_path in sorted(actual_paths):
                 digest = report_artifact_hashes.get(report_path)
                 require(
-                    isinstance(digest, str)
-                    and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+                    isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
                     f"{rel}: {report_path} missing report_artifacts sha256 binding",
                     errors,
                 )
@@ -543,14 +533,12 @@ def validate_dramsim_aggregate(
     missing_report_artifacts = sorted(all_report_paths - set(report_artifact_hashes))
     require(
         not missing_report_artifacts,
-        f"{rel}: report_artifacts missing listed reports: "
-        + ", ".join(missing_report_artifacts),
+        f"{rel}: report_artifacts missing listed reports: " + ", ".join(missing_report_artifacts),
         errors,
     )
     require(
         not extra_report_artifacts,
-        f"{rel}: report_artifacts contains unlisted reports: "
-        + ", ".join(extra_report_artifacts),
+        f"{rel}: report_artifacts contains unlisted reports: " + ", ".join(extra_report_artifacts),
         errors,
     )
 
@@ -561,9 +549,7 @@ def validate_dramsim_aggregate(
         errors,
     )
     if isinstance(sanity, list):
-        sanity_by_sku = {
-            item.get("sku"): item for item in sanity if isinstance(item, dict)
-        }
+        sanity_by_sku = {item.get("sku"): item for item in sanity if isinstance(item, dict)}
         for sku_id in DRAMSIM_SKUS:
             row = sanity_by_sku.get(sku_id)
             require(
@@ -599,9 +585,7 @@ def validate_dramsim_report(
         errors.append(f"{report_path}: listed DRAMSim report is missing")
         return
     data = load_json(path)
-    require(
-        isinstance(data, dict), f"{report_path}: report must be a JSON object", errors
-    )
+    require(isinstance(data, dict), f"{report_path}: report must be a JSON object", errors)
     if not isinstance(data, dict):
         return
     require(
@@ -641,9 +625,7 @@ def validate_dramsim_report(
         errors,
     )
     require(
-        str(data.get("standard", "")).startswith(
-            DRAMSIM_SKUS[sku_id]["standard"].split("-")[0]
-        ),
+        str(data.get("standard", "")).startswith(DRAMSIM_SKUS[sku_id]["standard"].split("-")[0]),
         f"{report_path}: standard does not match {sku_id}",
         errors,
     )
@@ -694,16 +676,21 @@ def validate_dramsim_report(
             )
             require(path_ok, f"{report_path}: raw_artifacts[{index}].path must be relative", errors)
             require(
-                isinstance(digest, str)
-                and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
+                isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) is not None,
                 f"{report_path}: raw_artifacts[{index}].sha256 must be lowercase hex",
                 errors,
             )
             if path_ok:
                 raw_paths.add(path_value)
                 raw_path = ROOT / path_value
-                require(raw_path.is_file(), f"{report_path}: raw artifact missing: {path_value}", errors)
-                if raw_path.is_file() and isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest):
+                require(
+                    raw_path.is_file(), f"{report_path}: raw artifact missing: {path_value}", errors
+                )
+                if (
+                    raw_path.is_file()
+                    and isinstance(digest, str)
+                    and re.fullmatch(r"[0-9a-f]{64}", digest)
+                ):
                     require(
                         sha256_file(raw_path) == digest,
                         f"{report_path}: raw_artifacts[{index}].sha256 does not match {path_value}",
@@ -712,8 +699,7 @@ def validate_dramsim_report(
     for field in ("raw_log_path", "raw_stats_path"):
         value = data.get(field)
         require(
-            isinstance(value, str)
-            and value in raw_paths,
+            isinstance(value, str) and value in raw_paths,
             f"{report_path}: {field} must be listed in raw_artifacts with matching hash",
             errors,
         )
@@ -725,15 +711,12 @@ def validate_template(errors: list[str]) -> None:
         return
 
     data = load_json(TEMPLATE)
-    require(
-        isinstance(data, dict), "memory evidence template must be a JSON object", errors
-    )
+    require(isinstance(data, dict), "memory evidence template must be a JSON object", errors)
     if not isinstance(data, dict):
         return
 
     require(
-        data.get("schema")
-        == "eliza.memory.bandwidth_latency_contended_access.template.v1",
+        data.get("schema") == "eliza.memory.bandwidth_latency_contended_access.template.v1",
         "memory evidence template schema drifted",
         errors,
     )
@@ -751,9 +734,7 @@ def validate_template(errors: list[str]) -> None:
     if not isinstance(report, dict):
         return
 
-    placeholders = [
-        text for text in flatten_strings(report) if PLACEHOLDER_RE.search(text)
-    ]
+    placeholders = [text for text in flatten_strings(report) if PLACEHOLDER_RE.search(text)]
     require(
         len(placeholders) >= 16,
         "memory evidence template must keep explicit placeholders in every required field",
@@ -873,9 +854,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
         )
 
     placeholder_hits = [
-        text
-        for text in flatten_strings(data)
-        if PLACEHOLDER_RE.search(text) or text.strip() == ""
+        text for text in flatten_strings(data) if PLACEHOLDER_RE.search(text) or text.strip() == ""
     ]
     require(
         not placeholder_hits,
@@ -914,9 +893,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
     )
 
     process = at(data, ("process_corners",))
-    require(
-        isinstance(process, dict), f"{rel}: process_corners must be an object", errors
-    )
+    require(isinstance(process, dict), f"{rel}: process_corners must be an object", errors)
     if isinstance(process, dict):
         contract = process.get("process_effects_contract")
         require(
@@ -943,8 +920,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
                 and re.fullmatch(r"[0-9a-f]{64}", contract["sha256"]) is not None
             ):
                 require(
-                    contract_path.is_file()
-                    and sha256_file(contract_path) == contract["sha256"],
+                    contract_path.is_file() and sha256_file(contract_path) == contract["sha256"],
                     f"{rel}: process_effects_contract sha256 must match {PROCESS_EFFECTS_CONTRACT_PATH}",
                     errors,
                 )
@@ -970,8 +946,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
     memory_type = at(data, ("memory_config", "memory_type"))
     require(
         isinstance(memory_type, str)
-        and memory_type
-        not in {"AXI-Lite SRAM model", "SimDRAM", "host DRAM", "unknown"},
+        and memory_type not in {"AXI-Lite SRAM model", "SimDRAM", "host DRAM", "unknown"},
         f"{rel}: memory_type must name a real target memory type or explicit downgrade",
         errors,
     )
@@ -983,9 +958,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
     )
 
     metrics = at(data, ("parsed_metrics",))
-    require(
-        isinstance(metrics, dict), f"{rel}: parsed_metrics must be an object", errors
-    )
+    require(isinstance(metrics, dict), f"{rel}: parsed_metrics must be an object", errors)
     if isinstance(metrics, dict):
         missing = sorted(REQUIRED_METRICS - set(metrics))
         require(not missing, f"{rel}: missing metrics: " + ", ".join(missing), errors)
@@ -1019,9 +992,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
             )
         if pass_fail.get("overall") == "pass":
             not_passed = sorted(
-                key
-                for key in REQUIRED_PASS_FAIL_KEYS - {"overall"}
-                if pass_fail.get(key) != "pass"
+                key for key in REQUIRED_PASS_FAIL_KEYS - {"overall"} if pass_fail.get(key) != "pass"
             )
             require(
                 not not_passed,

@@ -38,8 +38,8 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
                 self.assertIn(":6520", command[2])
                 return capture.Probe(
                     True,
-                    "LISTEN 0 128 127.0.0.1:5037 0.0.0.0:* users:((\"adb\"))\n"
-                    "LISTEN 0 128 0.0.0.0:6520 0.0.0.0:* users:((\"socket_vsock_proxy\"))\n",
+                    'LISTEN 0 128 127.0.0.1:5037 0.0.0.0:* users:(("adb"))\n'
+                    'LISTEN 0 128 0.0.0.0:6520 0.0.0.0:* users:(("socket_vsock_proxy"))\n',
                 )
             if command[:2] == ["sh", "-lc"] and "latest_instance=" in command[2]:
                 return capture.Probe(
@@ -79,7 +79,9 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
         self.assertEqual(observations["host_runtime"]["adb_ready_target_count"], 0)
         self.assertEqual(observations["host_runtime"]["adb_blocker"], "no_ready_adb_device")
         self.assertIn(":6520", observations["host_runtime"]["tcp_listeners"])
-        self.assertIn("android.security.maintenance", observations["host_runtime"]["cuttlefish_runtime"])
+        self.assertIn(
+            "android.security.maintenance", observations["host_runtime"]["cuttlefish_runtime"]
+        )
         artifact_inventory = observations["host_runtime"]["aosp_build_only"]["artifact_inventory"]
         self.assertEqual(artifact_inventory["blocker_dependency"], "repo_artifact_generation")
         self.assertEqual(artifact_inventory["missing"], list(capture.AOSP_EXPECTED_ARTIFACT_NAMES))
@@ -116,7 +118,9 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
             if "getprop ro.build.version.sdk" in text:
                 return capture.Probe(True, "36\n")
             if f"ls -l {capture.DEFAULT_SYSTEM_APK}" in text:
-                return capture.Probe(True, f"-rw-r--r-- 1 root root 1 2026-05-22 {capture.DEFAULT_SYSTEM_APK}\n")
+                return capture.Probe(
+                    True, f"-rw-r--r-- 1 root root 1 2026-05-22 {capture.DEFAULT_SYSTEM_APK}\n"
+                )
             if "pm list packages -f | grep -i eliza" in text:
                 return capture.Probe(True, f"package:{capture.DEFAULT_SYSTEM_APK}={package}\n")
             if f"pm path {package}" in text:
@@ -124,7 +128,9 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
             if "resolve-activity" in text:
                 return capture.Probe(True, f"{package}/.MainActivity\n")
             if "dumpsys activity activities" in text:
-                return capture.Probe(True, f"mResumedActivity: ActivityRecord{{ {package}/.MainActivity }}\n")
+                return capture.Probe(
+                    True, f"mResumedActivity: ActivityRecord{{ {package}/.MainActivity }}\n"
+                )
             if "dumpsys window" in text:
                 return capture.Probe(True, "")
             if "dumpsys activity services" in text:
@@ -155,7 +161,9 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
             )
             with (
                 mock.patch.object(capture, "run", side_effect=fake_run),
-                mock.patch.object(capture, "http_health", return_value=(200, True, '{"ready":true}')),
+                mock.patch.object(
+                    capture, "http_health", return_value=(200, True, '{"ready":true}')
+                ),
             ):
                 report = capture.build_report(args)
             args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -169,7 +177,10 @@ class LauncherRuntimeCaptureTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "PASS")
         self.assertEqual(report["target_label"], "chip-riscv64")
-        self.assertEqual(set(report["app"]["permission_file_symlink_targets"]), set(capture.PERMISSION_FILE_PATHS))
+        self.assertEqual(
+            set(report["app"]["permission_file_symlink_targets"]),
+            set(capture.PERMISSION_FILE_PATHS),
+        )
         self.assertEqual(gate_report["status"], "pass")
 
 

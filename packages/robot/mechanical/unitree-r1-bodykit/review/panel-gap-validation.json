@@ -39,6 +39,20 @@
       "below_gap_gate": false
     },
     {
+      "part_a": "right_shin_shell",
+      "body_a": "right_knee_link",
+      "role_a": "underbody",
+      "part_b": "right_shin_side_armor",
+      "body_b": "right_knee_link",
+      "role_b": "armor",
+      "minimum_sampled_gap_mm": 2.591,
+      "articulated_interface": false,
+      "interface_type": "rigid_panel",
+      "gap_gate_mm": 2.5,
+      "below_nominal_gap": false,
+      "below_gap_gate": false
+    },
+    {
       "part_a": "right_upper_arm_front_armor",
       "body_a": "right_shoulder_yaw_link",
       "role_a": "armor",
@@ -259,20 +273,6 @@
       "articulated_interface": true,
       "interface_type": "articulated",
       "gap_gate_mm": 1.0,
-      "below_nominal_gap": false,
-      "below_gap_gate": false
-    },
-    {
-      "part_a": "right_shin_shell",
-      "body_a": "right_knee_link",
-      "role_a": "underbody",
-      "part_b": "right_shin_side_armor",
-      "body_b": "right_knee_link",
-      "role_b": "armor",
-      "minimum_sampled_gap_mm": 6.04,
-      "articulated_interface": false,
-      "interface_type": "rigid_panel",
-      "gap_gate_mm": 2.5,
       "below_nominal_gap": false,
       "below_gap_gate": false
     },

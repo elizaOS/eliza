@@ -382,8 +382,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     )
     add_if(
         findings,
-        PROVENANCE_ENTRY in entries
-        and provenance.get("schema") != AOSP_PROVENANCE_SCHEMA,
+        PROVENANCE_ENTRY in entries and provenance.get("schema") != AOSP_PROVENANCE_SCHEMA,
         "aosp_build_provenance_schema_mismatch",
         "staged APK AOSP build provenance has the wrong schema",
         f"schema={provenance.get('schema')!r}",
@@ -400,8 +399,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     )
     add_if(
         findings,
-        PROVENANCE_ENTRY in entries
-        and provenance.get("apk_name") != apk.name,
+        PROVENANCE_ENTRY in entries and provenance.get("apk_name") != apk.name,
         "aosp_build_provenance_apk_name_mismatch",
         "staged APK AOSP build provenance names a different APK artifact",
         f"expected={apk.name!r} recorded={provenance.get('apk_name')!r}",
@@ -418,8 +416,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     add_if(
         findings,
         RUNTIME_PROVENANCE_ENTRY in entries
-        and runtime_provenance.get("schema")
-        != RUNTIME_PROVENANCE_SCHEMA,
+        and runtime_provenance.get("schema") != RUNTIME_PROVENANCE_SCHEMA,
         "runtime_provenance_schema_mismatch",
         "runtime payload provenance has the wrong schema",
         f"schema={runtime_provenance.get('schema')!r}",
@@ -428,8 +425,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
     add_if(
         findings,
         RUNTIME_PROVENANCE_ENTRY in entries
-        and runtime_provenance.get("claim_boundary")
-        != RUNTIME_PROVENANCE_CLAIM_BOUNDARY,
+        and runtime_provenance.get("claim_boundary") != RUNTIME_PROVENANCE_CLAIM_BOUNDARY,
         "runtime_provenance_claim_boundary_mismatch",
         "runtime payload provenance has the wrong claim boundary",
         f"expected={RUNTIME_PROVENANCE_CLAIM_BOUNDARY!r} recorded={runtime_provenance.get('claim_boundary')!r}",
@@ -614,9 +610,7 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         else 0,
         "required_entries": list(REQUIRED_ENTRIES),
         "riscv64_runtime_build_commands": list(RISCV64_RUNTIME_BUILD_COMMANDS),
-        "riscv64_runtime_provenance_requirements": list(
-            RISCV64_RUNTIME_PROVENANCE_REQUIREMENTS
-        ),
+        "riscv64_runtime_provenance_requirements": list(RISCV64_RUNTIME_PROVENANCE_REQUIREMENTS),
         "missing_entries": missing,
         "missing_common_entries": missing_common,
         "missing_riscv64_agent_runtime_entries": missing_riscv_agent,

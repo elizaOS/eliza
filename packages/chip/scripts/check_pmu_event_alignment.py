@@ -115,9 +115,7 @@ def main(argv: list[str] | None = None) -> int:
             )
 
     # Branch-block Zihpm entries (1..PMU_EVENTS) must all have a remap source.
-    branch_block_zihpm = {
-        name: val for name, val in zihpm.items() if 1 <= val <= len(bpu)
-    }
+    branch_block_zihpm = {name: val for name, val in zihpm.items() if 1 <= val <= len(bpu)}
     seen_zihpm_dests = set(remap.values())
     for zihpm_name in branch_block_zihpm:
         if zihpm_name not in seen_zihpm_dests:

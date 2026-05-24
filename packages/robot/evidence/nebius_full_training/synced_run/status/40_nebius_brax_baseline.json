@@ -1,0 +1,47 @@
+{
+  "schema": "robot-nebius-stage-status-v1",
+  "stage": "40_nebius_brax_baseline",
+  "script": "/root/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
+  "state": "complete",
+  "started_at": "2026-05-24T06:47:49.758955Z",
+  "heartbeat_at": "2026-05-24T06:48:38.557400Z",
+  "log": "/root/robot/logs/40_nebius_brax_baseline.log",
+  "ended_at": "2026-05-24T06:48:38.557400Z",
+  "returncode": 0,
+  "upload_results": [
+    {
+      "ok": true,
+      "source": "/root/robot/logs",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
+      "returncode": 0,
+      "stdout_tail": "Completed 49.3 KiB/49.3 KiB (3.7 MiB/s) with 1 file(s) remaining\nupload: logs/40_nebius_brax_baseline.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/40_nebius_brax_baseline.log\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/status",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
+      "returncode": 0,
+      "stdout_tail": "Completed 420 Bytes/808 Bytes (25.8 KiB/s) with 2 file(s) remaining\nupload: status/40_nebius_brax_baseline.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/40_nebius_brax_baseline.json\nCompleted 420 Bytes/808 Bytes (25.8 KiB/s) with 1 file(s) remaining\nCompleted 808 Bytes/808 Bytes (21.4 KiB/s) with 1 file(s) remaining\nupload: status/runner_status.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/runner_status.json\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/checkpoints",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/evidence",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
+      "returncode": 0,
+      "stdout_tail": "Completed 33.6 KiB/49.0 KiB (1.3 MiB/s) with 4 file(s) remaining\nupload: evidence/full_training_preflight/asimov_1_brax_mjx_baseline/full_training_run.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/full_training_run.json\nCompleted 33.6 KiB/49.0 KiB (1.3 MiB/s) with 3 file(s) remaining\nCompleted 39.0 KiB/49.0 KiB (1002.4 KiB/s) with 3 file(s) remaining\nupload: evidence/full_training_preflight/asimov_1_brax_mjx_baseline/inference_check.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/inference_check.json\nCompleted 39.0 KiB/49.0 KiB (1002.4 KiB/s) with 2 file(s) remaining\nCompleted 45.1 KiB/49.0 KiB (1.1 MiB/s) with 2 file(s) remaining   \nupload: evidence/full_training_preflight/asimov_1_brax_mjx_baseline/training_job.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/training_job.json\nCompleted 45.1 KiB/49.0 KiB (1.1 MiB/s) with 1 file(s) remaining\nCompleted 49.0 KiB/49.0 KiB (976.8 KiB/s) with 1 file(s) remaining\nupload: evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh\n",
+      "stderr_tail": ""
+    }
+  ],
+  "upload_ok": true,
+  "final_status_upload_ok": true
+}

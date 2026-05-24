@@ -152,12 +152,6 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                                 "home_resolve_activity": f"{gate.EXPECTED_AGENT_PACKAGE}/.MainActivity",
                                 "foreground_activity": f"{gate.EXPECTED_AGENT_PACKAGE}/.MainActivity",
                                 "service_component": gate.EXPECTED_AGENT_SERVICE,
-                                "package_name": "ai.elizaos.app",
-                                "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
-                                "role_holders": {"android.app.role.HOME": ["ai.elizaos.app"]},
-                                "home_resolve_activity": "ai.elizaos.app/.MainActivity",
-                                "foreground_activity": "ai.elizaos.app/.MainActivity",
-                                "service_component": "ai.elizaos.app/.ElizaAgentService",
                                 "service_pid": 31337,
                             },
                             "agent": {

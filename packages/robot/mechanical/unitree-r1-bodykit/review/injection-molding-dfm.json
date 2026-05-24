@@ -1190,8 +1190,8 @@
     {
       "part": "right_shin_shell",
       "bbox_mm": [
-        25.0,
-        6.0,
+        23.0,
+        4.4,
         100.0
       ],
       "service_print_bbox_ok": true,

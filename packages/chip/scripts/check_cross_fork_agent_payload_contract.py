@@ -34,7 +34,7 @@ ANDROID_AGENT_SERVICE = (
 )
 ANDROID_AGENT_SERVICE_CANDIDATES = (
     ANDROID_AGENT_SERVICE,
-    APP_CORE / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java"
+    APP_CORE / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
 )
 LINUX_AGENT_HOOK = OS_RV64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 LINUX_AGENT_UNIT = OS_RV64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
@@ -215,8 +215,7 @@ def iter_linux_variant_contract_files() -> Iterable[Path]:
         dirnames[:] = [
             dirname
             for dirname in dirnames
-            if dirname not in LINUX_CONTRACT_SCAN_EXCLUDED_DIRS
-            and not dirname.startswith(".")
+            if dirname not in LINUX_CONTRACT_SCAN_EXCLUDED_DIRS and not dirname.startswith(".")
         ]
         for filename in filenames:
             path = Path(dirpath) / filename
@@ -318,9 +317,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     linux_manifest_path, linux_evidence_ids = load_linux_manifest_evidence_ids()
     shared_bun_in_linux = linux_variant_mentions_shared_bun()
     webkit_status = str(bun_data.get("patch_series", {}).get("webkit_recipes_status", ""))
-    toolchain_gaps = bun_riscv64_toolchain_contract_gaps(
-        bun_riscv64_dockerfile, bun_riscv64_build
-    )
+    toolchain_gaps = bun_riscv64_toolchain_contract_gaps(bun_riscv64_dockerfile, bun_riscv64_build)
 
     add_if(
         findings,

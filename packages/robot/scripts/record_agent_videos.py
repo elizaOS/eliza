@@ -82,6 +82,7 @@ def _viewer_cmd(
     record_combined: bool,
     policy_checkpoint: Path | None = None,
     preserve_state_between_commands: bool = False,
+    scripted_smoke: bool = False,
 ) -> list[str]:
     args = [
         sys.executable,
@@ -108,6 +109,8 @@ def _viewer_cmd(
         args += ["--policy-checkpoint", str(policy_checkpoint)]
     if preserve_state_between_commands:
         args.append("--preserve-state-between-commands")
+    if scripted_smoke:
+        args.append("--scripted-smoke")
     return args
 
 
@@ -152,7 +155,17 @@ def main(argv: list[str] | None = None) -> int:
             "command resets before recording so per-action clips are independent."
         ),
     )
+    parser.add_argument(
+        "--scripted-smoke",
+        action="store_true",
+        help=(
+            "Use deterministic command-specific joint actions. This is for "
+            "multi-profile interface evidence, not trained-policy evidence."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.scripted_smoke and args.policy_checkpoint is not None:
+        parser.error("--scripted-smoke and --policy-checkpoint are mutually exclusive")
     record_combined = not args.no_record_combined
 
     args.out = args.out.resolve()
@@ -206,6 +219,7 @@ def main(argv: list[str] | None = None) -> int:
                 record_combined,
                 args.policy_checkpoint,
                 args.preserve_state_between_commands,
+                args.scripted_smoke,
             ),
             env=env,
             cwd=str(PKG_ROOT),
@@ -247,6 +261,7 @@ def main(argv: list[str] | None = None) -> int:
                     else None
                 ),
                 "policy_checkpoint": manifest["policy_checkpoint"],
+                "scripted_smoke": bool(args.scripted_smoke),
                 "stdout_tail": "\n".join(proc.stdout.splitlines()[-5:]),
                 "stderr_tail": "\n".join(proc.stderr.splitlines()[-5:]),
                 "exit_code": proc.returncode,
@@ -307,6 +322,7 @@ def main(argv: list[str] | None = None) -> int:
                     else None
                 ),
                 "policy_checkpoint": preserved_checkpoint,
+                "scripted_smoke": bool(previous_entry.get("scripted_smoke", False)),
                 "stdout_tail": "",
                 "stderr_tail": "",
                 "exit_code": None,

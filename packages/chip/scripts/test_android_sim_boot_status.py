@@ -115,13 +115,13 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
 
 def test_riscv64_aosp_overlay_materializes_files_not_host_symlinks() -> None:
     text = BUILD_AOSP_RISCV64.read_text(encoding="utf-8")
-    if "rsync -aL --delete \"$ELIZA_VENDOR_SRC/\" \"$vendor_dst/\"" not in text:
+    if 'rsync -aL --delete "$ELIZA_VENDOR_SRC/" "$vendor_dst/"' not in text:
         raise AssertionError("AOSP riscv64 overlay must dereference vendor/eliza files")
-    if "rsync -aL --delete \"$DEVICE_OVERLAY_SRC/\" \"$dst/\"" not in text:
+    if 'rsync -aL --delete "$DEVICE_OVERLAY_SRC/" "$dst/"' not in text:
         raise AssertionError("AOSP riscv64 overlay must dereference device overlay files")
     if "assert_no_overlay_symlinks" not in text or "materialize_overlay_symlinks" not in text:
         raise AssertionError("AOSP riscv64 overlay must fail closed on remaining symlinks")
-    if "ln -sfn \"$ELIZA_VENDOR_SRC" in text or "ln -sfn \"$DEVICE_OVERLAY_SRC" in text:
+    if 'ln -sfn "$ELIZA_VENDOR_SRC' in text or 'ln -sfn "$DEVICE_OVERLAY_SRC' in text:
         raise AssertionError("AOSP riscv64 overlay must not install host-local symlinks")
 
 

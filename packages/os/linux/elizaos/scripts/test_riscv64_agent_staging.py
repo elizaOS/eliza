@@ -235,15 +235,19 @@ def test_riscv64_image_has_node_agent_bundle_fallback_before_bun() -> None:
     if 'ARCH="$(dpkg --print-architecture 2>/dev/null || true)"' not in run_agent:
         raise AssertionError("run-agent.sh must detect the Debian architecture")
     if '[ "${AGENT_RUNTIME}" = "node-agent-bundle" ] || [ "${ARCH}" = "riscv64" ]' not in run_agent:
-        raise AssertionError("node fallback must be scoped to riscv64")
+        raise AssertionError("node fallback must include the explicit riscv64 scope")
+    if '{ [ "${ARCH}" = "arm64" ] && [ ! -f /opt/elizaos/app/Resources/app/eliza-dist/index.js ]; }' not in run_agent:
+        raise AssertionError("node fallback must cover bare arm64 agent bundles without Electrobun")
 
     run_tui = RUN_TUI_SMOKE.read_text(encoding="utf-8")
     node_tui = "node /opt/elizaos/app/agent-bundle.js tui-smoke"
     bun_tui = "/opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js tui-smoke"
     if node_tui not in run_tui:
-        raise AssertionError("run-terminal-tui-smoke.sh is missing the riscv64 node fallback")
+        raise AssertionError("run-terminal-tui-smoke.sh is missing the node fallback")
     if run_tui.index(node_tui) > run_tui.index(bun_tui):
-        raise AssertionError("riscv64 node TUI fallback must run before the Bun path")
+        raise AssertionError("node TUI fallback must run before the Bun path")
+    if '[ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "arm64" ]' not in run_tui:
+        raise AssertionError("node TUI fallback must cover riscv64 and arm64")
 
 
 def test_boot_health_and_tui_markers_are_serial_provable() -> None:

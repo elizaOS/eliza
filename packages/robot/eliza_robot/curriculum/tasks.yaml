@@ -52,15 +52,18 @@ tasks:
       ja: ["立て", "立ち上がれ", "じっとして"]
       zh: ["站起来", "站好", "保持站立"]
     description: "Return to and maintain the calibrated standing pose."
+    init_state: "sit"
+    init_torso_height_ratio: 0.65
     reward:
-      torso_height_target_m: 0.27   # nominal AiNex stand
-      torso_height_tolerance_m: 0.03
+      torso_height_target_ratio: 1.0
+      torso_height_tolerance_ratio: 0.12
       upright_weight: 2.0
       action_rate_weight: -0.01
       energy_weight: -0.0001
+      progress_weight: 1.5
     success:
-      torso_z_min_m: 0.24
-      torso_z_max_m: 0.32
+      torso_z_min_ratio: 0.90
+      torso_z_max_ratio: 1.25
       hold_s: 2.0
       fall_pitch_rad: 0.5
       fall_roll_rad: 0.5
@@ -101,6 +104,7 @@ tasks:
       gait_phase_weight: 0.5
       action_rate_weight: -0.01
     success:
+      torso_z_min_ratio: 0.75
       delta_x_m_min: 0.30
       window_s: 5.0
       max_lateral_drift_m: 0.20
@@ -121,6 +125,7 @@ tasks:
       upright_weight: 1.5
       action_rate_weight: -0.01
     success:
+      torso_z_min_ratio: 0.75
       delta_x_m_max: -0.20
       window_s: 5.0
       no_fall: true
@@ -138,6 +143,7 @@ tasks:
       velocity_track_weight: 8.0
       upright_weight: 1.5
     success:
+      torso_z_min_ratio: 0.75
       delta_y_m_min: 0.20
       window_s: 5.0
       no_fall: true
@@ -155,6 +161,7 @@ tasks:
       velocity_track_weight: 8.0
       upright_weight: 1.5
     success:
+      torso_z_min_ratio: 0.75
       delta_y_m_max: -0.20
       window_s: 5.0
       no_fall: true
@@ -173,6 +180,7 @@ tasks:
       yaw_track_weight: 6.0
       upright_weight: 1.5
     success:
+      torso_z_min_ratio: 0.75
       delta_yaw_rad_min: 0.7   # ~40°
       window_s: 4.0
       no_fall: true
@@ -191,6 +199,7 @@ tasks:
       yaw_track_weight: 6.0
       upright_weight: 1.5
     success:
+      torso_z_min_ratio: 0.75
       delta_yaw_rad_max: -0.7
       window_s: 4.0
       no_fall: true
@@ -209,6 +218,7 @@ tasks:
       yaw_track_weight: 6.0
       upright_weight: 1.5
     success:
+      torso_z_min_ratio: 0.75
       abs_delta_yaw_rad_min: 2.6
       hold_s: 0.5
       no_fall: true

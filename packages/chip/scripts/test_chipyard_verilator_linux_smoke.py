@@ -42,7 +42,10 @@ def test_next_command_uses_exact_located_payload() -> None:
     command = smoke.next_command(
         "external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
     )
-    if "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk" not in command:
+    if (
+        "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+        not in command
+    ):
         raise AssertionError(command)
     if "$CHIPYARD_LINUX_BINARY" in command:
         raise AssertionError(command)
@@ -216,10 +219,7 @@ def test_firemarshal_payload_freshness_manifest_satisfies_mtime_drift() -> None:
                 {
                     "schema": "eliza.firemarshal_linux_smoke_payload_freshness.v1",
                     "payload": {"sha256": digest(payload)},
-                    "inputs": {
-                        smoke.rel(path): {"sha256": digest(path)}
-                        for path in inputs
-                    },
+                    "inputs": {smoke.rel(path): {"sha256": digest(path)} for path in inputs},
                 }
             )
             + "\n",
@@ -435,6 +435,31 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
         raise AssertionError(f"expected max-cycle timeout stage, got {timeout_progress}")
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in timeout_progress["next_step"]:
         raise AssertionError(f"expected timeout-cycle guidance, got {timeout_progress}")
+
+    wall_timeout_progress = smoke.classify_smoke_progress(
+        "OpenSBI v1.8.1\n"
+        "Linux version 6.12.\n"
+        "[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000008bffffff]\n"
+        "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "exit_code": "124",
+            "timeout_after_seconds": "3600",
+            "last_progress_marker": (
+                "[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000008bffffff]"
+            ),
+        },
+    )
+    if wall_timeout_progress["stage"] != "linux_early_boot_then_wall_timeout":
+        raise AssertionError(f"expected Linux wall-timeout stage, got {wall_timeout_progress}")
+    if (
+        "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in wall_timeout_progress["next_step"]
+        or "Initmem setup node 0" not in wall_timeout_progress["next_step"]
+    ):
+        raise AssertionError(
+            f"expected wall-timeout guidance with Initmem marker, got {wall_timeout_progress}"
+        )
 
     no_dramsim_no_uart = smoke.classify_smoke_progress(
         "eliza-evidence: disable_dramsim=1\n"
@@ -990,11 +1015,7 @@ def test_diagnostic_instruction_trace_is_supplemental() -> None:
     try:
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
-            output_dir = (
-                tmp_path
-                / "output"
-                / f"chipyard.harness.TestHarness.{smoke.CONFIG}"
-            )
+            output_dir = tmp_path / "output" / f"chipyard.harness.TestHarness.{smoke.CONFIG}"
             output_dir.mkdir(parents=True)
             trace = output_dir / "payload.elf.diag-trace-20260522.out"
             trace.write_text(
@@ -1025,8 +1046,7 @@ def test_diagnostic_instruction_trace_is_supplemental() -> None:
 
 def test_uart_console_diagnosis_flags_no_tx_after_kernel_entry() -> None:
     diagnosis = smoke.uart_console_diagnosis(
-        "[UART] UART0 is here (stdin/stdout).\n"
-        "SimDRAM loaded ELF entry=0x0000000080000000\n",
+        "[UART] UART0 is here (stdin/stdout).\nSimDRAM loaded ELF entry=0x0000000080000000\n",
         {"command": "make EXTRA_SIM_FLAGS='+custom_boot_pin=1 +uart_tx_printf=1' run-binary"},
         {
             "entered_kernel_virtual": True,

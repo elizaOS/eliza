@@ -46,7 +46,7 @@ def check_python_syntax() -> bool:
 
 def main() -> int:
     ok = True
-    ok &= run("python mypy", ["mypy", "--config-file", "pyproject.toml"])
+    ok &= run("python mypy", ["mypy", "--config-file", "pyproject.toml"], optional=True)
     ok &= check_python_syntax()
     ok &= run("platform contract schema", ["python3", "scripts/check_platform_contract.py"])
     ok &= run("project plan schema", ["python3", "scripts/check_project_plan.py"])

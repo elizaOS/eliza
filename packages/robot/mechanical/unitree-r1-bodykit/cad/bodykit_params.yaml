@@ -195,11 +195,11 @@ morphs:
           - {z: 0.000, scale: [0.0022, 0.0042]}
           - {z: 0.032, scale: [0.0014, 0.0028]}
       right_shin_shell:
-        center: [-0.004, 0.048, -0.120]
+        center: [-0.004, 0.048, -0.124]
         sections:
-          - {z: -0.050, scale: [0.0090, 0.0022]}
-          - {z: 0.000, scale: [0.0125, 0.0030]}
-          - {z: 0.050, scale: [0.0090, 0.0022]}
+          - {z: -0.050, scale: [0.0085, 0.0016]}
+          - {z: 0.000, scale: [0.0115, 0.0022]}
+          - {z: 0.050, scale: [0.0085, 0.0016]}
       rear_back_spine_plate:
         sections:
           - {z: -0.108, scale: [0.0100, 0.032]}
@@ -504,6 +504,30 @@ source_robot_subassemblies:
       - right_thigh_shell
       - right_thigh_front_armor
       - right_thigh_side_armor
+  left_knee_shin:
+    region: legs
+    source_robot_anchor:
+      mounted_body: left_knee_link
+      source_bodies: [left_knee_link]
+      oem_baseline_meshes: [left_knee_link.STL, left_knee_collision.STL]
+      anchor_role: left knee-link shin sleeve and split armor skins
+      connection_method: offset shell to knee/shin OEM body envelope
+    parts:
+      - left_shin_shell
+      - left_shin_front_armor
+      - left_shin_side_armor
+  right_knee_shin:
+    region: legs
+    source_robot_anchor:
+      mounted_body: right_knee_link
+      source_bodies: [right_knee_link]
+      oem_baseline_meshes: [right_knee_link.STL, right_knee_collision.STL]
+      anchor_role: right knee-link shin sleeve and split armor skins
+      connection_method: offset shell to knee/shin OEM body envelope
+    parts:
+      - right_shin_shell
+      - right_shin_front_armor
+      - right_shin_side_armor
   left_foot_ankle:
     region: feet_ankles
     source_robot_anchor:
@@ -1394,7 +1418,7 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [right_knee_link.STL]
-    center: [-0.006, 0.048, -0.176]
+    center: [-0.006, 0.052, -0.176]
     axis: z
     sections:
       - {z: -0.045, scale: [0.0025, 0.0005]}

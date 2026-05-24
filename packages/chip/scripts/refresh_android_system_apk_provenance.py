@@ -15,7 +15,6 @@ from typing import Any
 
 import check_android_system_apk_payload as payload_gate
 
-
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
 DEFAULT_APK = payload_gate.DEFAULT_APK
@@ -62,9 +61,10 @@ def read_zip_json(apk: Path, entry: str) -> dict[str, Any] | None:
 
 
 def copy_without_provenance(source: Path, target: Path) -> None:
-    with zipfile.ZipFile(source, "r") as src, zipfile.ZipFile(
-        target, "w", compression=zipfile.ZIP_DEFLATED
-    ) as dst:
+    with (
+        zipfile.ZipFile(source, "r") as src,
+        zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED) as dst,
+    ):
         seen: set[str] = set()
         for info in src.infolist():
             if info.filename == PROVENANCE_ENTRY or info.filename in seen:

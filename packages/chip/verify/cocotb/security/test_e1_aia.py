@@ -35,7 +35,7 @@ PAGE_BYTES = 4096
 ID_W = 6  # $clog2(63 + 1)
 
 # Flat IMSIC file indices in the harness.
-FILE_HOST = 0    # hart0 S/host file, world 0
+FILE_HOST = 0  # hart0 S/host file, world 0
 FILE_SECURE = 1  # hart0 secure/monitor file, world 1
 
 # APLIC config field selectors (e1_aplic cfg_field_i).
@@ -199,7 +199,9 @@ async def topei_priority_order(dut):
 
     assert _topei_id(dut, FILE_HOST) == 5, f"lowest id (5) wins, got {_topei_id(dut, FILE_HOST)}"
     await _claim(dut, FILE_HOST)
-    assert _topei_id(dut, FILE_HOST) == 9, f"after claiming 5, 9 surfaces, got {_topei_id(dut, FILE_HOST)}"
+    assert _topei_id(dut, FILE_HOST) == 9, (
+        f"after claiming 5, 9 surfaces, got {_topei_id(dut, FILE_HOST)}"
+    )
     await _claim(dut, FILE_HOST)
     assert _eip_any(dut, FILE_HOST) == 0, "both claimed -> file quiet"
 

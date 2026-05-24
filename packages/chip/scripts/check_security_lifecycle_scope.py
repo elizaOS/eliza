@@ -271,7 +271,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors.append("security scope must enumerate blocked real-evidence items")
     findings = data.get("findings")
     if not isinstance(findings, list) or len(findings) < 6:
-        errors.append("security scope must include structured findings for blocked real-evidence items")
+        errors.append(
+            "security scope must include structured findings for blocked real-evidence items"
+        )
     scaffold = data.get("current_scaffold")
     if not isinstance(scaffold, dict):
         errors.append("current_scaffold must be a mapping")

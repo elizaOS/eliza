@@ -179,12 +179,9 @@ def diagnostic_artifact_reason(path: Path, cfg: dict) -> str | None:
 
 
 def artifact_status(label: str, patterns: list[str], cfg: dict) -> dict:
-    matches = sorted({
-        path.resolve()
-        for pattern in patterns
-        for path in ROOT.glob(pattern)
-        if path.is_file()
-    })
+    matches = sorted(
+        {path.resolve() for pattern in patterns for path in ROOT.glob(pattern) if path.is_file()}
+    )
     match_rows = []
     release_credit_matches = []
     for path in matches:
@@ -254,7 +251,9 @@ def manifest_release_commands(manifest: dict | None) -> dict[str, dict]:
             "command": command,
             "manifest_command": manifest_command,
             "release_top": "e1_chip_top",
-            "manifest_matches_release_top": manifest_command == command if manifest_command else False,
+            "manifest_matches_release_top": manifest_command == command
+            if manifest_command
+            else False,
             "release_credit": False,
             "claim_boundary": "command plan only; release credit requires successful execution and archived artifacts",
         }
@@ -378,9 +377,7 @@ def release_evidence_archive_contract(
     inventory: dict[str, dict],
 ) -> dict:
     evidence = release_evidence_fields(cfg)
-    constraints = (
-        cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
-    )
+    constraints = cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
     board = cfg.get("board", {}) if isinstance(cfg.get("board"), dict) else {}
     expected_fields = [
         {
@@ -398,7 +395,7 @@ def release_evidence_archive_contract(
             "producer_command": RELEASE_COMMANDS["hash_bitstream"],
             "validation_command": (
                 "test \"$(shasum -a 256 build/fpga/e1_demo/e1_chip_top.bit | awk '{print $1}')\" "
-                "= \"${release_evidence.bitstream_sha256}\""
+                '= "${release_evidence.bitstream_sha256}"'
             ),
             "required_value_type": "sha256_hex",
         },
@@ -449,9 +446,7 @@ def release_evidence_archive_contract(
                 **item,
                 "status": "missing" if is_unassigned(value) else "present",
                 "current_value": value,
-                "artifact_release_credit_paths": artifact_status.get(
-                    "release_credit_paths", []
-                ),
+                "artifact_release_credit_paths": artifact_status.get("release_credit_paths", []),
                 "artifact_missing": artifact_status.get("missing", True),
                 "release_credit": False,
             }
@@ -482,15 +477,11 @@ def release_evidence_archive_contract(
                 if constraints.get("bitstream_release_blocked_until_pins_assigned") is True
                 else "cleared"
             ),
-            "current_value": constraints.get(
-                "bitstream_release_blocked_until_pins_assigned"
-            ),
+            "current_value": constraints.get("bitstream_release_blocked_until_pins_assigned"),
         },
     ]
     blocked_fields = [
-        row["field"]
-        for row in rows
-        if row["status"] == "missing" or row["artifact_missing"]
+        row["field"] for row in rows if row["status"] == "missing" or row["artifact_missing"]
     ]
     blocked_preconditions = [
         item["id"] for item in preconditions if item["status"] in {"missing", "blocking"}
@@ -521,9 +512,7 @@ def release_evidence_archive_contract(
 
 def pin_board_revision_handoff_contract(cfg: dict, pin_diagnostics: dict) -> dict:
     board = cfg.get("board", {}) if isinstance(cfg.get("board"), dict) else {}
-    constraints = (
-        cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
-    )
+    constraints = cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
     release_evidence = release_evidence_fields(cfg)
     current_values = {
         "board.exact_revision": board.get("exact_revision"),
@@ -536,35 +525,39 @@ def pin_board_revision_handoff_contract(cfg: dict, pin_diagnostics: dict) -> dic
         "release_evidence.timing_report": release_evidence.get("timing_report"),
         "release_evidence.bitstream_path": release_evidence.get("bitstream_path"),
         "release_evidence.bitstream_sha256": release_evidence.get("bitstream_sha256"),
-        "release_evidence.archived_tool_versions": release_evidence.get(
-            "archived_tool_versions"
-        ),
-        "release_evidence.programming_transcript": release_evidence.get(
-            "programming_transcript"
-        ),
+        "release_evidence.archived_tool_versions": release_evidence.get("archived_tool_versions"),
+        "release_evidence.programming_transcript": release_evidence.get("programming_transcript"),
     }
     required_fields = [
         {
             "field": "board.exact_revision",
-            "status": "missing" if is_unassigned(current_values["board.exact_revision"]) else "present",
+            "status": "missing"
+            if is_unassigned(current_values["board.exact_revision"])
+            else "present",
             "current_value": current_values["board.exact_revision"],
             "required_evidence": "Exact ULX3S board revision or approved E1 FPGA carrier revision used for the final pin map.",
         },
         {
             "field": "board.exact_revision_evidence",
-            "status": "missing" if is_unassigned(current_values["board.exact_revision_evidence"]) else "present",
+            "status": "missing"
+            if is_unassigned(current_values["board.exact_revision_evidence"])
+            else "present",
             "current_value": current_values["board.exact_revision_evidence"],
             "required_evidence": "Board photo, purchase/order record, schematic revision, or vendor document proving the exact revision.",
         },
         {
             "field": "constraints.pin_assignment_source",
-            "status": "missing" if is_unassigned(current_values["constraints.pin_assignment_source"]) else "present",
+            "status": "missing"
+            if is_unassigned(current_values["constraints.pin_assignment_source"])
+            else "present",
             "current_value": current_values["constraints.pin_assignment_source"],
             "required_evidence": "Reviewed source document for every LOCATE/IOBUF assignment in the final LPF.",
         },
         {
             "field": "constraints.final_lpf",
-            "status": "missing" if is_unassigned(current_values["constraints.final_lpf"]) else "present",
+            "status": "missing"
+            if is_unassigned(current_values["constraints.final_lpf"])
+            else "present",
             "current_value": current_values["constraints.final_lpf"],
             "required_evidence": "Final LPF path reviewed against the exact board revision and pin source.",
         },
@@ -572,7 +565,8 @@ def pin_board_revision_handoff_contract(cfg: dict, pin_diagnostics: dict) -> dic
             "field": "constraints.bitstream_release_blocked_until_pins_assigned",
             "status": (
                 "blocking"
-                if current_values["constraints.bitstream_release_blocked_until_pins_assigned"] is True
+                if current_values["constraints.bitstream_release_blocked_until_pins_assigned"]
+                is True
                 else "cleared"
             ),
             "current_value": current_values[
@@ -606,13 +600,9 @@ def pin_board_revision_handoff_contract(cfg: dict, pin_diagnostics: dict) -> dic
             "required_port_count": pin_diagnostics["required_port_count"],
             "located_required_port_count": pin_diagnostics["located_required_port_count"],
             "iobuf_required_port_count": pin_diagnostics["iobuf_required_port_count"],
-            "lpf_complete_for_required_ports": pin_diagnostics[
-                "lpf_complete_for_required_ports"
-            ],
+            "lpf_complete_for_required_ports": pin_diagnostics["lpf_complete_for_required_ports"],
             "lpf_conflict_free": pin_diagnostics["lpf_conflict_free"],
-            "release_safe_pin_assignment": pin_diagnostics[
-                "release_safe_pin_assignment"
-            ],
+            "release_safe_pin_assignment": pin_diagnostics["release_safe_pin_assignment"],
             "release_safe_pin_assignment_blockers": pin_diagnostics[
                 "release_safe_pin_assignment_blockers"
             ],
@@ -646,17 +636,11 @@ def target_status_promotion_contract(
 ) -> dict:
     """Describe the exact evidence required before status may become release_ready."""
     board = cfg.get("board", {}) if isinstance(cfg.get("board"), dict) else {}
-    constraints = (
-        cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
-    )
+    constraints = cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
     release_evidence = release_evidence_fields(cfg)
-    artifact_groups = (
-        manifest.get("artifact_groups", {}) if isinstance(manifest, dict) else {}
-    )
+    artifact_groups = manifest.get("artifact_groups", {}) if isinstance(manifest, dict) else {}
     bitstream_group = (
-        artifact_groups.get("bitstream_release", {})
-        if isinstance(artifact_groups, dict)
-        else {}
+        artifact_groups.get("bitstream_release", {}) if isinstance(artifact_groups, dict) else {}
     )
 
     criteria = [
@@ -675,9 +659,7 @@ def target_status_promotion_contract(
             "field": "board.exact_revision",
             "required_value": "assigned_exact_board_revision",
             "current_value": board.get("exact_revision", "missing"),
-            "status": (
-                "blocked" if is_unassigned(board.get("exact_revision")) else "satisfied"
-            ),
+            "status": ("blocked" if is_unassigned(board.get("exact_revision")) else "satisfied"),
             "evidence_required": "Exact ULX3S board revision plus source used for pin mapping.",
         },
         {
@@ -686,9 +668,7 @@ def target_status_promotion_contract(
             "required_value": "reviewed_revision_source",
             "current_value": board.get("exact_revision_evidence", "missing"),
             "status": (
-                "blocked"
-                if is_unassigned(board.get("exact_revision_evidence"))
-                else "satisfied"
+                "blocked" if is_unassigned(board.get("exact_revision_evidence")) else "satisfied"
             ),
             "evidence_required": "Board photo, BOM, purchase record, or vendor revision document.",
         },
@@ -697,9 +677,7 @@ def target_status_promotion_contract(
             "field": "constraints.final_lpf",
             "required_value": "reviewed_final_lpf_path",
             "current_value": constraints.get("final_lpf", "missing"),
-            "status": (
-                "blocked" if is_unassigned(constraints.get("final_lpf")) else "satisfied"
-            ),
+            "status": ("blocked" if is_unassigned(constraints.get("final_lpf")) else "satisfied"),
             "evidence_required": "Final LPF with reviewed LOCATE, IOBUF, and clock frequency constraints.",
         },
         {
@@ -763,8 +741,7 @@ def target_status_promotion_contract(
             else "missing",
             "status": (
                 "satisfied"
-                if isinstance(bitstream_group, dict)
-                and bitstream_group.get("status") == "complete"
+                if isinstance(bitstream_group, dict) and bitstream_group.get("status") == "complete"
                 else "blocked"
             ),
             "evidence_required": "Bitstream artifact group reviewed as complete.",
@@ -939,27 +916,19 @@ def release_blocker_categories(
 ) -> dict[str, dict]:
     """Machine-readable release blocker taxonomy for the FPGA lane."""
     board = cfg.get("board", {}) if isinstance(cfg.get("board"), dict) else {}
-    constraints = (
-        cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
-    )
+    constraints = cfg.get("constraints", {}) if isinstance(cfg.get("constraints"), dict) else {}
     evidence = release_evidence_fields(cfg)
-    manifest_status = (
-        manifest.get("status", "missing") if isinstance(manifest, dict) else "missing"
-    )
+    manifest_status = manifest.get("status", "missing") if isinstance(manifest, dict) else "missing"
     missing_locate = pin_diagnostics.get("missing_locate", [])
     missing_iobuf = pin_diagnostics.get("missing_iobuf", [])
 
     def artifact_category(label: str, *field_names: str) -> dict:
         status = inventory.get(label, {})
         missing_fields = [
-            f"release_evidence.{name}"
-            for name in field_names
-            if is_unassigned(evidence.get(name))
+            f"release_evidence.{name}" for name in field_names if is_unassigned(evidence.get(name))
         ]
         diagnostic_matches = [
-            match
-            for match in status.get("matches", [])
-            if match.get("diagnostic_only")
+            match for match in status.get("matches", []) if match.get("diagnostic_only")
         ]
         release_paths = status.get("release_credit_paths", [])
         return {
@@ -979,15 +948,11 @@ def release_blocker_categories(
 
     present_nonrelease = {
         label: [
-            match.get("path")
-            for match in status.get("matches", [])
-            if match.get("diagnostic_only")
+            match.get("path") for match in status.get("matches", []) if match.get("diagnostic_only")
         ]
         for label, status in inventory.items()
     }
-    present_nonrelease = {
-        label: paths for label, paths in present_nonrelease.items() if paths
-    }
+    present_nonrelease = {label: paths for label, paths in present_nonrelease.items() if paths}
 
     categories = {
         "scaffold_target": {
@@ -999,9 +964,7 @@ def release_blocker_categories(
             "release_credit": False,
         },
         "unassigned_exact_revision": {
-            "status": (
-                "blocked" if is_unassigned(board.get("exact_revision")) else "satisfied"
-            ),
+            "status": ("blocked" if is_unassigned(board.get("exact_revision")) else "satisfied"),
             "count": 1 if is_unassigned(board.get("exact_revision")) else 0,
             "current_value": board.get("exact_revision"),
             "required_value": "assigned_exact_board_revision",
@@ -1025,19 +988,13 @@ def release_blocker_categories(
         "pin_release_flag_blocked": {
             "status": (
                 "blocked"
-                if constraints.get("bitstream_release_blocked_until_pins_assigned")
-                is True
+                if constraints.get("bitstream_release_blocked_until_pins_assigned") is True
                 else "satisfied"
             ),
             "count": (
-                1
-                if constraints.get("bitstream_release_blocked_until_pins_assigned")
-                is True
-                else 0
+                1 if constraints.get("bitstream_release_blocked_until_pins_assigned") is True else 0
             ),
-            "current_value": constraints.get(
-                "bitstream_release_blocked_until_pins_assigned"
-            ),
+            "current_value": constraints.get("bitstream_release_blocked_until_pins_assigned"),
             "release_credit": False,
         },
         "manifest_not_promoted": {
@@ -1071,14 +1028,12 @@ def release_blocker_categories(
         "nonrelease_build_probe_blocked": {
             "status": (
                 "blocked"
-                if build_probe.get("status")
-                in {"failed_non_release", "timed_out_non_release"}
+                if build_probe.get("status") in {"failed_non_release", "timed_out_non_release"}
                 else "satisfied"
             ),
             "count": (
                 1
-                if build_probe.get("status")
-                in {"failed_non_release", "timed_out_non_release"}
+                if build_probe.get("status") in {"failed_non_release", "timed_out_non_release"}
                 else 0
             ),
             "current_value": build_probe.get("status"),
@@ -1180,21 +1135,19 @@ def write_report(
     build_probe: dict,
 ) -> None:
     groups = blocker_groups(findings) if findings else {}
-    categories = release_blocker_categories(
-        cfg, manifest, inventory, pin_diagnostics, build_probe
-    )
+    categories = release_blocker_categories(cfg, manifest, inventory, pin_diagnostics, build_probe)
     tools = tool_availability()
     generation_plan = repo_artifact_generation_plan(categories, tools)
     missing_release_tools = [
-        tool for tool, data in tools.items() if data["required_for_release"] and not data["available"]
+        tool
+        for tool, data in tools.items()
+        if data["required_for_release"] and not data["available"]
     ]
     payload = {
         "schema": SCHEMA,
         "status": status,
         "blocked_state": (
-            "known_fail_closed_release_evidence_blocked"
-            if status == "blocked"
-            else None
+            "known_fail_closed_release_evidence_blocked" if status == "blocked" else None
         ),
         "release_credit": status == "pass" and release,
         "claim_boundary": CLAIM_BOUNDARY,
@@ -1217,15 +1170,15 @@ def write_report(
                 for name, row in sorted(categories.items())
                 if row["status"] == "blocked"
             },
-            "missing_locate_comp_assignment_count": categories[
-                "missing_locate_comp_assignments"
-            ]["count"],
-            "missing_programming_evidence_count": categories[
-                "missing_programming_evidence"
-            ]["count"],
-            "present_but_nonrelease_artifact_count": categories[
-                "present_but_nonrelease_artifacts"
-            ]["count"],
+            "missing_locate_comp_assignment_count": categories["missing_locate_comp_assignments"][
+                "count"
+            ],
+            "missing_programming_evidence_count": categories["missing_programming_evidence"][
+                "count"
+            ],
+            "present_but_nonrelease_artifact_count": categories["present_but_nonrelease_artifacts"][
+                "count"
+            ],
             "repo_generatable_now_count": generation_plan["repo_generatable_now_count"],
             "blocked_repo_generation_count": generation_plan["blocked_generation_count"],
             "diagnostic_only_artifacts": sum(
@@ -1248,12 +1201,12 @@ def write_report(
         "release_commands": manifest_release_commands(manifest),
         "manifest_artifact_glob_audit": manifest_artifact_glob_audit(manifest),
         "release_artifact_requirements": release_artifact_requirements(inventory),
-        "release_evidence_archive_contract": release_evidence_archive_contract(
-            cfg, inventory
-        ),
+        "release_evidence_archive_contract": release_evidence_archive_contract(cfg, inventory),
         "tool_availability": tools,
         "toolchain_summary": {
-            "status": "blocked_missing_required_tools" if missing_release_tools else "tools_available",
+            "status": "blocked_missing_required_tools"
+            if missing_release_tools
+            else "tools_available",
             "missing_required_tools": missing_release_tools,
             "claim_boundary": "tool presence does not prove release readiness; generated artifacts must still pass the release gate",
         },
@@ -1411,7 +1364,9 @@ def yosys_log_analysis(path: Path, exit_status: str) -> dict:
 
 def yosys_runtime_markers(path: Path) -> dict:
     text = path.read_text(encoding="utf-8", errors="ignore") if path.is_file() else ""
-    cell_counts = [int(match.group(1)) for match in re.finditer(r"Computing hashes of (\d+) cells", text)]
+    cell_counts = [
+        int(match.group(1)) for match in re.finditer(r"Computing hashes of (\d+) cells", text)
+    ]
     module_hotspots = {}
     for module in ("u_npu", "u_display", "u_behavioral_dram", "u_weight_buffer"):
         count = text.count(f"\\{module}") + text.count(f".{module}.")
@@ -1473,7 +1428,10 @@ def yosys_profile_summary(path: Path) -> dict:
                 continue
             if re.match(r"\s+\+[-]+", line) or "Count including submodules" in line:
                 continue
-            if re.match(r"\s+\d+\s+(wires|wire bits|public wires|public wire bits|ports|port bits|memories|memory bits|cells|processes|submodules)$", line):
+            if re.match(
+                r"\s+\d+\s+(wires|wire bits|public wires|public wire bits|ports|port bits|memories|memory bits|cells|processes|submodules)$",
+                line,
+            ):
                 continue
             if line.startswith("Warnings:") or line.startswith("End of script."):
                 in_design_hierarchy = False
@@ -1503,8 +1461,8 @@ def yosys_profile_summary(path: Path) -> dict:
             cell_match = re.match(r"\s+(\$?[A-Za-z0-9_.$\\-]+)\s+(\d+)$", line)
             if cell_match:
                 current["cell_types"][cell_match.group(1)] = int(cell_match.group(2))
-                cell_types[cell_match.group(1)] = (
-                    cell_types.get(cell_match.group(1), 0) + int(cell_match.group(2))
+                cell_types[cell_match.group(1)] = cell_types.get(cell_match.group(1), 0) + int(
+                    cell_match.group(2)
                 )
                 continue
             if re.match(r"\s+\d+\s+submodules$", line):
@@ -1538,11 +1496,15 @@ def yosys_profile_summary(path: Path) -> dict:
         "largest_modules_by_cells": modules_by_cells[:8],
         "hierarchy_cells_including_submodules": [
             {"module": name, "cells": count}
-            for name, count in sorted(hierarchy_counts.items(), key=lambda item: item[1], reverse=True)[:12]
+            for name, count in sorted(
+                hierarchy_counts.items(), key=lambda item: item[1], reverse=True
+            )[:12]
         ],
         "top_cell_types": [
             {"cell_type": name, "count": count}
-            for name, count in sorted(cell_types.items(), key=lambda item: item[1], reverse=True)[:12]
+            for name, count in sorted(cell_types.items(), key=lambda item: item[1], reverse=True)[
+                :12
+            ]
         ],
         "multiplier_like_cell_types": multiplier_like,
         "memory_rom_synthesis_pressure": memory_rom_pressure,
@@ -1668,8 +1630,7 @@ def yosys_memory_rom_pressure(
         )
 
     memory_bit_counts = [
-        int(match.group(1))
-        for match in re.finditer(r"\n\s+(\d+)\s+memory bits\n", text)
+        int(match.group(1)) for match in re.finditer(r"\n\s+(\d+)\s+memory bits\n", text)
     ]
     total_memory_bits = max(memory_bit_counts) if memory_bit_counts else None
 
@@ -1688,9 +1649,7 @@ def yosys_memory_rom_pressure(
                 "pressure_class": row["pressure_class"],
                 "cells_including_submodules": row["cells_including_submodules"],
                 "release_credit": False,
-                "validation_command": (
-                    "python3 scripts/check_fpga_release.py --release"
-                ),
+                "validation_command": ("python3 scripts/check_fpga_release.py --release"),
                 "bounded_diagnostic_command": BOUNDED_SYNTH_DIAGNOSTIC_LOGS[0]["exact_command"],
                 "claim_boundary": (
                     "remediation task only; release credit still requires successful release "
@@ -1805,7 +1764,9 @@ def latest_non_release_build_probe() -> dict:
                     "errors": [],
                 }
             )
-            observed_mtime = max(provenance.stat().st_mtime, yosys_log.stat().st_mtime if yosys_log.is_file() else 0)
+            observed_mtime = max(
+                provenance.stat().st_mtime, yosys_log.stat().st_mtime if yosys_log.is_file() else 0
+            )
             newest_archived_mtime = max(newest_archived_mtime, observed_mtime)
             rows.append(
                 {
@@ -1906,34 +1867,26 @@ def lpf_assignment_diagnostics(
                 {"line": number, "port": port, "options": options.strip().rstrip(";")}
             )
 
-    duplicate_locate_ports = {
-        port: rows for port, rows in sorted(locates.items()) if len(rows) > 1
-    }
+    duplicate_locate_ports = {port: rows for port, rows in sorted(locates.items()) if len(rows) > 1}
     conflicting_locate_ports = {
         port: rows
         for port, rows in duplicate_locate_ports.items()
         if len({row["site"] for row in rows}) > 1
     }
-    duplicate_iobuf_ports = {
-        port: rows for port, rows in sorted(iobufs.items()) if len(rows) > 1
-    }
+    duplicate_iobuf_ports = {port: rows for port, rows in sorted(iobufs.items()) if len(rows) > 1}
     conflicting_iobuf_ports = {
         port: rows
         for port, rows in duplicate_iobuf_ports.items()
         if len({row["options"] for row in rows}) > 1
     }
     duplicate_sites = {
-        site: rows
-        for site, rows in sorted(sites.items())
-        if len({row["port"] for row in rows}) > 1
+        site: rows for site, rows in sorted(sites.items()) if len({row["port"] for row in rows}) > 1
     }
     final_lpf = cfg.get("constraints", {}).get("final_lpf")
     exact_revision = cfg.get("board", {}).get("exact_revision")
     pin_source = cfg.get("constraints", {}).get("pin_assignment_source")
     lpf_complete_for_required_ports = required_ports <= located and required_ports <= iobuf
-    conflict_free = not (
-        conflicting_locate_ports or conflicting_iobuf_ports or duplicate_sites
-    )
+    conflict_free = not (conflicting_locate_ports or conflicting_iobuf_ports or duplicate_sites)
     return {
         "constraint_file": rel(path),
         "release_credit": False,
@@ -1965,9 +1918,7 @@ def lpf_assignment_diagnostics(
                 ("pin assignment source is unassigned", is_unassigned(pin_source)),
                 (
                     "target still marks bitstream release blocked until pins are assigned",
-                    cfg.get("constraints", {}).get(
-                        "bitstream_release_blocked_until_pins_assigned"
-                    )
+                    cfg.get("constraints", {}).get("bitstream_release_blocked_until_pins_assigned")
                     is True,
                 ),
             )

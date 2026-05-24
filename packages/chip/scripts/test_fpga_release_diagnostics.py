@@ -8,7 +8,6 @@ import subprocess
 import unittest
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -48,9 +47,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
         self.assertEqual(report["summary"]["missing_programming_evidence_count"], 2)
         self.assertEqual(report["summary"]["repo_generatable_now_count"], 0)
         self.assertGreaterEqual(report["summary"]["blocked_repo_generation_count"], 15)
-        self.assertGreaterEqual(
-            report["summary"]["present_but_nonrelease_artifact_count"], 1
-        )
+        self.assertGreaterEqual(report["summary"]["present_but_nonrelease_artifact_count"], 1)
         self.assertIn("release_artifacts", report["blocker_groups"])
         self.assertIn("synthesis_runtime", report["blocker_groups"])
         self.assertNotIn("rtl_synthesis", report["blocker_groups"])
@@ -93,26 +90,18 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
         self.assertEqual(categories["pin_release_flag_blocked"]["count"], 1)
         self.assertEqual(categories["manifest_not_promoted"]["count"], 1)
         self.assertEqual(categories["nonrelease_build_probe_blocked"]["count"], 1)
-        self.assertGreaterEqual(
-            categories["present_but_nonrelease_artifacts"]["count"], 1
-        )
+        self.assertGreaterEqual(categories["present_but_nonrelease_artifacts"]["count"], 1)
         generation = report["repo_artifact_generation_plan"]
         self.assertFalse(generation["release_credit"])
         self.assertEqual(generation["repo_generatable_now_count"], 0)
         self.assertEqual(generation["can_close_from_current_repo_count"], 0)
         self.assertEqual(generation["missing_required_tool_count"], 0)
         self.assertGreaterEqual(generation["blocked_generation_count"], 15)
-        self.assertGreaterEqual(
-            generation["blocked_by_final_pins_or_board_revision_count"], 1
-        )
-        self.assertGreaterEqual(
-            generation["blocked_by_release_artifact_evidence_count"], 10
-        )
+        self.assertGreaterEqual(generation["blocked_by_final_pins_or_board_revision_count"], 1)
+        self.assertGreaterEqual(generation["blocked_by_release_artifact_evidence_count"], 10)
         generation_rows = {row["category"]: row for row in generation["rows"]}
         self.assertIn("missing_bitstream_evidence", generation_rows)
-        self.assertFalse(
-            generation_rows["missing_bitstream_evidence"]["repo_generatable_now"]
-        )
+        self.assertFalse(generation_rows["missing_bitstream_evidence"]["repo_generatable_now"])
         self.assertIn(
             "final_pins_or_board_revision",
             generation_rows["missing_bitstream_evidence"]["blocked_by"],
@@ -122,9 +111,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
             "synthesis_runtime_or_rtl_closure",
             generation_rows["nonrelease_build_probe_blocked"]["blocked_by"],
         )
-        self.assertFalse(
-            categories["missing_programming_evidence"]["release_credit"]
-        )
+        self.assertFalse(categories["missing_programming_evidence"]["release_credit"])
         self.assertEqual(
             categories["missing_programming_evidence"]["unblock_command"],
             "openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit",
@@ -142,9 +129,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
             "build/fpga/e1_demo/**/*.bit",
             bitstream_requirement["patterns"],
         )
-        programming_requirement = report["release_artifact_requirements"][
-            "programming transcript"
-        ]
+        programming_requirement = report["release_artifact_requirements"]["programming transcript"]
         self.assertEqual(
             programming_requirement["unblock_command"],
             "openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit",
@@ -162,9 +147,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
         self.assertIn("pin_block_flag_cleared", archive["blocked_preconditions"])
         self.assertIn("release_evidence.bitstream_path", archive["blocked_fields"])
         self.assertIn("release_evidence.bitstream_sha256", archive["blocked_fields"])
-        self.assertIn(
-            "release_evidence.programming_transcript", archive["blocked_fields"]
-        )
+        self.assertIn("release_evidence.programming_transcript", archive["blocked_fields"])
         archive_fields = {item["field"]: item for item in archive["required_fields"]}
         self.assertEqual(
             archive_fields["release_evidence.bitstream_path"]["producer_command"],
@@ -178,19 +161,13 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
             "build/fpga/e1_demo/e1_chip_top.bit",
             archive_fields["release_evidence.bitstream_sha256"]["validation_command"],
         )
-        self.assertTrue(
-            archive_fields["release_evidence.timing_report"]["artifact_missing"]
-        )
+        self.assertTrue(archive_fields["release_evidence.timing_report"]["artifact_missing"])
         self.assertEqual(
-            archive_fields["release_evidence.archived_tool_versions"][
-                "expected_path_pattern"
-            ],
+            archive_fields["release_evidence.archived_tool_versions"]["expected_path_pattern"],
             "board/fpga/reports/tool_versions.txt",
         )
         self.assertEqual(
-            archive_fields["release_evidence.programming_transcript"][
-                "producer_command"
-            ],
+            archive_fields["release_evidence.programming_transcript"]["producer_command"],
             "openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit",
         )
         glob_audit = report["manifest_artifact_glob_audit"]
@@ -286,15 +263,13 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
             "timed_out_non_release",
         )
         self.assertEqual(
-            promotion_criteria[
-                "target-status-release-evidence-bitstream-sha256"
-            ]["current_value"],
+            promotion_criteria["target-status-release-evidence-bitstream-sha256"]["current_value"],
             "unassigned",
         )
         self.assertEqual(
-            promotion_criteria[
-                "target-status-release-evidence-programming-transcript"
-            ]["current_value"],
+            promotion_criteria["target-status-release-evidence-programming-transcript"][
+                "current_value"
+            ],
             "unassigned",
         )
         build_probe = report["latest_non_release_build_probe"]
@@ -311,9 +286,7 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
         self.assertTrue(latest_probe["autoname_reached"])
         self.assertEqual(latest_probe["last_yosys_pass"], "AUTONAME")
         self.assertEqual(latest_probe["errors"], [])
-        diagnostics = {
-            item["id"]: item for item in report["bounded_synthesis_diagnostics"]
-        }
+        diagnostics = {item["id"]: item for item in report["bounded_synthesis_diagnostics"]}
         self.assertIn("preabc_profile", diagnostics)
         profile = diagnostics["preabc_profile"]
         self.assertFalse(profile["release_credit"])
@@ -420,7 +393,9 @@ class FpgaReleaseDiagnosticsTest(unittest.TestCase):
             transcript_text,
         )
         self.assertIn("TOP=e1_chip_top make -C board/fpga pack", transcript_text)
-        self.assertIn("exact_toolchain_command: source scripts/env_oss_cad_suite.sh", transcript_text)
+        self.assertIn(
+            "exact_toolchain_command: source scripts/env_oss_cad_suite.sh", transcript_text
+        )
         self.assertIn("exact_non_release_probe_command:", transcript_text)
         self.assertIn("latest_non_release_build_probe:", transcript_text)
         self.assertIn("failure_class: timeout_or_interrupted_post_abc9_oversize", transcript_text)

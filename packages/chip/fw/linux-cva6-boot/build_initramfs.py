@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]   # packages/chip
+ROOT = HERE.parents[1]  # packages/chip
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
 
@@ -37,14 +37,28 @@ def _env() -> dict:
 
 def build_init(out_dir: Path, env: dict) -> Path:
     elf = out_dir / "init"
-    subprocess.run([
-        "riscv64-linux-gnu-gcc",
-        "-static", "-nostdlib", "-nostartfiles", "-ffreestanding",
-        "-fno-pic", "-fno-stack-protector",
-        "-march=rv64imac", "-mabi=lp64", "-mcmodel=medany",
-        "-Os", "-Wl,--build-id=none", "-Wl,-e,_start",
-        "-o", str(elf), str(HERE / "init.c"),
-    ], check=True, env=env)
+    subprocess.run(
+        [
+            "riscv64-linux-gnu-gcc",
+            "-static",
+            "-nostdlib",
+            "-nostartfiles",
+            "-ffreestanding",
+            "-fno-pic",
+            "-fno-stack-protector",
+            "-march=rv64imac",
+            "-mabi=lp64",
+            "-mcmodel=medany",
+            "-Os",
+            "-Wl,--build-id=none",
+            "-Wl,-e,_start",
+            "-o",
+            str(elf),
+            str(HERE / "init.c"),
+        ],
+        check=True,
+        env=env,
+    )
     return elf
 
 
@@ -56,8 +70,19 @@ def _cpio_newc(entries: list[tuple[str, int, bytes]]) -> bytes:
         ino += 1
         name_b = name.encode() + b"\x00"
         fields = [
-            ino, mode, 0, 0, 1, 0, len(data),
-            0, 0, 0, 0, len(name_b), 0,
+            ino,
+            mode,
+            0,
+            0,
+            1,
+            0,
+            len(data),
+            0,
+            0,
+            0,
+            0,
+            len(name_b),
+            0,
         ]
         header = b"070701" + b"".join(f"{f:08x}".encode() for f in fields)
         buf.write(header)

@@ -4,8 +4,8 @@
 from __future__ import annotations
 
 import argparse
-import sys
 import json
+import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -157,8 +157,7 @@ def blocker_diagnostics(inventory: list[dict[str, Any]]) -> dict[str, Any]:
     by_source = Counter(str(item.get("source") or "unknown_source") for item in inventory)
     by_metric = Counter(str(item.get("metric") or "unknown_metric") for item in inventory)
     by_category = Counter(
-        str(item.get("blocker_category") or "present_blocked_placeholder")
-        for item in inventory
+        str(item.get("blocker_category") or "present_blocked_placeholder") for item in inventory
     )
     missing_sources_by_owner: dict[str, list[str]] = {}
     categorized_paths: dict[str, list[str]] = {}
@@ -178,9 +177,7 @@ def blocker_diagnostics(inventory: list[dict[str, Any]]) -> dict[str, Any]:
             "true_missing_artifacts": by_category.get("true_missing_artifact", 0),
             "present_blocked_placeholders": by_category.get("present_blocked_placeholder", 0),
             "missing_approval_metadata": by_category.get("missing_approval_metadata", 0),
-            "external_supplier_dependencies": by_category.get(
-                "external_supplier_dependency", 0
-            ),
+            "external_supplier_dependencies": by_category.get("external_supplier_dependency", 0),
         },
         "categorized_source_inventory": {
             category: sorted(dict.fromkeys(paths))
@@ -271,11 +268,13 @@ def write_report(
             "blocked_release_gate_count": blocked_gate_count,
             "total_blocker_count": total_blockers,
             "blocker_instance_count": total_blockers,
-            "unique_blocker_count": unique_blockers if unique_blockers is not None else total_blockers,
+            "unique_blocker_count": unique_blockers
+            if unique_blockers is not None
+            else total_blockers,
             "blockers": len(findings),
-            "fabrication_release_blocker_categories": blocker_diagnostics(
-                blocked_inventory or []
-            )["fabrication_release_blocker_categories"],
+            "fabrication_release_blocker_categories": blocker_diagnostics(blocked_inventory or [])[
+                "fabrication_release_blocker_categories"
+            ],
         },
         "findings": findings,
         "blocked_evidence_inventory": blocked_inventory or [],

@@ -200,7 +200,9 @@ def test_capture_command_wiring_derives_available_generated_ap_lanes() -> None:
         assert_contains(trap_problems, "missing")
 
     if entries["isa-cache-mmu"]["status"] != "blocked":
-        raise AssertionError("isa-cache-mmu must stay blocked without Linux userspace hwprobe evidence")
+        raise AssertionError(
+            "isa-cache-mmu must stay blocked without Linux userspace hwprobe evidence"
+        )
     isa_entry = entries["isa-cache-mmu"]
     if isa_entry["source"] != "generated_ap_isa_cache_mmu_probe":
         raise AssertionError("isa-cache-mmu should report the generated-AP probe blocker")
@@ -271,7 +273,9 @@ def test_linux_smoke_packages_real_riscv_hwprobe_helper() -> None:
     if ("e1-npu-ml-smoke", "/usr/bin/e1-npu-ml-smoke") not in files:
         raise AssertionError("linux smoke workload must package /usr/bin/e1-npu-ml-smoke")
 
-    smoke_script = (ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke.sh").read_text()
+    smoke_script = (
+        ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke.sh"
+    ).read_text()
     assert_contains(smoke_script, "/usr/bin/eliza-riscv-hwprobe")
     assert_contains(smoke_script, "riscv_hwprobe: FAIL userspace helper exited nonzero")
     assert_contains(smoke_script, "/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu")
@@ -330,7 +334,9 @@ def test_isa_cache_mmu_probe_requires_successful_hwprobe_syscall() -> None:
             isa_cache_mmu_probe.HWPROBE_BINARY = binary
             isa_cache_mmu_probe.LINUX_SMOKE_REPORT = report
 
-            log.write_text("riscv_hwprobe: FAIL userspace helper exited nonzero\n", encoding="utf-8")
+            log.write_text(
+                "riscv_hwprobe: FAIL userspace helper exited nonzero\n", encoding="utf-8"
+            )
             failed_scan = isa_cache_mmu_probe.linux_hwprobe_scan()
             if not failed_scan["contains_riscv_hwprobe"]:
                 raise AssertionError("scan should record that hwprobe text was present")
@@ -378,7 +384,9 @@ def test_ap_benchmark_workload_packages_marker_emitter_and_tools() -> None:
     assert_contains(script, "eliza-evidence: status=PASS")
     for forbidden in ("qemu-virt", "software reference only", "no real transcript"):
         if forbidden in script:
-            raise AssertionError(f"AP benchmark marker emitter contains forbidden term: {forbidden}")
+            raise AssertionError(
+                f"AP benchmark marker emitter contains forbidden term: {forbidden}"
+            )
 
 
 def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:

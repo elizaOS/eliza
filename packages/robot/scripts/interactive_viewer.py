@@ -43,7 +43,8 @@ if str(PKG_ROOT) not in sys.path:
 
 os.environ.setdefault("JAX_PLATFORMS", "cpu")
 
-from eliza_robot.curriculum.loader import load_curriculum  # noqa: E402
+from eliza_robot.curriculum.goal_checker import GoalChecker, TelemetrySample  # noqa: E402
+from eliza_robot.curriculum.loader import Curriculum, load_curriculum  # noqa: E402
 from eliza_robot.profiles.schema import list_profiles, load_profile  # noqa: E402
 from eliza_robot.rl.text_conditioned.encoder import build_task_embeddings  # noqa: E402
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy  # noqa: E402
@@ -55,9 +56,12 @@ from eliza_robot.rl.text_conditioned.profile_env import (  # noqa: E402
 DEFAULT_ALBERTA_CHECKPOINT = PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
 
 
-def _resolve_task_id(text: str, task_ids: list[str]) -> str | None:
+def _resolve_task_id(text: str, task_ids: list[str], curriculum: Curriculum) -> str | None:
     """Match free-form text against the curriculum tasks. Cheap substring
     match first, then token overlap; returns None if nothing matches."""
+    found = curriculum.find_by_text(text)
+    if found is not None and found.id in task_ids:
+        return found.id
     low = text.lower().strip()
     if not low:
         return None
@@ -70,6 +74,57 @@ def _resolve_task_id(text: str, task_ids: list[str]) -> str | None:
         if all(tok in low for tok in tid.split("_")):
             return tid
     return None
+
+
+def _scripted_smoke_action(env, task_id: str, step_idx: int) -> np.ndarray:
+    """Deterministic command-specific action used only for interactive smoke.
+
+    This is not a learned policy. It exists so a clean local checkout can prove
+    the text->task->joint-control path attempts nonzero behavior instead of
+    silently producing zero-action evidence.
+    """
+    action = np.zeros(env.action_space.shape, dtype=np.float32)
+    phase = step_idx * 0.35
+    for idx, joint in enumerate(env._action_joints):  # noqa: SLF001
+        name = joint.name.lower()
+        side = -1.0 if name.startswith(("l_", "left_")) else 1.0
+        if task_id == "stand_up":
+            action[idx] = 0.0
+        elif task_id == "sit_down":
+            if "hip_pitch" in name:
+                action[idx] = -0.8
+            elif "knee" in name:
+                action[idx] = 0.9
+            elif "ank" in name and "pitch" in name:
+                action[idx] = -0.6
+        elif task_id in {"walk_forward", "walk_backward"}:
+            direction = 1.0 if task_id == "walk_forward" else -1.0
+            gait = np.sin(phase + (0.0 if side > 0 else np.pi))
+            if "hip_pitch" in name:
+                action[idx] = direction * 0.55 * gait
+            elif "knee" in name:
+                action[idx] = 0.35 * max(0.0, gait)
+            elif "ank" in name and "pitch" in name:
+                action[idx] = -direction * 0.25 * gait
+        elif task_id in {"sidestep_left", "sidestep_right"}:
+            direction = 1.0 if task_id == "sidestep_left" else -1.0
+            gait = np.sin(phase + (0.0 if side > 0 else np.pi))
+            if "hip_roll" in name:
+                action[idx] = direction * 0.45 * gait
+            elif "ank" in name and "roll" in name:
+                action[idx] = -direction * 0.25 * gait
+        elif task_id in {"turn_left", "turn_right", "turn_around"}:
+            direction = 1.0 if task_id == "turn_left" else -1.0
+            if task_id == "turn_around":
+                direction = 1.0
+            gait = np.sin(phase + (0.0 if side > 0 else np.pi))
+            if "hip_yaw" in name:
+                action[idx] = direction * 0.55 * side
+            elif "hip_pitch" in name:
+                action[idx] = 0.35 * gait
+            elif "ank" in name and "roll" in name:
+                action[idx] = -0.2 * direction * side
+    return np.clip(action, -1.0, 1.0).astype(np.float32)
 
 
 def _read_checkpoint_profile_id(checkpoint_dir: Path) -> str | None:
@@ -239,6 +294,7 @@ def run(
     record_combined: bool = False,
     policy_checkpoint: Path | None = None,
     preserve_state_between_commands: bool = False,
+    scripted_smoke: bool = False,
 ) -> int:
     import mujoco
 
@@ -269,7 +325,12 @@ def run(
         render_model = mujoco.MjModel.from_xml_path(str(profile.assets.scene_xml))
         render_data = mujoco.MjData(render_model)
 
-    if policy_checkpoint is not None:
+    if scripted_smoke and policy_checkpoint is not None:
+        raise ValueError("--scripted-smoke and --policy-checkpoint are mutually exclusive")
+    if scripted_smoke:
+        policy = None
+        policy_source = "scripted_smoke"
+    elif policy_checkpoint is not None:
         policy = _load_checkpoint_policy(profile_id, policy_checkpoint)
         policy_source = f"checkpoint:{policy_checkpoint}"
     else:
@@ -280,7 +341,7 @@ def run(
         else:
             policy = _load_sb3_policy(profile_id)
             policy_source = "sb3_smoke" if policy is not None else "zero_action"
-    if policy is None:
+    if policy is None and not scripted_smoke:
         print(
             "[viewer] no matching Alberta checkpoint or SB3 policy at "
             f"checkpoints/text_conditioned_{profile_id}_smoke/; "
@@ -328,29 +389,67 @@ def run(
         env._step_count = 0  # noqa: SLF001
 
     def _reset_for_command(task_id: str, seed: int) -> None:
-        env.reset(seed=seed)
+        original_tasks = env.active_tasks
+        env.active_tasks = [next(t for t in original_tasks if t.id == task_id)]
+        try:
+            env.reset(seed=seed)
+        finally:
+            env.active_tasks = original_tasks
         _activate_task(task_id)
         if render_data is not data and render_model.nq == model.nq:
             render_data.qpos[:] = data.qpos
             render_data.qvel[:] = data.qvel
             mujoco.mj_forward(render_model, render_data)
 
+    def _sample(t_s: float, info: dict) -> TelemetrySample:
+        return TelemetrySample(
+            t_s=t_s,
+            torso_x_m=_finite_float(info.get("root_x")),
+            torso_y_m=_finite_float(info.get("root_y")),
+            torso_z_m=_finite_float(info.get("torso_z")),
+            yaw_rad=_finite_float(info.get("root_yaw")),
+            extra={"stand_height_m": info.get("stand_height_m")},
+        )
+
     def _tick(label: str, task_id: str, writers: list) -> dict:
         # Run max_steps_per_cmd steps with the resolved task active.
         obs = env._build_obs()  # noqa: SLF001
         last = time.time()
+        task = next(t for t in env.active_tasks if t.id == task_id)
+        checker = GoalChecker(task, episode_start_t_s=0.0)
         torso_z: list[float] = []
         upright_proj: list[float] = []
         rewards: list[float] = []
+        delta_x: list[float] = []
+        delta_y: list[float] = []
+        delta_yaw: list[float] = []
+        action_norms: list[float] = []
+        nonzero_action_steps = 0
         terminated = False
         truncated = False
         first_done_step: int | None = None
         done_reason: str | None = None
+        final_result = checker.update(
+            TelemetrySample(
+                t_s=0.0,
+                torso_x_m=getattr(env, "_episode_start_x", 0.0),
+                torso_y_m=getattr(env, "_episode_start_y", 0.0),
+                torso_z_m=getattr(env, "_episode_start_torso_z", 0.0),
+                yaw_rad=getattr(env, "_episode_start_yaw", 0.0),
+                extra={"stand_height_m": getattr(env, "_stand_height_m", None)},
+            )
+        )
         for step_idx in range(max_steps_per_cmd):
-            if policy is not None:
+            if policy_source == "scripted_smoke":
+                action = _scripted_smoke_action(env, task_id, step_idx)
+            elif policy is not None:
                 action = policy(label, obs)
             else:
                 action = np.zeros(env.action_space.shape, dtype=np.float32)
+            norm = float(np.linalg.norm(action))
+            action_norms.append(norm)
+            if norm > 1e-6:
+                nonzero_action_steps += 1
             obs, reward, term, trunc, info = env.step(action)
             reward_value = _finite_float(reward)
             if reward_value is not None:
@@ -361,6 +460,16 @@ def run(
             upright_value = _finite_float(info.get("upright_proj"))
             if upright_value is not None:
                 upright_proj.append(upright_value)
+            dx_value = _finite_float(info.get("delta_x"))
+            if dx_value is not None:
+                delta_x.append(dx_value)
+            dy_value = _finite_float(info.get("delta_y"))
+            if dy_value is not None:
+                delta_y.append(dy_value)
+            dyaw_value = _finite_float(info.get("delta_yaw"))
+            if dyaw_value is not None:
+                delta_yaw.append(dyaw_value)
+            final_result = checker.update(_sample((step_idx + 1) * env.config.control_dt_s, info))
             # Sync qpos/qvel from the training MJCF into the scene MJCF so the
             # renderer shows the live policy state on top of the ground plane.
             if render_data is not data and render_model.nq == model.nq:
@@ -410,11 +519,22 @@ def run(
             "torso_z": _series_summary(torso_z),
             "upright_proj": _series_summary(upright_proj),
             "reward": _series_summary(rewards),
+            "delta_x_m": _series_summary(delta_x),
+            "delta_y_m": _series_summary(delta_y),
+            "delta_yaw_rad": _series_summary(delta_yaw),
+            "action_norm": _series_summary(action_norms),
+            "nonzero_action_steps": nonzero_action_steps,
+            "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+            "goal_success": bool(final_result.success),
+            "goal_failed": bool(final_result.failed),
+            "goal_reason": final_result.reason,
             "rollout_ok": bool(no_fall and upright_ok),
             "checks": {
                 "no_termination": not terminated,
                 "torso_above_fall_threshold": bool(no_fall),
                 "upright_positive": bool(upright_ok),
+                "attempted_action": bool(nonzero_action_steps > 0 or task_id == "stand_up"),
+                "goal_success": bool(final_result.success),
             },
         }
 
@@ -431,7 +551,7 @@ def run(
                 continue
             if text == "__QUIT__":
                 break
-            task_id = _resolve_task_id(text, task_ids)
+            task_id = _resolve_task_id(text, task_ids, curriculum)
             if task_id is None:
                 print(f"[viewer] no curriculum task matches {text!r}", file=sys.stderr)
                 continue
@@ -471,6 +591,9 @@ def run(
                     ),
                     "rollout_ok": bool(command_telemetry)
                     and all(item.get("rollout_ok") is True for item in command_telemetry),
+                    "any_goal_success": any(
+                        item.get("goal_success") is True for item in command_telemetry
+                    ),
                 }
                 _write_telemetry(_telemetry_path(combined_path), combined)
         if viewer is not None:
@@ -525,6 +648,15 @@ def main(argv: list[str] | None = None) -> int:
             "command starts from a fresh reset so per-action videos are independent."
         ),
     )
+    parser.add_argument(
+        "--scripted-smoke",
+        action="store_true",
+        help=(
+            "Use deterministic command-specific joint actions instead of a "
+            "checkpoint. This proves interactive text-to-action wiring only; "
+            "it is not trained-policy evidence."
+        ),
+    )
     args = parser.parse_args(argv)
     return run(
         args.profile,
@@ -538,6 +670,7 @@ def main(argv: list[str] | None = None) -> int:
         record_combined=args.record_combined,
         policy_checkpoint=args.policy_checkpoint,
         preserve_state_between_commands=args.preserve_state_between_commands,
+        scripted_smoke=args.scripted_smoke,
     )
 
 

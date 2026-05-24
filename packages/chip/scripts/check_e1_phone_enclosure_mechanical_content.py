@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -60,16 +59,12 @@ CLEARANCE_CASE_SUPPLIER_FAMILIES = {
         "battery_power_thermal_stack",
         "rear_front_camera_stack",
     ],
-    "split_interconnect_connectors_on_pcb_islands": [
-        "audio_haptics_split_interconnect"
-    ],
+    "split_interconnect_connectors_on_pcb_islands": ["audio_haptics_split_interconnect"],
     "split_interconnect_flex_to_battery_edge": [
         "audio_haptics_split_interconnect",
         "battery_power_thermal_stack",
     ],
-    "split_interconnect_flex_within_side_rail": [
-        "audio_haptics_split_interconnect"
-    ],
+    "split_interconnect_flex_within_side_rail": ["audio_haptics_split_interconnect"],
     "usb_shell_to_external_aperture": ["usb_c_side_buttons_bottom_io"],
     "usb_to_bottom_speaker": [
         "audio_haptics_split_interconnect",
@@ -239,12 +234,7 @@ def release_evidence_generation_plan(
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     blocked_intake_reasons = sorted(
-        {
-            reason
-            for row in routed_intake_diagnostics
-            for reason in row.get("missing", [])
-            if reason
-        }
+        {reason for row in routed_intake_diagnostics for reason in row.get("missing", []) if reason}
     )
     plan_by_gate: dict[str, dict[str, Any]] = {
         "routed_board_step_intake": {
@@ -400,20 +390,13 @@ def routed_step_release_generation_plan(
     routed_intake_diagnostics: list[dict[str, Any]],
 ) -> dict[str, Any]:
     blocked_reasons = sorted(
-        {
-            reason
-            for row in routed_intake_diagnostics
-            for reason in row.get("missing", [])
-            if reason
-        }
+        {reason for row in routed_intake_diagnostics for reason in row.get("missing", []) if reason}
     )
     next_artifacts = routed_inputs.get("next_artifacts", [])
     if not isinstance(next_artifacts, list):
         next_artifacts = []
     return {
-        "required_production_routed_step": routed_inputs.get(
-            "required_production_routed_step"
-        ),
+        "required_production_routed_step": routed_inputs.get("required_production_routed_step"),
         "routed_step_files": len(production_step_files),
         "candidate_step_file_count": len(present_candidate_step_paths),
         "candidate_step_paths": present_candidate_step_paths,
@@ -433,9 +416,7 @@ def routed_step_release_generation_plan(
             "routed_kicad_pcb": routed_inputs.get("required_routed_kicad_pcb"),
             "drc_report": routed_inputs.get("required_drc_report"),
             "erc_report": routed_inputs.get("required_erc_report"),
-            "supplier_3d_binding_report": (
-                next_artifacts[1] if len(next_artifacts) > 1 else None
-            ),
+            "supplier_3d_binding_report": (next_artifacts[1] if len(next_artifacts) > 1 else None),
             "routed_boolean_interference_report": (
                 next_artifacts[2] if len(next_artifacts) > 2 else None
             ),
@@ -698,9 +679,7 @@ def clearance_case_diagnostics(
     supplier_index: dict[str, dict[str, Any]],
     release_cases: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    rerun_by_case = {
-        str(row.get("case_id")): row for row in rerun_matrix if isinstance(row, dict)
-    }
+    rerun_by_case = {str(row.get("case_id")): row for row in rerun_matrix if isinstance(row, dict)}
     release_cases = release_cases or {}
     rows: list[dict[str, Any]] = []
     for index, row in enumerate(clearance_results):
@@ -742,9 +721,7 @@ def clearance_case_diagnostics(
                 "concept_margin_mm": rerun.get("concept_margin_mm"),
                 "required_release_report": release_case.get("required_release_report"),
                 "required_inputs": routed_inputs,
-                "supplier_geometry_families": supplier_families_for_case(
-                    case_id, supplier_index
-                ),
+                "supplier_geometry_families": supplier_families_for_case(case_id, supplier_index),
                 "next_artifacts": [
                     release_case.get("required_release_report"),
                     routed_inputs.get("required_production_routed_step"),
@@ -817,9 +794,7 @@ def clearance_release_action_inventory(
                 "routed_step_input_map": row.get("required_inputs", {}),
                 "supplier_geometry_families": row.get("supplier_geometry_families", []),
                 "next_artifacts": [
-                    artifact
-                    for artifact in row.get("next_artifacts", [])
-                    if artifact
+                    artifact for artifact in row.get("next_artifacts", []) if artifact
                 ],
                 "missing": row.get("missing", []),
                 "next_commands": CLEARANCE_NEXT_COMMANDS,
@@ -946,10 +921,14 @@ def first_article_physical_fit_action_inventory(paths: list[str]) -> list[dict[s
             action = "rerun all physical clearance cases against the approved routed STEP"
         elif "full-cad-boolean-interference" in path:
             evidence_class = "routed_full_cad_boolean_interference_report"
-            action = "rerun boolean interference on the approved routed board and enclosure assembly"
+            action = (
+                "rerun boolean interference on the approved routed board and enclosure assembly"
+            )
         elif "assembly.pdf" in path:
             evidence_class = "released_assembly_drawing"
-            action = "release assembly drawing packet with production routed board and enclosure datums"
+            action = (
+                "release assembly drawing packet with production routed board and enclosure datums"
+            )
         elif "first-article-test-transcript" in path:
             evidence_class = "executed_first_article_test_transcript"
             action = "execute the first-article physical-fit test on serialized hardware"
@@ -1016,7 +995,9 @@ def main() -> int:
         if not isinstance(local_ready, dict):
             raise ValueError("mechanical inventory local_enclosure_cad_ready must be a mapping")
         if local_ready.get("cad_connection_coverage_complete") is not True:
-            raise ValueError("local enclosure CAD ready must include complete CAD connection coverage")
+            raise ValueError(
+                "local enclosure CAD ready must include complete CAD connection coverage"
+            )
         concept_assets = mechanical.get("concept_generated_assets", {})
         if not isinstance(concept_assets, dict):
             raise ValueError("mechanical inventory concept_generated_assets must be a mapping")
@@ -1024,12 +1005,8 @@ def main() -> int:
             "solid_handoff_ocp_terminal_step_fallback_count": 42,
             "solid_handoff_ocp_terminal_step_fallback_error": "",
             "cad_connection_coverage_status": connection_coverage.get("status"),
-            "cad_connection_required_count": connection_coverage.get(
-                "required_connection_count"
-            ),
-            "cad_connection_passing_count": connection_coverage.get(
-                "passing_connection_count"
-            ),
+            "cad_connection_required_count": connection_coverage.get("required_connection_count"),
+            "cad_connection_passing_count": connection_coverage.get("passing_connection_count"),
             "cad_connection_terminal_marker_count": connection_coverage.get(
                 "required_connection_terminal_marker_count"
             ),
@@ -1176,23 +1153,17 @@ def main() -> int:
             for index, packet in enumerate(handoff_packets)
             if not isinstance(packet, dict)
         ]
-        handoff_packet_maps = [
-            packet for packet in handoff_packets if isinstance(packet, dict)
-        ]
+        handoff_packet_maps = [packet for packet in handoff_packets if isinstance(packet, dict)]
         handoff_packet_ids = [str(packet.get("id") or "") for packet in handoff_packet_maps]
         if len(set(handoff_packet_ids)) != len(handoff_packet_ids):
             invalid_handoff_packets.append("duplicate_handoff_packet_ids")
         if any(not packet_id for packet_id in handoff_packet_ids):
             invalid_handoff_packets.append("missing_handoff_packet_id")
         handoff_packet_failures_flat = [
-            failure
-            for packet in handoff_packet_maps
-            for failure in handoff_packet_failures(packet)
+            failure for packet in handoff_packet_maps for failure in handoff_packet_failures(packet)
         ]
         invalid_handoff_packets.extend(handoff_packet_failures_flat)
-        handoff_packet_actions = [
-            handoff_packet_action(packet) for packet in handoff_packet_maps
-        ]
+        handoff_packet_actions = [handoff_packet_action(packet) for packet in handoff_packet_maps]
         missing_handoff_packet_ids = [
             str(packet.get("id") or f"packet_{index}")
             for index, packet in enumerate(handoff_packet_maps)
@@ -1203,8 +1174,7 @@ def main() -> int:
         handoff_paths = [
             str(packet.get("expected_path"))
             for packet in handoff_packet_maps
-            if isinstance(packet.get("expected_path"), str)
-            and packet.get("expected_path")
+            if isinstance(packet.get("expected_path"), str) and packet.get("expected_path")
         ]
         handoff_external_items = list(handoff_required_items)
         handoff_present = present_count(handoff_paths)
@@ -1223,9 +1193,7 @@ def main() -> int:
         if not isinstance(development_step_candidates, list):
             raise ValueError("board-step development_step_candidates must be a list")
         detailed_routed_step_candidate = board_step.get("detailed_routed_step_candidate", {})
-        if detailed_routed_step_candidate and not isinstance(
-            detailed_routed_step_candidate, dict
-        ):
+        if detailed_routed_step_candidate and not isinstance(detailed_routed_step_candidate, dict):
             raise ValueError("board-step detailed_routed_step_candidate must be a mapping")
         if detailed_routed_step_candidate:
             if detailed_routed_step_candidate.get("release_credit") is not False:
@@ -1240,8 +1208,13 @@ def main() -> int:
                 raise ValueError("detailed routed STEP candidate route count diverges")
             if int(detailed_routed_step_candidate.get("segment_count") or 0) != 306:
                 raise ValueError("detailed routed STEP candidate segment count diverges")
-            if detailed_routed_step_candidate.get("candidate_matches_development_source") is not True:
-                raise ValueError("detailed routed STEP candidate hash does not match development source")
+            if (
+                detailed_routed_step_candidate.get("candidate_matches_development_source")
+                is not True
+            ):
+                raise ValueError(
+                    "detailed routed STEP candidate hash does not match development source"
+                )
         blocked_candidate_step_files = board_step.get("blocked_candidate_step_files", [])
         if not isinstance(blocked_candidate_step_files, list):
             raise ValueError("board-step blocked_candidate_step_files must be a list")
@@ -1250,9 +1223,8 @@ def main() -> int:
             != blocked_candidate_step_files
         ):
             raise ValueError("mechanical inventory blocked candidate STEP files stale")
-        if (
-            inventory_board_step_gate.get("approved_production_step_files")
-            != board_step.get("approved_production_step_files", [])
+        if inventory_board_step_gate.get("approved_production_step_files") != board_step.get(
+            "approved_production_step_files", []
         ):
             raise ValueError("mechanical inventory approved production STEP files stale")
         if (
@@ -1267,9 +1239,10 @@ def main() -> int:
             raise ValueError("mechanical inventory detailed routed STEP candidate stale")
         if local_routed_step_candidate_ready.get("release_claim_allowed") is not False:
             raise ValueError("local routed STEP candidate inventory cannot allow release")
-        if local_routed_step_candidate_ready.get(
-            "detailed_routed_step_candidate_release_credit"
-        ) is not False:
+        if (
+            local_routed_step_candidate_ready.get("detailed_routed_step_candidate_release_credit")
+            is not False
+        ):
             raise ValueError("local routed STEP candidate inventory cannot grant release credit")
         if int(local_routed_step_candidate_ready.get("approved_production_step_count") or 0) != len(
             board_step.get("approved_production_step_files", [])
@@ -1283,19 +1256,17 @@ def main() -> int:
             local_routed_step_candidate_ready.get("detailed_routed_step_candidate_present")
         ) != bool(detailed_routed_step_candidate.get("present") is True):
             raise ValueError("local routed STEP detailed candidate presence stale")
-        if (
-            int(
-                local_routed_step_candidate_ready.get(
-                    "detailed_routed_step_candidate_bytes"
-                )
-                or 0
-            )
-            != int(detailed_routed_step_candidate.get("size_bytes") or 0)
-        ):
+        if int(
+            local_routed_step_candidate_ready.get("detailed_routed_step_candidate_bytes") or 0
+        ) != int(detailed_routed_step_candidate.get("size_bytes") or 0):
             raise ValueError("local routed STEP detailed candidate byte count stale")
-        if detailed_routed_step_candidate and local_routed_step_candidate_ready.get(
-            "detailed_routed_step_candidate_ready_for_local_review"
-        ) is not True:
+        if (
+            detailed_routed_step_candidate
+            and local_routed_step_candidate_ready.get(
+                "detailed_routed_step_candidate_ready_for_local_review"
+            )
+            is not True
+        ):
             raise ValueError("local routed STEP candidate must be ready for local review")
         development_board_local_review_state = board_step.get(
             "development_board_local_review_state", {}
@@ -1334,11 +1305,7 @@ def main() -> int:
             str(row.get("path"))
             for row in development_step_candidates
             if isinstance(row, dict) and row.get("path")
-        ] + [
-            str(row)
-            for row in development_step_candidates
-            if isinstance(row, str) and row
-        ]
+        ] + [str(row) for row in development_step_candidates if isinstance(row, str) and row]
         candidate_step_paths = [
             str(path)
             for path in [
@@ -1478,9 +1445,7 @@ def main() -> int:
         blockers = burndown.get("release_blockers")
         if not isinstance(blockers, list):
             raise ValueError("release_blockers must be a list")
-        release_evidence_blockers = release_evidence_diagnostics(
-            missing_release_evidence
-        )
+        release_evidence_blockers = release_evidence_diagnostics(missing_release_evidence)
         release_generation_plan = release_evidence_generation_plan(
             release_evidence_blockers,
             routed_inputs=routed_inputs,
@@ -1631,9 +1596,7 @@ def main() -> int:
                 if row["case_id"] in failed_clearance_cases
             ][:4],
             "routed_clearance_release_action_count": len(clearance_release_actions),
-            "first_article_physical_fit_action_count": len(
-                first_article_physical_fit_actions
-            ),
+            "first_article_physical_fit_action_count": len(first_article_physical_fit_actions),
         }
         findings = [
             {
@@ -1776,9 +1739,7 @@ def main() -> int:
                         "required_release_evidence_class": (
                             "routed_full_cad_boolean_interference_report"
                         ),
-                        "required_release_report": routed_inputs.get(
-                            "next_artifacts", []
-                        )[2],
+                        "required_release_report": routed_inputs.get("next_artifacts", [])[2],
                         "parts_loaded": full_cad_boolean.get("parts_loaded"),
                         "pair_count_brep_evaluated": full_cad_boolean.get(
                             "pair_count_brep_evaluated"
@@ -1806,9 +1767,7 @@ def main() -> int:
                         "required_inputs": row.get("required_inputs", {}),
                         "supplier_geometry_families": row.get("supplier_geometry_families", []),
                         "next_artifacts": [
-                            artifact
-                            for artifact in row.get("next_artifacts", [])
-                            if artifact
+                            artifact for artifact in row.get("next_artifacts", []) if artifact
                         ],
                         "next_commands": CLEARANCE_NEXT_COMMANDS,
                         "missing": row.get("missing", []),

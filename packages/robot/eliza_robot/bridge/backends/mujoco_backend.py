@@ -355,6 +355,18 @@ class MuJocoBackend(BridgeBackend):
     async def poll_events(self) -> list[EventEnvelope]:
         """Return simulated telemetry events from the MuJoCo state."""
         telemetry = self._last_telemetry or self._env._build_telemetry()
+        root_pose: dict[str, float] = {}
+        try:
+            pos = self._env.get_robot_position()
+            root_pose = {
+                "root_x": float(pos[0]),
+                "root_y": float(pos[1]),
+                "root_z": float(pos[2]),
+                "root_yaw": float(self._env.get_robot_yaw()),
+                "stand_height_m": float(pos[2]),
+            }
+        except Exception:
+            root_pose = {}
 
         basic = EventEnvelope(
             event="telemetry.basic",
@@ -373,6 +385,7 @@ class MuJocoBackend(BridgeBackend):
                 "head_pan": self._head.pan,
                 "head_tilt": self._head.tilt,
                 "joint_positions": telemetry.get("joint_positions", {}),
+                **root_pose,
             },
         )
 

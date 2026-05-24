@@ -31,9 +31,7 @@ DEFAULT_PRODUCTION_PRESENCE = (
 DEFAULT_MECHANICAL_CAD = (
     ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
 )
-DEFAULT_KICAD_CAD_TRACEABILITY = (
-    BOARD_ROOT / "kicad-cad-traceability-matrix-2026-05-22.yaml"
-)
+DEFAULT_KICAD_CAD_TRACEABILITY = BOARD_ROOT / "kicad-cad-traceability-matrix-2026-05-22.yaml"
 DEFAULT_CANDIDATE_MANIFEST = (
     BOARD_ROOT / "production/routed-output-candidate-manifest-2026-05-22.yaml"
 )
@@ -393,12 +391,8 @@ def build_contract_rows(
     factory_candidate_manifest: dict[str, Any],
 ) -> list[dict[str, Any]]:
     traceability_summary = kicad_cad_traceability["summary"]
-    routed_cad_connection_assembly = cad_connection_assembly_summary(
-        routed_candidate_manifest
-    )
-    factory_cad_connection_assembly = cad_connection_assembly_summary(
-        factory_candidate_manifest
-    )
+    routed_cad_connection_assembly = cad_connection_assembly_summary(routed_candidate_manifest)
+    factory_cad_connection_assembly = cad_connection_assembly_summary(factory_candidate_manifest)
     common_traceability = [
         "artifact_id",
         "source_requirement_id",
@@ -480,6 +474,18 @@ def build_contract_rows(
             "covered_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
+            "manufacturing_closure_has_production_outputs": production_presence["summary"][
+                "manufacturing_closure_has_production_outputs"
+            ],
+            "manufacturing_closure_release_output_count": production_presence["summary"][
+                "manufacturing_closure_release_output_count"
+            ],
+            "manufacturing_closure_has_blocked_candidate_outputs": production_presence["summary"][
+                "manufacturing_closure_has_blocked_candidate_outputs"
+            ],
+            "manufacturing_closure_blocked_candidate_output_file_count": production_presence[
+                "summary"
+            ]["manufacturing_closure_blocked_candidate_output_file_count"],
             "factory_candidate_cad_connection_assembly_manifest": (
                 factory_cad_connection_assembly["assembly_manifest"]
             ),
@@ -532,12 +538,8 @@ def build_contract_rows(
             "footprint_library_count": traceability_summary["footprint_library_count"],
             "pad_audit_record_count": traceability_summary["pad_audit_record_count"],
             "board_bound_instance_count": traceability_summary["board_bound_instance_count"],
-            "step_footprint_instance_count": traceability_summary[
-                "step_footprint_instance_count"
-            ],
-            "captured_pinout_file_count": traceability_summary[
-                "captured_pinout_file_count"
-            ],
+            "step_footprint_instance_count": traceability_summary["step_footprint_instance_count"],
+            "captured_pinout_file_count": traceability_summary["captured_pinout_file_count"],
             "captured_pinout_declared_pin_count_total": traceability_summary[
                 "captured_pinout_declared_pin_count_total"
             ],
@@ -561,14 +563,10 @@ def build_contract_rows(
                 routed_cad_connection_assembly["assembly_manifest_part_count"]
             ),
             "cad_connection_assembly_manifest_terminal_marker_count": (
-                routed_cad_connection_assembly[
-                    "assembly_manifest_connection_terminal_marker_count"
-                ]
+                routed_cad_connection_assembly["assembly_manifest_connection_terminal_marker_count"]
             ),
             "cad_connection_assembly_manifest_solid_step_part_count": (
-                routed_cad_connection_assembly[
-                    "assembly_manifest_connection_solid_step_part_count"
-                ]
+                routed_cad_connection_assembly["assembly_manifest_connection_solid_step_part_count"]
             ),
             "cad_connection_assembly_manifest_missing_solid_step_part_count": (
                 routed_cad_connection_assembly[
@@ -580,9 +578,7 @@ def build_contract_rows(
                     "assembly_manifest_missing_connection_solid_step_part_names"
                 ]
             ),
-            "incomplete_footprint_count": traceability_summary[
-                "incomplete_footprint_count"
-            ],
+            "incomplete_footprint_count": traceability_summary["incomplete_footprint_count"],
             "incomplete_cad_connection_count": traceability_summary[
                 "incomplete_cad_connection_count"
             ],
@@ -734,12 +730,8 @@ def build_report(
     matched_candidate_manifest_paths = sorted(candidate_manifest_paths & all_requirement_paths)
     unmatched_candidate_manifest_paths = sorted(candidate_manifest_paths - all_requirement_paths)
     template_rows = [row for row in artifact_rows if row["template_only"]]
-    routed_cad_connection_assembly = cad_connection_assembly_summary(
-        routed_candidate_manifest
-    )
-    factory_cad_connection_assembly = cad_connection_assembly_summary(
-        factory_candidate_manifest
-    )
+    routed_cad_connection_assembly = cad_connection_assembly_summary(routed_candidate_manifest)
+    factory_cad_connection_assembly = cad_connection_assembly_summary(factory_candidate_manifest)
     return {
         "schema": "eliza.e1_phone_release_evidence_content_contract.v1",
         "status": "blocked_fail_closed_content_contract_only",
@@ -772,31 +764,44 @@ def build_report(
             "production_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
+            "production_manufacturing_closure_release_output_count": (
+                production_presence["summary"]["manufacturing_closure_release_output_count"]
+            ),
+            "production_manufacturing_closure_blocked_candidate_output_file_count": (
+                production_presence["summary"][
+                    "manufacturing_closure_blocked_candidate_output_file_count"
+                ]
+            ),
+            "production_manufacturing_closure_has_blocked_candidate_outputs": (
+                production_presence["summary"][
+                    "manufacturing_closure_has_blocked_candidate_outputs"
+                ]
+            ),
             "first_article_required_non_template_row_count": first_article["summary"][
                 "required_non_template_row_count"
             ],
-            "mechanical_missing_release_ready_evidence_count": mechanical_cad[
-                "release_readiness"
-            ]["missing_required_evidence_count"],
+            "mechanical_missing_release_ready_evidence_count": mechanical_cad["release_readiness"][
+                "missing_required_evidence_count"
+            ],
             "local_kicad_cad_traceability_status": kicad_cad_traceability["status"],
-            "local_kicad_cad_footprint_library_count": kicad_cad_traceability[
-                "summary"
-            ]["footprint_library_count"],
-            "local_kicad_cad_board_bound_instance_count": kicad_cad_traceability[
-                "summary"
-            ]["board_bound_instance_count"],
-            "local_kicad_cad_step_footprint_instance_count": kicad_cad_traceability[
-                "summary"
-            ]["step_footprint_instance_count"],
+            "local_kicad_cad_footprint_library_count": kicad_cad_traceability["summary"][
+                "footprint_library_count"
+            ],
+            "local_kicad_cad_board_bound_instance_count": kicad_cad_traceability["summary"][
+                "board_bound_instance_count"
+            ],
+            "local_kicad_cad_step_footprint_instance_count": kicad_cad_traceability["summary"][
+                "step_footprint_instance_count"
+            ],
             "local_kicad_cad_connection_count": kicad_cad_traceability["summary"][
                 "cad_connection_count"
             ],
-            "local_kicad_cad_connection_terminal_marker_count": kicad_cad_traceability[
-                "summary"
-            ]["cad_connection_terminal_marker_count"],
-            "local_kicad_cad_connection_solid_step_part_count": kicad_cad_traceability[
-                "summary"
-            ]["cad_connection_solid_step_part_count"],
+            "local_kicad_cad_connection_terminal_marker_count": kicad_cad_traceability["summary"][
+                "cad_connection_terminal_marker_count"
+            ],
+            "local_kicad_cad_connection_solid_step_part_count": kicad_cad_traceability["summary"][
+                "cad_connection_solid_step_part_count"
+            ],
             "local_kicad_cad_connection_solid_step_part_set_count": (
                 kicad_cad_traceability["summary"]["cad_connection_solid_step_part_set_count"]
             ),
@@ -804,14 +809,10 @@ def build_report(
                 routed_cad_connection_assembly["assembly_manifest_part_count"]
             ),
             "local_kicad_cad_connection_assembly_manifest_terminal_marker_count": (
-                routed_cad_connection_assembly[
-                    "assembly_manifest_connection_terminal_marker_count"
-                ]
+                routed_cad_connection_assembly["assembly_manifest_connection_terminal_marker_count"]
             ),
             "local_kicad_cad_connection_assembly_manifest_solid_step_part_count": (
-                routed_cad_connection_assembly[
-                    "assembly_manifest_connection_solid_step_part_count"
-                ]
+                routed_cad_connection_assembly["assembly_manifest_connection_solid_step_part_count"]
             ),
             "local_kicad_cad_connection_assembly_manifest_missing_solid_step_part_count": (
                 routed_cad_connection_assembly[
@@ -836,32 +837,31 @@ def build_report(
                     "assembly_manifest_missing_connection_solid_step_part_count"
                 ]
             ),
-            "local_kicad_cad_declared_pin_count_total": kicad_cad_traceability[
-                "summary"
-            ]["captured_pinout_declared_pin_count_total"],
-            "local_kicad_cad_pinout_public_source_count": kicad_cad_traceability[
-                "summary"
-            ]["captured_pinout_public_source_count"],
-            "local_kicad_cad_incomplete_footprint_count": kicad_cad_traceability[
-                "summary"
-            ]["incomplete_footprint_count"],
-            "local_kicad_cad_incomplete_connection_count": kicad_cad_traceability[
-                "summary"
-            ]["incomplete_cad_connection_count"],
-            "local_kicad_cad_incomplete_pinout_detail_count": kicad_cad_traceability[
-                "summary"
-            ]["incomplete_captured_pinout_detail_count"],
+            "local_kicad_cad_declared_pin_count_total": kicad_cad_traceability["summary"][
+                "captured_pinout_declared_pin_count_total"
+            ],
+            "local_kicad_cad_pinout_public_source_count": kicad_cad_traceability["summary"][
+                "captured_pinout_public_source_count"
+            ],
+            "local_kicad_cad_incomplete_footprint_count": kicad_cad_traceability["summary"][
+                "incomplete_footprint_count"
+            ],
+            "local_kicad_cad_incomplete_connection_count": kicad_cad_traceability["summary"][
+                "incomplete_cad_connection_count"
+            ],
+            "local_kicad_cad_incomplete_pinout_detail_count": kicad_cad_traceability["summary"][
+                "incomplete_captured_pinout_detail_count"
+            ],
             "local_kicad_cad_release_credit": bool(
                 kicad_cad_traceability["summary"].get("release_credit")
             ),
-            "mechanical_missing_release_ready_evidence_count": mechanical_cad["release_readiness"][
-                "missing_required_evidence_count"
-            ],
             "artifact_content_requirement_count": len(artifact_rows),
             "local_candidate_content_requirement_count": len(candidate_rows),
             "local_candidate_manifest_artifact_path_count": len(candidate_manifest_paths),
             "local_candidate_matched_artifact_path_count": len(matched_candidate_manifest_paths),
-            "local_candidate_unmatched_artifact_path_count": len(unmatched_candidate_manifest_paths),
+            "local_candidate_unmatched_artifact_path_count": len(
+                unmatched_candidate_manifest_paths
+            ),
             "template_content_requirement_count": len(template_rows),
             "validated_artifact_content_requirement_count": 0,
             "content_contract_only": True,

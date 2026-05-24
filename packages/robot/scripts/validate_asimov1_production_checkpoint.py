@@ -212,7 +212,13 @@ def _manifest_asset_provenance_matches(
     expected_path: Path,
 ) -> bool:
     manifest_path = Path(str(manifest.get(path_key, "")))
-    if not manifest_path.is_file() or manifest_path.resolve() != expected_path.resolve():
+    try:
+        manifest_is_file = manifest_path.is_file()
+        manifest_resolved = manifest_path.resolve()
+        expected_resolved = expected_path.resolve()
+    except OSError:
+        return False
+    if not manifest_is_file or manifest_resolved != expected_resolved:
         return False
     actual_hash = _sha256_file(manifest_path)
     return actual_hash is not None and manifest.get(hash_key) == actual_hash

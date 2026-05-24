@@ -241,9 +241,7 @@ def ap_benchmark_runner_report() -> dict[str, object]:
     markers, marker_errors = ap_required_markers()
     marker_status = workload_marker_status(markers)
     smoke_script = ROOT / LINUX_SMOKE_WORKLOAD
-    smoke_text = (
-        smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else ""
-    )
+    (smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else "")
 
     tools: list[dict[str, object]] = []
     target_ready_tools: list[str] = []
@@ -428,7 +426,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
                     if "coremark" in ready_tools
                     else "target-ready RV64 CoreMark binary is absent"
                 ),
-                "blocked_until": "ready" if "coremark" in ready_tools else "build a target RV64 CoreMark binary for the generated-AP Linux payload",
+                "blocked_until": "ready"
+                if "coremark" in ready_tools
+                else "build a target RV64 CoreMark binary for the generated-AP Linux payload",
             },
             {
                 "name": "STREAM",
@@ -438,7 +438,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
                     if "stream_c.exe" in ready_tools
                     else "target-ready RV64 STREAM binary is absent"
                 ),
-                "blocked_until": "ready" if "stream_c.exe" in ready_tools else "build a target RV64 STREAM binary for the generated-AP Linux payload",
+                "blocked_until": "ready"
+                if "stream_c.exe" in ready_tools
+                else "build a target RV64 STREAM binary for the generated-AP Linux payload",
             },
             {
                 "name": "lmbench lat_mem_rd",
@@ -448,7 +450,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
                     if "lat_mem_rd" in ready_tools
                     else "target-ready RV64 lat_mem_rd binary is absent"
                 ),
-                "blocked_until": "ready" if "lat_mem_rd" in ready_tools else "build a target RV64 lat_mem_rd binary for the generated-AP Linux payload",
+                "blocked_until": "ready"
+                if "lat_mem_rd" in ready_tools
+                else "build a target RV64 lat_mem_rd binary for the generated-AP Linux payload",
             },
             {
                 "name": "fio",
@@ -458,7 +462,9 @@ def ap_benchmark_runner_report() -> dict[str, object]:
                     if "fio" in ready_tools
                     else "target-ready RV64 fio binary is absent"
                 ),
-                "blocked_until": "ready" if "fio" in ready_tools else "build target RV64 fio for the generated-AP Linux userspace",
+                "blocked_until": "ready"
+                if "fio" in ready_tools
+                else "build target RV64 fio for the generated-AP Linux userspace",
             },
         ],
         "excluded_reference_inputs": [
@@ -473,13 +479,13 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         "next_commands_after_prerequisites_exist": [
             "marshal -v -d build sw/firemarshal/eliza-e1-ap-benchmarks.json",
             (
-                "eval \"$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)\" "
+                'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
                 "&& scripts/capture_chipyard_linux_evidence.sh ap-benchmarks"
             ),
             (
                 "scripts/capture_cpu_ap_evidence.py intake ap-benchmarks --source "
                 "build/chipyard/eliza_rocket/verilator-linux-smoke.log --command "
-                "\"$ELIZA_AP_BENCHMARKS_CMD\" --generated-manifest "
+                '"$ELIZA_AP_BENCHMARKS_CMD" --generated-manifest '
                 "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json"
             ),
         ],
@@ -559,6 +565,7 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
             entry["source"] = "generated_ap_isa_cache_mmu_probe"
             entry["command"] = ISA_CACHE_MMU_PROBE.as_posix()
             entry["blocked_report"] = rel(ISA_CACHE_MMU_REPORT)
+            hwprobe_ready = False
             if not manifest_ok:
                 problems.append(f"missing generated manifest: {rel(GENERATED_MANIFEST)}")
             if not probe.is_file() or not os.access(probe, os.X_OK):
@@ -571,13 +578,18 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                         report = {}
                     baremetal = report.get("baremetal_probe")
                     hwprobe = report.get("linux_userspace_hwprobe")
-                    if isinstance(baremetal, dict) and baremetal.get("status") == "pass":
+                    hwprobe_ready = isinstance(hwprobe, dict) and bool(
+                        hwprobe.get("contains_riscv_hwprobe_success")
+                    )
+                    if (
+                        isinstance(baremetal, dict)
+                        and baremetal.get("status") == "pass"
+                        and not hwprobe_ready
+                    ):
                         problems.append(
                             "generated-AP bare-metal diagnostic passed ISA/cache/MMU markers"
                         )
-                    if isinstance(hwprobe, dict) and not hwprobe.get(
-                        "contains_riscv_hwprobe_success"
-                    ):
+                    if isinstance(hwprobe, dict) and not hwprobe_ready:
                         hook = hwprobe.get("userspace_hook")
                         if isinstance(hook, dict) and hook.get("workload_invokes_helper"):
                             problems.append(
@@ -590,11 +602,14 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                                 "latest generated-AP Linux smoke source lacks Linux userspace "
                                 "successful riscv_hwprobe syscall output"
                             )
-                problems.append(
-                    "checked-in generated-AP bare-metal diagnostic emits ISA/cache/MMU "
-                    "markers, but final evidence still needs generated-AP Linux userspace "
-                    "hwprobe output before ELIZA_ISA_CACHE_MMU_CMD can be exported"
-                )
+                if hwprobe_ready:
+                    entry["status"] = "ready"
+                else:
+                    problems.append(
+                        "checked-in generated-AP bare-metal diagnostic emits ISA/cache/MMU "
+                        "markers, but final evidence still needs generated-AP Linux userspace "
+                        "hwprobe output before ELIZA_ISA_CACHE_MMU_CMD can be exported"
+                    )
         elif mode == "trap-timer-irq":
             entry["source"] = "generated_ap_trap_timer_irq_runner"
             entry["command"] = TRAP_TIMER_IRQ_RUNNER.as_posix()
@@ -609,7 +624,9 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                     problems.append(f"missing generated manifest: {rel(GENERATED_MANIFEST)}")
                 ap_payload = rooted(AP_BENCHMARK_PAYLOAD)
                 if not ap_payload.is_file():
-                    problems.append(f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}")
+                    problems.append(
+                        f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}"
+                    )
                 if not runner_ok:
                     problems.append(f"missing executable smoke runner: {SMOKE_RUNNER}")
                 report_blockers = [
@@ -621,9 +638,7 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
                 problems.extend(report_blockers)
                 if not problems and ap_report.get("derived_command_available"):
                     entry["status"] = "ready"
-                    entry["command"] = smoke_command(
-                        str(ap_payload), use_docker=args.use_docker
-                    )
+                    entry["command"] = smoke_command(str(ap_payload), use_docker=args.use_docker)
             else:
                 problems.append(
                     "no checked-in generated-AP test runner is available for this lane; "
