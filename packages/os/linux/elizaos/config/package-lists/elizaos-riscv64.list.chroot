@@ -30,6 +30,7 @@ epiphany-browser
 # Native Postgres for the agent. riscv64's C_LOOP bun has no WebAssembly, so the
 # wasm PGlite build cannot run; the agent uses Postgres (POSTGRES_URL) instead.
 postgresql
+postgresql-17-pgvector
 
 # Node.js fallback for the bare agent-bundle.js path. The current riscv64 Bun
 # artifact remains provenance-gated, but boot evidence shows it can trap with

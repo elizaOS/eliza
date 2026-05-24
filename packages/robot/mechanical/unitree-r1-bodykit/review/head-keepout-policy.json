@@ -17,7 +17,7 @@
       "region": "neck_head_face",
       "part_body": "torso_link",
       "base_body": "right_wrist_roll_link",
-      "base_geom": "geom_132",
+      "base_geom": "geom_134",
       "base_geom_type": "mesh",
       "body_tree_distance": 5,
       "part_sample_point_m": [
@@ -50,7 +50,7 @@
       "region": "neck_head_face",
       "part_body": "torso_link",
       "base_body": "left_wrist_roll_link",
-      "base_geom": "geom_116",
+      "base_geom": "geom_117",
       "base_geom_type": "mesh",
       "body_tree_distance": 5,
       "part_sample_point_m": [
@@ -77,6 +77,17 @@
   ],
   "controlled_part": "face_shell",
   "controlled_base_body_suffix": "wrist_roll_link",
+  "enforcement": {
+    "policy_verdict": "needs-controller-enforcement",
+    "clearance_gate_mm": 18.0,
+    "blocked_or_replanned_poses": [
+      "right_shoulder_pitch_joint_low__right_elbow_joint_low",
+      "left_shoulder_pitch_joint_low__left_elbow_joint_low"
+    ],
+    "controlled_part": "face_shell",
+    "controlled_base_body_suffix": "wrist_roll_link",
+    "rationale": "The candidate rows are extreme wrist poses entering the protected face volume. A geometry-only fix large enough to clear them would degrade the donor-derived face."
+  },
   "required_action": "Implement controller joint-limit or keepout-volume enforcement for candidate poses, or replace the physical wrist/forearm geometry, before claiming extreme-pose mechanical release.",
   "design_guardrail": "Do not satisfy these rows by further flattening the donor-derived face unless the replacement face still passes concept-alignment review and visual inspection."
 }

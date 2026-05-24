@@ -23,6 +23,10 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      reused by general and GPU runtime phases with different behavior. This
      makes the new workload-class context hook measurable in the Python sweep
      instead of only in RTL cocotb.
+   - Added `cross_asid_same_pc_alias` and
+     `wasm_threaded_interpreter_tiering` to cover hostile same-VA predictor
+     aliasing across ASID/VMID/privilege domains and Wasm/threaded interpreter
+     tier-up/deopt dispatch phases.
 
 1. **Dual conditional branches per fetch block**
    - Gap: the prior model scored every retired branch as if it received an
@@ -239,30 +243,37 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      sidecars for branches whose direction is better explained by a weighted
      global-history dot product than by tagged-table matching alone.
    - RTL/model change: `h2p_corrector.sv` implements a PC-indexed signed
-     weight table with `H2P_*` package geometry. It computes a bias plus
-     64-history-bit dot product, threshold-gates overrides behind TAGE/SC, and
-     trains on wrong or low-margin resolved conditionals. It also has sweepable
-     target-history and path-history feature slices
+     weight table with `H2P_*` package geometry. It computes a bias plus one
+     signed weight per global-history feature bit, threshold-gates overrides
+     behind TAGE/SC, and trains on wrong or low-margin resolved conditionals.
+     The Python evidence model now mirrors that bias-plus-feature vector
+     instead of using a single scalar per whole history tuple. It also has
+     sweepable target-history and path-history feature slices
      (`H2P_TARGET_HIST_LEN`, `H2P_PATH_HIST_LEN`) so the same block can act as
      a compact multi-perspective corrector when evidence justifies it. The
-     Python model implements the same update rule and exposes `h2p_*` sweep
-     knobs.
-   - Default decision: enable H2P. After adding `btb_confidence_churn` and the
-     broader QEMU-RV64 workload proxies, the checked default sweep baseline is
-     `47.8365` weighted MPKI; `h2p_off` scores `48.8257`, a `+0.9892` MPKI
-     regression. Raising `H2P_THRESHOLD` to 44 or 60 improves the weighted
-     objective (`47.5332` and `47.5427` respectively), but both variants still
-     regress GPU/control stressors such as nested reconvergence, so they remain
-     study candidates rather than default RTL geometry.
-   - Tests: `test_h2p_corrector_can_override_base_direction_when_confident`
-     `test_h2p_multi_perspective_target_history_can_split_same_pc`, and
+     model exposes the same `h2p_*` sweep knobs.
+   - Default decision: enable H2P with 1024 rows, 48 global-history features,
+     and threshold 36. The latest stratified sweep baseline is `52.9219`
+     weighted MPKI. The previous 512-row, 64-history geometry is `+0.3599`
+     worse, and `h2p_off` is `+1.5204` worse. Multi-perspective H2P, H2P meta,
+     and low-confidence-only H2P are implemented and sweepable, but remain
+     default-off because the current checked variants regress the broader
+     GPU/control and runtime mix.
+   - Tests: `test_h2p_corrector_can_override_base_direction_when_confident`,
+     `test_h2p_model_uses_rtl_bias_plus_feature_weights`,
+     `test_h2p_multi_perspective_target_history_can_split_same_pc`,
+     `test_h2p_lowconf_only_blocks_high_confidence_base_override`, and
      `test_h2p_corrector_enabled_by_default_after_sweep` cover the model.
+     A post-promotion stratified 1000-branch smoke sweep keeps baseline ahead
+     of `h2p_mp_big_t50` (`52.9219` versus `53.0134` weighted MPKI), so
+     multi-perspective H2P remains a study candidate rather than production
+     default.
      An RTL/model `H2P_META_*` chooser is also implemented and sweepable; it
      blocks H2P overrides until the sidecar has beaten base direction for that
      PC. After adding `btb_confidence_churn` and the broader QEMU-RV64
-     workload proxies to the sweep set, the checked default sweep baseline is
-     `47.8365` weighted MPKI. H2P meta remains default-off in production
-     geometry because its weighted win is not GPU/control neutral. The RTL
+     workload proxies to the sweep set, H2P meta remains default-off in
+     production geometry because its weighted result is not GPU/control
+     neutral. The RTL
      chooser update path now uses explicitly typed +/-1 increments so optional
      chooser counters do not trip over signed one-bit literal semantics. `make
      bpu-lint` covers the H2P corrector and default-off chooser integration in
@@ -380,9 +391,11 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      parameters. The full-trace validation run promoted
      `ITTAGE_TARGET_HISTORY_SHIFT=8` after improving weighted MPKI from
      `5.6018` to `5.5196`.
-   - Promoted longer ITTAGE target histories `(4, 10, 20, 40, 80)` after a
-     full-trace check improved weighted MPKI from `5.5196` to `5.4693` with no
-     reported regressions.
+   - Kept the longer ITTAGE target-history schedule `(4, 10, 20, 40, 80)`.
+     A shorter `(4, 8, 13, 16, 32)` study result slightly improved the capped
+     1K and 5K stratified sweeps, but `make branch-prediction-check` correctly
+     rejected it because max indirect history 32 is below the production reach
+     floor of 80.
    - Promoted larger ITTAGE capacity `(1024, 1024, 2048, 2048, 2048)` after
      the expanded 50K capped sweep improved weighted MPKI from `19.0904`
      (`ittage_pre_big`) to the then-current `18.9779` baseline. The later
@@ -408,6 +421,12 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      prior path-history blocker for the current workload mix.
    - Top-level RTL now has a cocotb check that weak stale ITTAGE targets yield
      to stable high-confidence FTB targets.
+   - Model/sweep evidence now reports ITTAGE hit, target-used, weak-yield,
+     update, allocation, weak-target replacement, victim replacement,
+     provider-eviction, and useful-aging counters. The branch-prediction gate
+     requires those counters in `bpu_sweep_results.json`, so indirect-target
+     chooser/replacement behavior is visible in every checked geometry sweep
+     without expanding the locked Zihpm architectural PMU enum.
    - Standalone RTL ITTAGE now proves the expanded upper-table capacity by
      allocating and hitting a table-4 index above 1023.
    - Standalone RTL ITTAGE now proves useful-zero occupied victim replacement,
@@ -416,6 +435,27 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    - Standalone RTL TAGE now proves allocation-pressure useful-bit decrement
      and alternating useful-reset bit aging, covering the allocation-starvation
      escape hatch.
+
+9a. **Predictor timing/late-override evidence**
+   - Gap: the behavioural model previously assumed SC, H2P, local-direction,
+     and ITTAGE target sidecars were all available in the same prediction
+     event. That is the desired production contract, but it hid the MPKI cost
+     of a slower stage cut.
+   - Model/evidence change: `SC_SAME_EVENT_OVERRIDE`,
+     `H2P_SAME_EVENT_OVERRIDE`, `LOCAL_DIR_SAME_EVENT_OVERRIDE`, and
+     `ITTAGE_SAME_EVENT_TARGET` are now explicit geometry knobs. The model
+     records `*_deferred_by_timing_model` counters plus `l2_ftb_late_redirect`,
+     and the sweep JSON/gate require those counters per trace and per config.
+   - Sweep result: the refreshed stratified 1000-branch smoke sweep keeps
+     baseline at `53.2849` weighted MPKI. Deferring SC/H2P/local-direction
+     overrides regresses to `55.0615` (`+1.7766`), deferring same-event ITTAGE
+     target use regresses to `56.4194` (`+3.1345`), and deferring both
+     regresses to `58.1960` (`+4.9111`). That makes same-event predictor
+     availability a load-bearing assumption for the RTL stage plan.
+   - Tests: `test_ittage_timing_model_can_defer_same_event_target_use` and
+     `test_slow_direction_timing_model_defers_sc_local_and_h2p_overrides`
+     cover the new knobs. Remaining work is physical/staged RTL timing
+     closure, not a missing behavioural harness.
 
 10. **L2 FTB/refill target tier**
    - Gap: production front-ends commonly keep a deeper target tier behind the
@@ -552,9 +592,12 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    `e1_soc_integrated` now surfaces the widened prediction and late-redirect
    lanes plus the ordered fetch-control stream and lane-0/lane-1 L1I demand
    ports at the SoC boundary, with ready inputs that backpressure FTQ pop until
-   downstream fetch logic can accept both lanes. The remaining predictor/
-   front-end gap is connecting those SoC-exposed demand lanes to the production
-   downstream fetch/cache hierarchy.
+   downstream fetch logic can accept both lanes. `e1_l1i_dual_miss_to_l2`
+   now bridges the scalar and lane-1 L1I miss/refill pipes onto the production
+   L2 L1I acquire/grant channel, with focused cocotb coverage for lane-1
+   demux, scalar priority, and flush. The remaining integration gap is
+   SoC-level instantiation of the production fetch/cache hierarchy behind
+   `e1_soc_integrated`, not a missing lane-1 miss-to-L2 mechanism.
 2. **Speculative history recovery survivor replay**: redirect recovery now
    restores speculative direction and target histories from the resolved FTQ
    snapshot and applies the actual resolved outcome. The remaining precision
@@ -569,7 +612,12 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    sweepable but default-off because their current wins are not GPU-neutral.
    Static alternate-provider TAGE is disabled by evidence, while the adaptive
    alternate-provider chooser is implemented and enabled.
-4. **Real workload evidence depth**: synthetic coverage now spans 35
+4. **Predictor pipeline timing closure**: the behavioural harness now exposes
+   timing knobs/counters for deferred SC, H2P, local-direction, ITTAGE, and L2
+   FTB late paths, and the latest sweep shows those deferrals are costly. The
+   remaining production gap is a staged RTL timing implementation or physical
+   timing signoff that preserves the same effective sidecar/target latency.
+5. **Real workload evidence depth**: synthetic coverage now spans 37
    generators, and `mpki_results_workload_rtl.json` replays all fifteen
    available QEMU-RV64 `.btrace.json` workloads through RTL with a recorded
    `branch_replay_cap=5000`. The added `system_mix.c` traces cover
@@ -589,7 +637,11 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    synthetic aliases only. The evidence gate also requires explicit
    `class_bucket_promotion` no-regression buckets, including `general` and
    `gpu_control`, before any positive workload MPKI claim can be asserted.
-4. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
+   RTL workload replay exposes the same phase-sampling control through
+   `make mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified`; the
+   `mpki-eval-rtl-stratified` shortcut is available for capped early/middle/late
+   replay without editing environment variables.
+6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an
    older prefetch is blocked in FDIP/L1I; the regression
@@ -601,6 +653,8 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    frontend wide-bundle test cover that path. L1I now accepts cold lane-1 IFU
    demand into a pending miss slot and services it through a separate lane-1
    miss/refill channel
-   (`target_block_two_ahead_fetch_stream_accepts_cold_lane_one_miss`), so the
-   remaining non-BPU work is connecting the SoC-exposed dual demand lanes to the
-   production downstream fetch/cache hierarchy.
+   (`target_block_two_ahead_fetch_stream_accepts_cold_lane_one_miss`).
+   `e1_l1i_dual_miss_to_l2` then arbitrates scalar and lane-1 misses onto the
+   L2 L1I acquire/grant channel and demuxes returned line beats back to the
+   originating refill lane. The remaining non-BPU work is full SoC/core/cache
+   top instantiation behind the already-exposed demand ports.

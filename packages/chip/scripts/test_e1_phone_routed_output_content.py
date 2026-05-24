@@ -52,10 +52,17 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
         self.assertEqual(report["summary"]["missing_approval_metadata_count"], 0)
         self.assertGreater(report["summary"]["candidate_present_but_blocked_count"], 0)
         self.assertIn("repo_generated_candidate_blocked_count", report["summary"])
+        self.assertIn("repo_generatable_now_count", report["summary"])
+        self.assertIn("repo_generation_closes_release_blocker_count", report["summary"])
         self.assertIn("external_release_evidence_required_count", report["summary"])
         self.assertEqual(
             report["summary"]["release_credit_false_count"],
             report["summary"]["blocked"],
+        )
+        self.assertGreater(report["summary"]["repo_generatable_now_count"], 0)
+        self.assertEqual(
+            report["summary"]["repo_generation_closes_release_blocker_count"],
+            0,
         )
         self.assertFalse(report["candidate_manifest_coverage"]["candidate_release_credit"])
         self.assertEqual(
@@ -100,7 +107,17 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
         )
         self.assertGreater(generation["generator_command_available_count"], 0)
         self.assertEqual(
+            generation["repo_generatable_now_count"],
+            report["summary"]["repo_generatable_now_count"],
+        )
+        self.assertGreater(generation["local_candidate_metadata_only_blocker_count"], 0)
+        self.assertEqual(generation["repo_generation_closes_release_blocker_count"], 0)
+        self.assertEqual(
             generation["external_release_evidence_required_count"],
+            report["summary"]["blocked"],
+        )
+        self.assertEqual(
+            generation["external_release_required_count"],
             report["summary"]["blocked"],
         )
         self.assertIn(
@@ -108,6 +125,17 @@ class E1PhoneRoutedOutputContentTests(unittest.TestCase):
             generation["generator_command"],
         )
         self.assertIn("repo_generation_plan", stackup_category)
+        candidate_plan = categories["by_path"][
+            "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb"
+        ]["repo_generation_plan"]
+        self.assertTrue(candidate_plan["repo_generatable_now"])
+        self.assertTrue(candidate_plan["external_release_required"])
+        self.assertTrue(candidate_plan["external_release_evidence_required"])
+        self.assertFalse(candidate_plan["repo_generation_closes_release_blocker"])
+        self.assertEqual(
+            candidate_plan["repo_generation_scope"],
+            "local_candidate_artifact_only",
+        )
 
     def test_contract_error_returns_blocked_report_not_failure(self) -> None:
         parent = ROOT / "build/test-e1-phone-routed-output-content"

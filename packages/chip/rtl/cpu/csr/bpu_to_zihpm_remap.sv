@@ -1,6 +1,6 @@
 // bpu_to_zihpm_remap.sv  —  BPU PMU bundle to Zihpm event-bus adapter.
 //
-// The BPU agent emits a 26-entry `pmu_event_e` stream (5-bit ID) declared in
+// The BPU agent emits a 27-entry `pmu_event_e` stream (5-bit ID) declared in
 // `rtl/cpu/bpu/bpu_pkg.sv`. The CSR-visible Zihpm event encoding declared in
 // `rtl/cpu/csr/zihpm.sv` is the authoritative system contract (OoO/CSR is
 // canonical for the cross-domain PMU surface). The two enumerations differ
@@ -53,11 +53,11 @@ module bpu_to_zihpm_remap
 );
 
     // Compile-time sanity: the BPU and Zihpm enums must each enumerate
-    // PMU_EVENTS=26 named events in the branch block.
+    // PMU_EVENTS=27 named events in the branch block.
     initial begin
         // synthesis translate_off
-        if (PMU_EVENTS != 32'd26) begin
-            $fatal(1, "bpu_to_zihpm_remap: PMU_EVENTS=%0d, expected 26", PMU_EVENTS);
+        if (PMU_EVENTS != 32'd27) begin
+            $fatal(1, "bpu_to_zihpm_remap: PMU_EVENTS=%0d, expected 27", PMU_EVENTS);
         end
         // synthesis translate_on
     end
@@ -95,6 +95,8 @@ module bpu_to_zihpm_remap
         zihpm_evbus_o[EVT_LOCAL_DIR_OVERRIDE] =
             bpu_strobes_i[PMU_LOCAL_DIR_OVERRIDE];
         zihpm_evbus_o[EVT_BPU_META_TRAIN] = bpu_strobes_i[PMU_META_TRAIN];
+        zihpm_evbus_o[EVT_L2_BTB_LATE_REDIRECT] =
+            bpu_strobes_i[PMU_L2_FTB_LATE_REDIRECT];
     end
 
 endmodule

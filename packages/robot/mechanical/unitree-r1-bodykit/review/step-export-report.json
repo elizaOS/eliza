@@ -1,8 +1,8 @@
 {
   "status": "exported",
   "cadquery_version": "2.7.0",
-  "exported_count": 69,
-  "expected_count": 69,
+  "exported_count": 71,
+  "expected_count": 71,
   "blocked_count": 0,
   "step_root": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step",
   "parts": [
@@ -43,28 +43,28 @@
     },
     {
       "name": "left_chest_contour_armor",
-      "shape": "box",
+      "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
     },
     {
       "name": "right_chest_contour_armor",
-      "shape": "box",
+      "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
     },
     {
       "name": "left_chest_outer_armor_skin",
-      "shape": "box",
+      "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
     },
     {
       "name": "right_chest_outer_armor_skin",
-      "shape": "box",
+      "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
@@ -280,6 +280,13 @@
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
     },
     {
+      "name": "left_upper_arm_front_armor",
+      "shape": "ellipsoid",
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
+      "status": "exported",
+      "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
+    },
+    {
       "name": "right_upper_arm_shell",
       "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
@@ -290,6 +297,13 @@
       "name": "right_upper_arm_outer_blade",
       "shape": "box",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
+      "status": "exported",
+      "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
+    },
+    {
+      "name": "right_upper_arm_front_armor",
+      "shape": "ellipsoid",
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."
     },
@@ -435,7 +449,7 @@
     },
     {
       "name": "left_foot_top_shell",
-      "shape": "tapered_box",
+      "shape": "section_loft",
       "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
       "status": "exported",
       "note": "Parametric EVT STEP export from bodykit YAML. Production tooling still requires final R1 CAD/scan, shell offsets, mounts, ribs, inserts, parting lines, and surface-class review."

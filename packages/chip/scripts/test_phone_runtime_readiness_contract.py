@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 import json
+import importlib.util
 from argparse import Namespace
 from pathlib import Path
 from unittest import mock
@@ -16,6 +17,15 @@ if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
 import check_phone_runtime_readiness_contract as gate  # noqa: E402
+
+PERIPHERAL_HELPER_PATH = ROOT / "scripts/android/capture_simulated_peripheral_evidence.py"
+peripheral_spec = importlib.util.spec_from_file_location(
+    "capture_simulated_peripheral_evidence", PERIPHERAL_HELPER_PATH
+)
+assert peripheral_spec and peripheral_spec.loader
+peripheral_helper = importlib.util.module_from_spec(peripheral_spec)
+sys.modules[peripheral_spec.name] = peripheral_helper
+peripheral_spec.loader.exec_module(peripheral_helper)
 
 
 def report(name: str, *, status: str, allowed: bool) -> dict:
@@ -472,6 +482,70 @@ class PhoneRuntimeReadinessContractTests(unittest.TestCase):
             blocked_file["capture_contract_manifest"],
             "docs/evidence/android/runtime/live_runtime_capture_contracts.json",
         )
+
+    def test_current_live_device_blockers_all_have_executable_capture_contracts(self) -> None:
+        expected = {
+            "docs/evidence/android/eliza_launcher_runtime_evidence.json",
+            "docs/evidence/android/peripherals/rear_camera_sim.log",
+            "docs/evidence/android/peripherals/front_camera_sim.log",
+            "docs/evidence/android/peripherals/wifi_sim.log",
+            "docs/evidence/android/peripherals/bluetooth_sim.log",
+            "docs/evidence/android/peripherals/cellular_5g_lte_sim.log",
+            "docs/evidence/android/eliza_ai_soc_e1_npu_hal_liveness.log",
+        }
+        payload = gate.run_check(Namespace())
+        blocked_files = {
+            row["path"]: row
+            for group in payload["runtime_evidence_collection_inventory"]
+            for row in group["blocked_evidence_files"]
+            if row["blocker_category"] == gate.LIVE_DEVICE_VALIDATION
+        }
+
+        self.assertEqual(set(blocked_files), expected)
+        for path, row in blocked_files.items():
+            self.assertTrue(row["capture_commands"], path)
+            self.assertTrue(
+                any(command.startswith("python3 packages/chip/scripts/android/") for command in row["capture_commands"]),
+                path,
+            )
+            self.assertIn("expected_file_schema", row)
+            self.assertIn("device_or_emulator_prerequisites", row)
+            self.assertIn("fail_closed_validation_rule", row)
+            self.assertEqual(row["validation_commands"], [gate.PHONE_RUNTIME_VALIDATION_COMMAND])
+            self.assertFalse(row["release_credit"])
+
+    def test_peripheral_helper_markers_match_live_contract_schema(self) -> None:
+        markers_by_component = {
+            spec.component: set(spec.markers) for spec in peripheral_helper.SPECS
+        }
+        self.assertIn("PAIRING=pass", markers_by_component["bluetooth"])
+        self.assertIn("DATA_ATTACH=pass", markers_by_component["cellular_5g_lte"])
+
+    def test_peripheral_helper_missing_default_probe_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp) / "evidence"
+            spec = peripheral_helper.PeripheralSpec(
+                component="fixture_radio",
+                env_var="ELIZA_FIXTURE_RADIO_SIM_COMMAND",
+                log_name="fixture_radio.log",
+                markers=("COMPONENT=fixture_radio", "RESULT=pass"),
+                default_probe=str(Path(tmp) / "missing-probe.sh"),
+            )
+            with mock.patch.dict(
+                peripheral_helper.os.environ,
+                {"ELIZA_ANDROID_PERIPHERAL_OUT_DIR": str(output_root)},
+                clear=False,
+            ):
+                status, path = peripheral_helper.capture_one(
+                    spec, timeout_seconds=1, dry_run=False
+                )
+
+            self.assertEqual(status, "blocked")
+            self.assertEqual(path, output_root / "fixture_radio.log")
+            text = path.read_text(encoding="utf-8")
+            self.assertIn("canonical probe script is not present", text)
+            self.assertIn("eliza-evidence: status=BLOCKED", text)
+            self.assertIn("RESULT=2", text)
 
     def test_npu_hal_liveness_uses_fail_closed_capture_helper(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -72,6 +72,17 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         assert group["primary_paths"]
         assert isinstance(group.get("sample_messages"), list)
         assert group["sample_messages"]
+        category_counts = group.get("repo_generation_category_counts")
+        assert isinstance(category_counts, dict)
+        assert set(category_counts) == {
+            "repo_generatable_now",
+            "blocked_by_external_evidence",
+            "blocked_by_live_hardware",
+            "blocked_by_release_approval",
+        }
+        assert sum(category_counts.values()) == group["count"]
+        nested_summaries = group.get("nested_report_generation_summaries")
+        assert isinstance(nested_summaries, list)
     assert "python3_scripts_product_check_py_release" not in group_map
     assert "python3_scripts_check_package_cross_probe_py_release" not in group_map
     assert not any(str(family).startswith("python3_scripts_") for family in group_map)
@@ -95,6 +106,18 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         row = phase_map[phase]
         assert row["release_credit"] is False
         assert row["blocker_count"] > 0
+        repo_generation_counts = row.get("repo_generation_category_counts")
+        assert isinstance(repo_generation_counts, dict)
+        assert set(repo_generation_counts) == {
+            "repo_generatable_now",
+            "blocked_by_external_evidence",
+            "blocked_by_live_hardware",
+            "blocked_by_release_approval",
+        }
+        assert (
+            sum(repo_generation_counts.values())
+            == row["blocker_dependency_counts"].get("repo_artifact_generation", 0)
+        )
         assert row["primary_commands"]
         assert row["primary_paths"]
         assert row["acceptance_commands"]
@@ -123,6 +146,15 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     ]["acceptance_commands"]
     if release_mode:
         manufacturing_phase = phase_map["manufacturing_package_release"]
+        manufacturing_generation_counts = manufacturing_phase[
+            "repo_generation_category_counts"
+        ]
+        assert manufacturing_generation_counts["repo_generatable_now"] == 0
+        assert (
+            manufacturing_generation_counts["blocked_by_external_evidence"]
+            + manufacturing_generation_counts["blocked_by_release_approval"]
+            + manufacturing_generation_counts["blocked_by_live_hardware"]
+        ) > 0
         manufacturing_details = manufacturing_phase.get("manufacturing_artifact_details")
         assert isinstance(manufacturing_details, dict)
         assert (
@@ -151,6 +183,15 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         top_level_manufacturing = report.get("manufacturing_artifact_details")
         assert isinstance(top_level_manufacturing, dict)
         assert top_level_manufacturing.get("artifact_state_summary") == artifact_state_summary
+
+        phone_phase = phase_map["phone_fabrication_enclosure_release"]
+        phone_generation_counts = phone_phase["repo_generation_category_counts"]
+        assert phone_generation_counts["repo_generatable_now"] == 0
+        assert (
+            phone_generation_counts["blocked_by_external_evidence"]
+            + phone_generation_counts["blocked_by_release_approval"]
+            + phone_generation_counts["blocked_by_live_hardware"]
+        ) > 0
 
     detail_checks = report["detail_checks"]
     assert isinstance(detail_checks, dict)

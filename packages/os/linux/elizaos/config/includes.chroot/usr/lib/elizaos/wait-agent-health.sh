@@ -8,8 +8,12 @@ END_AT="$(( $(date +%s) + DEADLINE_SECONDS ))"
 emit_marker() {
     MSG="$*"
     echo "${MSG}"
-    echo "${MSG}" >/dev/kmsg 2>/dev/null || true
-    echo "${MSG}" >/dev/ttyS0 2>/dev/null || true
+    for DEVICE in /dev/kmsg /dev/ttyS0; do
+        [ -e "${DEVICE}" ] || continue
+        printf '%s\n' "${MSG}" | tee "${DEVICE}" >/dev/null 2>&1 ||
+            printf '%s\n' "${MSG}" | sudo -n tee "${DEVICE}" >/dev/null 2>&1 ||
+            true
+    done
 }
 
 while [ "$(date +%s)" -le "${END_AT}" ]; do

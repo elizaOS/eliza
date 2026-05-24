@@ -41,6 +41,7 @@ REQUIRED_RTL = [
     "rtl/cache/ftq_to_l1i_pkg.sv",
     "rtl/cache/lsu_to_l1d_pkg.sv",
     "rtl/cache/l1i/e1_l1i_cache.sv",
+    "rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv",
     "rtl/cache/l1d/e1_l1d_cache.sv",
     "rtl/cache/l2/e1_l2_cache.sv",
     "rtl/cache/l3/e1_l3_cache.sv",

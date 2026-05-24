@@ -9,15 +9,22 @@ AGENT_RUNTIME="${ELIZA_AGENT_RUNTIME:-auto}"
 
 emit_marker() {
     echo "$*"
-    echo "$*" >/dev/kmsg 2>/dev/null || true
-    echo "$*" >/dev/ttyS0 2>/dev/null || true
+    for DEVICE in /dev/kmsg /dev/ttyS0; do
+        [ -e "${DEVICE}" ] || continue
+        printf '%s\n' "$*" | tee "${DEVICE}" >/dev/null 2>&1 ||
+            printf '%s\n' "$*" | sudo -n tee "${DEVICE}" >/dev/null 2>&1 ||
+            true
+    done
 }
 
 dump_runtime_log_tail() {
     [ -f "${AGENT_RUNTIME_LOG}" ] || return 0
     tail -n 120 "${AGENT_RUNTIME_LOG}" 2>/dev/null | while IFS= read -r LINE; do
         echo "${LINE}"
-        echo "${LINE}" >/dev/ttyS0 2>/dev/null || true
+        [ -e /dev/ttyS0 ] || continue
+        printf '%s\n' "${LINE}" | tee /dev/ttyS0 >/dev/null 2>&1 ||
+            printf '%s\n' "${LINE}" | sudo -n tee /dev/ttyS0 >/dev/null 2>&1 ||
+            true
     done
 }
 

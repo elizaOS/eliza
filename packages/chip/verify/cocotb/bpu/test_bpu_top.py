@@ -52,6 +52,7 @@ PMU_L2_FTB_MISS = 22
 PMU_TWO_AHEAD_REDIRECT = 23
 PMU_LOCAL_DIR_OVERRIDE = 24
 PMU_META_TRAIN = 25
+PMU_L2_FTB_LATE_REDIRECT = 26
 
 
 async def reset(dut):
@@ -765,12 +766,14 @@ async def bpu_l2_ftb_patches_ftq_and_redirects_call_after_l1_miss(dut):
     assert int(dut.late_redirect_valid.value) == 1
     assert int(dut.late_redirect_pc.value) == target
     assert ((int(dut.pmu_strb.value) >> PMU_L2_FTB_HIT) & 0x1) == 1
+    assert ((int(dut.pmu_strb.value) >> PMU_L2_FTB_LATE_REDIRECT) & 0x1) == 1
     assert int(dut.late_redirect_valid_lanes.value) & 0b1
     assert packed_slot(
         int(dut.late_redirect_pc_lanes.value), 0, VADDR_W
     ) == target
 
     await RisingEdge(dut.clk)
+    assert await read_counter(dut, PMU_L2_FTB_LATE_REDIRECT) >= 1
     await Timer(1, units="ns")
     assert int(dut.fetch_valid.value) == 1
     assert int(dut.fetch_target_pc.value) == target

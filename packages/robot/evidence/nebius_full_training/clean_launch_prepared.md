@@ -3,11 +3,11 @@
 Run: `robot-full-clean-1779556360`
 State: `awaiting_nebius_cli_auth`
 Payload: `s3://robot-rl-results-1779358330/robot-full-clean-1779556360/payload.tar.gz`
-Payload bytes: `159761623`
-Payload SHA256: `684b10c77f38c375599405d051e710d7183ba22190aab659c104b72713d7b326`
-Payload refreshed at: `2026-05-24T02:20:32Z`
-Payload uploaded at: `2026-05-24T02:20:32Z`
-Payload refreshed for: `sac_delta_comparison_123_test_gate`
+Payload bytes: `159760666`
+Payload SHA256: `19d61cd72d34917444dfb55085f1d46a664f8794074934e806072066911c80f2`
+Payload refreshed at: `2026-05-24T02:24:15Z`
+Payload uploaded at: `2026-05-24T02:24:15Z`
+Payload refreshed for: `post_auth_retry_report_audit_refresh`
 Payload optimized: `True`
 Launch hygiene ok: `True`
 Resume command ready: `True`

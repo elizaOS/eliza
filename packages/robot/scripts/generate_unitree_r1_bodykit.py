@@ -9,6 +9,7 @@ manifests all come from `mechanical/unitree-r1-bodykit/cad/bodykit_params.yaml`.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -35,9 +36,15 @@ REVIEW_ROOT = PROJECT_ROOT / "review"
 MESH_ROOT = OUT_ROOT / "meshes"
 MJCF_ROOT = OUT_ROOT / "mjcf"
 STEP_ROOT = OUT_ROOT / "step"
+BASE_RECON_ROOT = OUT_ROOT / "base-reconstruction"
+BASE_RECON_STEP_ROOT = BASE_RECON_ROOT / "step"
+BASE_RECON_PARAM_ROOT = BASE_RECON_ROOT / "params"
 R1_MJCF = PKG_ROOT / "assets" / "profiles" / "unitree-r1" / "mjcf" / "R1_C++.xml"
 R1_ASSET_ROOT = R1_MJCF.parent / "assets"
 _OEM_GEOM_CACHE: dict[str, list[dict[str, Any]]] | None = None
+
+
+AXIS_INDEX = {"x": 0, "y": 1, "z": 2}
 
 
 @dataclass(frozen=True)
@@ -67,7 +74,225 @@ def _load_params() -> dict[str, Any]:
         raw = yaml.safe_load(fh)
     if not isinstance(raw, dict):
         raise ValueError(f"{PARAMS_PATH} did not parse to a mapping")
-    return raw
+    return _apply_parametric_morphs(raw)
+
+
+def _lerp(a: float, b: float, blend: float) -> float:
+    return float(a) + (float(b) - float(a)) * blend
+
+
+def _blend_vector(base: list[Any], target: list[Any], blend: float) -> list[float]:
+    if len(base) != len(target):
+        raise ValueError(f"cannot blend vectors of different length: {base!r} vs {target!r}")
+    return [_lerp(float(a), float(b), blend) for a, b in zip(base, target)]
+
+
+def _blend_loft_sections(base_sections: list[dict[str, Any]], target_sections: list[dict[str, Any]], blend: float) -> list[dict[str, Any]]:
+    if len(base_sections) != len(target_sections):
+        raise ValueError("section morph target must have the same number of sections as the base loft")
+    out: list[dict[str, Any]] = []
+    for base, target in zip(base_sections, target_sections):
+        section = copy.deepcopy(base)
+        coordinate_key = next((key for key in ("x", "y", "z", "position") if key in base or key in target), "z")
+        section[coordinate_key] = _lerp(
+            float(base.get(coordinate_key, base.get("z", 0.0))),
+            float(target.get(coordinate_key, target.get("z", base.get(coordinate_key, 0.0)))),
+            blend,
+        )
+        section["scale"] = _blend_vector(list(base["scale"]), list(target.get("scale", base["scale"])), blend)
+        if "offset" in base or "offset" in target:
+            base_offset = list(base.get("offset", [0.0, 0.0]))
+            target_offset = list(target.get("offset", base_offset))
+            section["offset"] = _blend_vector(base_offset, target_offset, blend)
+        out.append(section)
+    return out
+
+
+def _blend_part_fields(spec: dict[str, Any], target: dict[str, Any], blend: float) -> list[str]:
+    changed: list[str] = []
+    vector_fields = {"center", "scale", "top_scale", "aesthetic_scale", "center_offset"}
+    scalar_fields = {"radius", "tube_radius", "height"}
+    for field in sorted(vector_fields):
+        if field not in target:
+            continue
+        if field not in spec:
+            raise ValueError(f"part target field {field!r} cannot be applied to {spec['name']}: base field missing")
+        spec[field] = _blend_vector(list(spec[field]), list(target[field]), blend)
+        changed.append(field)
+    for field in sorted(scalar_fields):
+        if field not in target:
+            continue
+        if field not in spec:
+            raise ValueError(f"part target field {field!r} cannot be applied to {spec['name']}: base field missing")
+        spec[field] = _lerp(float(spec[field]), float(target[field]), blend)
+        changed.append(field)
+    return changed
+
+
+def _vector_delta_report(base: list[Any], target: list[Any]) -> list[dict[str, float]]:
+    rows: list[dict[str, float]] = []
+    for index, (a, b) in enumerate(zip(base, target)):
+        before = float(a)
+        after = float(b)
+        rows.append(
+            {
+                "axis_index": index,
+                "base": round(before, 6),
+                "target": round(after, 6),
+                "delta": round(after - before, 6),
+                "percent": round(((after - before) / before * 100.0), 3) if abs(before) > 1e-9 else 0.0,
+            }
+        )
+    return rows
+
+
+def _section_delta_report(base_sections: list[dict[str, Any]], target_sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for index, (base, target) in enumerate(zip(base_sections, target_sections)):
+        coordinate_key = next((key for key in ("x", "y", "z", "position") if key in base or key in target), "z")
+        rows.append(
+            {
+                "section_index": index,
+                "axis": coordinate_key,
+                "position_delta": round(
+                    float(target.get(coordinate_key, target.get("z", base.get(coordinate_key, 0.0))))
+                    - float(base.get(coordinate_key, base.get("z", 0.0))),
+                    6,
+                ),
+                "scale_delta": _vector_delta_report(list(base["scale"]), list(target.get("scale", base["scale"]))),
+            }
+        )
+    return rows
+
+
+def _apply_parametric_morphs(raw: dict[str, Any]) -> dict[str, Any]:
+    params = copy.deepcopy(raw)
+    part_by_name = {str(part["name"]): part for part in params.get("parts", [])}
+    applied: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    for morph_name, morph in params.get("morphs", {}).items():
+        if not isinstance(morph, dict):
+            continue
+        blend = float(morph.get("blend", 0.0))
+        if blend <= 0.0:
+            continue
+        blend = min(blend, 1.0)
+        for part_name, target in morph.get("section_targets", {}).items():
+            spec = part_by_name.get(str(part_name))
+            if spec is None:
+                skipped.append({"morph": str(morph_name), "part": str(part_name), "reason": "missing part"})
+                continue
+            if str(spec.get("shape")) != "section_loft":
+                skipped.append(
+                    {
+                        "morph": str(morph_name),
+                        "part": str(part_name),
+                        "reason": f"unsupported shape {spec.get('shape')!r}",
+                    }
+                )
+                continue
+            target_sections = target.get("sections", target) if isinstance(target, dict) else target
+            if not isinstance(target_sections, list):
+                skipped.append({"morph": str(morph_name), "part": str(part_name), "reason": "missing section target"})
+                continue
+            original_center = list(spec.get("center", [0.0, 0.0, 0.0]))
+            if isinstance(target, dict) and "center" in target:
+                spec["center"] = _blend_vector(original_center, list(target["center"]), blend)
+            original_sections = copy.deepcopy(spec["sections"])
+            spec["sections"] = _blend_loft_sections(original_sections, target_sections, blend)
+            spec.setdefault("morph_history", []).append(
+                {
+                    "morph": str(morph_name),
+                    "blend": blend,
+                    "base_sections": original_sections,
+                    "target_sections": target_sections,
+                    "base_center": original_center,
+                    "target_center": target.get("center") if isinstance(target, dict) else None,
+                }
+            )
+            applied.append(
+                {
+                    "morph": str(morph_name),
+                    "part": str(part_name),
+                    "blend": blend,
+                    "kind": "section_loft",
+                    "section_deltas": _section_delta_report(original_sections, target_sections),
+                    "center_delta": (
+                        _vector_delta_report(original_center, list(target["center"]))
+                        if isinstance(target, dict) and "center" in target
+                        else []
+                    ),
+                }
+            )
+        for part_name, target in morph.get("part_targets", {}).items():
+            spec = part_by_name.get(str(part_name))
+            if spec is None:
+                skipped.append({"morph": str(morph_name), "part": str(part_name), "reason": "missing part"})
+                continue
+            if not isinstance(target, dict):
+                skipped.append({"morph": str(morph_name), "part": str(part_name), "reason": "part target is not a mapping"})
+                continue
+            field_deltas: dict[str, Any] = {}
+            for field, value in target.items():
+                if isinstance(value, list) and field in spec:
+                    field_deltas[field] = _vector_delta_report(list(spec[field]), value)
+                elif field in spec:
+                    before = float(spec[field])
+                    after = float(value)
+                    field_deltas[field] = {
+                        "base": round(before, 6),
+                        "target": round(after, 6),
+                        "delta": round(after - before, 6),
+                        "percent": round(((after - before) / before * 100.0), 3) if abs(before) > 1e-9 else 0.0,
+                    }
+            try:
+                changed = _blend_part_fields(spec, target, blend)
+            except ValueError as exc:
+                skipped.append({"morph": str(morph_name), "part": str(part_name), "reason": str(exc)})
+                continue
+            spec.setdefault("morph_history", []).append(
+                {
+                    "morph": str(morph_name),
+                    "blend": blend,
+                    "target_fields": sorted(target),
+                    "changed_fields": changed,
+                }
+            )
+            applied.append(
+                {
+                    "morph": str(morph_name),
+                    "part": str(part_name),
+                    "blend": blend,
+                    "kind": "part_fields",
+                    "fields": changed,
+                    "field_deltas": field_deltas,
+                }
+            )
+    params["_morph_application_report"] = {
+        "verdict": "pass",
+        "applied_count": len(applied),
+        "skipped_count": len(skipped),
+        "applied": applied,
+        "skipped": skipped,
+        "morphs": {
+            str(name): {
+                "blend": float(morph.get("blend", 0.0)) if isinstance(morph, dict) else 0.0,
+                "intent": morph.get("intent") if isinstance(morph, dict) else None,
+                "controls": morph.get("controls", {}) if isinstance(morph, dict) else {},
+                "applied_parts": morph.get("applied_parts", []) if isinstance(morph, dict) else [],
+            }
+            for name, morph in params.get("morphs", {}).items()
+        },
+        "note": "Parametric morphs are applied in-memory before mesh, STEP, MuJoCo, fit, panel, and stress outputs.",
+    }
+    return params
+
+
+def write_parametric_morph_report(params: dict[str, Any]) -> dict[str, Any]:
+    report = params.get("_morph_application_report", {"verdict": "pass", "applied_count": 0, "skipped_count": 0})
+    REVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    (REVIEW_ROOT / "parametric-morph-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
 
 
 def _rgba255(color: list[float]) -> np.ndarray:
@@ -138,18 +363,24 @@ def _tapered_box(scale: list[float], top_scale: list[float], rgba: list[float]) 
 
 def _section_loft(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
     axis = str(spec.get("axis", "z"))
-    if axis != "z":
-        raise ValueError("section_loft currently supports axis: z")
+    if axis not in AXIS_INDEX:
+        raise ValueError("section_loft supports axis: x, y, or z")
+    axis_index = AXIS_INDEX[axis]
+    cross_axes = [i for i in range(3) if i != axis_index]
     segments = int(spec.get("segments", 48))
     sections = spec["sections"]
     vertices: list[list[float]] = []
     for section in sections:
-        z = float(section["z"])
+        position = float(section.get(axis, section.get("position", section.get("z"))))
         sx, sy = [float(x) for x in section["scale"][:2]]
         offset = [float(x) for x in section.get("offset", [0.0, 0.0])]
         for i in range(segments):
             t = 2 * math.pi * i / segments
-            vertices.append([offset[0] + sx * math.cos(t), offset[1] + sy * math.sin(t), z])
+            point = [0.0, 0.0, 0.0]
+            point[axis_index] = position
+            point[cross_axes[0]] = offset[0] + sx * math.cos(t)
+            point[cross_axes[1]] = offset[1] + sy * math.sin(t)
+            vertices.append(point)
     faces: list[list[int]] = []
     for ring in range(len(sections) - 1):
         base = ring * segments
@@ -161,10 +392,22 @@ def _section_loft(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
     # Cap bottom and top with fan triangles around explicit center vertices.
     bottom_center = len(vertices)
     bottom = sections[0]
-    vertices.append([float(x) for x in bottom.get("offset", [0.0, 0.0])] + [float(bottom["z"])])
+    bottom_position = float(bottom.get(axis, bottom.get("position", bottom.get("z"))))
+    bottom_point = [0.0, 0.0, 0.0]
+    bottom_point[axis_index] = bottom_position
+    bottom_offset = [float(x) for x in bottom.get("offset", [0.0, 0.0])]
+    bottom_point[cross_axes[0]] = bottom_offset[0]
+    bottom_point[cross_axes[1]] = bottom_offset[1]
+    vertices.append(bottom_point)
     top_center = len(vertices)
     top = sections[-1]
-    vertices.append([float(x) for x in top.get("offset", [0.0, 0.0])] + [float(top["z"])])
+    top_position = float(top.get(axis, top.get("position", top.get("z"))))
+    top_point = [0.0, 0.0, 0.0]
+    top_point[axis_index] = top_position
+    top_offset = [float(x) for x in top.get("offset", [0.0, 0.0])]
+    top_point[cross_axes[0]] = top_offset[0]
+    top_point[cross_axes[1]] = top_offset[1]
+    vertices.append(top_point)
     for i in range(segments):
         j = (i + 1) % segments
         faces.append([bottom_center, j, i])
@@ -728,18 +971,20 @@ def _cq_shape_from_spec(cq: Any, spec: dict[str, Any]) -> Any:
             .val()
         )
     elif shape == "section_loft":
-        if str(spec.get("axis", "z")) != "z":
-            raise ValueError("section_loft currently supports axis: z")
+        axis = str(spec.get("axis", "z"))
+        if axis not in AXIS_INDEX:
+            raise ValueError("section_loft supports axis: x, y, or z")
+        workplane_name = {"x": "YZ", "y": "XZ", "z": "XY"}[axis]
         workplane = None
         for section in spec["sections"]:
-            z = float(section["z"])
+            position = float(section.get(axis, section.get("position", section.get("z"))))
             sx, sy = [float(x) for x in section["scale"][:2]]
             ox, oy = [float(x) for x in section.get("offset", [0.0, 0.0])]
             if workplane is None:
-                workplane = cq.Workplane("XY").workplane(offset=z).center(ox, oy).ellipse(sx, sy)
+                workplane = cq.Workplane(workplane_name).workplane(offset=position).center(ox, oy).ellipse(sx, sy)
             else:
-                workplane = workplane.workplane(offset=z - float(prev_z)).center(ox, oy).ellipse(sx, sy)
-            prev_z = z
+                workplane = workplane.workplane(offset=position - float(prev_position)).center(ox, oy).ellipse(sx, sy)
+            prev_position = position
         solid = workplane.loft(combine=True).val()
     elif shape == "donor_face_grid_loft":
         workplane = None
@@ -850,6 +1095,190 @@ def export_step_solids(params: dict[str, Any]) -> dict[str, Any]:
         "parts": exported,
         "blocked_parts": blocked,
         "tooling_release_gate": "blocked-until-final-r1-cad-and-production-dfm",
+    }
+    report_path.write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
+def _asset_mesh_vertices(asset_path: Path) -> np.ndarray:
+    loaded = trimesh.load(asset_path, force="mesh")
+    if isinstance(loaded, trimesh.Scene):
+        meshes = [g for g in loaded.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        if not meshes:
+            raise ValueError(f"source mesh has no geometry: {asset_path}")
+        mesh = trimesh.util.concatenate(meshes)
+    else:
+        mesh = loaded
+    vertices = np.asarray(mesh.vertices, dtype=float)
+    if len(vertices) < 8:
+        raise ValueError(f"source mesh has too few vertices for reconstruction: {asset_path}")
+    return vertices
+
+
+def _mesh_section_loft_spec(
+    asset_path: Path,
+    *,
+    sections_count: int = 11,
+    quantile: float = 0.95,
+    min_radius_m: float = 0.002,
+    clearance_offset_m: float = 0.0008,
+) -> dict[str, Any]:
+    vertices = _asset_mesh_vertices(asset_path)
+    mins = vertices.min(axis=0)
+    maxs = vertices.max(axis=0)
+    extents = np.maximum(maxs - mins, 1e-9)
+    axis_index = int(np.argmax(extents))
+    axis = ["x", "y", "z"][axis_index]
+    cross_axes = [i for i in range(3) if i != axis_index]
+    lo = float(mins[axis_index])
+    hi = float(maxs[axis_index])
+    positions = np.linspace(lo, hi, sections_count)
+    slab = max((hi - lo) / max(sections_count - 1, 1) * 0.72, 1e-5)
+    sections: list[dict[str, Any]] = []
+    last_center = vertices[:, cross_axes].mean(axis=0)
+    last_radius = np.maximum(np.percentile(np.abs(vertices[:, cross_axes] - last_center), quantile * 100.0, axis=0), min_radius_m)
+    for pos in positions:
+        mask = np.abs(vertices[:, axis_index] - pos) <= slab
+        local = vertices[mask]
+        if len(local) < 12:
+            nearest = np.argsort(np.abs(vertices[:, axis_index] - pos))[: min(96, len(vertices))]
+            local = vertices[nearest]
+        center = np.median(local[:, cross_axes], axis=0)
+        radius = np.quantile(np.abs(local[:, cross_axes] - center), quantile, axis=0) + clearance_offset_m
+        radius = np.maximum(radius, min_radius_m)
+        last_center = center
+        last_radius = radius
+        sections.append(
+            {
+                "position": round(float(pos), 6),
+                "center": [round(float(x), 6) for x in center],
+                "radius": [round(float(x), 6) for x in radius],
+                "sample_count": int(len(local)),
+            }
+        )
+    return {
+        "asset": asset_path.name,
+        "source": str(asset_path),
+        "source_kind": "stl_mesh_reference",
+        "reconstruction_kind": "parametric_mesh_section_loft",
+        "axis": axis,
+        "axis_index": axis_index,
+        "cross_axis_indices": cross_axes,
+        "sections_count": len(sections),
+        "fit_quantile": quantile,
+        "clearance_offset_m": clearance_offset_m,
+        "bbox_m": {
+            "min": [round(float(x), 6) for x in mins],
+            "max": [round(float(x), 6) for x in maxs],
+            "extents": [round(float(x), 6) for x in extents],
+        },
+        "sections": sections,
+        "fallback_section": {
+            "center": [round(float(x), 6) for x in last_center],
+            "radius": [round(float(x), 6) for x in last_radius],
+        },
+    }
+
+
+def _cq_solid_from_mesh_section_loft(cq: Any, spec: dict[str, Any]) -> Any:
+    axis = str(spec["axis"])
+    axis_index = AXIS_INDEX[axis]
+    cross_axes = [int(x) for x in spec["cross_axis_indices"]]
+    workplane_name = {"x": "YZ", "y": "XZ", "z": "XY"}[axis]
+    workplane = None
+    prev_position = 0.0
+    for section in spec["sections"]:
+        position = float(section["position"])
+        c0, c1 = [float(x) for x in section["center"]]
+        r0, r1 = [float(x) for x in section["radius"]]
+        if workplane is None:
+            workplane = cq.Workplane(workplane_name).workplane(offset=position).center(c0, c1).ellipse(r0, r1)
+        else:
+            workplane = workplane.workplane(offset=position - prev_position).center(c0, c1).ellipse(r0, r1)
+        prev_position = position
+    return workplane.loft(combine=True).val()
+
+
+def export_base_asset_reconstructions(params: dict[str, Any]) -> dict[str, Any]:
+    """Rebuild STL-only R1 assets as parametric loft STEP references.
+
+    These are not official Unitree source CAD. They are deterministic, editable
+    section-loft approximations from the MJCF STL meshes, intended as the first
+    CAD reconstruction layer for mounts, envelopes, offsets, and future morphs.
+    """
+    REVIEW_ROOT.mkdir(parents=True, exist_ok=True)
+    if BASE_RECON_ROOT.exists():
+        shutil.rmtree(BASE_RECON_ROOT)
+    BASE_RECON_STEP_ROOT.mkdir(parents=True, exist_ok=True)
+    BASE_RECON_PARAM_ROOT.mkdir(parents=True, exist_ok=True)
+    report_path = REVIEW_ROOT / "base-cad-reconstruction-report.json"
+    stl_assets = sorted([p for p in R1_ASSET_ROOT.iterdir() if p.suffix.lower() == ".stl"], key=lambda p: p.name.lower())
+    try:
+        import cadquery as cq
+        from cadquery import exporters
+    except Exception as exc:
+        report = {
+            "verdict": "blocked",
+            "source": "unitree-r1 MJCF STL assets",
+            "source_asset_root": str(R1_ASSET_ROOT),
+            "official_step_source_available": False,
+            "reason": f"CadQuery/OCP unavailable: {type(exc).__name__}: {exc}",
+            "asset_count": len(stl_assets),
+            "reconstructed_count": 0,
+            "failed_count": len(stl_assets),
+            "assets": [],
+        }
+        report_path.write_text(json.dumps(report, indent=2) + "\n")
+        return report
+
+    reconstructed = []
+    failed = []
+    for asset_path in stl_assets:
+        try:
+            spec = _mesh_section_loft_spec(asset_path)
+            solid = _cq_solid_from_mesh_section_loft(cq, spec)
+            step_path = BASE_RECON_STEP_ROOT / f"{asset_path.stem}.step"
+            param_path = BASE_RECON_PARAM_ROOT / f"{asset_path.stem}.json"
+            exporters.export(cq.Workplane("XY").newObject([solid]), str(step_path))
+            param_path.write_text(json.dumps(spec, indent=2) + "\n")
+            reconstructed.append(
+                {
+                    "asset": asset_path.name,
+                    "status": "reconstructed",
+                    "source_kind": spec["source_kind"],
+                    "reconstruction_kind": spec["reconstruction_kind"],
+                    "axis": spec["axis"],
+                    "sections_count": spec["sections_count"],
+                    "bbox_m": spec["bbox_m"],
+                    "step": str(step_path),
+                    "parameters": str(param_path),
+                }
+            )
+        except Exception as exc:
+            failed.append({"asset": asset_path.name, "status": "failed", "reason": f"{type(exc).__name__}: {exc}"})
+    report = {
+        "verdict": "pass" if not failed else "needs-work",
+        "source": "unitree-r1 MJCF STL assets",
+        "source_asset_root": str(R1_ASSET_ROOT),
+        "official_step_source_available": False,
+        "official_step_source_note": (
+            "No official Unitree R1 STEP/CAD files are present in this repository. "
+            "These outputs are parametric reconstructions from STL mesh references."
+        ),
+        "asset_count": len(stl_assets),
+        "reconstructed_count": len(reconstructed),
+        "failed_count": len(failed),
+        "step_root": str(BASE_RECON_STEP_ROOT),
+        "parameter_root": str(BASE_RECON_PARAM_ROOT),
+        "method": {
+            "kind": "fixed-axis elliptical section loft",
+            "sections_count": 11,
+            "fit_quantile": 0.95,
+            "clearance_offset_m": 0.0008,
+            "usage": "base chassis envelope CAD for mount/offset/gap planning; not a final mechanical-source replacement",
+        },
+        "assets": reconstructed,
+        "failed_assets": failed,
     }
     report_path.write_text(json.dumps(report, indent=2) + "\n")
     return report
@@ -1752,6 +2181,17 @@ def write_mechanical_stress_blocker_report(params: dict[str, Any], fit: dict[str
         "candidate_rows": head_keepout_candidates,
         "controlled_part": "face_shell",
         "controlled_base_body_suffix": "wrist_roll_link",
+        "enforcement": {
+            "policy_verdict": "needs-controller-enforcement" if head_keepout_candidates else "pass",
+            "clearance_gate_mm": target_mm,
+            "blocked_or_replanned_poses": [row["pose"] for row in head_keepout_candidates],
+            "controlled_part": "face_shell",
+            "controlled_base_body_suffix": "wrist_roll_link",
+            "rationale": (
+                "The candidate rows are extreme wrist poses entering the protected face volume. "
+                "A geometry-only fix large enough to clear them would degrade the donor-derived face."
+            ),
+        },
         "required_action": (
             "Implement controller joint-limit or keepout-volume enforcement for candidate poses, or replace "
             "the physical wrist/forearm geometry, before claiming extreme-pose mechanical release."
@@ -1775,6 +2215,7 @@ def write_mechanical_stress_blocker_report(params: dict[str, Any], fit: dict[str
             "candidate_count": head_keepout_policy["candidate_count"],
             "minimum_candidate_clearance_mm": head_keepout_policy["minimum_candidate_clearance_mm"],
             "candidate_poses": head_keepout_policy["candidate_poses"],
+            "enforcement": head_keepout_policy["enforcement"],
             "recommendation": (
                 "Treat face_shell versus wrist_roll_link mechanical-sweep rows as head-protection "
                 "keepout candidates before further flattening or shrinking the donor-derived face. "
@@ -2289,6 +2730,94 @@ def write_design_source_audit(params: dict[str, Any], parts: list[Part]) -> dict
     return report
 
 
+def write_parametric_reconstruction_audit(
+    params: dict[str, Any],
+    parts: list[Part],
+    step_report: dict[str, Any],
+    base_reconstruction: dict[str, Any],
+) -> dict[str, Any]:
+    spec_by_name = {str(spec["name"]): spec for spec in params["parts"]}
+    shell_roles = {"armor", "underbody", "face"}
+    source_counts: dict[str, int] = {}
+    shape_counts: dict[str, int] = {}
+    primitive_shell_parts = []
+    morph_ready_parts = []
+    rows = []
+    for part in parts:
+        spec = spec_by_name[part.name]
+        shape = str(spec["shape"])
+        source_kind = part.source_kind
+        source_counts[source_kind] = source_counts.get(source_kind, 0) + 1
+        shape_counts[shape] = shape_counts.get(shape, 0) + 1
+        shell_part = part.role in shell_roles
+        step_path = STEP_ROOT / f"{part.name}.step"
+        has_section_params = shape in {"section_loft", "donor_face_grid_loft"}
+        has_simple_parameters = shape in {
+            "ellipsoid",
+            "capsule_z",
+            "capsule_x",
+            "capsule_y",
+            "box",
+            "tapered_box",
+            "cylinder_x",
+            "cylinder_y",
+            "cylinder_z",
+            "torus_x",
+            "torus_y",
+            "torus_z",
+        }
+        reconstruction_status = (
+            "morph-ready-section-loft"
+            if has_section_params
+            else ("simple-parametric-solid-needs-loft-reconstruction" if has_simple_parameters else "mesh-derived-needs-rebuild")
+        )
+        row = {
+            "part": part.name,
+            "region": _part_region(part.name),
+            "role": part.role,
+            "body": part.body,
+            "shape": shape,
+            "source_kind": source_kind,
+            "oem_baseline_meshes": list(part.oem_baseline_meshes),
+            "step_solid_exported": step_path.is_file(),
+            "reconstruction_status": reconstruction_status,
+            "has_morph_history": bool(spec.get("morph_history")),
+            "has_section_parameters": has_section_params,
+            "uses_simple_primitive_parameters": has_simple_parameters and not has_section_params,
+            "next_reconstruction_step": (
+                "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+                if shell_part and reconstruction_status == "simple-parametric-solid-needs-loft-reconstruction"
+                else "carry forward into morph/control optimization"
+            ),
+        }
+        if shell_part and reconstruction_status == "simple-parametric-solid-needs-loft-reconstruction":
+            primitive_shell_parts.append(part.name)
+        if has_section_params or bool(spec.get("morph_history")):
+            morph_ready_parts.append(part.name)
+        rows.append(row)
+    report = {
+        "verdict": "needs-work" if primitive_shell_parts else "pass",
+        "bodykit_parts": len(parts),
+        "step_export_status": step_report["status"],
+        "step_exported_count": step_report["exported_count"],
+        "base_reconstruction_verdict": base_reconstruction["verdict"],
+        "base_reconstructed_assets": base_reconstruction.get("reconstructed_count", 0),
+        "official_base_step_source_available": base_reconstruction.get("official_step_source_available", False),
+        "source_kind_counts": dict(sorted(source_counts.items())),
+        "shape_counts": dict(sorted(shape_counts.items())),
+        "morph_ready_count": len(set(morph_ready_parts)),
+        "primitive_shell_count": len(primitive_shell_parts),
+        "primitive_shell_parts": primitive_shell_parts,
+        "morph_ready_parts": sorted(set(morph_ready_parts)),
+        "completion_gate": (
+            "blocked-until-simple shell primitives are rebuilt as fixed-grid loft/surface CAD with connector parameters"
+        ),
+        "parts": rows,
+    }
+    (REVIEW_ROOT / "parametric-reconstruction-audit.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
 def _part_region(name: str) -> str:
     if any(token in name for token in ["foot", "ankle"]):
         return "feet_ankles"
@@ -2426,6 +2955,7 @@ def write_manufacturing_outputs(
     panel_gap: dict[str, Any],
     step_report: dict[str, Any],
     source_audit: dict[str, Any],
+    reconstruction_audit: dict[str, Any],
     part_review: dict[str, Any],
     face_alignment: dict[str, Any],
 ) -> None:
@@ -2487,6 +3017,7 @@ def write_manufacturing_outputs(
         "face_alignment_validation": face_alignment,
         "step_export": step_report,
         "design_source_audit": source_audit,
+        "parametric_reconstruction_audit": reconstruction_audit,
         "print_layout": layout_rows,
         "dfm_rules": dfm_rules,
         "parts": [
@@ -2563,6 +3094,7 @@ def write_manufacturing_outputs(
         f"Production clearance verdict: {fit.get('production_fit_verdict', 'unknown')}",
         f"Panel gap verdict: {panel_gap['verdict']}",
         f"Face alignment verdict: {face_alignment['verdict']}",
+        f"Parametric morphs applied: {params.get('_morph_application_report', {}).get('applied_count', 0)}",
         f"Minimum adjacent-interface clearance: {fit.get('minimum_non_mounted_body_clearance_mm')} mm",
         f"Minimum neck/head/face adjacent-interface clearance: {face_alignment.get('minimum_neck_head_face_non_mounted_clearance_mm')} mm",
         f"Minimum neck/head/face non-adjacent clearance: {face_alignment.get('minimum_neck_head_face_non_adjacent_clearance_mm')} mm",
@@ -2588,6 +3120,7 @@ def write_manufacturing_outputs(
         f"- STEP export status: {step_report['status']} ({step_report['exported_count']}/{len(parts)} parts).",
         f"- STEP blocked parts: {step_report.get('blocked_count', 0)}.",
         f"- Design source audit: {source_audit['verdict']} ({source_audit['shell_parts_checked']} shell parts checked).",
+        f"- Parametric reconstruction audit: {reconstruction_audit['verdict']} ({reconstruction_audit['primitive_shell_count']} shell primitives still need loft reconstruction).",
         f"- Panel gap validation: {panel_gap['verdict']} ({panel_gap['pairs_below_gap_gate']} sampled nearby pairs below their seam/articulation gate).",
         f"- Worst adjacent/interface clearance: {json.dumps(fit.get('worst_non_mounted_body_clearance'), sort_keys=True)}.",
         f"- Worst non-adjacent static clearance: {json.dumps(fit.get('worst_non_adjacent_body_clearance'), sort_keys=True)}.",
@@ -2602,11 +3135,14 @@ def write_manufacturing_outputs(
         "- `injection-molding-dfm.json`",
         "- `step-export-report.json`",
         "- `design-source-audit.json`",
+        "- `parametric-reconstruction-audit.json`",
+        "- `base-cad-reconstruction-report.json`",
         "- `panel-gap-validation.json`",
         "- `part-review-report.json`",
         "- `face-alignment-validation.json`",
         "- `mechanical-stress-blockers.json`",
         "- `head-keepout-policy.json`",
+        "- `parametric-morph-report.json`",
         "- `render-validation.json` when renders are generated",
         "- `reference-validation.json`",
     ]
@@ -2619,20 +3155,33 @@ def main() -> int:
     parser.add_argument("--skip-video", action="store_true")
     args = parser.parse_args()
     params = _load_params()
+    morph_report = write_parametric_morph_report(params)
     concept_reference = write_concept_reference_report(params)
     parts = generate_meshes(params)
     step_report = export_step_solids(params)
+    base_reconstruction = export_base_asset_reconstructions(params)
     mjcf = write_bodykit_mjcf(params, parts)
     fit = validate_fit(params, mjcf, parts)
     face_alignment = write_face_alignment_report(params, parts, fit, mjcf)
     panel_gap = validate_panel_gaps(params, mjcf, parts)
     source_audit = write_design_source_audit(params, parts)
+    reconstruction_audit = write_parametric_reconstruction_audit(params, parts, step_report, base_reconstruction)
     part_review = write_part_review_report(parts, fit, panel_gap, face_alignment)
     assembled = export_assembled_bodykit(mjcf, parts)
     renders = [] if args.skip_render else render_review(mjcf)
     video = None if args.skip_video or args.skip_render else render_orbit_video(mjcf)
     render_validation = write_render_validation(renders, video)
-    write_manufacturing_outputs(params, parts, fit, panel_gap, step_report, source_audit, part_review, face_alignment)
+    write_manufacturing_outputs(
+        params,
+        parts,
+        fit,
+        panel_gap,
+        step_report,
+        source_audit,
+        reconstruction_audit,
+        part_review,
+        face_alignment,
+    )
     stress_blockers = write_mechanical_stress_blocker_report(params, fit)
     print(
         json.dumps(
@@ -2650,6 +3199,9 @@ def main() -> int:
                 "video": str(video) if video else None,
                 "assembled": assembled,
                 "step_export": step_report["status"],
+                "base_cad_reconstruction": base_reconstruction["verdict"],
+                "parametric_reconstruction": reconstruction_audit["verdict"],
+                "parametric_morphs": morph_report["verdict"],
                 "design_source_audit": source_audit["verdict"],
                 "mechanical_stress": stress_blockers["verdict"],
             },

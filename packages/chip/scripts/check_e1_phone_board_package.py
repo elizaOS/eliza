@@ -565,16 +565,24 @@ def check_top_bottom_interconnect_plan() -> None:
     if budget["recommended_contacts_min"] < computed_min:
         raise SystemExit("top/bottom interconnect contact budget is undercounted")
 
-    for blocker in [
-        "exact connector circuit count and orderable mating part numbers not selected",
-        "flex stackup, bend radius, stiffener, and strain relief not drawn",
-        "USB2 and audio SI across the flex not simulated or measured",
-        "power contact current rise and return allocation not reviewed",
-        "bottom island decoupling, ESD, and test fixture edge not implemented in KiCad",
-        "assembly sequence for battery insertion and split-board connection not validated",
-    ]:
-        if blocker not in plan["release_blockers"]:
-            raise SystemExit(f"top/bottom interconnect plan missing release blocker: {blocker}")
+    release_blockers = set(plan["release_blockers"])
+    required_release_blockers = [
+        ("exact connector circuit count and orderable mating part numbers not selected",),
+        ("flex stackup, bend radius, stiffener, and strain relief not drawn",),
+        ("USB2 and audio SI across the flex not simulated or measured",),
+        ("power contact current rise and return allocation not reviewed",),
+        (
+            "bottom island decoupling, ESD, and test fixture edge pending KiCad capture",
+            "bottom island decoupling, ESD, and test fixture edge not implemented in KiCad",
+        ),
+        ("assembly sequence for battery insertion and split-board connection not validated",),
+    ]
+    for blocker_aliases in required_release_blockers:
+        if not release_blockers.intersection(blocker_aliases):
+            raise SystemExit(
+                "top/bottom interconnect plan missing release blocker: "
+                f"{blocker_aliases[0]}"
+            )
     for claim in [
         "interconnect_ready",
         "rigid_flex_ready",

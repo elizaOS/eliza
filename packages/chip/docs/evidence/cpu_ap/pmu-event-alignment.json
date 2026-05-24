@@ -1,13 +1,14 @@
 {
   "schema": "eliza.cpu_pmu_event_alignment.v1",
-  "generated_at": "2026-05-24T00:36:35Z",
-  "bpu_event_count": 26,
-  "zihpm_branch_block_count": 26,
-  "remap_pair_count": 26,
+  "generated_at": "2026-05-24T03:15:17Z",
+  "bpu_event_count": 27,
+  "zihpm_branch_block_count": 27,
+  "remap_pair_count": 27,
   "aliases": {
     "PMU_FTB_MISS": "EVT_BTB_MISS",
     "PMU_L2_FTB_HIT": "EVT_L2_BTB_HIT",
     "PMU_L2_FTB_MISS": "EVT_L2_BTB_MISS",
+    "PMU_L2_FTB_LATE_REDIRECT": "EVT_L2_BTB_LATE_REDIRECT",
     "PMU_META_TRAIN": "EVT_BPU_META_TRAIN"
   },
   "errors": [],

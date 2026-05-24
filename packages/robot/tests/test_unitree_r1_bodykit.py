@@ -39,7 +39,12 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     dfm = BODYKIT_ROOT / "review" / "injection-molding-dfm.json"
     step_report = BODYKIT_ROOT / "review" / "step-export-report.json"
     source_audit = BODYKIT_ROOT / "review" / "design-source-audit.json"
+    morph_report = BODYKIT_ROOT / "review" / "parametric-morph-report.json"
+    base_reconstruction = BODYKIT_ROOT / "review" / "base-cad-reconstruction-report.json"
+    reconstruction_audit = BODYKIT_ROOT / "review" / "parametric-reconstruction-audit.json"
     step_dir = BODYKIT_ROOT / "out" / "step"
+    base_reconstruction_step_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "step"
+    base_reconstruction_param_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "params"
     assert mjcf.is_file()
     assert collision_mjcf.is_file()
     assert report.is_file()
@@ -59,6 +64,9 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert dfm.is_file()
     assert step_report.is_file()
     assert source_audit.is_file()
+    assert morph_report.is_file()
+    assert base_reconstruction.is_file()
+    assert reconstruction_audit.is_file()
     assert concept_reference.is_file()
 
     model = mujoco.MjModel.from_xml_path(str(mjcf))
@@ -205,6 +213,27 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     source_raw = json.loads(source_audit.read_text())
     assert source_raw["verdict"] == "pass"
     assert source_raw["missing_oem_baseline_parts"] == []
+    morph_raw = json.loads(morph_report.read_text())
+    assert morph_raw["verdict"] == "pass"
+    assert morph_raw["applied_count"] >= 7
+    assert morph_raw["skipped_count"] == 0
+    assert {
+        "torso_chest_shell",
+        "pelvis_front_shell",
+        "left_shin_shell",
+        "left_forearm_outer_blade",
+        "right_forearm_outer_blade",
+        "left_wrist_separated_cuff",
+        "right_wrist_separated_cuff",
+    }.issubset({row["part"] for row in morph_raw["applied"]})
+    assert morph_raw["morphs"]["feminine_compact_v1"]["blend"] == 1.0
+    assert morph_raw["morphs"]["feminine_compact_v1"]["controls"]["waist_y_scale"] < 1.0
+    torso_morph = next(row for row in morph_raw["applied"] if row["part"] == "torso_chest_shell")
+    assert torso_morph["kind"] == "section_loft"
+    assert torso_morph["section_deltas"][0]["scale_delta"][1]["percent"] < 0
+    arm_morph = next(row for row in morph_raw["applied"] if row["part"] == "left_forearm_outer_blade")
+    assert arm_morph["kind"] == "part_fields"
+    assert arm_morph["field_deltas"]["scale"][1]["percent"] < 0
     dfm_raw = json.loads(dfm.read_text())
     assert dfm_raw["verdict"] == "prototype-fit-check-ready"
     assert dfm_raw["prototype_fit_ready"] is True
@@ -230,6 +259,35 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
         "left_shin_shell",
         "right_shin_shell",
     }.issubset(loft_exports)
+    base_reconstruction_raw = json.loads(base_reconstruction.read_text())
+    assert base_reconstruction_raw["verdict"] == "pass"
+    assert base_reconstruction_raw["official_step_source_available"] is False
+    assert base_reconstruction_raw["source"] == "unitree-r1 MJCF STL assets"
+    assert base_reconstruction_raw["reconstructed_count"] == base_reconstruction_raw["asset_count"]
+    assert base_reconstruction_raw["failed_count"] == 0
+    assert len(list(base_reconstruction_step_dir.glob("*.step"))) == base_reconstruction_raw["reconstructed_count"]
+    assert len(list(base_reconstruction_param_dir.glob("*.json"))) == base_reconstruction_raw["reconstructed_count"]
+    torso_reconstruction = next(
+        row for row in base_reconstruction_raw["assets"] if row["asset"] == "torso_collision.stl"
+    )
+    assert torso_reconstruction["reconstruction_kind"] == "parametric_mesh_section_loft"
+    assert torso_reconstruction["sections_count"] >= 9
+    assert Path(torso_reconstruction["step"]).is_file()
+    assert Path(torso_reconstruction["parameters"]).is_file()
+    reconstruction_audit_raw = json.loads(reconstruction_audit.read_text())
+    assert reconstruction_audit_raw["verdict"] == "needs-work"
+    assert reconstruction_audit_raw["step_exported_count"] == step_raw["exported_count"]
+    assert reconstruction_audit_raw["base_reconstructed_assets"] == base_reconstruction_raw["reconstructed_count"]
+    assert reconstruction_audit_raw["official_base_step_source_available"] is False
+    assert reconstruction_audit_raw["primitive_shell_count"] > 0
+    assert "chest_upper_bridge_armor" in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "left_chest_contour_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "torso_chest_shell" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_chest_contour_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert any(
+        row["part"] == "face_shell" and row["reconstruction_status"] == "morph-ready-section-loft"
+        for row in reconstruction_audit_raw["parts"]
+    )
 
     forbidden = ("Make" + "Human", "make" + "human", "M" + "PFB", "m" + "pfb")
     checked_suffixes = {".py", ".yaml", ".yml", ".md", ".json", ".csv", ".obj", ".mtl"}
@@ -293,4 +351,23 @@ def test_donor_face_grid_loft_exports_mesh_and_step() -> None:
 
     cadquery = pytest.importorskip("cadquery")
     solid = generator._cq_shape_from_spec(cadquery, spec)
+    assert solid.Volume() > 0
+
+
+def test_stl_reference_mesh_reconstructs_as_parametric_section_loft() -> None:
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    import generate_unitree_r1_bodykit as generator
+
+    asset = PKG_ROOT / "assets" / "profiles" / "unitree-r1" / "mjcf" / "assets" / "torso_collision.stl"
+    spec = generator._mesh_section_loft_spec(asset, sections_count=7)
+    assert spec["source_kind"] == "stl_mesh_reference"
+    assert spec["reconstruction_kind"] == "parametric_mesh_section_loft"
+    assert spec["sections_count"] == 7
+    assert spec["axis"] in {"x", "y", "z"}
+    assert all(len(section["center"]) == 2 for section in spec["sections"])
+    assert all(len(section["radius"]) == 2 for section in spec["sections"])
+    assert all(min(section["radius"]) > 0 for section in spec["sections"])
+
+    cadquery = pytest.importorskip("cadquery")
+    solid = generator._cq_solid_from_mesh_section_loft(cadquery, spec)
     assert solid.Volume() > 0

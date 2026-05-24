@@ -119,8 +119,14 @@ EVIDENCE_SCALARS = {
     "ITTAGE_USEFUL_W",
     "LOOP_CONF_W",
     "LOOP_CTR_W",
+    "LOOP_IMLI_ENABLE",
+    "LOOP_IMLI_HIST_W",
+    "LOOP_IMLI_TOKEN_W",
     "LOOP_PATH_SIG_W",
     "SC_ADAPTIVE",
+    "SC_BIAS_CTR_W",
+    "SC_BIAS_ENABLE",
+    "SC_BIAS_ENTRIES",
     "SC_CTR_W",
     "SC_TC_LIMIT",
     "SC_LOCAL_HISTORY_BITS",
@@ -488,6 +494,110 @@ def evaluate_target_claim_semantics(
     return mpki, target, target_met
 
 
+REQUIRED_ITTAGE_SWEEP_COUNTERS = {
+    "ittage_hit",
+    "ittage_target_used",
+    "ittage_weak_yield_to_ftb",
+    "ittage_updates",
+    "ittage_allocations",
+    "ittage_weak_target_replacements",
+    "ittage_victim_replacements",
+    "ittage_provider_evictions",
+    "ittage_useful_aging",
+}
+
+REQUIRED_TIMING_SWEEP_COUNTERS = {
+    "sc_deferred_by_timing_model",
+    "h2p_deferred_by_timing_model",
+    "local_dir_deferred_by_timing_model",
+    "ittage_deferred_by_timing_model",
+    "l2_ftb_deferred_by_timing_model",
+    "l2_ftb_late_redirect",
+}
+
+
+def validate_sweep_evidence(
+    data: dict[str, object],
+    artifact: str,
+    failures: list[str],
+) -> None:
+    if data.get("schema") != "eliza.bpu_sweep.v1":
+        failures.append(f"{artifact} schema must be eliza.bpu_sweep.v1")
+    parse_artifact_timestamp(data, artifact, failures)
+    if data.get("harness") != "behavioural-bpu-model":
+        failures.append(f"{artifact} harness must be behavioural-bpu-model")
+    declared = set(data.get("ittage_evidence_counters", []))
+    missing_declared = REQUIRED_ITTAGE_SWEEP_COUNTERS - declared
+    if missing_declared:
+        failures.append(
+            f"{artifact} missing ITTAGE evidence counter declarations: "
+            + ", ".join(sorted(missing_declared))
+        )
+    timing_declared = set(data.get("timing_evidence_counters", []))
+    missing_timing_declared = REQUIRED_TIMING_SWEEP_COUNTERS - timing_declared
+    if missing_timing_declared:
+        failures.append(
+            f"{artifact} missing timing evidence counter declarations: "
+            + ", ".join(sorted(missing_timing_declared))
+        )
+    results = data.get("results")
+    if not isinstance(results, dict) or "baseline" not in results:
+        failures.append(f"{artifact} must include baseline sweep results")
+        return
+    for config_name, config in results.items():
+        if not isinstance(config, dict):
+            failures.append(f"{artifact} config {config_name} must be an object")
+            continue
+        totals = config.get("ittage_counter_totals")
+        if not isinstance(totals, dict):
+            failures.append(f"{artifact} config {config_name} missing ittage_counter_totals")
+            continue
+        missing_totals = REQUIRED_ITTAGE_SWEEP_COUNTERS - set(totals)
+        if missing_totals:
+            failures.append(
+                f"{artifact} config {config_name} missing ITTAGE counter totals: "
+                + ", ".join(sorted(missing_totals))
+            )
+        timing_totals = config.get("timing_counter_totals")
+        if not isinstance(timing_totals, dict):
+            failures.append(f"{artifact} config {config_name} missing timing_counter_totals")
+        else:
+            missing_timing_totals = REQUIRED_TIMING_SWEEP_COUNTERS - set(timing_totals)
+            if missing_timing_totals:
+                failures.append(
+                    f"{artifact} config {config_name} missing timing counter totals: "
+                    + ", ".join(sorted(missing_timing_totals))
+                )
+        per_trace = config.get("per_trace")
+        if not isinstance(per_trace, dict):
+            failures.append(f"{artifact} config {config_name} missing per_trace results")
+            continue
+        for trace_name, row in per_trace.items():
+            if not isinstance(row, dict):
+                failures.append(f"{artifact} {config_name}/{trace_name} must be an object")
+                continue
+            counters = row.get("ittage_counters")
+            if not isinstance(counters, dict):
+                failures.append(f"{artifact} {config_name}/{trace_name} missing ittage_counters")
+                continue
+            missing = REQUIRED_ITTAGE_SWEEP_COUNTERS - set(counters)
+            if missing:
+                failures.append(
+                    f"{artifact} {config_name}/{trace_name} missing ITTAGE counters: "
+                    + ", ".join(sorted(missing))
+                )
+            timing_counters = row.get("timing_counters")
+            if not isinstance(timing_counters, dict):
+                failures.append(f"{artifact} {config_name}/{trace_name} missing timing_counters")
+                continue
+            missing_timing = REQUIRED_TIMING_SWEEP_COUNTERS - set(timing_counters)
+            if missing_timing:
+                failures.append(
+                    f"{artifact} {config_name}/{trace_name} missing timing counters: "
+                    + ", ".join(sorted(missing_timing))
+                )
+
+
 def validate_workload_class_bucket_promotion(
     data: dict[str, object],
     artifact: str,
@@ -627,6 +737,7 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json",
         ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
         ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
+        ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json",
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -659,6 +770,11 @@ def evaluate_evidence_artifacts() -> list[str]:
                     "synthetic_planning_only evidence: "
                     + ", ".join(positive)
                 )
+    sweep_path = ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json"
+    if sweep_path.is_file():
+        data = read_json_object(sweep_path, failures)
+        if data is not None:
+            validate_sweep_evidence(data, "bpu_sweep_results.json", failures)
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
     if cbp5_model_path.is_file():
@@ -985,6 +1101,24 @@ def build_evidence(
     else:
         workload_mpki_ref["present"] = False
 
+    sweep_path = ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json"
+    sweep_ref: dict[str, object] = {
+        "path": str(sweep_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_sweep.v1",
+        "harness": "behavioural-bpu-model",
+        "command": "make bpu-sweep",
+        "present": sweep_path.is_file(),
+    }
+    if sweep_path.is_file():
+        sweep_data = load_json_object_if_present(sweep_path)
+        sweep_ref["sha256"] = sha256_path(sweep_path)
+        sweep_ref["best_config"] = sweep_data.get("best_config")
+        sweep_ref["best_weighted_mpki"] = sweep_data.get("best_weighted_mpki")
+        sweep_ref["baseline_weighted_mpki"] = sweep_data.get("baseline_weighted_mpki")
+        sweep_ref["max_branches_per_trace"] = sweep_data.get("max_branches_per_trace")
+        sweep_ref["window_mode"] = sweep_data.get("window_mode")
+        sweep_ref["ittage_evidence_counters"] = sweep_data.get("ittage_evidence_counters")
+
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
     cbp5_mpki_ref: dict[str, object] = {
@@ -1058,6 +1192,7 @@ def build_evidence(
         },
         "synthetic_mpki_results_ref": synthetic_mpki_ref,
         "workload_mpki_results_ref": workload_mpki_ref,
+        "sweep_results_ref": sweep_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

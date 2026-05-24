@@ -5,7 +5,7 @@
   "tooling_ready": false,
   "tooling_release_verdict": "blocked-until-final-r1-cad-and-production-dfm",
   "step_export_status": "exported",
-  "step_exported_count": 69,
+  "step_exported_count": 71,
   "panel_gap_verdict": "pass",
   "minimum_sampled_panel_gap_mm": 1.549,
   "design_source_audit_verdict": "pass",
@@ -19,7 +19,7 @@
     {
       "part": "torso_chest_shell",
       "bbox_mm": [
-        128.0,
+        126.0,
         156.0,
         240.0
       ],
@@ -113,8 +113,8 @@
     {
       "part": "left_chest_contour_armor",
       "bbox_mm": [
-        14.0,
-        44.0,
+        11.6,
+        36.0,
         80.0
       ],
       "service_print_bbox_ok": true,
@@ -122,7 +122,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -133,8 +133,8 @@
     {
       "part": "right_chest_contour_armor",
       "bbox_mm": [
-        14.0,
-        44.0,
+        11.6,
+        36.0,
         80.0
       ],
       "service_print_bbox_ok": true,
@@ -142,7 +142,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -154,7 +154,7 @@
       "part": "left_chest_outer_armor_skin",
       "bbox_mm": [
         5.0,
-        28.0,
+        32.0,
         128.0
       ],
       "service_print_bbox_ok": true,
@@ -162,7 +162,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -174,7 +174,7 @@
       "part": "right_chest_outer_armor_skin",
       "bbox_mm": [
         5.0,
-        28.0,
+        32.0,
         128.0
       ],
       "service_print_bbox_ok": true,
@@ -182,7 +182,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -391,8 +391,8 @@
     {
       "part": "pelvis_front_shell",
       "bbox_mm": [
-        88.0,
-        100.0,
+        86.0,
+        94.0,
         100.0
       ],
       "service_print_bbox_ok": true,
@@ -745,6 +745,25 @@
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
+      "part": "left_upper_arm_front_armor",
+      "bbox_mm": [
+        9.99,
+        17.98,
+        44.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
       "part": "right_upper_arm_shell",
       "bbox_mm": [
         52.0,
@@ -783,6 +802,25 @@
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
+      "part": "right_upper_arm_front_armor",
+      "bbox_mm": [
+        9.99,
+        17.98,
+        44.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
       "part": "left_forearm_shell",
       "bbox_mm": [
         54.0,
@@ -805,8 +843,8 @@
       "part": "left_forearm_outer_blade",
       "bbox_mm": [
         52.0,
-        6.0,
-        13.0
+        3.0,
+        8.4
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
@@ -840,9 +878,9 @@
     {
       "part": "left_wrist_separated_cuff",
       "bbox_mm": [
-        4.6,
-        22.96,
-        22.96
+        2.94,
+        13.52,
+        13.52
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
@@ -879,8 +917,8 @@
       "part": "right_forearm_outer_blade",
       "bbox_mm": [
         56.0,
-        7.0,
-        14.0
+        4.0,
+        10.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
@@ -914,9 +952,9 @@
     {
       "part": "right_wrist_separated_cuff",
       "bbox_mm": [
-        4.05,
-        24.24,
-        24.24
+        3.31,
+        16.61,
+        16.61
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
@@ -1051,8 +1089,8 @@
     {
       "part": "left_shin_shell",
       "bbox_mm": [
-        38.0,
-        12.0,
+        36.0,
+        10.0,
         156.0
       ],
       "service_print_bbox_ok": true,
@@ -1168,15 +1206,15 @@
       "part": "left_foot_top_shell",
       "bbox_mm": [
         192.0,
-        60.0,
-        24.0
+        40.0,
+        14.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"

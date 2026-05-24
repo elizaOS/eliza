@@ -1,0 +1,1183 @@
+{
+  "verdict": "pass",
+  "source": "unitree-r1 MJCF STL assets",
+  "source_asset_root": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/assets",
+  "official_step_source_available": false,
+  "official_step_source_note": "No official Unitree R1 STEP/CAD files are present in this repository. These outputs are parametric reconstructions from STL mesh references.",
+  "asset_count": 43,
+  "reconstructed_count": 43,
+  "failed_count": 0,
+  "step_root": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step",
+  "parameter_root": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params",
+  "method": {
+    "kind": "fixed-axis elliptical section loft",
+    "sections_count": 11,
+    "fit_quantile": 0.95,
+    "clearance_offset_m": 0.0008,
+    "usage": "base chassis envelope CAD for mount/offset/gap planning; not a final mechanical-source replacement"
+  },
+  "assets": [
+    {
+      "asset": "head_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.041975,
+          -0.0717,
+          -0.027989
+        ],
+        "max": [
+          0.070299,
+          0.0086,
+          0.130213
+        ],
+        "extents": [
+          0.112274,
+          0.0803,
+          0.158202
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/head_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/head_pitch_link.json"
+    },
+    {
+      "asset": "head_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.06237,
+          -0.06309,
+          -0.097844
+        ],
+        "max": [
+          0.09136,
+          0.06309,
+          0.068893
+        ],
+        "extents": [
+          0.15373,
+          0.12618,
+          0.166737
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/head_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/head_yaw_link.json"
+    },
+    {
+      "asset": "imu_in_pelvis_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.007052,
+          -0.020439,
+          -0.005816
+        ],
+        "max": [
+          1e-06,
+          0.020395,
+          0.032184
+        ],
+        "extents": [
+          0.007053,
+          0.040834,
+          0.038
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/imu_in_pelvis_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/imu_in_pelvis_link.json"
+    },
+    {
+      "asset": "left_ankle_A_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0,
+          -0.022,
+          -0.021992
+        ],
+        "max": [
+          0.0168,
+          0.021966,
+          0.021992
+        ],
+        "extents": [
+          0.0168,
+          0.043966,
+          0.043984
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_A_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_A_link.json"
+    },
+    {
+      "asset": "left_ankle_A_rod_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.003,
+          -0.004985,
+          -0.004985
+        ],
+        "max": [
+          0.003,
+          0.004985,
+          0.004985
+        ],
+        "extents": [
+          0.006,
+          0.009969,
+          0.009969
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_A_rod_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_A_rod_link.json"
+    },
+    {
+      "asset": "left_ankle_B_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0,
+          -0.021966,
+          -0.021992
+        ],
+        "max": [
+          0.0168,
+          0.022,
+          0.021992
+        ],
+        "extents": [
+          0.0168,
+          0.043966,
+          0.043984
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_B_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_B_link.json"
+    },
+    {
+      "asset": "left_ankle_B_rod_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.003,
+          -0.004989,
+          -0.004989
+        ],
+        "max": [
+          0.003,
+          0.004989,
+          0.004989
+        ],
+        "extents": [
+          0.006,
+          0.009979,
+          0.009979
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_B_rod_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_B_rod_link.json"
+    },
+    {
+      "asset": "left_ankle_constraint_A_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.004987,
+          -0.003,
+          -0.004987
+        ],
+        "max": [
+          0.004987,
+          0.003,
+          0.004987
+        ],
+        "extents": [
+          0.009974,
+          0.006,
+          0.009974
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_constraint_A_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_constraint_A_link.json"
+    },
+    {
+      "asset": "left_ankle_constraint_B_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.00499,
+          -0.003,
+          -0.00499
+        ],
+        "max": [
+          0.00499,
+          0.003,
+          0.00499
+        ],
+        "extents": [
+          0.009981,
+          0.006,
+          0.009981
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_constraint_B_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_constraint_B_link.json"
+    },
+    {
+      "asset": "left_ankle_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.019,
+          -0.006,
+          -0.0245
+        ],
+        "max": [
+          0.02,
+          0.006,
+          0.009181
+        ],
+        "extents": [
+          0.039,
+          0.012,
+          0.033681
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_pitch_link.json"
+    },
+    {
+      "asset": "left_ankle_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.054765,
+          -0.035814,
+          -0.053245
+        ],
+        "max": [
+          0.134632,
+          0.035814,
+          -0.004141
+        ],
+        "extents": [
+          0.189397,
+          0.071627,
+          0.049104
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_ankle_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_ankle_roll_link.json"
+    },
+    {
+      "asset": "left_elbow_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.035017,
+          -0.067516,
+          -0.049191
+        ],
+        "max": [
+          0.114574,
+          0.0126,
+          0.035629
+        ],
+        "extents": [
+          0.149591,
+          0.080116,
+          0.084821
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_elbow_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_elbow_link.json"
+    },
+    {
+      "asset": "left_hip_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.045301,
+          -0.003816,
+          -0.09655
+        ],
+        "max": [
+          0.0248,
+          0.084849,
+          0.0288
+        ],
+        "extents": [
+          0.070101,
+          0.088665,
+          0.12535
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_hip_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_hip_pitch_link.json"
+    },
+    {
+      "asset": "left_hip_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.062485,
+          -0.045055,
+          -0.061802
+        ],
+        "max": [
+          0.024333,
+          0.045509,
+          0.041425
+        ],
+        "extents": [
+          0.086817,
+          0.090565,
+          0.103227
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_hip_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_hip_roll_link.json"
+    },
+    {
+      "asset": "left_hip_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0657,
+          -0.051664,
+          -0.198912
+        ],
+        "max": [
+          0.043847,
+          0.045826,
+          0.0
+        ],
+        "extents": [
+          0.109547,
+          0.097491,
+          0.198912
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_hip_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_hip_yaw_link.json"
+    },
+    {
+      "asset": "left_knee_collision.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.049741,
+          -0.057651,
+          -0.225565
+        ],
+        "max": [
+          0.051884,
+          0.019186,
+          0.039543
+        ],
+        "extents": [
+          0.101625,
+          0.076837,
+          0.265108
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_knee_collision.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_knee_collision.json"
+    },
+    {
+      "asset": "left_knee_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.058659,
+          -0.057899,
+          -0.320488
+        ],
+        "max": [
+          0.05186,
+          0.019186,
+          0.039543
+        ],
+        "extents": [
+          0.110518,
+          0.077085,
+          0.360032
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_knee_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_knee_link.json"
+    },
+    {
+      "asset": "left_shoulder_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.036745,
+          -0.0,
+          -0.067936
+        ],
+        "max": [
+          0.036744,
+          0.087382,
+          0.037939
+        ],
+        "extents": [
+          0.073489,
+          0.087382,
+          0.105876
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_shoulder_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_shoulder_pitch_link.json"
+    },
+    {
+      "asset": "left_shoulder_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.082366,
+          -0.036268,
+          -0.1105
+        ],
+        "max": [
+          0.013468,
+          0.041722,
+          0.036656
+        ],
+        "extents": [
+          0.095834,
+          0.07799,
+          0.147157
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_shoulder_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_shoulder_roll_link.json"
+    },
+    {
+      "asset": "left_shoulder_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.037446,
+          -0.042599,
+          -0.122958
+        ],
+        "max": [
+          0.05245,
+          0.035147,
+          0.00205
+        ],
+        "extents": [
+          0.089896,
+          0.077747,
+          0.125008
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_shoulder_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_shoulder_yaw_link.json"
+    },
+    {
+      "asset": "left_wrist_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.00217,
+          -0.040248,
+          -0.034981
+        ],
+        "max": [
+          0.142663,
+          0.036134,
+          0.036026
+        ],
+        "extents": [
+          0.144833,
+          0.076381,
+          0.071007
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/left_wrist_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/left_wrist_roll_link.json"
+    },
+    {
+      "asset": "pelvis_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.034518,
+          -0.084202,
+          -0.127948
+        ],
+        "max": [
+          0.083105,
+          0.084202,
+          0.035976
+        ],
+        "extents": [
+          0.117623,
+          0.168405,
+          0.163924
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/pelvis_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/pelvis_link.json"
+    },
+    {
+      "asset": "right_ankle_A_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0,
+          -0.021966,
+          -0.021992
+        ],
+        "max": [
+          0.0168,
+          0.022,
+          0.021992
+        ],
+        "extents": [
+          0.0168,
+          0.043966,
+          0.043984
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_A_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_A_link.json"
+    },
+    {
+      "asset": "right_ankle_A_rod_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.003063,
+          -0.004989,
+          -0.004988
+        ],
+        "max": [
+          0.003063,
+          0.004989,
+          0.004988
+        ],
+        "extents": [
+          0.006125,
+          0.009978,
+          0.009977
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_A_rod_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_A_rod_link.json"
+    },
+    {
+      "asset": "right_ankle_B_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0,
+          -0.022,
+          -0.021992
+        ],
+        "max": [
+          0.0168,
+          0.021966,
+          0.021992
+        ],
+        "extents": [
+          0.0168,
+          0.043966,
+          0.043984
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_B_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_B_link.json"
+    },
+    {
+      "asset": "right_ankle_B_rod_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "y",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.003179,
+          -0.004999,
+          -0.004992
+        ],
+        "max": [
+          0.003179,
+          0.004999,
+          0.004992
+        ],
+        "extents": [
+          0.006357,
+          0.009999,
+          0.009983
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_B_rod_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_B_rod_link.json"
+    },
+    {
+      "asset": "right_ankle_constraint_A_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.004993,
+          -0.003027,
+          -0.004992
+        ],
+        "max": [
+          0.004993,
+          0.003027,
+          0.004992
+        ],
+        "extents": [
+          0.009985,
+          0.006054,
+          0.009984
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_constraint_A_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_constraint_A_link.json"
+    },
+    {
+      "asset": "right_ankle_constraint_B_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.004995,
+          -0.003194,
+          -0.004997
+        ],
+        "max": [
+          0.004995,
+          0.003194,
+          0.004997
+        ],
+        "extents": [
+          0.00999,
+          0.006387,
+          0.009994
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_constraint_B_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_constraint_B_link.json"
+    },
+    {
+      "asset": "right_ankle_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.019,
+          -0.006,
+          -0.0245
+        ],
+        "max": [
+          0.02,
+          0.006,
+          0.009181
+        ],
+        "extents": [
+          0.039,
+          0.012,
+          0.033681
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_pitch_link.json"
+    },
+    {
+      "asset": "right_ankle_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.054765,
+          -0.035814,
+          -0.053245
+        ],
+        "max": [
+          0.134632,
+          0.035814,
+          -0.004141
+        ],
+        "extents": [
+          0.189397,
+          0.071627,
+          0.049104
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_ankle_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_ankle_roll_link.json"
+    },
+    {
+      "asset": "right_elbow_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.035009,
+          -0.0126,
+          -0.049191
+        ],
+        "max": [
+          0.114573,
+          0.067516,
+          0.035619
+        ],
+        "extents": [
+          0.149582,
+          0.080116,
+          0.08481
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_elbow_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_elbow_link.json"
+    },
+    {
+      "asset": "right_hip_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.045301,
+          -0.084849,
+          -0.09655
+        ],
+        "max": [
+          0.0248,
+          0.003816,
+          0.028827
+        ],
+        "extents": [
+          0.070101,
+          0.088665,
+          0.125377
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_hip_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_hip_pitch_link.json"
+    },
+    {
+      "asset": "right_hip_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.062485,
+          -0.045509,
+          -0.061802
+        ],
+        "max": [
+          0.024333,
+          0.045055,
+          0.041428
+        ],
+        "extents": [
+          0.086817,
+          0.090565,
+          0.103231
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_hip_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_hip_roll_link.json"
+    },
+    {
+      "asset": "right_hip_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0657,
+          -0.045826,
+          -0.198912
+        ],
+        "max": [
+          0.043847,
+          0.051664,
+          0.0
+        ],
+        "extents": [
+          0.109547,
+          0.097491,
+          0.198912
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_hip_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_hip_yaw_link.json"
+    },
+    {
+      "asset": "right_knee_collision.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.049741,
+          -0.019186,
+          -0.224967
+        ],
+        "max": [
+          0.05188,
+          0.057651,
+          0.039543
+        ],
+        "extents": [
+          0.101621,
+          0.076837,
+          0.264511
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_knee_collision.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_knee_collision.json"
+    },
+    {
+      "asset": "right_knee_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.058659,
+          -0.019186,
+          -0.320462
+        ],
+        "max": [
+          0.051835,
+          0.057899,
+          0.039543
+        ],
+        "extents": [
+          0.110493,
+          0.077085,
+          0.360006
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_knee_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_knee_link.json"
+    },
+    {
+      "asset": "right_shoulder_pitch_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.036744,
+          -0.087382,
+          -0.067936
+        ],
+        "max": [
+          0.036745,
+          0.0,
+          0.037939
+        ],
+        "extents": [
+          0.073489,
+          0.087382,
+          0.105876
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_shoulder_pitch_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_shoulder_pitch_link.json"
+    },
+    {
+      "asset": "right_shoulder_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.082366,
+          -0.041722,
+          -0.110501
+        ],
+        "max": [
+          0.013468,
+          0.036268,
+          0.036656
+        ],
+        "extents": [
+          0.095834,
+          0.07799,
+          0.147157
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_shoulder_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_shoulder_roll_link.json"
+    },
+    {
+      "asset": "right_shoulder_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.037446,
+          -0.035147,
+          -0.122958
+        ],
+        "max": [
+          0.05245,
+          0.042599,
+          0.00205
+        ],
+        "extents": [
+          0.089896,
+          0.077747,
+          0.125008
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_shoulder_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_shoulder_yaw_link.json"
+    },
+    {
+      "asset": "right_wrist_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "x",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.00217,
+          -0.036134,
+          -0.034981
+        ],
+        "max": [
+          0.142659,
+          0.040248,
+          0.036026
+        ],
+        "extents": [
+          0.144829,
+          0.076381,
+          0.071007
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/right_wrist_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/right_wrist_roll_link.json"
+    },
+    {
+      "asset": "torso_collision.stl",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.063058,
+          -0.091725,
+          -0.0
+        ],
+        "max": [
+          0.065366,
+          0.091865,
+          0.250249
+        ],
+        "extents": [
+          0.128424,
+          0.18359,
+          0.250249
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/torso_collision.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/torso_collision.json"
+    },
+    {
+      "asset": "waist_roll_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0325,
+          -0.04188,
+          -0.091
+        ],
+        "max": [
+          0.033447,
+          0.04188,
+          0.0
+        ],
+        "extents": [
+          0.065947,
+          0.08376,
+          0.091
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/waist_roll_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/waist_roll_link.json"
+    },
+    {
+      "asset": "waist_yaw_link.STL",
+      "status": "reconstructed",
+      "source_kind": "stl_mesh_reference",
+      "reconstruction_kind": "parametric_mesh_section_loft",
+      "axis": "z",
+      "sections_count": 11,
+      "bbox_m": {
+        "min": [
+          -0.0981,
+          -0.10031,
+          0.0
+        ],
+        "max": [
+          0.07099,
+          0.10031,
+          0.29387
+        ],
+        "extents": [
+          0.16909,
+          0.200619,
+          0.29387
+        ]
+      },
+      "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/step/waist_yaw_link.step",
+      "parameters": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/base-reconstruction/params/waist_yaw_link.json"
+    }
+  ],
+  "failed_assets": []
+}

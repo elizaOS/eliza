@@ -25,6 +25,12 @@ args = parser.parse_args()
 
 REPORT = Path("build/reports/product_release_status.json")
 MANUFACTURING_REPORT = Path("build/reports/manufacturing_artifacts.json")
+REPO_GENERATION_BUCKETS = (
+    "repo_generatable_now",
+    "blocked_by_external_evidence",
+    "blocked_by_live_hardware",
+    "blocked_by_release_approval",
+)
 
 
 def write_report(report: dict) -> None:
@@ -533,6 +539,153 @@ def paths_from_text(text: object) -> list[str]:
     return paths
 
 
+def repo_generation_bucket_counts(findings: list[dict]) -> dict[str, int]:
+    counts = {bucket: 0 for bucket in REPO_GENERATION_BUCKETS}
+    for finding in findings:
+        if finding.get("blocker_dependency") != "repo_artifact_generation":
+            continue
+        counts[repo_generation_bucket_for_finding(finding)] += 1
+    return counts
+
+
+def repo_generation_bucket_for_finding(finding: dict) -> str:
+    evidence = finding.get("evidence")
+    source = evidence.get("source") if isinstance(evidence, dict) else evidence
+    blob = " ".join(
+        str(part or "").lower()
+        for part in (
+            finding.get("message"),
+            finding.get("next_step"),
+            finding.get("next_command"),
+            source,
+        )
+    )
+    if any(
+        token in blob
+        for token in (
+            "repo_generatable_now",
+            "can_generate_from_repo_now=true",
+            "can generate from repo now",
+        )
+    ):
+        return "repo_generatable_now"
+    if any(
+        token in blob
+        for token in (
+            "live",
+            "adb",
+            "booted",
+            "device/emulator",
+            "runtime capture",
+            "first article",
+            "first-article",
+            "physical first",
+            "bench log",
+            "measurement",
+            "cmm",
+            "fai",
+            "traveler",
+            "thermal trace",
+        )
+    ):
+        return "blocked_by_live_hardware"
+    if any(
+        token in blob
+        for token in (
+            "approval",
+            "approved",
+            "reviewer",
+            "signature",
+            "signed",
+            "metadata",
+            "checksum",
+            "disposition",
+            "source_revision",
+            "dirty working tree",
+            "release requires status complete",
+            "release requires group status complete",
+            "release requires manifest status complete",
+            "release gate remains",
+        )
+    ):
+        return "blocked_by_release_approval"
+    if any(
+        token in blob
+        for token in (
+            "supplier",
+            "vendor",
+            "foundry",
+            "package-vendor",
+            "fabricator",
+            "assembler",
+            "factory",
+            "routed",
+            "fabrication",
+            "enclosure",
+            "mechanical",
+            "dfm",
+            "toolmaker",
+            "quote",
+            "rf",
+            "antenna",
+            "stackup",
+            "3d model",
+            "external",
+        )
+    ):
+        return "blocked_by_external_evidence"
+    return "blocked_by_release_approval"
+
+
+def _safe_read_json(path: str) -> dict[str, object]:
+    file_path = Path(path)
+    if not file_path.is_file():
+        return {}
+    try:
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def nested_report_generation_summary(guidance: dict) -> list[dict[str, object]]:
+    summaries: list[dict[str, object]] = []
+    for path in guidance.get("primary_paths", []):
+        if not isinstance(path, str) or not path.startswith("build/reports/") or not path.endswith(".json"):
+            continue
+        report = _safe_read_json(path)
+        if not report:
+            continue
+        summary = report.get("summary")
+        row: dict[str, object] = {"report_path": path}
+        for key in (
+            "repo_generation_summary",
+            "artifact_state_summary",
+            "true_missing_generation_plan",
+            "routed_step_generation_plan",
+            "missing_release_evidence_generation_plan",
+        ):
+            value = report.get(key)
+            if isinstance(value, dict):
+                row[key] = value
+        if isinstance(summary, dict):
+            generation_keys = {
+                key: value
+                for key, value in summary.items()
+                if "repo_generatable" in str(key)
+                or "blocked_" in str(key)
+                or "true_missing" in str(key)
+                or "approval" in str(key)
+                or "external" in str(key)
+                or "live" in str(key)
+            }
+            if generation_keys:
+                row["summary_generation_fields"] = generation_keys
+        if len(row) > 1:
+            summaries.append(row)
+    return summaries
+
+
 def repo_artifact_generation_groups(findings: list[dict]) -> list[dict]:
     groups: dict[str, dict] = {}
     for finding in findings:
@@ -553,9 +706,16 @@ def repo_artifact_generation_groups(findings: list[dict]) -> list[dict]:
                 "source_scripts": [],
                 "sample_messages": [],
                 "referenced_paths": [],
+                "repo_generation_category_counts": {
+                    bucket: 0 for bucket in REPO_GENERATION_BUCKETS
+                },
+                "nested_report_generation_summaries": nested_report_generation_summary(guidance),
             },
         )
         group["count"] += 1
+        group["repo_generation_category_counts"][
+            repo_generation_bucket_for_finding(finding)
+        ] += 1
         evidence = finding.get("evidence")
         if isinstance(evidence, dict):
             source = str(evidence.get("source") or "")
@@ -725,6 +885,7 @@ def product_release_execution_plan(
             "release_credit": False,
             "blocker_count": len(matched),
             "blocker_dependency_counts": dependency_summary(matched),
+            "repo_generation_category_counts": repo_generation_bucket_counts(matched),
             "primary_commands": sorted(
                 {
                     str(finding.get("next_command"))
