@@ -943,6 +943,14 @@ export interface TrainingCollectionRunSummary {
     partial: number;
     missing: number;
   };
+  readinessGaps: Array<{
+    id: string;
+    label: string;
+    status: TrainingReadinessStatus;
+    note: string;
+    recommendedCapability: string | null;
+    recommendedParams: Record<string, unknown> | null;
+  }>;
   artifactCount: number;
   stepCounts: Record<string, number>;
   dataSources: {
@@ -954,11 +962,11 @@ export interface TrainingCollectionRunSummary {
     testTrajectories: number;
     trainingJsonlDatasets: number;
   };
-      sourceArtifacts: Array<{
-        category:
-          | "huggingface"
-          | "feed"
-          | "natural"
+  sourceArtifacts: Array<{
+    category:
+      | "huggingface"
+      | "feed"
+      | "natural"
       | "scenario"
       | "test"
       | "training_jsonl";
@@ -966,6 +974,28 @@ export interface TrainingCollectionRunSummary {
     path: string;
     schema: string | null;
   }>;
+  evidenceArtifacts: Array<{
+    category: "eval" | "benchmark" | "model";
+    title: string;
+    path: string;
+    schema: string | null;
+  }>;
+  training: {
+    trainingRuns: number;
+    models: number;
+    modelInventory: Array<{
+      title: string;
+      path: string;
+      schema: string | null;
+      model: string | null;
+      tier: string | null;
+      variant: string | null;
+      outputPath: string | null;
+      baseModel: string | null;
+      repoId: string | null;
+      evalImprovementPercent: number | null;
+    }>;
+  };
   benchmarks: {
     actionBenchmarkPairs: number;
     benchmarkComparisons: number;
@@ -1139,22 +1169,6 @@ export interface RunTrainingCollectionResponse {
         scenarios: TrainingCollectionSourceSample[];
         tests: TrainingCollectionSourceSample[];
         trainingJsonl: TrainingCollectionSourceSample[];
-      };
-      training: {
-        trainingRuns: number;
-        models: number;
-        modelInventory?: Array<{
-          title: string;
-          path: string;
-          schema: string | null;
-          model: string | null;
-          tier: string | null;
-          variant: string | null;
-          outputPath: string | null;
-          baseModel: string | null;
-          repoId: string | null;
-          evalImprovementPercent: number | null;
-        }>;
       };
       evals: {
         evalArtifacts: number;
