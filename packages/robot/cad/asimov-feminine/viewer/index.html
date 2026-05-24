@@ -45,8 +45,10 @@ select { background:#222; color:#eee; border:1px solid #444; padding:3px; font-s
   <h3>Reference Overlay</h3>
   <div class="row"><label>Meshy GLB</label><input type="checkbox" id="chk-ref" checked onchange="toggleRef(this.checked)"></div>
   <div class="row"><label>Opacity</label><input type="range" id="ref-opacity" min="0" max="100" value="40" oninput="setRefOpacity(this.value)"><span id="ref-opacity-val">40%</span></div>
-  <div class="row"><label>Scale</label><input type="range" id="ref-scale" min="1" max="200" value="80" oninput="setRefScale(this.value)"><span id="ref-scale-val">0.80</span></div>
+  <div class="row"><label>Scale</label><input type="range" id="ref-scale" min="1" max="200" value="100" oninput="setRefScale(this.value)"><span id="ref-scale-val">1.00</span></div>
   <div class="row"><label>Y Offset</label><input type="range" id="ref-y" min="-500" max="500" value="0" oninput="setRefY(this.value)"><span id="ref-y-val">0</span></div>
+  <div class="row"><label>X Offset</label><input type="range" id="ref-x" min="-1000" max="1000" value="-600" oninput="setRefX(this.value)"><span id="ref-x-val">-600</span></div>
+  <div class="row"><label>Rot Y°</label><input type="range" id="ref-roty" min="-180" max="180" value="90" oninput="setRefRotY(this.value)"><span id="ref-roty-val">90°</span></div>
 
   <h3>Visibility</h3>
   <button onclick="allOn()">ALL ON</button>

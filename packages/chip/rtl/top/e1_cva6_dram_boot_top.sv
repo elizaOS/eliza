@@ -2,13 +2,13 @@
 
 // e1_cva6_dram_boot_top
 //
-// CPU-execution substrate for booting the E1 SoC: the CVA6 RV64 core RTL
-// fetching and executing an M-mode firmware image from the AXI4
-// DRAM-controller RTL model, across the on-chip fabric RTL, with the CLINT/PLIC
-// RTL driving its timer/software/external interrupt lines, released by the RoT
-// reset sequencer RTL.
+// CPU-execution substrate for booting the E1 SoC: a REAL CVA6 RV64 core
+// fetching and executing an M-mode firmware image from the REAL AXI4 DRAM
+// controller, across the REAL on-chip fabric, with the REAL CLINT/PLIC
+// driving its timer/software/external interrupt lines, released by the REAL
+// RoT reset sequencer.
 //
-// This top is the missing link between e1_soc_top (which integrates the RTL
+// This top is the missing link between e1_soc_top (which integrates the real
 // CLINT/PLIC/DRAM behind an MMIO *debug* master) and a Linux boot: here the
 // bus is driven by an instruction stream the CPU fetches, not by an MMIO
 // fixture.  It is deliberately a focused execution-proof top — it does not
@@ -16,14 +16,14 @@
 // CVA6↔fabric↔DRAM↔CLINT datapath can be elaborated and proven end to end
 // without the rest of the SoC's port count.
 //
-// Datapath (all blocks are RTL, no stubs):
+// Datapath (all blocks are the production RTL, no stubs):
 //
 //   e1_cpu_subsystem (rtl/cpu/e1_cva6_wrapper.sv, +define+E1_HAVE_CVA6)
 //     └─ CVA6 v5.3.0 cv64a6_imafdc_sv39  →  noc_req/resp structs
 //        └─ e1_cva6_to_e1axi4 (adapter, inside the wrapper)  →  64-bit AXI4
 //           └─ e1_axi4_width_converter  64 → 128 (AXI4 IHI 0022 A8.4.1)
 //              └─ e1_axi4_interconnect (1 master, 2 slaves, 128-bit fabric)
-//                 ├─ slave 0  e1_dram_ctrl   @ 0x8000_0000 (RTL controller)
+//                 ├─ slave 0  e1_dram_ctrl   @ 0x8000_0000 (real controller)
 //                 └─ slave 1  e1_clint (via AXI4→AXI-Lite shim) @ 0x0200_0000
 //
 //   Interrupts:  e1_clint.mtip_o → CVA6 time_irq_i, e1_clint.msip_o → ipi_i,
@@ -46,7 +46,7 @@ module e1_cva6_dram_boot_top
     import e1_axi4_pkg::*;
 #(
     // DRAM window decode for the fabric (256 MiB at the controller base; the
-    // e1_dram_ctrl advertises 2 GiB capacity but a 256 MiB decode mask
+    // real e1_dram_ctrl advertises 2 GiB capacity but a 256 MiB decode mask
     // matches the e1-platform memory node and keeps the in-range check tight).
     parameter logic [39:0] DRAM_BASE  = 40'h00_8000_0000,
     parameter logic [39:0] DRAM_MASK  = 40'h00_0FFF_FFFF,
@@ -90,21 +90,21 @@ module e1_cva6_dram_boot_top
     output logic [63:0] mem_base_addr_o,
     output logic [63:0] mem_capacity_bytes_o,
     // AXI4 traffic counters at the DRAM controller slave port — structural
-    // proof the CPU fetched + accessed the RTL DRAM path through the fabric.
+    // proof the CPU fetched + accessed real DRAM through the real fabric.
     output logic [31:0] dram_ar_xfers_o,
     output logic [31:0] dram_aw_xfers_o,
     output logic [31:0] dram_w_xfers_o,
     output logic [31:0] dram_r_xfers_o,
     output logic [31:0] dram_b_xfers_o,
     // CLINT slave AXI-Lite handshake counters — proof the CPU programmed the
-    // timer through the fabric.
+    // timer through the real fabric.
     output logic [31:0] clint_aw_xfers_o,
     output logic [31:0] clint_ar_xfers_o,
 
     // DRAM write-stream marker snoop.  These latch the 64-bit values the CPU
     // writes to the firmware's marker offsets in DRAM (0x8000_2000 +) as the
     // write beats reach the DRAM controller's slave port — the observable
-    // image of "the CPU's stores landed in the RTL DRAM path". Exposed as flat ports
+    // image of "the CPU's stores landed in real DRAM".  Exposed as flat ports
     // because Verilator's GPI does not surface the controller's sim-only
     // associative backing store; this snoop reads the live AXI4 write channel.
     output logic [63:0] mark_alive_o,    // DRAM[0x2000] : store proof
@@ -121,7 +121,7 @@ module e1_cva6_dram_boot_top
     output logic       uart_tx_valid_o,
     output logic [7:0] uart_tx_byte_o,
     // UART write-transfer counter at the UART slave port — structural evidence
-    // the CPU programmed + drove the console through the fabric.
+    // the CPU programmed + drove the console through the real fabric.
     output logic [31:0] uart_aw_xfers_o
 );
     // ----------------------------------------------------------------------
@@ -664,7 +664,7 @@ module e1_cva6_dram_boot_top
     /* verilator lint_on UNUSEDSIGNAL */
 
     // ----------------------------------------------------------------------
-    // Slave 0 — AXI4 DRAM-controller RTL model @ 0x8000_0000.
+    // Slave 0 — real AXI4 DRAM controller @ 0x8000_0000.
     // The DFI south boundary is the physical LPDDR5X PHY (not modelled at the
     // analog level); tie its inputs to the benign "init complete / no read
     // data" values, exactly as e1_soc_real_subsys does.  In sim the

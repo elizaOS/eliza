@@ -89,17 +89,7 @@ void _start(void)
         puts_console("\n");
     }
 
-    /* Distinct, greppable userland marker: its appearance proves PID-1 ran on
-     * the booted kernel.  Emitted right after uname(2) (and before the optional
-     * /proc/cpuinfo dump) so the gate's userland proof never depends on the
-     * cost of generating /proc/cpuinfo — the riscv cpuinfo seq_file enumerates
-     * every ISA-extension entry per read, which is bounded but slow on the
-     * cycle-accurate CVA6 sim.  uname already proved a live syscall returning
-     * the booted kernel's identity; the marker proves PID-1 reached userland. */
-    puts_console("ELIZA-USERLAND-OK: init reached userland on E1 CVA6\n");
-
-    /* /proc/cpuinfo: the kernel's live enumeration of the CVA6 hart, emitted as
-     * supplementary evidence after the marker (best-effort; not gating). */
+    /* /proc/cpuinfo: the kernel's enumeration of the CVA6 hart. */
     fd = _syscall(SYS_openat, AT_FDCWD, (long)"/proc/cpuinfo", 0 /*O_RDONLY*/, 0, 0);
     if (fd >= 0) {
         puts_console("--- /proc/cpuinfo ---\n");
@@ -109,6 +99,8 @@ void _start(void)
         puts_console("--- end /proc/cpuinfo ---\n");
     }
 
+    /* Distinct, greppable userland marker: its appearance proves PID-1 ran. */
+    puts_console("ELIZA-USERLAND-OK: init reached userland on E1 CVA6\n");
     for (;;) {
         /* Idle forever; the boot proof is complete once the marker prints. */
         __asm__ volatile("wfi");

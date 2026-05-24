@@ -1,17 +1,17 @@
-"""CVA6 boots a bare-metal M-mode image from the RTL AXI4 DRAM controller.
+"""CVA6 boots a bare-metal M-mode image from the REAL AXI4 DRAM controller.
 
 This is the CPU-execution-substrate proof for the E1 SoC.  The DUT
-(`rtl/top/e1_cva6_dram_boot_top.sv`) wires the OpenHW CVA6 v5.3.0 core RTL
-(`+define+E1_HAVE_CVA6`) through the NoC->AXI4 adapter RTL, the 64->128 width
-converter RTL, the `e1_axi4_interconnect` fabric RTL, to the `e1_dram_ctrl`
-AXI4 DRAM-controller RTL model and the `e1_clint` RTL, released by the
-`e1_rot_reset_seq` RTL.
+(`rtl/top/e1_cva6_dram_boot_top.sv`) wires the REAL OpenHW CVA6 v5.3.0 core
+(`+define+E1_HAVE_CVA6`) through the REAL NoC->AXI4 adapter, the REAL 64->128
+width converter, the REAL `e1_axi4_interconnect` fabric, to the REAL
+`e1_dram_ctrl` AXI4 DRAM controller and the REAL `e1_clint`, released by the
+REAL `e1_rot_reset_seq`.
 
 The firmware (`fw/bare-metal/e1-cva6-dram-boot/boot.S`) is preloaded into the
 DRAM controller's backing store via the `+E1_DRAM_PRELOAD_HEX` plusarg (the
 deterministic stand-in for the secure boot-ROM / loader).  After the RoT
-release inputs are asserted, CVA6 fetches and executes the image from the RTL
-DRAM-controller path.
+release inputs are asserted, CVA6 fetches and executes the image FROM REAL
+DRAM through the real datapath.
 
 The program (see boot.S):
   1. fetches itself from DRAM @ 0x8000_0000,
@@ -22,8 +22,8 @@ The program (see boot.S):
   5. writes the ASCII "E1BOOT-OK" marker to DRAM, then spins.
 
 Pass criteria (all must hold):
-  * DRAM AR/R counters > 0  — CVA6 fetched through the RTL DRAM path.
-  * DRAM AW/W/B counters > 0 — CVA6 wrote through the RTL DRAM path.
+  * DRAM AR/R counters > 0  — CVA6 fetched instructions from real DRAM.
+  * DRAM AW/W/B counters > 0 — CVA6 wrote real DRAM.
   * CLINT AW counter > 0    — CVA6 programmed the timer through the fabric.
   * MARK_ALIVE / MARK_ECHO  — store + load round-tripped (read back from DRAM).
   * MARK_TRAP_HIT == 1      — the timer trap was taken.
@@ -34,6 +34,7 @@ Pass criteria (all must hold):
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
@@ -59,7 +60,7 @@ _RUN = os.environ.get("CVA6_VERILATOR_FULL_OK", "1") == "1"
 
 # The marker words are observed off the live DRAM write channel and exposed as
 # flat output ports by the DUT (Verilator's GPI cannot read the controller's
-# sim-only associative backing store, so the top snoops the RTL write beats).
+# sim-only associative backing store, so the top snoops the real write beats).
 _MARK_PORT = {
     OFF_ALIVE: "mark_alive_o",
     OFF_ECHO: "mark_echo_o",
@@ -134,13 +135,12 @@ async def test_cva6_executes_from_real_dram(dut):
     clint_aw = int(dut.clint_aw_xfers_o.value)
 
     assert dram_ar >= 1 and dram_r >= 1, (
-        f"CVA6 never fetched/read through the RTL DRAM path "
+        f"CVA6 never fetched/read real DRAM through the fabric "
         f"(AR={dram_ar}, R={dram_r}). The instruction-fetch datapath is broken."
     )
     assert dram_aw >= 1 and dram_w >= 1 and dram_b >= 1, (
-        f"CVA6 never wrote through the RTL DRAM path "
+        f"CVA6 never wrote real DRAM through the fabric "
         f"(AW={dram_aw}, W={dram_w}, B={dram_b})."
-        f"CVA6 never wrote real DRAM through the fabric (AW={dram_aw}, W={dram_w}, B={dram_b})."
     )
     assert clint_aw >= 1, (
         f"CVA6 never programmed the CLINT through the fabric (CLINT AW={clint_aw})."
@@ -151,11 +151,11 @@ async def test_cva6_executes_from_real_dram(dut):
     echo = _read_dram_u64(dut, MARK_BASE + OFF_ECHO)
     assert alive == EXPECT_ALIVE, (
         f"MARK_ALIVE mismatch: DRAM held 0x{alive:016x}, expected "
-        f"0x{EXPECT_ALIVE:016x}. The CPU store to the RTL DRAM path did not land."
+        f"0x{EXPECT_ALIVE:016x}. The CPU store to real DRAM did not land."
     )
     assert echo == EXPECT_ALIVE, (
         f"MARK_ECHO mismatch: 0x{echo:016x} != 0x{EXPECT_ALIVE:016x}. "
-        "The CPU load from the RTL DRAM path did not read back the stored value."
+        "The CPU load from real DRAM did not read back the stored value."
     )
 
     # --- timer-trap evidence ---
@@ -164,13 +164,17 @@ async def test_cva6_executes_from_real_dram(dut):
         f"(mtip_o={int(dut.mtip_o.value)}, mtime={int(dut.mtime_o.value)})"
     )
     mcause = _read_dram_u64(dut, MARK_BASE + OFF_MCAUSE)
-    assert (mcause >> 63) & 1 == 1, f"mcause 0x{mcause:016x} is not an interrupt (bit63 clear)."
+    assert (mcause >> 63) & 1 == 1, (
+        f"mcause 0x{mcause:016x} is not an interrupt (bit63 clear)."
+    )
     assert (mcause & 0x7FFF_FFFF_FFFF_FFFF) == 7, (
-        f"mcause low bits 0x{mcause & 0x7FFFFFFFFFFFFFFF:x} != 7 (machine timer interrupt)."
+        f"mcause low bits 0x{mcause & 0x7FFFFFFFFFFFFFFF:x} != 7 "
+        "(machine timer interrupt)."
     )
     mepc = _read_dram_u64(dut, MARK_BASE + OFF_MEPC)
     assert DRAM_BASE <= mepc < (DRAM_BASE + 0x1000), (
-        f"mepc 0x{mepc:016x} not in the program text — the trap was taken from an unexpected PC."
+        f"mepc 0x{mepc:016x} not in the program text — the trap was taken "
+        "from an unexpected PC."
     )
 
     # --- boot-OK marker ---
@@ -183,7 +187,7 @@ async def test_cva6_executes_from_real_dram(dut):
     )
 
     dut._log.info(
-        "CVA6 boot substrate PROVEN: fetched+executed through the RTL DRAM path "
+        "CVA6 boot substrate PROVEN: fetched+executed from real DRAM "
         f"(DRAM AR={dram_ar} R={dram_r} AW={dram_aw} W={dram_w} B={dram_b}, "
         f"CLINT AW={clint_aw}); store/load round-trip OK; timer trap taken "
         f"(mcause=0x{mcause:016x}, mepc=0x{mepc:016x}); E1BOOT-OK emitted."

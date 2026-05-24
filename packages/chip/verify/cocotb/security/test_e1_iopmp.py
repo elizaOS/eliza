@@ -203,9 +203,7 @@ async def program_policy(dut, *, lock: bool = True):
     for idx, rid in enumerate(REGION_IDS):
         base = REGION_ADDR[rid]
         perm = CFG_R if rid == RO_REGION else (CFG_R | CFG_W)
-        await reg_write(
-            dut, entry_offset(idx, E_ADDR_LO), napot_encode(base, REGION_SIZE) & 0xFFFF_FFFF
-        )
+        await reg_write(dut, entry_offset(idx, E_ADDR_LO), napot_encode(base, REGION_SIZE) & 0xFFFF_FFFF)
         await reg_write(dut, entry_offset(idx, E_ADDR_HI), napot_encode(base, REGION_SIZE) >> 32)
         await reg_write(dut, entry_offset(idx, E_CFG), A_NAPOT | perm)
         mask = srcmd_mask(REGION_SRCIDS[rid])
@@ -303,9 +301,7 @@ async def out_of_range_denied(dut):
     allow, deny = await check(dut, MASTERS["usb"], 0x1_0000_0000, REQ_READ)
     assert allow == 0 and deny == 1
     # Just past the end of usb-bounce's 4 KiB window.
-    allow, deny = await check(
-        dut, MASTERS["usb"], REGION_ADDR["usb-bounce"] + REGION_SIZE, REQ_READ
-    )
+    allow, deny = await check(dut, MASTERS["usb"], REGION_ADDR["usb-bounce"] + REGION_SIZE, REQ_READ)
     assert allow == 0 and deny == 1
 
 

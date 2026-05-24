@@ -74,6 +74,12 @@ function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
   return false;
 }
 
+function shouldIgnoreHttpError(url: string, status: number): boolean {
+  if (status < 400) return true;
+  if (url.startsWith("data:") || url.startsWith("blob:")) return true;
+  return false;
+}
+
 export function installPageDiagnosticsGuard(page: Page): void {
   if (browserDiagnosticIssuesByPage.has(page)) return;
 
@@ -94,6 +100,13 @@ export function installPageDiagnosticsGuard(page: Page): void {
     const url = request.url();
     if (shouldIgnoreRequestFailure(url, failureText)) return;
     issues.push(`requestfailed: ${request.method()} ${url} ${failureText}`);
+  });
+
+  page.on("response", (response) => {
+    const status = response.status();
+    const url = response.url();
+    if (shouldIgnoreHttpError(url, status)) return;
+    issues.push(`http.${status}: ${response.request().method()} ${url}`);
   });
 }
 

@@ -71,17 +71,8 @@ async def reset(dut):
     dut.write.value = 0
     dut.addr.value = 0
     dut.wdata.value = 0
-    for sig in (
-        "m_arready",
-        "m_rvalid",
-        "m_rdata",
-        "m_rlast",
-        "m_rresp",
-        "m_awready",
-        "m_wready",
-        "m_bvalid",
-        "m_bresp",
-    ):
+    for sig in ("m_arready", "m_rvalid", "m_rdata", "m_rlast", "m_rresp",
+                "m_awready", "m_wready", "m_bvalid", "m_bresp"):
         getattr(dut, sig).value = 0
     await Timer(1, units="ns")
     for _ in range(4):
@@ -130,8 +121,8 @@ class Axi4Slave:
     async def run(self):
         dut = self.dut
         rng = self.rng
-        rd = None  # (addr, beats_left, resp)
-        aw = None  # base addr
+        rd = None       # (addr, beats_left, resp)
+        aw = None       # base addr
         wr_resp = None  # resp pending on B
         while True:
             dut.m_arready.value = rd is None and rng.randrange(3) != 0
@@ -178,7 +169,10 @@ class Axi4Slave:
                 last = beats <= 1
                 dut.m_rlast.value = 1 if last else 0
                 dut.m_rvalid.value = 1
-                rd = None if last else [addr + 4, beats - 1, resp]
+                if last:
+                    rd = None
+                else:
+                    rd = [addr + 4, beats - 1, resp]
 
             # Drive write response.
             if wr_resp is not None and not int(dut.m_bvalid.value):
@@ -246,8 +240,7 @@ async def sg_multi_descriptor_copy_is_byte_exact(dut):
     for src, dst, length in segs:
         for off in range(length):
             assert slv.mem.get(dst + off, 0) == payload[src + off], (
-                f"mismatch at dst {dst + off:#x}"
-            )
+                f"mismatch at dst {dst + off:#x}")
         # A 32-byte-spaced sibling region must be untouched.
         assert (dst + length) not in slv.mem or slv.mem[dst + length] == 0
 
@@ -267,9 +260,9 @@ async def sg_unaligned_head_and_tail_is_exact(dut):
     await reset(dut)
     cocotb.start_soon(slv.run())
 
-    src = 0x0030_0003  # +3 byte offset
-    dst = 0x0040_0001  # +1 byte offset
-    length = 70  # spans several beats, unaligned both ends
+    src = 0x0030_0003   # +3 byte offset
+    dst = 0x0040_0001   # +1 byte offset
+    length = 70         # spans several beats, unaligned both ends
 
     # Pre-seed the dst neighbourhood with a sentinel to detect stray writes.
     for off in range(-4, length + 4):
@@ -383,7 +376,7 @@ async def sg_decerr_sets_error_status_and_irq_without_corrupting_siblings(dut):
     ring = 0x0000_3000
     good_src0 = 0x00A0_0000
     good_dst0 = 0x00C0_0000
-    bad_src1 = bad_page + 0x10  # reads here return DECERR
+    bad_src1 = bad_page + 0x10        # reads here return DECERR
     good_dst1 = 0x00C1_0000
     good_src2 = 0x00A2_0000
     good_dst2 = 0x00C2_0000
@@ -395,9 +388,12 @@ async def sg_decerr_sets_error_status_and_irq_without_corrupting_siblings(dut):
     for off in range(32):
         slv.mem[good_dst2 + off] = 0xEE
 
-    write_desc(slv.mem, ring + 0 * DESC_SIZE, good_src0, good_dst0, 32, F_OWN, ring + 1 * DESC_SIZE)
-    write_desc(slv.mem, ring + 1 * DESC_SIZE, bad_src1, good_dst1, 32, F_OWN, ring + 2 * DESC_SIZE)
-    write_desc(slv.mem, ring + 2 * DESC_SIZE, good_src2, good_dst2, 32, F_OWN | F_IRQ | F_LAST, 0)
+    write_desc(slv.mem, ring + 0 * DESC_SIZE, good_src0, good_dst0, 32,
+               F_OWN, ring + 1 * DESC_SIZE)
+    write_desc(slv.mem, ring + 1 * DESC_SIZE, bad_src1, good_dst1, 32,
+               F_OWN, ring + 2 * DESC_SIZE)
+    write_desc(slv.mem, ring + 2 * DESC_SIZE, good_src2, good_dst2, 32,
+               F_OWN | F_IRQ | F_LAST, 0)
 
     await start_chain(dut, ring)
     status = await wait_idle(dut)

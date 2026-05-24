@@ -57,11 +57,10 @@ module e1_dram_ctrl
     parameter int unsigned USER_WIDTH       = 8,
     parameter int unsigned BURST_LEN_W      = 8,
 
-    // Discoverable simulation main-memory geometry.  Default base
-    // 0x8000_0000, default capacity 2 GiB.  Both are exported on
-    // mem_base_addr / mem_capacity_bytes for the local RTL geometry tests;
-    // Linux/AOSP boot handoff, DTS/mem= wiring, and SoC-top integration remain
-    // separate evidence requirements.
+    // Discoverable main-memory geometry.  Default base 0x8000_0000, default
+    // capacity 2 GiB — large enough that Linux/AOSP get real, cacheable RAM
+    // and the mem= / DTS memory node match the hardware aperture.  Both are
+    // exported on mem_base_addr / mem_capacity_bytes for boot enumeration.
     parameter longint unsigned MEM_BASE_ADDR     = 64'h0000_0000_8000_0000,
     parameter longint unsigned MEM_CAPACITY_BYTES= 64'h0000_0000_8000_0000, // 2 GiB
 

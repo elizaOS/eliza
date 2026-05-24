@@ -21,29 +21,27 @@
 // build-staged image without editing RTL.
 
 module e1_bootrom #(
-    parameter ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
+    parameter string ROM_HEX = "build/boot-rom/e1_secure_boot_rom.hex"
 ) (
     input  logic [5:0]  addr,
     output logic [31:0] rdata
 );
-    // The secure ROM linker and checker enforce a 64 KiB mask-ROM aperture.
-    // Some top-level smokes currently expose only the low debug-visible words,
-    // but the backing array must be large enough for the generated image.
-    localparam int unsigned WORDS = 64 * 1024 / 4;
-
-    localparam int unsigned ADDR_BITS = $clog2(WORDS);
+    localparam int unsigned WORDS = 64;
 
     logic [31:0] mem [WORDS];
-    logic [ADDR_BITS-1:0] mem_addr;
 
     initial begin : init_rom
+        string rom_path;
         for (int i = 0; i < WORDS; i++) begin
             mem[i] = 32'h0000_0000;
         end
-        // Keep ROM initialization frontend-portable for OpenLane/Yosys. Test
-        // benches can override ROM_HEX as a parameter when they need an
-        // alternate build-staged image.
-        $readmemh(ROM_HEX, mem);
+        // The image path is the ROM_HEX parameter by default; a testbench may
+        // override it with the BOOT_ROM_HEX plusarg (resolved relative to the
+        // simulator cwd) to point at an alternate build-staged image.
+        if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
+            rom_path = ROM_HEX;
+        end
+        $readmemh(rom_path, mem);
         // Debug-visible identity/version header (published ROM contract):
         // magic "OSO", "CHIP", format version, and the 32'h0000_1000 handoff
         // word. Overlaid after the image load so external bring-up tooling can
@@ -54,6 +52,5 @@ module e1_bootrom #(
         mem[3] = 32'h0000_1000;
     end
 
-    assign mem_addr = {{(ADDR_BITS - $bits(addr)){1'b0}}, addr};
-    assign rdata = mem[mem_addr];
+    assign rdata = mem[addr];
 endmodule

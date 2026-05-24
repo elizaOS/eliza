@@ -46,21 +46,9 @@ make -C external/opensbi/opensbi PLATFORM=eliza \
 # -> build/platform/eliza/firmware/fw_payload.elf
 ```
 
-Running this OpenSBI build on the real CVA6 in Verilator is wired up and
-proven end to end by `scripts/check_opensbi_cva6_boot.py`: it assembles a dense
-DRAM preload image (`fw/opensbi-cva6-boot/build_boot_image.py`) of OpenSBI
-fw_jump @0x80000000 + a compiled DTB @0x80040000 + an S-mode payload @0x80060000
-+ an entry shim @0x80080000 (the CVA6 reset vector, which sets `a0`=hartid,
-`a1`=dtb and jumps to OpenSBI's `_fw_start`), preloads it into the boot top
-(`rtl/top/e1_cva6_dram_boot_top.sv`, now carrying a ns16550a UART @0x10001000
-and an AXI4 atomics adapter), runs the cocotb sim, and asserts the OpenSBI
-banner appears on the UART. The transcript is captured to
-`docs/evidence/cpu_ap/opensbi_cva6_boot.transcript`.
-
-`platform.heap_size` MUST be non-zero (set to `SBI_PLATFORM_DEFAULT_HEAP_SIZE`):
-`sbi_init`->`sbi_heap_init` fails closed on a zero heap and hangs before the
-console. `FW_TEXT_START` MUST be the aligned base `0x80000000` (not an offset
-base): `sbi_domain_init` requires `fw_start` aligned to the fw_rw offset.
-
-The bare-metal CVA6 execution substrate beneath this is proven separately by
-`scripts/check_cva6_boot_substrate.py`.
+Running the image on CVA6 in Verilator additionally needs a ns16550a UART
+model @ 0x10001000 wired into the CPU-from-DRAM boot top
+(`rtl/top/e1_cva6_dram_boot_top.sv`) plus a DTB in `a1`. The CVA6 execution
+substrate that this firmware sits on is proven by
+`scripts/check_cva6_boot_substrate.py` (see
+`docs/evidence/cpu_ap/cva6-boot-substrate.json`).

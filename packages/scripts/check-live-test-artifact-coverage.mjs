@@ -260,7 +260,6 @@ function matchingWrappedRuns(row, wrappedRuns) {
       runCommand === rootScriptCommand ||
       (cwdScriptCommand && runCommand === cwdScriptCommand) ||
       runCommand.includes(rowCommand) ||
-      rowCommand.includes(runCommand) ||
       runCommand.includes(rootScriptCommand) ||
       (cwdScriptCommand && runCommand.includes(cwdScriptCommand))
     );

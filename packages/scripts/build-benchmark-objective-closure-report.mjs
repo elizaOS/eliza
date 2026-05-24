@@ -133,7 +133,7 @@ function buildPayload() {
         true,
       ),
       evidence: `${versionRemediation.summary?.withPrevious || 0}/${versionRemediation.summary?.benchmarkCount || 0} code-agent benchmarks have previous rows; ${versionRemediation.summary?.comparablePlaybackPairs || 0}/${versionRemediation.summary?.withPrevious || 0} have call-by-call previous playback; ${versionRemediation.summary?.previousPlaybackGaps || 0} previous playback gaps (${(versionRemediation.summary?.previousPlaybackGapBenchmarks || []).join(", ")}); ${versionRemediation.summary?.previousAggregateOnlyWithViewer || 0} aggregate-only previous viewers have zero target/baseline trajectory files and ${versionRemediation.summary?.previousAggregateOnlyReviewRows || 0} have explicit version-gap review rows; ${versionRemediation.summary?.noPreviousRun || 0} true no-previous-run benchmarks.`,
-      viewer: "../../benchmarks/code-agent-version-comparison/index.html",
+      viewer: "../version-remediation-matrix/index.html",
     },
     {
       id: "broader-corpus-review",
@@ -145,7 +145,7 @@ function buildPayload() {
         corpusCaveated,
       ),
       evidence: `${corpus.callCatalogSummary?.normalizedCallCount || 0} normalized records across ${corpus.callCatalogSummary?.rowsWithNormalizedCalls || 0} rows and ${corpus.callCatalogSummary?.benchmarksWithNormalizedCalls || 0} families; ${corpus.summary?.canonicalTrajectoryFiles || 0} canonical playback files; ${corpus.telemetryGapSummary?.evidenceAbsentLatestRows || 0} evidence-absent rows; ${corpus.summary?.insufficientLatestRows || 0} insufficient-* publication-warning rows; ${corpus.telemetryGapSummary?.zeroMetricLatestRows || 0} replayable token/turn-zero latest rows; ${corpus.reviewFindingSummary?.telemetryGap || 0} tokenless telemetry-gap families; ${corpus.reviewFindingSummary?.blocked || 0} blocked family: hyperliquid_bench pending HL_PRIVATE_KEY; ${corpusReviewPacks.summary?.warningRowsWithPlayback || 0}/${corpusReviewPacks.summary?.warningRows || 0} publication-warning rows have playback and ${corpusReviewPacks.summary?.warningRowsWithCallPreview || 0}/${corpusReviewPacks.summary?.warningRows || 0} have call previews.`,
-      viewer: "../../benchmarks/benchmark-results-corpus-review/index.html",
+      viewer: "../corpus-review-packs/index.html",
     },
     {
       id: "all-scenarios-included",
@@ -178,7 +178,7 @@ function buildPayload() {
         livePromptResponse.summary?.scriptSidecarComplete < livePromptResponse.summary?.likelyLlmScripts,
       ),
       evidence: `${live.summary?.modelArtifactRequiredScripts || 0}/${live.summary?.modelArtifactRequiredScripts || 0} model-call scripts reviewed; ${live.summary?.modelArtifactRequiredWithoutEvidence || 0} evidence gaps; ${live.summary?.wrapperPlaybackRuns || 0}/${live.summary?.wrappedRuns || 0} wrapped runs have playback; ${live.summary?.structuredLlmCallCount || 0} structured calls; ${livePromptResponse.summary?.scriptSidecarComplete || 0}/${livePromptResponse.summary?.likelyLlmScripts || 0} complete script sidecars; ${livePromptResponse.summary?.rowsWithOfflineReviewSummary || 0}/${livePromptResponse.summary?.likelyLlmScripts || 0} offline review summaries and ${livePromptResponse.summary?.noSidecarRowsWithOfflineReviewSummary || 0}/${livePromptResponse.summary?.reasonCodedNoSidecar || 0} no-sidecar rows with offline evidence guidance.`,
-      viewer: "../../live-test-inventory/index.html",
+      viewer: "../live-test-review-packs/index.html",
     },
     {
       id: "manual-review-workspace",

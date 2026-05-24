@@ -72,7 +72,9 @@ def blocked(reason: str) -> int:
 def regenerate() -> tuple[bool, str]:
     if not RUNNER.is_file():
         return False, f"missing runner {RUNNER.relative_to(CHIP_ROOT)}"
-    result = subprocess.run(["sh", str(RUNNER)], cwd=CHIP_ROOT, text=True, capture_output=True)
+    result = subprocess.run(
+        ["sh", str(RUNNER)], cwd=CHIP_ROOT, text=True, capture_output=True
+    )
     detail = (result.stdout + result.stderr).strip().splitlines()
     last = detail[-1] if detail else ""
     if result.returncode == 2:
@@ -84,7 +86,9 @@ def regenerate() -> tuple[bool, str]:
 
 def main() -> int:
     if not ROM_BIN.is_file():
-        return blocked("secure ROM image not built: run 'make -C fw/boot-rom secure-rom'")
+        return blocked(
+            "secure ROM image not built: run 'make -C fw/boot-rom secure-rom'"
+        )
 
     ok, detail = regenerate()
     if not ok:

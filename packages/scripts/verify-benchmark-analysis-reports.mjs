@@ -2461,6 +2461,7 @@ function main() {
         (row) =>
           row.id === "real-llm-e2e-tests" &&
           row.status === "caveated" &&
+          row.viewer === "../live-test-review-packs/index.html" &&
           /1\/27 complete script sidecars/.test(row.evidence || "") &&
           /27\/27 offline review summaries/.test(row.evidence || ""),
       ) &&
@@ -2476,6 +2477,7 @@ function main() {
         (row) =>
           row.id === "version-comparison" &&
           row.status === "caveated" &&
+          row.viewer === "../version-remediation-matrix/index.html" &&
           /mind2web, nl2repo/.test(row.evidence || "") &&
           /explicit version-gap review rows/.test(row.evidence || ""),
       ) &&
@@ -2483,6 +2485,7 @@ function main() {
         (row) =>
           row.id === "broader-corpus-review" &&
           row.status === "caveated" &&
+          row.viewer === "../corpus-review-packs/index.html" &&
           /69 insufficient-\* publication-warning rows/.test(row.evidence || "") &&
           /9 replayable token\/turn-zero latest rows/.test(row.evidence || "") &&
           /hyperliquid_bench pending HL_PRIVATE_KEY/.test(row.evidence || "") &&
@@ -2560,7 +2563,10 @@ function main() {
             (detail) => detail.id === "broader-corpus-review" && /74\/74 publication-warning rows/.test(detail.evidence || ""),
           ) &&
           gate.localActionLanes?.["real-llm-e2e-tests"]?.actionLane === "resolve-live-sidecar-breadth" &&
-          gate.localActionLanes?.["version-comparison"]?.actionLane === "restore-previous-trajectory-history",
+          gate.localActionLanes?.["real-llm-e2e-tests"]?.href === "../live-test-review-packs/index.html" &&
+          gate.localActionLanes?.["version-comparison"]?.actionLane === "restore-previous-trajectory-history" &&
+          gate.localActionLanes?.["version-comparison"]?.href === "../version-remediation-matrix/index.html" &&
+          gate.localActionLanes?.["broader-corpus-review"]?.href === "../corpus-review-packs/index.html",
       ) &&
       (finalGoalReadiness.gates || []).some(
         (gate) =>
@@ -2786,8 +2792,19 @@ function main() {
             row.actionLane &&
             row.credentialRequired === false &&
             row.nextAction === row.localAction &&
-            !/Use the linked report to clear/.test(row.nextAction || ""),
+            !/Use the linked report to clear/.test(row.nextAction || "") &&
+            !String(row.targetHref || "").startsWith("/") &&
+            !String(row.targetHref || "").startsWith("file://"),
         ) &&
+      (remediationMatrix.rows || []).some(
+        (row) => row.id === "real-llm-e2e-tests" && row.targetHref === "../live-test-review-packs/index.html",
+      ) &&
+      (remediationMatrix.rows || []).some(
+        (row) => row.id === "broader-corpus-review" && row.targetHref === "../corpus-review-packs/index.html",
+      ) &&
+      (remediationMatrix.rows || []).some(
+        (row) => row.id === "version-comparison" && row.targetHref === "../version-remediation-matrix/index.html",
+      ) &&
       (remediationMatrix.rows || []).some(
         (row) =>
           row.id === "corpus-publication-gaps" &&

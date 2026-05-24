@@ -308,7 +308,7 @@ async def backpressure_honored(dut):
             break
     dut.s_arvalid.value = 0
 
-    collected: list[int] = []
+    collected = []
     cycles = 0
     while len(collected) < beats and cycles < 20000:
         # rready toggles every other beat-attempt to create backpressure.

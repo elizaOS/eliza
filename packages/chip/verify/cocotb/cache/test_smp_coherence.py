@@ -86,8 +86,9 @@ async def core_access(dut, core, paddr, is_load, wdata=0, max_replays=200):
         dut.c_req_valid[core].value = 0
         # Response is registered: sample on the next edge.
         await RisingEdge(dut.clk)
-        if int(dut.c_resp_valid[core].value) == 1 and int(dut.c_resp_ack[core].value) == 1:
-            return int(dut.c_resp_rdata[core].value) & MASK64
+        if int(dut.c_resp_valid[core].value) == 1:
+            if int(dut.c_resp_ack[core].value) == 1:
+                return int(dut.c_resp_rdata[core].value) & MASK64
         # Let any in-flight directory transaction make progress before retry.
         for _ in range(3):
             await RisingEdge(dut.clk)
@@ -116,7 +117,10 @@ def assert_swmr(dut, paddr):
     sh = dir_sharers(dut, paddr)
     nset = bin(sh).count("1")
     if st == MESI_M:
-        assert nset == 1, f"SWMR violation @ {paddr:#x}: state M but {nset} sharers (mask {sh:#b})"
+        assert nset == 1, (
+            f"SWMR violation @ {paddr:#x}: state M but {nset} sharers "
+            f"(mask {sh:#b})"
+        )
     if st in (MESI_E, MESI_M):
         assert nset <= 1, (
             f"SWMR violation @ {paddr:#x}: exclusive/modified state "
@@ -158,12 +162,14 @@ async def test_swmr_single_writer(dut):
     await reset_dut(dut)
 
     paddr = 0x0000_2000_0040
-    await core_access(dut, 0, paddr, is_load=False, wdata=0x1111_1111_1111_1111)
+    await core_access(dut, 0, paddr, is_load=False,
+                      wdata=0x1111_1111_1111_1111)
     assert_swmr(dut, paddr)
     assert dir_state(dut, paddr) == MESI_M
     assert dir_sharers(dut, paddr) == 0b01
 
-    await core_access(dut, 1, paddr, is_load=False, wdata=0x2222_2222_2222_2222)
+    await core_access(dut, 1, paddr, is_load=False,
+                      wdata=0x2222_2222_2222_2222)
     assert_swmr(dut, paddr)
     assert dir_state(dut, paddr) == MESI_M, "core1 should own the line M"
     assert dir_sharers(dut, paddr) == 0b10, (
@@ -191,7 +197,8 @@ async def test_no_two_modified_invariant(dut):
         assert_swmr(dut, paddr)
         assert dir_state(dut, paddr) == MESI_M
         assert dir_sharers(dut, paddr) == (1 << writer), (
-            f"step {i}: expected only core {writer} to own M, got mask {dir_sharers(dut, paddr):#b}"
+            f"step {i}: expected only core {writer} to own M, got mask "
+            f"{dir_sharers(dut, paddr):#b}"
         )
         # The writer can read back exactly its own value.
         got = await core_access(dut, writer, paddr, is_load=True)
@@ -224,7 +231,8 @@ async def test_message_passing_litmus(dut):
 
     got = await core_access(dut, 1, data_addr, is_load=True)
     assert got == data_val, (
-        f"MP litmus violated: FLAG seen set but DATA stale (got {got:#x} want {data_val:#x})"
+        f"MP litmus violated: FLAG seen set but DATA stale "
+        f"(got {got:#x} want {data_val:#x})"
     )
 
 
@@ -256,12 +264,16 @@ async def test_dirty_writeback_ordering(dut):
     await core_access(dut, 1, base, is_load=False, wdata=b_val)
     assert_swmr(dut, base)
     assert dir_state(dut, base) == MESI_M
-    assert dir_sharers(dut, base) == 0b10, "core1 must be sole owner after invalidating core0"
+    assert dir_sharers(dut, base) == 0b10, (
+        "core1 must be sole owner after invalidating core0"
+    )
 
     # Core 0 re-reads A -> must observe core 1's value, proving core 1's dirty
     # line was written back and ordered before this read's grant.
     got = await core_access(dut, 0, base, is_load=True)
-    assert got == b_val, f"writeback ordering violated: got {got:#x} want {b_val:#x}"
+    assert got == b_val, (
+        f"writeback ordering violated: got {got:#x} want {b_val:#x}"
+    )
     assert_swmr(dut, base)
 
 
@@ -279,10 +291,11 @@ async def test_domain_flush_partition(dut):
     cd_addr = 0x0000_5000_0000
     host_addr = 0x0000_5000_0040  # distinct directory line (idx 0 vs 1)
 
-    _set_arr(dut.c_domain, 0, 0)  # core0 = host domain
-    _set_arr(dut.c_domain, 1, 1)  # core1 = confidential domain
+    _set_arr(dut.c_domain, 0, 0)   # core0 = host domain
+    _set_arr(dut.c_domain, 1, 1)   # core1 = confidential domain
 
-    await core_access(dut, 0, host_addr, is_load=False, wdata=0x0000_5700_0000_0001)
+    await core_access(dut, 0, host_addr, is_load=False,
+                      wdata=0x0000_5700_0000_0001)
     await core_access(dut, 1, cd_addr, is_load=False, wdata=0xC0FF_EE00)
     assert dir_state(dut, cd_addr) == MESI_M
     assert dir_state(dut, host_addr) == MESI_M

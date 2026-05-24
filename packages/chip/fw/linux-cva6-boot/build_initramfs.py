@@ -20,7 +20,7 @@ import subprocess
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]  # packages/chip
+ROOT = HERE.parents[1]   # packages/chip
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
 
@@ -37,63 +37,27 @@ def _env() -> dict:
 
 def build_init(out_dir: Path, env: dict) -> Path:
     elf = out_dir / "init"
-    subprocess.run(
-        [
-            "riscv64-linux-gnu-gcc",
-            "-static",
-            "-nostdlib",
-            "-nostartfiles",
-            "-ffreestanding",
-            "-fno-pic",
-            "-fno-stack-protector",
-            "-march=rv64imac",
-            "-mabi=lp64",
-            "-mcmodel=medany",
-            "-Os",
-            "-Wl,--build-id=none",
-            "-Wl,-e,_start",
-            "-o",
-            str(elf),
-            str(HERE / "init.c"),
-        ],
-        check=True,
-        env=env,
-    )
+    subprocess.run([
+        "riscv64-linux-gnu-gcc",
+        "-static", "-nostdlib", "-nostartfiles", "-ffreestanding",
+        "-fno-pic", "-fno-stack-protector",
+        "-march=rv64imac", "-mabi=lp64", "-mcmodel=medany",
+        "-Os", "-Wl,--build-id=none", "-Wl,-e,_start",
+        "-o", str(elf), str(HERE / "init.c"),
+    ], check=True, env=env)
     return elf
 
 
 def _cpio_newc(entries: list[tuple[str, int, bytes]]) -> bytes:
-    """Build a newc-format cpio archive.
-
-    Each entry is (name, mode, data) for regular files / dirs, or
-    (name, mode, (rdevmajor, rdevminor)) for device nodes (S_IFCHR / S_IFBLK),
-    where the payload is the device number rather than file content.
-    """
+    """Build a newc-format cpio archive from (name, mode, data) entries."""
     buf = io.BytesIO()
     ino = 721
-    for name, mode, payload in entries:
+    for name, mode, data in entries:
         ino += 1
-        if isinstance(payload, tuple):
-            rdevmajor, rdevminor = payload
-            data = b""
-        else:
-            rdevmajor = rdevminor = 0
-            data = payload
         name_b = name.encode() + b"\x00"
         fields = [
-            ino,
-            mode,
-            0,
-            0,
-            1,
-            0,
-            len(data),
-            0,
-            0,
-            rdevmajor,
-            rdevminor,
-            len(name_b),
-            0,
+            ino, mode, 0, 0, 1, 0, len(data),
+            0, 0, 0, 0, len(name_b), 0,
         ]
         header = b"070701" + b"".join(f"{f:08x}".encode() for f in fields)
         buf.write(header)
@@ -129,21 +93,12 @@ def main() -> int:
     init_elf = build_init(out.parent, env)
     init_bytes = init_elf.read_bytes()
 
-    # Minimal rootfs: /init, the dirs the kernel expects, and a /dev/console
-    # node.  Without /dev/console in the builtin initramfs, init_post() cannot
-    # open the initial console (it prints "unable to open an initial console")
-    # and PID 1 is exec'd with fds 0/1/2 unconnected — so /init's write(1, ...)
-    # to the marker goes nowhere.  A static c 5:1 console node (devtmpfs is not
-    # mounted yet at exec time) wires PID 1's stdio to ttyS0 so the userland
-    # marker reaches the UART.  /dev/null (c 1:3) is included for completeness.
+    # Minimal rootfs: /init plus the dirs the kernel expects to exist.
     S_IFDIR = 0o040000
     S_IFREG = 0o100000
-    S_IFCHR = 0o020000
     entries = [
         (".", S_IFDIR | 0o755, b""),
         ("dev", S_IFDIR | 0o755, b""),
-        ("dev/console", S_IFCHR | 0o600, (5, 1)),
-        ("dev/null", S_IFCHR | 0o666, (1, 3)),
         ("proc", S_IFDIR | 0o755, b""),
         ("sys", S_IFDIR | 0o755, b""),
         ("init", S_IFREG | 0o755, init_bytes),

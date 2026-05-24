@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.ai/schemas/dstack-pins.v1.json",
+  "title": "ElizaOS dstack hardening / pin set",
+  "description": "Structured form of the dstack hardening + pin list (plan §2.3, OS-4). dstack is packaging + transport + an optional KMS, never the sole root of trust.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedBy",
+    "summary",
+    "pinnedRelease",
+    "forbid",
+    "require",
+    "requiredClaims",
+    "appAuthAllowlist",
+    "revokedMeasurements",
+    "rootOfTrust",
+    "gate"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "generatedBy": { "type": "string", "minLength": 1 },
+    "summary": { "type": "string", "minLength": 1 },
+    "pinnedRelease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["minReleaseDate", "note", "tag", "confirmed"],
+      "properties": {
+        "minReleaseDate": { "type": "string", "format": "date" },
+        "note": { "type": "string", "minLength": 1 },
+        "tag": { "type": ["string", "null"] },
+        "confirmed": { "type": "boolean" }
+      }
+    },
+    "forbid": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "devMode",
+        "devKms",
+        "clientControlledPccsUrl",
+        "tlsVerifyDisabled",
+        "unverifiedEvidenceUrl"
+      ],
+      "properties": {
+        "devMode": { "type": "boolean" },
+        "devKms": { "type": "boolean" },
+        "clientControlledPccsUrl": { "type": "boolean" },
+        "tlsVerifyDisabled": { "type": "boolean" },
+        "unverifiedEvidenceUrl": { "type": "boolean" }
+      }
+    },
+    "require": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "qeIdentityEnforcement",
+        "tcbStatusEnforcement",
+        "tlsVerify",
+        "appAuthCodeHashAllowlist",
+        "onChainKmsAuth"
+      ],
+      "properties": {
+        "qeIdentityEnforcement": { "type": "boolean" },
+        "tcbStatusEnforcement": { "type": "boolean" },
+        "tlsVerify": { "type": "boolean" },
+        "appAuthCodeHashAllowlist": { "type": "boolean" },
+        "onChainKmsAuth": { "type": "boolean" }
+      }
+    },
+    "requiredClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["debugDisabled", "productionLifecycle", "secureBoot", "memoryEncrypted"],
+      "properties": {
+        "debugDisabled": { "type": "boolean" },
+        "productionLifecycle": { "type": "boolean" },
+        "secureBoot": { "type": "boolean" },
+        "memoryEncrypted": { "type": "boolean" }
+      }
+    },
+    "appAuthAllowlist": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["codeHashes", "note"],
+      "properties": {
+        "codeHashes": {
+          "type": "array",
+          "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+        },
+        "note": { "type": "string", "minLength": 1 }
+      }
+    },
+    "revokedMeasurements": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+    },
+    "rootOfTrust": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["anchor", "note", "defaultVerifier"],
+      "properties": {
+        "anchor": { "type": "string", "minLength": 1 },
+        "note": { "type": "string", "minLength": 1 },
+        "defaultVerifier": { "type": "string", "minLength": 1 }
+      }
+    },
+    "openIssues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "summary"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "type": "string", "minLength": 1 },
+          "summary": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "blockedOn", "provingCommand"],
+      "properties": {
+        "name": { "const": "dstack-pins-check" },
+        "blockedOn": { "type": "string", "minLength": 1 },
+        "provingCommand": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}
