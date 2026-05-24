@@ -205,6 +205,8 @@ def test_riscv64_image_has_node_agent_bundle_fallback_before_bun() -> None:
         "linux-image-riscv64",
         "grub-efi-riscv64",
         "grub-efi-riscv64-bin",
+        "postgresql",
+        "postgresql-17-pgvector",
         "nodejs",
         "node-undici",
         "node-ws",
@@ -250,8 +252,8 @@ def test_boot_health_and_tui_markers_are_serial_provable() -> None:
         "elizaos-curl-health-ready",
         "elizaos-agent-ready",
         "elizaos-agent-health-failed",
-        ">/dev/kmsg",
-        ">/dev/ttyS0",
+        "tee \"${DEVICE}\"",
+        "sudo -n tee \"${DEVICE}\"",
     ):
         if marker not in wait_health:
             raise AssertionError(f"wait-agent-health.sh does not serial-emit marker/proof path: {marker}")
@@ -293,7 +295,12 @@ def test_boot_health_and_tui_markers_are_serial_provable() -> None:
     for expected in (
         "/var/lib/elizaos/eliza.json",
         '"provider": "postgres"',
-        '"connectionString": "postgresql://elizaos@127.0.0.1:5432/elizaos"',
+        '"connectionString": "postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos"',
+        "CREATE EXTENSION IF NOT EXISTS vector",
+        "CREATE EXTENSION IF NOT EXISTS fuzzystrmatch",
+        "CREATE EXTENSION IF NOT EXISTS pgcrypto",
+        "ELIZA_PLATFORM=android",
+        "ELIZA_MOBILE_PLATFORM=android",
         "elizaos-first-boot.service.d/10-riscv64-timeout.conf",
         "ELIZA_AGENT_HEALTH_TIMEOUT_SECONDS=600",
         "elizaos-terminal-tui-smoke.service.d/10-riscv64-timeout.conf",

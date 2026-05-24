@@ -69,12 +69,13 @@ rationale.
 | SC_ENTRIES_TABLE | 1024 | 512 | Doubled SC capacity for low-confidence TAGE corrections. |
 | SC_THRESH_INIT | 6 | optional | Lower SC threshold from the `sc_wide_thresh6` finalist. |
 | SC_LOCAL_HISTORY_BITS | 8 | optional | Local-history fold in the SC index; full-trace check improved weighted MPKI by 0.0163 versus disabled. |
-| H2P_ENABLE | 1 | optional | Perceptron/H2P-style sidecar is enabled after the capped GPU-weighted sweep; disabling it regresses weighted MPKI by 1.1403. |
-| H2P_ENTRIES | 512 | optional | PC-indexed signed-weight rows for the H2P sidecar. |
-| H2P_HIST_LEN | 64 | optional | Global-history dot-product length for the H2P sidecar. |
+| H2P_ENABLE | 1 | optional | Perceptron/H2P-style sidecar is enabled after the capped GPU-weighted sweep; disabling it regresses weighted MPKI by 1.5204. |
+| H2P_ENTRIES | 1024 | optional | PC-indexed signed-weight rows for the H2P sidecar; promoted after the stratified sweep beat the prior 512-row geometry by 0.3599 weighted MPKI. |
+| H2P_HIST_LEN | 48 | optional | Global-history dot-product length for the H2P sidecar; shorter than the prior 64-bit schedule to reduce stale phase correlation. |
 | H2P_TARGET_HIST_LEN | 0 | optional | Sweepable target-history feature slice for multi-perspective H2P; default-off after the expanded GPU/general workload sweep. |
 | H2P_PATH_HIST_LEN | 0 | optional | Sweepable path-history feature slice for multi-perspective H2P; default-off after the expanded GPU/general workload sweep. |
 | H2P_THRESHOLD | 36 | optional | H2P override/training margin. |
+| H2P_LOWCONF_ONLY | 0 | optional | Sweepable guard that restricts H2P to weak TAGE providers; default-off because it regressed the stratified mix by 0.6982. |
 | H2P_META_ENABLE | 0 | optional | RTL/model per-PC chooser for H2P overrides; default-off because the latest smoke sweep was not GPU/control neutral. |
 | H2P_META_ENTRIES | 1024 | optional | H2P chooser entries. |
 | H2P_META_CTR_W | 3 | optional | Signed H2P chooser counter width. |
@@ -88,7 +89,7 @@ rationale.
 | ITTAGE_TABLES | 5 | 5 | Indirect target predictor. |
 | ITTAGE_ENTRIES | {1024, 1024, 2048, 2048, 2048} | >= 1024 total | Indirect target capacity; expanded 50K sweep ranked the larger tier first. |
 | ITTAGE_WAYS | 2 | optional | Set-associative indirect-target storage reduces alias pressure from hot dispatch tables. |
-| ITTAGE_HIST_LEN | {4, 10, 20, 40, 80} | optional | Full-trace sweep improved weighted MPKI by 0.0502 with no reported regressions. |
+| ITTAGE_HIST_LEN | {4, 10, 20, 40, 80} | optional | Keeps the enforced >=80 indirect-history reach; the shorter {4,8,13,16,32} study result is not production-compliant despite a tiny capped-sweep win. |
 | ITTAGE_TAG_W | 11 | optional | Wider indirect-target tags reduce false hits/alias pressure; 50K exhaustive sweep found no per-trace regressions. |
 | ITTAGE_USEFUL_RESET_PERIOD | 100000 | optional | ITTAGE useful-bit aging for stale indirect-target replacement. |
 | ITTAGE_TARGET_HISTORY_TOKEN_BITS | 5 | 5 | Five-bit folded target tokens were promoted after the expanded capped sweep improved weighted MPKI without reported GPU regressions. |
@@ -184,6 +185,7 @@ name and binds BPU-side FTB naming to the published BTB Zihpm names.
 | 23 | `PMU_TWO_AHEAD_REDIRECT` | 24 | `EVT_TWO_AHEAD_REDIRECT` | Bounded two-ahead target-block lookup emitted redirect lane 1. |
 | 24 | `PMU_LOCAL_DIR_OVERRIDE` | 25 | `EVT_LOCAL_DIR_OVERRIDE` | Local direction sidecar supplied the effective conditional direction. |
 | 25 | `PMU_META_TRAIN` | 26 | `EVT_BPU_META_TRAIN` | H2P/local-direction meta chooser trained because sidecar and base differed. |
+| 26 | `PMU_L2_FTB_LATE_REDIRECT` | 27 | `EVT_L2_BTB_LATE_REDIRECT` | Delayed L2 FTB hit patched the FTQ and emitted a late redirect. |
 
 These are visible to Linux `perf` via `Zihpm` event selectors documented in
 `docs/evidence/cpu_ap/branch-prediction-params.json`. The OoO cluster wires
@@ -255,6 +257,9 @@ aggregate is 89.806403 MPKI across fifteen deterministic 5,000-branch prefixes
 (`branch_replay_cap=5000`); `agent_decode` is 76.494079 MPKI and `agent_loop`
 is 58.575982 MPKI. Full-trace, low-MPKI workload claims remain disabled until
 uncapped RTL replay evidence is generated and passes the branch-prediction gate.
+Use `make mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified` or the shortcut
+`make mpki-eval-rtl-stratified` for capped RTL replay that samples early,
+middle, and late trace phases instead of the deterministic prefix.
 
 ## Geometry tuning sweep
 
@@ -277,17 +282,30 @@ barriers, alias thrash, phase changes, workload-class phase aliasing, dual
 in-block branches, and RAS exception/tail-call mismatches.
 
 The current checked behavioural sweep is a capped optimisation aid, not a
-full-trace claim. It uses `max_branches_per_trace=500` in
-`docs/evidence/cpu_ap/bpu_sweep_results.json`; lower weighted MPKI is better:
+full-trace claim. It uses stratified `max_branches_per_trace=1000` windows in
+`docs/evidence/cpu_ap/bpu_sweep_results.json`; lower weighted MPKI is better.
+The artifact also records ITTAGE hit, target-used, weak-yield, update,
+allocation, weak-target replacement, victim replacement, provider-eviction, and
+useful-aging counters per trace and in per-config totals so indirect-target
+chooser and replacement behavior is visible in every checked sweep. It also
+records timing-model counters for deferred SC, H2P, local-direction, ITTAGE,
+and L2 FTB late paths, so same-event versus next-cycle predictor assumptions
+are visible in every checked sweep:
 
 | Config | Weighted MPKI | Δ vs baseline | bpu_pkg.sv change |
 | --- | --- | --- | --- |
-| `h2p_long_t44` | 47.5332 | -0.3033 | study candidate: raise `H2P_THRESHOLD` from 36 to 44 |
-| `h2p_long_t60` | 47.5427 | -0.2937 | study candidate: raise `H2P_THRESHOLD` from 36 to 60 |
-| `baseline` | 47.8365 | — | promoted SC, ITTAGE, loop, and L2 steering geometry |
+| `pre_ittage_hist_long` | 52.9219 | -0.0031 | shorter ITTAGE history study; fails the production reach gate |
+| `baseline` | 52.9250 | — | promoted SC, ITTAGE, loop, H2P, and L2 steering geometry |
+| `pre_h2p_big_t36` | 53.2818 | +0.3599 | previous 512-entry, 64-history H2P geometry |
+| `h2p_off` | 54.4423 | +1.5204 | disable H2P |
+| `h2p_lowconf_only` | 53.6201 | +0.6982 | restrict H2P overrides to weak TAGE providers |
+| `h2p_mp_big_t50` | 53.0165 | +0.0915 | larger multi-perspective H2P study candidate |
+| `timing_slow_dir_deferred` | 55.0615 | +2.1365 | defer SC/H2P/local direction overrides to model a slower sidecar path |
+| `timing_ittage_deferred` | 56.0595 | +3.1345 | defer same-event ITTAGE target use |
+| `timing_all_slow_deferred` | 58.1960 | +5.2710 | defer both direction sidecars and same-event ITTAGE targets |
 
-**Decision: keep the promoted `ITTAGE_TARGET_HISTORY_SHIFT=8`, longer ITTAGE
-histories, and SC-wide/threshold-6 geometry as the current RTL baseline.** The
+**Decision: keep the promoted `ITTAGE_TARGET_HISTORY_SHIFT=8`, production-reach
+ITTAGE histories, 1024-row H2P geometry, and SC-wide/threshold-6 geometry as the current RTL baseline.** The
 historical tuning deltas are no longer cited as target-met evidence here because
 the checked sweep artifact is capped and the RTL workload replay is prefix-only.
 The current capped sweep also found H2P-threshold candidates that improve the
@@ -304,6 +322,14 @@ candidate. Seven TAGE tables improved the capped weighted score, but it regresse
 GPU/control overfitting detectors such as `gpu_warp_divergence`,
 `control_indirect_pair`, and `work_stealing_queues`, so it remains a study
 knob rather than the general default.
+
+The timing ablations show that same-event sidecar availability is load-bearing
+for the current baseline: deferring SC/H2P/local-direction overrides regresses
+weighted MPKI by `+1.7766`, deferring ITTAGE targets regresses by `+3.1345`,
+and deferring both regresses by `+4.9111`. These are behavioural timing
+knobs, not proof of physical timing closure; a future staged RTL predictor
+pipeline must preserve equivalent effective latency or re-run these ablations
+against the actual stage cut.
 
 The behavioural model now implements the statistical corrector (`sc.sv`) and
 the ITTAGE target-history token parameters it sweeps, so the planning model is
@@ -331,20 +357,22 @@ sweep from `36.7571` to `37.3359` weighted MPKI, including
 An H2P/perceptron-style direction sidecar is implemented in RTL and model as
 `h2p_corrector.sv` plus `H2P_*` geometry. It is threshold-gated behind TAGE/SC:
 the dot-product may override only when its signed margin reaches
-`H2P_THRESHOLD`, and weights train on wrong or low-margin predictions.
+`H2P_THRESHOLD`, and weights train on wrong or low-margin predictions. The
+behavioral evidence model mirrors the RTL bias-plus-feature vector: one
+PC-indexed signed bias plus one signed weight per global/target/path history
+feature bit, with saturating +/-1 training.
 Target-history and path-history feature slices are implemented as
 `H2P_TARGET_HIST_LEN`/`H2P_PATH_HIST_LEN`, but remain zero in the production
 default: the expanded sweep found the multi-perspective variants regressed GPU
-reconvergence/control traces. The corrected capped sweep keeps base H2P
-enabled; `h2p_off` regresses from `36.7571` to `37.8974` weighted MPKI, mainly
-on correlated/control traces and GPU nested reconvergence. An RTL/model
-`H2P_META_*` chooser can gate H2P until it earns per-PC trust. The current
-500-branch smoke sweep with the broader QEMU-RV64 proxy set gives
-`h2p_meta_t1` a small weighted win (`47.6807` versus baseline `47.8365`), but
-it regresses GPU/control stressors (`epoll_rpc_dispatch`, `work_stealing_queues`,
-and `gpu_nested_reconvergence`), so it stays default-off in the production
-package geometry. Raising the base H2P threshold to 44 or 60 is currently the
-better weighted study candidate, but it is also not GPU-neutral.
+reconvergence/control traces. The latest stratified sweep promotes the
+1024-row, 48-history base H2P geometry: the prior 512-row, 64-history geometry
+is `+0.3599` weighted MPKI worse, while disabling H2P is `+1.5204` worse. The
+multi-perspective `h2p_mp_big_t50` study candidate is still `+0.0915` worse and
+regresses hash-probe inline-cache, GPU nested reconvergence, and GPU warp
+divergence. An RTL/model `H2P_META_*` chooser can gate H2P until it earns
+per-PC trust, and `H2P_LOWCONF_ONLY` can restrict the sidecar to weak TAGE
+providers, but both remain default-off because the checked stratified sweep
+regressed the broader mix.
 
 IMLI-style loop-iteration history is also implemented as package-visible
 `LOOP_IMLI_*` RTL/model geometry. The best current capped candidate,
@@ -379,8 +407,8 @@ except for the documented FTB/BTB and meta-training naming aliases.
 | BPU side | OoO side |
 | --- | --- |
 | `rtl/cpu/bpu/bpu_pkg.sv` (`pmu_event_e`, `bpu_pmu_to_hpm()`) | `rtl/cpu/csr/zihpm.sv` (`hpm_event_e`) |
-| 26-bit `pmu_strb` from `bpu_top.pmu_strb` | 256-bit zihpm event bus driven by `bpu_to_zihpm_remap` |
-| Counter readout: `csr_addr` 0..25 → 64-bit counter | OS-visible Zihpm CSRs `mhpmcounter3..15` |
+| 27-bit `pmu_strb` from `bpu_top.pmu_strb` | 256-bit zihpm event bus driven by `bpu_to_zihpm_remap` |
+| Counter readout: `csr_addr` 0..26 → 64-bit counter | OS-visible Zihpm CSRs `mhpmcounter3..15` |
 
 Coordination evidence is produced by
 `scripts/check_pmu_event_alignment.py` (writes
@@ -438,7 +466,10 @@ and branch kind. The L1I accepts a hot lane 1 in parallel and can now also
 accept a cold lane 1 into an ordered pending miss slot that launches on an
 independent lane-1 miss/refill channel. This proves target-block lane 1 can
 become real demand traffic, can be flushed before escape, and no longer needs
-to serialize through the scalar IFU/prefetch fill pipe.
+to serialize through the scalar IFU/prefetch fill pipe. The downstream
+`rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv` bridge then arbitrates scalar and
+lane-1 L1I misses onto the production L2 L1I acquire/grant channel and
+demuxes returned line beats back to the originating refill lane.
 
 `rtl/top/e1_soc_integrated.sv` exposes the widened prediction redirect vectors,
 delayed late-redirect vectors, ordered `fetch_stream_*_o` fetch-control stream,
@@ -473,11 +504,12 @@ downstream fetch logic can accept both lanes.
   the widened redirect vectors, ordered fetch-control stream, and lane-0/lane-1
   L1I demand ports at the structural SoC boundary; the stream and demand ready
   inputs backpressure FTQ pop rather than dropping lane 1. L1I now accepts a
-  cold lane-1 demand into an ordered
-  pending miss slot and services it through an independent lane-1 miss/refill
-  channel, so lane 1 is no longer hit-only and no longer waits for the scalar
-  fill pipe. Remaining work is connecting the SoC-exposed demand lanes to the
-  production downstream fetch/cache hierarchy.
+  cold lane-1 demand into an ordered pending miss slot and services it through
+  an independent lane-1 miss/refill channel, while `e1_l1i_dual_miss_to_l2`
+  connects those scalar/lane-1 miss pipes to the production L2 L1I acquire
+  channel. Remaining work is full SoC-level instantiation of the production
+  fetch/cache hierarchy behind `e1_soc_integrated` once the production
+  core/cache top is selected, not a missing lane-1 miss-to-L2 mechanism.
 3. **Commit-time predictor replay closure** — top-level TAGE/SC/ITTAGE
    updates replay FTQ histories, providers, and SC/TAGE confidence metadata by
    `resolve.ftq_idx`; the resolver bus no longer carries legacy provider

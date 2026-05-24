@@ -74,14 +74,19 @@ SPECS = (
         component="bluetooth",
         env_var="ELIZA_BLUETOOTH_SIM_COMMAND",
         log_name="bluetooth_sim.log",
-        markers=("COMPONENT=bluetooth", "HCI_ATTACH=pass", "BLE_SCAN=pass"),
+        markers=("COMPONENT=bluetooth", "HCI_ATTACH=pass", "BLE_SCAN=pass", "PAIRING=pass"),
         default_probe=_probe("probe-bluetooth.sh"),
     ),
     PeripheralSpec(
         component="cellular_5g_lte",
         env_var="ELIZA_CELLULAR_5G_LTE_SIM_COMMAND",
         log_name="cellular_5g_lte_sim.log",
-        markers=("COMPONENT=cellular_5g_lte", "LTE_REGISTRATION=pass", "NR5G_REGISTRATION=pass"),
+        markers=(
+            "COMPONENT=cellular_5g_lte",
+            "LTE_REGISTRATION=pass",
+            "NR5G_REGISTRATION=pass",
+            "DATA_ATTACH=pass",
+        ),
         default_probe=_probe("probe-cellular-5g.sh"),
     ),
 )
@@ -247,6 +252,20 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
     command, source = resolve_command(spec)
     if dry_run:
         path = configured_out_dir() / spec.log_name
+        return "blocked", path
+    if source == "default" and not Path(command.strip('"')).exists():
+        path = write_log(
+            spec,
+            command=command,
+            command_source=source,
+            status="BLOCKED",
+            result=2,
+            body=(
+                "canonical probe script is not present; provide a live adb-backed "
+                f"capture command in {spec.env_var} or add the probe script at {command}"
+            ),
+            missing_markers=list(spec.markers),
+        )
         return "blocked", path
     if source == "blocked":
         path = write_log(

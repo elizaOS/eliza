@@ -51,6 +51,7 @@ rtl/cache/
   ftq_to_l1i_pkg.sv            BPU FTQ -> L1I prefetch interface
   lsu_to_l1d_pkg.sv            OoO LSU -> L1D 2R/2W interface
   l1i/e1_l1i_cache.sv          read-only L1I with FDIP prefetch
+  l1i/e1_l1i_dual_miss_to_l2.sv scalar + lane-1 L1I miss bridge to L2
   l1d/e1_l1d_cache.sv          2R/2W L1D with SECDED + MESI
   l2/e1_l2_cache.sv            private L2 with PTW port
   l3/e1_l3_cache.sv            shared L3 with directory + DRRIP
@@ -90,6 +91,15 @@ In-progress demand line fills are not aborted by flush. The BPU agent owns
 the FTQ producer side and never modifies the L1I; the cache agent owns the
 consumer side and never modifies the FTQ. Both sides `import` the same
 package.
+
+Widened target-block demand traffic uses the optional lane-1 IFU demand
+inputs on `e1_l1i_cache`. When either the scalar lane or lane 1 misses,
+`e1_l1i_dual_miss_to_l2` arbitrates the two miss pipes onto the existing L2
+L1I acquire channel and demuxes the returned 64 B line into the scalar or
+lane-1 refill beat stream. Scalar demand has priority on a simultaneous
+miss; lane 1 remains ordered and retries once the scalar fill completes.
+Focused cocotb coverage exercises lane-1 refill demux, scalar priority, and
+flush of an outstanding lane transaction.
 
 ### LSU ↔ L1D
 

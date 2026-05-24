@@ -176,7 +176,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -242,7 +242,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -308,7 +308,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -374,7 +374,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -440,7 +440,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -506,7 +506,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -572,7 +572,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -638,7 +638,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -704,7 +704,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -770,7 +770,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -836,7 +836,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -902,7 +902,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -968,7 +968,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1034,7 +1034,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1100,7 +1100,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1166,7 +1166,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1232,7 +1232,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1298,7 +1298,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1364,7 +1364,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1430,7 +1430,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1496,7 +1496,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1562,7 +1562,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1628,7 +1628,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1694,7 +1694,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1760,7 +1760,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1826,7 +1826,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1892,7 +1892,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -1958,7 +1958,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2024,7 +2024,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2090,7 +2090,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2125,7 +2125,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -2156,7 +2156,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2222,7 +2222,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2288,7 +2288,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2354,7 +2354,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2420,7 +2420,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2486,7 +2486,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2552,7 +2552,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2618,7 +2618,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2684,7 +2684,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2719,7 +2719,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -2750,7 +2750,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2816,7 +2816,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2882,7 +2882,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -2948,7 +2948,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3014,7 +3014,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3080,7 +3080,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3146,7 +3146,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3212,7 +3212,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3278,7 +3278,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3344,7 +3344,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3410,7 +3410,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3476,7 +3476,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3542,7 +3542,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3608,7 +3608,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3674,7 +3674,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3740,7 +3740,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3806,7 +3806,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3872,7 +3872,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3938,7 +3938,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -3973,7 +3973,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -4004,7 +4004,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4039,7 +4039,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -4070,7 +4070,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4136,7 +4136,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4202,7 +4202,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4268,7 +4268,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4334,7 +4334,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4400,7 +4400,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4466,7 +4466,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4501,7 +4501,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -4532,7 +4532,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4567,7 +4567,7 @@
         "worst_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_118",
+          "base_geom": "geom_119",
           "base_body": "right_shoulder_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 1,
@@ -4598,7 +4598,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_132",
+          "base_geom": "geom_134",
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
@@ -4664,7 +4664,7 @@
         "worst_non_adjacent_clearance": {
           "part": "head_mount_neck_black",
           "part_body": "torso_link",
-          "base_geom": "geom_116",
+          "base_geom": "geom_117",
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,

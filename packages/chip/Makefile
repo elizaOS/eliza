@@ -1244,7 +1244,7 @@ cocotb-cpu:
 cocotb-coverage: cocotb cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc cocotb-bpu-l1i-frontend bpu-cocotb-aggregate formal-bpu branch-prediction-check branch-prediction-refresh branch-prediction-test mpki-eval mpki-eval-rtl mpki-eval-model mpki-eval-cbp5-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-sweep-exhaustive bpu-model-test bpu-vs-cva6-mpki bpu-vs-cva6-mpki-rtl
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc cocotb-bpu-l1i-frontend bpu-cocotb-aggregate formal-bpu branch-prediction-check branch-prediction-refresh branch-prediction-test mpki-eval mpki-eval-rtl mpki-eval-rtl-stratified mpki-eval-rtl-full mpki-eval-model mpki-eval-cbp5-model bpu-lint bpu-workload-trace bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-exhaustive bpu-model-test bpu-vs-cva6-mpki bpu-vs-cva6-mpki-rtl
 
 cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc cocotb-bpu-l1i-frontend
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
@@ -1299,7 +1299,14 @@ mpki-eval:
 
 mpki-eval-rtl:
 	@ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=$(or $(WORKLOAD_MAXBR),5000) \
+	  ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE=$(or $(WORKLOAD_WINDOW_MODE),prefix) \
 	  PYTHON=$(COCOTB_PYTHON) $(PYTHON) benchmarks/cpu/branch/run_mpki.py --backend rtl
+
+mpki-eval-rtl-stratified:
+	@$(MAKE) mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified
+
+mpki-eval-rtl-full:
+	@$(MAKE) mpki-eval-rtl WORKLOAD_MAXBR=0 WORKLOAD_WINDOW_MODE=prefix
 
 mpki-eval-model:
 	@$(PYTHON) benchmarks/cpu/branch/run_mpki.py --backend model
@@ -1334,6 +1341,9 @@ bpu-sweep:
 	  --max-branches $(or $(MAXBR),0) --jobs $(or $(JOBS),8) \
 	  --window-mode $(or $(WINDOW_MODE),prefix) \
 	  --configs $(or $(CONFIGS),baseline pre_ittage_hist_long sc_wide_thresh6 combo_b)
+
+bpu-sweep-full:
+	@$(MAKE) bpu-sweep MAXBR=0 WINDOW_MODE=prefix
 
 bpu-sweep-exhaustive:
 	@$(PYTHON) -m benchmarks.cpu.branch.sweep \

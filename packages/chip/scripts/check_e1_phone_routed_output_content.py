@@ -153,13 +153,19 @@ def attach_repo_generation_context(
     outputs: dict[str, dict[str, Any]], candidate_manifest: dict[str, Any]
 ) -> None:
     candidate_paths = set(candidate_manifest.get("artifact_paths") or [])
+    manifest_present = candidate_manifest.get("present") is True
     for path_text, artifact in outputs.items():
+        current_artifact_present = repo_path(path_text).exists()
         if path_text not in candidate_paths:
             artifact["repo_generation"] = {
                 "repo_generated_candidate": False,
                 "generator_command": "",
                 "generator_manifest": candidate_manifest.get("path") or "",
-                "current_artifact_present": repo_path(path_text).exists(),
+                "generator_manifest_present": manifest_present,
+                "current_artifact_present": current_artifact_present,
+                "repo_generatable_now": False,
+                "repo_generation_closes_release_blocker": False,
+                "external_release_required": True,
                 "release_credit": False,
                 "classification": "not_managed_by_local_candidate_generator",
             }
@@ -168,7 +174,11 @@ def attach_repo_generation_context(
             "repo_generated_candidate": True,
             "generator_command": LOCAL_CANDIDATE_GENERATOR_COMMAND,
             "generator_manifest": candidate_manifest.get("path") or "",
-            "current_artifact_present": repo_path(path_text).exists(),
+            "generator_manifest_present": manifest_present,
+            "current_artifact_present": current_artifact_present,
+            "repo_generatable_now": manifest_present,
+            "repo_generation_closes_release_blocker": False,
+            "external_release_required": True,
             "release_credit": False,
             "classification": "local_candidate_generated_from_repo_sources",
             "claim_boundary": (
@@ -188,20 +198,53 @@ def repo_generation_plan(
             "repo_generated_candidate": False,
             "generator_command": "",
             "generator_manifest": "",
+            "generator_manifest_present": False,
             "current_artifact_present": repo_path(path_text).exists(),
+            "repo_generatable_now": False,
+            "repo_generation_closes_release_blocker": False,
+            "external_release_required": True,
             "release_credit": False,
             "classification": "not_managed_by_local_candidate_generator",
         }
+    missing_generated_artifact = "artifact_missing" in failures
+    repo_generatable_now = (
+        context.get("repo_generated_candidate") is True
+        and context.get("generator_manifest_present") is True
+    )
+    local_candidate_metadata_only = (
+        repo_generatable_now
+        and not missing_generated_artifact
+        and not any(failure.startswith("missing_") for failure in failures)
+        and all(
+            "disposition_not_approved" in failure
+            or "placeholder_or_blocked_marker_present" in failure
+            for failure in failures
+        )
+    )
     return {
         **context,
         "path": path_text,
-        "missing_generated_artifact": "artifact_missing" in failures,
-        "external_release_evidence_required": "artifact_missing" not in failures,
+        "repo_generatable_now": repo_generatable_now,
+        "repo_generation_scope": (
+            "local_candidate_artifact_only"
+            if repo_generatable_now
+            else "not_repo_generatable_from_current_candidate_manifest"
+        ),
+        "repo_generation_closes_release_blocker": False,
+        "local_candidate_metadata_only_blocker": local_candidate_metadata_only,
+        "missing_generated_artifact": missing_generated_artifact,
+        "external_release_required": True,
+        "external_release_evidence_required": True,
         "external_release_evidence_reason": (
-            "present artifact still has fail-closed candidate, placeholder, provenance, "
-            "or approval blockers"
-            if "artifact_missing" not in failures
-            else "repo artifact is absent at the required path"
+            "local candidate bytes can be regenerated, but release credit requires "
+            "approved routed evidence, supplier/factory review, and signed metadata"
+            if repo_generatable_now
+            else (
+                "present artifact still has fail-closed candidate, placeholder, provenance, "
+                "or approval blockers"
+                if not missing_generated_artifact
+                else "repo artifact is absent at the required path"
+            )
         ),
         "validation_command": VALIDATION_COMMAND,
         "release_credit": False,
@@ -497,11 +540,34 @@ def repo_generation_summary(
         for path_text, failures in blocked
         if "artifact_missing" not in failures
     ]
+    plans = [
+        repo_generation_plan(path_text, outputs.get(path_text, {}), failures)
+        for path_text, failures in blocked
+    ]
+    repo_generatable_now_paths = sorted(
+        plan["path"] for plan in plans if plan["repo_generatable_now"] is True
+    )
+    external_release_required_paths = sorted(
+        plan["path"] for plan in plans if plan["external_release_required"] is True
+    )
+    local_candidate_metadata_only_paths = sorted(
+        plan["path"]
+        for plan in plans
+        if plan["local_candidate_metadata_only_blocker"] is True
+    )
     return {
         "release_credit": False,
         "generator_command": LOCAL_CANDIDATE_GENERATOR_COMMAND,
         "generator_manifest": rel(CANDIDATE_MANIFEST),
         "generator_command_available_count": len(generator_paths),
+        "repo_generatable_now_count": len(repo_generatable_now_paths),
+        "repo_generatable_now_paths": repo_generatable_now_paths,
+        "repo_generation_closes_release_blocker_count": 0,
+        "repo_generation_closes_release_blocker_paths": [],
+        "local_candidate_metadata_only_blocker_count": len(
+            local_candidate_metadata_only_paths
+        ),
+        "local_candidate_metadata_only_blocker_paths": local_candidate_metadata_only_paths,
         "repo_generated_candidate_blocked_count": len(generator_paths),
         "repo_generated_candidate_blocked_paths": sorted(generator_paths),
         "not_managed_by_local_generator_blocked_count": len(blocked_paths)
@@ -510,7 +576,9 @@ def repo_generation_summary(
         "true_missing_generated_artifact_paths": sorted(missing_paths),
         "present_fail_closed_artifact_count": len(present_blocked_paths),
         "present_fail_closed_artifact_paths": sorted(present_blocked_paths),
-        "external_release_evidence_required_count": len(present_blocked_paths),
+        "external_release_required_count": len(external_release_required_paths),
+        "external_release_required_paths": external_release_required_paths,
+        "external_release_evidence_required_count": len(external_release_required_paths),
         "claim_boundary": (
             "These commands only regenerate local fail-closed candidate files; they do "
             "not create approved routed release evidence or unlock fabrication."
@@ -1436,6 +1504,12 @@ def main() -> int:
                     ]["count"],
                     "repo_generated_candidate_blocked_count": generation_summary[
                         "repo_generated_candidate_blocked_count"
+                    ],
+                    "repo_generatable_now_count": generation_summary[
+                        "repo_generatable_now_count"
+                    ],
+                    "repo_generation_closes_release_blocker_count": generation_summary[
+                        "repo_generation_closes_release_blocker_count"
                     ],
                     "external_release_evidence_required_count": generation_summary[
                         "external_release_evidence_required_count"

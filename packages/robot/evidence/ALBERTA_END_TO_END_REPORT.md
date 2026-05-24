@@ -1,8 +1,8 @@
 # Alberta End-to-End Evidence Report
 
 Result: `ok`
-Generated: `2026-05-24T02:19:34.771650Z`
-Scope: `local-multi-backend-rootfix-telemetry-reviewed-obstacle-demo-sac-video-adaptation-proof-training-inputs-checkpoint-inference-method-deltas-all-profile-local-validation-nebius-retry-interpretation-gated-checkpoint-video-provenance-proof-brax-contract-audit-strengthened-review-artifacts-file-proof-task-signal-proof-demo-artifacts-integration-surfaces-sac-deltas`
+Generated: `2026-05-24T02:23:01.054464Z`
+Scope: `local-multi-backend-rootfix-telemetry-reviewed-obstacle-demo-sac-video-adaptation-proof-training-inputs-checkpoint-inference-method-deltas-all-profile-local-validation-nebius-retry-interpretation-gated-checkpoint-video-provenance-proof-brax-contract-audit-strengthened-review-artifacts-file-proof-task-signal-proof-demo-artifacts-integration-surfaces-sac-deltas-post-auth-retry`
 Production complete: `False`
 Production blocker: `nebius_cli_auth_required`
 

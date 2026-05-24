@@ -65,6 +65,90 @@ style:
     tolerance: 0.08
   body: glossy orange armor panels over black mechanical gaps, derived from Unitree R1 OEM mesh envelopes rather than freehand primitives
 
+morphs:
+  feminine_compact_v1:
+    intent: thinner compact armored silhouette with preserved connection centers and no forward chassis growth
+    blend: 1.0
+    preserve_centers: true
+    no_forward_growth: true
+    controls:
+      waist_y_scale: 0.88
+      lower_rib_y_scale: 0.92
+      abdomen_x_scale: 0.92
+      pelvis_y_scale: 0.90
+      shin_underbody_y_scale: 0.84
+      forearm_blade_y_scale: 0.67
+      forearm_blade_z_scale: 0.72
+      wrist_cuff_radius_scale: 0.86
+      chest_outer_y_scale: 1.12
+    applied_parts:
+      - torso_chest_shell
+      - left_chest_contour_armor
+      - right_chest_contour_armor
+      - left_chest_outer_armor_skin
+      - right_chest_outer_armor_skin
+      - pelvis_front_shell
+      - left_shin_shell
+      - left_forearm_outer_blade
+      - right_forearm_outer_blade
+      - left_wrist_separated_cuff
+      - right_wrist_separated_cuff
+    section_targets:
+      torso_chest_shell:
+        sections:
+          - {z: -0.120, scale: [0.030, 0.040]}
+          - {z: -0.040, scale: [0.050, 0.064]}
+          - {z: 0.045, scale: [0.063, 0.078]}
+          - {z: 0.120, scale: [0.039, 0.058]}
+      pelvis_front_shell:
+        sections:
+          - {z: -0.050, scale: [0.025, 0.029]}
+          - {z: -0.010, scale: [0.043, 0.047]}
+          - {z: 0.050, scale: [0.037, 0.042]}
+      left_chest_contour_armor:
+        center: [0.122, 0.064, 0.205]
+        sections:
+          - {z: -0.040, scale: [0.0038, 0.014]}
+          - {z: 0.000, scale: [0.0058, 0.018]}
+          - {z: 0.040, scale: [0.0038, 0.014]}
+      right_chest_contour_armor:
+        center: [0.122, -0.064, 0.205]
+        sections:
+          - {z: -0.040, scale: [0.0038, 0.014]}
+          - {z: 0.000, scale: [0.0058, 0.018]}
+          - {z: 0.040, scale: [0.0038, 0.014]}
+      left_chest_outer_armor_skin:
+        center: [0.086, 0.078, 0.196]
+        sections:
+          - {z: -0.064, scale: [0.0018, 0.010]}
+          - {z: 0.000, scale: [0.0025, 0.016]}
+          - {z: 0.064, scale: [0.0018, 0.010]}
+      right_chest_outer_armor_skin:
+        center: [0.086, -0.078, 0.196]
+        sections:
+          - {z: -0.064, scale: [0.0018, 0.010]}
+          - {z: 0.000, scale: [0.0025, 0.016]}
+          - {z: 0.064, scale: [0.0018, 0.010]}
+      left_shin_shell:
+        center: [-0.001, -0.044, -0.139]
+        sections:
+          - {z: -0.078, scale: [0.013, 0.0035]}
+          - {z: 0.000, scale: [0.018, 0.005]}
+          - {z: 0.078, scale: [0.013, 0.0035]}
+    part_targets:
+      left_forearm_outer_blade:
+        scale: [0.026, 0.0015, 0.0042]
+      right_forearm_outer_blade:
+        scale: [0.028, 0.0020, 0.0050]
+      left_wrist_separated_cuff:
+        radius: 0.0145
+        tube_radius: 0.0016
+        scale: [0.92, 0.42, 0.42]
+      right_wrist_separated_cuff:
+        radius: 0.0155
+        tube_radius: 0.0018
+        scale: [0.92, 0.48, 0.48]
+
 parts:
   - name: torso_chest_shell
     body: torso_link
@@ -116,34 +200,54 @@ parts:
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
-    center: [0.118, 0.054, 0.205]
-    scale: [0.007, 0.022, 0.040]
+    center: [0.121, 0.060, 0.205]
+    axis: z
+    sections:
+      - {z: -0.040, scale: [0.0038, 0.013]}
+      - {z: 0.000, scale: [0.0058, 0.017]}
+      - {z: 0.040, scale: [0.0038, 0.013]}
   - name: right_chest_contour_armor
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
-    center: [0.118, -0.054, 0.205]
-    scale: [0.007, 0.022, 0.040]
+    center: [0.121, -0.060, 0.205]
+    axis: z
+    sections:
+      - {z: -0.040, scale: [0.0038, 0.013]}
+      - {z: 0.000, scale: [0.0058, 0.017]}
+      - {z: 0.040, scale: [0.0038, 0.013]}
   - name: left_chest_outer_armor_skin
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
     center: [0.086, 0.074, 0.196]
-    scale: [0.0025, 0.014, 0.064]
+    axis: z
+    sections:
+      - {z: -0.064, scale: [0.0018, 0.009]}
+      - {z: 0.000, scale: [0.0025, 0.014]}
+      - {z: 0.064, scale: [0.0018, 0.009]}
   - name: right_chest_outer_armor_skin
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
     center: [0.086, -0.074, 0.196]
-    scale: [0.0025, 0.014, 0.064]
+    axis: z
+    sections:
+      - {z: -0.064, scale: [0.0018, 0.009]}
+      - {z: 0.000, scale: [0.0025, 0.014]}
+      - {z: 0.064, scale: [0.0018, 0.009]}
   - name: chest_under_bust_black
     body: torso_link
     role: face_detail
@@ -423,6 +527,14 @@ parts:
     oem_baseline_meshes: [left_shoulder_yaw_link.STL]
     center: [0.018, 0.034, -0.068]
     scale: [0.010, 0.0035, 0.034]
+  - name: left_upper_arm_front_armor
+    body: left_shoulder_yaw_link
+    role: armor
+    material: orange_armor
+    shape: ellipsoid
+    oem_baseline_meshes: [left_shoulder_yaw_link.STL]
+    center: [0.042, 0.006, -0.044]
+    scale: [0.005, 0.009, 0.022]
   - name: right_upper_arm_shell
     body: right_shoulder_yaw_link
     role: underbody
@@ -444,6 +556,14 @@ parts:
     oem_baseline_meshes: [right_shoulder_yaw_link.STL]
     center: [0.018, -0.034, -0.068]
     scale: [0.010, 0.0035, 0.034]
+  - name: right_upper_arm_front_armor
+    body: right_shoulder_yaw_link
+    role: armor
+    material: orange_armor
+    shape: ellipsoid
+    oem_baseline_meshes: [right_shoulder_yaw_link.STL]
+    center: [0.042, -0.006, -0.044]
+    scale: [0.005, 0.009, 0.022]
   - name: left_forearm_shell
     body: left_elbow_link
     role: underbody
@@ -640,11 +760,16 @@ parts:
     body: left_ankle_roll_link
     role: armor
     material: orange_armor
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
-    center: [0.053, -0.003, -0.027]
-    scale: [0.096, 0.030, 0.012]
-    top_scale: [0.070, 0.022]
+    center: [0.047, -0.016, -0.046]
+    axis: x
+    sections:
+      - {x: -0.096, scale: [0.012, 0.0035]}
+      - {x: -0.030, scale: [0.018, 0.0060]}
+      - {x: 0.040, scale: [0.020, 0.0070]}
+      - {x: 0.096, scale: [0.011, 0.0035]}
   - name: left_foot_toe_armor
     body: left_ankle_roll_link
     role: armor

@@ -1,8 +1,8 @@
 {
   "schema": "robot-alberta-end-to-end-report-v1",
   "ok": true,
-  "generated_at": "2026-05-24T02:19:34.771650Z",
-  "scope": "local-multi-backend-rootfix-telemetry-reviewed-obstacle-demo-sac-video-adaptation-proof-training-inputs-checkpoint-inference-method-deltas-all-profile-local-validation-nebius-retry-interpretation-gated-checkpoint-video-provenance-proof-brax-contract-audit-strengthened-review-artifacts-file-proof-task-signal-proof-demo-artifacts-integration-surfaces-sac-deltas",
+  "generated_at": "2026-05-24T02:23:01.054464Z",
+  "scope": "local-multi-backend-rootfix-telemetry-reviewed-obstacle-demo-sac-video-adaptation-proof-training-inputs-checkpoint-inference-method-deltas-all-profile-local-validation-nebius-retry-interpretation-gated-checkpoint-video-provenance-proof-brax-contract-audit-strengthened-review-artifacts-file-proof-task-signal-proof-demo-artifacts-integration-surfaces-sac-deltas-post-auth-retry",
   "sources": {
     "backend_dir": "evidence/backend_compare_local/hiwonder-ainex-4k-rootfix",
     "backend_validation": "evidence/backend_compare_local/hiwonder-ainex-4k-rootfix/validation_report.json",

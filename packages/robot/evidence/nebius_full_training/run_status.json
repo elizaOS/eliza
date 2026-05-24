@@ -179,11 +179,11 @@
     "ok": false,
     "report": "evidence/nebius_full_training/synced_run/training_comparison_report.json"
   },
-  "payload_sha256": "684b10c77f38c375599405d051e710d7183ba22190aab659c104b72713d7b326",
-  "payload_bytes": 159761623,
+  "payload_sha256": "19d61cd72d34917444dfb55085f1d46a664f8794074934e806072066911c80f2",
+  "payload_bytes": 159760666,
   "payload_uploaded": true,
-  "payload_uploaded_at": "2026-05-24T02:20:32Z",
-  "payload_refreshed_at": "2026-05-24T02:20:32Z",
-  "payload_refreshed_for": "sac_delta_comparison_123_test_gate",
+  "payload_uploaded_at": "2026-05-24T02:24:15Z",
+  "payload_refreshed_at": "2026-05-24T02:24:15Z",
+  "payload_refreshed_for": "post_auth_retry_report_audit_refresh",
   "payload_contains_latest_alberta_report": true
 }

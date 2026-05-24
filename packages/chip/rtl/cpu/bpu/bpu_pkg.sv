@@ -204,9 +204,9 @@ package bpu_pkg;
     // threshold-gated corrector behind TAGE/SC that is trained on resolved
     // conditionals and can override when its signed margin is strong enough.
     localparam int unsigned H2P_ENABLE = 1;
-    localparam int unsigned H2P_ENTRIES = 512;
+    localparam int unsigned H2P_ENTRIES = 1024;
     localparam int unsigned H2P_IDX_W = $clog2(H2P_ENTRIES);
-    localparam int unsigned H2P_HIST_LEN = 64;
+    localparam int unsigned H2P_HIST_LEN = 48;
     localparam int unsigned H2P_TARGET_HIST_LEN = 0;
     localparam int unsigned H2P_PATH_HIST_LEN = 0;
     localparam int unsigned H2P_FEATURES =
@@ -214,6 +214,10 @@ package bpu_pkg;
     localparam int unsigned H2P_WEIGHT_W = 6;
     localparam int unsigned H2P_SCORE_W = 16;
     localparam int unsigned H2P_THRESHOLD = 36;
+    // Optional production-style guard: let H2P override only when TAGE's
+    // provider is weak. Kept sweepable because the broader workload mix has
+    // both GPU/control wins and regressions from aggressive neural overrides.
+    localparam int unsigned H2P_LOWCONF_ONLY = 0;
     localparam int unsigned H2P_META_ENABLE = 0;
     localparam int unsigned H2P_META_ENTRIES = 1024;
     localparam int unsigned H2P_META_IDX_W = $clog2(H2P_META_ENTRIES);
@@ -323,8 +327,8 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // These IDs are arranged so that mapping into zihpm_pkg::hpm_event_e is a
     // pure +1 offset (zihpm reserves id 0 for the "no event" sentinel). The
-    // BPU agent owns the source for events 0..25 here, exported as zihpm
-    // events 1..26; the translation is encoded in `bpu_pmu_to_hpm()` below
+    // BPU agent owns the source for events 0..26 here, exported as zihpm
+    // events 1..27; the translation is encoded in `bpu_pmu_to_hpm()` below
     // and the documentation table in docs/arch/branch-prediction.md.
     //
     // Order is therefore locked to the zihpm enum and must change in lockstep
@@ -355,10 +359,11 @@ package bpu_pkg;
         PMU_L2_FTB_MISS    = 5'd22,  // zihpm EVT_L2_BTB_MISS    = 8'd23
         PMU_TWO_AHEAD_REDIRECT = 5'd23, // zihpm EVT_TWO_AHEAD_REDIRECT = 8'd24
         PMU_LOCAL_DIR_OVERRIDE = 5'd24, // zihpm EVT_LOCAL_DIR_OVERRIDE = 8'd25
-        PMU_META_TRAIN     = 5'd25   // zihpm EVT_BPU_META_TRAIN = 8'd26
+        PMU_META_TRAIN     = 5'd25,  // zihpm EVT_BPU_META_TRAIN = 8'd26
+        PMU_L2_FTB_LATE_REDIRECT = 5'd26 // zihpm EVT_L2_BTB_LATE_REDIRECT = 8'd27
     } pmu_event_e;
 
-    localparam int unsigned PMU_EVENTS = 26;
+    localparam int unsigned PMU_EVENTS = 27;
     localparam int unsigned PMU_COUNTER_W = 64;
 
     // Translation helper: convert a BPU-domain PMU event id to the matching

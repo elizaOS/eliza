@@ -54,6 +54,9 @@ su - postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='elizaos'\"" 
 su - postgres -c "psql -tAc \"ALTER ROLE elizaos PASSWORD 'elizaos'\""
 su - postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='elizaos'\"" | grep -q 1 \
     || su - postgres -c "createdb -O elizaos elizaos"
+su - postgres -c "psql -d elizaos -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS vector'"
+su - postgres -c "psql -d elizaos -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS fuzzystrmatch'"
+su - postgres -c "psql -d elizaos -v ON_ERROR_STOP=1 -c 'CREATE EXTENSION IF NOT EXISTS pgcrypto'"
 log "ready: role+db elizaos"
 PROV
 chmod 0755 /usr/local/lib/elizaos/provision-pg.sh
@@ -105,6 +108,8 @@ Requires=elizaos-pg-provision.service
 Environment=POSTGRES_URL=postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos
 Environment=DATABASE_URL=postgresql://elizaos:elizaos@127.0.0.1:5432/elizaos
 Environment=ELIZA_AGENT_RUNTIME=node-agent-bundle
+Environment=ELIZA_PLATFORM=android
+Environment=ELIZA_MOBILE_PLATFORM=android
 Environment=ELIZA_AGENT_HEALTH_TIMEOUT_SECONDS=600
 TimeoutStartSec=0
 DROP

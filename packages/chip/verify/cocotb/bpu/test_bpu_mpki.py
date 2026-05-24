@@ -11,7 +11,8 @@ For each canonical synthetic workload exposed by
   * Records per-workload PMU counters via the ``csr_*`` read port:
     BR_PRED, BR_MISP, BR_TAKEN, BR_IND, BR_IND_MISP, BR_RET,
     BR_RET_MISP, RAS_OVERFLOW, FTB_MISS, LOOP_HIT, SC_OVERRIDE,
-    H2P_OVERRIDE, L2_FTB_HIT, L2_FTB_MISS, TWO_AHEAD_REDIRECT,
+    H2P_OVERRIDE, L2_FTB_HIT, L2_FTB_MISS, L2_FTB_LATE_REDIRECT,
+    TWO_AHEAD_REDIRECT,
     LOCAL_DIR_OVERRIDE, META_TRAIN, UFTB_HIT, TAGE_ALLOC.
   * Emits a single JSON file with ``schema=eliza.bpu_mpki.v1`` describing
     every workload, the PMU snapshot, MPKI, branch throughput, and the
@@ -88,6 +89,7 @@ PMU_L2_FTB_MISS = 22
 PMU_TWO_AHEAD_REDIRECT = 23
 PMU_LOCAL_DIR_OVERRIDE = 24
 PMU_META_TRAIN = 25
+PMU_L2_FTB_LATE_REDIRECT = 26
 
 # Per-branch instruction estimate. 5 instructions / branch is the same
 # assumption used by the model-only harness in benchmarks/cpu/branch/run_mpki.py
@@ -102,6 +104,11 @@ FTQ_IDX_W = 6
 # downstream tooling does not have to re-parse the comparison table.
 CBP5_TAGE_SC_L_REFERENCE_MPKI = 3.986
 TARGET_2028_MPKI = 4.0
+WORKLOAD_RTL_CLAIM_BOUNDARY = (
+    "qemu_rv64_workload evidence is prefix RTL replay coverage for local "
+    "duty-cycle traces; it is not SPEC2017, Android, JavaScript-engine, "
+    "phone, or release evidence."
+)
 
 
 def _event_context(event: BranchEvent) -> dict[str, int]:
@@ -357,6 +364,7 @@ async def _snapshot_counters(dut) -> dict[str, int]:
         "h2p_override": await _read_counter(dut, PMU_H2P_OVERRIDE),
         "l2_ftb_hit": await _read_counter(dut, PMU_L2_FTB_HIT),
         "l2_ftb_miss": await _read_counter(dut, PMU_L2_FTB_MISS),
+        "l2_ftb_late_redirect": await _read_counter(dut, PMU_L2_FTB_LATE_REDIRECT),
         "two_ahead_redirect": await _read_counter(dut, PMU_TWO_AHEAD_REDIRECT),
         "local_dir_override": await _read_counter(dut, PMU_LOCAL_DIR_OVERRIDE),
         "meta_train": await _read_counter(dut, PMU_META_TRAIN),
@@ -545,16 +553,7 @@ async def bpu_mpki_synthetic_workload_sweep(dut):
     assert expected, "expected at least one synthetic workload"
 
     for name in expected:
-        events = [
-            BranchEvent(
-                pc=int(e.pc),
-                target=int(e.target),
-                taken=bool(e.taken),
-                kind=int(e.kind),
-                call_return_pc=e.call_return_pc,
-            )
-            for e in SYNTHETIC_GENERATORS[name]()
-        ]
+        events = [_clone_branch_event(e) for e in SYNTHETIC_GENERATORS[name]()]
         results[name] = await _run_workload(dut, name, events)
 
     misp_total = sum(r["misprediction_count"] for r in results.values())
@@ -624,16 +623,7 @@ async def bpu_h2p_sc_debug_replay(dut):
     results: dict[str, dict] = {}
     for name in _debug_trace_names():
         assert name in SYNTHETIC_GENERATORS, f"unknown BPU debug trace {name}"
-        events = [
-            BranchEvent(
-                pc=int(e.pc),
-                target=int(e.target),
-                taken=bool(e.taken),
-                kind=int(e.kind),
-                call_return_pc=e.call_return_pc,
-            )
-            for e in SYNTHETIC_GENERATORS[name]()
-        ][:max_events]
+        events = [_clone_branch_event(e) for e in SYNTHETIC_GENERATORS[name]()][:max_events]
         await _reset(dut)
         before = await _snapshot_counters(dut)
         samples: list[dict] = []
@@ -816,6 +806,89 @@ def _workload_branch_cap() -> int:
     return int(os.environ.get("ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES", "0"))
 
 
+def _workload_window_mode() -> str:
+    mode = os.environ.get("ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE", "prefix").strip().lower()
+    if mode not in {"prefix", "middle", "late", "stratified"}:
+        raise ValueError(
+            "ELIZA_BPU_MPKI_WORKLOAD_WINDOW_MODE must be one of "
+            "prefix, middle, late, stratified"
+        )
+    return mode
+
+
+def _clone_branch_event(event: BranchEvent) -> BranchEvent:
+    return BranchEvent(
+        pc=int(event.pc),
+        target=int(event.target),
+        taken=bool(event.taken),
+        kind=int(event.kind),
+        call_return_pc=event.call_return_pc,
+        asid=int(getattr(event, "asid", 0)),
+        vmid=int(getattr(event, "vmid", 0)),
+        priv=int(getattr(event, "priv", 0)),
+        secure=int(getattr(event, "secure", 0)),
+        workload_class=int(getattr(event, "workload_class", 0)),
+    )
+
+
+def _proportional_instruction_count(
+    total_instruction_count: int,
+    selected_branch_count: int,
+    source_branch_count: int,
+) -> int:
+    if source_branch_count <= 0:
+        return 0
+    return max(1, int(total_instruction_count * (selected_branch_count / source_branch_count)))
+
+
+def _select_workload_window(
+    branches: list[BranchEvent],
+    instruction_count: int,
+    max_branches: int,
+    window_mode: str,
+) -> tuple[list[BranchEvent], int, dict[str, object]]:
+    source_branch_count = len(branches)
+    if not max_branches or source_branch_count <= max_branches:
+        return branches, instruction_count, {
+            "branch_replay_cap": max_branches or None,
+            "branch_replay_window_mode": "full",
+            "trace_prefix_replay": False,
+            "trace_window_replay": False,
+        }
+
+    count = max(1, min(max_branches, source_branch_count))
+    if window_mode == "stratified":
+        per = max(1, count // 3)
+        selected: list[BranchEvent] = []
+        used: set[int] = set()
+        for start_frac in (0.0, 0.5, 1.0):
+            chunk_count = min(per, source_branch_count)
+            max_start = source_branch_count - chunk_count
+            start = int(max_start * start_frac)
+            for idx in range(start, start + chunk_count):
+                if idx not in used and len(selected) < count:
+                    selected.append(branches[idx])
+                    used.add(idx)
+        selected_branches = selected
+    else:
+        start_frac = {"prefix": 0.0, "middle": 0.5, "late": 1.0}[window_mode]
+        max_start = source_branch_count - count
+        start = int(max_start * start_frac)
+        selected_branches = branches[start : start + count]
+
+    selected_instruction_count = _proportional_instruction_count(
+        instruction_count,
+        len(selected_branches),
+        source_branch_count,
+    )
+    return selected_branches, selected_instruction_count, {
+        "branch_replay_cap": max_branches,
+        "branch_replay_window_mode": window_mode,
+        "trace_prefix_replay": window_mode == "prefix",
+        "trace_window_replay": window_mode != "prefix",
+    }
+
+
 @cocotb.test()
 async def bpu_mpki_workload_traces(dut):
     """Replay real QEMU-RV64 ``.btrace.json`` workload traces through the RTL BPU.
@@ -849,20 +922,23 @@ async def bpu_mpki_workload_traces(dut):
         source_branch_count = len(branches)
         source_instruction_count = instruction_count
         max_branches = _workload_branch_cap()
-        if max_branches and source_branch_count > max_branches:
-            frac = max_branches / source_branch_count
-            branches = branches[:max_branches]
-            instruction_count = int(source_instruction_count * frac)
+        window_mode = _workload_window_mode()
+        branches, instruction_count, replay_window = _select_workload_window(
+            branches,
+            source_instruction_count,
+            max_branches,
+            window_mode,
+        )
         dut._log.info(
             f"bpu_mpki_workload: {name}: inst={instruction_count} "
-            f"branches={len(branches)} (replay starts)"
+            f"branches={len(branches)} window={replay_window['branch_replay_window_mode']} "
+            "(replay starts)"
         )
         result = await _run_cbp5_workload(dut, name, branches, instruction_count)
         result["trace_class"] = "qemu_rv64_workload"
         result["source_branch_count"] = source_branch_count
         result["source_instruction_count"] = source_instruction_count
-        result["branch_replay_cap"] = max_branches or None
-        result["trace_prefix_replay"] = bool(max_branches and source_branch_count > max_branches)
+        result.update(replay_window)
         results[name] = result
 
     aggregate_inst = sum(r["instruction_count"] for r in results.values())
@@ -876,8 +952,12 @@ async def bpu_mpki_workload_traces(dut):
         "harness": "cocotb-rtl-bpu_top",
         "rtl_top": "bpu_top",
         "evidence_class": "qemu_rv64_workload",
+        "claim_boundary": WORKLOAD_RTL_CLAIM_BOUNDARY,
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
         "instructions_per_branch_assumption": None,
         "branch_replay_cap": _workload_branch_cap() or None,
+        "branch_replay_window_mode": _workload_window_mode(),
         "aggregate": {
             "branch_count": aggregate_branches,
             "instruction_count": aggregate_inst,
@@ -897,8 +977,8 @@ async def bpu_mpki_workload_traces(dut):
                 "behavioural model uses. Instruction counts are the true retired "
                 "counts decoded from the QEMU execlog, so MPKI is comparable to "
                 "the E1-model MPKI in bpu-vs-cva6-mpki.json when branch_replay_cap "
-                "is null. A non-null branch_replay_cap means deterministic prefix "
-                "replay for coverage turnaround, not a full-trace MPKI claim. "
+                "is null. A non-null branch_replay_cap means deterministic capped "
+                "window replay for coverage turnaround, not a full-trace MPKI claim. "
                 "These are the E1's own agent-loop / IO duty-cycle workloads; "
                 "they are not SPEC2017, AOSP, or JS-engine traces."
             ),

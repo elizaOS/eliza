@@ -1335,6 +1335,63 @@ def synthetic_workload_class_phase_alias(rounds: int = 256) -> Iterator[BranchEv
         )
 
 
+def synthetic_cross_asid_same_pc_alias(rounds: int = 320) -> Iterator[BranchEvent]:
+    """Same virtual PCs with conflicting behavior across ASID/VMID domains."""
+    guard_pc = 0x802A_8000
+    dispatch_pc = 0x802A_8040
+    target_base = 0x802B_0000
+    for i in range(rounds):
+        domain = (i // 4) & 1
+        asid = 0x21 if domain == 0 else 0xA7
+        vmid = 1 if domain == 0 else 3
+        taken = ((i + domain * 3) % 7) in ((0, 1, 4) if domain == 0 else (2, 5, 6))
+        yield BranchEvent(
+            pc=guard_pc,
+            target=guard_pc + 0x200 + domain * 0x80,
+            taken=taken,
+            kind=BR_COND,
+            asid=asid,
+            vmid=vmid,
+            priv=domain,
+        )
+        yield BranchEvent(
+            pc=dispatch_pc,
+            target=target_base + domain * 0x1000 + ((i >> 2) % 5) * 0x100,
+            taken=True,
+            kind=BR_IND,
+            asid=asid,
+            vmid=vmid,
+            priv=domain,
+        )
+
+
+def synthetic_wasm_threaded_interpreter_tiering(ops: int = 704) -> Iterator[BranchEvent]:
+    """Wasm/threaded interpreter dispatch with tier-up and deopt phases."""
+    bounds_pc = 0x802C_0000
+    type_pc = 0x802C_0040
+    tier_pc = 0x802C_0080
+    dispatch_pc = 0x802C_00C0
+    handler_base = 0x802C_4000
+    baseline_base = 0x802D_0000
+    opt_base = 0x802D_8000
+    for i in range(ops):
+        tier = min(3, i // 176)
+        opcode = ((i * 23) ^ (i >> 3) ^ (tier * 5)) % 19
+        bounds_fail = opcode in (5, 11) and (i % 37) == 0
+        type_slow = (opcode % 7) == (tier + 1) % 7
+        tier_up = tier >= 1 and (i % 41) in (0, 1)
+        yield BranchEvent(pc=bounds_pc, target=bounds_pc + 0x200, taken=bounds_fail, kind=BR_COND)
+        yield BranchEvent(pc=type_pc, target=type_pc + 0x240, taken=type_slow, kind=BR_COND)
+        yield BranchEvent(pc=tier_pc, target=tier_pc + 0x280, taken=tier_up, kind=BR_COND)
+        if bounds_fail:
+            target = handler_base + 0x3000 + (opcode % 4) * 0x100
+        elif tier >= 2 and not type_slow:
+            target = opt_base + opcode * 0x80
+        else:
+            target = baseline_base + opcode * 0x80
+        yield BranchEvent(pc=dispatch_pc, target=target, taken=True, kind=BR_IND)
+
+
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "always_taken": synthetic_always_taken_loop,
     "always_not_taken": synthetic_always_not_taken,
@@ -1371,6 +1428,8 @@ SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "signal_exception_unwind": synthetic_signal_exception_unwind,
     "gpu_driver_submit_phases": synthetic_gpu_driver_submit_phases,
     "workload_class_phase_alias": synthetic_workload_class_phase_alias,
+    "cross_asid_same_pc_alias": synthetic_cross_asid_same_pc_alias,
+    "wasm_threaded_interpreter_tiering": synthetic_wasm_threaded_interpreter_tiering,
 }
 
 # Stress test on RAS overflow — kept available for direct invocation by the

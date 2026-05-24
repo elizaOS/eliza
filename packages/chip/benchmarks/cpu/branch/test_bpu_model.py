@@ -421,6 +421,7 @@ def test_python_default_geometry_tracks_rtl_package():
         "H2P_ENABLE",
         "H2P_ENTRIES",
         "H2P_HIST_LEN",
+        "H2P_LOWCONF_ONLY",
         "H2P_META_CTR_W",
         "H2P_META_ENABLE",
         "H2P_META_ENTRIES",
@@ -722,14 +723,16 @@ def test_weak_ittage_yields_to_stable_ftb_target():
     pc = 0x9000_3000
     stable = 0x9000_7000
     stale = 0x9000_8000
+    idx, tag = sim.ittage._index_tag(0, pc, 0)
 
     sim.ftb.update(pc, stable, BR_IND)
     sim.ftb.update(pc, stable, BR_IND)
     sim.ftb.update(pc, stable, BR_IND)
-    sim.ittage.storage[0][0] = [{
-        "tag": sim.ittage._index_tag(0, pc, 0)[1],
+    sim.ittage.storage[0][idx] = [{
+        "tag": tag,
         "target": stale,
         "ctr": 1 << (sim.geometry["ITTAGE_CTR_W"] - 1),
+        "useful": 0,
     }]
 
     pred_taken, pred_target = sim._predict(
@@ -738,6 +741,80 @@ def test_weak_ittage_yields_to_stable_ftb_target():
 
     assert pred_taken
     assert pred_target == stable
+    stats = sim.stats()
+    assert stats["ittage_hit"] == 1
+    assert stats["ittage_weak_yield_to_ftb"] == 1
+    assert stats.get("ittage_target_used", 0) == 0
+
+
+def test_ittage_model_reports_hit_use_update_and_allocation_counters():
+    sim = BPUSimulator()
+    pc = 0x9000_3040
+    target = 0x9000_7800
+    hist = 0
+
+    sim.ittage.update(pc, hist, target, provider=0, misp=True)
+    pred_taken, pred_target = sim._predict(
+        BranchEvent(pc=pc, target=target, taken=True, kind=BR_IND)
+    )
+
+    assert pred_taken
+    assert pred_target == target
+    stats = sim.stats()
+    assert stats["ittage_updates"] == 1
+    assert stats["ittage_allocations"] == 1
+    assert stats["ittage_hit"] == 1
+    assert stats["ittage_target_used"] == 1
+
+
+def test_ittage_timing_model_can_defer_same_event_target_use():
+    geo = dict(DEFAULT_GEOMETRY)
+    geo["ITTAGE_SAME_EVENT_TARGET"] = False
+    sim = BPUSimulator(geometry=geo)
+    pc = 0x9000_3060
+    target = 0x9000_7860
+    sim.ittage.update(pc, 0, target, provider=0, misp=True)
+
+    pred_taken, pred_target = sim._predict(
+        BranchEvent(pc=pc, target=target, taken=True, kind=BR_IND)
+    )
+
+    assert not pred_taken
+    assert pred_target == pc + DEFAULT_GEOMETRY["FETCH_BLOCK_BYTES"]
+    stats = sim.stats()
+    assert stats["ittage_hit"] == 1
+    assert stats["ittage_deferred_by_timing_model"] == 1
+    assert stats.get("ittage_target_used", 0) == 0
+
+
+def test_ittage_model_reports_weak_target_replacement_counter():
+    sim = BPUSimulator()
+    pc = 0x9000_3080
+    old_target = 0x9000_7900
+    new_target = 0x9000_7A00
+    hist = 0
+    idx, tag = sim.ittage._index_tag(sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1, pc, hist)
+    sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx] = [{
+        "tag": tag,
+        "target": old_target,
+        "ctr": sim.geometry["ITTAGE_REPLACE_WEAK_CTR"],
+        "useful": 0,
+    }]
+
+    sim.ittage.update(
+        pc,
+        hist,
+        new_target,
+        provider=sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"],
+        misp=False,
+    )
+
+    stats = sim.stats()
+    assert stats["ittage_updates"] == 1
+    assert stats["ittage_weak_target_replacements"] == 1
+    assert sim.ittage.storage[sim.geometry["ITTAGE_REPLACE_MIN_PROVIDER"] - 1][idx][0][
+        "target"
+    ] == new_target
 
 
 def test_l2_ftb_late_redirect_rescues_call_target_after_l1_miss():
@@ -1141,8 +1218,10 @@ def test_local_direction_corrector_overrides_tage_when_saturated():
     sim = BPUSimulator(geometry=geo)
     sim.ftb.update(event.pc, event.target, event.kind)
     idx = sim.local_dir._idx(event.pc)
+    meta_idx = sim.local_dir_meta._idx(event.pc)
     sim.local_dir.history[idx] = 0
     sim.local_dir.pht[idx][0] = 0
+    sim.local_dir_meta.ctrs[meta_idx] = sim.geometry["LOCAL_DIR_META_THRESHOLD"]
 
     taken, target = sim._predict(event)
     assert not taken
@@ -1198,6 +1277,35 @@ def test_h2p_corrector_can_override_base_direction_when_confident():
     assert sim.h2p.predict(event.pc, 0)[0]
 
 
+def test_h2p_model_uses_rtl_bias_plus_feature_weights():
+    geo = dict(DEFAULT_GEOMETRY)
+    geo["H2P_ENABLE"] = True
+    geo["H2P_HIST_LEN"] = 4
+    geo["H2P_TARGET_HIST_LEN"] = 2
+    geo["H2P_PATH_HIST_LEN"] = 2
+    geo["H2P_THRESHOLD"] = 4
+    sim = BPUSimulator(geometry=geo)
+    pc = 0x8000_33C4
+
+    sim.h2p.update(pc, 0b1010, True, target_hist=0b01, path_hist=0b10)
+    weights = sim.h2p.weights[sim.h2p._idx(pc)]
+
+    assert weights == [1, -1, 1, -1, 1, 1, -1, -1, 1]
+    conf, taken, score = sim.h2p.predict(pc, 0b1010, target_hist=0b01, path_hist=0b10)
+    assert conf
+    assert taken
+    assert score == 9
+    opposite_conf, opposite_taken, opposite_score = sim.h2p.predict(
+        pc,
+        0b0101,
+        target_hist=0b10,
+        path_hist=0b01,
+    )
+    assert opposite_conf
+    assert not opposite_taken
+    assert opposite_score == -7
+
+
 def test_h2p_meta_chooser_suppresses_unearned_override():
     event = BranchEvent(pc=0x8000_33d0, target=0x9000_2400, taken=False, kind=BR_COND)
     geo = dict(DEFAULT_GEOMETRY)
@@ -1220,6 +1328,27 @@ def test_h2p_meta_chooser_suppresses_unearned_override():
     sim._step(event)
     assert sim.counters["h2p_meta_blocked"] == 1
     assert sim.h2p_meta.ctrs[sim.h2p_meta._idx(event.pc)] > 0
+
+
+def test_h2p_lowconf_only_blocks_high_confidence_base_override():
+    event = BranchEvent(pc=0x8000_33d8, target=0x9000_2600, taken=False, kind=BR_COND)
+    geo = dict(DEFAULT_GEOMETRY)
+    geo["H2P_ENABLE"] = True
+    geo["H2P_HIST_LEN"] = 8
+    geo["H2P_THRESHOLD"] = 2
+    geo["H2P_LOWCONF_ONLY"] = 1
+    geo["LOCAL_DIR_ENABLE"] = False
+    sim = BPUSimulator(geometry=geo)
+    sim.ftb.update(event.pc, event.target, event.kind)
+
+    for _ in range(4):
+        sim.h2p.update(event.pc, 0, False)
+
+    taken, target = sim._predict(event)
+    assert taken
+    assert target == event.target
+    assert sim.counters["h2p_lowconf_blocked"] == 1
+    assert not sim.tage.predict(event.pc, 0)[2]
 
 
 def test_h2p_meta_chooser_allows_earned_override():
@@ -1266,6 +1395,38 @@ def test_h2p_priority_suppresses_local_dir_meta_training():
     assert sim.local_dir_meta.ctrs[meta_idx] == before
     assert sim.counters["h2p_override"] == 1
     assert sim.counters["local_dir_override"] == 0
+
+
+def test_slow_direction_timing_model_defers_sc_local_and_h2p_overrides():
+    event = BranchEvent(pc=0x8000_3480, target=0x9000_3400, taken=False, kind=BR_COND)
+    geo = dict(DEFAULT_GEOMETRY)
+    geo["SC_SAME_EVENT_OVERRIDE"] = False
+    geo["LOCAL_DIR_SAME_EVENT_OVERRIDE"] = False
+    geo["H2P_SAME_EVENT_OVERRIDE"] = False
+    geo["H2P_THRESHOLD"] = 2
+    geo["LOCAL_DIR_META_ENABLE"] = False
+    sim = BPUSimulator(geometry=geo)
+    sim.ftb.update(event.pc, event.target, event.kind)
+    sim.tage.tables[0].try_allocate(event.pc, 0, True)
+
+    for _ in range(6):
+        sim.sc.update(event.pc, 0, False, tage_lowconf=True)
+        sim.h2p.update(event.pc, 0, False)
+    idx = sim.local_dir._idx(event.pc)
+    sim.local_dir.history[idx] = 0
+    sim.local_dir.pht[idx][0] = 0
+
+    pred_taken, pred_target = sim._predict(event)
+
+    assert pred_taken
+    assert pred_target == event.target
+    stats = sim.stats()
+    assert stats["sc_deferred_by_timing_model"] >= 1
+    assert stats["local_dir_deferred_by_timing_model"] >= 1
+    assert stats["h2p_deferred_by_timing_model"] >= 1
+    assert stats.get("sc_override", 0) == 0
+    assert stats.get("local_dir_override", 0) == 0
+    assert stats.get("h2p_override", 0) == 0
 
 
 def test_h2p_multi_perspective_target_history_can_split_same_pc():

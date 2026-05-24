@@ -5,7 +5,7 @@ Confirms the OoO-domain contract event IDs are present in
 confirms:
 
   - ``EVT_NONE`` is enumerant 0 (the no-event sentinel).
-  - The branch-block events (1..21) match the names emitted by the
+  - The branch-block events match the names emitted by the
     cross-domain BPU remap in ``rtl/cpu/csr/bpu_to_zihpm_remap.sv``.
   - Cache events live in the 32..47 range, MMU/TLB events in 48..63,
     OoO events at 64+, per the docs/arch/ooo-cluster.md cross-domain
@@ -88,8 +88,13 @@ def main(argv: list[str] | None = None) -> int:
     if events.get("EVT_NONE") != 0:
         errors.append("EVT_NONE must equal 0 (sentinel contract)")
 
+    remap_dests = parse_remap_destinations()
+    branch_upper = max((events[name] for name in remap_dests if name in events), default=0)
+    if branch_upper <= 0:
+        errors.append("BPU remap did not declare any branch-block destinations")
+
     # Range partition contract (matches docs/arch/ooo-cluster.md).
-    branch_block = {n: v for n, v in events.items() if 1 <= v <= 21}
+    branch_block = {n: v for n, v in events.items() if 1 <= v <= branch_upper}
     cache_block = {n: v for n, v in events.items() if 32 <= v <= 47}
     mmu_block = {n: v for n, v in events.items() if 48 <= v <= 63}
     ooo_block = {n: v for n, v in events.items() if 64 <= v <= 95}
@@ -98,14 +103,14 @@ def main(argv: list[str] | None = None) -> int:
         if name == "EVT_NONE":
             continue
         if (
-            not (1 <= val <= 21)
+            not (1 <= val <= branch_upper)
             and not (32 <= val <= 47)
             and not (48 <= val <= 63)
             and not (64 <= val <= 95)
         ):
             errors.append(
                 f"event {name}={val} sits outside the partitioned blocks "
-                f"(branch 1..21, cache 32..47, mmu 48..63, ooo 64..95)"
+                f"(branch 1..{branch_upper}, cache 32..47, mmu 48..63, ooo 64..95)"
             )
 
     # All branch-block names must start with EVT_BR_ or EVT_FT/EVT_BTB/EVT_RAS/...
@@ -121,6 +126,10 @@ def main(argv: list[str] | None = None) -> int:
                 "EVT_LOOP_",
                 "EVT_SC_",
                 "EVT_H2P_",
+                "EVT_L2_BTB_",
+                "EVT_LOCAL_DIR_",
+                "EVT_BPU_META_",
+                "EVT_TWO_AHEAD_",
                 "EVT_FETCH_",
             )
         ):
@@ -152,10 +161,11 @@ def main(argv: list[str] | None = None) -> int:
 
     # Remap consistency: every BPU-driven Zihpm slot must be in the branch
     # block.
-    remap_dests = parse_remap_destinations()
     for name in remap_dests:
         if name not in branch_block:
-            errors.append(f"BPU remap drives {name} which is not in the branch block 1..21")
+            errors.append(
+                f"BPU remap drives {name} which is not in the branch block 1..{branch_upper}"
+            )
 
     if errors:
         print("STATUS: FAIL cpu.zihpm_event_table")

@@ -5,6 +5,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
 	$(REPO)/rtl/cache/lsu_to_l1d_pkg.sv \
 	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \
+	$(REPO)/rtl/cache/l1i/e1_l1i_dual_miss_to_l2.sv \
 	$(REPO)/rtl/cache/l1d/e1_l1d_cache.sv \
 	$(REPO)/rtl/cache/l2/e1_l2_cache.sv \
 	$(REPO)/rtl/cache/l3/e1_l3_cache.sv \
@@ -25,6 +26,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cache/coherence/tl_c_to_chi_bridge.sv \
 	$(REPO)/rtl/cache/coherence/e1_coherence_dir.sv \
 	$(PWD)/e1_l2_tb.sv \
+	$(PWD)/e1_l1i_dual_miss_to_l2_tb.sv \
 	$(PWD)/e1_l3_tb.sv \
 	$(PWD)/e1_slc_tb.sv \
 	$(PWD)/e1_mockingjay_prod_tb.sv \

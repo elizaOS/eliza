@@ -56,6 +56,27 @@ CBP5_DIR = ROOT / "external/cbp5-traces"
 # the SOTA bar for the hard references (from run_mpki.CBP5_REFERENCE_PER_TRACE).
 CBP5_REFERENCE = {"sample_int_trace": 5.1327, "sample_fp_trace": 0.5736}
 
+ITTAGE_EVIDENCE_COUNTERS = (
+    "ittage_hit",
+    "ittage_target_used",
+    "ittage_weak_yield_to_ftb",
+    "ittage_updates",
+    "ittage_allocations",
+    "ittage_weak_target_replacements",
+    "ittage_victim_replacements",
+    "ittage_provider_evictions",
+    "ittage_useful_aging",
+)
+
+TIMING_EVIDENCE_COUNTERS = (
+    "sc_deferred_by_timing_model",
+    "h2p_deferred_by_timing_model",
+    "local_dir_deferred_by_timing_model",
+    "ittage_deferred_by_timing_model",
+    "l2_ftb_deferred_by_timing_model",
+    "l2_ftb_late_redirect",
+)
+
 # Real RV64 workloads to include (besides the CBP-5 references). The agent
 # traces cover the inference duty cycle; io_stream covers streaming/IO/parsing;
 # system_mix covers broader CPU and GPU-control-plane branch shapes.
@@ -112,6 +133,8 @@ SYNTHETIC_SWEEP_WORKLOADS = (
     "signal_exception_unwind",
     "gpu_driver_submit_phases",
     "workload_class_phase_alias",
+    "cross_asid_same_pc_alias",
+    "wasm_threaded_interpreter_tiering",
     "return_mismatch_exceptions",
 )
 
@@ -169,6 +192,8 @@ DEFAULT_WEIGHTS = {
     "synthetic:signal_exception_unwind": 0.5,
     "synthetic:gpu_driver_submit_phases": 0.85,
     "synthetic:workload_class_phase_alias": 0.75,
+    "synthetic:cross_asid_same_pc_alias": 0.75,
+    "synthetic:wasm_threaded_interpreter_tiering": 0.85,
     "synthetic:return_mismatch_exceptions": 0.35,
     "cbp5:sample_int_trace": 1.0,
     "cbp5:sample_fp_trace": 1.0,
@@ -227,6 +252,7 @@ CONFIGS: dict[str, dict] = {
     "sc_bias_default": _geo(SC_BIAS_ENABLE=True),
     "sc_bias_big": _geo(SC_BIAS_ENABLE=True, SC_BIAS_ENTRIES=4096, SC_BIAS_CTR_W=5),
     "h2p_off": _geo(H2P_ENABLE=False),
+    "pre_h2p_big_t36": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=36),
     "h2p_default": _geo(H2P_ENABLE=True),
     "h2p_meta_t1": _geo(H2P_ENABLE=True, H2P_META_ENABLE=True, H2P_META_THRESHOLD=1),
     "h2p_meta_t2": _geo(H2P_ENABLE=True, H2P_META_ENABLE=True, H2P_META_THRESHOLD=2),
@@ -240,7 +266,18 @@ CONFIGS: dict[str, dict] = {
     "h2p_long": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=36),
     "h2p_long_t44": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=44),
     "h2p_long_t60": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=60),
+    "h2p_lowconf_only": _geo(H2P_ENABLE=True, H2P_LOWCONF_ONLY=1),
     "h2p_big": _geo(H2P_ENABLE=True, H2P_ENTRIES=1024, H2P_HIST_LEN=48, H2P_THRESHOLD=30),
+    "h2p_big_t36": _geo(H2P_ENABLE=True, H2P_ENTRIES=1024, H2P_HIST_LEN=48, H2P_THRESHOLD=36),
+    "h2p_big_t42": _geo(H2P_ENABLE=True, H2P_ENTRIES=1024, H2P_HIST_LEN=48, H2P_THRESHOLD=42),
+    "h2p_big_t50": _geo(H2P_ENABLE=True, H2P_ENTRIES=1024, H2P_HIST_LEN=48, H2P_THRESHOLD=50),
+    "h2p_big_t36_lowconf": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_THRESHOLD=36,
+        H2P_LOWCONF_ONLY=1,
+    ),
     "h2p_mp_target": _geo(
         H2P_ENABLE=True,
         H2P_ENTRIES=512,
@@ -272,6 +309,59 @@ CONFIGS: dict[str, dict] = {
         H2P_TARGET_HIST_LEN=16,
         H2P_PATH_HIST_LEN=16,
         H2P_THRESHOLD=42,
+    ),
+    "h2p_mp_big_t50": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=50,
+    ),
+    "h2p_mp_big_t56": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=56,
+    ),
+    "h2p_mp_big_t64": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=64,
+    ),
+    "h2p_mp_big_t50_lowconf": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=50,
+        H2P_LOWCONF_ONLY=1,
+    ),
+    "h2p_mp_big_meta_t1": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=42,
+        H2P_META_ENABLE=True,
+        H2P_META_THRESHOLD=1,
+    ),
+    "h2p_mp_big_meta_t2": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=42,
+        H2P_META_ENABLE=True,
+        H2P_META_THRESHOLD=2,
     ),
     "h2p_long_local_meta": _geo(
         H2P_ENABLE=True,
@@ -347,6 +437,19 @@ CONFIGS: dict[str, dict] = {
     "l2_ftb_off": _geo(L2_FTB_ENTRIES=0),
     "l2_ftb_small": _geo(L2_FTB_ENTRIES=4096, L2_FTB_WAYS=8),
     "l2_ftb_big": _geo(L2_FTB_ENTRIES=16384, L2_FTB_WAYS=8),
+    # ---- Predictor timing ablations: model late/next-cycle overrides ----
+    "timing_slow_dir_deferred": _geo(
+        SC_SAME_EVENT_OVERRIDE=False,
+        H2P_SAME_EVENT_OVERRIDE=False,
+        LOCAL_DIR_SAME_EVENT_OVERRIDE=False,
+    ),
+    "timing_ittage_deferred": _geo(ITTAGE_SAME_EVENT_TARGET=False),
+    "timing_all_slow_deferred": _geo(
+        SC_SAME_EVENT_OVERRIDE=False,
+        H2P_SAME_EVENT_OVERRIDE=False,
+        LOCAL_DIR_SAME_EVENT_OVERRIDE=False,
+        ITTAGE_SAME_EVENT_TARGET=False,
+    ),
     # ---- Fetch block front-end bandwidth ----
     "fetch_block_dual_branch": _geo(FETCH_BLOCK_BRANCH_SLOTS=2),
     # ---- TAGE allocation/aging policy (algorithmic, not just geometry) ----
@@ -581,18 +684,35 @@ def _eval_config(item: tuple[str, dict]) -> tuple[str, dict]:
         sim.feed(tr.events)
         mpki = sim.mpki(tr.inst_count) if tr.inst_count else 0.0
         c = sim.stats()
+        ittage_counters = {key: int(c.get(key, 0)) for key in ITTAGE_EVIDENCE_COUNTERS}
+        timing_counters = {key: int(c.get(key, 0)) for key in TIMING_EVIDENCE_COUNTERS}
         per_trace[tr.name] = {
             "mpki": round(mpki, 6),
             "misp": int(c.get("misp", 0)),
             "branches": len(tr.events),
             "instructions": tr.inst_count,
             "weight": tr.weight,
+            "ittage_counters": ittage_counters,
+            "timing_counters": timing_counters,
         }
     wsum = sum(tr.weight for tr in _WORKER_TRACES)
     weighted = sum(per_trace[tr.name]["mpki"] * tr.weight for tr in _WORKER_TRACES) / max(
         wsum, 1e-9
     )
-    return name, {"weighted_mpki": round(weighted, 6), "per_trace": per_trace}
+    ittage_totals = {
+        key: sum(int(row["ittage_counters"].get(key, 0)) for row in per_trace.values())
+        for key in ITTAGE_EVIDENCE_COUNTERS
+    }
+    timing_totals = {
+        key: sum(int(row["timing_counters"].get(key, 0)) for row in per_trace.values())
+        for key in TIMING_EVIDENCE_COUNTERS
+    }
+    return name, {
+        "weighted_mpki": round(weighted, 6),
+        "ittage_counter_totals": ittage_totals,
+        "timing_counter_totals": timing_totals,
+        "per_trace": per_trace,
+    }
 
 
 def run_sweep(
@@ -785,6 +905,8 @@ def main() -> int:
         ],
         "weights": DEFAULT_WEIGHTS,
         "cbp5_reference_mpki": CBP5_REFERENCE,
+        "ittage_evidence_counters": list(ITTAGE_EVIDENCE_COUNTERS),
+        "timing_evidence_counters": list(TIMING_EVIDENCE_COUNTERS),
         "baseline_weighted_mpki": base,
         "best_config": best,
         "best_weighted_mpki": results[best]["weighted_mpki"],

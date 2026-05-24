@@ -27,6 +27,7 @@ import aggregate_tapeout_readiness as agg  # noqa: E402
 import check_e1_phone_factory_output_content as factory_content  # noqa: E402
 import check_e1_phone_fabrication_release as fabrication_release  # noqa: E402
 import check_e1_phone_first_article_content as first_article_content  # noqa: E402
+import check_e1_phone_board_package as board_package  # noqa: E402
 import check_e1_phone_enclosure_mechanical_content as enclosure_content  # noqa: E402
 import check_e1_phone_release_approval_signatures as approval_signatures  # noqa: E402
 import check_e1_phone_release_evidence_regeneration as regeneration_check  # noqa: E402
@@ -327,6 +328,13 @@ class BuildReportTests(unittest.TestCase):
         self.assertEqual(
             fabrication["blocked_gate_details"][0]["validation_command"],
             "python3 scripts/check_e1_phone_fabrication_release.py",
+        )
+        self.assertIn("next_action", fabrication["blocked_gate_details"][0])
+        self.assertEqual(
+            fabrication["next_command_by_dependency"][
+                "actionable_external_dependency"
+            ],
+            ["python3 scripts/check_e1_phone_fabrication_release.py"],
         )
         runtime = phase_map["phone_end_to_end_runtime_release"]
         self.assertEqual(
@@ -1454,6 +1462,142 @@ class E1PhoneReleaseContentStrictnessTests(unittest.TestCase):
 
 
 class E1PhoneBoardPackageGateTests(unittest.TestCase):
+    def test_top_bottom_interconnect_accepts_current_kicad_capture_blocker(self) -> None:
+        plan = {
+            "status": "blocked_interconnect_requires_connector_stackup_and_si",
+            "source_artifacts": [
+                "board/kicad/e1-phone/board-topology-decision.yaml",
+                "board/kicad/e1-phone/block-netlist.yaml",
+                "board/kicad/e1-phone/routing-constraints.yaml",
+                "package/interconnect/e1-phone-top-bottom-flex.yaml",
+                "package/usb-c/e1-phone-usb-c-port.yaml",
+                "package/audio/v0-codec.yaml",
+            ],
+            "selected_topology": "top_bottom_rigid_islands_with_flex_or_board_to_board",
+            "preferred_interconnect_family": "Hirose_BM28",
+            "fallback_interconnect_families": [
+                "Hirose_FH58_signal_flex_plus_power_tabs",
+                "Molex_SlimStack_two_board_stack",
+            ],
+            "cross_island_buses": [
+                {
+                    "name": "USB2_FROM_BOTTOM_PORT_TO_TOP_SOC_PD",
+                    "nets": ["USB_DP", "USB_DN", "VBUS", "GND"],
+                    "routing_constraint_refs": ["USB_DP_DN"],
+                },
+                {
+                    "name": "POWER_FROM_TOP_CHARGER_TO_BOTTOM_IO",
+                    "nets": [
+                        "SYS",
+                        "AON_1V8",
+                        "IO_1V8",
+                        "VDD_AUDIO_3V3",
+                        "VDD_AMP_3V3",
+                        "GND",
+                    ],
+                    "routing_constraint_refs": [],
+                },
+                {
+                    "name": "AUDIO_DIGITAL_TO_BOTTOM_CODEC_MICS",
+                    "nets": [
+                        "I2S_BCLK",
+                        "I2S_LRCLK",
+                        "I2S_DOUT",
+                        "I2S_DIN",
+                        "PDM_CLK",
+                        "PDM_DAT",
+                    ],
+                    "routing_constraint_refs": ["AUDIO_I2S_PDM"],
+                },
+                {
+                    "name": "HAPTIC_AND_FACTORY_TEST",
+                    "nets": ["HAPTIC_OUT", "VBUS", "VBAT", "SYS", "RF_VBAT"],
+                    "routing_constraint_refs": [],
+                },
+            ],
+            "candidate_connector_stack": {
+                "primary": {
+                    "family": "Hirose_BM28",
+                    "unresolved": [
+                        "exact_circuit_count_and_power_contact_count",
+                        "mating_pair_orderable_part_numbers",
+                    ],
+                },
+                "signal_flex_alternate": {"family": "Hirose_FH58"},
+                "stacked_board_fallback": {
+                    "family": "Molex_SlimStack_ACB6_Plus_or_equivalent"
+                },
+            },
+            "minimum_pin_budget": {
+                "signal_or_power_nets_counted": 31,
+                "required_ground_or_return_pins_min": 12,
+                "required_spares_min": 6,
+                "recommended_contacts_min": 49,
+            },
+            "release_blockers": [
+                "exact connector circuit count and orderable mating part numbers not selected",
+                "flex stackup, bend radius, stiffener, and strain relief not drawn",
+                "USB2 and audio SI across the flex not simulated or measured",
+                "power contact current rise and return allocation not reviewed",
+                "bottom island decoupling, ESD, and test fixture edge pending KiCad capture",
+                "assembly sequence for battery insertion and split-board connection not validated",
+            ],
+            "forbidden_claims": [
+                "interconnect_ready",
+                "rigid_flex_ready",
+                "usb_si_closed",
+                "bottom_island_ready",
+                "enclosure_ready",
+            ],
+        }
+        binding = {
+            "status": "planning_binding_no_connector_stack_selected",
+            "primary_candidate": {"family": "Hirose_BM28"},
+            "required_cross_island_buses": plan["cross_island_buses"],
+        }
+        decision = {
+            "selected_topology_for_next_repack": {
+                "id": "top_bottom_rigid_islands_with_flex_or_board_to_board"
+            }
+        }
+        netlist = {
+            "blocks": [
+                {
+                    "nets": {
+                        "all": [
+                            net
+                            for bus in plan["cross_island_buses"]
+                            for net in bus["nets"]
+                        ]
+                    }
+                }
+            ],
+            "voltage_domains": [],
+            "required_shared_nets": {"power": []},
+        }
+        routing = {
+            "differential_pairs": [{"name": "USB_DP_DN"}],
+            "single_ended_buses": [{"name": "AUDIO_I2S_PDM"}],
+        }
+
+        def fake_load_yaml(path: Path) -> dict:
+            name = path.name
+            if name == "top-bottom-interconnect-plan.yaml":
+                return plan
+            if name == "e1-phone-top-bottom-flex.yaml":
+                return binding
+            if name == "board-topology-decision.yaml":
+                return decision
+            if name == "block-netlist.yaml":
+                return netlist
+            if name == "routing-constraints.yaml":
+                return routing
+            raise AssertionError(f"unexpected fixture path: {path}")
+
+        with mock.patch.object(board_package, "load_yaml", side_effect=fake_load_yaml):
+            with redirect_stdout(io.StringIO()):
+                board_package.check_top_bottom_interconnect_plan()
+
     def test_checker_reports_release_not_ready_without_hiding_direct_failures(self) -> None:
         completed = subprocess.run(
             [sys.executable, "scripts/check_e1_phone_board_package.py"],

@@ -1,6 +1,6 @@
 {
   "verdict": "pass",
-  "shell_parts_checked": 52,
+  "shell_parts_checked": 54,
   "missing_oem_baseline_parts": [],
   "parts": [
     {
@@ -71,7 +71,7 @@
       "part": "left_chest_contour_armor",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -85,7 +85,7 @@
       "part": "right_chest_contour_armor",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -99,7 +99,7 @@
       "part": "left_chest_outer_armor_skin",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -113,7 +113,7 @@
       "part": "right_chest_outer_armor_skin",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -498,6 +498,19 @@
       "current_geometry_status": "parametric EVT envelope"
     },
     {
+      "part": "left_upper_arm_front_armor",
+      "role": "armor",
+      "body": "left_shoulder_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
       "part": "right_upper_arm_shell",
       "role": "underbody",
       "body": "right_shoulder_yaw_link",
@@ -512,6 +525,19 @@
     },
     {
       "part": "right_upper_arm_outer_blade",
+      "role": "armor",
+      "body": "right_shoulder_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_upper_arm_front_armor",
       "role": "armor",
       "body": "right_shoulder_yaw_link",
       "source_kind": "primitive",
@@ -789,7 +815,7 @@
       "part": "left_foot_top_shell",
       "role": "armor",
       "body": "left_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"

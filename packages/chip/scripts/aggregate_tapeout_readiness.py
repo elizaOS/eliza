@@ -1106,6 +1106,7 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
         ]
         if not matched:
             continue
+        next_actions = [blocker_action(result) for result in matched]
         rows.append(
             {
                 "phase": phase["phase"],
@@ -1129,18 +1130,34 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
                         if result.blocker_dependency == "actionable_external_dependency"
                     ),
                 },
+                "next_command_by_dependency": {
+                    dependency: sorted(
+                        {
+                            action["validation_command"]
+                            for action in next_actions
+                            if action["dependency"] == dependency
+                        }
+                    )
+                    for dependency in (
+                        "repo_artifact_generation",
+                        "live_device_validation",
+                        "actionable_external_dependency",
+                    )
+                    if any(action["dependency"] == dependency for action in next_actions)
+                },
                 "blocked_gates": [result.name for result in matched],
                 "blocked_gate_details": [
                     {
                         "name": result.name,
                         "blocker_dependency": result.blocker_dependency,
-                        "validation_command": blocker_action(result)["validation_command"],
+                        "validation_command": action["validation_command"],
+                        "next_action": action["next_action"],
                         "evidence": result.evidence,
                     }
-                    for result in matched
+                    for result, action in zip(matched, next_actions, strict=True)
                 ],
                 "validation_commands": [
-                    blocker_action(result)["validation_command"] for result in matched
+                    action["validation_command"] for action in next_actions
                 ],
                 "acceptance_commands": phase["acceptance_commands"],
                 "sample_evidence": [result.evidence for result in matched[:5]],

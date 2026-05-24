@@ -72,6 +72,7 @@ package zihpm_pkg;
         EVT_TWO_AHEAD_REDIRECT  = 8'd24,
         EVT_LOCAL_DIR_OVERRIDE  = 8'd25,
         EVT_BPU_META_TRAIN      = 8'd26,
+        EVT_L2_BTB_LATE_REDIRECT = 8'd27,
 
         // ---- Cache / memory events (cache agent owns the source) ----
         EVT_L1I_MISS            = 8'd32,
@@ -109,7 +110,7 @@ package zihpm_pkg;
     // Convenience predicate used by remap adapters and the strict
     // harmonization checker (`scripts/check_pmu_event_alignment.py`).
     function automatic logic is_branch_event(input logic [EVT_W-1:0] id);
-        return (id >= EVT_BR_PRED) && (id <= EVT_BPU_META_TRAIN);
+        return (id >= EVT_BR_PRED) && (id <= EVT_L2_BTB_LATE_REDIRECT);
     endfunction
 
 endpackage : zihpm_pkg

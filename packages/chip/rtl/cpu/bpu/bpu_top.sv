@@ -743,6 +743,7 @@ module bpu_top
 
     logic h2p_raw_override;
     logic h2p_override;
+    logic h2p_lowconf_gate;
     logic h2p_effective_override;
     logic h2p_taken;
 
@@ -794,7 +795,8 @@ module bpu_top
         (H2P_META_ENABLE == 0) ||
         (h2p_meta_ctr_q[h2p_meta_lkp_idx] >=
          h2p_meta_ctr_t'(H2P_META_THRESHOLD));
-    assign h2p_override = h2p_raw_override && h2p_meta_allow;
+    assign h2p_lowconf_gate = (H2P_LOWCONF_ONLY == 0) || tage_lowconf;
+    assign h2p_override = h2p_raw_override && h2p_lowconf_gate && h2p_meta_allow;
     assign h2p_effective_override =
         lkp_fire && ftb_hit && (ftb_kind == BR_COND) &&
         !loop_hit && !sc_override && h2p_override;
@@ -1435,7 +1437,7 @@ module bpu_top
         push_entry.tage_alt_taken = tage_taken_alt;
         push_entry.sc_override = sc_override;
         push_entry.sc_taken = sc_taken;
-        push_entry.h2p_conf = h2p_raw_override;
+        push_entry.h2p_conf = h2p_raw_override && h2p_lowconf_gate;
         push_entry.h2p_taken = h2p_taken;
         push_entry.local_dir_conf = local_dir_conf;
         push_entry.local_dir_taken = local_dir_taken;
@@ -1651,6 +1653,7 @@ module bpu_top
         if (h2p_effective_override) pmu_strb[PMU_H2P_OVERRIDE] = 1'b1;
         if (l2_refill_valid) pmu_strb[PMU_L2_FTB_HIT] = 1'b1;
         if (l2_ftb_pmu_miss) pmu_strb[PMU_L2_FTB_MISS] = 1'b1;
+        if (late_redirect_valid) pmu_strb[PMU_L2_FTB_LATE_REDIRECT] = 1'b1;
         if (ftb2_redirect_valid) pmu_strb[PMU_TWO_AHEAD_REDIRECT] = 1'b1;
         if (lkp_fire && ftb_hit && (ftb_kind == BR_COND) &&
             !loop_hit && !sc_override && !h2p_override &&
