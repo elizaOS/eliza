@@ -6,7 +6,10 @@ const recording = !!process.env.E2E_RECORD;
 export default defineConfig({
   testDir: "./tests",
   outputDir: recording
-    ? path.resolve(import.meta.dirname, "../../e2e-recordings/os-homepage/test-results")
+    ? path.resolve(
+        import.meta.dirname,
+        "../../e2e-recordings/os-homepage/test-results",
+      )
     : "./test-results",
   expect: {
     toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
