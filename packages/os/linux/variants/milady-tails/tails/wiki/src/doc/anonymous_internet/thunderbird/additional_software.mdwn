@@ -1,0 +1,57 @@
+[[!meta title="Why is Tails installing Thunderbird as additional software?"]]
+
+Since Tails 7.5 (February 2026), Tails tries to automatically install *Thunderbird*
+as [[additional software|persistent_storage/additional_software]] to
+improve its security.
+
+A new version of *Thunderbird* is released in Debian shortly after each Tails
+release, because both *Tails* and *Thunderbird* follow the [[release calendar
+of *Firefox*|https://whattrainisitnow.com/calendar/]]. As a consequence, until
+Tails 7.5 (February 2026), the version of *Thunderbird* in Tails was almost
+always outdated, with known security vulnerabilities.
+
+By installing *Thunderbird* as additional software, the latest version
+of *Thunderbird* is installed automatically from your Persistent Storage each
+time you start Tails.
+
+Tails also tries to install as additional software the language package
+that corresponds to the language of your first session with Tails 7.5 or later. To
+use *Thunderbird* in another language, see how to [[use *Thunderbird* in
+another language|thunderbird#language]].
+
+*Thunderbird* will no longer be included by default in Tails 7.8 (May 2026)
+and later.
+
+[[!toc startlevel=2]]
+
+## Successful migration
+
+If the **Thunderbird Migration** dialog below appears when you start
+*Thunderbird*, it means that Tails successfully installed *Thunderbird* as
+additional software.
+
+[[!img success.png class="screenshot" alt="Thunderbird Migration: Tails installed Thunderbird as additional software to improve its security."]]
+
+## Manual migration
+
+If the **Thunderbird Migration** notification below appears when you start
+Tails, it means that Tails failed to install *Thunderbird* as additional
+software because the [[Additional
+Software|persistent_storage/additional_software]] feature of your Persistent
+Storage is turned off.
+
+Select **Install as Additional Software** next time you start Tails to turn on
+the Additional Software feature of your Persistent Storage and add
+*Thunderbird* to your list of additional software.
+
+[[!img manual.png class="screenshot" alt="Thunderbird Migration: You should install Thunderbird as additional software."]]
+
+## Failed migration
+
+If the **Thunderbird Migration** notification below appears when you start
+Tails, it means that Tails failed to install *Thunderbird* as additional
+software for unknown reasons.
+
+Please [[report an error|first_steps/whisperback]] to help us troubleshoot your problem.
+
+[[!img failure.png class="screenshot" alt="Thunderbird Migration: Tails failed to install Thunderbird as additional software."]]

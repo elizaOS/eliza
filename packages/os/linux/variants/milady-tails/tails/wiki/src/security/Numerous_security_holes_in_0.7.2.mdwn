@@ -1,0 +1,29 @@
+[[!meta date="Wed, 14 Sep 2011 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.7.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.7.2.
+
+We **strongly** urge you to [[upgrade to Tails 0.8|news/version_0.8]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+These are Debian security announces; details can be found on the
+[Debian security page](http://security.debian.org/):
+
+  - iceweasel (DSA-2268, DSA-2296)
+  - linux-2.6 (DSA-2264, DSA-2303)
+  - ca-certificates (DSA-2299)
+  - nss (DSA-2300)
+  - openssl (DSA-2309)
+  - curl (DSA-2271)
+  - openoffice.org (DSA-2275)
+  - perl (DSA-2265, DSA-2267)
+  - libpng (DSA-2287)
+  - libsndfile (DSA-2288)
+  - libxfont (DSA-2293)
+  - freetype (DSA-2294)

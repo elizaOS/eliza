@@ -1,0 +1,11 @@
+# The Docker build context is this directory. The Dockerfile only needs
+# build-iso.sh, acng.conf, and tails-live-build/ (staged by build.sh from
+# tails/submodules/live-build). Everything else — especially the 77 MB
+# vendored tails/ tree and any build output — must NOT be shipped to the
+# Docker daemon as context.
+tails/
+out/
+docs/
+*.md
+.git
+.gitignore

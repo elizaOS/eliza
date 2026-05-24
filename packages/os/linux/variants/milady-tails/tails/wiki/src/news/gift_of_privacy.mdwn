@@ -1,0 +1,68 @@
+[[!meta title="Make the gift of privacy!"]]
+[[!meta date="Sat, 28 Oct 2023 23:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+With malicious actors’ intrusions into human rights growing in sophistication
+and scale, Tails offers hope for those seeking refuge in a more secure digital
+environment. We stand on the precipice of a future where digital privacy should
+be a fundamental right, not a luxury.
+
+Since we started in 2008, millions of people around the world have
+used Tails to be more secure, autonomous, and anonymous in their digital lives.
+
+We have come so far thanks to you, and need your support to continue to do what
+we do best: deliver the world's most privacy-preserving operating system!
+
+Your donations a lion's share of our income. But, this share
+has reduced in the last couple of years. Globally, philanthropic giving has
+fallen, in what is yet another symptom of the challenging political and
+economic conditions we find ourselves in. But this hasn’t tempered our
+ambitions. Despite these challenges, Tails has gotten bigger and better over
+the past year. We have spent more time improving Tails this year than any
+previous year. But to achieve this, we have relied a bit more on support from
+large, institutional donors. 
+
+While we are grateful for the support and generosity of our "large" donors, we
+want to keep our reliance on them to a minimum. We are betting on having
+diversified income streams as our insurance from economic volatility and
+assurance of growing Tails sustainably and with complete decisional autonomy.
+Although, this means that we rely on you even more. And hence this fundraiser!
+
+Our goal is clear: to make Tails even more useful for vulnerable people in
+high-risk environments. And we want to do this while remaining as autonomous as
+our users are.
+
+The proceeds from this fundraiser will drive initiatives that will make Tails
+even more usable and secure. We want to add new, big features to Tails, enhance
+user experience with even more usability tests, and increase Tails’ use in more
+geographies around the world.
+
+Every donation, no matter how small, makes a difference. Please donate today
+and help us keep Tails alive and well in 2024 and beyond! Here are 5 ways you
+can get involved:
+
+1. <b>By making a recurring donation.</b> Recurring donations are
+   the best insurance for Tails' mission. These help us weather economic
+   uncertainties and plan our work sustainably.
+
+2. <b>With a one-time gift.</b> If you can't set-up a recurring donation, you
+   can make a one-time donation. Donate via PayPal, bank transfers,
+   mail in your checks, or just send us good, old cash. Here's a pro-tip:
+   donations of over $1&#8239;000 entitle you to some neat sponsorship
+   benefits.
+
+3. <b>Through cryptocurrency.</b> We accept crypto donations in
+   Bitcoin, Ethereum, and Monero.
+
+4. <b>Gift matching.</b> If your employer runs gift-matching programmes,
+   consider looking up <b>Riseup Labs</b> and donate to <b>Tails via Riseup
+   Labs</b>. Riseup Labs is our fiscal sponsor in the United States of America.
+
+5. <b>Spread the word.</b> And finally, please share this fundraiser with your
+   network, friends, and colleagues. Help us amplify our impact by reaching a
+   wider audience!
+
+Thank you for being part of this journey and a toast to our future adventures
+together! Oh, and in case you have somehow managed to skip over all the links
+to our donations page so far, here it is: <https://tails.net/donate/>.

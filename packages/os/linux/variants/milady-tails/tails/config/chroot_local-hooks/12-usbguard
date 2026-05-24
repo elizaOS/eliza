@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -eu
+
+echo "Configure usbguard"
+
+# Allow all devices that are already connected when the daemon starts
+perl -pi \
+   -E 's{^PresentDevicePolicy=.*}{PresentDevicePolicy=allow}' \
+   /etc/usbguard/usbguard-daemon.conf

@@ -1,0 +1,27 @@
+[[!meta title="Mathias, December 2017"]]
+
+Mathias is a 25 years old video technician living in the North of France. He is also a punk hardcore singer and involved in several struggles
+against the capitalist world.
+
+He first used Tor and didn't really get interested in Tails
+but he went to a discussion about Tails and then downloaded it
+just to see how it was. He then realized that Tor was not enough
+for his needs and that he needed an amnesic operating system.
+
+He doesn't have much expertise with Tails. At first he had a
+hard time understanding that it started from a USB stick and was
+independent from the hard drive.
+
+He has been using it to anonymously upload videos on YouTube.
+The videos were showing a group of skateboarders riding in the
+city, wearing masks, and sometimes spray painting on the walls.
+They wanted their messages to be publicly visible, while not
+risking to be discovered by the police.
+Tails also makes him want to do more illegal things.
+
+He likes that Tails is nomad, simple, and has a persistence support. But
+at first he likes the facts that he can feel the presence of human beings
+behind the project.
+
+He doesn't have bad things to say about Tails because he is not doing
+crazy things with it and doesn't know it enough.

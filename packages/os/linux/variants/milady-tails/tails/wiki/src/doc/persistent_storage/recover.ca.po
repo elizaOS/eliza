@@ -1,0 +1,473 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-12-09 23:58+0000\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Recovering data from the Persistent Storage when Tails doesn't start\"]]\n"
+msgstr "[[!meta title=\"Recuperar dades de l'Emmagatzematge Persistent quan Tails no s'inicia\"]]\n"
+
+#. type: Plain text
+msgid ""
+"If your Tails becomes broken, for example, if it no longer starts, follow "
+"these instructions to recover data from your Persistent Storage."
+msgstr ""
+"Si el vostre Tails es trenca, per exemple, si ja no s'inicia, seguiu "
+"aquestes instruccions recuperar dades del vostre Emmagatzematge Persistent."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If instead, your Tails USB stick does start but the Persistent Storage fails\n"
+"to unlock, refer to our instructions on [[recovering data from the Persistent\n"
+"Storage when it has file system errors|fsck]].</p>\n"
+msgstr ""
+"<p>Si, en canvi, el vostre llapis USB de Tails s'inicia però l'Emmagatzematge Persistent falla\n"
+"en desbloquejar-se, consulteu les nostres instruccions sobre la [[recuperació de dades de l'Emmagatzematge\n"
+"Persistent quan té errors del sistema de fitxers|fsck]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We recommend you always keep a current backup of your Persistent Storage. To learn\n"
+"how to create a backup of your Persistent Storage, see our [[instructions on\n"
+"how to back up your Persistent Storage to another Tails USB\n"
+"stick|backup]].</p>\n"
+msgstr ""
+"<p>Recomanem mantenir una còpia de seguretat del vostre Emmagatzematge Persistent. Per aprendre\n"
+"a crear una còpia de seguretat del vostre Emmagatzematge Persistent, consulteu les nostres [[instruccions sobre\n"
+"com fer una còpia de seguretat del vostre Emmagatzematge Persistent a un altre llapis USB\n"
+"de Tails|backup]].</p>\n"
+
+#. type: Plain text
+msgid ""
+"We are presenting here 3 recovery techniques that work in different cases. "
+"We recommend that you try the 3 techniques one after the other."
+msgstr ""
+"Us presentem aquí tres tècniques de recuperació que funcionen en diferents "
+"casos. Us recomanem que proveu les tres tècniques una darrere l'altra."
+
+#. type: Bullet: '1. '
+msgid "[[Doing a manual upgrade|recover#upgrade]]"
+msgstr "[[Fer una actualització manual|recover#upgrade]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Doing a manual upgrade of your broken Tails might allow you to start your\n"
+"   USB stick again and use your Persistent Storage like before.\n"
+msgstr ""
+"   Fer una actualització manual del vostre Tails trencat, us pot permetre iniciar el vostre\n"
+"   llapis USB de nou i utilitzar el vostre Emmagatzematge Persistent com abans.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Unlocking from another Tails and copying using `rsync`|recover#rsync]]"
+msgstr "[[Desbloqueig d'un altre Tails i còpia amb `rsync`|recover#rsync]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If doing a manual upgrade doesn't work, you might be able to unlock your\n"
+"   Persistent Storage from another Tails USB stick and copy its content using\n"
+"   `rsync` on the command line.\n"
+msgstr ""
+"   Si fer una actualització manual no funciona, és possible que pugueu desbloquejar el vostre\n"
+"   Emmagatzematge Persistent des d'un altre llapis USB de Tails i copiar-ne el contingut utilitzant\n"
+"   `rsync` a la línia d'ordres.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Recovering from a partition image using forensics tools|recover#image]]"
+msgstr ""
+"[[Recuperació d'una imatge de partició amb eines forenses|recover#image]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If unlocking your Persistent Storage from another Tails USB stick fails, you\n"
+"   might be able to recover some or most of your data from a partition image\n"
+"   using advanced forensics tools.\n"
+msgstr ""
+"   Si el desbloqueig del vostre Emmagatzematge Persistent d'un altre llapis USB de Tails falla,\n"
+"   és possible que pugueu recuperar part o la majoria de les vostres dades d'una imatge de partició\n"
+"   utilitzant eines forenses avançades.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"upgrade\">Doing a manual upgrade</h1>\n"
+msgstr "<h1 id=\"upgrade\">Fer una actualització manual</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Indented to deduplicate with same sentence earlier. -->\n"
+msgstr "<!-- Indented to deduplicate with same sentence earlier. -->\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   Doing a manual upgrade of your broken Tails might allow you to start your\n"
+#| "   USB stick again and use your Persistent Storage like before.\n"
+msgid ""
+"   Doing a manual upgrade of your broken Tails might allow you to start your USB\n"
+"   stick again and use your Persistent Storage like before.\n"
+msgstr ""
+"   Fer una actualització manual del vostre Tails trencat, us pot permetre iniciar el vostre\n"
+"   llapis USB de nou i utilitzar el vostre Emmagatzematge Persistent com abans.\n"
+
+#. type: Plain text
+msgid "Refer to our instructions on how to do a manual upgrade, either:"
+msgstr ""
+"Consulteu les nostres instruccions sobre com fer una actualització manual:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Downloading and upgrading from Windows|upgrade/windows]]"
+msgid "[[Downloading and upgrading from Windows|upgrade/windows]]"
+msgstr "- [[Baixada i actualització des de Windows|upgrade/windows]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Downloading and upgrading from macOS|upgrade/mac]]"
+msgid "[[Downloading and upgrading from macOS|upgrade/mac]]"
+msgstr "- [[Baixada i actualització des de macOS|upgrade/mac]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Downloading and upgrading from Linux|upgrade/linux]]"
+msgid "[[Downloading and upgrading from Linux|upgrade/linux]]"
+msgstr "- [[Baixada i actualització des de Linux|upgrade/linux]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Upgrading by cloning from another Tails|doc/upgrade/#clone]]"
+msgid "[[Upgrading by cloning from another Tails|doc/upgrade/#clone]]"
+msgstr ""
+"- [[Actualització mitjançant la clonació des d'un altre Tails|doc/upgrade/"
+"#clone]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"rsync\">Unlocking from another Tails and copying using <span class=\"code\">rsync</span></h1>\n"
+msgstr "<h1 id=\"rsync\">Desbloqueig des d'un altre Tails i còpia mitjançant <span class=\"code\">rsync</span></h1>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Install Tails on a new USB stick onto which you want to recover your "
+"Persistent Storage. Make sure that this new USB stick is at least as large "
+"as the USB stick that has your broken Tails on it."
+msgstr ""
+"Instal·leu Tails en un nou llapis USB en el que voleu recuperar el vostre "
+"Emmagatzematge Persistent. Assegureu-vos que aquest nou llapis USB sigui "
+"almenys tan gran com el llapis USB que conté el vostre Tails trencat."
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"En iniciar Tails, [[configureu una contrasenya d'administració|doc/"
+"first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "[[Create a Persistent Storage.|persistent_storage/create]]"
+msgstr "[[Creeu un Emmagatzematge Persistent.|persistent_storage/create]]"
+
+#. type: Bullet: '1. '
+msgid ""
+"Close the Persistent Storage settings after creation, when the list of "
+"features is displayed."
+msgstr ""
+"Tanqueu la configuració de l'Emmagatzematge Persistent després de la "
+"creació, quan es mostri la llista de funcions."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The process described below overwrites the contents and configuration of the new Persistent\n"
+"   Storage. So, it does not matter which features you turn on after creating\n"
+"   the Persistent Storage.\n"
+msgstr ""
+"   El procés que es descriu a continuació sobreescriu el contingut i la configuració del nou Emmagatzematge\n"
+"   Persistent. Per tant, no importa quines funcionalitats activeu després de crear\n"
+"   l'Emmagatzematge Persistent.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>Make sure that all applications are closed before continuing with these\n"
+"   instructions. Otherwise, the Persistent Storage might not be properly\n"
+"   recovered from your broken Tails.</p>\n"
+msgstr ""
+"   <p>Assegureu-vos que totes les aplicacions estiguin tancades abans de continuar amb aquestes\n"
+"   instruccions. En cas contrari, és possible que l'Emmagatzematge Persistent no es recuperi\n"
+"   correctament del vostre Tails trencat.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **Applications**&nbsp;▸ **Accessories**&nbsp;▸ **Files** to open "
+#| "the *Files* browser."
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+"Trieu **Aplicacions**&nbsp;▸ **Accessoris**&nbsp;▸ **Fitxers** per obrir el "
+"navegador de *Fitxers*."
+
+#. type: Bullet: '1. '
+msgid "Plug in the USB stick that has your broken Tails on it."
+msgstr "Connecteu el llapis USB que té el vostre Tails trencat."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the Persistent Storage of your broken Tails is recognized,\n"
+"   a new encrypted volume appears in the sidebar of the\n"
+"   *Files* browser. Click on it and enter the\n"
+"   passphrase of your broken Tails to unlock the volume.\n"
+msgstr ""
+"   Si es reconeix l'Emmagatzematge Persistent del vostre Tails trencat,\n"
+"   apareix un nou volum encriptat a la barra lateral del\n"
+"   navegador de *Fitxers*. Cliqueu-hi i introduïu-hi\n"
+"   la contrasenya del vostre Tails trencat per desbloquejar el volum.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The Persistent Storage of your broken Tails shows up as\n"
+"   **TailsData**.\n"
+msgstr ""
+"   L'Emmagatzematge Persistent del vostre Tails trencat apareix com a\n"
+"   **TailsData**.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If no encrypted volume appears, try [[recovering from a partition image\n"
+"   using forensics tools|recover#image]].</p>\n"
+msgstr ""
+"   <p>Si no apareix cap volum encriptat, proveu de [[recuperar una imatge de partició\n"
+"   utilitzant eines forenses|recover#image]].</p>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "1. Choose\n"
+#| "   <span class=\"menuchoice\">\n"
+#| "     **Applications**&nbsp;▸\n"
+#| "     **System Tools**&nbsp;▸\n"
+#| "     **Root Terminal**\n"
+#| "   </span>\n"
+#| "   to open a terminal with administration rights.\n"
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+"1. Trieu\n"
+"   <span class=\"menuchoice\">\n"
+"     **Aplicacions**&nbsp;▸\n"
+"     **Eines del sistema**&nbsp;▸\n"
+"     **Terminal d'administrador**\n"
+"   </span>\n"
+"   per obrir un terminal amb drets d'administració.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command to recover the Persistent Storage of your "
+"broken Tails to your new Tails:"
+msgstr ""
+"Executeu l'ordre següent per recuperar l'Emmagatzematge Persistent del "
+"vostre Tails trencat al vostre nou Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo rsync -PaSHAXv --del /media/amnesia/TailsData/ /live/persistence/TailsData_unlocked</p>\n"
+msgstr "   <p class=\"command\">sudo rsync -PaSHAXv --del /media/amnesia/TailsData/ /live/persistence/TailsData_unlocked</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When the command finishes, it displays a summary of the data that was "
+"copied. For example:"
+msgstr ""
+"Quan finalitza l'ordre, mostra un resum de les dades que s'han copiat. Per "
+"exemple:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+msgstr ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   You can now eject the **TailsData** volume in the\n"
+"   *Files* browser and unplug the USB stick that\n"
+"   has your broken Tails on it.\n"
+msgstr ""
+"   Ara podeu expulsar el volum **TailsData** del\n"
+"   navegador de *Fitxers* i desconnectar el llapis USB que\n"
+"   conté el vostre Tails trencat.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "You can also explore the content of the Persistent Storage on your broken "
+#| "Tails from the *Files* browser. To do so, execute the following command "
+#| "from the *Root Terminal*:"
+msgid ""
+"You can also explore the content of the Persistent Storage on your broken "
+"Tails from the *Files* browser. To do so, execute the following command from "
+"the *Console*."
+msgstr ""
+"També podeu explorar el contingut de l'Emmagatzematge Persistent al vostre "
+"Tails trencat des del navegador de *Fitxers*. Per fer-ho, executeu l'ordre "
+"següent des del *Terminal d'administrador*:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">nautilus admin:/media/amnesia/TailsData/</p>\n"
+msgstr "   <p class=\"command\">nautilus admin:/media/amnesia/TailsData/</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"image\">Recovering from a partition image using forensics tools</h1>\n"
+msgstr "<h1 id=\"image\">Recuperació d'una imatge de partició mitjançant eines forenses</h1>\n"
+
+#. type: Plain text
+msgid ""
+"We are not providing step-by-step instructions, but you can adapt our "
+"instructions on [[recovering data from the Persistent Storage when it has "
+"file system errors|fsck]]:"
+msgstr ""
+"No oferim instruccions pas a pas, però podeu adaptar les nostres "
+"instruccions sobre la [[recuperació de dades de l'Emmagatzematge Persistent "
+"quan té errors del sistema de fitxers|fsck]]:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Start on your new Tails and save a partition image of the Persistent Storage "
+"of your broken Tails to an external hard disk."
+msgstr ""
+"Inicieu el vostre nou Tails i deseu una imatge de partició de "
+"l'Emmagatzematge Persistent del vostre Tails trencat en un disc dur extern."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Try the technique using the [[*Disks* utility|fsck#disks]] first, then the\n"
+"   technique using [[`ddrescue`|fsck#ddrescue]] if needed.\n"
+msgstr ""
+"   Proveu la tècnica utilitzant primer la [[utilitat *Discs*|fsck#disks]] i després la\n"
+"   tècnica utilitzant [[`ddrescue`|fsck#ddrescue]] si cal.\n"
+
+#. type: Bullet: '1. '
+msgid "After you create the partition image, try to recover your data."
+msgstr ""
+"Després de crear la imatge de la partició, intenteu recuperar les vostres "
+"dades."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Try the technique to [[copy the partition image to a new USB\n"
+"   stick|fsck#copy]] first, then the technique using\n"
+"   [[*Autopsy*|fsck#autopsy]].\n"
+msgstr ""
+"   Proveu la tècnica per [[copiar la imatge de la partició a un nou llapis\n"
+"   USB|fsck#copy]] primer, després la tècnica utilitzant\n"
+"   l'[[*Autopsy*|fsck#autopsia]].\n"
+
+#~ msgid ""
+#~ "If doing a manual upgrade doesn't work, you might be able to unlock your "
+#~ "Persistent Storage from another Tails USB stick and copy its content "
+#~ "using `rsync` on the command line."
+#~ msgstr ""
+#~ "Si fer una actualització manual no funciona, és possible que pugueu "
+#~ "desbloquejar el vostre Emmagatzematge Persistent des d'un altre llapis "
+#~ "USB de Tails i copiar-ne el contingut mitjançant `rsync` a la línia "
+#~ "d'ordres."
+
+#~ msgid ""
+#~ "If unlocking your Persistent Storage from another Tails USB stick fails, "
+#~ "you might be able to recover some or most of your data from a partition "
+#~ "image using advanced forensics tools."
+#~ msgstr ""
+#~ "Si falla el desbloqueig del vostre Emmagatzematge Persistent d'un altre "
+#~ "llapis USB de Tails, és possible que pugueu recuperar part o la majoria "
+#~ "de les vostres dades d'una imatge de partició mitjançant eines forenses "
+#~ "avançades."
+
+#~ msgid ""
+#~ "Doing a manual upgrade of your broken Tails might allow you to start your "
+#~ "USB stick again and use your Persistent Storage like before."
+#~ msgstr ""
+#~ "Fer una actualització manual del vostre Tails trencat, us pot permetre "
+#~ "tornar a iniciar el vostre llapis USB i utilitzar el vostre "
+#~ "Emmagatzematge Persistent com abans."
+
+#, no-wrap
+#~ msgid "<!-- XXX: These instructions should be kept in sync with backup.mdwn -->\n"
+#~ msgstr "<!-- XXX: These instructions should be kept in sync with backup.mdwn -->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p>If no encrypted volume appears, then you might not be able to\n"
+#~ "   recover the Persistent Storage of your broken Tails.</p>\n"
+#~ msgstr ""
+#~ "   <p>Si no apareix cap volum encriptat, és possible que no pugueu\n"
+#~ "   recuperar l'Emmagatzematge Persistent del vostre Tails trencat.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p>Try to [[check the file system of the Persistent Storage|check]] on your\n"
+#~ "   broken Tails.</p>\n"
+#~ msgstr ""
+#~ "   <p>Intenteu [[comprovar el sistema de fitxers de l'Emmagatzematge Persistent|check]] al vostre\n"
+#~ "   Tails trencat.</p>\n"

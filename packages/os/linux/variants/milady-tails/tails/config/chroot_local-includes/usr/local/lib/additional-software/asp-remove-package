@@ -1,0 +1,18 @@
+#!/usr/bin/python3 -I
+
+import sys
+
+from additional_software import (
+    remove_additional_packages,
+    get_additional_packages)
+
+if len(sys.argv) != 2:
+    sys.exit(2)
+
+old_package = str(sys.argv[1])
+
+additional_packages = get_additional_packages()
+if old_package in additional_packages:
+    remove_additional_packages({old_package})
+else:
+    sys.exit(1)

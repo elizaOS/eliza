@@ -1,0 +1,372 @@
+[[!meta title="Manual test suite"]]
+
+[[!toc levels=1]]
+
+<div class="caution">
+Read this document from the branch used to prepare the release.
+</div>
+
+Changes
+=======
+
+Source
+--------
+
+To compare the to-be-released source code with previous version's one:
+
+1. Boot the most recent version of Tails we've already released and find the
+   commit it was build from, using the `tails-version` command.
+   Set `OLD_IMAGE_COMMIT` to this value.
+
+2. Boot the candidate image and find the commit it was build from, using the
+   `tails-version` command. Set `CANDIDATE_IMAGE_COMMIT` to this value.
+
+3. Then, from the source tree, see the diff:
+
+         git diff --find-renames "${OLD_IMAGE_COMMIT:?}".."${CANDIDATE_IMAGE_COMMIT:?}" -- '*' ':!config/binary_rootfs/squashfs.sort' ':!po' ':!wiki'
+
+Changes to image description file and UDFs
+------------------------
+
+The purpose of this check is to monitor if, during the _last_ development cycle,
+in particular outside of the release process, an attacker modified the image description file or
+UDFs in order to serve malicious images.
+
+    git log --pretty=medium --shortstat ${PREVIOUS_VERSION}..${VERSION} -- wiki/src/install/v2/Tails/amd64/stable/latest.json wiki/src/upgrade/v2/
+
+You should expect the only changes to have happened during the release process
+of `${PREVIOUS_VERSION}` (i.e.: shortly after the tag).
+
+In a typical scenario, exactly 5 commits are present:
+
+ - Remove UDFs for versions we'll never release (note that this commit
+   will not be present if `${PREVIOUS_VERSION}` was an emergency
+   release or RC/alpha/beta)
+ - Merge branch 'web/release-PREVIOUS_VERSION' into 'master'
+ - Update image description file for download verification
+ - Add incremental upgrades on the test channel for Tails `${PREVIOUS_VERSION}`
+ - Update upgrade-description files.
+
+If you see anything different, please look deeper.
+
+Packages
+--------
+
+Compare the list of bundled packages and versions with the one shipped last
+time.
+
+For this check, use the new `.packages` file that was attached to the "You can
+now start testing Tails" email sent by the Release Manager. **Do not** use
+a `.packages` file downloaded from Jenkins or with `git-annex`.
+
+    /usr/bin/diff -u \
+            ${MASTER_CHECKOUT:?}/wiki/src/torrents/files/tails-amd64-${PREVIOUS_VERSION:?}.packages \
+            ${ISOS:?}/tails-amd64-${VERSION:?}/tails-amd64-${VERSION:?}.packages \
+            | wdiff --diff-input  --terminal
+
+Check the output for:
+
+- new packages that may cause harm or make the images unnecessarily
+  big
+
+- packages that were erroneously removed
+
+- new versions of software we might not have audited yet
+
+Image size
+----------
+
+Check the images size has not changed much since the last release.
+
+In a directory with many Tails ISO and USB images
+([archive](https://iso-history.tails.boum.org/)):
+
+    (
+    cd "${ISOS:?}"
+    find -L \( -iname "tails*.iso" -o -iname "tails*.img" \) \
+           -type f -ls | sort -n -k 7
+    )
+
+Automated test suite
+====================
+
+* Point `--old-iso` to the ISO image of the previous stable release.
+
+* We want the test suite run to be as "vanilla" and reproducible as
+  possible, so the only allowed options for `run_test_suite` are:
+
+  - `--artifacts-base-uri`
+  - `--capture` and `--capture-all`
+  - `--tmpdir`
+  - `--view`
+  - `--vnc-server-only`
+  - `--iso` and `--old-iso` (in fact, both of these are mandatory)
+
+  For `cucumber` itself we only allow the `--format` option.
+
+See:
+
+ - [[automated test suite documentation|test/automated_tests]]
+ - [[test/setup]]
+ - [[test/usage]]
+
+GitLab CI
+=========
+
+Verify that the latest [[!tails_gitlab desc="pipeline" tails/tails/-/pipelines]]
+for the branch this release is built from succeeded.
+
+Else, if it failed:
+
+1. report failures to the QA pad
+2. optionally: triage the failure (otherwise the RM will do that)
+
+Image description file
+======================
+
+⚠ Wait until the Release Manager removes this warning.
+
+Only perform this test for a final, stable release.
+
+1. Set environment variables:
+
+   * `ARTIFACTS`: the directory where the images you are testing live
+   * `VERSION`: the version you're trying to reproduce
+
+2. `cd` into a Tails Git clone
+
+3. Check that the hashes and sizes in the image description file
+   match what you are testing:
+
+           (
+           set -eu
+           TAG="$(echo $VERSION | tr '~' '-')"
+           WEBSITE_RELEASE_BRANCH="web/release-$TAG"
+           IDF=wiki/src/install/v2/Tails/amd64/stable/latest.json
+           git fetch origin "$WEBSITE_RELEASE_BRANCH"
+           git show "origin/${WEBSITE_RELEASE_BRANCH}:${IDF}" > latest.json
+           for ext in iso img ; do
+              locally_built_file=$(readlink -f "${ARTIFACTS:?}/tails-amd64-${VERSION:?}.$ext")
+              idf_size=$(cat latest.json | jq ".installations[0].\"installation-paths\" | map(select(.type == \"$ext\"))[0].\"target-files\"[0].size")
+              locally_built_size=$(stat --format='%s' "$locally_built_file")
+              if [ "$idf_size" = "$locally_built_size" ]; then
+                 echo "OK: $ext size matches"
+              else
+                 echo "FAIL: $ext size does not match"
+              fi
+              idf_sha256=$(cat latest.json | jq --raw-output ".installations[0].\"installation-paths\" | map(select(.type == \"$ext\"))[0].\"target-files\"[0].sha256")
+              locally_built_sha256=$(sha256sum "$locally_built_file" | cut -f 1 -d ' ' | tr -d '\n')
+              if [ "$idf_sha256" = "$locally_built_sha256" ]; then
+                 echo "OK: $ext sha256 matches"
+              else
+                 echo "FAIL: $ext sha256 does not match"
+              fi
+           done
+           )
+
+Tor Browser
+===========
+
+Miscellaneous functionality
+---------------------------
+
+* Test if _uBlock_ works:
+
+  - The _uBlock_ icon must be visible.
+
+  - Visit a website that normally displays ads, such as
+    <https://www.nytimes.com/>. The ads should not be displayed and
+    the uBlock icon should display a strictly positive number of
+    blocked elements.
+
+Security and fingerprinting
+---------------------------
+
+1. Download the version of Tor Browser included in the Tails release you are
+   testing.
+
+   It must be available from at least 1 of these URLs:
+
+    - <https://torbrowser-archive.tails.net/?C=M&O=D>
+    - <https://archive.torproject.org/tor-package-archive/torbrowser/?C=M;O=D>
+
+2. Start that Tor Browser on a non-Tails Linux.
+
+3. Compare the fingerprint of that Tor Browser with the one of
+   Tails' Tor Browser, using *Test your browser*
+   on <https://coveryourtracks.eff.org/>.
+
+   To see the details we're interested in, scroll down to check *Detailed results*
+   and click on *Detailed view*.
+
+   - The exposed `User-Agent` should match the latest Tor Browser's one.
+
+   - Ignore the result of the "blocking tracking ads" and "blocking
+     invisible trackers" tests, which seem unreliable (we've seen
+     different results for the very same version of Tor Browser).
+
+   - Ignore the "bits of identifying information" in the "Your
+     results" summary, it is not clear what this number is (it is
+     *not* the sum of the results for each section).
+
+   - Instead compare results section-by-section. The only section that
+     is allowed to differ is the *Screen Size and Color Depth* in case
+     you couldn't test the browsers with the exact same window
+     dimensions.
+
+4. If the fingerprints differ, ask the Release Manager
+   to update the *Browser fingerprint* section of the
+   [[known issues|support/known_issues]] page.
+
+<a id="Thunderbird"></a>
+
+Thunderbird
+===========
+
+Only perform this test if one of these conditions is met:
+
+ - We're testing a release candidate, such as Tails 7.42~rc1.
+
+ - The release under testing upgrades to a major Thunderbird version.
+   For example, the last Tails release shipped Thunderbird 87.9, and the one
+   you're testing includes Thunderbird 88.1.
+
+To check that the EHLO/HELO SMTP message is not leaking anything
+at the application level:
+
+0. In the Welcome Screen, set an administration password.
+
+1. Start Thunderbird using the GNOME Applications menu.
+
+2. Configure the outgoing SMTP server for an email account
+   so it uses STARTTLS on port 587
+   (Thunderbird will send two EHLO/HELO: one before TLS is
+   initiated; one after; the assumption here is that Thunderbird will
+   send the same both times).
+
+3. To capture the packets before Tor encrypts them, run this command:
+
+           sudo tcpdump -n -i lo -w dump.pcap
+
+4. Send an email with Thunderbird
+
+   Note: the packet containing EHLO/HELO will be sent really early, so it's OK
+   if the email failed (e.g. because the mail server doesn't support plaintext
+   SMTP on port 587).
+
+5. Kill the `tcpdump` process.
+
+6. Check the dump for the HELO/EHLO message and
+   verify that it only contains `127.0.0.1`:
+
+           sudo tcpdump -A -r dump.pcap | grep EHLO
+
+WhisperBack
+===========
+
+1. I should be able to send a bug report with WhisperBack.
+
+2. We receive this encrypted bug report via the support@tails.net email address
+   and your email client can decrypt it.
+
+<a id="incremental-upgrades"></a>
+
+Incremental upgrades
+====================
+
+⚠ Wait until the Release Manager removes this warning.
+
+(automate: [[!tails_ticket 18004]])
+
+Follow the instructions below for each of these versions of Tails:
+
+⚠ PLACEHOLDER
+
+Like all other tests unless specified otherwise, you can perform this test in
+a VM. The boot device must be viewed by the system under test as a removable
+USB drive.
+
+1. Install this version of Tails _from scratch_ to a USB stick.
+   A system that was upgraded to that version will not do.
+
+2. Start from that USB stick.
+
+3. Set an administration password in the Welcome Screen.
+
+4. Prepare the system so it can upgrade to the version we're testing:
+
+        sudo sh -c 'sed -i /^TAILS_CHANNEL=/d /etc/os-release &&
+                    echo TAILS_CHANNEL=\"test\" >> /etc/os-release' && \
+        systemctl --user restart tails-upgrade-frontend.service
+
+   Don't wait for the last command to complete: this will happen later on.
+
+5. Connect to the local network and to Tor
+
+6. Accept the suggestion to upgrade to the version we're testing
+
+7. Once the upgrade has been applied and you're suggested to restart Tails,
+   do that.
+
+8. Verify that the resulting, upgraded system "works fine":
+
+   * it boots
+
+   * The *About Tails* app reports the expected version: the one we are testing
+
+   * You can connect to Tor using *Tor Connection*
+
+   * Tor Browser can browse websites
+
+   * the Unsafe Browser starts
+
+Real (non-VM) hardware
+======================
+
+UEFI boot
+---------
+
+Note that for emergency releases, we do not always optimize the ordering
+of files in the SquashFS, which might make them boot somewhat slower.
+
+On a 64-bit computer that has Secure Boot enabled and that is configured to
+prefer UEFI:
+
+1. Freshly install the version of Tails being tested to a USB stick.
+
+2. Boot this USB stick on bare-metal a first time to trigger re-partitioning.
+
+   - You should see the "GNU GRUB" title, as opposed to a syslinux menu.
+
+   - Wait until you see the Welcome Screen.
+
+3. Shutdown Tails
+
+4. Boot this USB stick a second time, add the `login` option to GRUB, and measure the boot time (from the
+   GRUB menu until the GNOME desktop is ready). Take note of the boot time you measured.
+
+5. Go through steps 1-4 again, but this time using the previous Tails version.
+   Use the same computer and the same USB stick.
+
+6. Compare the boot times you measured at steps 4 and 5.
+   Expected result: the new Tails should not be significantly slower to start
+   than the old one.
+
+BIOS boot
+---------
+
+On a computer configured to prefer legacy BIOS boot:
+
+1. Freshly install the version of Tails being tested to a USB stick.
+
+2. Boot this USB stick on bare-metal a first time to trigger re-partitioning.
+
+   - You should see the "SYSLINUX" title in the bootloader, as opposed to GRUB.
+
+   - Wait until you see the Welcome Screen.
+
+3. Shutdown Tails
+
+4. Boot this USB stick a second time.
+
+5. You should see the Welcome Screen appear.

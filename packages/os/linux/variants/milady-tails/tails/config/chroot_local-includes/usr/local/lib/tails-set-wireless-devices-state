@@ -1,0 +1,11 @@
+#!/bin/sh
+
+set -e
+
+[ -e /dev/rfkill ] || exit 0
+
+rfkill block all
+
+for devtype in wifi wwan wimax ; do
+   rfkill unblock "$devtype"
+done

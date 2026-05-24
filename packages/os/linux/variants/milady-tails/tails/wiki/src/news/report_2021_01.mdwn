@@ -1,0 +1,114 @@
+[[!meta title="Tails report for January, 2021"]]
+[[!meta date="Wed, 10 Feb 2021 07:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+
+This month we have published [[**our plans for 2021**|news/plans_for_2021]], make sure to check them if you are interested on the next steps for Tails.
+
+This is the first time ever that there's **more than a million
+Tails boots** in a single month!
+
+Releases
+========
+
+[[Tails 4.15 was released on January 26|news/version_4.15]]:
+
+- Fix support for the Ledger hardware wallets in Electrum. ([[!tails_ticket 18080]])
+- Fix sharing mobile data, also called USB tethering, on iOS 14 or later. ([[!tails_ticket 18097]])
+- Clarify the error message when starting from a USB stick that is too small. ([[!tails_ticket 18073]])
+
+
+[[Tails 4.15.1 was released on January 28|news/version_4.15.1]] (emergency release):
+
+This emergency release fixed a major security vulnerability in sudo, CVE-2021-3156, that allowed normal users to gain root privileges.
+
+Tails 4.16 is [[scheduled for February 23|contribute/calendar]].
+
+Code
+====
+
+- [[!tails_ticket 18123]]: We started implementing changes to make the onion-grater more robust. Onion-grater is a tor controller filter that makes it possible for us to write fine-grained rules about what a particular application can do with tor. The controller allows changing almost everything about how tor runs, so we need to be careful about letting applications access it. For the curious: the solution involves network namespaces.
+
+- This work is also leading to fix other issues, because until now onion-grater was unable to handle lost connections to the tor controller, as in [[!tails_ticket 11535]] where tor bridge mode fails when using Unsafe Browser to get bridges, or [[!tails_ticket 16993]] where the circuit view is broken on the Tor Browser after reconnecting to the tor network.
+
+- We started work to fix the [[!tails_ticket 12638 desc="keyboard selection"]] that is broken with some languages.
+
+Documentation and website
+=========================
+
+- We documented [[how to start Tails from an external hard disk|/doc/advanced_topics/external_hard_disk]].
+
+- We removed the documentation about how to empty the trash bin, because there is [[!tails_ticket 18118 desc="no trash bin  in the Persistent Storage anymore"]].
+
+User experience
+===============
+
+We have been doing usability testing for our future work on [[!tails_ticket 17803 desc="rewriting the Persistent Storage into Python"]].
+
+Hot topics on our help desk
+===========================
+
+1. Users still have problems importing GPG keys.
+
+1. Users have reported some problems doing backups. We are happy that more users are doing backups, although we are not sure still of what is happening. See [[!tails_ticket 18157 desc="here"]] for more information, and please comment if you had problems while doing backups as well.
+
+1. Some users get a weird 'initramfs no system found' error, and [[!tails_ticket 16926 desc="cannot boot with USB sticks configured as fixed disks"]]. We thought this was not a common problem anymore, but apparently this is still happening with many USB sticks. Hopefully our new documentation about starting Tails from an external hard disk will help them.
+
+Outreach
+========
+
+- We have been talking about [outsourcing Tails merchandising](https://lists.autistici.org/message/20210120.181400.e0e54b94.en.html) as we are not doing any merchandising lately because of the effort, but many users would like to support Tails in this way. More information at [[!tails_ticket 18141]].
+
+On-going discussions
+====================
+
+- We are [moving all our repositories to our own gitlab instance](https://lists.autistici.org/message/20210119.151358.c5470864.en.html). Thanks [Immerda.ch](https://www.immerda.ch/) for your support with git-tails.immerda.ch during all these years!
+- We are [moving our blueprints section to gitlab](https://lists.autistici.org/message/20210113.110736.a8b42a2a.en.html) as well ([[!tails_ticket 18079]]).
+- We are thinking what to do about [our XMPP server going away](https://lists.autistici.org/message/20210103.080648.5fc23403.en.html). More information also at [[!tails_ticket 17956]].
+
+Translations
+============
+
+We have advanced on the integration of the website with the [translation platform](https://translate.tails.net/). Now the [staging website](https://staging.tails.net/) gets built daily, with suggestions that will break the build being skipped, and we also have [automated tests](https://gitlab.tails.boum.org/tails/tails/-/pipelines?page=1&scope=all&username=role-weblate-gatekeeper) that help us spot when the translations break the website.
+
+## All the website
+
+  - de: 27% (1864) strings translated, 14% strings fuzzy
+  - es: 52% (3569) strings translated, 5% strings fuzzy
+  - fa: 20% (1377) strings translated, 12% strings fuzzy
+  - fr: 79% (5400) strings translated, 7% strings fuzzy
+  - it: 31% (2167) strings translated, 8% strings fuzzy
+  - pt: 18% (1286) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 45% (942) strings translated, 23% strings fuzzy
+  - es: 89% (1880) strings translated, 4% strings fuzzy
+  - fa: 19% (417) strings translated, 15% strings fuzzy
+  - fr: 79% (1668) strings translated, 9% strings fuzzy
+  - it: 59% (1242) strings translated, 18% strings fuzzy
+  - pt: 39% (831) strings translated, 14% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 7% (164) strings translated, 8% strings fuzzy
+  - ca: 7% (165) strings translated, 7% strings fuzzy
+  - id: 6% (135) strings translated, 4% strings fuzzy
+  - pl: 7% (167) strings translated, 6% strings fuzzy
+  - ru: 8% (179) strings translated, 6% strings fuzzy
+  - sr_Latn: 5% (111) strings translated, 4% strings fuzzy
+  - tr: 8% (176) strings translated, 6% strings fuzzy
+  - zh: 11% (236) strings translated, 7% strings fuzzy
+  - zh_TW: 22% (466) strings translated, 13% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 1,006,718 times this month. This makes 32,400 boots a day on average.
+
+This is the first time ever that there's **more than a million
+Tails boots** in a single month.
+
+[[How do we know this?|support/faq#boot-statistics]]

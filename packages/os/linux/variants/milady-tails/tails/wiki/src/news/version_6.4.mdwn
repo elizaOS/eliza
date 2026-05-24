@@ -1,0 +1,89 @@
+[[!meta title="Tails 6.4"]]
+[[!meta date="Tue, 18 Jun 2024 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+<h2>Random seed</h2>
+
+Tails now stores a random seed on the USB stick to strengthen all cryptography.
+
+Having a [[!wikipedia cryptographically secure pseudorandom number generator
+desc="secure random number generator"]] is critical to some of the cryptography
+used in Tails, for example, in the Persistent Storage, Tor, or HTTPS.
+
+This random seed is stored [[outside of the Persistent
+Storage|contribute/design/random]] so that all users can benefit from stronger
+cryptography.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Switch to using HTTPS addresses instead of an onion addresses for the Debian
+  and Tails APT repositories. This makes the [[Additional
+  Software|doc/persistent_storage/additional_software]] feature more reliable.
+
+- Update *Tor Browser* to [13.0.16](https://blog.torproject.org/new-release-tor-browser-13016).
+
+- Update the *Tor* client to 0.4.8.12.
+
+- Update *Thunderbird* to 115.12.0.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix more issues when unlocking the Persistent Storage. ([[!tails_ticket
+  20020]], [[!tails_ticket 20344]], [[!tails_ticket 19913]])
+
+- Fix connecting to a mobile broadband network on some hardware.
+  ([[!tails_ticket 20291]])
+
+- Enable again the PDF reader of *Thunderbird* that we disabled in [[Tails
+  6.3|news/version_6.3]] for security.
+
+- Improve the error message of *Tails Cloner* when the target USB stick cannot
+  be unmounted because it is being used. ([[!tails_ticket 19253]])
+
+- Fix the homepage of *Tor Browser* when using the New Identity feature. This removes
+  the error message `Tor Browser blocked your homepage from loading`.
+  ([[!tails_ticket 20381]])
+
+- Remove the redundant dialog when unlocking a VeraCrypt volume using the
+  *Unlock VeraCrypt Volumes* utility. ([[!tails_ticket 20281]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.4</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.4.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.4 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.4 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

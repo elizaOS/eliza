@@ -1,0 +1,120 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-10 00:33+0000\n"
+"PO-Revision-Date: 2025-12-06 21:29+0000\n"
+"Last-Translator: Kerr <kerrnelius@tutamail.com>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why is Tor slow?\"]]\n"
+msgstr "[[!meta title=\"Perché Tor è lento?\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Users often find that the Tor network is slow. This page describes some "
+"reasons that make Tor slow."
+msgstr ""
+"Chi la utilizza trova sovente che la rete Tor sia lenta. Questa pagina "
+"descrive alcune cause che rendono Tor lento."
+
+#. type: Title =
+#, no-wrap
+msgid "Tor circuits lengthen the connections"
+msgstr "I circuiti Tor allungano le connessioni"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tor provides anonymity by building circuits with three relays. So instead "
+#| "of connecting directly to the destination server, a connection is made "
+#| "between each relay of the circuit and this takes more time."
+msgid ""
+"Tor provides anonymity by building circuits with 3 relays. So, instead of "
+"connecting directly to the destination server, a connection is made between "
+"each relay of the circuit and this takes more time."
+msgstr ""
+"Tor fornisce anonimato costruendo circuiti con tre relay. Invece di avere "
+"una connessione diretta con il server di destinazione, viene stabilita una "
+"connessione tra ciascun relay del circuito e questo richiede più tempo."
+
+#. type: Plain text
+msgid ""
+"Furthermore, Tor tries to build circuits with relays in different countries "
+"which make connection travel more and appear slower."
+msgstr ""
+"Inoltre, Tor cerca di costruire circuiti con relay in paesi differenti e "
+"questo fa sì che la connessione viaggi su distanze maggiori e risulti più "
+"lenta."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"Una connessione Tor passa attraverso 3 relay: l'ultimo è quello che stabilisce l'effettiva connessione con il sito di destinazione\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Quality of the relays"
+msgstr "Qualità dei ripetitori (relay)"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "The Tor relays are run by volunteers in a decentralized way. So all "
+#| "relays are not of the same quality. Some are big and fast, while some "
+#| "others are smaller and slower. As a whole, the network could be faster if "
+#| "it had more capacity. To improve the capacity of the Tor network, you can "
+#| "either run a Tor relay yourself or [help existing relays](https://"
+#| "www.torservers.net/partners.html)."
+msgid ""
+"The Tor relays are run by volunteers in a decentralized way. So all relays "
+"are not of the same quality. Some are big and fast, while some others are "
+"smaller and slower. As a whole, the network could be faster if it had more "
+"capacity. To improve the capacity of the Tor network, you can either run a "
+"Tor relay yourself or [help existing relays](https://torservers.net/"
+"members/)."
+msgstr ""
+"I relay Tor sono mantenuti da persone volonterose in maniera "
+"decentralizzata. Perciò non tutti i relay sono della stessa qualità. Alcuni "
+"sono grandi e veloci, mentre altri sono più piccoli e più lenti. Nel suo "
+"insieme, la rete potrebbe essere più veloce se avesse maggiore capacità. Per "
+"aumentare la capacità della rete Tor, puoi mantenere personalmente un relay "
+"Tor oppure [aiutare i relay esistenti](https://www.torservers.net/"
+"partners.html)."
+
+#. type: Title =
+#, no-wrap
+msgid "Misuse of the Tor network"
+msgstr "Uso improprio della rete Tor"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Some people misuse the Tor network, sometimes on purpose or sometimes by\n"
+"lack of knowledge. For instance, Tor is sometimes used to conduct\n"
+"[[!wikipedia Ddos#Distributed_attack desc=\"DDoS attacks\"]]. By\n"
+"doing this, the Tor relays are the ones who actually suffer from the\n"
+"attack, instead of the intended target.  Some people use [[!wikipedia\n"
+"Peer_to_peer desc=\"peer-to-peer software\"]] through Tor which\n"
+"is bad for the network.\n"
+msgstr ""
+"Certe persone abusano della rete Tor, talvolta di proposito o talvolta per\n"
+"mancanza di nozioni. Per esempio, Tor a volte viene usato per condurre\n"
+"[[!wikipedia_it Denial_of_service#DDoS desc=\"attacchi DDoS\"]]. Facendo\n"
+"questo, i relay Tor sono quelli che soffrono effettivamente\n"
+"dell'attacco, in luogo del bersaglio designato. Certe persone usano [[!wikipedia_it\n"
+"Peer-to-peer desc=\"applicazioni peer-to-peer\"]] via Tor, il che\n"
+"è controproducente per la rete.\n"

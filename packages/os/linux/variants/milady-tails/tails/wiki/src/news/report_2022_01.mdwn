@@ -1,0 +1,48 @@
+[[!meta title="Tails report for January 2022"]]
+[[!meta date="Wed, 09 Feb 2022 10:53:05 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+[[Tails 4.26 was released on January 11|news/version_4.26]].
+
+Among other changes, it added a shortcut to open the *Tor Connection* assistant
+when starting *Tor Browser* if Tails is not connected to the Tor network yet.
+
+[[!img news/version_4.26/open-tor-connection.png link="no" alt=""]]
+
+# Usability improvements
+
+## Installation pages
+
+We fixed all the low-hanging fruits among the issues identified in December
+during [[usability tests of first-time use|news/report_2021_12]]:
+
+  * [[!tails_ticket 18764]]: "Start in macOS" is confusing when obvious
+  * [[!tails_ticket 18765]]: QR code in steps is unclear
+  * [[!tails_ticket 18771]]: Add screenshot of Plymouth to installation steps
+  * [[!tails_ticket 18773]]: Update time estimates in overview
+
+After which we started a bigger project to restructure our installation pages.
+Stay tuned!
+
+## Connecting to Tor
+
+Polishing the user experience of connecting to Tor from Tails is one of our top
+priorities for 2021-2023. We are continuously designing and implementing
+improvements in this area. Here's the January 2021 edition :)
+
+We noticed a while ago, thanks to usability tests, that users not accustomed to
+the GNOME desktop have difficulties connecting to Wi-Fi. So we made this more
+discoverable last year, by making Wi-Fi settings reachable from *Tor
+Connection*. Unfortunately, while our initial implementation looked OK in
+a simplified test environment, it turns out it was not working in real user
+scenarios, so we fixed it ([[!tails_ticket 18587]]).
+
+Metrics
+=======
+
+Tails has been started more than 773 496 times this month. This makes 24 951 boots a day on average.

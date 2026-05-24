@@ -1,0 +1,40 @@
+[[!meta title="Support"]]
+
+Search the documentation
+========================
+
+Our comprehensive [[documentation|doc]] might already answer your question.
+
+<form method="get" action="https://duckduckgo.com/" target="_blank">
+  <input aria-label="Search" type="search" name="q" value="" size="32" placeholder="Using DuckDuckGo&hellip;" />
+  <input type="hidden" name="sites" value="tails.net"/>
+  <button aria-label="Search" class="button" type="submit">Search</button>
+</form>
+
+Frequently asked questions
+==========================
+
+Search our list of [[frequently asked questions|faq]].
+
+Upgrade
+=======
+
+Make sure you are using the latest version, as
+[[upgrading|doc/upgrade]] might solve your problem.
+
+Check if the problem is already known
+=====================================
+
+You can have a look at:
+
+- The [[list of known issues|support/known_issues]]
+
+- The [[list of known issues with graphics cards|support/known_issues/graphics]]
+
+- The
+  [[!tails_gitlab groups/tails/-/milestones
+  desc="list of things that will be fixed or improved in the next release"]]
+
+- The [[!tails_ticket "" desc="rest of our open issues on GitLab"]]
+
+[[!inline pages="support/talk" raw="yes" sort="age"]]

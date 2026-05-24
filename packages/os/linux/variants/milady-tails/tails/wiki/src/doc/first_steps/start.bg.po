@@ -1,0 +1,36 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails Translation\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-05-11 14:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <tails-l10n@boum.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To learn how to start Tails, refer to our installation instructions on:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Starting Tails on PC|pc]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Starting Tails on Mac|mac]]"
+msgstr ""

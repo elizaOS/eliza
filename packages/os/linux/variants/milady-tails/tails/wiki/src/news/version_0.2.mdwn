@@ -1,0 +1,8 @@
+[[!meta date="Tue, 23 Jun 2009 14:43:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Amnesia 0.2 released
+
+See the online Changelog
+for details.

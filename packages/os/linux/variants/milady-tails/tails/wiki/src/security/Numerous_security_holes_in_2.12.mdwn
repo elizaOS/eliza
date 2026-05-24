@@ -1,0 +1,46 @@
+[[!meta date="Thu, 08 Jun 2017 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.12"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.12 are now fixed in Tails 3.0.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.0|news/version_3.0]] as soon as possible.
+
+- Tor Browser: [[!mfsa 2017-16]]
+- MAC spoofing has been fixed on some network interfaces (TP-Link
+  WN725N): ([[!tails_ticket 12362]])
+- Linux: [[!cve 2016-2188]], [[!cve 2016-9604]], [[!cve 2017-0605]],
+  [[!cve 2017-1000363]], [[!cve 2017-2636]], [[!cve 2017-2671]],
+  [[!cve 2017-6874]], [[!cve 2017-6874]], [[!cve 2017-6951]],
+  [[!cve 2017-7184]], [[!cve 2017-7184]], [[!cve 2017-7187]],
+  [[!cve 2017-7261]], [[!cve 2017-7294]], [[!cve 2017-7308]],
+  [[!cve 2017-7374]], [[!cve 2017-7472]], [[!cve 2017-7477]],
+  [[!cve 2017-7487]], [[!cve 2017-7616]], [[!cve 2017-7618]],
+  [[!cve 2017-7645]], [[!cve 2017-7889]], [[!cve 2017-7895]],
+  [[!cve 2017-8061]], [[!cve 2017-8063]], [[!cve 2017-8064]],
+  [[!cve 2017-8067]], [[!cve 2017-8890]], [[!cve 2017-9059]],
+  [[!cve 2017-9074]], [[!cve 2017-9075]], [[!cve 2017-9076]],
+  [[!cve 2017-9077]], [[!cve 2017-9150]], [[!cve 2017-9211]],
+  [[!cve 2017-9242]]
+- Thunderbird: [[!debsa2017 3832]] i.e. [[!cve 2017-5373]],
+  [[!cve 2017-5375]], [[!cve 2017-5376]], [[!cve 2017-5378]],
+  [[!cve 2017-5380]], [[!cve 2017-5383]], [[!cve 2017-5390]],
+  [[!cve 2017-5396]], [[!cve 2017-5398]], [[!cve 2017-5400]],
+  [[!cve 2017-5401]], [[!cve 2017-5402]], [[!cve 2017-5404]],
+  [[!cve 2017-5405]], [[!cve 2017-5407]], [[!cve 2017-5408]],
+  [[!cve 2017-5410]]
+- icu: [[!debsa2017 3830]]
+- libreoffice: [[!debsa2017 3837]]
+- ghostscript: [[!debsa2017 3838]]
+- freetype: [[!debsa2017 3839]]
+- tiff: [[!debsa2017 3844]]
+- git: [[!debsa2017 3848]]
+- jbig2dec: [[!debsa2017 3855]]
+- libtasn1-6: [[!debsa2017 3861]]
+- imagemagick: [[!debsa2017 3863]]
+- sudo: [[!debsa2017 3867]]
+- nss: [[!debsa2017 3872]]
+- perl: [[!debsa2017 3873]]

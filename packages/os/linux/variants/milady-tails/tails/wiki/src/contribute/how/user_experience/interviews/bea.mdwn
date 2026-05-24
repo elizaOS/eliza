@@ -1,0 +1,131 @@
+[[!meta title="Bea, August 2018"]]
+
+Bea is from North America but lives in Latin America where she does
+political work as a volunteer in a grassroots organization.
+
+Her organization is very diverse and includes peasants associations,
+student's groups, women's groups, human-rights defenders, environmental
+struggles, struggles against the mining industry, etc. During their
+national gathering, tens of thousands of people come together and,
+during other national events like general strikes, they mobilize
+hundreds of thousands of people in the streets.
+
+In the organization, she is part of a small group in charge of
+international relations: answering emails from people outside the
+country who want to know about the organization and communicating with
+other grassroots organizations around the world.
+
+Her small group really got started with Tails after reading a digital
+security guide by a European activist group. Their started using
+*portable* systems as a simple way of protecting themselves from all
+kinds of digital threats.
+
+Before using Tails they also used another custom live system built by
+some friends of them and also based on Debian. As of today, many people
+in her organization are still using this custom system. They are pushing
+them to migrate to Tails because the kind of community behind Tails
+makes it look safer to them.
+
+Bea uses Tails for 2 main reasons:
+
+- For the sake of learning and being able to teach others.
+
+  By using tools like Ubuntu, Linux Mint, Debian, or Tails herself, she
+  knows better how they work and she can analyze digital threats better.
+  People are often scared of many things but she feels the need to
+  analyze what are the real threats and the data they manipulate.
+
+- For personal use.
+
+  She uses her computer for her work within the organization, to handle
+  the web and the social media of the organization as well as of another
+  NGO in North America that struggles against the mining industry.
+
+  Even though her laptop is running Mint, is encrypted, and has Tor,
+  Bitmask, GPG, and everything, she knows that her activism, her
+  computer, and her online life is monitored, for example by companies
+  from the mining industry.
+
+  So she sometimes turns to Tails to have an extra "window of privacy"
+  and do more personal stuff that she doesn't want to be linked to her
+  political life, like access a secure personal email account, or
+  use the Internet without leaving traces and risking to get spyware or
+  malware on her computer.
+
+Only a few people were using Tails in her organization until now because
+the website was not translated into Spanish. This year, they started to
+give workshops on Tails within the organization. As people from the
+international relations group all speak several languages, "hacking" on
+digital security tools was more accessible to them and they ended up
+being the ones giving workshops and teaching others.
+
+Bea are her group are recommending Tails mostly to 2 kind of people:
+
+- People who don't have a computer and always use shared computers.
+
+  Sometimes the people reporting human-rights violations in their
+  community work on a shared computer, that runs Windows and is the same
+  as the ones that the kids use to play online or watch movies, it's
+  full of viruses, a real catastrophe.
+
+  They try to convince them to use Tails with a persistent memory to
+  manipulate the data on human-rights violations and keep it out of
+  their Windows. Even though these people might still use GMail...
+
+  Using GMail from Tails is a bit more complicated but it's possible.
+  You only get more security checks. So it's important to have another
+  email account as a backup in case they block your account.
+
+- People who want to have more secure communications.
+
+  They teach them Thunder, GPG, and how to replace their GMail with a
+  secure email. For example, when the human-rights reporter from a
+  community communicates with the regional and national reporters, to
+  avoid sending the reports and the names of the victims to GMail.
+
+But until now maybe around 10 people are really working like this
+because people are not so aware of digital threats and how to mitigate
+them. Apart from digital-rights defenders, it's most popular amongst
+young people in bigger cities. Feminist groups are also working on
+digital security.
+
+### What she likes
+
+- She's really excited about the upcoming support for *VeraCrypt*.
+
+  Many people here are using *VeraCrypt* and it was a big limitation
+  when trying to convince them to use Tails.
+
+  Human-rights defenders, lawyers, and journalists are using *VeraCrypt*
+  a lot to protect information that can be sensitive for them or for
+  their testimonies.
+
+- She really likes cloning. If you have a USB stick, I can make you a
+  Tails!
+
+- She likes the persistent memory and finds it easy to use.
+
+### What she dislikes
+
+- She misses *Bitmask*.
+
+  *Bitmask* is sometimes faster than Tor and you don't get that many
+  "*Prove that you're not a robot*" that drive you crazy.
+
+  With *Bitmask* I can decide to always appear as coming from North
+  America whereas with Tor I always appear as coming from a different
+  country. Some websites, like Google, don't like that.
+
+- She misses the ability to install additional software:
+
+  - *Bitmask*.
+
+  - Some people are used to their Windows applications and using it with
+    *Wine*.
+
+  - Some specific audio and video applications.
+
+- In recent versions, she had troubles cloning when running in Spanish.
+
+- In recent versions, she had troubles using *Enigmail* with *Thunder*
+  and had to import her GPG keys manually every time.

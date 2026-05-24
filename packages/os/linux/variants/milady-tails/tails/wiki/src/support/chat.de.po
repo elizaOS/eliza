@@ -1,0 +1,96 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-02-04 23:28+0000\n"
+"PO-Revision-Date: 2024-09-26 12:10+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+#| msgid "[[!meta title=\"Chat\"]]\n"
+msgid "[[!meta title=\"Tor users chat room\"]]"
+msgstr "[[!meta title=\"Chat\"]]\n"
+
+#. type: Content of: <p>
+msgid ""
+"Join the [[Tor users chat room on IRC|https://support.torproject.org/get-in-"
+"touch/chat-with-us/]] to ask questions about Tails."
+msgstr ""
+
+#~ msgid "Join our XMPP chat room to ask questions about Tails."
+#~ msgstr "Kommen Sie in unseren XMPP-Chatroom, um Fragen zu Tails zu stellen."
+
+#~ msgid ""
+#~ "To do so, you need an XMPP account. You can sign up for an XMPP account "
+#~ "at [Disroot](https://disroot.org/services/xmpp)  or any other XMPP "
+#~ "account provider."
+#~ msgstr ""
+#~ "Dazu benötigen Sie ein XMPP-Konto. Sie können sich für ein XMPP-Konto bei "
+#~ "[Disroot](https://disroot.org/services/xmpp)  oder einem anderen XMPP-"
+#~ "Anbieter anmelden."
+
+#~ msgid ""
+#~ "Then configure your preferred instant messaging client, for example "
+#~ "[[Pidgin|http://www.pidgin.im/]], which runs on Windows, GNU/Linux, and "
+#~ "macOS, to connect to:"
+#~ msgstr ""
+#~ "Konfigurieren Sie Ihren bevorzugten Instant-Messaging-Client, wie z.B. "
+#~ "[[Pidgin|http://www.pidgin.im/]], welcher auf Windows, GNU/Linux und "
+#~ "macOS X läuft, um sich zu verbinden mit:"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ul>\n"
+#~ "  <li>Room: <code>tails</code></li>\n"
+#~ "  <li>Server: <code>chat.disroot.org</code></li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "  <li>Raum: <code>tails</code></li>\n"
+#~ "  <li>Server: <code>chat.disroot.org</code></li>\n"
+#~ "</ul>\n"
+
+#, fuzzy
+#~| msgid "room: `tails`"
+#~ msgid "Room: `tails`"
+#~ msgstr "raum: `tails`"
+
+#, fuzzy
+#~| msgid "server: `chat.disroot.org`"
+#~ msgid "Server: `chat.disroot.org`"
+#~ msgstr "Server: `chat.disroot.org`"
+
+#~ msgid "Use TLS/SSL to connect!"
+#~ msgstr "Verwenden Sie eine TLS/SSL-Verbindung!"
+
+#~ msgid "server: `conference.riseup.net`"
+#~ msgstr "server: `conference.riseup.net`"
+
+#~ msgid "Our chatroom is an IRC one."
+#~ msgstr "Unser Chatraum ist im IRC."
+
+#~ msgid "Here are the needed technical details:"
+#~ msgstr "Hier sind die nötigen technischen Details:"
+
+#~ msgid "port: `6697`"
+#~ msgstr "Port: `6697`"
+
+#~ msgid ""
+#~ "If you are using Tails, you can enable the predefined profile\n"
+#~ "in Pidgin in the \"Accounts menu -> Manage Accounts\" section.\n"
+#~ msgstr ""
+#~ "Wenn Sie Tails verwenden, können Sie ein vordefiniertes Profil\n"
+#~ "in Pidgin unter \"Accounts menu -> Manage Accounts\" auswählen.\n"

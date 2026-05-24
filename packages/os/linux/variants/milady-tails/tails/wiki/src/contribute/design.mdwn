@@ -1,0 +1,1475 @@
+[[!meta title="Design: specification and implementation"]]
+
+[[!toc levels=3]]
+
+# 1 Introduction
+
+In this document we present a specification of a *Privacy Enhancing
+Live Distribution* (PELD) as well as an actual implementation of it called
+*Tails*.
+
+By writing this document we intend to help third-parties do
+security analyses of any given PELD and specifically of Tails.
+We also wish to help establish best practices in
+the field of PELD design and implementation, and thus raise the
+baseline for all similar projects out there.
+
+This document is heavily based on preliminary work that was done as
+part of [Incognito 2008.1-r1
+Documentation](https://web.archive.org/web/20100220124424/http://www.browseanonymouslyanywhere.com/incognito/uploadfiles/docs.html).
+The *Bibliography* section has pointers to other inspiration and reference sources.
+
+# 2 Privacy Enhancing Live Distribution Specification
+
+**Note**: the key words "MUST", "MUST NOT", "REQUIRED", "SHALL",
+"SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and
+"OPTIONAL" in this document are to be interpreted as described in
+[RFC 2119](http://www.ietf.org/rfc/rfc2119.txt).
+
+## 2.1 Intent
+
+Let us introduce what the PELD goals are: the features provided by the
+PELD, the kind of user the PELD targets, and the (empty) room we think
+the PELD fills in the Tor distributions landscape.
+
+### 2.1.1 Privacy on the Internet
+
+The Privacy Enhancing Live Distribution (or PELD for short) aims at providing
+a software solution providing the user with the technological means
+for using popular Internet technologies while maintaining their privacy,
+in particular with respect to anonymity. While there are
+different techniques and services providing that functionality, this
+specification will assume the usage of [The Tor®
+Project](https://www.torproject.org/)'s state-of-the-art anonymizing
+overlay network Tor.
+
+Due to its deep dependency on Tor, the PELD defers the same possible
+goals as Tor:
+
+- The PELD does not try to conceal it is connected to the Tor network
+  unless Tor bridge relays are used.
+
+- The PELD is not secure against end-to-end attacks, such as
+  end-to-end timing or intersection attacks.
+
+Moreover, the PELD is likely to be affected by any feasible attack
+against Tor; e.g. the PELD is not secure against some local attacks,
+such as confirmation attacks based on website fingerprinting: see Lexi
+and Dominik's *Contemporary Profiling of Web Users* [conference at
+27C3](http://events.ccc.de/congress/2010/Fahrplan/events/4140.en.html)
+for details.
+
+### 2.1.2 Protection from data recovery after shutdown
+
+The PELD aims at protecting the user from post-mortem analysis
+of the equipment (notably storage media and memory) he or
+she runs the PELD on. It is impossible for such a system to determine
+which information is sensitive and which is not. Thus, the PELD MUST
+be amnesic by default:
+
+- It is REQUIRED no trace is left on local storage devices unless the user
+  explicitly asks for it: the PELD MUST take care not to use any
+  filesystem or swap volume that might exist on the host machine hard
+  drives.
+
+- The usage of encrypted removable storage devices (such as USB
+  sticks) SHOULD be encouraged.
+
+- Volatile memory MUST be erased on shutdown to prevent memory
+  recovery such as [[!wikipedia cold boot attack]].
+
+- Secure erasure of files and free disk space SHOULD be made easy.
+
+### 2.1.3 Working on sensitive documents
+
+The PELD aims at providing a "safe" environment to produce and
+optionally publish sensitive documents. While the combination of
+anonymous access to the Internet and resistance against future
+equipment analysis does most of the job, some application-level
+attacks deserve special treatment: e.g. tools needed to inspect and
+cleanup metadata — such as EXIF data — in files SHOULD be available.
+
+### 2.1.4 Portability
+
+The PELD MUST be self-contained and portable (literally, not
+necessarily with respect to code portability), and thus possible to
+run in as many computing environments as possible from the same single
+distribution. In addition, while the PELD's main objective indeed is
+to act as a traditional Live Distribution (i.e. a [[!wikipedia Live_CD]] or
+[[!wikipedia Live_USB]]) it SHOULD also be compatible with popular
+virtual machine technologies for users who simply want a sandboxed
+environment within their usual operating system.
+
+### 2.1.5 Target user
+
+The PELD's target user is the average user in terms of computer
+literacy; he or she does not necessarily control fully the computer
+being used. Examples would be a public computer in a library, coffee
+shop, university or a residence. We assume that the target user does
+not want to do any configuration (at least with respect to
+security and anonymity) of the various applications and tools used
+themselves, either because of insufficient knowledge, lack of interest
+or other reasons. The PELD MUST provide strong anonymity with no
+need of advanced configuration whatsoever. It MUST be made as
+difficult as possible for the user to unknowingly compromise
+anonymity.
+
+### 2.1.6 Filling some empty room in the Tor distributions landscape
+
+XXX: update
+
+The PELD is meant to be complementary to other Tor distributions. It
+has no such goal as replacing other existing tool that properly
+fulfills its use cases.
+
+The PELD fills an empty place alongside of other Tor distributions.
+Using the PELD certainly requires the user to change more of his or
+her habits than installing e.g. the [Tor Browser](https://www.torproject.org). On the other
+hand, the PELD currently is the only tool that makes it feasible to
+use the Internet, and more generally computers, for certain activities
+in contexts where the user cannot afford the risks involved by other
+Tor distributions.
+
+On the online privacy side of things, the PELD is aimed at offering
+roughly the same protection level as e.g. Tor Browser, but
+provides a full-blown Tor-ified operating system instead of a few
+selected and carefully configured applications; this e.g. allows to
+safely download and open files using external applications, as
+mentioned by the Tor Browser warning popup when a user attempts such an
+operation outside the PELD.
+
+About protection from post-shutdown data recovery, thanks to its
+amnesic-by-default behavior, the PELD can aim at providing a level of
+protection only a fine-tuned Live operating system can offer. On the
+contrary Tor distributions that rely on an untrusted underlying
+operating system could hardly guarantee anything in this area,
+regardless of the amount of resources and cleverness that is spent to
+leave *less* traces on local storage:
+
+- widespread operating systems and shipped Internet applications
+  generally default to write all kinds of traces to local storage; Tor
+  distributions that depend on such systems are therefore forced to
+  adopt a blocklist approach to lessen the amount of traces left
+  behind. Such an approach is known to be prone to human error,
+  such as [[!tor_bug 7449]].
+
+- widespread operating systems typically offer very few control knobs
+  to userspace applications over their not-amnesic-by-default
+  behavior, especially when run without any kind of administrator
+  credentials. Tor distributions that depend on such systems generally
+  have no choice but hope no undesired trace will be left e.g. in the
+  system's swap file or partition.
+
+The PELD amnesic feature also allows the user to safely perform
+non-Internet activities, which is yet another distinctive trait
+compared to other Tor distributions.
+
+To sum up, one can be a Tor expert and carefully configure a
+non-amnesic system to be as much Tor-ified as the PELD, but he or she
+won't get the same post-mortem analysis protection.
+
+### 2.1.7 Summary
+
+In short, the PELD aims at providing privacy on computers and on the
+Internet for anyone anywhere.
+
+<a id="threat-model"></a>
+
+## 2.2 Threat model
+
+The goal of staying anonymous and keeping sensitive information
+protected stands in direct conflict with the goals of several entities
+"present" on the Internet. The following threat model is meant to
+describe the intentions and capabilities of such attackers.
+
+### 2.2.1 The goal of the attacker
+
+The adversary may have one or more goals among the following ones.
+
+- **Identify or locate the user, track his or her activities on the
+  Internet**: information such as the User-Agent HTTP header, locale
+  and especially IP address can all be used in various degrees to
+  identify or locate the user, and to track his or her activities on
+  the Internet.
+
+- **Eavesdrop on sensitive data**: the Tor network only prevents the
+  data from being traced (according to Tor's threat model) but does not
+  protect it from eavesdropping.
+
+- **Data recovery after system shutdown**:  "normal" operating systems
+  keep a lot of traces about their users' Internet activities (notably
+  browser cache, cookies and history) on local storage media;
+  similarly, working on a sensitive document with a "normal" operating
+  system is very likely to leave traces of this document. User's data
+  can remain on the equipment even after the machine is shut down; be
+  it stored in the filesystem or in the memories, both RAM and swap,
+  which might as well retain data (for example encryption keys or
+  passwords). The adversary may want to recover such information by
+  analyzing the equipment that has been used.
+
+### 2.2.2 Capabilities, methods and other means of the attacker
+
+The adversary may have capabilities needed to perform the following
+attacks.
+
+- **Eavesdropping and content injection**: it is assumed that the
+  adversary is non-global and has full control over the network
+  traffic of some portion of the Internet (e.g. some Tor exit nodes,
+  upstream routers of exit nodes, or the ISP that provides the
+  Internet connection the user is sitting behind). The adversary is
+  thus able to eavesdrop, modify, delete or delay parts or all of the
+  user's traffic on the Internet.
+
+- **Bypass attacks**: it is conceivable for attackers to mount attacks
+  which bypass the proxy and DNS setup in the applications which could
+  then be used to identify the user, either by injecting data or
+  social engineering.
+
+- **Exploit software vulnerabilities**: the attacker might be able to
+  run arbitrary code by exploiting vulnerabilities present in any of
+  the software packages installed.
+
+- **Application level attacks**: the attacker can utilize certain
+  applications' services and features to get identifying information.
+  Examples are JavaScript and Java applets in web browsers, CTCP
+  queries in IRC clients, etc.
+
+- **Physical access, live monitoring, post-mortem equipment
+  analysis**: some users face adversaries with intermittent or
+  constant physical access to the equipment they use. Users in
+  Internet cafes, for example, face such a threat. This means the
+  adversary might be physically monitoring the computer while the PELD
+  is running on it. Moreover the adversary might raid the user at any
+  moment and then confiscate and analyse the equipment, storage media
+  and memory in particular.
+
+## 2.3 Distribution
+
+The PELD MUST be distributed in a common format that can easily be
+used to install the PELD on the selected medium. For instance, if
+distributed as an ISO 9660 compatible image file it can be burned to a
+DVD with almost any DVD recording software available.
+
+Also, it is RECOMMENDED to make it possible for end-users to verify
+the downloaded PELD image's integrity using public-key cryptography.
+
+## 2.4 Operational requirements
+
+This section handles mostly the criteria that the PELD should be
+portable and able to run in as many environments as possible.
+
+### 2.4.1 Platform
+
+The binaries MUST all be executable on the most common computer
+hardware architecture(s). As of 2014, the x86 computer architecture
+seems to be the obvious choice as the vast majority of personal
+computers in use is compatible with it. The PELD SHOULD support UEFI.
+Supporting widespread hardware architectures used in mobile
+computers, such as phones, is also welcome.
+
+### 2.4.2 Media
+
+The PELD SHOULD be able to boot and run natively from either a DVD or a
+USB drive. While running the PELD in native mode it MUST be completely
+independent from the host operating system and all other storage media
+on the host computer unless the user explicitly tries to access any of
+them.
+
+In all circumstances, binaries, dynamic libraries and other executable
+code susceptible to virus infections and similar MUST always be
+completely write-protected, even when running from a writeable USB
+medium. Such files SHOULD not even be modifiable temporarily, which
+could be the case even when running from DVD if the filesystem is
+loaded into memory (e.g. tmpfs).
+
+Configuration files, temporary files, user home directories and
+similar files that most likely need to be modifiable during operation
+MUST only be saved temporarily in memory (e.g. by use of something
+like tmpfs or unionfs) unless the user explicitly enables some
+features of the Persistent Storage.
+
+It is tempting to use the possibility to write back data when running
+from USB in order to allow user settings to be persistent. If this is
+considered, this feature MUST be optional and offer the possibility
+to use strong encryption for the Persistent Storage.
+
+### 2.4.3 Virtual machines
+
+As an alternative to running the PELD natively from a DVD or USB, it
+SHOULD also be possible to run it inside virtual machines.
+
+Running the PELD in such a virtualized environment provides weakened
+security compared to running it natively. This drawback is due to the
+dependency on the host OS. When the PELD runs as a guest OS:
+
+- The PELD cannot defend against keyloggers, viruses and other malware
+  that could be present in the host OS. The user activities in the
+  PELD might thus be under surveillance by an attacker who would
+  control the host OS enough.
+
+- The PELD cannot guarantee anything with respect to writing to local
+  storage: the host OS does its own memory management and can write to
+  swap any part of the memory being used by the PELD without the user
+  being told.
+
+On the other hand, running the PELD inside a virtual machine is useful
+in situations where the user is not in a position to run the PELD
+natively, which often is the case with public computers. Additionally,
+many users seem to prefer this mode of operation and would prefer to
+use their usual operating system instead of rebooting to run the PELD
+natively; that alone is a reason for making sure it works.
+
+## 2.5 Other considerations
+
+### 2.5.1 Maintainability
+
+The procedure to update the PELD SHOULD NOT be prohibitive to provide
+timely software updates that address issues related to security or
+anonymity. A scripted, automatic build procedure is RECOMMENDED
+over manually setting up things.
+
+### 2.5.2 Sustainability
+
+PELD development SHOULD be a team work rather than a one person work,
+and the deep knowledge of this work SHOULD be shared among the team
+members. Thus the development infrastructure SHOULD be designed and
+deployed in order to share this knowledge.
+
+### 2.5.3 Open-source transparency, easing peer review
+
+For the sake of transparency the use of open-source software is
+RECOMMENDED. Binary blobs SHOULD only be used when no good alternative
+exists, which could be the case with certain hardware drivers or driver
+firmwares.
+
+Having third-parties analyze the PELD security is necessary to ensure
+it is working as intended. It is thus REQUIRED for the PELD itself
+to be open-source. Moreover decisions with non-trivial implications
+SHOULD be clearly and publicly documented: such information about what
+a PELD implementation intends to achieve and how it does so SHOULD be
+made available to reviewers.
+
+Third-parties SHALL be able to reproduce a PELD implementation by
+building it from the released source code and publicly available
+information. The process MUST yield consistent results.
+
+### 2.5.4 Easy feedback
+
+In order to collect bug reports and wanted features, the PELD project
+SHOULD offer easy ways for end-users to provide feedback to the
+developers (email, web forum, bug tracker, shipped-within
+application, ...). Efforts SHOULD be made to offer the most anonymous
+(or at least pseudonymous) possible way to send this feedback.
+
+## 2.6 Implementation requirements
+
+### 2.6.1 Kernel requirements
+
+The role of the kernel is mainly to provide support for the features
+required elsewhere in this specification. This includes:
+
+- **Good hardware support** is REQUIRED: "good" is a sketchy word in a
+  specification. The general idea is to include as much drivers for
+  relevant hardware as possible, in particular for network cards
+  (wired and wireless), video adapters and anything necessary for
+  basic operation.
+
+- **Support for a stateful firewall with packet filtering
+  capabilities** is REQUIRED: it must somehow be able to sort traffic out for
+  transparent proxying (mentioned in the next section) to work.
+  Similarly, it must be able to identify and drop traffic destined to
+  the Internet that is not supported by the Tor network, such as
+  transport layer protocols other than TCP.
+
+- **Security features** are RECOMMENDED: with the dangers of exploitable
+  vulnerabilities in any code running, attempts to mitigate these on
+  the kernel level is a good idea. Executable space protection with
+  the NX bit, address space layout randomization and similar
+  techniques are all interesting in this respect. Access control in
+  the form of Mandatory Access Control, Role-Based Access Control and
+  so on SHOULD also be considered.
+
+### 2.6.2 Network requirements
+
+#### 2.6.2.1 Firewall
+
+In order to prevent accidental leaks of information, proxy bypass
+attacks on Tor and similar, the access to the Internet MUST be
+heavily restricted by a firewall:
+
+- All non-TCP transport layer protocols SHOULD be dropped as they are
+  not supported by the Tor network.
+
+- All TCP traffic not explicitly targeting Tor SHOULD be redirected to
+  the transparent proxy (i.e. to the `TransPort` as set in `torrc`);
+  alternatively this traffic SHOULD be dropped (then only applications
+  explicitly configured to use Tor will reach the Internet).
+
+- All DNS lookups SHOULD be made through the Tor network (i.e.
+  redirected to `DNSPort` as set in `torrc`).
+
+Note that the above is not necessary (or desirable) for local network
+(RFC1918) addresses; it is RECOMMENDED to special-case DNS queries
+though as some home gateways and captive wifi portals reply the public
+IP provided by the ISP when one asks information about themselves to
+their DNS resolver (source: [The State of the DNS and Tor Union (also:
+a DNS UDP
+- TCP shim)](http://archives.seul.org/or/talk/Jul-2010/msg00007.html)
+thread on the or-talk mailing list).
+
+Any exception to these rules MUST be thoroughly thought through and
+properly documented. If an action that is excepted from the above
+rules is user initiated, that MUST be made obvious to the user, and
+user opt-out MUST be offered, if possible.
+
+#### 2.6.2.2 Fingerprinting
+
+Efforts SHOULD be made so that it is harder to fingerprint PELD users *as
+being using the PELD*. Considering this goal can conflict with others,
+trying to reach perfection in this domain is not necessarily
+reasonable.
+
+### 2.6.3 User interface and applications
+
+#### 2.6.3.1 General user interface
+
+The user SHOULD be able to do all relevant things with easy-to-use
+graphical interfaces. The PELD SHOULD present a solid, user-friendly
+desktop environment with all the expected features after booting: file
+management, system settings configuration, support applications etc.
+
+#### 2.6.3.2 Internet applications
+
+At least clients for the following Internet activities MUST be
+supported:
+
+- **Web browsing**: since the web browser is arguably the most used
+  end-user Internet application as well as the one that offers the
+  largest attack surface, the Tor Project has spent significant
+  resources on analyzing and mitigating the many pitfalls of modern
+  web browsers with respect to anonymity: media plugins,
+  browser-specific bugs, web technologies such as JavaScript, CSS and
+  cookies, etc. Benefiting from this work is essential for maintaining
+  anonymity, so it is REQUIRED to include only web browsers that are
+  endorsed by the Tor Project, accompanied with any configurations,
+  extensions/plugins, etc. that they recommend (for instance, Tor
+  Browser Bundle). The PELD browser fingerprint SHOULD make the PELD
+  users appear uniformly among Tor users with generally recommended
+  configuration, such as Tor Browser users.
+
+- **Email**: support for PGP or S/MIME is highly RECOMMENDED. Also,
+  beware that the EHLO/HELO sent to the SMTP-server will contain the
+  host's IP address in many email clients. The `Message-ID` headers and
+  HTML/JavaScript email support are other usual leaking spots that
+  MUST be taken care of.
+
+- **Instant messaging**, including IRC and XMPP.
+
+- **Secure Shell** client such as [OpenSSH](http://www.openssh.org/).
+
+Other RECOMMENDED clients for Internet activities include:
+
+- **P2P file-sharing** such as BitTorrent: note, however, that large
+  scale file-sharing activity in general is frowned upon in the Tor
+  community as it consumes extreme amounts of network resources
+  compared to other kinds of services.
+
+- **Collaborative text editing** such as [Gobby](https://gobby.github.io/).
+
+- **Remote desktop** such as VNC or RDP.
+
+- **Feed aggregator** for RSS/RDF, Atom and other widely spread feed
+  formats.
+
+Given that these applications will be the user's interface to the
+Internet, they MUST be chosen and configured cautiously, and with
+security in mind. In general, as little information as possible SHOULD
+leak about the user, the applications used and the system settings.
+
+#### 2.6.3.3 Document production applications
+
+A great deal of communication over the Internet is done via the
+distribution of different types of commonly used media and document
+formats, so the PELD MUST contain the basic facilities for creating
+and editing such formats. More specifically, at least the following
+media and text production tasks MUST be possible using software
+shipped by the PELD:
+
+- **Word processing**
+- **Bitmap and vector graphics**
+- **Sound recording and editing**
+- **Desktop publishing**
+- **Printing and scanning**
+
+Other RECOMMENDED media and text manipulation tools include:
+
+- **Video editor**
+- **Spreadsheet**
+- **Presentation software**
+- **Gettext catalogs (.po files) editor**
+
+These applications SHOULD be compatible with widely spread file formats in
+their domain.
+
+#### 2.6.3.4 Cryptographic tools
+
+Tools for securely signing, verifying, encrypting and decrypting files
+and messages SHOULD be available. In particular, some implementation
+of OpenPGP SHOULD be included as it is the de-facto standard for these
+tasks in the Free Software world. GUIs for managing keys and
+performing the relevant cryptographic tasks SHOULD be available. The
+OpenPGP implementation SHOULD be pre-configured to use an encrypted
+tunnel when connecting to a keyserver (read: `hkps://`).
+
+Tools for creating and using encrypted storage containers are also RECOMMENDED.
+
+A password manager SHOULD be included and allow one to store many
+passwords in an encrypted database which is protected by a single key.
+This is meant to encourage users to use strong passwords, and to
+discourage password reuse.
+
+Any cryptographic tool shipped in the PELD SHOULD by default use
+up-to-date parameters with respect to the current commonly agreed best
+practices: digests, ciphers and key sizes.
+
+#### 2.6.3.5 Tor
+
+Only stable releases SHOULD be considered since Tor really is at the
+core of the PELD.
+
+Tor SHOULD be set up to enable its DNS server (`DNSPort`) to allow DNS
+lookups through the Tor network; alternatively a local DNS server can
+be configured to use Tor.
+
+If transparent proxying (as opposed to dropping non-Tor traffic) was
+chosen in the network section, then Tor MUST be set up to enable its
+transparent proxy (`TransPort`, `TransListen`); alternatively any
+transparent proxy configured to use Tor as the parent proxy can be
+used.
+
+While there are many other interesting configuration possibilities
+described in the Tor manual, care MUST be taken to avoid those that may
+impair anonymity or security.
+
+A GUI Tor controller application such as Vidalia or TorK is highly
+RECOMMENDED. However, this requires opening the control port in Tor,
+and thus some means of authentication will be REQUIRED
+(`CookieAuthentication` preferably) to hinder attacks on the Tor
+software. XXX: this paragraph is mostly obsolete.
+
+#### 2.6.3.6 Hardened tool chain and compiling
+
+As an addition to the security against exploitable vulnerabilities
+provided by the kernel, compiling software with stack smashing
+protection, Position Independent Executable (PIE) and similar compiler
+security enhancements is RECOMMENDED. Note that some
+compiler-level options may be necessary to take advantage of in-kernel
+security features. Thus the use of a hardened tool chain might depend
+on the vendor distribution used to build the PELD upon. If such
+techniques are not widely deployed at this level, using them to build
+the PELD can require a lot of time from its developers and impact its
+ease of maintenance, which would make it harder for new contributors
+to get involved in the project. For this reason, compile-time
+hardening features should be carefully selected to balance the costs
+they impose against the extra security they bring. If using a hardened
+tool chain to build the PELD is deemed to require too much energy,
+resources could be better spent pushing usage of such hardening
+features in the base operating system.
+
+#### 2.6.3.7 "Virtual" input system
+
+Since one goal of the PELD is to permit usage of untrusted computers
+while preserving anonymity, measures MUST be taken against hardware
+that might deanonymize or facilitate recording of a user, such as
+hardware [keyloggers](http://en.wikipedia.org/wiki/Keylogger). Thus a
+virtual keyboard (usable with the mouse) MUST be available.
+
+<a id="spec-entropy"></a>
+
+#### 2.6.3.8 Entropy
+
+Some crucial applications of the PELD, such as the Tor client, make
+heavy use of cryptographic techniques and therefore rely on a high
+quality pseudo-random number generator (PRNG). Initializing (seeding)
+a PRNG is tricky in a Live system context as the system state after
+boot, if not fully deterministic, is parameterized by far fewer
+variables than in the case of a non-Live system.
+
+Using an auxiliary entropy source such as
+[haveged](https://issihosts.com/haveged/) is thus
+REQUIRED.
+
+### 2.6.4 Usability
+
+Security is usually hard to get. Therefore steps SHOULD be taken in
+order to make users more comfortable with the PELD, and also to
+educate users about specific risks and non-intuitive situations that
+may affect their anonymity on the Internet.
+
+#### 2.6.4.1 Internationalization and localization
+
+The user MUST be able to easily select his or her language of
+preference among a great number of widespread ones. User applications
+SHOULD be localized to fit this preference, as SHOULD system settings
+such as keyboard layout.
+
+The PELD documentation, either online or shipped within, SHOULD be
+easily translatable. Software written specifically for the PELD SHOULD
+be developed with i18n/l10n-awareness in mind.
+
+#### 2.6.4.2 Education and user help
+
+The PELD SHOULD include an easy-to-read document explaining:
+
+1. what the PELD goals (and non-goals) are. The PELD is no magic wand.
+
+2. how to securely use the PELD and the bundled software.
+
+As the user is assumed to only have the knowledge of an average
+computer user, it will be required to explain some general security
+concepts.
+
+Real-world experience demonstrates that the average user quite rarely
+thinks about upgrading his or her PELD copy, and is often pretty happy
+unknowingly running an obsolete version affected by numerous
+well-known security issues. A PELD running copy SHOULD therefore
+notice it is affected by known security issues and notify the user if
+a newer release fixes some.
+
+## 2.7 The future
+
+A few more or less well known issues shall be thought through so that
+this specification can provide reasonable guidance about them.
+
+### 2.7.1 Memory recovery attacks
+
+[Research](https://blackhat.com/html/bh-dc-11/bh-dc-11-briefings.html#Case)
+aims at recovering a Live system's in-memory filesystem and partial
+recovery of its previously deleted contents. Most current Live systems
+do not protect against that kind of attacks: at best, they erase free
+memory on shutdown, leaving intact in memory any data saved in the
+unionfs (aufs, overlayfs, etc.) ramdisk branch.
+
+This was
+[discussed](http://archives.seul.org/or/talk/Jan-2011/msg00137.html)
+on the or-talk mailing list, and a new system that mitigates such
+attacks is part of Tails 0.7 and newer.
+
+This specification must warn about such matters.
+
+### 2.7.2 HTTP keepalive
+
+Quoting the [Live CD Best
+Practices](https://trac.torproject.org/projects/tor/wiki/TheOnionRouter/LiveCDBestPractices)
+document on the Tor wiki:
+
+> OPTIONAL? To prevent the browser from keeping HTTP sessions open
+> over existing circuits the following network settings should be
+> applied. This will ensure that new circuits, such as requested via
+> NEWNYM, will service subsequent HTTP requests.
+
+The impact of HTTP keepalive and possible solutions are being
+discussed
+on the [[tails-dev@boum.org|doc/about/contact#tails-dev]] mailing list.
+
+### 2.7.3 Mounting of filesystems stored on removable devices
+
+Some attacks recently put under the spotlights exploit vulnerabilities
+in the desktop software stack that triggers automatic mounting,
+display and files preview of filesystems stored on removable devices.
+
+This specification must warn about such matters.
+
+### 2.7.4 Miscellaneous
+
+- FireWire is known to allow read access to the system memory, at
+  least when such devices are allowed to use DMA (Linux:
+  `options ohci1394 phys_dma=0` helps mitigating that).
+
+- IrDA and other network links might allow attacks.
+
+# 3 Implementation
+
+Tails is an implementation of the PELD specification above. It is
+licensed under the GNU GPL version 3 or (at your option) any later
+version.
+
+Critical parts of the configuration are based on the ones from
+well-known and trusted sources, namely Tails ancestor
+[Incognito](https://web.archive.org/web/20071213084719/http://www.browseanonymouslyanywhere.com/)
+and the [Tor Browser](https://www.torproject.org).
+This is for example the case for the firewall and Tor configurations.
+
+**NOTICE**: this distribution is provided as-is with no warranty of
+fitness for a particular purpose, including total anonymity. Anonymity
+depends not only on the software but also on the user understanding
+the risks involved and how to manage those risks.
+
+## 3.0 Other Tails design documents
+
+[[!map pages="contribute/design/*" show="title"]]
+
+## 3.1 Download
+
+See the [[installation section|install]] on [[Tails's website|/index]]
+for download information. Published Tails images integrity can be
+checked using OpenPGP detached signatures made with a key that is well
+linked to the Web of Trust.
+
+The sources are stored in a bunch of [Git](http://git-scm.com/)
+repositories. The [[git page|contribute/git]] on the Tails website provides all
+needed information to access these repositories.
+
+The latest version of this document can be found on the Tails
+website: [[!tails_website contribute/design]].
+
+## 3.2 Software
+
+Tails ships the following software. This list is not complete, but
+only contains packages deemed as important for whatever reason. The
+full packages list can be found in the [BitTorrent files download
+directory](/torrents/files/) (look for files with the `.packages`
+extension).
+
+### 3.2.1 Core software
+
+- [Debian GNU/Linux](https://www.debian.org/): the base operating
+  system, provides hardware detection, infrastructure. Please note
+  that the Debian distribution does not provide or endorse Tails.
+
+- [Tor](http://www.torproject.org/): anonymizing overlay network for
+  TCP. Our intention is to
+  [[always use the latest stable version|contribute/tor]].
+
+Being based in Debian, Tails benefits from its great package
+management tools, facilitating its build and the inclusion of new
+software. Sadly compile time options that would enhance Tails
+security (`-fPIE`, `-fPIC`, `-fstack-protector` etc.) are not widely
+used in Debian yet. Thus having them included in Tails would require
+to recompile every package with the right compile-time options. This
+would badly impact the development and build efforts required to
+release Tails. As an alternative, efforts [have been
+started](https://bugs.debian.org/cgi-bin/pkgreport.cgi?tag=hardening;users=debian-security@lists.debian.org)
+to push usage of such hardening features in Debian.
+
+### 3.2.2 Other applications
+
+See [[doc/about/features]].
+
+## 3.3 Localization
+
+### 3.3.1 Best supported (Tier-1) languages
+
+See [[contribute/how/translate#tier-1-languages]].
+
+### 3.3.2 Locales and spell checking
+
+Tails ships, as is, localization files provided by the installed
+Debian packages.
+
+Additionally, Tails installs by default:
+
+ - All available Tor Browser localization packages
+ - For each Tier-1 language, when available in Debian:
+   - Spell checking dictionaries (usable at least in Tor Browser,
+     LibreOffice and GNOME Text Editor)
+   - Localization packages for LibreOffice and Thunderbird
+
+### 3.3.3 Input methods
+
+Tails ships with IBus and a few engines (Mozc for Japanese, Pinyin
+and Bopomofo for Chinese, and Hangul for Korean).
+
+A login script prepares and configures IBus. When a Japanese,
+Chinese or Korean locale is selected, this login script selects
+the right default input method. GNOME starts the IBus daemon itself.
+
+Still, since one may want to work on documents written in
+Chinese, Japanese or Korean even when selecting English as their
+preferred language, IBus is also started in other locales, with all
+supported input engines pre-loaded.
+
+IBus' environment variables are always exported on login to make this work.
+
+- [[!tails_gitweb config/chroot_local-includes/usr/lib/systemd/user/tails-configure-keyboard.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-configure-keyboard]]
+
+## 3.4 Notification of security issues and new Tails releases
+
+Tails ships a script that checks if there are security issues that are
+not fixed by any Tails release (and thus, affect the currently running
+Tails regardless of its version). A desktop notification is displayed
+for every such issue.
+
+The connections are made to the Tails website through Tor, over HTTPS
+with a pinned CA. The only piece of information leaked to the Tails
+web server (apart of [[!cpan LWP::UserAgent]]'s specific User-Agent
+and HTTP behavior) is the first two chars of the `LANG`
+environment variable.
+
+This script is run after the user has logged-in and Tor is
+in known-working state.
+
+- [[!tails_gitweb config/chroot_local-includes/usr/lib/systemd/user/tails-security-check.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tails-security-check]]
+
+Security issues that were fixed in a newer version of Tails are taken
+care of by [[Tails Upgrader|contribute/design/upgrades]]
+that tells the user whenever they should upgrade and leads them
+through the necessary steps.
+
+## 3.5 Feedback
+
+Users can send feedback in several ways to Tails developers.
+A [[!tails_gitlab desc="task tracker"]] is available.
+Users can also send email to the private [[developers mailing
+list|doc/about/contact#tails]] or to the private [[support mailing
+list|doc/about/contact#support]].
+
+A dedicated application called *WhisperBack*
+is also available in every running Tails copy. WhisperBack allows
+users to send anonymous or pseudonymous feedback via OpenPGP-encrypted
+email. It is configured in Tails to use a dedicated service [run by
+TPA](https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services#whisperback-relay) as the outgoing SMTP server. This doesn't strictly require TLS
+to be used, as the message is encrypted anyway.
+Some minimal information about the system is gathered and sent along with the
+report; the reporting user can opt-out of this though. Users can also provide
+an email address and an OpenPGP public key in case further discussion is needed
+to address the reported issue. WhisperBack's graphical interface fully supports
+internationalization and is ready to be translated.
+
+- [[!tails_gitweb_dir config/chroot_local-includes/etc/whisperback]]
+- [[!tails_gitweb_dir config/chroot_local-includes/usr/lib/python3/dist-packages/whisperBack/]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/whisperback]]
+
+## 3.6 Configuration
+
+In this section we briefly present the setup of several key software
+packages and system settings of Tails with respect to security and
+anonymity. There are of course other minor tweaks here and there, but
+those are mainly for usability issues and similar.
+
+### 3.6.1 The Tor® software
+
+The Tor software is currently configured as a client only (onion
+proxy). The client listens for control connections on port 9052 (using
+cookie authentication) which is non-standard (see about the "control
+port filter" below), as a transparent proxy on port 9040 (only used
+for remapped onion services) and as a DNS server on port 8853.
+
+The client listens on a few SOCKS address/ports. For details,
+see the [[Tor stream isolation design
+page|contribute/design/stream_isolation]]).
+
+Only connections from localhost or from specific network namespaces are
+accepted. It can be argued that running a Tor server (onion router)
+would increase one's anonymity for a number for reasons but we still
+feel that most users probably would not want this due to the added
+consumption of bandwidth.
+
+We disabled the default warning messages of Tor (`WarnPlaintextPorts`)
+when connecting to ports 110 (POP3) and 143 (IMAP). These ports are used
+for both plaintext and StartTLS connections. As more and more email
+providers recommend and even enforce StartTLS on these ports, the effect
+of these warnings were most of the time counterproductive as people had
+to click through needlessly scary security warnings.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/tor/torrc]]
+
+#### Tor control port filter
+
+If a compromised software had access to the Tor control port,
+an attacker who controls it could simply ask Tor the public
+IP through the `GETINFO address` command.
+To prevent this, direct unfiltered access to the Tor control port is only
+granted to the `root` user, as well as to the
+members of the `debian-tor` group (via the control socket).
+
+Additionally, `onion-grater`, a filtering proxy to the control port, runs on port 951,
+so that for instance
+Tor Browser still can perform safe commands like `SIGNAL NEWNYM`. It
+allows defining fine-grained lists of allowed commands (and their
+arguments) and events on a per-application basis, which can enforce
+rules like "this `$user` (e.g. `amnesia`) when running this
+`$application` (e.g. `/usr/bin/onionshare`) from this network namespace,
+can only run these commands (`ADD_ONION` etc.) and listen to these
+events (e.g. `HS_DESC`, which is expected after a successful use of
+`ADD_ONION`)".
+
+- [[!tails_gitweb_dir config/chroot_local-includes/etc/onion-grater.d/]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/onion-grater.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/onion-grater]]
+
+#### Viewing Tor status
+
+[[!tails_gitweb_repo onioncircuits desc="Onion Circuits"]] allows the
+user to view the state of their Tor circuits and streams. The Tor
+Status extension provides a permanent visual indication of whether Tor
+has bootstrapped already.
+
+- [[!tails_gitweb_dir config/chroot_local-includes/usr/share/gnome-shell/extensions/torstatus@tails.boum.org/extension.js]]
+
+### 3.6.2 IPv6
+
+See [[the dedicated design document|design/ipv6]].
+
+<a id="dns"></a>
+
+### 3.6.3 DNS
+
+[[!inline pages="contribute/design/Tor_enforcement/DNS" raw=yes sort="age"]]
+
+### 3.6.4 HTTP Proxy
+
+Tails does not include any HTTP proxy anymore.
+
+### 3.6.5 SOCKS libraries
+
+torsocks and torify are installed. Since Tor-ification is done at a
+lower level (in-kernel network filter, Tor-ified DNS), these tools are
+actually unnecessary. They are solely included due to dependencies and
+configured for completeness.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/tor/tor-tsocks.conf]]
+- [[!tails_gitweb config/chroot_local-hooks/09-torsocks-configuration]]
+
+### 3.6.6 Network Filter
+
+[[!inline pages="contribute/design/Tor_enforcement/Network_filter" raw=yes sort="age"]]
+
+### 3.6.7 MAC address spoofing
+
+See [[the dedicated design document|design/MAC_address]].
+
+### 3.6.8 Host system swap
+
+Tails takes care not to use any swap filesystem that might exist on
+the host machine hard drive. Most of this is done at build time:
+the `/sbin/swapon` binary is replaced by a fake no-op script, and
+live-boot's `swapon` option is not set.
+
+- [[!tails_gitweb config/chroot_local-hooks/05-disable_swapon]]
+
+### 3.6.9 Host system RAM
+
+[[!inline pages="contribute/design/memory_erasure" raw=yes sort="age"]]
+
+### 3.6.10 Host system disks and partitions
+
+Tails takes care not to use any filesystem that might exist on
+the host machine hard drive, unless explicitly told to do so by the
+user. The Debian Live persistence feature is disabled by passing
+`nopersistence` over the kernel command line to live-boot.
+
+- [[!tails_gitweb config/variables]]
+
+### 3.6.11 Filesystems stored on removable devices
+
+Removable drives auto-mounting is disabled in Tails 0.7 and newer.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults]]
+
+### 3.6.12 Passwords
+
+Two users are intended to be used for logins: `amnesia` and `root`.
+None have a password by default; the `amnesia` user is
+allowed to gain super user privileges, using `sudo`, if an
+administrator password is set in tails-greeter.
+
+The PELD specification recommends to prevent executable code to be
+modifiable, even temporarily; Tails does not implement this
+recommendation. Instead, thanks to the super user privileges being
+available to the end-user, Tails makes it possible to modify or add
+executable code by:
+
+- upgrading bundled software: this allows (technical) users to protect
+  themselves from serious security issues until an updated Tails is
+  released
+
+- installing additional software: this helps achieving the PELD
+  "Working on sensitive documents" goal by enabling users to perform
+  tasks that need software not shipped in Tails.
+
+Such modifications happen only in RAM, the user will remove the DVD/USB
+when done and there are no services allowing logins from the network.
+
+As a first step Tails has stopped
+granting `sudo` privileges to the `amnesia` user by default.
+Unless an administrator password is set in tails-greeter,
+no root access is possible afterwards.
+
+<a id="tor-browser"></a>
+
+### 3.6.13 Tor Browser
+
+Tails ships with the Tor Browser, which is based on Mozilla Firefox
+and patched by the Tor Project for improved anonymity by reducing
+information leaks, decreasing attack surface and similar. The actual
+binaries etc. used in Tails are those distributed by the Tor Project,
+but the configuration differs slightly, and the installation is
+completely different, which is described below.
+
+#### Tor Browser installation and customization
+
+Tails diverges from the Tor Browser's one-profile-only design,
+and install the Tor Browser in a globally accessible directory used by
+all browser profiles.
+
+In particular, the global Tor Browser installation is also used
+for the [[Unsafe Browser]], although it is
+user-isolated and uses a separate profile with very different
+configuration (most importantly, it does not use tor for outgoing connections).
+
+The default profile is split from the binaries and application data:
+
+- [[!tails_gitweb config/chroot_local-hooks/10-tbb]]
+- [[!tails_gitweb_dir config/chroot_local-includes/etc/tor-browser]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/tails/tor-browser-prefs.js]]
+
+We modify this Tor Browser installation slightly:
+
+* Tails installs the [uBlock
+  Origin](https://github.com/gorhill/uBlock/) extension.
+  - We add a mandatory signing exception for this add-on.
+  - We ensure uBlock does not download and enable additional
+    per-region/language blocklists, that are a known web fingerprinting vector:
+    [[!tails_gitweb config/chroot_local-includes/usr/share/tails/build/customize-ublock-assets]].
+
+* We use the myspell/hunspell dictionaries provided by Debian.
+
+* We ship all languages supported by Tor Browser, which will select the UI language depending on
+  the locale chosen by the user in our Welcome Screen.
+
+* Tails does not install the Tor Launcher extension as part of the
+  browser.
+  Rationale: Tor Browser in Tails is not allowed to configure tor.
+
+* We modify preferences in `browser/omni.ja` to slightly adjust the UI.
+
+* We append Tails-specific preferences to `browser/omni.ja`.
+
+In Tails we do not use the `start-browser` script, since it does a
+lot of stuff not needed in Tails (error checking mainly) and isn't
+flexible since it looks for the browser profile in a specific
+place. Our custom script makes use of the global installation and also
+makes sure the default profile is used as a basis. Any shared libraries
+shipped inside the Tor Browser are also used (via `LD_LIBRARY_PATH`) since
+Debian stable often has too old versions to start the browser.
+
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-shell-library/tor-browser.sh]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/generate-tor-browser-profile]]
+
+The remaining configuration differences can be found in:
+
+- [[!tails_gitweb_dir config/chroot_local-includes/usr/share/tails/tor-browser-prefs.js]]
+- [[!tails_gitweb config/chroot_local-hooks/14-generate-tor-browser-profile]]
+- [[!tails_gitweb config/chroot_local-hooks/15-tor-browser-bookmarks]]
+
+Here are some useful resources when working on the integration of Tor
+Browser in Tails:
+
+- [Environment variables and related preferences](https://gitlab.torproject.org/tpo/applications/wiki/-/wikis/Environment-variables-and-related-preferences)
+
+#### Tor Browser Flatpak
+
+Tails runs the Tor Browser as a [Flatpak](https://flatpak.org/) that
+is generated and installed at build time.
+
+- [[!tails_gitweb config/chroot_local-hooks/30-flatpak]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/tails/build/flatpak/org.boum.tails.Platform]]
+- [[!tails_gitweb config/chroot_local-includes/usr/share/tails/build/flatpak/org.boum.tails.TorBrowser]]
+
+But this is actually just a "pseudo" Flatpak in the sense that it
+doesn't contain the application files or runtime as usual, which would
+use a lot of disk space (i.e. increase the Tails image size) and add a
+lot of redundancy unless it can be shared with the [[design/Unsafe_Browser]].
+Since the application files are installed in the usual
+Tails filesystem, as described above, we create an overlay filesystem
+with the required bits for the Flatpak runtime:
+
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-flatpak-runtime]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-flatpak-runtime.service]]
+
+We don't primarily do this for security reasons, but for Desktop
+Portal support. We confine Tor Browser sufficiently with AppArmor, but
+this causes significant UX issues when users want to access the
+filesystem, which the FileChooser Portal improves
+significantly. Unfortunately `xdg-desktop-portal` doesn't support
+AppArmor, but it does support Flatpak, which is the primary reason for
+running Tor Browser as a flatpak.
+
+It should be noted that normally Tor Browser's own sandbox is degraded
+when run as a Flatpak, since `flatpak`'s seccomp filter disables the
+use of unprivileged user namespaces (this is really a Firefox issue,
+and [[!mozbug 1882881 desc="affects their Flatpak as well"]]). For this
+reason we patch `flatpak` to add the `--allow=unconfined` option that
+disables the Flatpak seccomp filter to work around this. While this
+significantly degrades the Flatpak sandbox it allows Tor Browser's
+sandbox to run fully, which includes its own seccomp filter that is
+tailored to Tor Browser's specific needs.
+
+By running inside the Flatpak sandbox the filesystem exposed to Tor
+Browser is separated from the "host" one; it's an empty mount
+namespace with a tmpfs as root that is inaccessible from the host,
+except the parts that are explicitly bind-mounted in, either
+automatically by `flatpak run` itself (primarily essentials like
+`/dev`, `/proc`, `/usr`, etc. but also stuff needed for various
+Flatpak features, e.g. `/run` and `~/.var/app`) or as specified by the
+`org.boum.tails.TorBrowser` metadata, which in Tails is completely
+overridden:
+
+- [[!tails_gitweb config/chroot_local-includes/var/lib/flatpak/overrides/org.boum.tails.TorBrowser]]
+
+#### Tor Browser execution chain
+
+The chain of wrappers to achieve this, which is rather complex, is
+described here, in order of how they are executed:
+
+- [[!tails_gitweb
+  config/chroot_local-includes/usr/local/bin/tor-browser]]: improves
+  integration when Tor Browser is used to read the local documentation
+  with `tails-documentation`.
+- [[!tails_gitweb
+  config/chroot_local-includes/usr/local/lib/launch-tor-browser]]: if
+  run while offline this shows the user a helpful prompt where they
+  can confirm if they want to start the browser offline, or get help
+  to connect to Tor.
+- [[!tails_gitweb
+  config/chroot_local-includes/usr/local/lib/tails-run-tor-browser-in-flatpak]]:
+  we run Tor Browser
+  - in the `tbb` network namespace,
+  - in an environment with the required environment variables set,
+  - using `flatpak`, instructing it to execute the final wrapper in
+    the chain.
+- [[!tails_gitweb config/chroot_local-includes/usr/bin/tor-browser]]:
+  sets up some final Tor Browser-specific environment variables that we
+  share with upstream and uses [[!tails_gitweb
+  config/chroot_local-includes/usr/local/lib/tails-shell-library/tor-browser.sh
+  desc="Tails' shell library"]] (shared with the [[Unsafe Browser]])
+  to finally execute the Tor Browser binary.
+
+### 3.6.14 Thunderbird
+
+Thunderbird sends email through Tor.
+
+Thunderbird leaks a lot of information by default. This is mitigated
+in Tails by a set of preferences, that were initially inherited from
+the now defunct *TorBirdy* add-on. For example:
+
+ - Thunderbird is configured to say `EHLO[127.0.0.1]` to the SMTP
+   server instead of disclosing the real IP address and hostname.
+
+ - We disable HTML email and inline attachments in order to get rid of
+   a whole class of privacy concerns.
+
+ - When setting up an IMAP account, the drafts folder, instead
+   of being remote, is set to `~$HOME/.thunderbird/Local Folders`.
+
+Implementation:
+
+- [[!tails_gitweb config/chroot_local-includes/etc/thunderbird/pref/aa_tails.js]]
+- [[!tails_gitweb config/chroot_local-includes/usr/lib/thunderbird/thunderbird.cfg]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/thunderbird]]
+
+OpenPGP support is integrated in *Thunderbird* since version 78.
+
+### 3.6.15 Pidgin
+
+Pidgin is configured in Tails to not log anything as well as not to reveal too
+much of user activity by disabling reporting of online/away/typing
+status. Only IRC and Jabber/XMPP protocols are left available, to
+avoid the usage of less well audited plugins. The Off-the-record
+plugin is enabled
+to help one-to-one conversations being as private and unrecordable as
+possible.
+
+- [[!tails_gitweb_dir config/chroot_local-includes/etc/skel/.purple]]
+- [[!tails_gitweb config/chroot_local-hooks/09-remove_unsupported_pidgin_libs]]
+
+### 3.6.16 GnuPG
+
+GnuPG and Kleopatra are configured to use
+<https://keys.openpgp.org> via its Onion service, since it's reliable.
+
+GnuPG is configured accordingly to the [OpenPGP Best
+Practices](https://riseup.net/en/security/message-security/openpgp/best-practices),
+e.g. to prefer non-outdated digest algorithms from the
+SHA-2 family, to force exclusion of the version string in ASCII armored
+output, to avoid automatically locating and retrieving keys, and to
+disregard the preferred keyserver assigned to specific keys.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/skel/.gnupg/gpg.conf]]
+- [[!tails_gitweb config/chroot_local-includes/etc/skel/.gnupg/dirmngr.conf]]
+- [[!tails_gitweb config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults]]
+
+### 3.6.17 Persistent Storage
+
+An opt-in data persistence feature is available in Tails 0.11 and
+newer. See [[contribute/design/persistence]] for details.
+
+### 3.6.18 Installation on USB sticks and SD cards
+
+An easy (read: not command-line based) way to install and upgrade
+Tails on USB sticks and SD cards is available in Tails 0.11 and newer.
+SD cards readers wired via SDIO are supported since Tails 0.21.
+See [[design/installation]] for details.
+
+### 3.6.19 Wireless devices handling
+
+Tails puts the wireless devices in a sensible state at boot time.
+
+At boot time, Tails unblocks Wi-Fi, WWAN and WiMAX radios
+and soft-blocks all other kinds of wireless devices (e.g. Bluetooth,
+UWB, GPS, FM).
+
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-set-wireless-devices-state.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-set-wireless-devices-state]]
+
+### 3.6.20 OpenSSH
+
+The OpenSSH client is configured to use the Tor SOCKS proxy.
+
+- [[!tails_gitweb config/chroot_local-includes/etc/ssh/ssh_config]]
+
+### 3.6.21 Automatic upgrades
+
+When a Tails release is out, Tails users are proposed to download and
+apply a partial upgrade (that is, only what has changed between two
+releases). See [[contribute/design/upgrades]] for details.
+
+### 3.6.22 Panel applets and GNOME Shell extensions
+
+Tails ships a few custom GNOME panel applets and GNOME Shell
+extensions.
+
+The status-menu-helper GNOME Shell extension provides two-clicks shutdown and
+restart actions, as well as screen locking.
+
+- [[!tails_gitweb_dir config/chroot_local-includes/usr/share/gnome-shell/extensions/status-menu-helper@tails.boum.org]]
+
+### 3.6.23 DHCP hostname leaks
+
+We configure NetworkManager so its DHCP client does not send the
+hostname in DHCP requests.
+
+* [[!tails_gitweb config/chroot_local-includes/etc/NetworkManager/conf.d/dhcp-send-hostname.conf]]
+
+### 3.6.25 Application isolation
+
+Tails has some minimal [[contribute/design/application_isolation]] to
+mitigate a bit the consequences of security issues in individual
+applications being exploited by attackers.
+
+### 3.6.26 wget
+
+We wrap `wget` with `torsocks`, after unsetting the `http_proxy`
+environment variable and friends, so that it talks directly to the Tor
+SOCKS port.
+
+- [[!tails_gitweb config/chroot_local-includes/usr/local/bin/wget]]
+
+### 3.6.27 APT
+
+During most of the ISO build process, APT uses the proxy configured
+through `live-build` (that is, usually a local `apt-cacher-ng`).
+
+However, at boot time, a hook does (a more elaborate version of)
+`s,http://,tor+http://` in APT sources. Then, APT will use the
+`tor+http` method, that is provided by [[!debpkg apt-transport-tor]].
+
+- [[!tails_gitweb config/chroot_local-includes/lib/live/config/1500-reconfigure-APT]]
+
+### 3.6.28 Electrum
+
+We install the [Electrum](https://electrum.org) Bitcoin client and the
+default configuration tells it to use the default of Tor's
+SOCKSPort:s, and sync the necessary parts of the Bitcoin blockchain
+(as a lightweight client) from the default server pool using SSL.
+
+There is also a feature of the Persistent Storage for the live user's `.electrum`
+configuration folder, which stores the Bitcoin wallet, application
+preferences and the cached Bitcoin blockchain.
+
+- [[!tails_gitweb_dir config/chroot_local-includes/etc/skel/.electrum]]
+
+### 3.6.29 Kernel hardening
+
+[[!inline pages="contribute/design/kernel_hardening" raw=yes sort="age"]]
+
+### 3.6.30 Time zone
+
+Tails sets the system time zone to UTC to make it harder to distinguish Tails
+users from each other.
+
+This confuses users, so we aim to provide ways to display the date and time in
+the user's own time zone, without changing the actual system time that
+applications would leak:
+
+ - [[status and plans|doc/first_steps/desktop/time]]
+ - [[!tails_gitweb_dir config/chroot_local-includes/usr/share/gnome-shell/extensions/date@tails.boum.org/]]
+ - [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-get-date]]
+
+An adversary who can run arbitrary code as the `amnesia` user can use `sudo
+tails-get-date` to discover the timezone that the user chose. This is mitigated
+by the fact the most security-sensitive applications running as the `amnesia`
+user (e.g. Tor Browser, Thunderbird, and Pidgin) are not allowed to run `sudo`,
+thanks to AppArmor confinement and/or bubblewrap.
+
+## 3.7 Running Tails in virtual machines
+
+### 3.7.1 Current support
+
+Tails may of course be run in virtual machines. Due to the
+popularity of [VMWare](http://www.vmware.com/) we include
+[open-vm-tools](http://open-vm-tools.sourceforge.net/) (an open-source
+alternative to VMware tools) as well as special video drivers
+for an improved user experience in that environment. Due to the
+closed-source nature of VMWare we try to encourage users of open VMs,
+like [VirtualBox](http://virtualbox.org/) and
+[QEMU](http://www.qemu.org/), by making sure that
+these also work. In the case of VirtualBox both video and input
+drivers are included, as well as the guest utilities.
+
+### 3.7.2 Security concerns
+
+Security concerns for all VMs are numerous. Tails therefore tries to
+detect whether it is run inside a VM and [[warns the
+user|design/virtualization_support]] if it is.
+
+### 3.7.3 Running Tails inside a Windows session
+
+[[!tails_ticket 6083 desc="Potential work"]] may make it easier to
+run the DVD/USB in a virtual machine inside a Windows session whenever
+native boot is impossible or not desirable. This probably will be
+implemented by shipping a [QEMU](http://www.qemu.org/) or
+[VirtualBox](http://www.virtualbox.org/) binary for Microsoft Windows.
+
+## 3.8 Build process and maintenance
+
+### 3.8.1 Build tools
+
+The [Debian Live](https://www.debian.org/devel/debian-live/) is a toolkit to build Live
+systems based on Debian, such as Tails. Debian Live is designed to
+automate the build process of the target distribution, which eases
+Tails development and maintenance. As an added bonus, Debian Live
+makes it possible for other people to build custom systems based on
+Tails, e.g. to include additional software.
+
+For detailed instructions on how to build and modify Tails, see
+the [[contribute/build]] page and the [[contribute]] section on the wiki.
+
+### 3.8.2 Testing process
+
+An automated build and test environment is useful to avoid
+regressions in Tails, especially anonymity and security related
+ones. It also makes it easier for developers to work on Tails with
+more confidence, and at release time to cut down the time needed for
+quality assurance work.
+
+Tails' [[manual test suite|contribute/release_process/test]] is "run"
+against Tails release candidates images before they are officially
+published. Automating this test suite is [[partly
+done|contribute/release_process/test/automated_tests]], and a work
+in progress.
+
+### 3.8.3 Upgrades
+
+Keeping Tor (stable releases only, unless the Tor core developers
+recommend otherwise) and the Tor Browser up-to-date is a priority.
+
+Remaining applications, including the base system, will be upgraded
+using Debian standard upgrade process, and generally based on the
+latest Debian stable release so there are not many problems.
+
+We intend to build and publish bugfix releases (e.g.
+[[0.6.1|news/version_0.6.1]]) in a timely manner when security issues
+affect Tails. Such releases are based on the [[stable Git
+branch|contribute/git]] and can thus also fix important — although not
+security-related — bugs.
+
+## 3.9 Hardware support
+
+Tails generally [[ships the latest Linux
+kernel|contribute/Linux_kernel]] from Debian unstable or [Debian
+Backports](https://backports.debian.org/) as a compromise between
+stability and recent hardware support. Recent Intel and AMD microcode
+are included as well.
+
+Tails supports only the x86-64 hardware architecture.
+
+A 64-bit Linux kernel (*amd64* flavour) and userspace are included.
+
+* [[!tails_gitweb auto/config]]
+* [[!tails_gitweb config/binary_local-hooks/20-syslinux_detect_cpu]]
+
+Binary firmware blobs from the Debian `non-free` archive are installed
+when no good Free Software alternative exists. Our reasoning behind
+this choice is:
+
+* If Tails does not work out-of-the-box on the computer(s) they have
+  available, most potential users will simply use something else, that
+  will:
+
+  1. just work ("thanks" to the inclusion of binary firmware);
+  2. be less safe in the vast majority of real-world cases.
+
+* Much hardware that does not require proprietary firmware to be
+  injected into it at runtime is simply embedding such proprietary
+  blobs, often on read-only memory. Not only this does not provide
+  much more security than injecting proprietary firmware at runtime,
+  but it prevents hardware vendors from fixing (potentially
+  security-relevant) bugs in the firmware once it's been shipped
+  to users.
+
+## 3.10 Caveats
+
+Tails currently offers almost no protection against live physical
+monitoring, except for hardware keyloggers.
+
+UDP is a problem. The Tor network does not support it. Outgoing UDP
+packets are dropped altogether by netfilter for this reason.
+
+Tails does not support [[!tails_ticket 6070 desc="arbitrary DNS queries"]].
+
+Some tools currently available to command-line users lack the
+integration into Tails and/or graphical user interface that would be
+needed to make them useful to anyone.
+
+Other caveats are listed on the [[support/known issues]] page.
+
+## 3.11 Fingerprint
+
+Tails tries to make it as difficult as possible to distinguish Tails
+users from other Tor users.
+
+The Tor Browser used in Tails is configured to match the fingerprint of the Tor Browser
+Bundle and the known differences, if any, are listed in the [[known
+issues|support/known_issues]] page.
+
+However the fact that different browser extensions are installed in Tails and in
+the Tor Browser surely allows more sophisticated attacks that usual fingerprint
+as returned by tools such as <https://coveryourtracks.eff.org/> and
+<http://ip-check.info/>. For example, the fact that uBlock Origin is removing
+ads could be analysed.
+
+From the point of view of the local network administrator:
+
+ - When the user chooses in _Tor Connection_ to hide the fact they are using Tor,
+   Tails is almost exclusively generating Tor activity and that is probably quite
+   different from other Tor Browser users. We believe this would be hard to avoid.
+
+ - When the user chooses to configure Tor automatically, and not hide the fact
+   they are using Tor, they consent to Tails initiating Internet activity
+   without going through Tor, in order to help them connect to Tor.
+   For details, see our design documentation about
+   [[non-Tor traffic|contribute/design/Tor_enforcement#non-tor-traffic]].
+
+# 5 Bibliography
+
+- [Live CD Best
+  Practices](https://trac.torproject.org/projects/tor/wiki/TheOnionRouter/LiveCDBestPractices)
+  document on the Tor wiki
+- Roger Dingledine, Nick Mathewson and Paul Syverson. [Tor: The
+  Second-Generation Onion
+  Router](https://svn.torproject.org/svn/projects/design-paper/tor-design.pdf)
+- Mike Perry, Erinn Clark, Steven Murdoch. [The Design and Implementation of the Tor Browser](https://www.torproject.org/projects/torbrowser/design/)

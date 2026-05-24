@@ -1,0 +1,22 @@
+#! /usr/bin/python3
+
+import argparse
+import debian.changelog
+import subprocess
+
+parser = argparse.ArgumentParser()
+parser.add_argument('--version', required=True)
+args = parser.parse_args()
+
+with open('debian/changelog', 'r') as f:
+    changelog = debian.changelog.Changelog(f)
+    # Remove the placeholder entry for the next release
+    changelog._blocks = changelog._blocks[1:]
+    changelog_minus_first_entry = changelog
+
+with open('debian/changelog', 'w') as f:
+    f.write(subprocess.check_output(
+        ['bin/generate-changelog', '--version', args.version]
+    ).decode('utf-8'))
+    f.write("\n")
+    changelog_minus_first_entry.write_to_open_file(f)

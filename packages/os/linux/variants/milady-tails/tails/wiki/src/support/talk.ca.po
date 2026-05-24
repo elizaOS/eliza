@@ -1,0 +1,128 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2026-03-14 05:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Contact us\"]]"
+msgstr "[[!meta title=\"Contacteu amb nosaltres\"]]"
+
+#. type: Content of: <h1>
+msgid "Report an error"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "WhisperBack"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+msgstr "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Reporting an error from Tails using [[<i>WhisperBack</i>|doc/first_steps/"
+"whisperback]] is the most private and the most useful way of contacting us."
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Other support channels"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Forum"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+
+#. type: Content of: <div><div><p><p>
+msgid ""
+"Talk with other Tails users in the [[Tails category of the Tor Forum|https://"
+"forum.torproject.org/c/support/tails/33]]."
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Email"
+msgstr "Correu electrònic"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+#| msgid "[[support@tails.net|doc/about/contact#support]]"
+msgid "Write us at [[support@tails.net|doc/about/contact#support]]."
+msgstr "[[support@tails.net|doc/about/contact#support]]"
+
+#. type: Content of: <div><div><p>
+msgid "Please write in English."
+msgstr "Si us plau, escriviu en anglès."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Encrypting your emails with our [[OpenPGP key|doc/about/"
+"openpgp_keys#support]] is the only way to achieve end-to-end encryption."
+msgstr ""
+"Encriptar els vostres correus electrònics amb la nostra [[clau OpenPGP|doc/"
+"about/openpgp_keys#support]] és l'única manera d'aconseguir un encriptatge "
+"d'extrem a extrem."
+
+#. type: Content of: <div><div><h3>
+msgid "Chat"
+msgstr "Xat"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-message\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-message\"></i>"
+
+#. type: Content of: <div><div>
+msgid "[[!inline pages=\"support/chat\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"support/chat.ca\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!img lib/email.png link=no]]"
+#~ msgstr "[[!img lib/email.png link=no]]"
+
+#~ msgid "You can write us by email:"
+#~ msgstr "Ens podeu escriure per correu electrònic:"
+
+#~ msgid "[[!img lib/chat.png link=no]]"
+#~ msgstr "[[!img lib/chat.png link=no]]"
+
+#~ msgid "Join our XMPP chat room to talk to contributors and users."
+#~ msgstr ""
+#~ "Uniu-vos a la nostra sala de xat XMPP per parlar amb col·laboradors i "
+#~ "usuaris."
+
+#~ msgid "Room: <code>tails</code>"
+#~ msgstr "Sala: <code>tails</code>"
+
+#~ msgid "Server: <code>chat.disroot.org</code>"
+#~ msgstr "Servidor: <code>chat.disroot.org</code>"
+
+#~ msgid "use TLS/SSL to connect!"
+#~ msgstr "utilitzeu TLS/SSL per connectar-vos!"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline\" "
+#~ "raw=\"yes\"]]"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.ca\" raw=\"yes\"]]"

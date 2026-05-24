@@ -1,0 +1,20 @@
+--- a/etc/default/intel-microcode	2014-10-31 10:36:32.820672284 +0100
++++ b/etc/default/intel-microcode	2014-10-31 10:36:51.148470102 +0100
+@@ -7,7 +7,7 @@
+ # Set this to "no" to disable automatic microcode updates on boot;
+ # Set this to "auto" to use early initramfs mode automatically (default);
+ # Set this to "early" to always attempt to create an early initramfs;
+-#IUCODE_TOOL_INITRAMFS=auto
++IUCODE_TOOL_INITRAMFS=early
+ 
+ # Set this to "yes" (default) to use "iucode_tool --scan-system" to reduce
+ # the initramfs size bloat, by detecting which Intel processors are active
+@@ -18,7 +18,7 @@
+ #
+ # WARNING: including all microcodes will increase initramfs size greatly.
+ # This can cause boot issues if the initramfs is already large.
+-#IUCODE_TOOL_SCANCPUS=yes
++IUCODE_TOOL_SCANCPUS=no
+ 
+ # Extra options to pass to iucode_tool, useful to forbid or to
+ # force the inclusion of microcode for specific processor signatures.

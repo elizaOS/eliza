@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -eu
+
+restart_user_unit() {
+    runtime_dir=/run/user/1000
+    [ -S "${runtime_dir}/bus" ] || return 0
+    runuser -u amnesia -- env \
+        HOME=/home/amnesia \
+        XDG_RUNTIME_DIR="${runtime_dir}" \
+        DBUS_SESSION_BUS_ADDRESS="unix:path=${runtime_dir}/bus" \
+        systemctl --user restart elizaos-agent.service elizaos-renderer.service milady.service >/dev/null 2>&1 || true
+}
+
+restart_user_unit
+if systemctl is-active --quiet milady.service; then
+    systemctl try-restart milady.service || true
+fi

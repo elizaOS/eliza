@@ -1,0 +1,72 @@
+[[!meta title="Tails 6.15"]]
+[[!meta date="Thu, 01 May 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.5.1](https://blog.torproject.org/new-release-tor-browser-1451).
+
+- Update the *Linux* kernel to 6.1.135.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Make sure Tails cannot store data in UEFI variables or ACPI tables when crashing.
+  ([[!tails_ticket 20813]])
+
+- Fix the appearance of the GRUB Boot Loader with Secure Boot.
+  ([[!tails_ticket 20899]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+- Remove firmware for the Wi-Fi interfaces based on the BCM4301 and BCM4306
+  chips. ([[!tails_ticket 20887]])
+
+  We believe that these interfaces are only available on computers that are too
+  old to start Tails. Please [[let us know|support#talk]] if your Wi-Fi stopped
+  working in Tails 6.15.
+
+- The *Unsafe Browser* appears in the window list bar with the *Tor Browser* icon.
+  ([[!tails_ticket 20934]])
+
+- Additional software may initially
+  fail to install the first time you start Tails after upgrading. This should be
+  fixed shortly after you connect to Tor.
+
+- Connecting to the Internet with *USB tethering* is broken with some phones.
+  ([[!tails_ticket 20940]])
+
+<h1 id="get">Get Tails 6.15</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.15.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.15 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.15 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

@@ -1,0 +1,362 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Modifying the boot options using the Boot Loader\"]]\n"
+msgstr "[[!meta title=\"Modificació de les opcions d'arrencada mitjançant el Carregador d'Arrencada\"]]\n"
+
+#. type: Plain text
+msgid "The Boot Loader is the first screen that appears when Tails starts."
+msgstr ""
+"El Carregador d'Arrencada és la primera pantalla que apareix quan s'inicia "
+"Tails."
+
+#. type: Plain text
+msgid ""
+"You can use the Boot Loader to modify the *boot options*. Boot options are "
+"special parameters used to troubleshoot or work around hardware support "
+"problems.  For example, our [[list of known issues with graphics cards|"
+"support/known_issues/graphics]] documents boot options for different "
+"graphics cards."
+msgstr ""
+"Podeu utilitzar el Carregador d'Arrencada per modificar les *opcions "
+"d'arrencada*. Les opcions d'arrencada són paràmetres especials utilitzats "
+"per resoldre problemes o trobar solucions temporals a problemes de "
+"compatibilitat amb el maquinari. Per exemple, la nostra [[llista de "
+"problemes coneguts amb targetes gràfiques|support/known_issues/graphics]] "
+"documenta opcions d'arrencada per a diferents targetes gràfiques."
+
+#. type: Plain text
+msgid ""
+"Depending on the computer, the Boot Loader might be either *GRUB* or "
+"*SYSLINUX*."
+msgstr ""
+"Depenent de l'ordinador, el Carregador d'Arrencada podria ser *GRUB* o "
+"*SYSLINUX*."
+
+#. type: Plain text
+msgid ""
+"In both *GRUB* and *SYSLINUX*, the keyboard layout of the Boot Menu is set "
+"to English (US)."
+msgstr ""
+"Tant a *GRUB* com a *SYSLINUX*, la disposició del teclat del Menú "
+"d'arrencada està configurada en anglès (EUA)."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img english_us_keyboard.png alt=\"\"]]\n"
+msgstr "[[!img english_us_keyboard.png alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"syslinux\"></a>\n"
+msgstr "<a id=\"syslinux\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Using *SYSLINUX*"
+msgstr "Utilitzant *SYSLINUX*"
+
+#. type: Plain text
+msgid "This is what *SYSLINUX* looks like:"
+msgstr "Aquesta és l'aparença de *SYSLINUX*:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "[[!img install/inc/screenshots/syslinux.png link=\"no\" class=\"screenshot\" alt=\"Black screen ('SYSLINUX') with Tails\n"
+#| "logo and 2 options: 'Tails' and 'Tails (Troubleshooting Mode)'.\"]]\n"
+msgid ""
+"[[!img install/inc/screenshots/syslinux.png class=\"screenshot\" alt=\"Black screen ('SYSLINUX') with Tails\n"
+"logo and 2 options: 'Tails' and 'Tails (Troubleshooting Mode)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/syslinux.png link=\"no\" class=\"screenshot\" alt=\"Pantalla negra ('SYSLINUX') amb el logotip\n"
+"de Tails i dues opcions: 'Tails' i 'Tails (Troubleshooting Mode)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your Boot Loader looks different, refer to our instructions below on\n"
+"modifying the boot options [[using GRUB|boot_options#grub]].</p>\n"
+msgstr ""
+"<p>Si el vostre Carregador d'Arrencada sembla diferent, consulteu les nostres instruccions a continuació\n"
+"per modificar les opcions d'arrencada [[utilitzant GRUB|boot_options#grub]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "To modify the boot options in *SYSLINUX*:"
+msgstr "Per modificar les opcions d'arrencada a *SYSLINUX*:"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->\n"
+msgstr "<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Tab** when *SYSLINUX* appears."
+msgstr "Premeu la tecla de **tabulació** quan aparegui *SYSLINUX*."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   A command line with a list\n"
+"   of boot options appears at the bottom of the screen.\n"
+msgstr ""
+"   Una línia d'ordres amb una llista\n"
+"   d'opcions d'arrencada apareix a la part inferior de la pantalla.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   [[!img syslinux-with-options.png link=\"no\" class=\"screenshot\" alt=\"SYSLINUX with\n"
+#| "   a list of options starting with '/live/vmlinuz' at the bottom\"]]\n"
+msgid ""
+"   [[!img syslinux-with-options.png class=\"screenshot\" alt=\"SYSLINUX with\n"
+"   a list of options starting with '/live/vmlinuz' at the bottom\"]]\n"
+msgstr ""
+"   [[!img syslinux-with-options.png link=\"no\" class=\"screenshot\" alt=\"SYSLINUX amb\n"
+"   una llista d'opcions que comencen per '/live/vmlinuz' a la part inferior\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Modify the boot options as needed."
+msgstr "Modifiqueu les opcions d'arrencada segons sigui necessari."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   To add a boot option, press **Space** and type the boot option that you\n"
+"   want to add.\n"
+msgstr ""
+"   Per afegir una opció d'arrencada, premeu **Espai** i teclejeu l'opció d'arrencada que\n"
+"   vulgueu afegir.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you want to add more than one boot option, type them one after the\n"
+"   other and separate them with a **Space**.\n"
+msgstr ""
+"   Si voleu afegir més d'una opció d'arrencada, escriviu-les una darrere\n"
+"   l'altra i separeu-les amb un **Espai**.\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Enter** to start Tails."
+msgstr "Premeu la tecla de **Retorn** per iniciar Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"grub\"></a>\n"
+msgstr "<a id=\"grub\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Using *GRUB*"
+msgstr "Utilitzant *GRUB*"
+
+#. type: Plain text
+msgid "This is what *GRUB* looks like:"
+msgstr "Aquesta és l'aparença de *GRUB*:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black screen ('GNU GRUB') with Tails\n"
+"logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Pantalla negra ('GNU GRUB') amb el\n"
+"logotip de Tails i tres opcions: 'Tails', 'Tails (Troubleshooting Mode)' i 'Tails (External Hard Disk)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your Boot Loader looks different, refer to our instructions on\n"
+"modifying the boot options [[using SYSLINUX|boot_options#syslinux]] above.</p>\n"
+msgstr ""
+"<p>Si el vostre Carregador d'Arrencada té un aspecte diferent, consulteu les nostres instruccions sobre\n"
+"com modificar les opcions d'arrencada [[utilitzant SYSLINUX|boot_options#syslinux]] anteriors.</p>\n"
+
+#. type: Plain text
+msgid "To modify the boot options in *GRUB*:"
+msgstr "Per modificar les opcions d'arrencada a *GRUB*:"
+
+#. type: Bullet: '1. '
+msgid "Press **e** when GRUB appears."
+msgstr "Premeu la tecla **e** quan aparegui GRUB."
+
+#. type: Plain text
+#, no-wrap
+msgid "   A new screen appears with more options.\n"
+msgstr "   Apareix una nova pantalla amb més opcions.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   [[!img grub-with-options.png class=\"screenshot\" alt=\"GRUB with a list of\n"
+"   options starting with 'setparams Tails'\"]]\n"
+msgstr ""
+"   [[!img grub-with-options.png class=\"screenshot\" alt=\"GRUB amb una llista\n"
+"   d'opcions que comencen per 'setparams Tails'\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   To add a boot option, navigate with the arrows of the keyboard to the end of the line that\n"
+"   starts with `linux`.\n"
+"   Type the boot option that you want to add. The line is most likely\n"
+"   wrapped and displayed on several lines but it is a single configuration line.\n"
+msgstr ""
+"   Per afegir una opció d'arrencada, navegueu amb les fletxes del teclat fins al final de la línia que\n"
+"   comença per `linux`.\n"
+"   Escriviu l'opció d'arrencada que voleu afegir. És probable que la línia\n"
+"   es trenqui i es mostri en diverses línies, però es tracta d'una única línia de configuració.\n"
+
+#. type: Bullet: '1. '
+msgid "Press **Ctrl+X**, **F10**, or **Fn+F10** to start Tails."
+msgstr "Premeu **Ctrl+X**, **F10** o **Fn+F10** per iniciar Tails."
+
+#. type: Title =
+#, fuzzy, no-wrap
+#| msgid "Modify the boot options as needed."
+msgid "Modify the boot options on the USB stick"
+msgstr "Modifiqueu les opcions d'arrencada segons sigui necessari."
+
+#. type: Plain text
+msgid ""
+"To use modified boot options automatically when restarting Tails, you can "
+"save these changes to your Tails USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>These modifications are deleted each time you upgrade Tails. ([[!tails_ticket 18268]])</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To do so:"
+msgstr "Per fer-ho:"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Open a *Terminal*."
+msgid "Open a *Console*."
+msgstr "Obriu un *Terminal*."
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute to following command to allow modifying the content of the Tails "
+"partition on the USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo mount -o remount,rw /usr/lib/live/mount/medium/</p>\n"
+msgstr "   <p class=\"command\">sudo mount -o remount,rw /usr/lib/live/mount/medium/</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following command to edit the configuration of the Boot Loader."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "If your computer uses *SYSLINUX*:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/syslinux/live64.cfg</p>\n"
+msgstr ""
+"     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/"
+"syslinux/live64.cfg</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     The section `label live` corresponds to the default boot options.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     The section `label livefailsafe` corresponds to the troubleshooting mode.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "If your computer uses *GRUB*:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/EFI/debian/grub.cfg</p>\n"
+msgstr ""
+"     <p class=\"command\">gnome-text-editor admin:/usr/lib/live/mount/medium/"
+"EFI/debian/grub.cfg</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The section `menuentry 'Tails 6.11'` corresponds to the default boot\n"
+"     options.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The section `menuentry 'Tails 6.11 (Troubleshooting Mode)'` corresponds to\n"
+"     the troubleshoot mode.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Save your changes."
+msgstr "Deseu els vostres canvis."
+
+#. type: Bullet: '1. '
+msgid "Restart to test your changes."
+msgstr ""
+
+#, no-wrap
+#~ msgid "<p>It is currently impossible to change boot options permanently.</p>\n"
+#~ msgstr "<p>Actualment és impossible canviar les opcions d'arrencada de forma permanent.</p>\n"
+
+#, no-wrap
+#~ msgid "<p>See [[!tails_ticket 18268]] for workarounds.</p>\n"
+#~ msgstr "<p>Vegeu [[!tails_ticket 18268]] per solucions temporals.</p>\n"

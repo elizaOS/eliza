@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+_Name=Unlock VeraCrypt Volumes
+_Comment=Mount VeraCrypt encrypted file containers and devices
+_Keywords=mount;encrypted;container;truecrypt
+Icon=unlock-veracrypt-volumes.png
+Exec=unlock-veracrypt-volumes %U
+MimeType=application/x-tcrypt-container
+Terminal=false
+Categories=GTK;Encryption;Utility;X-GNOME-Utilities;
+Keywords=VeraCrypt;TrueCrypt;Encryption;Volume;Container;Device;Mount;Unlock;Decrypt
+StartupNotify=true
+StartupWMClass=unlock-veracrypt-volumes

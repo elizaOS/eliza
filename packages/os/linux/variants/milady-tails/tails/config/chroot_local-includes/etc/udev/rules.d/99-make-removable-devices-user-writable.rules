@@ -1,0 +1,3 @@
+# This is essentially borrowed from /lib/udev/rules.d/91-permissions.rules
+# in order to workaround #8273.
+SUBSYSTEM=="block", ACTION=="add", SUBSYSTEMS=="usb|mmc", GROUP="floppy"

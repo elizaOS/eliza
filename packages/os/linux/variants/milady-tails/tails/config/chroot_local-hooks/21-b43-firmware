@@ -1,0 +1,23 @@
+#!/bin/sh
+
+set -eu
+
+echo 'Installing b43 firmware'
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+VERSION="6.30.163.46"
+BROADCOM_WL="broadcom-wl-${VERSION}"
+WL_APSTA="${BROADCOM_WL}.wl_apsta.o"
+DOWNLOAD="${BROADCOM_WL}.tar.bz2"
+FIRMWARE_INSTALL_DIR="/lib/firmware"
+SRC_DIR=/tmp/submodules/tails-workarounds
+
+WORKDIR="$(mktemp -d)"
+cd "$WORKDIR"
+tar xvjf "${SRC_DIR}/${DOWNLOAD}" "${WL_APSTA}"
+ensure_hook_dependency_is_installed b43-fwcutter
+b43-fwcutter --target-dir "${FIRMWARE_INSTALL_DIR}" "${WL_APSTA}"
+cd
+rm -rf "${WORKDIR}"

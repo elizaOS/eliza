@@ -1,0 +1,110 @@
+[[!meta title="Tails 6.11"]]
+[[!meta date="Thu, 09 Jan 2025 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="security">Critical security fixes</h1>
+
+<div class="attack">
+
+<p>The vulnerabilities described below were identified during an external
+security audit by <a href="https://www.radicallyopensecurity.com/">Radically
+Open Security</a> and disclosed responsibly to our team. We are not aware of
+these attacks being used against Tails users until now.</p>
+
+<p>These vulnerabilities can only be exploited by a powerful attacker who has
+already exploited another vulnerability to take control of an application in
+Tails.</p>
+
+<p>If you want to be extra careful and used Tails a lot since January 9 without
+upgrading, we recommend that you do a manual upgrade
+instead of an automatic upgrade.</p>
+
+</div>
+
+- Prevent an attacker from installing malicious software permanently. ([[!tails_ticket 20701]])
+
+  In Tails 6.10 or earlier, an attacker who has already taken control of an
+  application in Tails could then exploit a vulnerability in *Tails Upgrader*
+  to install a malicious upgrade and permanently take control of your Tails.
+
+  Doing a [[manual upgrade|doc/upgrade/#manual]] would erase such malicious software.
+
+- Prevent an attacker from monitoring online activity. ([[!tails_ticket 20709]] and [[!tails_ticket 20702]])
+
+  In Tails 6.10 or earlier, an attacker who has already taken control of an
+  application in Tails could then exploit vulnerabilities in other applications
+  that might lead to deanonymization or the monitoring of browsing activity:
+
+  * In *Onion Circuits*, to get information about Tor circuits and close them.
+  * In *Unsafe Browser*, to connect to the Internet without going through Tor.
+  * In *Tor Browser*, to monitor your browsing activity.
+  * In *Tor Connection*, to reconfigure or block your connection to the Tor network.
+
+- Prevent an attacker from changing the Persistent Storage settings. ([[!tails_ticket 20710]])
+
+<h1 id="features">New features</h1>
+
+<h2>Detection of partitioning errors</h2>
+
+Sometimes, the partitions on a Tails USB stick get corrupted. This creates
+errors with the Persistent Storage or during upgrades. Partitions can get
+corrupted because of broken or counterfeit hardware, software errors, or
+physically removing the USB stick while Tails is running.
+
+Tails now warns about such partitioning errors earlier. For example, if
+partitioning errors are detected when there is no Persistent Storage, Tails
+recommends that you reinstall or use a new USB stick.
+
+[[!img partitioning_errors.png link="no" alt="Warning in the Welcome Screen: Errors were detected in the partitioning of your Tails USB stick."]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.0.4](https://blog.torproject.org/new-release-tor-browser-1404).
+
+- Update *Thunderbird* to [128.5.0esr](https://www.thunderbird.net/en-US/thunderbird/128.5.0esr/releasenotes/).
+
+- Remove support for hardware wallets in *Electrum*. Trezor wallets stopped
+  working in Debian 12 (Bookworm), and so in Tails 6.0 or later.
+
+- Disable *GNOME Text Editor* from reopening on the last file. ([[!tails_ticket 20704]])
+
+- Add a link to the *Tor Connection* assistant from the menu of the Tor status
+  icon on the desktop.
+
+- Make it easier for our team to find useful information in *WhisperBack* reports.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.11</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.11.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.11 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.11 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

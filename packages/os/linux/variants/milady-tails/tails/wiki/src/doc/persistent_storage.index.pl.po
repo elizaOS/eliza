@@ -1,0 +1,82 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-25 11:32+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Bullet: '- '
+msgid "[[Introduction to the Persistent Storage|persistent_storage]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Creating the Persistent Storage|persistent_storage/create]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Configuring the Persistent Storage|persistent_storage/configure]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Unlocking and using the Persistent Storage|persistent_storage/use]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Making a backup of your Persistent Storage|persistent_storage/backup]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Deleting the Persistent Storage|persistent_storage/delete]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Installing additional software|persistent_storage/additional_software]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Converting dangerous documents to safe PDFs using *Dangerzone*|"
+"persistent_storage/additional_software/dangerzone]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Installing additional fonts|persistent_storage/additional_fonts]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Changing the passphrase of the Persistent Storage|persistent_storage/"
+"passphrase]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Opening your Persistent Storage from another operating system|"
+"persistent_storage/open]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when Tails doesn't start|"
+"persistent_storage/recover]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Recovering data from the Persistent Storage when it has file system errors|"
+"persistent_storage/fsck]]"
+msgstr ""

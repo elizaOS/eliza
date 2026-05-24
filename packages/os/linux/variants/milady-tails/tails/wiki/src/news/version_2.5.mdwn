@@ -1,0 +1,68 @@
+[[!meta date="Tue, 02 Aug 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.5 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.4]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+
+## Upgrades and changes
+
+- Update *Tor Browser* to 6.0.3, based on *Firefox* 45.3.
+
+- Upgrade *Icedove* to 45.1. ([[!tails_ticket 11530]])
+
+## Fixed problems
+
+- The automatic account configuration of *Icedove* used to freeze when
+  connecting to some email providers. ([[!tails_ticket 11486]])
+
+- In some cases sending an email with *Icedove* used to result in the
+  error: "The message could not be sent using Outgoing server (SMTP)
+  mail.riseup.net for an unknown reason." ([[!tails_ticket 10933]])
+
+- A spurious error message used to sometimes appear when creating an
+  account in *Icedove* and providing its password.
+  ([[!tails_ticket 11550]])
+
+- Fix some time synchronization problems, by replacing obsolete and
+  unreliable servers, and decreasing a timeout. ([[!tails_ticket 11577]])
+
+- [[KVM virtual machines|doc/advanced_topics/virtualization/virt-manager]]
+  with QXL video: vastly improve graphics performance and fix visual
+  artifacts in *Tor Browser*. ([[!tails_ticket 11500]],
+  [[!tails_ticket 11489]])
+
+For more details, read our Changelog.
+
+# Known issues
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.5
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.4 to 2.5.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.5.|install/download]]
+
+# What's coming up?
+
+Tails 2.6 is [[scheduled|contribute/calendar]] for September 13.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

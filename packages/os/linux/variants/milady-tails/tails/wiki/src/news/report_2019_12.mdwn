@@ -1,0 +1,210 @@
+[[!meta title="Tails report for December, 2019"]]
+[[!meta date="Tue, 21 Jan 2020 15:18:49 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 4.1 was released on December 3|news/version_4.1]].
+
+* Tails 4.3 is [[scheduled for February 11|contribute/calendar]].
+
+The following changes were introduced in Tails 4.1:
+
+- Use <https://keys.openpgp.org/>
+  as the default OpenPGP keyserver.
+
+- Replace the [[*TorBirdy*
+  extension|doc/anonymous_internet/thunderbird#torbirdy]] with custom
+  settings and patches in *Thunderbird* that provide equivalent privacy.
+
+- Add back the **Show Passphrase** check box in *Tails Greeter*.
+  ([[!tails_ticket 17177]])
+
+- Fix the display of the troubleshooting error when GDM fails to start.
+  ([[!tails_ticket 17200]])
+
+- Add back the option to **Open in Terminal** when doing right-click (on
+  Mac, click with two fingers) in a folder in the *Files* browser.
+  ([[!tails_ticket 17186]])
+
+- Make the installation of additional software more reliable. ([[!tails_ticket 17203]])
+
+Code
+====
+
+* We [published a first
+  alpha](https://lists.autistici.org/message/20191221.150827.105ba267.en.html)
+  with Secure Boot support, which will remove a major blocker for less
+  tech-savvy users to adopt Tails.
+
+* We finalized the implementation of our slightly [[!tails_ticket 15281
+  desc="redesigned upgrade system"]].
+
+Documentation and website
+=========================
+
+* Blogged about [[our plans for 2020|news/plans_for_2020]].
+
+* Blogged to [[celebrate 10 years of Tails|news/celebrating_10_years]].
+
+* Wrote some documentation on how to update your OpenPGP keyserver
+  configuration and switch your
+  Persistence to using <https://keys.openpgp.org>.
+
+User experience
+===============
+
+* Published an interview with [[Roberto|contribute/how/user_experience/interviews/roberto]],
+  an investigative journalist working on a GlobaLeaks platform in Latin
+  America, called *Leaks* in the interview.
+
+* Hired [Andrés Fernández Cordón](https://anhdres.com/) to [[illustrate
+  what is Tails and how it works|jobs/illustrations_how_tails_work]].
+
+  Welcome Andrés and thanks again to the 40+ other people who applied for this
+  job!
+
+* Hired [Odile Carabantes](https://studiomoare.com/) to layout flyers
+  explaining what is Tails and why use it.
+
+* Did a cognitive walk-through of automatic upgrades ([[!tails_ticket 16991]])
+  and reported 3 new UX bugs:
+
+  - [[!tails_ticket 17310 desc="Add a button to cancel the upgrade while it's downloading"]]
+  - [[!tails_ticket 17312 desc="Prevent users from closing Tails Upgrader while an upgrade is being applied"]]
+  - [[!tails_ticket 17313 desc="Tails doesn't restart after applying an automatic upgrade"]]
+
+* Did some design work for small UX debts tickets: ([[!tails_ticket 14544]])
+
+  - Ask for confirmation when starting without unlocking the persistent storage
+    ([[!tails_ticket 15573#note-10]])
+
+  - Force restarting after creating persistent storage
+    ([[!tails_ticket 16384#note-12]])
+
+  - Improve UX when Wi-Fi is not working
+    ([[!tails_ticket 14534#note-26]])
+
+  - Customize "Proxy is refusing connections" error messages in
+    Tor Browser and remove the "Tor is not ready" popup
+    ([[!tails_ticket 8061#note-33]])
+
+  - Update our list of "Favorites" applications
+    ([[!tails_ticket 16990#note-6]])
+
+  - Merge "Delete persistent volume" and "Configure persistent
+    volume"
+    ([[!tails_ticket 17331]])
+
+* Created 2 tickets for UX improvements related to Wi-Fi in GNOME:
+
+  - [[!gnome_gitlab network-manager-applet/issues/83 desc="Display an empty Wi-Fi icon when the Wi-Fi is not connected"]]
+  - [[!gnome_gitlab network-manager-applet/issues/84 desc="Simplify the process of connecting to a Wi-Fi network"]]
+
+Hot topics on our help desk
+===========================
+
+1. Users reported various issues related to GPU [[!tails_ticket 17155
+desc="nvidia"]] and [[!tails_ticket 17379 desc="radeon"]].
+
+2. Seahorse still cannot import GPG keys ([[!tails_ticket 17183]]) as
+well as other issues like [[!tails_ticket 17372 desc="encrypts file
+using most recent key only"]] and [[!tails_ticket 17371 desc="connect to
+keyserver"]].
+
+3. Mac - [[!tails_ticket 17320 desc="kernel panic"]] (fixed, caused an
+emergency release), [[!tails_ticket 17380 desc="graphical distortions"]]
+(there's a workaround), and [[!tails_ticket 17049 desc="no boot"]].
+
+Infrastructure
+==============
+
+* We discussed our needs and desires regarding our upcoming GitLab instance and
+  eventually decided to hosting it at [immerda.ch](https://www.immerda.ch/).
+
+  Thanks _immerda.ch_ for your support since so many years!
+
+* We taught our CI to [[!tails_ticket 15287 desc="reproducibly build automatic
+  upgrades"]].
+
+Funding
+=======
+
+* Wrote to the press and all past funders about our blog post on "[[Celebrating
+  10 years of Tails|news/celebrating_10_years]]". We sent close to 100 emails in
+  total.
+
+Outreach
+========
+
+Past events
+-----------
+
+* intrigeri attended the [Reproducible Builds
+  summit](https://reproducible-builds.org/events/Marrakesh2019/) in Marrakesh.
+
+* Some of us attended the [36th Chaos Communication Congress
+  (36C3)](https://events.ccc.de/congress/2019/wiki/index.php/Main_Page)
+  in Leipzig, Germany.
+
+On-going discussions
+====================
+
+* Our Release Managers have been discussing how to adapt to the Firefox
+  4-weeks release cycle.
+
+Press and testimonials
+======================
+
+* 2019-12-18: [Pourquoi je préfère la BD sur Snowden à son
+  autobiographie (& vive Tails aussi <3)](https://www.lemonde.fr/blog/bugbrother/2019/12/18/pourquoi-je-prefere-la-bd-sur-snowden-a-son-autobiographie-vive-tails-aussi-3/)
+  by Jean-Marc Manach in Le Monde.
+
+* 2019-12-17: [Sa clé USB qui permet d'aller sur le dark web](https://www.youtube.com/watch?v=GFgWl_-sIdE)
+  by Guillaume Pley in Le QG.
+
+* Our blog post on "[[Celebrating 10 years of
+  Tails|news/celebrating_10_years]]" received some press coverage:
+
+  - 2019-12-15: [L’outil préféré d’Edward Snowden ne laisse aucune trace
+    depuis dix ans](https://www.lalibre.be/economie/digital/l-outil-prefere-d-edward-snowden-ne-laisse-aucune-trace-depuis-dix-ans-5df65c7bf20d5a0c4604c152)
+    by Christophe Lamfalussy in La Libre Belgique.
+
+  - 2019-12-16: Happy 10th birthday, TAILS -- the real Paranoid
+    Linux!
+    by Cory Doctorow in Boing Boing.
+
+Translations
+============
+
+## All the website
+
+  - fr: 88% (5418) strings translated, 1% strings fuzzy, 86% words translated
+  - es: 51% (3137) strings translated, 4% strings fuzzy, 42% words translated
+  - de: 46% (2832) strings translated, 7% strings fuzzy, 41% words translated
+  - fa: 32% (1982) strings translated, 10% strings fuzzy, 33% words translated
+  - it: 32% (1969) strings translated, 5% strings fuzzy, 28% words translated
+  - pt: 25% (1553) strings translated, 7% strings fuzzy, 21% words translated
+
+Total original words: 65286
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 96% (1705) strings translated, 1% strings fuzzy, 96% words translated
+  - es: 80% (1417) strings translated, 9% strings fuzzy, 82% words translated
+  - de: 71% (1252) strings translated, 12% strings fuzzy, 74% words translated
+  - it: 63% (1112) strings translated, 17% strings fuzzy, 65% words translated
+  - pt: 45% (798) strings translated, 13% strings fuzzy, 48% words translated
+  - fa: 34% (615) strings translated, 13% strings fuzzy, 33% words translated
+
+Total original words: 16439
+
+Metrics
+=======
+
+* Tails has been started more than 819&#8239;136 times this month. This
+  makes 26&#8239;424 boots a day on average.
+

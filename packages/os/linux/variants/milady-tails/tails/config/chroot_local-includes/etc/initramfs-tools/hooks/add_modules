@@ -1,0 +1,33 @@
+#!/bin/sh
+#
+# Do a subset of what MODULES=most would do.
+#
+# This script must support being run several times.
+
+set -e
+set -u
+
+PREREQ=""
+
+prereqs() {
+    echo "${PREREQ}"
+}
+
+case "${1:-}" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# As of initramfs-tools 0.147, MODULES=most would pass these arguments:
+# base net ide scsi block ata dasd firewire mmc usb_storage fb
+auto_add_modules \
+    base \
+    block \
+    ata \
+    mmc \
+    usb_storage \
+    fb

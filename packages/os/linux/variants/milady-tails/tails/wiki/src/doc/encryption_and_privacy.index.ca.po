@@ -1,0 +1,71 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: 2025-06-11 14:56+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[Managing passwords using *KeePassXC*|encryption_and_privacy/"
+#| "manage_passwords]]"
+msgid ""
+"[[Managing passwords using the *Secrets* password manager|"
+"encryption_and_privacy/manage_passwords]]"
+msgstr ""
+"[[Gestió de contrasenyes amb el *KeePassXC*|encryption_and_privacy/"
+"manage_passwords]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+"encrypted_volumes]]"
+msgstr ""
+"[[Creació i ús de volums encriptats amb *LUKS*|encryption_and_privacy/"
+"encrypted_volumes]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgstr ""
+"[[Utilitzar volums encriptats amb *VeraCrypt*|encryption_and_privacy/"
+"veracrypt]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+msgstr ""
+"[[Encriptació de text i fitxers amb *GnuPG* i *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+
+#. type: Bullet: '- '
+msgid "[[Securely deleting files|encryption_and_privacy/secure_deletion]]"
+msgstr ""
+"[[Suprimir fitxers de manera segura|encryption_and_privacy/secure_deletion]]"
+
+#~ msgid ""
+#~ "- [[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+#~ msgstr ""
+#~ "- [[Càlcul de sumes de verificació mitjançant *GtkHash*|"
+#~ "encryption_and_privacy/checksums]]"
+
+#~ msgid ""
+#~ "- [[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgstr ""
+#~ "- [[Ús del teclat de pantalla|encryption_and_privacy/virtual_keyboard]]"

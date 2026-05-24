@@ -1,0 +1,144 @@
+[[!meta date="Wed, 29 Apr 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.0 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.0, is out.
+
+All users must [[upgrade|doc/upgrade]] as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.23]].
+
+[[!toc levels=1]]
+
+# Introduction
+
+We are especially proud to present you Tails 1.0!
+
+Version 1.0 is often an [[!wikipedia Version_number#Version_1.0_as_a_milestone
+desc="important milestone"]] that denotes the maturity of a free software
+project. The first public version of what would become Tails was released on
+June 23 2009, when it was called [[Amnesia|version_0.2]]. That was almost five
+years ago. Tails 1.0 marks the 36th stable release since then.
+
+## Achievements
+
+We have been working since then on the many features we think
+are essential both in terms of security and usability:
+
+  - USB installer
+  - [[automatic upgrades|doc/upgrade]]
+  - persistence
+  - support for Tor bridges and
+    other [[special Tor
+    configuration|doc/first_steps/welcome_screen#additional]]
+  - [[MAC address spoofing|doc/first_steps/welcome_screen/mac_spoofing]]
+  - [[extensive and translated documentation|doc]]
+  - and [[many more...|doc/about/features]]
+
+But this has been a continuous work over the past years, and you will see that
+1.0 itself does not bring a lot of effective changes for the user. Still, to mark
+the occasion, we integrated our [[new logo|news/and_the_winner_is]] on the
+website and the boot menu.
+
+## Thank you
+
+The maturity of Tails is also reflected in:
+
+  - Its wide adoption. In the last 18 months, the approximate number of Tails
+    users has been multiplied by 4.
+  - All the good things said about Tails by reputed people and organisations
+    such as [Freedom of the Press
+    Foundation](https://pressfreedomfoundation.org/blog/2014/04/help-support-little-known-privacy-tool-has-been-critical-journalists-reporting-nsa),
+    Bruce
+    Schneier,
+    Reporters Without
+    Borders,
+    [the NSA](http://www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-internet-anonymity),
+    and many more...
+
+## Future
+
+Version 1.0 does not mean that we will stop adding new features and improving
+Tails. Briefly, here are our plans for the future:
+
+- Tails 1.1,
+  due in June 2014, will be based on Debian 7 (Wheezy) and will bring many new
+  versions of the software included in Tails.
+
+- Tails 2.0
+  will focus on sustainability and maintainability. Most of that work aims at
+  reducing the workload of creating new versions of Tails through infrastructure
+  improvements and automated testing. Our objective is to be able to release
+  same-day security updates.
+
+- Tails 3.0
+  will focus on changes in the internals of Tails to make it more secure. That
+  includes sandboxing critical applications and software hardening.
+
+And of course, new contributors with all kinds of skills are always welcome.
+There is surely [[something **you** can do|contribute]] to make Tails better.
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Upgrade the web browser to 24.5.0esr-0+tails1~bpo60+1
+    (Firefox 24.5.0esr + Iceweasel patches + Torbrowser patches).
+  - Upgrade Tor to 0.2.4.21-1+tails1~d60.squeeze+1:
+    * Based on 0.2.4.21-1~d60.squeeze+1.
+    * Backport the fix for [[!tor_bug 11464]]. It adds client-side
+      blacklists for all Tor directory authority keys that was
+      vulnerable to Heartbleed.  This protects clients in case
+      attackers were able to compromise a majority of the authority
+      signing and identity keys.
+
+* Bugfixes
+  - Disable inbound I2P connections. Tails already restricts incoming
+    connections, but this change tells I2P about it.
+  - Fix link to the system requirements documentation page in the Tails
+    Upgrader error shown when too little RAM is available.
+
+* Minor improvements
+  - Upgrade I2P to 0.9.12-2~deb6u+1.
+  - Import TorBrowser profile. This was forgotten in Tails 0.23 and even
+    though we didn't explicitly set those preferences in that release
+    they defaulted to the same values. This future-proofs us in case the
+    defaults would ever change.
+  - Import new custom version of Tor Launcher:
+    * Based on upstream Tor Launcher 0.2.5.3.
+    * Improve how Tor Launcher handles incomplete translation.
+      ([[!tor_bug 11483]]; more future-proof fix for
+      [[!tails_ticket 6885]])
+    * Remove the bridge settings prompt. ([[!tor_bug 11482]]; closes
+      [[!tails_ticket 6934]])
+    * Always show bridge help button. ([[!tor_bug 11484]])
+  - Integrate the new Tails logo into various places:
+    * The website
+    * The boot splash
+    * The "About Tails" dialog
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+June 10.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

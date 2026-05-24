@@ -1,0 +1,22 @@
+[[!meta date="Sun, 22 Jan 2017 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.9.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.9.1 are now fixed in Tails 2.10.
+
+We **strongly** encourage you to
+[[upgrade to Tails 2.10|news/version_2.10]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2017-02]]
+* bind9: [[!debsa2017 3758]]
+* icedove: [[!debsa2017 3757]]
+* pcsc-lite: [[!debsa2017 3752]]
+* libgd2: [[!debsa2017 3751]]
+* libxml2: [[!debsa2016 3744]]
+* tor: [[!debsa2016 3741]]
+* samba: [[!debsa2016 3740]]

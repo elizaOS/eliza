@@ -1,0 +1,70 @@
+[[!meta title="Call for testing: Additional Software feature"]]
+[[!meta date="Mon, 14 May 2018 14:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The beta version for the Additional Software
+feature is ready for testing.
+We are very excited.
+
+[[!toc levels=1]]
+
+# What's new in the Additional Software feature Beta?
+
+We've designed and implemented a user interface to select additional software
+packages and make additional software persistent.
+
+Users are now able to decide, for each additional piece of software that they
+might install in Tails once, whether it shall be installed automatically in the
+future.
+
+# How to test Tails Additional Software feature Beta?
+
+1. Download and install the ISO image on a USB stick, start from the stick and
+   configure a persistent volume. Reboot and use the package manager to install a
+   package currently not in Tails (example: Mumble).
+   Note that in order to carry out these steps you need to set up a root
+   password in the Tails Greeter.
+
+1. Configure if you want this package to be installed automatically on
+   each boot.
+
+1. Restart Tails and use Mumble (or another program you've just installed).
+
+1. Imagine that over time you have installed several additional programs
+   (Mumble, VLC, etc.) but don’t remember the exact list. How would you check
+   your list of additional software?
+
+1. How would you stop installing Mumble every time you start Tails?
+
+We are interested in your feedback on bugs and usability of this feature.
+
+- Are there any notifications that are not clear?
+- Did you run into technical issues?
+- Were you able to to modify the installation details as asked in the last
+  question?
+- Do you have ideas on packages that we should propose to Tails users for
+  installation?
+
+Please send feedback emails to tails-testers@boum.org.
+
+Get Tails Additional Software Feature Beta
+------------------------------------------
+
+<a class="download-file" href="">Tails Additional Software feature beta ISO image</a>
+
+There is no signature available for this test ISO image.
+
+Known issues
+============
+
+We've identified a list of known issues [[!tails_ticket 15567]] among which
+
+ - Additional Software gets opened multiple times [[!tails_ticket 15528]]
+ - Remove and Cancel buttons don't work after escaping password prompt [[!tails_ticket 15581]]
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.0-beta4">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!
+
+[Donate](https://tails.net/donate/)

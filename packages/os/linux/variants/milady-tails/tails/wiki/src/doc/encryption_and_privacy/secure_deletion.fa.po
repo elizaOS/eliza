@@ -1,0 +1,650 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-02 09:33+0000\n"
+"PO-Revision-Date: 2024-05-20 17:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"secure_deletion/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Securely deleting files\"]]\n"
+msgstr "[[!meta title=\"پاک کردن امن فایل‌ها و خالی کردن فضای دیسک\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails previously included tools to *wipe* files and available disk space. We "
+"removed these tools from Tails 6.0 (February 2024), because we think that "
+"they are not reliable enough on modern storage devices, such as USB sticks "
+"and Solid-State Drives (SSDs)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To better protect from data recovery, use encrypted volumes, overwrite the "
+"entire device, or disintegrate it physically."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"risks\">Limitations of file deletion</h1>\n"
+msgstr "چرا باید پاک کردن امن را به کار بست؟\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "See also [[!wikipedia Data_erasure desc=\"Wikipedia: Data Erasure\"]]."
+msgstr ""
+"<p class=\"quoted-from\">نقل قول از [[!wikipedia Secure_file_deletion\n"
+"desc=\"Wikipedia: %s\"]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"delete\">Deleting a file does not erase its content</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Operating systems do not actually remove the content of a file when the file "
+"is deleted, even after emptying the trash or removing the file from the "
+"command line."
+msgstr ""
+"**سیستم‌عامل‌ها هنگام پاک کردن فایل‌ها محتوای آن‌ها را کامل از بین \n"
+"نمی‌برند**، حتی پس از خالی کردن سطل آشغال رایانه یا پاک کردن فایل\n"
+"از راه‌های دیگر مانند استفاده از خط فرمان.\n"
+
+#. type: Plain text
+msgid ""
+"Instead, operating systems only mark the space that was used by the deleted "
+"file as available for future files, because it is much faster to do. "
+"However, the content of the deleted file remains on the device until the "
+"operating system reuses the space for another file."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Simple data recovery tools can recover deleted files.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"copy\">Other copies of the data might be stored elsewhere</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "Other copies of the data might exist elsewhere on the device:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Some applications, for example, office applications, store temporary backup "
+"versions of the file to be able to recover from failures."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Modern operating systems can store a *journal*, a history of recent changes "
+"to the file system, or *snapshots*, an image of the file system at a "
+"particular point in time."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Simple data recovery tools can recover these other copies.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"spare\">Spare memory cells can store a hidden copy of the data</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Flash memory devices, such as USB sticks and SSDs (Solid-State Drives), have "
+"*spare memory cells* that are used to replace broken memory cells over "
+"time.  Modern hard disks also integrate small flash memories for performance "
+"and reliability."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Any data that was stored in the device can remain available in these spare "
+"cells."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"These spare cells are managed directly by the device and neither the user "
+"nor the operating system can control what is stored in them."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Specialized data recovery companies can recover data from spare cells.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"mitigation\">Mitigation techniques</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Given the limitations described above, there is no perfect solution to file "
+"deletion."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To better protect from data recovery, you can use one or a combination of "
+"these mitigation techniques, depending on the sensitivity of your data and "
+"the risks."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails\">Use Tails to avoid saving files</h2>\n"
+msgstr "پاک کردن امن فایل‌ها\n"
+
+#. type: Plain text
+msgid ""
+"All the files that you use in Tails disappear automatically when you shut "
+"down, except the files that you choose to store in the Persistent Storage or "
+"other storage devices."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"By making it easy to avoid saving files to storage devices in the first "
+"place, using Tails is already an important mitigation technique given the "
+"limitations of file deletion."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"encrypt\">Encrypt your storage devices</h2>\n"
+msgstr "پاک کردن امن فضای موجود روی دیسک\n"
+
+#. type: Plain text
+msgid ""
+"When all the data on your device is encrypted, data recovery tools can only "
+"recover encrypted data that is useless without your passphrase."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To better protect deleted files from data recovery, you can reformat your "
+"device and create another encryption with a different passphrase."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For compatibility with Tails only or with another Linux, use [[LUKS "
+"encrypted volumes|encrypted_volumes]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For compatibility with Windows or macOS, use [[VeraCrypt encrypted volumes|"
+"veracrypt]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Take into account that you could be forced or tricked to give out your\n"
+"passphrase.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"overwrite\">Overwrite the entire device</h2>\n"
+msgstr "پاک کردن امن فضای موجود روی دیسک\n"
+
+#. type: Plain text
+msgid ""
+"To better protect deleted files from data recovery, you can also reformat "
+"and overwrite the entire device with zeroes."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Even if some data could still be recovered from [[spare memory cells|"
+"secure_deletion#spare]], overwriting the entire device is especially "
+"important if the device is not encrypted."
+msgstr ""
+
+#. type: Plain text
+msgid "To do so:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the *Disks* utility."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   All the current storage devices are listed in the left pane.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Plug in the device that you want to reformat and overwrite."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "A new device appears in the list of devices. Click on it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img encrypted_volumes/storage_devices_after.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Check that the brand and size of the device in the right pane corresponds to "
+"your device."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/view-more.png alt=\"Drive Options\" "
+"class=\"symbolic\" link=\"no\"]] button in the title bar and choose **Format "
+"Disk**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Format Disk** dialog:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Choose **Overwrite existing data with zeroes (Slow)** in the **Erase** menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"caution\">\n"
+msgstr "     <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>Overwriting existing data does not erase all data on flash\n"
+"     memories, such as USB sticks and SSDs (Solid-State Drives).</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "     </div>\n"
+msgstr "</div>\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"Choose **Compatible with all systems and devices (MBR/DOS)** in the "
+"**Partitioning** menu."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Format**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the confirmation dialog, make sure that the device is correct."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Format** to confirm."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"destroy\">Physically destroy the device</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"As a last resort, physically destroying the device gives the strongest "
+"guarantee against data recovery."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is unreliable to break the device into a few pieces or burn it with wood "
+"fire."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"For top secret documents, the National Security Agency ([[!wikipedia NSA]]) "
+"of the USA recommends disintegration into particles of 2 mm. This can be "
+"achieved using a [good quality household blender](https://commons.erau.edu/"
+"jdfsl/vol16/iss2/1/)."
+msgstr ""
+
+#, fuzzy
+#~ msgid ""
+#~ "Instead, they simply remove the file's entry from the file system "
+#~ "directory, because this requires less work and is therefore faster. The "
+#~ "contents of the file—the actual data—remain on the storage medium. The "
+#~ "data will remain there until the operating system reuses the space for "
+#~ "new data."
+#~ msgstr ""
+#~ "در عوض، مدخل فایل‌ها را از دایرکتوری سیستم برمی‌دارند، چرا که این روش نیاز "
+#~ "به کار کمتری دارد و سریع‌تر است. محتوای فایل یا همان داده‌های اصلی روی محل "
+#~ "نگهداری آن باقی می‌مانند. این داده‌ها تا زمانی که سیستم‌عامل از آن فضا برای "
+#~ "ضبط داده‌های جدید استفاده کند باقی می‌مانند."
+
+#~ msgid ""
+#~ "Likewise, reformatting, repartitioning or reimaging a system is not "
+#~ "always guaranteed to write to every area of the disk, though all will "
+#~ "cause the disk to appear empty or, in the case of reimaging, empty except "
+#~ "for the files present in the image, to most software."
+#~ msgstr ""
+#~ "به همین ترتیب فرمت کردن دوباره، پارتیشن‌بندی یا گرفتن تصویر دوباره از "
+#~ "رایانه همیشه تضمین‌کنندهٔ پاک کردن تمام نقاط دیسک نیست، با این که با انجام "
+#~ "دادن هر کدام از آن‌ها از نظر نرم‌افزار این طور به نظر می‌آید که دیسک خالی "
+#~ "است؛ یا در مورد گرفتن ایمج دوباره، دیسک به جز فایل‌های موجود در تصویر خالی "
+#~ "است."
+
+#, fuzzy
+#~ msgid ""
+#~ "Finally, even when the storage medium is overwritten, physical properties "
+#~ "of the medium might make it possible to recover the previous contents. In "
+#~ "most cases however, this recovery is not possible by just reading from "
+#~ "the storage device in the usual way, but requires using laboratory "
+#~ "techniques such as disassembling the device and directly accessing/"
+#~ "reading from its components."
+#~ msgstr ""
+#~ "حتی وقتی محل ذخیره دوباره مورد استفاده قرار بگیرد، ممکن است متعلقات "
+#~ "فیزیکی محل ذخیره داده‌ها باعث شوند امکان بازیابی داده‌های پیشین ممکن باشد. "
+#~ "با این حال در بیشتر موارد بازیابی تنها با خواندن دستگاه ذخیره از راه‌های "
+#~ "معمول ممکن نیست، بلکه مستلزم استفاده از شگردهای آزمایشگاهی مانند جدا کردن "
+#~ "قطعات دستگاه و دسترسی/خواندن مستقیم اجزای آن است."
+
+#, fuzzy
+#~ msgid ""
+#~ "To learn more, see the Wikipedia article on [[!wikipedia Data_erasure "
+#~ "desc=\"data erasure\"]]."
+#~ msgstr ""
+#~ "برای یافتن جزییات بیشتر به بخش مرتبط در مقالهٔ [[!wikipedia "
+#~ "Data_erasure#Limitations desc=\"پاک کردن اطلاعات\"]] ویکی‌پدیا بروید."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>Securely deleting files does not erase the potential backup copies of\n"
+#~ "the file (for example LibreOffice creates backup copies that allow\n"
+#~ "you to recover your work in case LibreOffice stops responding).</p>\n"
+#~ msgstr "پاک کردن امن فایل‌ها باعث پاک شدن نسخه‌های پشتیبان فایل‌ها نمی‌شود (برای نمونه اُپن‌آفیس نسخه‌های پشتیبانی از فایل‌ها ایجاد می‌کند که به شما اجازه می‌دهد در صورت کار نکردن اُپن‌آفیس آن فایل‌ها را بازیابی کنید."
+
+#~ msgid "Navigate to the folder containing the files that you want to delete."
+#~ msgstr "به پوشه‌ای بروید که فایل‌هایی که می‌خواهید پاک کنید در آن هستند."
+
+#~ msgid "Select the files that you want to delete with the mouse."
+#~ msgstr "فایل‌ها را که می‌خواهید پاک کنید با موش‌واره انتخاب کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) on the files and choose "
+#~ "**Wipe**."
+#~ msgstr "روی فایل‌ها راست‌کلیک و **پاک کردن** را انتخاب کنید."
+
+#~ msgid "Confirm."
+#~ msgstr "تأیید کنید."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  1. The deletion will start. It can last from a few seconds to several minutes,\n"
+#~ "  according to the size of the files. Be patient…\n"
+#~ msgstr ""
+#~ "  ۱. پاک کردن فایل‌ها آغاز می‌شود. این مرحله ممکن است بسته به اندازهٔ فایل‌ها \n"
+#~ "   چند ثانیه یا چندین دقیقه طول بکشد. صبور باشید...\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"disk_space\">Securely cleaning available disk space</h1>\n"
+#~ msgstr "پاک کردن امن فضای موجود روی دیسک\n"
+
+#~ msgid ""
+#~ "In order to clean up the contents of all files that were previously "
+#~ "suppressed but not securely deleted from a disk, it is also possible to "
+#~ "securely clean all the free space on the disk."
+#~ msgstr ""
+#~ "همچنین می‌توان برای پاک کردن محتویات تمام فایل‌ها که پیش از این حذف شده "
+#~ "بودند اما به طور امن پاک نشده بودند، به طور امن تمام فضای خالی دیسک را "
+#~ "پاک کرد."
+
+#, fuzzy
+#~ msgid ""
+#~ "The disk or the folder can contain other files. Those files will not be "
+#~ "deleted during the operation."
+#~ msgstr ""
+#~ "دیسک یا پوشه ممکن است حاوی فایل‌های دیگری باشد و ممکن است خالی از آن‌ها "
+#~ "باشد. این فایل‌ها در طول این عملیات پاک نمی‌شوند."
+
+#~ msgid ""
+#~ "Click on the disk that you want to clean in the left pane to navigate to "
+#~ "the root of this disk."
+#~ msgstr ""
+#~ "دیسکی که می‌خواهید پاک کنید را از سمت راست انتخاب کنید تا به روت دیسک "
+#~ "برسید."
+
+#, fuzzy
+#~ msgid ""
+#~ "Right-click (on Mac, click with two fingers) in empty space in the right "
+#~ "pane and choose <span class=\"guimenuitem\">Wipe available diskspace</"
+#~ "span>."
+#~ msgstr ""
+#~ "روی فضای خالی در سمت چپ کلیک و <span class=\"guimenuitem\">فضای موجود را "
+#~ "پاک کن</span> را انتخاب کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "The cleaning starts. It can last from a few minutes to a few hours, "
+#~ "according to the size of the available diskspace. Be patient…"
+#~ msgstr ""
+#~ "پاک کردن آغاز می‌شود.  این مرحله ممکن است بسته به حجم فضای موجود چند دقیقه "
+#~ "یا چندین ساعت طول بکشد. صبور باشید…"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "     Note that a file with a name similar to <span\n"
+#~ "     class=\"filename\">tmp.7JwHAyBvA9</span> is created in the\n"
+#~ "     folder. It is made as big as possible to use all the available diskspace and\n"
+#~ "     then securely deleted.\n"
+#~ msgstr ""
+#~ "     دقت کنید که فایلی با نام <span\n"
+#~ "     class=\"filename\">oooooooo.ooo</span> در آن پوشه ایجاد شده است.\n"
+#~ "     *پاک‌کن ناتیلوس* سعی می‌کند\n"
+#~ "     این فایل را تا حد ممکن بزرگ کرده و تمام فضای موجود دیسک را اشغال\n"
+#~ "     و سپس آن را به طور امن پاک کند.\n"
+
+#, no-wrap
+#~ msgid "<a id=\"why\"></a>\n"
+#~ msgstr "<a id=\"چرا\"></a>\n"
+
+#, no-wrap
+#~ msgid "<a id=\"usb_and_ssd\"></a>\n"
+#~ msgstr "<a id=\"usb_and_ssd\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Warning about USB sticks and solid-state disks"
+#~ msgstr "هشدار در مورد درایوهای یواس‌بی و دیسک‌های حالت جامد.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "For more details read the corresponding section of the Wikipedia article "
+#~ "on [[!wikipedia Data_erasure#Limitations desc=\"data erasure\"]]."
+#~ msgstr ""
+#~ "برای یافتن جزییات بیشتر به بخش مرتبط در مقالهٔ [[!wikipedia "
+#~ "Data_erasure#Limitations desc=\"پاک کردن اطلاعات\"]] ویکی‌پدیا بروید."
+
+#, no-wrap
+#~ msgid "<a id=\"clean_disk_space\"></a>\n"
+#~ msgstr "<a id=\"clean_disk_space\"></a>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>This method does not work as expected on solid-state disks or USB\n"
+#~ "sticks.</p>\n"
+#~ msgstr ""
+#~ "<p>این روش روی درایوهای یواس‌بی و دیسک‌های حالت جامد جواب \n"
+#~ "نمی‌دهد.</p>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<a id=\"erase-device\"></a>\n"
+#~ msgstr "<a id=\"clean_disk_space\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "     [[!img wipe_files.png link=no alt=\"Right-click&nbsp;▸ Wipe\"]]\n"
+#~ msgstr "     [[!img wipe_files.png link=no alt=\"راست‌کلیک&nbsp;▸ پاک کردن\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "     [[!img wipe_available_diskspace.png link=no alt=\"Right-click&nbsp;▸ Wipe\n"
+#~ "     available diskspace\"]]\n"
+#~ msgstr ""
+#~ "     [[!img wipe_available_diskspace.png link=no alt=\"راست‌کلیک&nbsp;▸ فضای\n"
+#~ "     موجود را پاک کن\"]]\n"
+
+#~ msgid ""
+#~ "**The methods described below will not work as expected on USB sticks "
+#~ "and\n"
+#~ "solid-state disks.**\n"
+#~ msgstr ""
+#~ "**روش‌های زیر مناسب استفاده برای درایوهای یواس‌بی و دیسک‌های حالت جامد "
+#~ "نیستند.**\n"
+
+#~ msgid ""
+#~ "The existing hard disk-oriented techniques for secure deletion of "
+#~ "individual files are not effective."
+#~ msgstr ""
+#~ "شگردهای موجود برای پاک کردن امن که با دیسک‌ها سروکار دارند موثر نیستند."
+
+#~ msgid ""
+#~ "Overwriting twice the entire disk is usually, but not always, sufficient "
+#~ "to securely clean the disk."
+#~ msgstr ""
+#~ "دو بار نوشتن روی دیسک معمولاً، اما نه همیشه، برای پاک کردن دیسک به طور امن "
+#~ "کافی است."
+
+#, fuzzy
+#~| msgid ""
+#~| "Unfortunately, Tails does not currently allow you to perform this task "
+#~| "with graphical tools."
+#~ msgid ""
+#~ "<p>Unfortunately, Tails does not currently allow you to perform this "
+#~ "task\n"
+#~ "with graphical tools. See [[!tails_ticket 5323]].</p>\n"
+#~ msgstr ""
+#~ "متأسفانه تیلز در حال حاضر به شما اجازهٔ انجام این کار با ابزارهای گرافیکی "
+#~ "را نمی‌دهد."
+
+#, fuzzy
+#~| msgid ""
+#~| "In Tails you can securely delete files thanks to an extension of the "
+#~| "Nautilus file manager called [Nautilus Wipe](http://"
+#~| "wipetools.tuxfamily.org/nautilus-wipe.html)."
+#~ msgid ""
+#~ "In Tails you can securely delete files thanks to an [extension of the "
+#~ "file browser](http://wipetools.tuxfamily.org/nautilus-wipe.html)."
+#~ msgstr ""
+#~ "در تیلز می‌توانید با استفاده از افزونهٔ مدیریت فایل ناتیلوس به نام [پاک‌کن "
+#~ "ناتیلوس](http://wipetools.tuxfamily.org/nautilus-wipe.html) فایل‌ها را به "
+#~ "طور امن پاک کنید."
+
+#, fuzzy
+#~ msgid ""
+#~ "  1. Open the file browser, either\n"
+#~ "  from the **Places** menu or the <span\n"
+#~ "  class=\"guilabel\">Home</span> icon on the desktop.\n"
+#~ msgstr ""
+#~ "  ۱. ناتیلوس را از فهرست **Places** یا\n"
+#~ "   نمایهٔ  **رایانه** روی دسکتاپ باز کنید.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "  1. Open the file browser, either from the <span "
+#~ "class=\"guimenu\">Places</span> menu or\n"
+#~ "  the **Home** icon on the desktop.\n"
+#~ msgstr ""
+#~ "  ۱. ناتیلوس را از فهرست **Places** یا\n"
+#~ "   نمایهٔ  **رایانه** روی دسکتاپ باز کنید.\n"
+
+#~ msgid ""
+#~ "     <div class=\"tip\">\n"
+#~ "     <p>On the previous screenshot, the trash in the <span\n"
+#~ "     class=\"filename\">.Trash-1000</span> folder is not deleted. See "
+#~ "the\n"
+#~ "     [[instructions above|secure_deletion#empty_trash]].</p>\n"
+#~ "     </div>\n"
+#~ msgstr ""
+#~ "     <div class=\"tip\">\n"
+#~ "     <p>در نماگرفت پیشین، سطل آشغال در پوشهٔ <span\n"
+#~ "     class=\"filename\">.Trash-1000</span> پاک نشده است. به\n"
+#~ "     [[دستورات بالا|secure_deletion#empty_trash]] مراجعه کنید.</p>\n"
+#~ "     </div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>This option does not delete hidden files. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "      <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"Menu\" "
+#~ "class=symbolic link=no]]</span>&nbsp;▸\n"
+#~ "      **Show hidden files**</span>\n"
+#~ "   in the titlebar to show them.\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<p>این گزینه فایل‌های مخفی را پاک نمی‌کند. برای نشان دادن فایل‌های مخفی\n"
+#~ "<span class=\"menuchoice\">دیدن&nbsp;▸ <span\n"
+#~ "class=\"guimenuitem\">نشان دادن فایل‌های مخفی</span></span> را انتخاب کنید."
+#~ "</p>\n"
+
+#~ msgid "See [[!tails_ticket 5323]]."
+#~ msgstr "نگاه کنید به [[!tails_ticket 5323]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "  1. Open the *Nautilus* file browser, either\n"
+#~| "  from the **Places** menu or the <span\n"
+#~| "  class=\"guilabel\">Computer</span> icon on the desktop.\n"
+#~ msgid ""
+#~ "  1. Open the *Nautilus* file browser, either\n"
+#~ "  from the **Places** menu or the <span\n"
+#~ "  class=\"guilabel\">home</span> icon on the desktop.\n"
+#~ msgstr ""
+#~ "  ۱. مرورگر فایل *ناتیلوس* را از\n"
+#~ "   فهرست  **Places** یا از نمایهٔ <span\n"
+#~ "  class=\"guilabel\">رایانه</span> روی دسکتاپ باز کنید.\n"

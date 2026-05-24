@@ -1,0 +1,37 @@
+[[!meta title="Printing and scanning"]]
+
+[[!toc]]
+
+Printing
+========
+
+To configure a printer or manage your printing jobs, choose
+**Apps&nbsp;▸ System Tools&nbsp;▸ Settings&nbsp;▸ Printers**.
+
+To check the compatibility of your printer with Linux and Tails, consult
+the [OpenPrinting database](https://openprinting.github.io/printers/) of
+the Linux Foundation.
+
+<div class="tip">
+<p>To reuse the configuration of your printers across different working
+sessions, turn on the [[Printers|persistent_storage/configure#printers]]
+feature of the Persistent Storage.</p>
+</div>
+
+Printing PDFs
+------------
+
+Before printing PDFs, you can use
+[*BookletImposer*](https://kjo.herbesfolles.org/bookletimposer/) to:
+
+* Reduce the number of pages in a PDF by putting several pages on every sheet.
+* Produce a PDF booklet that can be folded after printing.
+
+Scanning
+========
+
+Tails includes the [*Document Scanner*](https://apps.gnome.org//SimpleScan/)
+utility to scan documents and photos.
+
+To open *Document Scanner*, choose **Apps&nbsp;▸ Utilities&nbsp;▸
+Document Scanner**.

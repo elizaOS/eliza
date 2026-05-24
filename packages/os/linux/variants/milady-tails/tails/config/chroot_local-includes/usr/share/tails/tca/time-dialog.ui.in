@@ -1,0 +1,441 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Generated with glade 3.22.1 -->
+<interface>
+  <requires lib="gtk+" version="3.20"/>
+  <object class="GtkDialog" id="dialog">
+    <property name="can_focus">False</property>
+    <property name="title" translatable="yes">Tor Connection - Fix Clock</property>
+    <property name="window_position">center-on-parent</property>
+    <property name="type_hint">dialog</property>
+    <child type="titlebar">
+      <placeholder/>
+    </child>
+    <child internal-child="vbox">
+      <object class="GtkBox">
+        <property name="can_focus">False</property>
+        <property name="margin_left">6</property>
+        <property name="margin_right">6</property>
+        <property name="margin_top">6</property>
+        <property name="margin_bottom">6</property>
+        <property name="orientation">vertical</property>
+        <property name="spacing">2</property>
+        <child internal-child="action_area">
+          <object class="GtkButtonBox">
+            <property name="can_focus">False</property>
+            <property name="layout_style">end</property>
+            <child>
+              <object class="GtkButton" id="btn_cancel">
+                <property name="label">gtk-cancel</property>
+                <property name="visible">True</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkButton" id="btn_apply">
+                <property name="label">gtk-apply</property>
+                <property name="visible">True</property>
+                <property name="sensitive">False</property>
+                <property name="can_focus">True</property>
+                <property name="receives_default">True</property>
+                <property name="use_stock">True</property>
+                <style>
+                  <class name="suggested-action"/>
+                </style>
+              </object>
+              <packing>
+                <property name="expand">True</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">False</property>
+            <property name="position">0</property>
+          </packing>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="visible">True</property>
+            <property name="can_focus">False</property>
+            <property name="orientation">vertical</property>
+            <child>
+              <object class="GtkLabel">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="halign">start</property>
+                <property name="margin_bottom">18</property>
+                <property name="label" translatable="yes">Your time zone cannot be used to identify or locate you. Your time zone will never be sent over the network and will only be used to fix your clock and connect to Tor.</property>
+                <property name="wrap">True</property>
+                <property name="width_chars">0</property>
+                <property name="max_width_chars">80</property>
+                <property name="track_visited_links">False</property>
+                <property name="xalign">0</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkFrame">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="label_xalign">0</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkAlignment">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="left_padding">12</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="margin_left">6</property>
+                        <property name="margin_right">12</property>
+                        <property name="margin_top">6</property>
+                        <property name="margin_bottom">12</property>
+                        <property name="orientation">vertical</property>
+                        <property name="spacing">6</property>
+                        <child>
+                          <object class="GtkListBox" id="listbox_tz">
+                            <property name="name">listbox_tz</property>
+                            <property name="selection-mode">none</property>
+                            <signal name="row-activated" handler="cb_listbox_tz_clicked" swapped="no"/>
+                            <child>
+                                <object class="GtkListBoxRow" id="listboxrow_tz">
+                                    <child>
+                                        <object class="GtkLabel" id="listbox_tz_label_value">
+                                            <property name="xalign">0</property>
+                                            <property name="halign">start</property>
+                                            <property name="margin">8</property>
+                                            <property name="label" translatable="no">UTC (Greenwich time)</property>
+                                        </object>
+                                    </child>
+                                </object>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child type="label">
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">Time zone</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">1</property>
+              </packing>
+            </child>
+            <child>
+              <object class="GtkFrame">
+                <property name="visible">True</property>
+                <property name="can_focus">False</property>
+                <property name="margin_top">18</property>
+                <property name="label_xalign">0</property>
+                <property name="shadow_type">in</property>
+                <child>
+                  <object class="GtkAlignment">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="left_padding">12</property>
+                    <child>
+                      <object class="GtkBox">
+                        <property name="visible">True</property>
+                        <property name="can_focus">False</property>
+                        <property name="margin_left">6</property>
+                        <property name="margin_right">12</property>
+                        <property name="margin_top">6</property>
+                        <property name="margin_bottom">12</property>
+                        <property name="homogeneous">True</property>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="orientation">vertical</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="visible">True</property>
+                                <property name="can_focus">False</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Time</property>
+                                <property name="single_line_mode">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="visible">True</property>
+                                <property name="can_focus">False</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkSpinButton" id="hour">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="max_length">2</property>
+                                    <property name="climb_rate">1</property>
+                                    <property name="snap_to_ticks">True</property>
+                                    <property name="overwrite_mode">True</property>
+                                    <property name="numeric">True</property>
+                                    <property name="input_purpose">digits</property>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">0</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkLabel">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">False</property>
+                                    <property name="margin_left">6</property>
+                                    <property name="margin_right">6</property>
+                                    <property name="label" translatable="yes">:</property>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">1</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkSpinButton" id="minute">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="max_length">2</property>
+                                    <property name="overwrite_mode">True</property>
+                                    <property name="primary_icon_activatable">False</property>
+                                    <property name="secondary_icon_activatable">False</property>
+                                    <property name="primary_icon_sensitive">False</property>
+                                    <property name="secondary_icon_sensitive">False</property>
+                                    <property name="input_purpose">digits</property>
+                                    <property name="input_hints">GTK_INPUT_HINT_NO_SPELLCHECK | GTK_INPUT_HINT_NONE</property>
+                                    <property name="climb_rate">1</property>
+                                    <property name="snap_to_ticks">True</property>
+                                    <property name="numeric">True</property>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">2</property>
+                                  </packing>
+                                </child>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">0</property>
+                          </packing>
+                        </child>
+                        <child>
+                          <object class="GtkBox">
+                            <property name="visible">True</property>
+                            <property name="can_focus">False</property>
+                            <property name="orientation">vertical</property>
+                            <child>
+                              <object class="GtkLabel">
+                                <property name="visible">True</property>
+                                <property name="can_focus">False</property>
+                                <property name="halign">start</property>
+                                <property name="label" translatable="yes">Date</property>
+                                <property name="single_line_mode">True</property>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">0</property>
+                              </packing>
+                            </child>
+                            <child>
+                              <object class="GtkBox">
+                                <property name="visible">True</property>
+                                <property name="can_focus">False</property>
+                                <property name="spacing">6</property>
+                                <child>
+                                  <object class="GtkSpinButton" id="day">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="overwrite_mode">True</property>
+                                    <property name="numeric">True</property>
+                                    <property name="max_length">2</property>
+                                    <property name="input_purpose">digits</property>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">0</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkComboBoxText" id="select_month">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">False</property>
+                                    <items>
+                                      <item id="1" translatable="yes">January</item>
+                                      <item id="2" translatable="yes">February</item>
+                                      <item id="3" translatable="yes">March</item>
+                                      <item id="4" translatable="yes">April</item>
+                                      <item id="5" translatable="yes">May</item>
+                                      <item id="6" translatable="yes">June</item>
+                                      <item id="7" translatable="yes">July</item>
+                                      <item id="8" translatable="yes">August</item>
+                                      <item id="9" translatable="yes">September</item>
+                                      <item id="10" translatable="yes">October</item>
+                                      <item id="11" translatable="yes">November</item>
+                                      <item id="12" translatable="yes">December</item>
+                                    </items>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">1</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkSpinButton" id="year">
+                                    <property name="visible">True</property>
+                                    <property name="can_focus">True</property>
+                                    <property name="overwrite_mode">True</property>
+                                    <property name="numeric">True</property>
+                                    <property name="max_length">4</property>
+                                    <property name="input_purpose">digits</property>
+                                  </object>
+                                  <packing>
+                                    <property name="expand">False</property>
+                                    <property name="fill">True</property>
+                                    <property name="position">2</property>
+                                  </packing>
+                                </child>
+                              </object>
+                              <packing>
+                                <property name="expand">False</property>
+                                <property name="fill">True</property>
+                                <property name="position">1</property>
+                              </packing>
+                            </child>
+                          </object>
+                          <packing>
+                            <property name="expand">False</property>
+                            <property name="fill">True</property>
+                            <property name="position">1</property>
+                          </packing>
+                        </child>
+                      </object>
+                    </child>
+                  </object>
+                </child>
+                <child type="label">
+                  <object class="GtkLabel">
+                    <property name="visible">True</property>
+                    <property name="can_focus">False</property>
+                    <property name="label" translatable="yes">Clock</property>
+                    <attributes>
+                      <attribute name="weight" value="bold"/>
+                    </attributes>
+                  </object>
+                </child>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">2</property>
+              </packing>
+            </child>
+          </object>
+          <packing>
+            <property name="expand">False</property>
+            <property name="fill">True</property>
+            <property name="position">1</property>
+          </packing>
+        </child>
+      </object>
+    </child>
+  </object>
+  <object class="GtkBox" id="box_tz_popover">
+    <property name="visible">True</property>
+    <property name="can_focus">False</property>
+    <property name="margin_left">12</property>
+    <property name="margin_right">12</property>
+    <property name="margin_top">12</property>
+    <property name="margin_bottom">12</property>
+    <property name="orientation">vertical</property>
+    <property name="spacing">6</property>
+    <child>
+      <object class="GtkSearchEntry" id="searchentry_tz">
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="primary_icon_name">edit-find-symbolic</property>
+        <property name="primary_icon_activatable">False</property>
+        <property name="primary_icon_sensitive">False</property>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">0</property>
+      </packing>
+    </child>
+    <child>
+      <object class="GtkScrolledWindow" id="scrolledwindow_tz">
+        <property name="width_request">400</property>
+        <property name="height_request">200</property>
+        <property name="visible">True</property>
+        <property name="can_focus">True</property>
+        <property name="hscrollbar_policy">never</property>
+        <property name="shadow_type">in</property>
+        <child>
+          <object class="GtkTreeView" id="treeview_tz">
+            <property name="visible">True</property>
+            <property name="can_focus">True</property>
+            <property name="headers_visible">False</property>
+            <property name="activate_on_single_click">True</property>
+            <child internal-child="selection">
+              <object class="GtkTreeSelection" id="treeview-selection_tz"/>
+            </child>
+          </object>
+        </child>
+      </object>
+      <packing>
+        <property name="expand">False</property>
+        <property name="fill">True</property>
+        <property name="position">1</property>
+      </packing>
+    </child>
+  </object>
+</interface>

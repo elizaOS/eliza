@@ -1,0 +1,49 @@
+[[!meta date="Fri, 03 Sep 2010 01:15:14 +0000"]]
+[[!meta title="Iceweasel exposes a rare User-Agent"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+A Torbutton bug ([[!debbug 595375]]) makes Iceweasel expose a
+recognizable User-Agent when the "Spoof US English Browser" setting is
+disabled, which is the case in T(A)ILS 0.5.
+
+# Impact
+
+System administrators, webmasters and anyone able to read the logs of
+a website are able to single out, amongst the visitors, the ones that
+are using an affected Torbutton extension *and* have explicitly
+disabled the "Spoof US English Browser" setting.
+
+While T(A)ILS users are obviously not the only ones in this case, such
+a bug eases fingerprinting.
+
+The client IP address recorded in the webserver logs for such a
+connection is the one of the Tor exit node used by the T(A)ILS user at
+this time.
+
+# Solution
+
+Upgrade to T(A)ILS 0.6.
+
+# Mitigation on T(A)ILS 0.5
+
+The following steps need to be done immediately after boot, **before**
+running Iceweasel.
+
+Run the following command in a terminal:
+
+	gksudo gedit /etc/iceweasel/profile/user.js
+
+... this opens a text editor. Delete the line that says:
+
+	user_pref("extensions.torbutton.spoof_english", false);
+
+... then save and quit. You can now run Iceweasel.
+
+Beware! Changing this setting in the Torbutton preferences window is
+**not** effective.
+
+# Affected versions
+
+Torbutton 1.2.5, included in T(A)ILS 0.5

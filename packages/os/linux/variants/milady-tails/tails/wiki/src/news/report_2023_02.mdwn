@@ -1,0 +1,41 @@
+[[!meta title="Tails report for February 2023"]]
+[[!meta date="Tue, 14 Mar 2023 17:47:25 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- [@bokonon](https://gitlab.tails.boum.org/bokonon) joined our team, as our
+  Fundraising Lead. bokonon will help us develop and grow our fundraising
+  initiatives, to support the work we do to accomplish our
+  [[mission|contribute/mission]].
+
+- We prepared usability tests planned in Ecuador in March.
+
+Releases
+========
+
+We [[released Tails 5.10 on February 16|news/version_5.10]].
+
+As part of our focus on polishing user experience, Tails now asks for
+confirmation when starting without unlocking the Persistent Storage. Because we
+humans sometimes forget stuff. It's OK :)
+
+Tails 5.10 fixed a few problems introduced in Tails 5.8 in December,
+and some more:
+
+- Fixed another case of Persistent Storage not activating.
+  ([[!tails_ticket 19432]])
+
+- Avoid opening the Persistent Storage settings each time after login.
+  ([[!tails_ticket 19410]])
+
+- Solve a possible privilege escalation through a symlink attack.
+
+Metrics
+=======
+
+Tails has been started more than 652 918 times this month. This makes 23 318
+boots a day on average.

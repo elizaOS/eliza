@@ -1,0 +1,362 @@
+[[!meta title="Tails 5.8 is out"]]
+[[!meta date="Tue, 20 Dec 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Tails 5.8 is the most important release of Tails in years. It includes both
+major redesign of existing features, important usability improvements, and
+hardened security.
+
+This work has been made possible by donations from users like you. If you like
+these changes and want more, donate now to fund our work in 2023.
+
+**Donate now to fund our work in 2023.**
+
+[[!toc levels=3]]
+
+<h1 id="features">New features</h1>
+
+## New Persistent Storage
+
+After 2 years of hard work, we are extremely proud to present you a complete
+redesign of the Persistent Storage.
+
+The Persistent Storage hasn't changed much since its first release in 2012
+because the code was hard to modify and improve. But, we learned from users
+that the Persistent Storage could do a lot more for you if it had more features
+and was easier to use.
+
+[[!img create.png link="no" alt=""]]
+
+[[!img configure.png link="no" alt=""]]
+
+- You don't have to restart anymore after creating the Persistent Storage or
+  each time you activate a new feature.
+
+- You can change the password of your Persistent Storage from this new
+  application.
+
+- You can choose to create a Persistent Storage directly from the Welcome
+  Screen, if you don't have one already.
+
+  [[!img onboard.png link="no" alt=""]]
+
+## Wayland and better Unsafe Browser
+
+We replaced the deprecated X.Org display system with Wayland.
+
+Even if you won't notice any visual difference, Wayland brings more security in
+depth to Tails by making it harder for a compromised application in Tails to
+compromise or misuse another application.
+
+For example, since [[Tails 4.8|news/version_4.8]], the *Unsafe Browser* was
+disabled by default because a security vulnerability in another application in
+Tails could start an invisible *Unsafe Browser*, reveal your IP address, and
+[[deanonymize you|doc/anonymous_internet/unsafe_browser#security]].
+
+Wayland fixes this vulnerability and makes it safe to re-enable the *Unsafe Browser*
+by default. You can still disable the *Unsafe Browser* in the Welcome Screen.
+
+Wayland also brings in other features that were not working yet in the *Unsafe
+Browser*:
+
+- Sound
+- Uploads and downloads
+- Alternative input methods for Chinese and other non-Latin languages
+- Accessibility features like the screen reader and virtual keyboard
+
+## QR code scanning of Tor bridges
+
+We made it easier to enter new Tor bridges in Tails by scanning a QR code.
+
+To get a QR code, you can either:
+
+- Send an empty email to <bridges@torproject.org> from a Gmail or Riseup email
+  address.
+
+- Get bridges from <https://bridges.torproject.org/> and print the QR code on
+  paper.
+
+We are aware that the QR codes that are currently provided are too big to be
+easy to scan. We are [working with
+Tor](https://gitlab.torproject.org/tpo/anti-censorship/bridgedb/-/issues/40052)
+to make them smaller and easier to scan.
+
+[[!img test_5.8-beta1/qr_code.png link="no" alt=""]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [12.0.1](https://blog.torproject.org/new-release-tor-browser-1201).
+
+- Update *Thunderbird* to [102.6.0](https://www.thunderbird.net/en-US/thunderbird/102.6.0/releasenotes/).
+
+- Update *Tor* to 0.4.7.12.
+
+- Remove the *Dasher* graphical text entry application.
+
+<h1 id="fixes">Fixed problems</h1>
+
+We fixed 3 usability issues in the *Tor Connection* assistant:
+
+- Display a percentage on the connection progress bar. ([[!tails_ticket 19208]])
+
+  [[!img progress.png link="no" alt=""]]
+
+- Fix links to documentation. ([[!tails_ticket 19172]])
+
+- Add a **Bridge** label in front of the line to enter a custom bridge. ([[!tails_ticket 19169]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+If you are facing some of these issues, try downgrading to Tails 5.7. To do so:
+
+- Download [Tails 5.7](https://iso-history.tails.boum.org/tails-amd64-5.7/)
+- Do a manual upgrade to Tails 5.7.
+
+<h2 id="qt">Problems with Qt applications like <i>Kleopatra</i> and <i>Feather</i></h2>
+
+Applications using the Qt toolkit have issues in Wayland. You can work around
+these issues by running these applications using XWayland instead.
+
+### Clipboard encryption and decryption is broken in *Kleopatra* ([[!tails_ticket 19329]])
+
+To fix this:
+
+1. Choose **Applications**&nbsp;▸ **Utilities**&nbsp;▸ **Terminal** to open a terminal.
+
+1. Execute the following command in the terminal:
+
+       unset QT_QPA_PLATFORM & kleopatra &
+
+   This only works if *Kleopatra* has never been started since Tails started.
+   Otherwise, execute this command and try again:
+
+       killall kleopatra
+
+### AppImages like *Feather* wallet and *Bitcoin-Qt* fail to load ([[!tails_ticket 19326]])
+
+To fix this:
+
+1. Navigate to your AppImage in the *Files* browser.
+
+1. Do right-click (on Mac, click with two fingers) in the folder and choose
+   **Open in Terminal**.
+
+1. Execute the following command in the terminal to start your AppImage.
+
+   Replace:
+
+   - <span class="command-placeholder">application.AppImage</span> by the
+     file name of your AppImage.
+
+   <p class="pre command">unset QT_QPA_PLATFORM ; ./<span class="command-placeholder">application.AppImage</span></p>
+
+   For example, to start the *Feather* wallet version 2.1.2, execute:
+
+       unset QT_QPA_PLATFORM ; ./feather-2.1.2.AppImage
+
+<h2 id="graphics">Some graphics cards stopped working in Tails 5.8 ([[!tails_ticket 19353]])</h2>
+
+People have reported us several graphics cards that used to work in Tails 5.7
+and stopped working in Tails 5.8:
+
+- Nvidia
+  * `10de:0a70` GeForce 310M
+  * `10de:1f82` GeForce GTX 1650: this is fixed in Tails 5.9
+  * `10de:220a` RTX 3080
+  * `10de:2482` GA104 GeForce RTX 3070 Ti
+  * `10de:2486` GA104 GeForce RTX 3060 Ti: this is fixed in Tails 5.9
+  * `10de:2488` RTX 3070: this is fixed in Tails 5.9
+  * `10de:2489` RTX 3060 Ti
+  * `10de:24dc` GA104M GeForce RTX 3080 Mobile
+  * `10de:2504` RTX: this is fixed in Tails 5.9
+  * `10de:2560` GA106M GeForce RTX 3060 Mobile
+  * GeForce RTX 3060 Ti Founders Edition: this is fixed in Tails 5.9
+  * `10de:25e0`
+- Intel
+  * `8086:0046` Core Processor Integrated Graphic Controller
+    - This will be fixed in Tails 5.9 with an update of the Linux kernel.
+  * `8086:0a16` Haswell-ULT Integrated Graphics Controller
+  * `8086:1916` Skylake GT2
+    - Add the `i915.force_probe=1916` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:3185` GeminiLake (UHD Graphics 600)
+    - Add the `i915.force_probe=3185` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:4690`
+    - Add the `i915.force_probe=4690` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:4692` UHD Graphics 730
+    - Add the `i915.force_probe=4692` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:46a6` Alder Lake-P
+    - Add the `i915.force_probe=46a6` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:46a8`
+    - Add the `i915.force_probe=46a8` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:4e55`
+    - To fix this, add the `i915.force_probe=4e55` [[boot option|doc/advanced_topics/boot_options]].
+  * `8086:4e71`
+    - Add the `i915.force_probe=4e71` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:5917`
+    - Add the `i915.force_probe=5917` [[boot option|doc/advanced_topics/boot_options]]
+      and [let us know](mailto:tails-bugs@boum.org) whether it helps.
+  * `8086:8a56`
+    - To fix this, add the `i915.force_probe=8a56` [[boot option|doc/advanced_topics/boot_options]].
+- AMD
+  * `1002:1506`
+  * `1002:15e7`
+  * `1002:6605` Radeon R7 M260X
+  * `1002:6649` Bonaire FirePro W5100
+  * `1002:73df` RX Radeon 6700XT (Navi 22)
+  * `1002:73ff` Navi 23
+  * `1002:743f` RX 6400
+- If the error message lists multiple graphics cards:
+  - If possible, plug the monitor into the motherboard's Intel graphics card, as
+    opposed to the external Nvidia or AMD/ATI graphics card.
+  - Explicitly select one of the two graphics adapters in the BIOS
+    instead of letting the system choose one automatically. If this does
+    not solve the problem, try selecting the other graphics adapter.
+  - Add the `nouveau.modeset=0` [[boot option|doc/advanced_topics/boot_options]].
+    This will force the system to use your other graphics cards,
+    instead of the NVIDIA one.
+
+These graphics card probably don't work as good on Wayland as they used to work on X.Org.
+
+Unfortunately, we have no solution to offer you so far.
+
+We hope that this gets fixed in the next update of the Linux kernel, maybe in Tails 5.9.
+
+<h2 id="ps">Persistent Storage fails to load with symbolic links in Dotfiles ([[!tails_ticket 19346]])</h2>
+
+If you have [[!wikipedia Symbolic_link desc="symbolic links"]] in the
+[[Dotfiles|doc/persistent_storage/configure#dotfiles]] feature of your Persistent
+Storage, your Persistent Storage fails to load with the error message:
+
+    Failed to activate the Persistent Storage.
+    Please start Tails and send an error report.
+
+To fix this, remove or replace these symbolic links.
+
+The following instructions explain how to access the content of your Persistent
+Storage.
+
+- When starting Tails:
+
+  1. Do not unlock your Persistent Storage.
+
+  2. Set an [[administration password|doc/first_steps/welcome_screen/administration_password]].
+
+- In Tails, unlock your Persistent Storage:
+
+  1. Choose **Applications**&nbsp;▸ **Utilities**&nbsp;▸ **Disks**.
+
+  1. In the *Disks* utility, select your Tails USB stick in the left pane.
+
+  1. Select the **TailsData LUKS** partition in the right pane.
+
+  1. Click the **[[!img lib/unlock.png alt="Unlock selected encrypted partition"
+     class="symbolic" link="no"]]** button.
+
+  1. Enter the passphrase of your Persistent Storage.
+
+  1. In the second password prompt, enter your administration password.
+
+  1. Click the **TailsData Ext4** that appeared below the **TailsData LUKS** partition.
+
+  1. Click the **[[!img lib/media-playback-start.png alt="Mount selected
+   partition" link=no class=symbolic]]**.
+
+  1. Close the *Disks* utility.
+
+- Navigate to the content of your Persistent Storage:
+
+  1. Choose **Applications**&nbsp;▸ **System Tools**&nbsp;▸ **Root Terminal** to
+     open a terminal with administration rights.
+
+  1. Execute the following command to open the *Files* browser with administration rights:
+
+         nautilus
+
+  1. In the *Files* browser, navigate to */media/amnesia/TailsData/dotfiles*.
+
+     Remove or replace all symbolic links in the dotfiles folder.
+
+     Symbolic links have the following icon:
+
+     [[!img symlink.png link="no" alt=""]]
+
+  1. Restart Tails and try unlocking your Persistent Storage like usually.
+
+## *Tor Browser* has no minimize and maximize buttons ([[!tails_ticket 19328]])
+
+To work around this:
+
+1. Right-click on the *Tor Browser* tab in the window list at the bottom of the screen.
+
+1. Choose **Minimize** or **Maximize**.
+
+## Welcome Screen and Tor Connection don't fit on 800×600 ([[!tails_ticket 19324]])
+
+The top of the Welcome Screen and some button of the Tor Connection assistant are cut out on small displays (800×600), like
+virtual machines.
+
+You can press **Alt+S** to start Tails.
+
+## Switches of the Persistent Storage settings are very slow sometimes ([[!tails_ticket 19291]])
+
+The switches that turn on and off the different features of the Persistent Storage
+are very slow to respond on some USB sticks. Please report on [[!tails_ticket
+19291]] if this happens to you.
+
+## Progress bar of *Tor Connection* gets stuck around 50% ([[!tails_ticket 19173]])
+
+When using a custom Tor `obfs4` bridge, the progress bar of *Tor Connection*
+sometimes gets stuck halfway through and becomes extremely slow.
+
+To fix this, you can either:
+
+* Close and reopen *Tor Connection* to speed up the initial connection.
+
+* Try a different `obfs4` bridge.
+
+  This issue only affects outdated obfs4 bridges and does not happen with
+  obfs4 bridges that run version 0.0.12 or later.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.8</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.8.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.8 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]

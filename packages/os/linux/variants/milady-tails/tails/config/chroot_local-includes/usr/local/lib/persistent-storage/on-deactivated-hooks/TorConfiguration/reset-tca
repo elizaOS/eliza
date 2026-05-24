@@ -1,0 +1,12 @@
+#!/bin/sh
+
+set -eu
+
+rm -rf /var/lib/tca/ /run/tca/
+/usr/local/lib/run-with-user-env systemctl --user stop tca.service
+systemctl stop tor@default.service
+echo DisableNetwork 1 >> /etc/tor/torrc
+systemctl start tor@default.service
+if [ "$(nmcli --terse --fields STATE general status)" = connected ]; then
+    /usr/local/lib/run-with-user-env systemctl --user start tca.service
+fi

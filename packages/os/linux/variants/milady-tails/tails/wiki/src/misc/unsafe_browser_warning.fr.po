@@ -1,0 +1,165 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: 2025-04-17 17:36-0600\n"
+"PO-Revision-Date: 2023-01-19 22:17+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: Tails translators <tails-l10n@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Unsafe Browser\"]]\n"
+msgstr "[[!meta title=\"Navigateur non sécurisé\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+msgstr "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"unsafe\">\n"
+msgstr "<div id=\"unsafe\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"big\">This browser is not anonymous.</p>\n"
+msgstr "<p class=\"big\">Ce navigateur n'est pas anonyme.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What captive portals are"
+msgstr "Ce que sont les portails captifs"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr "Se connecter à un réseau utilisant un portail captif"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "The <em>Unsafe Browser</em> is not using Tor and is not anonymous."
+#~ msgstr ""
+#~ "Le <em>Navigateur non-sécurisé</em> n'utilise pas Tor et n'est pas "
+#~ "anonyme."
+
+#~ msgid ""
+#~ "<strong>Only use the <em>Unsafe Browser</em> to log in to captive portals."
+#~ "</strong>"
+#~ msgstr ""
+#~ "<strong>Utilisez le <em>Navigateur non-sécurisé</em> uniquement pour vous "
+#~ "identifier auprès de portails captifs.</strong>"
+
+#~ msgid "For a safe and anonymous browser, use <em>Tor Browser</em> instead."
+#~ msgstr ""
+#~ "Pour un navigateur sûr et anonyme, utilisez le <em>Navigateur Tor</em> à "
+#~ "la place."
+
+#~ msgid "To log in to a captive portal:"
+#~ msgstr "Pour s'identifier auprès d'un portail captif :"
+
+#~ msgid "Try visiting any website using the <em>Unsafe Browser</em>."
+#~ msgstr ""
+#~ "Essayez de visiter un site web en utilisant le <em>Navigateur non-"
+#~ "sécurisé</em>."
+
+#~ msgid ""
+#~ "Choose a website that is common in your location, for example a search "
+#~ "engine or news site."
+#~ msgstr ""
+#~ "Choisissez un site web courant là où vous vous trouvez, par exemple un "
+#~ "moteur de recherche ou un site d'actualité."
+
+#~ msgid ""
+#~ "You should be redirected to the captive portal instead of the website."
+#~ msgstr ""
+#~ "Vous devriez être redirigé vers le portail captif à la place du site web."
+
+#~ msgid "After you logged in to the captive portal, Tor should start."
+#~ msgstr ""
+#~ "Après l'identification auprès du portail captif, Tor devrait démarrer."
+
+#~ msgid "After Tor is ready, close the <em>Unsafe Browser</em>."
+#~ msgstr ""
+#~ "Une fois que Tor est prêt, fermez le <em>Navigateur non-sécurisé</em>."
+
+#~ msgid "You can use <em>Tor Browser</em> and any other application as usual."
+#~ msgstr ""
+#~ "Vous pouvez utiliser le <em>Navigateur Tor</em> ou n'importe quelle autre "
+#~ "application comme d'habitude."
+
+#~ msgid ""
+#~ "You are currently using the Unsafe Browser. As its name suggests, the "
+#~ "Unsafe Browser's network activity is <strong>not anonymous</strong>. If "
+#~ "you want a safe, anonymous web browser, please shut this browser down "
+#~ "immediately and start the following web browser instead: "
+#~ "<em>Applications</em> → <em>Internet</em> → <em>Tor Browser</em>."
+#~ msgstr ""
+#~ "Vous êtes en train d'utiliser le Navigateur non-sécurisé. Comme son nom "
+#~ "l'indique, la navigation via le Navigateur non-sécurisé n'est <strong>pas "
+#~ "anonyme</strong>. Si vous voulez un navigateur web anonyme et sécurisé, "
+#~ "fermez immédiatement ce navigateur web et lancez celui-ci à la place : "
+#~ "<em>Applications</em> → <em>Internet</em> → <em>Navigateur Tor</em>."
+
+#~ msgid ""
+#~ "If you want to login to a captive portal to get Internet access (as is "
+#~ "commonly necessary at Internet cafés, libraries, schools and other public "
+#~ "places and businesses), try visiting any web site you know of by entering "
+#~ "its address in the address field above. The web site you choose should "
+#~ "preferably be common to your geographic location in order to raise less "
+#~ "suspicion (good examples of such pages are search engines, news papers' "
+#~ "home pages and similar). Once you've done that you should be redirected "
+#~ "to the login page instead, and once logged in you should have Internet "
+#~ "access so that you can start your anonymous activity by using "
+#~ "<strong>other</strong> applications than the Unsafe Browser."
+#~ msgstr ""
+#~ "Si vous voulez vous identifier auprès d'un portail captif pour avoir "
+#~ "accès à Internet (comme il est d'usage dans des cyber-cafés, "
+#~ "bibliothèques, écoles, et autres bâtiments publiques ou privés), essayez "
+#~ "d'aller sur n'importe quel site que vous connaissez en tapant son adresse "
+#~ "dans la barre d'adresse. Le site en question devrait plutôt être proche "
+#~ "de votre situation géographique afin de ne pas éveiller de soupçon (des "
+#~ "moteurs de recherche, le site du journal local, ou autres sont de bons "
+#~ "exemples). Vous devriez être redirigé vers le portail captif à la place "
+#~ "du site demandé, et une fois identifié devriez avoir accès à Internet et "
+#~ "donc pouvoir être anonyme en utilisant d'<strong>autres</strong> "
+#~ "applications que le Navigateur non-sécurisé."

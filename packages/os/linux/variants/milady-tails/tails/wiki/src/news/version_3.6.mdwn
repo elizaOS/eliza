@@ -1,0 +1,135 @@
+[[!meta date="Tue, 13 Mar 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.6 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.5]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- You can now lock your screen by clicking on the
+  <strong>[[!img lib/network-wireless-encrypted.png alt="Lock" class="symbolic" link="no"]]</strong>
+  button in the system menu.
+
+  - If you set up an [[administration password|doc/first_steps/welcome_screen/administration_password]]
+    when starting Tails, you can unlock your screen with your administration
+    password.
+
+  - Otherwise, you can set up a password to unlock your screen when locking your
+    screen for the first time.
+
+- We improved a lot the backend of the **Additional Software**
+  persistence feature.
+  Your additional software is now:
+
+  - Installed in the background after the session starts instead of
+    blocking the opening of the desktop.
+  - Always installed even if you are offline.
+
+- Install
+  [pdf-redact-tools](https://github.com/firstlookmedia/pdf-redact-tools/blob/master/README.md),
+  a command line tool to clean metadata and redact PDF files by
+  converting them to PNG images.
+
+- An error message indicating the name of the graphics card is now
+  displayed when Tails fails to start GNOME.
+
+## Upgrades and changes
+
+- The **Tails documentation** launcher on the desktop now opens the
+  documentation on our website if you are online.
+
+- Install drivers for the [[!wikipedia Video_Acceleration_API]] to
+  improve the display of videos on many graphics cards.
+
+- Upgrade *Electrum* from 2.7.9 to [3.0.6](https://github.com/spesmilo/electrum/blob/3.0.x/RELEASE-NOTES).
+
+- Upgrade *Linux* to 4.15.0.
+
+- Upgrade *Tor* to 0.3.2.10.
+
+- Upgrade *Thunderbird* [52.6.0](https://www.mozilla.org/en-US/thunderbird/52.6.0/releasenotes/).
+
+  We also activated the *AppArmor* profile of *Thunderbird* from Debian
+  to [[confine *Thunderbird* for security|contribute/design/application_isolation]].
+
+- Rewrite some internal scripts from shell scripting to Python, thanks
+  to [GoodCrypto](https://goodcrypto-private-server.sourceforge.io/).
+
+## Fixed problems
+
+- Remove the display of debug and error messages when starting.
+
+  [[!img version_3.5/logs.png link="no"]]
+
+- Fix the ISO image selection being unavailable in *Tails Installer* in
+  languages other than English. ([[!tails_ticket 15233]])
+
+  [[!img version_3.5/broken-file-chooser.png link="no"]]
+
+- Fix *OpenPGP Applet* being unresponsive when decrypting a lot of text.
+  ([[!tails_ticket 6398]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- *Tails Verification*, our browser
+  extension to verify Tails downloads, is broken in Tails 3.6. Please
+  use it from Firefox, Chrome, or Tor Browser outside of Tails.
+  ([[!tails_ticket 15434]])
+
+- *Enigmail* is unable to download
+  OpenPGP keys for new contacts if you have the
+  **GnuPG** persistence feature activated. You can still download OpenPGP keys
+  using *Passwords and Keys*.
+  ([[!tails_ticket 15395]])
+
+- This release is not reproducible, due to various python files in /usr/local
+  having different timestamps. ([[!tails_ticket 15400]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.6
+
+- To install, follow our [[installation instructions|install]].
+
+<a id="upgrade"></a>
+
+- We do not provide automatic upgrades from older Tails installations for
+  this release, as we've hit an old bug while generating the necessary files
+  ([[!tails_ticket 13426]]). You have to [[upgrade manually|doc/upgrade#manual]].
+
+  If you are doing a manual upgrade from Tails 3.2, 3.3, 3.4, or 3.5, it is only possible to select an
+  ISO image when running Tails in English. For other languages, the
+  file chooser button remains inactive:
+
+  [[!img news/version_3.5/broken-file-chooser.png link="no"]]
+
+  To do a manual upgrade from Tails 3.2, 3.3, 3.4, or 3.5, you can either:
+
+  - Restart Tails in English.
+
+  - Start *Tails Installer* in
+    English from the command line:
+
+    <pre>LANG=en_US tails-installer</pre>
+
+- [[Download Tails 3.6.|install/download]]
+
+# What's coming up?
+
+Tails 3.7 is [[scheduled|contribute/calendar]] for May 8.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.6">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,21 @@
+[Unit]
+Description=Verify staged elizaOS runtime update manifest
+Documentation=man:gpgv(1)
+Wants=tails-persistent-storage.service
+After=local-fs.target tails-persistent-storage.service
+Before=milady.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/elizaos/update-manager verify
+RemainAfterExit=yes
+RuntimeDirectory=elizaos
+RuntimeDirectoryMode=0755
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/run/elizaos -/live/persistence/TailsData_unlocked/elizaos-system
+
+[Install]
+WantedBy=multi-user.target

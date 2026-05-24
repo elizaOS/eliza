@@ -1,0 +1,45 @@
+[[!meta title="Starter tasks for new contributors"]]
+
+The tasks marked as *Starter* in our bug tracker have been identified as good
+starting points for new contributors. They cover all kinds of work: testing,
+design, writing, coding, etc.
+
+[[!tails_gitlab
+groups/tails/-/issues?label_name%5B%5D=Starter
+desc="*Starter* tasks"]]
+
+The description of the task should provide enough useful information to help you
+complete it. Otherwise, don't hesitate to [[ask us on tails-dev@boum.org|doc/about/contact#tails-dev]] for
+clarification.
+
+You can also have a look at other tasks marked as
+[[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=P%3ALow
+desc="low priority"]] on our GitLab.
+We marked them as of low priority according to our roadmap but they might
+be interesting, useful and fun to work on!
+
+Recommendations
+===============
+
+  - Once you choose a task that fits your skills, send an email to
+    [[tails-dev@boum.org|doc/about/contact#tails-dev]] saying that you are starting to work
+    on this task.
+
+  - Keep us updated with your progress from time to time.
+
+  - Even if you are deeply skilled, please consider doing one little starter task,
+    to get used to the process. After that, you are invited to move on up to
+    more difficult tasks, leaving some of the starter tasks to others so they can
+    get involved and achieve change themselves.
+
+More Information
+================
+
+- [[Contribute|contribute]] section, for more resources on Tails development.
+
+- [[Marking a task as *Starter*|contribute/working_together/criteria_for_starter_tasks]],
+  to understand what are our criteria for those tasks.
+
+This page was inspired by the [Easy
+Hacks](https://wiki.documentfoundation.org/Easy_Hacks) project of
+[LibreOffice](https://www.documentfoundation.org/).

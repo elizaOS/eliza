@@ -1,0 +1,64 @@
+[[!meta date="Sun, 10 Jun 2018 16:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.7.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.7]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Upgrade *Tor Browser* to 7.5.5.
+
+  This fixes a [[!mfsa 2018-14 desc="critical issue in Firefox"]]
+  announced on June 6.
+
+- Upgrade *Thunderbird* to 52.8.0.
+
+  This partly mitigates the infamous EFAIL attack and fixes importing
+  OpenPGP keys from keyservers with Enigmail.
+
+## Fixed problems
+
+- Fix setting a screen locker password with non-ASCII characters.
+  ([[!tails_ticket 15636]])
+
+- Rename the *WhisperBack* launcher to "WhisperBack Error Reporting"
+  so that users have a better chance to understand what it does.
+  ([[!tails_ticket 6432]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.7.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.6, 3.6.1, 3.6.2,
+  and 3.7 to 3.7.1.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.7.1.|install/download]]
+
+# What's coming up?
+
+Tails 3.8 is [[scheduled|contribute/calendar]] for June 26.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.7.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

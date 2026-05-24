@@ -1,0 +1,216 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2024-09-20 20:40+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Protection against cold boot attacks\"]]\n"
+msgstr "[[!meta title=\"Proteção contra ataques cold boot\"]]\n"
+
+#. type: Plain text
+msgid ""
+"While using a computer, all the data manipulated is written temporarily in "
+"[[!wikipedia Random-access_memory desc=\"RAM\"]]: texts, saved files, but "
+"also passwords and encryption keys. The more recent the activity, the more "
+"likely it is for the data to still be in RAM."
+msgstr ""
+"Ao usar um computador, todos os dados manipulados são escritos "
+"temporariamente na [[!wikipedia_pt Memória_de_acesso_aleatório "
+"desc=\"memória RAM\"]]: textos, arquivos salvos, e também senhas e chaves "
+"criptográficas. Quanto mais recente a atividade, maior é a probabilidade de "
+"que estes dados estejam na RAM."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "After a computer is powered off, the data in RAM disappears rapidly, but "
+#| "it can remain in RAM up to several minutes after shutdown. An attacker "
+#| "having access to a computer before it disappears completely could recover "
+#| "important data from your session."
+msgid ""
+"After a computer is powered off, the data in RAM disappears rapidly, but it "
+"can remain in RAM up to several minutes after shutdown. An attacker having "
+"access to a computer before the data in RAM disappears completely could "
+"recover important data from your session."
+msgstr ""
+"Depois que um computador foi desligado, os dados na RAM desaparecem "
+"rapidamente, mas podem continuar na RAM até alguns minutos depois do "
+"desligamento. Um atacante que tenha acesso ao computador antes de que estes "
+"dados desapareçam completamente pode recuperar dados importantes de sua "
+"sessão."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "This can be achieved using a technique called <span\n"
+#| "class=\"definition\">[[!wikipedia Cold_boot_attack desc=\"cold boot\n"
+#| "attack\"]] </span>. To prevent this attack, the data in RAM is\n"
+#| "overwritten by random data when shutting down Tails. This erases all\n"
+#| "traces from your session on that computer.\n"
+msgid ""
+"This can be achieved using a technique called [[!wikipedia cold boot "
+"attack]]. To prevent such attacks, the data in RAM is overwritten by random "
+"data when you shut down Tails."
+msgstr ""
+"Isto pode ser feito usando uma técnica chamada <span\n"
+"class=\"definition\">[[!wikipedia_pt Cold_boot_attack desc=\"ataque cold\n"
+"boot\n"
+"\"]]</span>. Para evitar este ataque os dados na RAM são\n"
+"substituídos por dados aleatórios quando o Tails está sendo desligado. Isto\n"
+"apaga todos os traços da sua sessão naquele computador.\n"
+
+#. type: Plain text
+msgid ""
+"Moreover, an attacker having physical access to the computer *while Tails is "
+"running* can recover data from RAM as well. To avoid that, learn the "
+"different methods to [[shutdown Tails|doc/first_steps/shutdown]] rapidly."
+msgstr ""
+"Além disso, um atacante que tenha acesso físico ao computador *enquanto "
+"Tails está sendo executado* também pode recuperar dados da RAM. Para evitar "
+"isto, aprenda diferentes formas de [[desligar o Tails|doc/first_steps/"
+"shutdown]] rapidamente."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>As far as we know, cold boot attacks are not a common procedure for\n"
+"data recovery.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a <a\n"
+"href=\"https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf\">research\n"
+"report from 2011</a>, Defense Research and Development Canada concluded that\n"
+"cold boot attacks can be useful in some cases to acquire data in memory but are\n"
+"not a panacea and have many drawbacks dictated by the laws of physics, which\n"
+"cannot be overcome by the technique. The authors recommend to only use cold\n"
+"boot attacks as a last resort when all other avenues have been exhausted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See how we implement this [[memory\n"
+"erasure|contribute/design/memory_erasure]], for example, if you want to\n"
+"implement this feature outside of Tails.</p>\n"
+msgstr ""
+
+#, fuzzy
+#~| msgid ""
+#~| "As far as we know, cold boot attacks are not a common procedure for data "
+#~| "recovery, but it might still be good to be prepared."
+#~ msgid ""
+#~ "As far as we know, cold boot attacks are not a common procedure for data "
+#~ "recovery, but it might still be good to be prepared. If no cold boot "
+#~ "attack happens directly after shutdown, the RAM empties itself in "
+#~ "minutes, and all data disappears."
+#~ msgstr ""
+#~ "Até onde sabemos, ataques de cold boot não são um procedimento comum para "
+#~ "recuperação de dados, mas ainda assim é bom estar preparado."
+
+#~ msgid ""
+#~ "On some computers Tails might fail to:\n"
+#~ "<ul>\n"
+#~ "  <li>[[erase all the data in RAM on\n"
+#~ "  shutdown|support/known_issues#memory-wipe]]</li>\n"
+#~ "  <li>[[completely shutdown or restart|support/known_issues#fails-to-"
+#~ "shutdown]]\n"
+#~ "  (in this case there is no guarantee that all the data in RAM is\n"
+#~ "  erased).</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "Em alguns computadores, o Tails pode falhar ao:\n"
+#~ "<ul>\n"
+#~ "  <li>[[apagar todos os dados na RAM ao\n"
+#~ "  desligar|support/known_issues#index9h2]]</li>\n"
+#~ "  <li>[[desligar completamente ou reiniciar|support/known_issues#fails-to-"
+#~ "shutdown]]\n"
+#~ "  (neste caso, não há garantia de que todos os dados na RAM sejam\n"
+#~ "  apagados).</li>\n"
+#~ "</ul>\n"
+
+#~ msgid ""
+#~ "Due to how modern computing works, basically everything that you have "
+#~ "done during a session is stored in the RAM. If an attacker has physical "
+#~ "access to your computer when you are running Tails, it may enable her to "
+#~ "recover everything that have been achieved during the session, from typed "
+#~ "texts to saved files, including passwords and encryption keys.  The more "
+#~ "recent the activity, the more likely it is that it is still in the RAM."
+#~ msgstr ""
+#~ "Por causa da forma como a computação moderna funciona, basicamente tudo "
+#~ "que você faz durante uma sessão é armazenado na memória RAM. Se um "
+#~ "atacante tiver acesso físico ao seu computador enquanto você estiver "
+#~ "rodando o Tails, isto pode permitir a ele ou ela recuperar tudo que foi "
+#~ "feito durante aquela sessão, desde textos digitados até arquivos salvos, "
+#~ "incluindo senhas e chaves de criptografia. Quão mais recente a atividade, "
+#~ "mais provável que ainda esteja na RAM."
+
+#~ msgid ""
+#~ "Furthermore, it has been shown that the data present in the RAM might be "
+#~ "recoverable for seconds or even minutes after the computer is powered off "
+#~ "using a [cold boot attack](http://en.wikipedia.org/wiki/Cold_boot_attack)."
+#~ msgstr ""
+#~ "Além disso, foi mostrado que os dados presentes na memória RAM podem ser "
+#~ "recuperados após segundos ou mesmo minutos depois que o computador foi "
+#~ "desligado, usando um [ataque de *cold boot*](http://en.wikipedia.org/wiki/"
+#~ "Cold_boot_attack)."
+
+#~ msgid ""
+#~ "In both cases the RAM contents can be analysed in a computer forensics "
+#~ "laboratory which might turn into a major disaster depending on what they "
+#~ "find."
+#~ msgstr ""
+#~ "Em ambos os casos, o conteúdo da RAM pode ser analisado em um laboratório "
+#~ "de computação forense, e isso pode virar um grande desastre dependendo do "
+#~ "que for encontrado."
+
+#~ msgid ""
+#~ "So, what should you do when you hear an attacker knocking at your door? "
+#~ "You could just remove the USB stick or DVD you are running Tails from. It "
+#~ "will start to wipe the contents of the RAM by filling it out with random "
+#~ "junk, thus erasing everything that was stored there before, including the "
+#~ "encryption key of the encrypted storage devices you might use and the "
+#~ "traces of your session. Then you wait, possibly trying to buy valuable "
+#~ "time by barricading your door."
+#~ msgstr ""
+#~ "Então, o que você deve fazer quando você escutar um atacante batendo em "
+#~ "sua porta? Você pode apenas remover a memória USB ou o DVD que estiver "
+#~ "rodando o Tails. O sistema vai começar a limpar o conteúdo da RAM "
+#~ "enchendo-a com lixo aleatório, apagando assim tudo que estava armazenado "
+#~ "ali anteriormente, incluindo a chave de criptografia dos dispositivos de "
+#~ "armazenamento criptografados que você talvez esteja usando em sua sessão. "
+#~ "Aí você tem que esperar, talvez tentando ganhar tempo montando uma "
+#~ "barricada na porta."

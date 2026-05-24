@@ -1,0 +1,17 @@
+[[!meta title="Chatting with Dino and OMEMO"]]
+
+[*Dino*](https://dino.im/) is a
+modern, open-source Jabber/XMPP chat client. *Dino*
+supports end-to-end encryption using [OMEMO](https://conversations.im/omemo/).
+
+To learn how to install and use *Dino* in
+Tails, see [this tutorial](https://t-hinrichs.net/DinoTails/DinoTails_recent.html).
+
+<div class="bug">
+
+<p>The tutorial linked above is outdated since Tails 5.0 (May 2022). See [[!tails_ticket 19104]].</p>
+
+</div>
+
+We are considering *Dino* as an option to
+replace [[*Pidgin*|doc/anonymous_internet/pidgin]] in Tails.

@@ -1,0 +1,967 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2026-04-01 22:22+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails on PC\"]]\n"
+msgstr "[[!meta title=\"Démarrer Tails sur PC\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/standalone\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/standalone\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"This page describes the basic and advanced techniques to start Tails from a "
+"USB stick on PC."
+msgstr ""
+"Cette page décrit les techniques de base et avancées pour démarrer Tails "
+"depuis une clé USB sur un PC."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"windows-restart\">Starting from Windows</h1>\n"
+msgstr "<h1 id=\"windows-restart\">Démarrer depuis Windows</h1>\n"
+
+#. type: Plain text
+msgid "From Windows or the sign-in screen of Windows:"
+msgstr "Depuis Windows ou depuis l'écran de connexion de Windows :"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"next\">\n"
+"<p>If the Boot Loader appears, you can follow our [[instructions\n"
+"on the Welcome Screen|install/windows#tails]].</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"next\">\n"
+"<p>Si le chargeur d'amorçage apparaît, vous pouvez suivre nos [[instructions\n"
+"sur l'écran de bienvenue|install/windows#tails]].</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"boot-menu-key\">Starting with the Boot Menu key</h1>\n"
+msgstr "<h1 id=\"boot-menu-key\">Démarrer avec la touche d'accès au Menu de démarrage</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"automatically\">Starting on Tails automatically</h1>\n"
+msgstr "<h1 id=\"automatically\">Démarrer automatiquement sur Tails</h1>\n"
+
+#. type: Plain text
+msgid ""
+"To start on Tails automatically when your Tails USB stick is plugged in:"
+msgstr ""
+"Pour démarrer sur Tails automatiquement lorsque la clé USB est branchée :"
+
+#. type: Bullet: '- '
+msgid "Open the BIOS or UEFI settings of the computer."
+msgstr "Allez dans les réglages BIOS ou UEFI de l'ordinateur."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To learn how to edit the BIOS or UEFI settings, search for the user manual of\n"
+"  the computer on the support website of the manufacturer.\n"
+msgstr ""
+"  Pour savoir comment modifier les paramètres du BIOS ou de l'UEFI, recherchez le manuel d'utilisation\n"
+"  de l'ordinateur sur le site web d'assistance du fabricant.\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Edit the **Boot Order**. You might see an entry for **Removable devices** or "
+"**USB media**. Move this entry to the top of the list to force the computer "
+"to start from the USB stick before starting from the internal hard disk."
+msgstr ""
+"Modifiez **l'ordre de démarrage (Boot Order**). Vous pouvez voir une entrée "
+"pour les **périphériques amovibles** ou **média USB**. Déplacez cette entrée "
+"en haut de la liste pour forcer l'ordinateur à démarrer à partir de la clé "
+"USB avant de démarrer à partir du disque dur interne."
+
+#. type: Bullet: '- '
+msgid "Restart the computer."
+msgstr "Redémarrez l'ordinateur."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-at-all\">Troubleshooting Tails not starting at all</h1>\n"
+msgstr "<h1 id=\"not-at-all\">Résolution de problèmes : Tails ne démarre pas du tout</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Use this section if the computer does not start from the USB stick and the "
+"Boot Loader does not display:"
+msgstr ""
+"Utilisez cette partie si l'ordinateur ne démarre pas depuis la clé USB et si "
+"le chargeur d'amorçage ne s'affiche pas :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black screen ('GNU GRUB') with Tails\n"
+"logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]\n"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Écran noir ('GNU GRUB') avec le logo\n"
+"Tails et 3 options : 'Tails' et 'Tails (Troubleshooting Mode)' et 'Tails (External Hard Disk)'.\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"verify\">Verify your Tails USB stick</h2>\n"
+msgstr "<h2 id=\"verify\">Vérifier votre clé USB Tails</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>If you get the following error message in Windows:</p>\n"
+msgstr "<p>Si vous obtenez le message d'erreur suivant dans Windows :</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">The disc image file is corrupted.</p>\n"
+msgstr "<p class=\"code\">Le fichier d'image disque est corrompu.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Then, you have to [[install Tails using <i>Rufus</i>|install/windows#rufus]].</p>\n"
+msgstr "<p>Alors vous devez [[installer Tails à l'aide de <i>Rufus</i>|install/windows#rufus]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"known-issues\">Check our list of known issues</h2>\n"
+msgstr ""
+"<h2 id=\"known-issues\">Consulter notre liste des problèmes connus</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Similar problems might have been reported already for your computer model in "
+"our [[list of known issues about Tails not starting at all|support/"
+"known_issues#pc-not-at-all]]."
+msgstr ""
+"Des problèmes identiques ont peut-être déjà été signalés pour le modèle de "
+"votre ordinateur dans notre [[liste des problèmes connus au sujet de Tails "
+"ne démarrant pas du tout|support/known_issues#pc-not-at-all]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bios-settings\">Edit the BIOS or UEFI settings (advanced users)</h2>\n"
+msgstr "<h2 id=\"bios-settings\">Modifier les paramètres du BIOS ou de l'UEFI (utilisation avancée)</h2>\n"
+
+#. type: Plain text
+msgid ""
+"To learn how to edit the BIOS or UEFI settings, search for the user manual "
+"of the computer on the support website of the manufacturer."
+msgstr ""
+"Pour savoir comment modifier les paramètres du BIOS ou de l'UEFI, recherchez "
+"le manuel d'utilisation de l'ordinateur sur le site web d'assistance du "
+"fabricant."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Take note of the changes that you apply to the BIOS or UEFI settings. That way, you\n"
+"can revert the changes if they prevent the computer from starting on its usual\n"
+"operating system.</p>\n"
+msgstr ""
+"<p>Notez les modifications que vous appliquez aux paramètres du BIOS ou de l'UEFI. De cette façon, vous\n"
+"pourrez rétablir les anciens paramètres s'ils empêchent l'ordinateur de démarrer sur son\n"
+"système d'exploitation habituel.</p>\n"
+
+#. type: Plain text
+msgid "In the BIOS or UEFI settings, try to apply the following changes:"
+msgstr ""
+"Dans les paramètres du BIOS ou de l'UEFI, essayez d'appliquer les "
+"modifications suivantes :"
+
+#. type: Bullet: '- '
+msgid ""
+"Make sure that the Boot Menu key is enabled, in your BIOS or UEFI options.  "
+"This option might be called **Boot Device List** or something similar, "
+"depending on the computer."
+msgstr ""
+"Assurez-vous que la touche du menu de démarrage (Boot Menu) est bien activée "
+"dans les options de votre BIOS ou de votre UEFI. Cette option peut s'appeler "
+"**liste des périphériques de démarrage (Boot Device List)** ou un nom "
+"approchant selon l'ordinateur."
+
+#. type: Bullet: '- '
+msgid "Disable **Fast Boot**."
+msgstr "Désactivez le **démarrage rapide (Fast Boot)**."
+
+#. type: Bullet: '- '
+msgid "Enable **CSM Boot**."
+msgstr "Activez l'option de **démarrage « CSM » (CSM Boot)**."
+
+#. type: Bullet: '- '
+msgid ""
+"Enable **Legacy Boot**, in addition to UEFI.  The computer might not start "
+"anymore on its regular operating system if you disable UEFI completely or if "
+"you only enable Legacy boot."
+msgstr ""
+"Activez le mode **Legacy Boot**, en plus de l'UEFI. L'ordinateur pourrait ne "
+"plus démarrer du tout sur le système d'exploitation habituel si vous "
+"désactivez complètement l'UEFI ou que vous activez uniquement le mode « "
+"Legacy »."
+
+#. type: Bullet: '- '
+msgid ""
+"Try to upgrade the BIOS or UEFI. To do so, refer to the support website of "
+"the computer manufacturer."
+msgstr ""
+"Essayez de mettre à jour le BIOS ou l'UEFI. Pour ce faire, consultez le site "
+"web d'assistance du fabricant de l'ordinateur."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-entirely\">Troubleshooting Tails not starting after the Boot Loader</h1>\n"
+msgstr "<h1 id=\"not-entirely\">Résolution de problèmes : Tails ne démarre pas après le chargeur d'amorçage</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/start/not_entirely.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/start/not_entirely.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"windows-restart\">Starting from Windows 8 or 10</h1>\n"
+#~ msgstr "<h1 id=\"windows-restart\">Démarrer depuis Windows 8 ou 10</h1>\n"
+
+#~ msgid "<h2 id=\"help-desk\">Report the problem to our help desk</h2>\n"
+#~ msgstr ""
+#~ "<h2 id=\"help-desk\">Signaler le problème à notre équipe d'assistance</"
+#~ "h2>\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline.fr\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If none of these options work, we are sorry but you might not be able to "
+#~ "use Tails on this computer. Feel free to report the problem to our help "
+#~ "desk."
+#~ msgstr ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>Si aucune de ces options ne marche, nous sommes désolés mais il "
+#~ "est\n"
+#~ "   possible que vous ne puissiez pas utiliser Tails sur cet ordinateur.</"
+#~ "p>\n"
+#~ "   </div>\n"
+
+#~ msgid "Make the computer start on the USB stick"
+#~ msgstr "Faire démarrer l'ordinateur sur une clé USB"
+
+#~ msgid ""
+#~ "This step is the most complicated one as it depends a lot on the model of "
+#~ "the computer:"
+#~ msgstr ""
+#~ "Cette étape est l'une des plus compliquées car elle dépend beaucoup du "
+#~ "modèle de l'ordinateur :"
+
+#, fuzzy
+#~ msgid ""
+#~ "On most computers, our basic instructions to get to the Boot Menu work "
+#~ "fine."
+#~ msgstr ""
+#~ "Sur la plupart des ordinateurs, nos instructions de base pour obtenir le "
+#~ "menu de démarrage fonctionnent bien."
+
+#~ msgid ""
+#~ "On some computers, you might have to do more advanced techniques, like "
+#~ "editing the BIOS settings."
+#~ msgstr ""
+#~ "Sur certains ordinateurs, vous pouvez avoir besoin de techniques plus "
+#~ "avancées, comme de modifier les paramètres du BIOS."
+
+#~ msgid ""
+#~ "On a few computers, it might currently be impossible to start Tails.  "
+#~ "But, it is very hard to know without trying."
+#~ msgstr ""
+#~ "Sur quelques ordinateurs, il pourrait être actuellement impossible de "
+#~ "démarrer Tails. Mais c'est très difficile de le savoir sans essayer."
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/syslinux.png link=\"no\" alt=\"Black "
+#~ "screen ('SYSLINUX') with Tails logo and 2 options: 'Tails' and 'Tails "
+#~ "(Troubleshooting Mode)'.\"]]"
+#~ msgstr ""
+#~ "[[!img install/inc/screenshots/boot_loader_menu.png link=\"no\" "
+#~ "alt=\"Écran noir avec le logo Tails. Le menu du chargeur d'amorçage avec "
+#~ "deux options 'Tails' et 'Tails (Troubleshooting Mode)'.\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "After you reach the Boot Loader, either <em>GRUB</em> or <em>SYSLINUX</"
+#~ "em>, you can skip the rest of this section and <a href=\"#welcome-"
+#~ "screen\">wait until the Welcome Screen appears</a>."
+#~ msgstr ""
+#~ "Après avoir obtenu le <span class=\"application\">menu du chargeur "
+#~ "d'amorçage</span>, vous pouvez ignorer le reste de cette section et <a "
+#~ "href=\"#greeter\">attendre jusqu'à ce que <span "
+#~ "class=\"application\">Tails Greeter</span> apparaisse</a>."
+
+#, fuzzy
+#~ msgid "Getting to the Boot Menu"
+#~ msgstr "Obtenir le menu de démarrage"
+
+#, fuzzy
+#~ msgid ""
+#~ "On most computers, you can press a <em>Boot Menu key</em> to display a "
+#~ "list of possible devices to start from. The following instructions "
+#~ "explain how to display the Boot Menu and start on the USB stick. The "
+#~ "following screenshot is an example of a Boot Menu:"
+#~ msgstr ""
+#~ "Sur la plupart des ordinateurs, il est possible d'appuyer sur une touche "
+#~ "afin d'obtenir un menu (souvent appelé *Boot Menu*) permettant de choisir "
+#~ "le périphérique sur lequel démarrer. Les instructions suivantes "
+#~ "expliquent comment afficher le menu et démarrer sur la clé USB. La "
+#~ "capture d'écran qui suit montre l'exemple d'un tel menu :"
+
+#~ msgid "Shut down the computer while leaving the USB stick plugged in."
+#~ msgstr "Éteignez l'ordinateur tout en laissant la clé USB branchée."
+
+#, fuzzy
+#~ msgid ""
+#~ "Identify the possible Boot Menu keys for the computer depending on the "
+#~ "computer manufacturer in the following list:"
+#~ msgstr ""
+#~ "   1. Identifier la touche pour obtenir le *Boot Menu*. La liste suivante "
+#~ "donne\n"
+#~ "   des possibilités selon la marque de l'ordinateur :\n"
+
+#~ msgid "Manufacturer"
+#~ msgstr "Fabricant"
+
+#~ msgid "Key"
+#~ msgstr "Touche"
+
+#~ msgid "Acer"
+#~ msgstr "Acer"
+
+#~ msgid "Esc, F12, F9"
+#~ msgstr "Échap, F12, F9"
+
+#~ msgid "Asus"
+#~ msgstr "Asus"
+
+#~ msgid "Esc, F8"
+#~ msgstr "Échap, F8"
+
+#~ msgid "Dell"
+#~ msgstr "Dell"
+
+#~ msgid "F12"
+#~ msgstr "F12"
+
+#~ msgid "Fujitsu"
+#~ msgstr "Fujitsu"
+
+#~ msgid "F12, Esc"
+#~ msgstr "F12, Échap"
+
+#~ msgid "HP"
+#~ msgstr "HP"
+
+#~ msgid "F9, Esc"
+#~ msgstr "F9, Échap"
+
+#~ msgid "Lenovo"
+#~ msgstr "Lenovo"
+
+#~ msgid "F12, Novo, F8, F10"
+#~ msgstr "F12, Novo, F8, F10"
+
+#~ msgid "Samsung"
+#~ msgstr "Samsung"
+
+#~ msgid "Esc, F12, F2"
+#~ msgstr "Échap, F12, F2"
+
+#~ msgid "Sony"
+#~ msgstr "Sony"
+
+#~ msgid "F11, Esc, F10"
+#~ msgstr "F11, Échap, F10"
+
+#~ msgid "Toshiba"
+#~ msgstr "Toshiba"
+
+#, fuzzy
+#~ msgid ""
+#~ "Switch on the computer and immediately press several times the first "
+#~ "possible Boot Menu key identified in step 2."
+#~ msgstr ""
+#~ "      Immédiatement après, appuyer plusieurs fois sur la première des "
+#~ "touches possibles identifiée à l'étape 3.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If the computer starts on another operating system or returns an error "
+#~ "message, shut down the computer again and repeat step 3 for all the "
+#~ "possible Boot Menu keys identified in step 2."
+#~ msgstr ""
+#~ "            a. Si l'ordinateur démarre un autre système d'exploitation ou "
+#~ "qu'il affiche un\n"
+#~ "               message d'erreur, l'éteindre à nouveau et répéter l'étape "
+#~ "4 pour chacune des\n"
+#~ "               touches possibles identifiées à l'étape 3.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If a Boot Menu with a list of devices appears, select your USB stick and "
+#~ "press **Enter**."
+#~ msgstr ""
+#~ "      a. Si un menu avec une liste de périphériques apparaît, choisir "
+#~ "votre clé USB\n"
+#~ "         et appuyer sur **Entrée**.\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If none of the possible Boot Menu keys from the previous technique work, "
+#~ "or if the USB stick does not appear in the Boot Menu, you might need to "
+#~ "edit your BIOS settings. To learn how to edit the BIOS settings, search "
+#~ "for the user manual of the computer on the support website of the "
+#~ "manufacturer."
+#~ msgstr ""
+#~ "   Si aucune des touches possibles identifiées lors de l'étape 3 ne "
+#~ "fonctionne ou que\n"
+#~ "   la clé USB n'apparaît pas dans la liste, alors essayer la seconde\n"
+#~ "   technique décrite ci-dessous.\n"
+
+#~ msgid ""
+#~ "The goal is to reach the <span class=\"application\">Boot Loader Menu</"
+#~ "span> of Tails:"
+#~ msgstr ""
+#~ "Le but est d'obtenir le <span class=\"application\">menu du chargeur "
+#~ "d’amorçage</span> de Tails :"
+
+#, fuzzy
+#~ msgid "What program did you use to install your USB stick?"
+#~ msgstr "Quel programme avez-vous utilisé pour installer votre clé USB :"
+
+#~ msgid ""
+#~ "1. <p>\n"
+#~ "     <span class=\"usb\">Shut down the computer while leaving the USB "
+#~ "stick plugged in.</span>\n"
+#~ "   </p>\n"
+#~ "   <p class=\"clone upgrade-tails\">Shut down the computer.</p>\n"
+#~ "   <p class=\"clone\">Plug in the other Tails USB stick that you want to\n"
+#~ "   <span class=\"install-clone mac-clone\">install</span>\n"
+#~ "   <span class=\"upgrade\">upgrade</span>\n"
+#~ "   from.</p>\n"
+#~ "   <p class=\"upgrade-tails\">Unplug your Tails USB stick while leaving "
+#~ "the intermediary USB stick plugged in.</p>\n"
+#~ msgstr ""
+#~ "1. <p>\n"
+#~ "     <span class=\"usb\">Éteindre l'ordinateur en laissant la clé USB "
+#~ "branchée.</span>\n"
+#~ "   </p>\n"
+#~ "   <p class=\"clone upgrade-tails\">Éteindre l'ordinateur.</p>\n"
+#~ "   <p class=\"clone\">Connecter l'autre clé USB Tails avec laquelle vous "
+#~ "voulez\n"
+#~ "   <span class=\"install-clone mac-clone\">installer</span>\n"
+#~ "   <span class=\"upgrade\">mettre à jour</span>\n"
+#~ "   .</p>\n"
+#~ "   <p class=\"upgrade-tails\">Déconnecter votre clé USB Tails en laissant "
+#~ "la clé USB intermédiaire branchée.</p>\n"
+
+#~ msgid "Switch on the computer."
+#~ msgstr "Allumer l'ordinateur."
+
+#~ msgid ""
+#~ "If the computer starts on Tails, the <span class=\"application\">Boot "
+#~ "Loader Menu</span> appears and Tails starts automatically after 4 seconds."
+#~ "</p>"
+#~ msgstr ""
+#~ "Si l'ordinateur démarre sur Tails, le <span class=\"application\">menu du "
+#~ "chargeur d’amorçage</span> apparaît et Tails démarre automatiquement "
+#~ "après 4 secondes.</p>"
+
+#~ msgid ""
+#~ "   <div class=\"note install-clone expert windows linux\">\n"
+#~ "   <p>Most computers do not start on Tails by default. If it does you\n"
+#~ "   are lucky. Otherwise, if the computer starts on\n"
+#~ "   <span class=\"expert\">Debian, Ubuntu, or Linux Mint</span>\n"
+#~ "   <span class=\"windows\">Windows,</span>\n"
+#~ "   <span class=\"linux\">Linux,</span>\n"
+#~ "   <span class=\"install-clone\">Windows or Linux,</span>\n"
+#~ "   refer to  [[!toggle id=\"not_at_all\" text=\"the troubleshooting "
+#~ "section\n"
+#~ "   about Tails not starting at all\"]].</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"note install-clone expert windows linux\">\n"
+#~ "   <p>La plupart des ordinateurs ne démarrent pas sur Tails par défaut. "
+#~ "Si cela démarre, vous\n"
+#~ "   avez de la chance. Sinon, si l'ordinateur démarre sur\n"
+#~ "   <span class=\"expert\">Debian, Ubuntu ou Linux Mint</span>\n"
+#~ "   <span class=\"windows\">Windows,</span>\n"
+#~ "   <span class=\"linux\">Linux,</span>\n"
+#~ "   <span class=\"install-clone\">Windows ou Linux,</span>\n"
+#~ "   consulter la [[!toggle id=\"not_at_all\" text=\"partie résolution des "
+#~ "problèmes\n"
+#~ "   concernant Tails ne démarre pas du tout\"]].</p>\n"
+#~ "   </div>\n"
+
+#~ msgid "   [[!toggleable id=\"not_at_all\" text=\"\"\"\n"
+#~ msgstr "   [[!toggleable id=\"not_at_all\" text=\"\"\"\n"
+
+#~ msgid ""
+#~ "   <span class=\"hide\">[[!toggle id=\"not_at_all\" text=\"\"]]</span>\n"
+#~ msgstr ""
+#~ "   <span class=\"hide\">[[!toggle id=\"not_at_all\" text=\"\"]]</span>\n"
+
+#~ msgid ""
+#~ "   Troubleshooting: Tails does not start at all\n"
+#~ "   --------------------------------------------\n"
+#~ msgstr ""
+#~ "   Résolution des problèmes : Tails ne démarre pas du tout\n"
+#~ "   -----------------------------\n"
+
+#~ msgid ""
+#~ "   The following section applies if the <span class=\"application\">Boot "
+#~ "Loader Menu</span>\n"
+#~ "   does not appear when starting on a USB stick.\n"
+#~ msgstr ""
+#~ "   La section suivante s'applique si le <span class=\"application\">menu "
+#~ "du chargeur d’amorçage</span>\n"
+#~ "   n'apparaît pas en démarrant sur la clé USB.\n"
+
+#~ msgid ""
+#~ "   It is quite common for computers not to start automatically on a\n"
+#~ "   USB stick with Tails installed. Here are some troubleshooting "
+#~ "techniques. You should try them\n"
+#~ "   one after the other.\n"
+#~ msgstr ""
+#~ "   Il est relativement fréquent que les ordinateurs ne démarrent pas "
+#~ "automatiquement sur une\n"
+#~ "   clé USB avec Tails installé. Voici quelques techniques pour tenter de "
+#~ "résoudre le problème. Vous devriez les essayer\n"
+#~ "   l'une après l'autre.\n"
+
+#~ msgid "   ### Getting to the boot menu\n"
+#~ msgstr "   ### Obtenir le menu de démarrage\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/boot_menu.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/boot_menu.png link=\"no\" alt=\"\"]]\n"
+
+#~ msgid "Make sure that the first USB stick is plugged in the computer."
+#~ msgstr "S'assurer que la première clé USB est branchée à l'ordinateur."
+
+#~ msgid ""
+#~ "      <table>\n"
+#~ "        <tr><th>Manufacturer</th><th>Key</th></tr>\n"
+#~ "        <tr><td>Acer</td><td>Esc, F12, F9</td></tr>\n"
+#~ "        <tr><td>Asus</td><td>Esc, F8</td></tr>\n"
+#~ "        <tr><td>Dell</td><td>F12</td></tr>\n"
+#~ "        <tr><td>Fujitsu</td><td>F12, Esc</td></tr>\n"
+#~ "        <tr><td>HP</td><td>Esc, F9</td></tr>\n"
+#~ "        <tr><td>Lenovo</td><td>F12, Novo, F8, F10</td></tr>\n"
+#~ "        <tr><td>Samsung</td><td>Esc, F12, F2</td></tr>\n"
+#~ "        <tr><td>Sony</td><td>F11, Esc, F10</td></tr>\n"
+#~ "        <tr><td>Toshiba</td><td>F12</td></tr>\n"
+#~ "        <tr><td>others&hellip;</td><td>F12, Esc</td></tr>\n"
+#~ "      </table>\n"
+#~ msgstr ""
+#~ "      <table>\n"
+#~ "        <tr><th>Fabriquant</th><th>Touche</th></tr>\n"
+#~ "        <tr><td>Acer</td><td>Échap, F12, F9</td></tr>\n"
+#~ "        <tr><td>Asus</td><td>Échap, F8</td></tr>\n"
+#~ "        <tr><td>Dell</td><td>F12</td></tr>\n"
+#~ "        <tr><td>Fujitsu</td><td>F12, Échap</td></tr>\n"
+#~ "        <tr><td>HP</td><td>Échap, F9</td></tr>\n"
+#~ "        <tr><td>Lenovo</td><td>F12, Novo, F8, F10</td></tr>\n"
+#~ "        <tr><td>Samsung</td><td>Échap, F12, F2</td></tr>\n"
+#~ "        <tr><td>Sony</td><td>F11, Échap, F10</td></tr>\n"
+#~ "        <tr><td>Toshiba</td><td>F12</td></tr>\n"
+#~ "        <tr><td>autres&hellip;</td><td>F12, Échap</td></tr>\n"
+#~ "      </table>\n"
+
+#~ msgid "      a. If the computer starts on another operating system, then:\n"
+#~ msgstr ""
+#~ "      a. Si l'ordinateur démarre sur un autre système d'exploitation, "
+#~ "alors :\n"
+
+#~ msgid "Press-and-hold the potential boot menu key identified in step 3."
+#~ msgstr ""
+#~ "Maintenir appuyé la touche de démarrage potentielle identifiée à l'étape "
+#~ "3."
+
+#~ msgid ""
+#~ "Switch on the computer again while holding the potential boot menu key "
+#~ "pressed."
+#~ msgstr ""
+#~ "Démarrer l'ordinateur de nouveau tout en gardant appuyé la touche "
+#~ "possible."
+
+#~ msgid ""
+#~ "            a. If a boot menu with a list of devices appears, select your "
+#~ "USB stick\n"
+#~ "               and press **Enter**.\n"
+#~ msgstr ""
+#~ "            a. Si un menu avec une liste de périphériques apparaît, "
+#~ "choisir votre clé USB\n"
+#~ "               et appuyer sur **Entrée**.\n"
+
+#~ msgid ""
+#~ "   Similar problems might have been reported already for your model of "
+#~ "computer\n"
+#~ "   in our [[list of known issues|support/known_issues]].\n"
+#~ msgstr ""
+#~ "   Des problèmes similaires ont peut-être déjà été documenté pour votre "
+#~ "modèle d'ordinateur\n"
+#~ "   dans notre [[liste des problèmes connus|support/known_issues]].\n"
+
+#~ msgid ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>Search for the user manual of the computer on the website of its\n"
+#~ "   manufacturer to learn how to edit the BIOS settings:\n"
+#~ "   <ul>\n"
+#~ "     <li>[Acer](http://us.acer.com/ac/en/US/content/drivers)</li>\n"
+#~ "     <li>[Asus](https://www.asus.com/us/support/)</li>\n"
+#~ "     <li>[Dell](https://www.dell.com/support/home/us/en/19/Products/)</"
+#~ "li>\n"
+#~ "     <li>[Fujitsu](https://www.fujitsu.com/global/support/products/"
+#~ "software/manual/)</li>\n"
+#~ "     <li>[HP](https://support.hp.com/us-en/products/)</li>\n"
+#~ "     <li>[Lenovo](http://support.lenovo.com/us/en/)</li>\n"
+#~ "     <li>[Samsung](http://www.samsung.com/us/support/downloads)</li>\n"
+#~ "     <li>[Sony](http://esupport.sony.com/US)</li>\n"
+#~ "     <li>[Toshiba](http://support.toshiba.com/support/products?"
+#~ "cat=Computers)</li>\n"
+#~ "   </ul>\n"
+#~ "   </p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>Chercher le mode d'emploi de l'ordinateur sur le site de son\n"
+#~ "   fabriquant afin d'apprendre comment modifier les réglages du BIOS :\n"
+#~ "   <ul>\n"
+#~ "     <li>[Acer](https://www.acer.com/ac/fr/FR/content/drivers)</li>\n"
+#~ "     <li>[Asus](https://www.asus.com/fr/support/)</li>\n"
+#~ "     <li>[Dell](https://www.dell.com/support/home/fr/fr/19/Products/)</"
+#~ "li>\n"
+#~ "     <li>[Fujitsu](http://www.fujitsu.com/fr/support/)</li>\n"
+#~ "     <li>[HP](https://support.hp.com/fr-fr/products/)</li>\n"
+#~ "     <li>[Lenovo](https://support.lenovo.com/fr/fr/)</li>\n"
+#~ "     <li>[Samsung](https://www.samsung.com/fr/support/)</li>\n"
+#~ "     <li>[Sony](https://www.sony.fr/electronics/support)</li>\n"
+#~ "     <li>[Toshiba](http://www.toshiba.fr/support/businesslaptops/)</li>\n"
+#~ "   </ul>\n"
+#~ "   </p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "   1. If the computer is configured to start with **legacy BIOS**, try "
+#~ "to\n"
+#~ "   configure it to start with **UEFI**. Else, if the computer is "
+#~ "configured\n"
+#~ "   to start with **UEFI**, try to configure it to start with **legacy\n"
+#~ "   BIOS**. To do so, try any of the following options if available:\n"
+#~ msgstr ""
+#~ "   1. Si l'ordinateur est configuré pour démarrer en mode « compatibilité "
+#~ "BIOS » (**legacy BIOS**),\n"
+#~ "   essayer de le mettre en mode **UEFI**. À l'opposé, si il est configuré "
+#~ "en mode **UEFI**,\n"
+#~ "   essayer de le configurer pour démarrer en mode « compatibilité BIOS » "
+#~ "(**legacy\n"
+#~ "   BIOS**). Pour cela, essayer l'une ou l'autre des options suivantes "
+#~ "selon leur disponibilité :\n"
+
+#~ msgid "Enable **Legacy mode**"
+#~ msgstr "Activer le **Legacy mode**"
+
+#~ msgid ""
+#~ "Disable **Secure boot** (see the [Microsoft documentation](https://"
+#~ "docs.microsoft.com/en-us/windows-hardware/manufacture/desktop/disabling-"
+#~ "secure-boot))"
+#~ msgstr ""
+#~ "Désactiver **Secure boot** (voir la [documentation Microsoft](https://"
+#~ "docs.microsoft.com/en-us/windows-hardware/manufacture/desktop/disabling-"
+#~ "secure-boot) en anglais)"
+
+#~ msgid "Disable **UEFI**"
+#~ msgstr "Désactiver l'**UEFI**"
+
+#~ msgid ""
+#~ "   Please, [[send an email to our support team|support/talk]], including\n"
+#~ "   the following information:\n"
+#~ msgstr ""
+#~ "   Veuillez [[envoyer un courrier électronique à notre équipe "
+#~ "d'assistance|support/talk]], en incluant\n"
+#~ "    les informations suivantes :\n"
+
+#~ msgid "*Etcher*,"
+#~ msgstr "*Etcher*,"
+
+#~ msgid "*GNOME Disks*,"
+#~ msgstr "*GNOME Disks*,"
+
+#~ msgid "*Tails Installer*, or"
+#~ msgstr "l'*Installeur de Tails* ou"
+
+#~ msgid "<span class=\"command\">dd</span> on the command line?"
+#~ msgstr "<span class=\"command\">dd</span> en ligne de commande ?"
+
+#~ msgid "      Note that these are the only supported installation methods.\n"
+#~ msgstr ""
+#~ "      Notez que ce sont les seules méthodes d'installation supportées.\n"
+
+#~ msgid ""
+#~ "     [[!img install/inc/screenshots/boot_loader_menu.png link=\"no\" "
+#~ "alt=\"Black screen with Tails artwork. Boot Loader Menu with two options "
+#~ "'Tails' and 'Tails (Troubleshooting Mode)'.\"]]\n"
+#~ msgstr ""
+#~ "     [[!img install/inc/screenshots/boot_loader_menu.png link=\"no\" "
+#~ "alt=\"Écran noir avec le logo de Tails. Menu du chargeur d’amorçage avec "
+#~ "deux options 'Tails' et 'Tails (Troubleshooting Mode)'.\"]]\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug mac mac-clone\">\n"
+#~ "   <p>If your computer fails to start on the USB stick, then it might\n"
+#~ "   currently be impossible to start Tails on your Mac model.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac mac-clone\">\n"
+#~ "   <p>Si votre ordinateur n'arrive pas à démarrer sur la clé USB, alors "
+#~ "il est peut-être\n"
+#~ "   actuellement impossible de démarrer Tails sur votre modèle de Mac.</"
+#~ "p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "After 30&ndash;60 seconds, another screen called <span "
+#~ "class=\"application\">Tails Greeter</span> appears."
+#~ msgstr ""
+#~ "Après 30&ndash;60 secondes, un autre écran appelé <span "
+#~ "class=\"application\">Tails Greeter</span> apparaît."
+
+#~ msgid ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_mac_dvd_back_1.png "
+#~ "class=\"mac-dvd qrcode\" link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_mac_dvd_back_1.png "
+#~ "class=\"mac-dvd qrcode\" link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_debian_usb_back_1.png "
+#~ "class=\"debian qrcode\" link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_debian_usb_back_1.png "
+#~ "class=\"debian qrcode\" link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "[[!img install/inc/infography/restart-on-intermediary-tails.png "
+#~ "link=\"no\" class=\"clone windows linux mac-usb\" alt=\"Computer "
+#~ "restarted on USB stick on the left\"]]\n"
+#~ msgstr ""
+#~ "[[!img install/inc/infography/restart-on-intermediary-tails.png "
+#~ "link=\"no\" class=\"clone windows linux mac-usb\" alt=\"Ordinateur "
+#~ "redémarrant avec la clé USB sur la gauche\"]]\n"
+
+#~ msgid ""
+#~ "[[!img install/inc/infography/restart-on-dvd.png link=\"no\" class=\"mac-"
+#~ "dvd\" alt=\"Computer restarted on DVD\"]]\n"
+#~ msgstr ""
+#~ "[[!img install/inc/infography/restart-on-dvd.png link=\"no\" class=\"mac-"
+#~ "dvd\" alt=\"Ordinateur redémarrant sur un DVD\"]]\n"
+
+#~ msgid ""
+#~ "<p>The following instructions assume that the other Tails that you are\n"
+#~ "<span class=\"install-clone debian windows linux mac\">installing</span>\n"
+#~ "<span class=\"upgrade\">upgrading</span>\n"
+#~ "from is on a USB stick. You can also\n"
+#~ "<span class=\"install-clone debian windows linux mac\">install</span>\n"
+#~ "<span class=\"upgrade\">upgrade</span>\n"
+#~ "from a Tails DVD in a similar way.</p>\n"
+#~ msgstr ""
+#~ "<p>Les instructions suivantes supposent que l'autre Tails que vous avez\n"
+#~ "<span class=\"install-clone debian windows linux mac\">installé</span>\n"
+#~ "<span class=\"upgrade\">mis à jour</span>\n"
+#~ "est sur une clé USB. Vous pouvez également\n"
+#~ "<span class=\"install-clone debian windows linux mac\">installer</span>\n"
+#~ "<span class=\"upgrade\">mettre à jour</span>\n"
+#~ "depuis un DVD Tails de façon similaire.</p>\n"
+
+#~ msgid ""
+#~ "   <p class=\"mac-dvd\">Immediately press-and-hold the\n"
+#~ "   **Option** key (<span class=\"keycap\">Alt</span> key) until a list of "
+#~ "possible startup\n"
+#~ "   disks appears.</p>\n"
+#~ msgstr ""
+#~ "   <p class=\"mac-dvd\">Presser et garder appuyé immédiatement la touche\n"
+#~ "   **Option** (touche <span class=\"keycap\">Alt</span>) jusqu'à ce "
+#~ "qu'une liste de disques\n"
+#~ "   de démarrage apparaisse.</p>\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/mac_option_key.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"'Option' or 'alt' key in the bottom left of Mac "
+#~ "keyboard\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/mac_option_key.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Touche 'Option' ou 'alt' en bas à gauche du clavier "
+#~ "Mac\"]]\n"
+
+#~ msgid ""
+#~ "   <p class=\"mac-dvd\">Choose the DVD and press\n"
+#~ "   **Enter**. The DVD\n"
+#~ "   might be labeled **Windows** like in the following screenshot:</p>\n"
+#~ msgstr ""
+#~ "   <p class=\"mac-dvd\">Choisir le DVD et appuyer sur\n"
+#~ "   **Entrée**. Le DVD\n"
+#~ "   devrait être nommé **Windows** comme sur la capture d'écran suivante :"
+#~ "</p>\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/mac_startup_dvd.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Screen with the logo of an internal hard disk labeled "
+#~ "'Macintosh HD' and a DVD labelled 'Windows' (selected)\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/mac_startup_dvd.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Écran avec le logo d'un disque dur interne nommé "
+#~ "'Macintosh HD' et un DVD nommé 'Windows' (sélectionné)\"]]\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug mac\">\n"
+#~ "   <p>If only your Macintosh hard drive appears, you can try\n"
+#~ "   reinstalling an intermediary Tails from [[Windows using\n"
+#~ "   *Universal USB Installer*|win/usb]].</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac\">\n"
+#~ "   <p>Si votre disque dur Macintosh est le seul à apparaître, vous pouvez "
+#~ "essayer\n"
+#~ "   de réinstaller un Tails intermédiaire depuis [[Windows en utilisant\n"
+#~ "   *Universal USB Installer*|win/usb]].</p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug mac-usb mac-clone\">\n"
+#~ "   <p>If your computer fails to start on the intermediary Tails, you can\n"
+#~ "   try these other two methods:</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac-usb mac-clone\">\n"
+#~ "   <p>Si votre ordinateur ne démarre pas sur le Tails intermédiaire, vous "
+#~ "pouvez\n"
+#~ "   essayer ces deux autres méthodes :</p>\n"
+
+#~ msgid ""
+#~ "   <ul>\n"
+#~ "     <li class=\"mac-usb\">[[Install from another operating system|"
+#~ "install]]</li>\n"
+#~ "     <li class=\"mac-usb mac-clone\">[[Burn a DVD and then install|mac/"
+#~ "dvd]]</li>\n"
+#~ "     <li class=\"mac-clone\">[[Install from the command line|mac/usb]]</"
+#~ "li>\n"
+#~ "   </ul>\n"
+#~ msgstr ""
+#~ "   <ul>\n"
+#~ "     <li class=\"mac-usb\">[[Installer depuis un autre système "
+#~ "d'exploitation|install]]</li>\n"
+#~ "     <li class=\"mac-usb mac-clone\">[[Graver un DVD puis installer|mac/"
+#~ "dvd]]</li>\n"
+#~ "     <li class=\"mac-clone\">[[Installer depuis la ligne de commande|mac/"
+#~ "usb]]</li>\n"
+#~ "   </ul>\n"
+
+#~ msgid ""
+#~ "   <p>If you tried them already but failed as well, then it might\n"
+#~ "   currently be impossible to start Tails on your Mac model.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <p>Si vous essayez une nouvelle fois mais échouez également, alors il "
+#~ "est peut-être\n"
+#~ "   actuellement impossible de démarrer Tails sur votre modèle de Mac.</"
+#~ "p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "<p class=\"usb\">The most difficult part is over!\n"
+#~ "Now grab your second USB stick as it is time to install the final Tails "
+#~ "on it.</p>\n"
+#~ msgstr ""
+#~ "<p class=\"usb\">La partie la plus difficile est passée !\n"
+#~ "Maintenant emparez-vous de votre seconde clé USB car il est temps "
+#~ "d'installer le Tails définitif dessus.</p>\n"
+
+#~ msgid ""
+#~ "<p class=\"usb\">It is important to install the final Tails as it allows\n"
+#~ "you to store some of your documents and configuration\n"
+#~ "and benefit from automatic security upgrades.</p>\n"
+#~ msgstr ""
+#~ "<p class=\"usb\">Il est important d'installer le Tails définitif pour que "
+#~ "vous\n"
+#~ "puissiez stocker certains de vos documents et configurations\n"
+#~ "et bénéficier des mises à jour de sécurité automatiques.</p>\n"
+
+#~ msgid ""
+#~ "<p class=\"clone mac-dvd\">This was a first but important step!\n"
+#~ "<span class=\"mac-dvd\">Now grab the USB stick on which you want to "
+#~ "install Tails.</span></p>\n"
+#~ msgstr ""
+#~ "<p class=\"clone mac-dvd\">C'était une première étape importante !\n"
+#~ "<span class=\"mac-dvd\">Maintenant attrapez la clé USB sur laquelle vous "
+#~ "voulez installer Tails.</span></p>\n"

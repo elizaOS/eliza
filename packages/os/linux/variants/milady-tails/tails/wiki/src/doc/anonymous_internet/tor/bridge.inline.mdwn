@@ -1,0 +1,49 @@
+
+You can use *obfs4* and *WebTunnel* bridges in Tails right now.
+
+To configure a Tor bridge in *Tor Connection*, you can either:
+
+- **Ask for a bridge based on your region**
+
+  This option is the easiest as it allows you to learn about bridges directly
+  from Tails.
+
+  Tails downloads information about bridges that are most likely to work in
+  your region from the [[Moat
+  API|https://gitlab.torproject.org/tpo/anti-censorship/rdsys/-/blob/main/doc/moat.md]]
+  of the Tor Project. To circumvent censorship, this connection is disguised as
+  a connection to another website using [[!wikipedia domain fronting]].
+
+  If you choose *Automatic* as region, the country of your IP address is used.
+
+- **Ask for a bridge by email**
+
+  You can send an empty email to
+  <a href="mailto:bridges@torproject.org">bridges@torproject.org</a> from a
+  Gmail or Riseup email address.
+
+  Sending the email reveals to Gmail or Riseup that you are trying to
+  connect to Tor but not to someone who monitors your Internet connection.
+
+- **Enter a bridge that you already know**
+
+  1. Before starting Tails, learn about bridges by either:
+
+     * Visiting <https://bridges.torproject.org/options>.
+
+       We recommend that you visit this page from a different local network if
+       accessing this page is blocked or if you want to hide that you are
+       connecting to Tor.
+
+     * Sending a message to
+       [[@GetBridgesBot|https://support.torproject.org/tor-browser/circumvention/getting-bridges/#telegram-bot]]
+       from [[*Telegram*|https://telegram.org/]].
+
+  1. Store the bridge lines in a text document on separate USB stick for later
+     use in Tails.
+
+  1. After you started Tails, copy one of the bridge lines from this other
+     USB stick into *Tor Connection*.
+
+Even someone who knows your bridge cannot know what you are doing online from
+Tails.

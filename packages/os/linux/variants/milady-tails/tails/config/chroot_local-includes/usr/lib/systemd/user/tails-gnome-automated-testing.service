@@ -1,0 +1,12 @@
+[Unit]
+Description=Enables GNOME introspection for Dogtail and Ponytail support
+ConditionKernelCommandLine=autotest_never_use_this_option
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=gnome-extensions enable automated-testing@tails.net
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

@@ -1,0 +1,250 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: la_r_go* <largo@tracciabi.li>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"If your Wi-Fi interface is not working, you might experience the following:"
+msgstr ""
+"Se la tua interfaccia Wi-Fi non funziona, è possibile che si verifichi "
+"quanto segue:"
+
+#. type: Bullet: '* '
+msgid "There is no **Wi-Fi** menu in the system menu:"
+msgstr "Non c'è ** Wi-Fi** menù nel menù di sistema:"
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/system_without_wifi.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img no-wifi/system_without_wifi.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '* '
+msgid ""
+"There is a **Wi-Fi** menu in the system menu, but connecting to a Wi-Fi "
+"network fails."
+msgstr ""
+"C'è un ** Wi-Fi** menù nel menù di sistema, ma la connessione a una rete Wi-"
+"Fi non riesce."
+
+#. type: Bullet: '* '
+msgid "The interface is disabled because MAC address anonymization failed:"
+msgstr ""
+"L'interfaccia è disabilitata perché l'anonimizzazione dell'indirizzo MAC non "
+"è riuscita:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img no-wifi/mac_spoofing_disabled.png link=\"no\" class=\"screenshot\" alt=\"Notification: MAC address anonymization failed\"]]\n"
+msgid "  [[!img no-wifi/mac_spoofing_disabled.png class=\"screenshot\" alt=\"Notification: MAC address anonymization failed\"]]\n"
+msgstr "  [[!img no-wifi/mac_spoofing_disabled.png link=\"no\" class=\"screenshot\" alt=\"Notifica: anonimizzazione indirizzo MAC non riuscita\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  In this case, you can disable MAC address anonymization in the Welcome\n"
+"  Screen. Doing so has security implications, so read carefully our\n"
+"  [[documentation about MAC address\n"
+"  anonymization|first_steps/welcome_screen/mac_spoofing]].\n"
+msgstr ""
+"  In questo caso, puoi disattivare l'anonimizzazione dell'indirizzo MAC nella Schermata di Benvenuto.\n"
+"    Questa operazione ha implicazioni per la sicurezza, leggi attentamente la nostra\n"
+"    [[documentazione sull'anonimo dell'indirizzo MAC\n"
+"    anonimizzazione|first_steps/welcome_screen/mac_spoofing]].\n"
+
+#. type: Bullet: '* '
+msgid "The following notification appears:"
+msgstr "Viene visualizzato il seguente avviso:"
+
+#. type: Plain text
+#, no-wrap
+msgid "      Activation of network connection failed\n"
+msgstr "      Attivazione della connessione di rete non riuscita\n"
+
+#. type: Plain text
+msgid "To connect to the Internet, you can try to:"
+msgstr "Per connetterti a Internet, puoi provare a:"
+
+#. type: Bullet: '* '
+msgid ""
+"Use an Ethernet cable instead of Wi-Fi if possible. Wired interfaces work "
+"much more reliably than Wi-Fi in Tails."
+msgstr ""
+"Utilizzare un cavo Ethernet al posto del Wi-Fi se possibile. Le interfacce "
+"cablate sono molto più stabili del Wi-Fi in Tails."
+
+#. type: Bullet: '* '
+msgid ""
+"Share the Wi-Fi or mobile data connection of your phone using a USB cable. "
+"Sharing a connection this way is called *USB tethering*."
+msgstr ""
+"Condividere il Wi-Fi o la connessione dati del tuo telefono utilizzando un "
+"cavo USB. Condividere una connessione in questo modo è definito *USB "
+"tethering*."
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/usb-tethering.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+msgstr "  [[!img no-wifi/usb-tethering.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  See instructions for:\n"
+msgstr "  Vedi le istruzioni per:\n"
+
+#. type: Bullet: '  * '
+msgid "[iPhones or iPads](https://support.apple.com/en-us/HT204023)"
+msgstr "[iPhones o iPads](https://support.apple.com/it-it/HT204023)"
+
+#. type: Plain text
+#, no-wrap
+msgid "    Only sharing mobile data works on iPhones and iPads; sharing Wi-Fi does not work.\n"
+msgstr "    Solo la condivisione dei dati funziona su iPhone e iPad; la condivisione Wi-Fi non funziona.\n"
+
+#. type: Bullet: '  * '
+msgid "[Android](https://support.google.com/android/answer/9059108?hl=en)"
+msgstr "[Android](https://support.google.com/android/answer/9059108?hl=it)"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <div class=\"caution\">\n"
+"  <p>Tails cannot hide the information that identifies your phone on the local\n"
+"  network. If you connect your phone to a:</p>\n"
+"  <ul>\n"
+"  <li><p>Wi-Fi network: the network can see the MAC\n"
+"  address of your phone.</p>\n"
+"  <p>This has security implications that we explain in our [[documentation on\n"
+"  MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].  Some\n"
+"  phones have a feature to hide the MAC address of the phone.</p></li>\n"
+"  <li><p>Mobile data network: the network is able to know the identifier of\n"
+"  your SIM card (IMSI) and the serial number of your phone (IMEI).</p></li>\n"
+"  </ul>\n"
+"  </div>\n"
+msgstr ""
+"  <div class=\"caution\">\n"
+"    <p>Tails non può nascondere le informazioni che identificano il telefono sulla rete locale.\n"
+"    Se colleghi il tuo  telefono a una rete</p>\n"
+"    <ul>\n"
+"    <li><p>Wi-Fi: la rete può vedere l'indirizzo MAC\n"
+"    del tuo telefono.</p>\n"
+"    <p>Questo ha implicazioni per la sicurezza che spieghiamo nel nostro [[documentation on\n"
+"    MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].     Alcuni\n"
+"    telefoni dispongono di una funzionalità per nascondere l'indirizzo MAC del telefono.</p></li>\n"
+"    <li><p>Rete dati mobile: la rete è in grado di conoscere l'identificativo della tua \n"
+"    carta SIM (IMSI) e il numero di serie del telefono (IMEI).</p></li>\n"
+"</ul>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"wifi-adapters\"></a>\n"
+msgstr "<a id=\"wifi-adapters\"></a>\n"
+
+#. type: Bullet: '* '
+msgid "Buy a USB Wi-Fi adapter that works in Tails:"
+msgstr "Comprare un adattatore USB Wi-Fi che funzioni con Tails:"
+
+#. type: Bullet: '  - '
+msgid "Panda Wireless Ultra ($25)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on Amazon|https://www.amazon.com/d/B00762YNMG]]\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "ThinkPenguin TPE-N150USB ($64)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on ThinkPenguin|https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <table>\n"
+#| "  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>\n"
+#| "  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$20</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> <!-- 148f:5370 -->\n"
+#| "  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> <!-- ????:???? -->\n"
+#| "  </table>\n"
+msgid ""
+"  <table>\n"
+"  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>\n"
+"  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$25</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> 148f:5370\n"
+"  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> ????:????\n"
+"  </table>\n"
+msgstr ""
+"  <table>\n"
+"    <tr><th>Fornitore</th><th>Modello</th><th>Dimensione</th><th>Velocità</th><th>Prezzo</th><th>Acquista offline</th><th>Acquista online</th></tr>\n"
+"    <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$20</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> <!-- 148f:5370 -->\n"
+"    <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> <!-- ????:???? -->\n"
+"    </table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Check in our list of [[known Wi-Fi issues|support/known_issues#problematic-"
+"wifi]] if there is a workaround to get your Wi-Fi interface to work in Tails."
+msgstr ""
+"Verifica nel nostro elenco di [[problemi noti del Wi-Fi|support/"
+"known_issues#problematic-wifi]] se esiste una soluzione per far funzionare "
+"la tua interfaccia Wi-Fi in Tails."
+
+#, no-wrap
+#~ msgid "  <!--  <tr><td>D-Link</td><td>DWA-121</td><td>Nano</td><td>150 Mbit/s</td><td>$6</td><td>No</td><td><a href=\"https://www.amazon.com/d/B004X8R7HY\">Amazon</a></td></tr>-->\n"
+#~ msgstr "  <!--  <tr><td>D-Link</td><td>DWA-121</td><td>Nano</td><td>150 Mbit/s</td><td>$6</td><td>No</td><td><a href=\"https://www.amazon.com/d/B004X8R7HY\">Amazon</a></td></tr>-->\n"
+
+#, no-wrap
+#~ msgid "  <!-- See https://gitlab.tails.boum.org/tails/blueprints/-/wikis/wi-fi_adapters/ for Wi-Fi adapters that don't work or that have no advantage over these ones. -->\n"
+#~ msgstr "  <!-- Vedere https://tails.net/blueprint/wi-fi_adapters/ per gli adattatori Wi-Fi che non funzionano o non offrono vantaggi rispetto a questi. -->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <div class=\"note\">\n"
+#~ "  <p>If you find another USB Wi-Fi adapter that works in Tails, please let us\n"
+#~ "  know. You can write to [[support@tails.net]] (private email).</p>\n"
+#~ " </div>\n"
+#~ msgstr ""
+#~ "  <div class=\"note\">\n"
+#~ "  <p>Se trovi un altro adattatore Wi-Fi USB che funziona in Tails, ti preghiamo di farcelo\n"
+#~ "  sapere. Puoi scrivere a [[support@tails.net]] (indirizzo email privato).</p>\n"
+#~ " </div>\n"
+
+#~ msgid ""
+#~ "The interface is disabled when starting Tails or when plugging in your "
+#~ "USB Wi-Fi adapter:"
+#~ msgstr ""
+#~ "Oppure, l'interfaccia è disattivata all'avvio di Tails o all'inserimento "
+#~ "del tuo adattatore Wi-Fi USB:"

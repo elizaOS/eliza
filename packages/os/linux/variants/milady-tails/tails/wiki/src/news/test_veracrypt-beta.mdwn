@@ -1,0 +1,57 @@
+[[!meta title="Call for testing: VeraCrypt support in Tails"]]
+[[!meta date="Fri, 13 Jul 2018 20:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+You can help Tails! The beta version for the VeraCrypt support in Tails is ready for testing.
+We are very excited.
+
+[[!toc levels=1]]
+
+# What's new in the Beta?
+
+We worked to integrate VeraCrypt support into the existing GNOME workflow
+for unlocking encrypted volumes. As a result, most of the features already
+provided for LUKS volumes are now also provided for VeraCrypt volumes.
+This includes unlocking volumes via the *GNOME Disks*
+application and integration into the places sidebar in
+*GNOME Files*. If your file
+containers have the ".hc" file extension, they will be recognized as
+VeraCrypt volumes and can be easily unlocked in *GNOME Files*.
+
+Additionally, we created a small application, <span class=\"application\">
+VeraCrypt Mounter</span>, which makes it easier to unlock VeraCrypt volumes,
+especially file containers that do not have the ".hc" extension.
+
+# How to test the Beta?
+
+Download and install the ISO image on a USB stick or DVD, start it and
+try to unlock your existing VeraCrypt volumes.
+
+We are interested in your feedback on bugs and usability of this feature.
+
+- Are there any steps that are not clear?
+- Did you run into technical issues?
+
+Please send feedback emails to tails-testers@boum.org.
+
+Get the Beta
+------------
+
+<a class="download-file" href="">VeraCrypt support in Tails beta ISO image</a>
+
+There is no signature available for this test ISO image.
+
+Known issues
+============
+
+We've identified a list of known issues [[!tails_ticket 14480]] among which
+
+ - Trying to unlock via the places sidebar using an incorrect password or keyfile results in a not very helpful error message [[!tails_ticket 15663]]
+ - Unlocking via the places sidebar doesn't provide any feedback [[!tails_ticket 15664]]
+ - No integration in the places sidebar of the file chooser dialog of some applications (including Tor Browser) [[!tails_ticket 15667]]
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=veracrypt-beta">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,9 @@
+[[commands]]
+allowed_user = "amnesia"
+executable = "/usr/local/bin/whisperback"
+[commands.arbitrary_arguments]
+value = true
+reason = "config/chroot_local-includes/usr/local/bin/whisperback validates arguments"
+[commands.env_keep]
+value = ["DESKTOP_STARTUP_ID"]
+reason = "This is needed for GNOME Shell detect when WhisperBack has finished starting. For details, see tails/tails#20201."

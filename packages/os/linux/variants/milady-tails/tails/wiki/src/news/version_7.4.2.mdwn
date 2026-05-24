@@ -1,0 +1,73 @@
+[[!meta title="Tails 7.4.2"]]
+[[!meta date="Wed, 11 Feb 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix critical security
+vulnerabilities in the *Linux* kernel.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update the *Linux* kernel to 6.12.69, which fixes [DSA
+  6126-1](https://lists.debian.org/debian-security-announce/2026/msg00035.html),
+  multiple security vulnerabilities that could allow an application in Tails to
+  gain administration privileges.
+
+  For example, if an attacker was able to exploit other unknown security
+  vulnerabilities in an application included in Tails, they might then use DSA
+  6126-1 to take full control of your Tails and deanonymize you.
+
+  <div class="attack">
+
+  <p>This attack is very unlikely, but could be performed by a strong attacker,
+  such as a government or a hacking firm. We are not aware of this attack being
+  used in practice.</p>
+
+  </div>
+
+- Update *Thunderbird* to [140.7.1](https://www.thunderbird.net/en-US/thunderbird/140.7.1esr/releasenotes/).
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix opening the Wi-Fi settings from the *Tor Connection* assistant.
+  ([[!tails_ticket 18587]])
+
+- Fix reopening *Electrum* when it was not closed cleanly. ([[!tails_ticket 21390]])
+
+- Fix applying the language saved to the USB stick in the Welcome Screen.
+  ([[!tails_ticket 21383]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.4.2</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.4.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.4.2 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.4.2 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

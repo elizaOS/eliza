@@ -1,0 +1,7 @@
+<div class="caution">
+
+<p>Running Tails inside a virtual machine has [[various security
+implications|virtualization#security]]. Depending on the host operating system and your security
+needs, running Tails in a virtual machine might be dangerous.</p>
+
+</div>

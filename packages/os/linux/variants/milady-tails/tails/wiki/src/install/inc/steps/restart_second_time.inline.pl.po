@@ -1,0 +1,109 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2024-05-17 14:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"restart-new\" class=\"step\">Restart on your new Tails</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img install/inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img install/inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid "Shut down the computer."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Unplug the other USB stick and leave the new USB stick plugged in."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Switch on the computer and start on your new Tails USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "The Boot Loader appears and Tails starts automatically after 4 seconds."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After 30&ndash;60 seconds, the Welcome Screen appears."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If the following message about partitioning errors appears in the Welcome\n"
+"   Screen, please start again from step 4: <a href=\"#install\">Install Tails by\n"
+"   cloning</a>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">Errors were detected in the partitioning of your Tails USB stick.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If the error persists, reinstall Tails on one of our [[recommended USB\n"
+"   sticks|doc/about/requirements]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the Welcome Screen, select your language and keyboard layout in the "
+"<b>Language and Formats</b> section.  Click <b>Start Tails</b>."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After 15&ndash;30 seconds, the Tails desktop appears."
+msgstr ""
+
+#~ msgid ""
+#~ "After 30&ndash;60 seconds, <span class=\"application\">Tails Greeter</"
+#~ "span> appears."
+#~ msgstr ""
+#~ "Nach 30&ndash;60 Sekunden erscheint der <span class=\"application\">Tails "
+#~ "Greeter</span>."
+
+#~ msgid ""
+#~ "   [[!inline pages=\"install/inc/steps/mac_startup_disks.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "   [[!inline pages=\"install/inc/steps/mac_startup_disks.inline.pl\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"

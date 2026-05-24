@@ -1,0 +1,125 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: 2025-04-17 17:36-0600\n"
+"PO-Revision-Date: 2024-04-29 09:07+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails-l10n@boum.org>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Unsafe Browser\"]]\n"
+msgstr "[[!pagetemplate template=\"unsafe_browser_warning.tmpl\"]] [[!meta title=\"&#x647;&#x634;&#x62F;&#x627;&#x631;! &#x645;&#x631;&#x648;&#x631;&#x6AF;&#x631; &#x648;&#x628;&#x6CC; &#x6A9;&#x647; &#x62F;&#x631; &#x62D;&#x627;&#x644; &#x627;&#x633;&#x62A;&#x641;&#x627;&#x62F;&#x647; &#x627;&#x632; &#x622;&#x646; &#x647;&#x633;&#x62A;&#x6CC;&#x62F; &#x646;&#x627;&#x634;&#x646;&#x627;&#x633; &#x646;&#x6CC;&#x633;&#x62A;!\"]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+msgstr "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"unsafe\">\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p class=\"big\">This browser is not anonymous.</p>\n"
+msgstr "[[!pagetemplate template=\"unsafe_browser_warning.tmpl\"]] [[!meta title=\"&#x647;&#x634;&#x62F;&#x627;&#x631;! &#x645;&#x631;&#x648;&#x631;&#x6AF;&#x631; &#x648;&#x628;&#x6CC; &#x6A9;&#x647; &#x62F;&#x631; &#x62D;&#x627;&#x644; &#x627;&#x633;&#x62A;&#x641;&#x627;&#x62F;&#x647; &#x627;&#x632; &#x622;&#x646; &#x647;&#x633;&#x62A;&#x6CC;&#x62F; &#x646;&#x627;&#x634;&#x646;&#x627;&#x633; &#x646;&#x6CC;&#x633;&#x62A;!\"]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What captive portals are"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "<strong>Note that the Unsafe Browser is never anonymous, not even after "
+#~| "you have logged in to a captive portal.</strong>"
+#~ msgid ""
+#~ "<strong>Only use the <em>Unsafe Browser</em> to log in to captive portals."
+#~ "</strong>"
+#~ msgstr ""
+#~ "<strong>در نظر داشته باشید که «مرورگر غیرامن» هیچ‌گاه ناشناس نیست، حتی پس "
+#~ "از وارد شدن پورتال کپتیو.</strong>"
+
+#~ msgid ""
+#~ "You are currently using the Unsafe Browser. As its name suggests, the "
+#~ "Unsafe Browser's network activity is <strong>not anonymous</strong>. If "
+#~ "you want a safe, anonymous web browser, please shut this browser down "
+#~ "immediately and start the following web browser instead: "
+#~ "<em>Applications</em> → <em>Internet</em> → <em>Tor Browser</em>."
+#~ msgstr ""
+#~ "در حال حاضر در حال استفاده از «مرورگر غیرامن» هستید. همان‌طور که از نام "
+#~ "این مرورگر مشخص است، فعالیت شبکهٔ «مرورگر غیرامن» <strong>ناشناس نیست</"
+#~ "strong>. اگر به دنبال وب‌گردی امن و ناشناس هستید، لطفاً بلافلاصله این "
+#~ "مرورگر را بسته و به جایش این مرورگر را باز کنید: <em>ابزارها</em> ← "
+#~ "<em>اینترنت</em> ← <em>مرورگر تور</em>."
+
+#~ msgid ""
+#~ "If you want to login to a captive portal to get Internet access (as is "
+#~ "commonly necessary at Internet cafés, libraries, schools and other public "
+#~ "places and businesses), try visiting any web site you know of by entering "
+#~ "its address in the address field above. The web site you choose should "
+#~ "preferably be common to your geographic location in order to raise less "
+#~ "suspicion (good examples of such pages are search engines, news papers' "
+#~ "home pages and similar). Once you've done that you should be redirected "
+#~ "to the login page instead, and once logged in you should have Internet "
+#~ "access so that you can start your anonymous activity by using "
+#~ "<strong>other</strong> applications than the Unsafe Browser."
+#~ msgstr ""
+#~ "اگر قصد ورود به یک پورتال کپتیو برای دسترسی به اینترنت دارید (همان‌طور که "
+#~ "معمولاً برای دسترسی به اینترنت در کافه‌های اینترنتی، کتاب‌خانه‌ها، مدرسه‌ها و "
+#~ "دیگر مکان‌های عمومی لازم است)، سعی کنید با وارد کردن نشانی هر تارنمایی که "
+#~ "می‌شناسید در قسمت بالا به آن تارنما بروید. تارنمایی که انتخاب کرده‌اید باید "
+#~ "ترجیحاً در نقطهٔ جغرافیایی حضور شما تارنمایی معمول باشد تا شک کمتری "
+#~ "بربیانگیزید (نمونهٔ خوب چنین تارنماهایی عبارتند از موتورهای جستجو، صفحات "
+#~ "اول روزنامه‌ها و غیره). پس از انجام این کار به جای تارنمای مورد نظر به "
+#~ "صفحهٔ ورود می‌روید و پس از ورود باید به اینترنت دسترسی داشته باشید و در "
+#~ "نتیجه می‌توانید فعالیت ناشناس خود را با استفاده از ابزارهای <strong>دیگری</"
+#~ "strong> به جز «مرورگر غیرامن» آغاز کنید."

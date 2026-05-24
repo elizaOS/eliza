@@ -1,0 +1,105 @@
+[[!meta title="Tails report for February, 2020"]]
+[[!meta date="Wed, 11 Mar 2020 19:22:54 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.3 was released on February 11|news/version_4.3]]. (bugfix release)
+
+* Tails 4.4 is [[scheduled for March 12|contribute/calendar]].
+
+The following changes were introduced in Tails 4.3:
+
+- We included the `trezor` package, which provides a command line tool
+  to use a Trezor hardware wallet for cryptocurrencies.
+
+- Fix the progress bar and prevent closing the window while an upgrade
+  is being applied. ([[!tails_ticket 16603]])
+
+Code
+====
+
+- We made great progress on Secure boot support ([[!tails_ticket 6560]])
+  and are now quite confident we can ship this in Tails 4.5 (April 7).
+
+  Thanks to everyone who answered our call for testing!
+
+- In order to make the development process a bit smoother, we improved the
+  performance of our builds ([[!tails_ticket 17439]], [[!tails_ticket 17386]]).
+
+- We kept working on replacing Sikuli in our test suite ([[!tails_ticket
+  15460]]), which will allow running it on recent Debian systems.
+  We're almost there! :)
+
+Hot topics on our help desk
+===========================
+
+
+1. Users are still complaining about [[!tails_ticket 17183 desc="Seahorse failing to import public keys"]]
+
+1. Several users reported that Stefano Zacchiroli's public key being expired since 2020-02-07 [[!tails_ticket 17475 desc="broke our documentation"]] about using the command line and GnuPG to install Tails
+
+1. And people are still reporting [[!tails_ticket 16875 desc="GDM errors with Intel HD 630"]] (while their issue is usually with their NVidia Maxwell discreet GPU)
+
+Infrastructure
+==============
+
+- We've been working towards making our CI feedback loop shorter
+  ([[!tails_ticket 16960]], [[!tails_ticket 17439]]).
+
+- We organized the sysadmin work we will need to do as part
+  of migrating to GitLab.
+
+Funding
+=======
+
+- We worked on the full proposal for the joint grant proposal with
+  Tor and the Guardian Project to the DRL Internet Freedom program.
+
+- We started working on a grant proposal to the Prototype Fund.
+
+Jobs
+====
+
+- Privacy loving Linux generalist
+
+On-going discussions
+====================
+
+- [[Reconsider the terminology around "persistence"|https://lists.autistici.org/message/20200227.123500.9aee624d.en.html]].
+
+Press and testimonials
+======================
+
+- 2020-02-26: [[Tails : le logiciel qui a permis à Snowden d’échapper aux services secrets|https://www.solidaire.org/articles/tails-le-logiciel-qui-permis-snowden-d-echapper-aux-services-secrets]] by Tibor Van Cutsem in Solidaire.
+
+Translations
+============
+
+
+## All the website
+
+  - de: 34% (2176) strings translated, 10% strings fuzzy
+  - es: 53% (3373) strings translated, 2% strings fuzzy
+  - fa: 27% (1714) strings translated, 10% strings fuzzy
+  - fr: 90% (5671) strings translated, 0% strings fuzzy
+  - it: 30% (1948) strings translated, 7% strings fuzzy
+  - pt: 22% (1432) strings translated, 8% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 65% (1168) strings translated, 15% strings fuzzy
+  - es: 94% (1691) strings translated, 1% strings fuzzy
+  - fa: 34% (615) strings translated, 14% strings fuzzy
+  - fr: 98% (1755) strings translated, 0% strings fuzzy
+  - it: 64% (1147) strings translated, 15% strings fuzzy
+  - pt: 45% (820) strings translated, 14% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 808&#8239;936 times this month. This makes 27&#8239;894 boots a day on average.
+

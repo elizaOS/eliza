@@ -1,0 +1,266 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2024-04-26 22:36+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "If your Wi-Fi interface is not working, for example:"
+msgid ""
+"If your Wi-Fi interface is not working, you might experience the following:"
+msgstr "Интерфейс wifi может не работать по разным причинам."
+
+#. type: Bullet: '* '
+#, fuzzy
+#| msgid "There is no Wi-Fi option in the system menu:"
+msgid "There is no **Wi-Fi** menu in the system menu:"
+msgstr "В системном меню нет опции wifi:"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img no-wifi/system_without_wifi.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "  [[!img no-wifi/system_without_wifi.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img no-wifi/system_without_wifi.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '* '
+#, fuzzy
+#| msgid "There is no Wi-Fi option in the system menu:"
+msgid ""
+"There is a **Wi-Fi** menu in the system menu, but connecting to a Wi-Fi "
+"network fails."
+msgstr "В системном меню нет опции wifi:"
+
+#. type: Bullet: '* '
+msgid "The interface is disabled because MAC address anonymization failed:"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img no-wifi/mac-spoofing-disabled.png link=\"no\" alt=\"Notification about network card being disabled\"]]\n"
+msgid "  [[!img no-wifi/mac_spoofing_disabled.png class=\"screenshot\" alt=\"Notification: MAC address anonymization failed\"]]\n"
+msgstr "  [[!img no-wifi/mac-spoofing-disabled.png link=\"no\" alt=\"Уведомления о сетевой карте отключены\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  In this case, you can disable MAC address anonymization to get your Wi-Fi interface\n"
+#| "  to work in Tails. Disabling MAC address anonymization has security implications, so read\n"
+#| "  carefully our [[documentation about MAC\n"
+#| "  address anonymization|first_steps/welcome_screen/mac_spoofing]] before doing so.\n"
+msgid ""
+"  In this case, you can disable MAC address anonymization in the Welcome\n"
+"  Screen. Doing so has security implications, so read carefully our\n"
+"  [[documentation about MAC address\n"
+"  anonymization|first_steps/welcome_screen/mac_spoofing]].\n"
+msgstr "  В этом случае можно отключить спуфинг MAC-адресов. Тогда ваш интерфейс wifi начнёт работать в Tails. Однако это негативно повлияет на уровень вашей безопасности. Перед тем, как это делать, [[прочтите нашу документацию|first_steps/welcome_screen/mac_spoofing]].\n"
+
+#. type: Bullet: '* '
+msgid "The following notification appears:"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "You receive the notification **Connection failed: Activation of network connection failed**."
+msgid "      Activation of network connection failed\n"
+msgstr "Вы получили уведомление о невозможности установки связи (**Connection failed: Activation of network connection failed**)."
+
+#. type: Plain text
+msgid "To connect to the Internet, you can try to:"
+msgstr "Чтобы подключиться к Интернету, можно:"
+
+#. type: Bullet: '* '
+msgid ""
+"Use an Ethernet cable instead of Wi-Fi if possible. Wired interfaces work "
+"much more reliably than Wi-Fi in Tails."
+msgstr ""
+"Использовать Ethernet-кабель вместо wifi (если возможно). Проводные "
+"интерфейсы куда более надежны в Tails, чем wifi."
+
+#. type: Bullet: '* '
+msgid ""
+"Share the Wi-Fi or mobile data connection of your phone using a USB cable. "
+"Sharing a connection this way is called *USB tethering*."
+msgstr ""
+"Раздать соединение wifi со своего телефона. Можно также раздать по USB-"
+"кабелю: такое подключение иногда называют *USB tethering*."
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/usb-tethering.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+msgstr "  [[!img no-wifi/usb-tethering.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  See instructions for:\n"
+msgstr "  См. инструкции для:\n"
+
+#. type: Bullet: '  * '
+msgid "[iPhones or iPads](https://support.apple.com/en-us/HT204023)"
+msgstr "[iPhone или iPad](https://support.apple.com/ru-ru/HT204023)"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[iPhones or iPads](https://support.apple.com/en-us/HT204023)<br/> Only sharing mobile data works on iPhones and iPads; sharing Wi-Fi does not work."
+msgid "    Only sharing mobile data works on iPhones and iPads; sharing Wi-Fi does not work.\n"
+msgstr "[iPhone или iPad](https://support.apple.com/ru-ru/HT204023)<br/> На iPhone и iPad можно раздать только мобильный интернет; раздать wifi не получится."
+
+#. type: Bullet: '  * '
+msgid "[Android](https://support.google.com/android/answer/9059108?hl=en)"
+msgstr "[Android](https://support.google.com/android/answer/9059108?hl=ru)"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <div class=\"caution\">\n"
+#| "  <p>Tails cannot hide the information that identifies your phone on the local network.\n"
+#| "  If you connect your phone to:</p>\n"
+#| "  <ul>\n"
+#| "  <li><p>A Wi-Fi network, then the network will know the MAC\n"
+#| "  address of your phone. This has security implications that are discussed in\n"
+#| "  our [[documentation on MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].\n"
+#| "  Some phones have a feature to hide the real MAC address of the phone.</p></li>\n"
+#| "  <li><p>A mobile data network, then\n"
+#| "  the network will be able to know the identifier of your SIM card (IMSI)\n"
+#| "  and also the serial number of your phone (IMEI).</p></li>\n"
+#| "  </ul>\n"
+#| "  </div>\n"
+msgid ""
+"  <div class=\"caution\">\n"
+"  <p>Tails cannot hide the information that identifies your phone on the local\n"
+"  network. If you connect your phone to a:</p>\n"
+"  <ul>\n"
+"  <li><p>Wi-Fi network: the network can see the MAC\n"
+"  address of your phone.</p>\n"
+"  <p>This has security implications that we explain in our [[documentation on\n"
+"  MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].  Some\n"
+"  phones have a feature to hide the MAC address of the phone.</p></li>\n"
+"  <li><p>Mobile data network: the network is able to know the identifier of\n"
+"  your SIM card (IMSI) and the serial number of your phone (IMEI).</p></li>\n"
+"  </ul>\n"
+"  </div>\n"
+msgstr ""
+"  <div class=\"caution\">\n"
+"  <p>Tails не может скрыть информацию, которая идентифицирует ваш телефон в локальной сети. Вы можете подключить телефон одним из следующих способов.</p>\n"
+"  <ul>\n"
+"  <li><p>К сети wifi. Тогда сеть будет знать MAC-адрес вашего телефона. Вопросы безопасности подробнее описаны в нашей [[документации по спуфингу MAC-адресов|first_steps/welcome_screen/mac_spoofing]].\n"
+"  У некоторых телефонов есть функция, которая позволяет скрывать MAC-адрес устройства.</p></li>\n"
+"  <li><p>К мобильной сети. В этом случае сеть будет определять идентификатор вашей SIM-карты (IMSI) и серийный номер телефона (IMEI).</p></li>\n"
+"  </ul>\n"
+"  </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"wifi-adapters\"></a>\n"
+msgstr "<a id=\"wifi-adapters\"></a>\n"
+
+#. type: Bullet: '* '
+msgid "Buy a USB Wi-Fi adapter that works in Tails:"
+msgstr "Купите USB-адаптер для wifi, который работает в Tails:"
+
+#. type: Bullet: '  - '
+msgid "Panda Wireless Ultra ($25)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on Amazon|https://www.amazon.com/d/B00762YNMG]]\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "ThinkPenguin TPE-N150USB ($64)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on ThinkPenguin|https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  <table>\n"
+#| "  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>\n"
+#| "  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$12</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> <!-- 148f:5370 -->\n"
+#| "  <tr><td>Panda Wireless</td><td>PAU05</td><td>Small</td><td>300 Mbit/s</td><td>$14</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00EQT0YK2\">Amazon</a></td></tr> <!-- 148f:5372 -->\n"
+#| "  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$54</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> <!-- ????:???? -->\n"
+#| "  </table>\n"
+msgid ""
+"  <table>\n"
+"  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>\n"
+"  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$25</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> 148f:5370\n"
+"  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> ????:????\n"
+"  </table>\n"
+msgstr ""
+"  <table>\n"
+"  <tr><th>Производитель</th><th>Модель</th><th>Размер</th><th>Скорость</th><th>Стоимость</th><th>Купить офлайн</th><th>Купить онлайн</th></tr>\n"
+"  <tr><td>Panda Wireless</td><td>Ultra</td><td>нано</td><td>150 Mбит/с</td><td>12 $</td><td>нет</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> <!-- 148f:5370 -->\n"
+"  <tr><td>Panda Wireless</td><td>PAU05</td><td>малый</td><td>300 Mбит/с</td><td>14 $</td><td>нет</td><td><a href=\"https://www.amazon.com/d/B00EQT0YK2\">Amazon</a></td></tr> <!-- 148f:5372 -->\n"
+"<tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>нано</td><td>150 Мбит/с</td><td>54 $</td><td>нет</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> <!-- ????:???? -->\n"
+"  </table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Check in our list of [[known Wi-Fi issues|support/known_issues#problematic-"
+"wifi]] if there is a workaround to get your Wi-Fi interface to work in Tails."
+msgstr ""
+
+#, no-wrap
+#~ msgid "  <!--  <tr><td>D-Link</td><td>DWA-121</td><td>Nano</td><td>150 Mbit/s</td><td>$6</td><td>No</td><td><a href=\"https://www.amazon.com/d/B004X8R7HY\">Amazon</a></td></tr>-->\n"
+#~ msgstr "  <!--  <tr><td>D-Link</td><td>DWA-121</td><td>Nano</td><td>150 Mбит/с</td><td>$9</td><td>Нет</td><td><a href=\"https://market.yandex.ru/product--wi-fi-adapter-d-link-dwa-121/13227705?cpa=0\">Яндекс</a></td></tr>-->\n"
+
+#, no-wrap
+#~ msgid "  <!-- See https://gitlab.tails.boum.org/tails/blueprints/-/wikis/wi-fi_adapters/ for Wi-Fi adapters that don't work or that have no advantage over these ones. -->\n"
+#~ msgstr "  <!-- See https://tails.net/blueprint/wi-fi_adapters/ for Wi-Fi adapters that don't work or that have no advantage over these ones. -->\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  <div class=\"note\">\n"
+#~| "  <p>If you find another USB Wi-Fi adapter that works in Tails, please let us\n"
+#~| "  know. You can write to [[sajolida@pimienta.org]] (private email).</p>\n"
+#~| "  </div>\n"
+#~ msgid ""
+#~ "  <div class=\"note\">\n"
+#~ "  <p>If you find another USB Wi-Fi adapter that works in Tails, please let us\n"
+#~ "  know. You can write to [[support@tails.net]] (private email).</p>\n"
+#~ " </div>\n"
+#~ msgstr ""
+#~ "  <div class=\"note\">\n"
+#~ "  <p>Если вам известен другой USB-адаптер wifi, который работает с Tails, пожалуйста, дайте нам знать. Можете написать сюда: [[sajolida@pimienta.org]] (личный адрес).</p>\n"
+#~ "  </div>\n"
+
+#~ msgid ""
+#~ "The interface is disabled when starting Tails or when plugging in your "
+#~ "USB Wi-Fi adapter:"
+#~ msgstr ""
+#~ "Сетевой интерфейс отключен при запуске Tails или при подключении вашего "
+#~ "адаптера wifi адаптера к USB-порту:"

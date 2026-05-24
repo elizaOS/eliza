@@ -1,0 +1,47 @@
+#! /bin/sh
+
+set -e
+set -u
+
+echo "Generate supported locales"
+
+LANGUAGES_FILE="/usr/share/tails/greeter/supported_languages"
+LANG_REGEXP=$(sed --regexp-extended 's, ,|,g' "$LANGUAGES_FILE" \
+                  | sed --regexp-extended 's,\|$,,')
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+# Install locales, which ships /etc/locale.gen and locale-gen
+ensure_hook_dependency_is_installed locales
+
+# Uncomment supported locales
+perl -pi -E "s{^#\s+((?:${LANG_REGEXP})_.*\sUTF-8)$}{\$1}" /etc/locale.gen
+
+# Compile locales
+locale-gen
+
+# Installing localepurge generates an initial /etc/locale.nopurge
+# from /etc/locale.gen
+apt-get --yes install localepurge
+
+# Add missing variants to /etc/locale.nopurge:
+# - ll_RR.UTF-8 → ll_RR
+perl -n -E 'if (m/^([a-z].*)[.]UTF-8$/) { say $1 }' \
+     /etc/locale.nopurge \
+     > /tmp/locale.nopurge.extra
+# - ll_RR.UTF-8 → ll.UTF-8
+perl -n -E 'if (m/^([a-z]+)_.*[.]UTF-8$/) { say "$1.UTF-8" }' \
+     /etc/locale.nopurge \
+     >> /tmp/locale.nopurge.extra
+# - ll_RR.UTF-8 → ll.utf8
+perl -n -E 'if (m/^([a-z].*)[.]UTF-8$/) { say "$1.utf8" }' \
+     /etc/locale.nopurge \
+     >> /tmp/locale.nopurge.extra
+cat /tmp/locale.nopurge.extra >> /etc/locale.nopurge
+
+echo "I: localepurge won't purge:"
+grep -E '^[a-z]' /etc/locale.nopurge
+
+echo "I: Running localepurge for the first time"
+localepurge

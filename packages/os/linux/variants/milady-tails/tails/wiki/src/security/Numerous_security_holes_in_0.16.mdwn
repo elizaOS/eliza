@@ -1,0 +1,16 @@
+[[!meta date="Fri, 22 Feb 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.16"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.16.
+
+We **strongly** urge you to [[upgrade to Tails 0.17|news/version_0.17]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel ([MFSA 2013-21](https://www.mozilla.org/security/announce/2013/mfsa2013-21.html), [MFSA 2013-24](https://www.mozilla.org/security/announce/2013/mfsa2013-24.html), [MFSA 2013-26](https://www.mozilla.org/security/announce/2013/mfsa2013-26.html), [MFSA 2013-27](https://www.mozilla.org/security/announce/2013/mfsa2013-27.html), [MFSA 2013-28](https://www.mozilla.org/security/announce/2013/mfsa2013-28.html))
+ - OpenSSL ([[!debsa2013 2621]])

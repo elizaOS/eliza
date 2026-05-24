@@ -1,0 +1,58 @@
+#!/usr/bin/python3 -I
+"""
+This script will make it easy to read or set values from Tor Control port
+"""
+
+import sys
+from argparse import ArgumentParser
+
+import stem
+import stem.connection
+
+
+def get_parser():
+    p = ArgumentParser()
+    p.add_argument("--control-port", type=int, default=9052)
+    p.set_defaults(cmd=None)
+    sub = p.add_subparsers()
+    get_p = sub.add_parser("get")
+    get_p.add_argument("--type", choices=["conf", "info"], default="conf")
+    get_p.add_argument("key")
+    get_p.set_defaults(cmd="get")
+    set_p = sub.add_parser("set")
+    # the only reason we have set --type is for coherence with "get"
+    set_p.add_argument("--type", choices=["conf"], default="conf")
+    set_p.add_argument("key")
+    set_p.add_argument("value")
+    set_p.set_defaults(cmd="set")
+    return p
+
+
+def main():
+    parser = get_parser()
+    args = parser.parse_args()
+    try:
+        controller = stem.connection.connect(
+            control_port=("127.0.0.1", str(args.control_port))
+        )
+        if controller is None:
+            raise stem.SocketError("Cannot connect to Tor's control port")
+        controller.authenticate()
+
+        if args.cmd is None:
+            parser.print_usage(file=sys.stderr)
+            exit(1)
+        elif args.cmd == "get":
+            func = {"info": controller.get_info, "conf": controller.get_conf}[args.type]
+            print(func(args.key))
+            exit(0)
+        else:  # set
+            controller.set_conf(args.key, args.value)
+            exit(0)
+    except Exception as e:
+        print(f"{type(e).__name__}: {str(e).strip()}", file=sys.stderr)
+        exit(1)
+
+
+if __name__ == "__main__":
+    main()

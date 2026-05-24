@@ -1,0 +1,108 @@
+[[!meta date="Tue, 09 May 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Announcing the Tails Social Contract"]]
+[[!tag announce]]
+
+We had written and adopted a Code of
+Conduct since our first
+public hackfest in Paris in 2014. This code was and is meant as a guide
+to make our public spaces welcoming and friendly to every sentient
+being.
+
+We have since then worked on a Social
+Contract which we proudly
+present today!
+
+<div class="note">
+
+<p>This social contract has been replaced in 2024 by the
+<a href="https://community.torproject.org/policies/social_contract/">Tor
+Project Social Contract</a>.</p>
+
+</div>
+
+<!-- Note for translators: Starting from here the content is a copy of the Social Contract. -->
+
+The Tails Social Contract is a set of commitments that we as
+contributors to the Tails project stand by. This work is derived from
+the Debian Social Contract and the Tor Social Contract.
+
+This is a promise from our contributors community to the rest of the
+world, affirming a commitment to our beliefs.
+
+## 1. By creating Tails we try to provide usable tools for anonymity and privacy
+
+We believe that privacy, the free exchange of ideas, and equal access to
+information are essential to free and open societies. Through our
+community standards and the tools we create, we provide means that
+empower all people to protect and advance these ideals.
+
+## 2. Tails is and will remain free software
+
+Equal access to information includes the free availability of our code
+and documentation as well as the transparency of our decision making
+processes.
+
+All the components of Tails that we create ourselves are, and will be,
+licensed in a manner consistent with the [Debian Free Software
+Guidelines](https://www.debian.org/social_contract).
+
+Tails will always be free to use, remix, adapt and distribute.  As the
+only exceptions to this rule, Tails includes:
+
+- a minor part of non-free firmware in order to work on as much hardware
+  as possible;
+- a few pieces of software whose source code is public but not
+  compatible with the Debian Free Software Guidelines; they are needed
+  to support important use cases.
+
+## 3. We will give back to the Free Software community
+
+Tails is a privacy-oriented [Debian
+Derivative](https://wiki.debian.org/Derivatives).
+
+We want usable security and privacy-oriented tools to become a standard
+for the Free Software community as a whole.
+
+Bug fixes, code improvements, Debian packaging, as well as work on
+usability issues will be sent upstream whenever possible. This way, our
+modifications will benefit others and can be improved upon further by a
+wider audience of people.
+
+## 4. We encourage participation and transparency
+
+We want to produce Tails in a way that encourages participation, which
+requires publicly documenting what can be improved.  As Tails is created
+in such a transparent manner, anyone is encouraged to participate,
+review it and point out problems.
+
+To make our community a welcoming place for everybody we agreed on a
+Code of Conduct.
+
+## 5. We will never harm our users intentionally
+
+We will always do our best to create secure and usable tools. We will
+never willingly include backdoors or malicious software nor will we
+cooperate with any entity wanting us to harm our users.
+
+Mistakes sometimes happen. We will be honest about them and fix those
+that affect the safety of Tails users when they are reported to us.
+
+Whenever severe security issues are reported to us in private, we will
+test them and ensure we promptly fix these issues. We will notify our
+users whenever such an issue has been reported to us. However, for the
+security of our users, we might not disclose such a severe issue before
+releasing a fix.
+
+## 6. We give users the means to decide how much they can rely on Tails
+
+We encourage users to inform themselves and decide if Tails is suitable
+for their use case and how much they can trust it. We work diligently to
+keep our community up-to-date through our various communication channels
+about the current state of our software and its limitations. We
+encourage users to read our documentation as well as third-party
+documentation in order to make an informed decision and engage in a
+learning process about the tools we ship.
+
+We provide and explain methods of verification so that anyone can ensure
+that they downloaded a genuine copy of Tails.

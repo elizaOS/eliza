@@ -1,0 +1,32 @@
+[[!meta date="Sat, 30 Jul 2016 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.4"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.4 are now fixed in Tails 2.5.
+
+We **strongly** encourage you to [[upgrade to Tails 2.5|news/version_2.5]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-62]], [[!mfsa 2016-63]], [[!mfsa 2016-64]],
+  [[!mfsa 2016-65]], [[!mfsa 2016-67]], [[!mfsa 2016-70]],
+  [[!mfsa 2016-72]], [[!mfsa 2016-73]], [[!mfsa 2016-76]],
+  [[!mfsa 2016-77]], [[!mfsa 2016-78]], [[!mfsa 2016-79]],
+  [[!mfsa 2016-80]]
+* Icedove: [[!debsa2016 3601]]
+* Linux: [[!debsa2016 3616]], [[!debsa2016 3607]]
+* GIMP: [[!debsa2016 3612]]
+* libav: [[!debsa2016 3603]]
+* expat: [[!debsa2016 3597]]
+* libgd3: [[!debsa2016 3630]]
+* libmodule-build-perl, perl: [[!debsa2016 3628]]
+* Pidgin: [[!debsa2016 3620]] (Tails is not affected since it does
+  not include support for the MXit protocol)
+* LibreOffice: [[!debsa2016 3608]]
+* libxslt1.1: [[!debsa2016 3605]]
+* OpenSSH: [[!debsa2016 3626]] (Tails is not affected since it does
+  not include the SSH daemon)
+* p7zip: [[!debsa2016 3599]]

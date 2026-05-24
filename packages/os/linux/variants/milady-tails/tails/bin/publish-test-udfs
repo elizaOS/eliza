@@ -1,0 +1,29 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+cd "${MASTER_CHECKOUT:?}"
+git fetch
+git switch master
+git merge origin/master
+
+for version in ${TEST_IUK_SOURCE_VERSIONS:?}; do
+    release_udf="wiki/src/upgrade/v2/Tails/${version}/amd64/${DIST:?}/upgrades.yml"
+    if [ ! -e "${release_udf}" ]; then
+        echo "Cannot find: ${release_udf}" >&2
+        exit 1
+    fi
+    test_udf="wiki/src/upgrade/v2/Tails/${version}/amd64/test/upgrades.yml"
+
+    mkdir -p "$(dirname "$test_udf")"
+    git show "origin/${WEBSITE_RELEASE_BRANCH:?}:${release_udf:?}" \
+        | sed -e "s/channel: ${DIST:?}/channel: test/" > "${test_udf:?}"
+    echo "Signing ${test_udf:?}"
+    gpg -u "${TAILS_SIGNATURE_KEY:?}" --armor --detach-sign "${test_udf:?}"
+    mv "${test_udf:?}".asc "${test_udf:?}".pgp
+    "${MASTER_CHECKOUT:?}/config/chroot_local-includes/usr/src/iuk/bin/tails-iuk-check-upgrade-description-file" "${test_udf:?}"
+    git add "${test_udf:?}"*
+done
+git commit -m "Add incremental upgrades on the test channel for Tails ${VERSION:?}"
+git push origin master:master

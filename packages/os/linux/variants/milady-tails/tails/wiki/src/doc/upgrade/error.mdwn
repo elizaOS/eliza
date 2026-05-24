@@ -1,0 +1,5 @@
+[[!meta title="Possible errors while upgrading"]]
+
+<!-- This page is here only not to break breadcrumbs on https://tails.net/doc/upgrade/error/*. -->
+
+[[!map pages="doc/upgrade/error/* and currentlang()" show="title"]]

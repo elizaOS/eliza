@@ -1,0 +1,119 @@
+[[!toc levels=2]]
+
+# Initial test: stacking squashfs images
+
+Tails filesystem is already using `aufs` to provide a read-write filesystem on
+top of the read-only `squashfs` image.
+
+This system could probably be extended to support mounting multiple `squashfs`
+filesystems on top of each others. Upgrades would be `squashfs` images with only
+the files that have been modified since the previous releases. This handles file
+deletions.
+
+Shipping upgrades could be as simple as shipping those extra `squashfs` images.
+
+Debian live supports such stacking already: see in `live-boot(7)` the
+part about `/live/filesystem.module`.
+
+Stacking squashfs images like this would still lack a way of upgrading the
+kernel and the syslinux. This should also be handled by the automated upgrade
+process.
+
+Here is a test. First the procedure to create the *delta* squashfs image, to be
+done as `root`:
+
+    mkdir /mnt/tails-0.7.1
+    mkdir /mnt/tails-0.7.2
+    mount -o loop tails-i386-0.7.1.iso /mnt/tails-0.7.1
+    mount -o loop tails-i386-0.7.2.iso /mnt/tails-0.7.2
+    mkdir /mnt/tails-0.7.1-root
+    mkdir /mnt/tails-0.7.2-root
+    mount -o loop /mnt/tails-0.7.1/live/filesystem.squashfs /mnt/tails-0.7.1-root
+    mount -o loop /mnt/tails-0.7.2/live/filesystem.squashfs /mnt/tails-0.7.2-root
+
+    mkdir /mnt/upgrade-0.7.1-to-0.7.2
+    mount -t tmpfs tmpfs /mnt/upgrade-0.7.1-to-0.7.2
+
+    mkdir /mnt/union
+    mount -t aufs -o br=/mnt/upgrade-0.7.1-to-0.7.2=rw:/mnt/tails-0.7.1-root=ro none /mnt/union
+    rsync -avP --delete-after /mnt/tails-0.7.2-root/ /mnt/union/
+
+    mksquashfs /mnt/upgrade-0.7.1-to-0.7.2 upgrade-0.7.1-to-0.7.2.squashfs
+
+Compressed size (using default gzip compression) is 82 MB.
+
+Not bad, and the new kernel is included, which can probably be avoided.
+
+Now, let's upgrade an USB stick:
+
+    mkdir /media/disk/live
+    cp   /mnt/tails-0.7.1/live/filesystem.squashfs \
+         upgrade-0.7.1-to-0.7.2.squashfs \
+         /mnt/tails/0.7.2/live/vmlinuz \
+         /mnt/tails/0.7.2/live/initrd.img \
+       /media/disk/live
+
+Then fiddle with GRUB or EXTLINUX.
+
+On boot, the new squashfs gets properly integrated. *Whiteouts* are not
+working. It looks like the `live-boot` 2.x mount options miss the `wh` attribute.
+But wait, booting with `break=top` and modifying `/scripts/live` to replace
+`roopt=rr` by `roopt=rr+wh` is enough to do the trick! Therefore,
+we've added the `wh` attribute to `live-boot` 3.x.
+
+Initial test is pretty conclusive!
+
+# Discarded options
+
+## Appending to squashfs image
+
+`mksquashfs` can actually append new files to an existing `squashfs` image.
+
+Initial images are created with files in a specific order to
+improve boot time on cd, but on a USB stick random access is a non-issue.
+
+test if `mksquashfs` can append an image that is currently
+used without weakening a running system.
+
+Upgrading the system would result in a series of files to be appended to the
+current `squashfs` image.
+
+This option had been discarded because it is not possible to remove files.
+
+## Deltas
+
+A possible way to encode deltas for the two previous methods could be:
+
+ * For each file that has been modified: a binary delta and a new set of
+   metadata if they have changed.
+ * A list of deleted files.
+
+And `mksquashfs` would be used in the running live system after applying the
+delta to create a `squashfs` image with the upgrade.
+
+But there is probably things that have been left out of such an early draft.
+
+## Binary diff
+
+Plain `diff` does not work on binary files.
+
+Binary diffs ([rsync], xdelta, [bsdiff], [VCDIFF]) gives poor
+result on live system images because `squashfs` images vary
+strongly as a whole, even for tiny changes of the files inside.
+That situation is unlikely to change ([[!debbug 602965]]) and is even worse
+with `squashfs-lzma`. Quoting `xz` manpage:
+
+     Compressed output may vary
+       The exact compressed output produced from the same uncompressed input
+       file may vary between XZ Utils  versions  even if  compression  options
+       are identical.  This is because the encoder can be improved (faster or
+       better compression) without affecting the file format.  The output can
+       vary even between different builds of the same XZ Utils  version, if
+       different build options are used.
+
+       The  above means that implementing --rsyncable to create rsyncable .xz
+       files is not going to happen without freezing a part of the encoder
+       implementation, which can then be used with --rsyncable.
+
+[bsdiff]: http://www.daemonology.net/bsdiff/
+[VCDIFF]: http://www.ietf.org/rfc/rfc3284.txt

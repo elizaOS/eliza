@@ -1,0 +1,53 @@
+[[!meta title="Ciclo de Autodefensa Digital en Mexico"]]
+[[!meta date="Wed, 08 Feb 2022 20:00:00 -0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Los proyectos Tor, Tails y Guardian Project están llamando a todos y todas las
+defensoras de derechos humanos, periodistas, activistas, feministas, defensoras
+del territorio, etc.
+
+En medio de crecientes amenazas a nuestra seguridad y libertad digital en
+México, sabemos que es cada vez más importante compartir tácticas contra la
+vigilancia, para nuestra autodefensa digital, escuchar y empoderar las personas
+que luchan por un cambio social.
+
+**Inscríbete antes del 28 de febrero!**
+
+Por favor, comparta este llamado con todas las personas que le pueden interesar :)
+
+<img src="https://gitlab.torproject.org/tpo/ux/research/uploads/1c51538dfe0a1fa4961e7db129525358/cfp-training.jpg" style="margin: 50px 10%; max-width: 600px; width: 80%;"/>
+
+Si quieres aprender más sobre autodefensa digital
+=================================================
+
+Estamos organizando unos talleres en linea en marzo y abril:
+
+- **[Tor Browser](https://torproject.org/)**: Como navegar en Internet de
+  manera anónima y sin censura (para computadoras).
+
+- **[Tor Browser Android](https://torproject.org/)** y **[Onion
+  Browser](https://onionbrowser.com/)**: Como navegar en Internet de manera
+  anónima y sin censura (para celulares).
+
+- **[Orbot](https://guardianproject.info/apps/org.torproject.android/)**:
+  Aumenta tu privacidad cuando usas las aplicaciones de tu celular.
+
+- **[Tails](https://tails.net/)**: Tu computadora segura en cualquier
+  lugar.
+
+Los talleres son gratuitos pero las plazas son limitadas.
+
+Puedes participar en los talleres de manera anónima y no seran grabados.
+
+Si quieres compartir tu experiencia con nosotras para mejorar nuestras herramientas
+===================================================================================
+
+Estamos interesadas en aprender como mejorar nuestras herramientas para que
+sean más útiles para vuestro trabajo y vuestras luchas en México.
+
+Organizaremos entrevistas, pruebas de usabilidad, encuestas y otras actividades
+para aprender de los problemas que encuentran nuestras usuarias en México.
+
+Si quieres hablar con nosotras sobre tu uso de Tor Browser, Orbot, Onion
+Browser o Tails, por favor rellene también el siguiente formulario.

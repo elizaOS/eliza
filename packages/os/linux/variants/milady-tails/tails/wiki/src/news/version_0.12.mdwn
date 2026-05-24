@@ -1,0 +1,76 @@
+[[!meta date="Mon, 12 Jun 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.12 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.12, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* The Unsafe Web Browser, which has direct access to the Internet and
+  can be used to login to captive portals usually found at libraries,
+  Internet cafes and when using other publicly available Internet
+  connections.
+
+* Windows camouflage can now be enabled via a check box in Tails
+  Greeter. Tails' user interface is unfamiliar to most, which may
+  attract unwanted attention when used in public places. This option
+  makes Tails look more like Microsoft Windows XP in order to raise
+  less suspicion.
+
+* Tor
+  - Upgrade to 0.2.2.37-1~~squeeze+1.
+
+* iceweasel
+  - Upgrade iceweasel to 10.0.5esr-1 (Extended Support Release).
+  - Add a bookmark for the offline Tails documentation.
+
+* Internationalization:
+  - The Tails website and documentation now has a (partial) Portuguese
+    translation.
+
+* Hardware support
+  - Upgrade Linux to 3.2.20-1 (linux-image-3.2.0-2-amd64).
+
+* Software
+  - Do not install cryptkeeper anymore. See [[!tails_ticket 5864]]
+    for reason. Users of cryptkeeper are encouraged to migrate
+    built-in persistence with the following
+    one-time migration procedure:
+	1. set an [[doc/first_steps/welcome_screen/administration_password]]
+	   when booting Tails
+	2. temporarily install cryptkeeper via `sudo apt-get update; sudo
+       apt-get install --yes cryptkeeper`
+	3. open your cryptkeeper (EncFS] volume and move its contents to
+	   the `Persistence` folder provided by Tails' built-in persistence
+  - Install mousetweaks. This is needed to use the mouse accessibility
+    settings in System -> Preferences -> Mouse -> Accessibility.
+  - Upgrade I2P to version 0.9.
+  - Don't install GParted. GNOME Disk Utility has been on par with
+    GParted since Squeeze was released.
+  - Upgrade MAT, the metadata anonymisation toolkit, 0.3.2-1~bpo60+1.
+
+* Miscellaneous
+  - Set Tails specific syslinux and plymouth themes.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

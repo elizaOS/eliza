@@ -1,0 +1,150 @@
+[[!meta robots="noindex"]]
+
+<p>
+  <video controls="true" width="640" height="360" poster="https://tails.net/install/inc/videos/mac.png">
+    <source src="https://tails.net/install/inc/videos/mac.mp4" type="video/mp4" />
+  </video>
+</p>
+
+<ol>
+
+<li class="standalone">
+  <p>Make sure that you have installed Tails using either:</p>
+  <ul>
+    <li>[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]</li>
+    <li>[[<i>Rufus</i> from Windows|install/windows#rufus]]</li>
+    <li>[[<i>GNOME Disks</i> from Linux|install/linux#install]]</li>
+    <li>[[the Linux command line|install/expert#install]]</li>
+  </ul>
+</li>
+
+<li>
+   <p class="standalone">Shut down the computer.</p>
+   <p class="usb upgrade">Shut down the computer while leaving the USB stick plugged in.</p>
+   <p class="mac-clone">Plug in the other Tails USB stick that you want to install from.</p>
+</li>
+
+<li class="standalone">
+   <p>Plug in your Tails USB stick.</p>
+</li>
+
+<li>
+   <p>Switch on the computer.</p>
+
+   <p>Immediately press-and-hold the <b>Option</b> key
+   (<b>⌥</b> or <b>Alt</b> key) when the startup sound is played.</p>
+
+   <p>Hold the key pressed until a list of possible startup disks appears.</p>
+
+   <p>[[!img install/inc/screenshots/mac_option_key.png link="no" alt="'Option' or 'alt' key in the bottom left of Mac keyboard"]]</p>
+</li>
+
+<li>
+   <p>Choose the USB stick and press
+   <b>Enter</b>. The USB stick appears as an external hard
+   disk and might be labeled <b>EFI Boot</b> or
+   <b>Windows</b> like in the following screenshot:</p>
+
+   <p>[[!img install/inc/screenshots/mac_startup_usb.png class="screenshot" alt="Screen with the logo of an internal hard disk labeled 'Macintosh HD' and an external hard disk labelled 'Windows' (selected)"]]</p>
+
+   <div class="bug">
+   <p>If the USB stick does not appear in the list of startup
+      disks:</p>
+
+   [[!inline pages="install/inc/steps/basic_troubleshooting.inline" raw="yes" sort="age"]]
+
+   <p>If your computer still does not display the Boot
+   Loader, it might currently be impossible to start Tails
+   on your computer.</p>
+
+   </div>
+
+</li>
+
+<li id="startup security">
+
+   <p>If your Mac displays the following error:</p>
+
+   <p class="code">Security settings do not allow this Mac to use an external startup disk.</p>
+
+   <p>Then you have to change the settings of the <em>Startup
+   Security Utility</em> of your Mac to authorize starting from Tails.</p>
+
+   <p>To open <em>Startup Security Utility</em>:</p>
+
+   <ol>
+
+     <!-- Section copied from https://support.apple.com/en-us/HT208198 -->
+
+     <li><p>Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong>
+     immediately after you see the Apple logo. Your Mac starts up from
+     <a href="https://support.apple.com/kb/HT201314">macOS Recovery</a>.</p></li>
+
+     <li><p>When you see the macOS <em>Utilities</em> window, choose
+     <strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu
+     bar.</p></li>
+
+     <li><p>When you are asked to authenticate, click <strong>Enter macOS
+     Password</strong>, then choose an administrator account and enter its
+     password.</p></li>
+
+   </ol>
+
+   <p>[[!img install/inc/screenshots/startup-security-utility.png class="screenshot" alt="Startup Security Utility"]]</p>
+
+   <p>In the <em>Startup Security Utility</em>:</p>
+
+   <ul>
+
+     <li><p>Choose <strong>No Security</strong> in the <strong>Secure
+     Boot</strong> section.</p></li>
+
+     <li><p>Choose <strong>Allow booting from external media</strong> in the
+     <strong>External Boot</strong>.</p></li>
+
+   </ul>
+
+   <div class="tip">
+
+   <p>To still protect your Mac from starting on untrusted external media, you
+   can set a firmware password, available on macOS Mountain Lion or later. A
+   firmware password prevents users who do not have the password from starting
+   up from any media other than the designated startup disk.</p>
+
+   <p><strong>If you forget your firmware password you will require an in-person
+   service appointment with an Apple Store or Apple Authorized Service
+   Provider.</strong></p>
+
+   </div>
+
+   <p>Read more on Apple Support about:</p>
+
+   <ul>
+
+     <li><a href="https://support.apple.com/en-us/HT208198">Startup Security Utility</a></li>
+     <li><a href="https://support.apple.com/en-us/HT204455">How to set a firmware password on your Mac</a></li>
+
+   </ul>
+
+</li>
+
+<li><p>If the computer starts on Tails, the Boot Loader appears and Tails
+    starts automatically after 4 seconds.</p>
+
+    <p>[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+       logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]</p>
+
+    <ul>
+
+    <li><p>The <b>Troubleshooting Mode</b> entry disables some features of the
+        Linux kernel and might work better on some computers. You can try this option
+        if you think you are experiencing hardware compatibility errors while
+        starting Tails.</p></li>
+
+    <li><p>The <b>External Hard Disk</b> entry makes it possible to [[start from an
+        external hard disk|doc/advanced_topics/external_hard_disk]] and some
+        [[problematic USB sticks|support/known_issues#problematic-usb-stick]].</p></li>
+
+    </ul>
+
+</ol>

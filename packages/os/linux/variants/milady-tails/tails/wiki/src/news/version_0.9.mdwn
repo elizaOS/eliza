@@ -1,0 +1,88 @@
+[[!meta date="Fri, 11 Nov 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.9 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.9, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tor
+  - Upgrade to 0.2.2.34. This fixes CVE-2011-2768 and CVE-2011-2769
+    which prompted for manual updates for users of Tails 0.8.1.
+  - Suppress Tor's warning about applications doing their own DNS
+    lookups. Some users have reported concerns about these warnings,
+    but it should be noted that they are completely harmless inside
+    Tails as its system DNS resolver is Torified.
+
+* Linux 3.0.0-6, which fixed a great number of bugs and security issues.
+
+* Iceweasel
+  - Upgrade to 3.5.16-11 ((fixes CVE-2011-3647, CVE-2011-3648,
+    CVE-2011-3650).
+  - Torbutton: upgrade to 1.4.4.1-1, including support for the
+    in-browser "New identity" feature.
+  - FireGPG: upgrade to 0.8-1+tails2. Users are notified that the
+    FireGPG Text Editor is the only safe place for performing
+    cryptographic operations, and these operations has been disabled
+    in other places. Performing them outside of the editor opens up
+    several severe attacks through JavaScript (e.g. leaking plaintext
+    when decrypting, signing messages written by the attacker).
+  - Replace CS Lite with Cookie Monster for cookie management. Cookie
+    Monster has an arguably nicer interface, is being actively
+    maintained and is packaged in Debian.
+
+* Software
+  - Install [MAT](https://mat.boum.org/), the Metadata Anonymisation
+    Toolkit. Its goal is to remove file metadata which otherwise
+    could leak information about you in the documents and media files
+    you publish. This is the result of a Tails developer's suggestion
+    for GSoC 2011, although it ended up being mentored by The Tor
+    Project.
+  - Upgrade WhisperBack to 1.5~rc1. Users are guided how to send their
+    bug reports through alternative channels upon errors sending
+    them. This will make bug reporting easier when there's no network
+    connection available.
+  - Upgrade TrueCrypt to 7.1.
+
+* Miscellaneous
+  - The date and time setting system was completely reworked. This
+    should prevent time syncing issues that may prevent Tor from
+    working properly, which some users have reported. The new system
+    will not leave a fingerprintable network signature, like the old
+    system did. Previously that signature could be used to identify
+    who is using Tails (but *not* deanonymize them).
+  - Erase memory at shutdown: run many instances of the memory
+    wiper. Due to architectural limitations of i386 a process cannot
+    access all memory at the same time, and hence a single memory wipe
+    instance cannot clear all memory.
+  - Saner keyboard layouts for Arabic and Russian.
+  - Use Plymouth text-only splash screen at boot time.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+# Known issue
+
+The memory erasure on Tails shutdown cannot guarantee that all memory
+in the 2 GB to 4 GB region is wiped. The improvements made in Tails
+0.9 should at least make the situation better than previously.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

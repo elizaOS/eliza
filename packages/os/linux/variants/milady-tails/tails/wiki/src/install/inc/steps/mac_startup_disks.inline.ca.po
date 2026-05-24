@@ -1,0 +1,290 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-01 15:29+0000\n"
+"Last-Translator: Ecron Smith <ecron_89@hotmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr "Assegureu-vos d'haver instal·lat Tails mitjançant:"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> des de macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>Rufus</i> des de Windows|install/windows#rufus]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>Discs de GNOME</i> des de Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[la línia d'ordres de Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr "Apagueu l'ordinador."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr "Apagueu l'ordinador mentre deixeu el llapis USB connectat."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in the other Tails USB stick that you want to install from."
+msgstr "Connecteu l'altre llapis USB de Tails des del que vulgueu instal·lar."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in your Tails USB stick."
+msgstr "Connecteu el llapis USB de Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr "Enceneu l'ordinador."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Immediately press-and-hold the <b>Option</b> key (<b>⌥</b> or <b>Alt</b> "
+"key) when the startup sound is played."
+msgstr ""
+"Manteniu premuda immediatament la tecla <b>Opció</b> (tecla <b>⌥</b> o "
+"<b>Alt</b>) quan soni el so d'inici."
+
+#. type: Content of: <ol><li><p>
+msgid "Hold the key pressed until a list of possible startup disks appears."
+msgstr ""
+"Mantingueu premuda la tecla fins que aparegui una llista de possibles discs "
+"d'arrencada."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"'Option' "
+"or 'alt' key in the bottom left of Mac keyboard\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"'Opció' "
+"o tecla 'alt' a la part inferior esquerra del teclat Mac\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Choose the USB stick and press <b>Enter</b>. The USB stick appears as an "
+"external hard disk and might be labeled <b>EFI Boot</b> or <b>Windows</b> "
+"like in the following screenshot:"
+msgstr ""
+"Trieu el llapis USB i premeu la tecla de <span class=\"keycap\">Retorn</"
+"span>. El llapis USB apareix com un disc dur extern i pot estar etiquetat "
+"com a <b>EFI Boot</b> o <span class=\"guilabel\">Windows</span> com a la "
+"següent captura de pantalla:"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/mac_startup_usb.png class=\"screenshot\" "
+"alt=\"Screen with the logo of an internal hard disk labeled 'Macintosh HD' "
+"and an external hard disk labelled 'Windows' (selected)\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_startup_usb.png class=\"screenshot\" alt="
+"\"Pantalla amb el logotip d'un disc dur intern amb l'etiqueta de 'Macintosh "
+"HD' i un disc dur extern amb l'etiqueta 'Windows' (seleccionat)\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid "If the USB stick does not appear in the list of startup disks:"
+msgstr "Si el llapis USB no apareix a la llista de discs d'arrencada:"
+
+#. type: Content of: <ol><li><div>
+msgid ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" "
+"raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.ca\" "
+"raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"If your computer still does not display the Boot Loader, it might currently "
+"be impossible to start Tails on your computer."
+msgstr ""
+"Si el vostre ordinador encara no mostra el Carregador d'Arrencada, és "
+"possible que no es pugui iniciar Tails al vostre ordinador."
+
+#. type: Content of: <ol><li><p>
+msgid "If your Mac displays the following error:"
+msgstr "Si el vostre Mac mostra l'error següent:"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Security settings do not allow this Mac to use an external startup disk."
+msgstr ""
+"La configuració de seguretat no permet que aquest Mac utilitzi un disc "
+"d'arrencada extern."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Then you have to change the settings of the <em>Startup Security Utility</"
+"em> of your Mac to authorize starting from Tails."
+msgstr ""
+"Llavors, heu de canviar la configuració de la <em>Utilitat de Seguretat "
+"d'Arrencada</em> del vostre Mac per autoritzar l'arrencada a partir de Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "To open <em>Startup Security Utility</em>:"
+msgstr "Per obrir la <em>Utilitat de Seguretat d'Arrencada</em>:"
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong> "
+"immediately after you see the Apple logo. Your Mac starts up from <a "
+"href=\"https://support.apple.com/kb/HT201314\">macOS Recovery</a>."
+msgstr ""
+"Enceneu el vostre Mac i, a continuació, premeu <strong>Ordre(⌘)+R</strong> "
+"immediatament després de veure el logotip d'Apple. El vostre Mac s'inicia "
+"des de la <a href=\"https://support.apple.com/kb/HT201314\">macOS Recovery</"
+"a>."
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"When you see the macOS <em>Utilities</em> window, choose "
+"<strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu bar."
+msgstr ""
+"Quan vegeu la finestra <em>Utilitats</em> de macOS, trieu "
+"<strong>Utilitats&nbsp;▸ Utilitat de seguretat d'inici</strong> a la barra "
+"de menús."
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"When you are asked to authenticate, click <strong>Enter macOS Password</"
+"strong>, then choose an administrator account and enter its password."
+msgstr ""
+"Quan se us demani que us autentiqueu, feu clic a <strong>Introdueix la "
+"contrasenya de macOS</strong> i, a continuació, trieu un compte "
+"d'administrador i introduïu-ne la contrasenya."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/startup-security-utility.png "
+"class=\"screenshot\" alt=\"Startup Security Utility\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/startup-security-utility.png class="
+"\"screenshot\" alt=\"Utilitat de Seguretat d'Arrencada\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "In the <em>Startup Security Utility</em>:"
+msgstr "A la <em>Utilitat de Seguretat d'Arrencada</em>:"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>No Security</strong> in the <strong>Secure Boot</strong> "
+"section."
+msgstr ""
+"Trieu <strong>Sense seguretat</strong> a la secció <strong>Arrencada Segura</"
+"strong>."
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>Allow booting from external media</strong> in the "
+"<strong>External Boot</strong>."
+msgstr ""
+"Trieu <strong>Permet l'arrencada des de mitjans externs</strong> a "
+"l'<strong>Arrencada Externa</strong>."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"To still protect your Mac from starting on untrusted external media, you can "
+"set a firmware password, available on macOS Mountain Lion or later. A "
+"firmware password prevents users who do not have the password from starting "
+"up from any media other than the designated startup disk."
+msgstr ""
+"Per protegir el vostre Mac perquè no s'iniciï en suports externs no fiables, "
+"podeu establir una contrasenya de microprogramari, disponible a macOS "
+"Mountain Lion o posterior. Una contrasenya de microprogramari impedeix que "
+"els usuaris que no tenen la contrasenya s'iniciïn des de qualsevol mitjà que "
+"no sigui el disc d'arrencada designat."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"<strong>If you forget your firmware password you will require an in-person "
+"service appointment with an Apple Store or Apple Authorized Service Provider."
+"</strong>"
+msgstr ""
+"<strong>Si oblideu la contrasenya del microprogramari, necessitareu una cita "
+"de servei presencial amb una Apple Store o un proveïdor de serveis "
+"autoritzat d'Apple.</strong>"
+
+#. type: Content of: <ol><li><p>
+msgid "Read more on Apple Support about:"
+msgstr "Més informació sobre l'assistència d'Apple sobre:"
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT208198\">Startup Security "
+"Utility</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/en-us/HT208198\">Utilitat de Seguretat "
+"d'Arrencada</a>"
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT204455\">How to set a firmware "
+"password on your Mac</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/en-us/HT204455\">Com configurar una "
+"contrasenya de microprogramari al Mac</a>"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+"Si l'ordinador s'inicia a Tails, apareixerà el Carregador d'Arrencada i "
+"Tails s'iniciarà automàticament després de 4 segons."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Pantalla "
+"negra ('GNU GRUB') amb el logotip de Tails i tres opcions: 'Tails' i 'Tails "
+"(Troubleshooting Mode)' i 'Tails (External Hard Disk)'.\"]]"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>Troubleshooting Mode</b> entry disables some features of the Linux "
+"kernel and might work better on some computers. You can try this option if "
+"you think you are experiencing hardware compatibility errors while starting "
+"Tails."
+msgstr ""
+"L'entrada <b>Troubleshooting Mode</b> desactiva algunes funcions del nucli "
+"Linux i pot funcionar millor en alguns ordinadors. Podeu provar aquesta "
+"opció si creieu que esteu experimentant errors de compatibilitat de "
+"maquinari mentre inicieu Tails."
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>External Hard Disk</b> entry makes it possible to [[start from an "
+"external hard disk|doc/advanced_topics/external_hard_disk]] and some "
+"[[problematic USB sticks|support/known_issues#problematic-usb-stick]]."
+msgstr ""
+"L'entrada <b>External Hard Disk</b> permet "
+"[[iniciar des d'un disc dur extern|doc/advanced_topics/external_hard_disk]] "
+"i alguns "
+"[[llapis USB problemàtics|support/known_issues#problematic-usb-stick]]."

@@ -1,0 +1,591 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-03-29 13:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"License and source code distribution\"]]\n"
+msgstr "[[!meta title=\"Licence et distribution du code source\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails is [Free Software](https://www.gnu.org/philosophy/free-sw.html): you "
+"can download, use, and share it with no restrictions."
+msgstr ""
+"Tails est un [logiciel libre](https://www.gnu.org/philosophy/free-"
+"sw.fr.html) : vous pouvez le télécharger, l'utiliser et le partager sans "
+"restriction."
+
+#. type: Plain text
+msgid ""
+"The Tails source code is released under the GNU/GPL (version 3 or above) and "
+"is Copyright (C) Tails developers <foundations@tails.net>.  Any exception to "
+"this rule is documented either below or in the affected source file."
+msgstr ""
+"Le code source de Tails est distribué sous licence GNU/GPL (version 3 ou "
+"supérieure) et est Copyright (C) Tails developers <foundations@tails.net>. "
+"Toute exception à cette règle est documentée soit ci-dessous soit dans le "
+"fichier source concerné."
+
+#. type: Plain text
+msgid ""
+"However, Tails, like Debian, includes closed source binary firmware in order "
+"to work on as much hardware as possible."
+msgstr ""
+"Cependant, Tails, comme Debian, inclut des micrologiciels binaires aux "
+"sources fermées afin de fonctionner avec le plus de matériel possible."
+
+#. type: Plain text
+msgid ""
+"Tails is a registered trademark of The Tor Project, Inc. See our [Trademark "
+"and Brand policy](https://www.torproject.org/about/trademark/)."
+msgstr ""
+"Tails est une marque déposée de The Tor Project, Inc. Voir notre [politique "
+"concernant les marques](https://www.torproject.org/fr/about/trademark/)."
+
+#. type: Title =
+#, no-wrap
+msgid "Source code"
+msgstr "Code source"
+
+#. type: Plain text
+msgid ""
+"Most of the software included in Tails is taken directly from upstream "
+"Debian packages and is neither modified nor recompiled by Tails."
+msgstr ""
+"La plupart des logiciels inclus dans Tails proviennent directement des "
+"paquets Debian en amont et ne sont ni modifiés ni recompilés par Tails."
+
+#. type: Bullet: '- '
+msgid ""
+"The source code of software that is specific to Tails is available in [[our "
+"Git repositories|contribute/git]]."
+msgstr ""
+"Le code source des logiciels spécifiques à Tails est disponible dans [[nos "
+"dépôts Git|contribute/git]]."
+
+#. type: Bullet: '- '
+msgid ""
+"The source code of the Debian packages included in Tails is available in the "
+"[APT snapshot](https://tagged.snapshots.deb.tails.boum.org/)  that we "
+"created for that version of Tails."
+msgstr ""
+"Le code source des paquets Debian inclus dans Tails est disponible dans le "
+"[snapshot APT](https://tagged.snapshots.deb.tails.boum.org/) que nous avons "
+"créé pour cette version de Tails."
+
+#. type: Bullet: '- '
+msgid ""
+"The [[!tails_gitweb config/chroot_local-includes/usr/share/tails/chroot-"
+"browsers/unsafe-browser/extensions/red-2.0-an+fx.xpi desc=\"red theme\"]] "
+"used by Tails' _Unsafe Browser_ was downloaded from Mozilla add-ons website "
+"(<https://addons.mozilla.org/en-US/firefox/addon/simplyred/>):"
+msgstr ""
+"Le [[!tails_gitweb config/chroot_local-includes/usr/share/tails/chroot-"
+"browsers/unsafe-browser/extensions/red-2.0-an+fx.xpi desc=\"thème rouge\"]] "
+"utilisé par le _Navigateur non-sécurisé_ de Tails a été téléchargé depuis le "
+"site de modules complémentaires de Mozilla (<https://addons.mozilla.org/fr/"
+"firefox/addon/simplyred/>) :"
+
+#. type: Bullet: '  - '
+msgid "license: Creative Commons Attribution 3.0"
+msgstr "licence : Creative Commons Attribution 3.0"
+
+#. type: Bullet: '  - '
+msgid ""
+"author: [Firefox user 14030863](https://addons.mozilla.org/en-US/firefox/"
+"user/14030863/)"
+msgstr ""
+"auteur : [Firefox user 14030863](https://addons.mozilla.org/fr/firefox/user/"
+"14030863/)"
+
+#. type: Bullet: '- '
+msgid "Icons copied from [[!debpts gnome-icon-theme]]:"
+msgstr "Icônes copiées depuis [[!debpts gnome-icon-theme]] :"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-NetworkConnections.png]]"
+msgstr ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-NetworkConnections.png]]"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-WelcomeScreen.png]]"
+msgstr ""
+"[[!tails_gitweb config/chroot_local-includes/usr/share/tails/persistent-"
+"storage/icons/tps-WelcomeScreen.png]]"
+
+#. type: Bullet: '  - '
+msgid "license: GPL-2+"
+msgstr "licence : GPL-2+"
+
+#. type: Bullet: '  - '
+msgid "Copyright:"
+msgstr "Copyright :"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Andreas Nilsson <nisses.mail@home.se>"
+msgstr "2002-2008 Andreas Nilsson <nisses.mail@home.se>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Hylke Bons <h.bons@student.rug.nl>"
+msgstr "2002-2008 Hylke Bons <h.bons@student.rug.nl>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Jakub Steiner <jimmac@novell.com>"
+msgstr "2002-2008 Jakub Steiner <jimmac@novell.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Josef Vybíral <cornelius@vybiral.info>"
+msgstr "2002-2008 Josef Vybíral <cornelius@vybiral.info>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Lapo Calamandrei <calamandrei@gmail.com>"
+msgstr "2002-2008 Lapo Calamandrei <calamandrei@gmail.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Luca Ferretti <elle.uca@libero.it>"
+msgstr "2002-2008 Luca Ferretti <elle.uca@libero.it>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Ricardo González <rick@jinlabs.com>"
+msgstr "2002-2008 Ricardo González <rick@jinlabs.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Riccardo Buzzotta <raozuzu@yahoo.it>"
+msgstr "2002-2008 Riccardo Buzzotta <raozuzu@yahoo.it>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Rodney Dawes <dobey@novell.com>"
+msgstr "2002-2008 Rodney Dawes <dobey@novell.com>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Tuomas Kuosmanen <tigert@gimp.org>"
+msgstr "2002-2008 Tuomas Kuosmanen <tigert@gimp.org>"
+
+#. type: Bullet: '    - '
+msgid "2002-2008 Ulisse Perusin <uli.peru@gmail.com>"
+msgstr "2002-2008 Ulisse Perusin <uli.peru@gmail.com>"
+
+#. type: Bullet: '- '
+msgid "Forge JS library"
+msgstr "Bibliothèque Forge JS"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  - license: <details><summary>New BSD License (3-clause)</summary><pre>\n"
+"        New BSD License (3-clause)\n"
+"        Copyright (c) 2010, Digital Bazaar, Inc.\n"
+"        All rights reserved.\n"
+"        Redistribution and use in source and binary forms, with or without\n"
+"        modification, are permitted provided that the following conditions are met:\n"
+"            * Redistributions of source code must retain the above copyright\n"
+"              notice, this list of conditions and the following disclaimer.\n"
+"            * Redistributions in binary form must reproduce the above copyright\n"
+"              notice, this list of conditions and the following disclaimer in the\n"
+"              documentation and/or other materials provided with the distribution.\n"
+"            * Neither the name of Digital Bazaar, Inc. nor the\n"
+"              names of its contributors may be used to endorse or promote products\n"
+"              derived from this software without specific prior written permission.\n"
+"        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS \"AS IS\" AND\n"
+"        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED\n"
+"        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE\n"
+"        DISCLAIMED. IN NO EVENT SHALL DIGITAL BAZAAR BE LIABLE FOR ANY\n"
+"        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES\n"
+"        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;\n"
+"        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND\n"
+"        ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT\n"
+"        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS\n"
+"        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
+"    </pre></details>\n"
+"  - Copyright:\n"
+"    - 2010 - present: Digital Bazaar, Inc.\n"
+msgstr ""
+"  - licence : <details><summary>New BSD License (3-clause)</summary><pre>\n"
+"        New BSD License (3-clause)\n"
+"        Copyright (c) 2010, Digital Bazaar, Inc.\n"
+"        All rights reserved.\n"
+"        Redistribution and use in source and binary forms, with or without\n"
+"        modification, are permitted provided that the following conditions "
+"are met:\n"
+"            * Redistributions of source code must retain the above "
+"copyright\n"
+"              notice, this list of conditions and the following disclaimer.\n"
+"            * Redistributions in binary form must reproduce the above "
+"copyright\n"
+"              notice, this list of conditions and the following disclaimer "
+"in the\n"
+"              documentation and/or other materials provided with the "
+"distribution.\n"
+"            * Neither the name of Digital Bazaar, Inc. nor the\n"
+"              names of its contributors may be used to endorse or promote "
+"products\n"
+"              derived from this software without specific prior written "
+"permission.\n"
+"        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "
+"\"AS IS\" AND\n"
+"        ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, "
+"THE IMPLIED\n"
+"        WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE "
+"ARE\n"
+"        DISCLAIMED. IN NO EVENT SHALL DIGITAL BAZAAR BE LIABLE FOR ANY\n"
+"        DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL "
+"DAMAGES\n"
+"        (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR "
+"SERVICES;\n"
+"        LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER "
+"CAUSED AND\n"
+"        ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, "
+"OR TORT\n"
+"        (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE "
+"USE OF THIS\n"
+"        SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.\n"
+"    </pre></details>\n"
+"  - Copyright :\n"
+"    - 2010 - présent : Digital Bazaar, Inc.\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Website"
+msgstr "Site web"
+
+#. type: Plain text
+msgid "This website uses the following fonts:"
+msgstr "Ce site web utilise les polices suivantes :"
+
+#. type: Bullet: '- '
+msgid ""
+"[Source Sans 3](https://fonts.google.com/specimen/Source+Sans+3/license), "
+"copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), licensed under the [SIL Open Font License, Version 1.1]"
+"(https://openfontlicense.org/open-font-license-official-text/)."
+msgstr ""
+"[Source Sans 3](https://fonts.google.com/specimen/Source+Sans+3/license), "
+"copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), sous licence [SIL Open Font License, Version 1.1](https://"
+"openfontlicense.org/open-font-license-official-text/)."
+
+#. type: Bullet: '- '
+msgid ""
+"[Source Code Pro](https://fonts.google.com/specimen/Source+Code+Pro/"
+"license)  copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), licensed under the [SIL Open Font License, Version 1.1]"
+"(https://openfontlicense.org/open-font-license-official-text/)."
+msgstr ""
+"[Source Code Pro](https://fonts.google.com/specimen/Source+Code+Pro/"
+"license)  copyright 2010&ndash;2020 [Adobe Systems Incorporated](http://"
+"www.adobe.com/), sous licence [SIL Open Font License, Version 1.1](https://"
+"openfontlicense.org/open-font-license-official-text/)."
+
+#. type: Plain text
+msgid ""
+"This website uses several images with distinct copyright, licenses, "
+"trademarks and distribution terms:"
+msgstr ""
+"Ce site utilise plusieurs images aux copyrights, licences, marques déposées "
+"et termes de distribution distincts :"
+
+#. type: Bullet: '- '
+msgid ""
+"The Tails logo is based on [[USB|http://thenounproject.com/term/usb/23873/]] "
+"by Ilsur Aptukov from the Noun Project."
+msgstr ""
+"Le logo Tails est basé sur [[USB|http://thenounproject.com/term/usb/23873/]] "
+"par Ilsur Aptukov du Noun Project."
+
+#. type: Bullet: '- '
+msgid "Debian logo: Copyright (c) 1999 Software in the Public Interest."
+msgstr ""
+"Logo Debian : Copyright (c) 1999 Software in the Public Interest (\"Logiciel "
+"dans l'intérêt public\")."
+
+#. type: Bullet: '- '
+msgid ""
+"The drawings on our [[Home|index]], [[About|about]], and [[Warnings|doc/"
+"about/warnings]] pages are licensed under the [Creative Commons Attribution-"
+"ShareAlike 4.0 International License](https://creativecommons.org/licenses/"
+"by-sa/4.0/), copyright [Andrés Fernández Cordón](https://anhdres.com/)  "
+"([[source|lib/drawings.zip]] for Adobe Illustrator)."
+msgstr ""
+"Les dessins sur nos pages [[Accueil|index]], [[Fonctionnement de Tails|"
+"about]], et [[Avertissements|doc/about/warnings]] sont sous licence "
+"[Creative Commons Attribution - Partage dans les mêmes conditions 4.0 "
+"International](https://creativecommons.org/licenses/by-sa/4.0/deed.fr), "
+"copyright [Andrés Fernández Cordón](https://anhdres.com/)  ([[source|lib/"
+"drawings.zip]] pour Adobe Illustrator)."
+
+#. type: Bullet: '- '
+msgid ""
+"All the [[drawings of our personas|contribute/personas]] are licensed under "
+"the [Creative Commons Attribution-ShareAlike 4.0 International License]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright Thomas Verguet."
+msgstr ""
+"Tous les [[dessins de nos personas|contribute/personas]] sont sous licence "
+"[Creative Commons Attribution - Partage dans les Mêmes Conditions 4.0 "
+"International](https://creativecommons.org/licenses/by-sa/4.0/deed.fr), "
+"copyright Thomas Verguet."
+
+#. type: Bullet: '- '
+msgid ""
+"The [[Boot Menu animation|doc/first_steps/start/pc#animation]] is licensed "
+"under the [Creative Commons Attribution-ShareAlike 4.0 International License]"
+"(https://creativecommons.org/licenses/by-sa/4.0/), copyright [Odile "
+"Carabantes](https://studiomoare.com/) and Enso Studio ([source](https://"
+"gitlab.tails.boum.org/tails/ux/-/raw/master/boot%20menu%20key/"
+"animation.rar)  for Adobe Illustrator and Adobe Premiere)."
+msgstr ""
+"L'[[animation du menu de démarrage|doc/first_steps/start/pc#animation]] est "
+"sous licence [Creative Commons Attribution - Partage dans les Mêmes "
+"Conditions 4.0 International](https://creativecommons.org/licenses/by-sa/4.0/"
+"deed.fr), copyright [Odile Carabantes](https://studiomoare.com/) et Enso "
+"Studio ([source](https://gitlab.tails.boum.org/tails/ux/-/raw/master/"
+"boot%20menu%20key/animation.rar) pour Adobe Illustrator et Adobe Premiere)."
+
+#. type: Bullet: '- '
+msgid "Icons from [[The Noun Project|http://thenounproject.com/]]:"
+msgstr "Icônes de [[The Noun Project|http://thenounproject.com/]] :"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Announcement|http://thenounproject.com/term/announcement/1186/]]: Creative "
+"Commons - Attribution, by Olivier Guin."
+msgstr ""
+"[[Announcement|http://thenounproject.com/term/announcement/1186/]] : "
+"Creative Commons - Attribution, par Olivier Guin."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Code|http://thenounproject.com/term/code/18033/]]: Creative Commons — "
+"Attribution, by Azis."
+msgstr ""
+"[[Code|http://thenounproject.com/term/code/18033/]] : Creative Commons — "
+"Attribution, par Azis."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Pen|http://thenounproject.com/term/pen/18907/]]: Creative Commons — "
+"Attribution, by factor[e] design initiative."
+msgstr ""
+"[[Pen|http://thenounproject.com/term/pen/18907/]] : Creative Commons — "
+"Attribution, par factor[e] design initiative."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Loan|http://thenounproject.com/term/loan/19538/]]: Public Domain, by "
+"Rohith M S."
+msgstr ""
+"[[Loan|http://thenounproject.com/term/loan/19538/]] : domaine public, par "
+"Rohith M S."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[User|http://thenounproject.com/term/user/419/]]: Creative Commons — "
+"Attribution, by Edward Boatman."
+msgstr ""
+"[[User|http://thenounproject.com/term/user/419/]] : Creative Commons — "
+"Attribution, par Edward Boatman."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Translation|http://thenounproject.com/term/translation/5735/]]: Creative "
+"Commons — Attribution, by Joe Mortell."
+msgstr ""
+"[[Translation|http://thenounproject.com/term/translation/5735/]] : Creative "
+"Commons — Attribution, par Joe Mortell."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Gears|http://thenounproject.com/term/gears/8949/]]: Creative Commons — "
+"Attribution, by Cris Dobbins."
+msgstr ""
+"[[Gears|http://thenounproject.com/term/gears/8949/]] : Creative Commons — "
+"Attribution, par Cris Dobbins."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Graphic Design|http://thenounproject.com/term/graphic_design/9198/]]: "
+"Creative Commons — Attribution, by Cornelius Danger."
+msgstr ""
+"[[Graphic Design|http://thenounproject.com/term/graphic_design/9198/]] : "
+"Creative Commons — Attribution, par Cornelius Danger."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Check Mark|https://thenounproject.com/term/check/4489/]]: Public Domain, "
+"by Julian Norton."
+msgstr ""
+"[[Check Mark|https://thenounproject.com/term/check/4489/]] : domaine public, "
+"par Julian Norton."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Delete|https://thenounproject.com/term/delete/49691/]]: Creative Commons — "
+"Attribution, by Kervin Markle."
+msgstr ""
+"[[Delete|https://thenounproject.com/term/delete/49691/]] : Creative Commons "
+"— Attribution, par Kervin Markle."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Play|https://thenounproject.com/term/play/152052]]: Creative Commons — "
+"Attribution, by Zech Nelson."
+msgstr ""
+"[[Play|https://thenounproject.com/term/play/152052]] : Creative Commons — "
+"Attribution, par Zech Nelson."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Pause|https://thenounproject.com/term/pause/152046]]: Creative Commons — "
+"Attribution, by Zech Nelson."
+msgstr ""
+"[[Pause|https://thenounproject.com/term/pause/152046]] : Creative Commons — "
+"Attribution, par Zech Nelson."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[USB|https://thenounproject.com/term/usb/28901]]: Creative Commons — "
+"Attribution, by Wilson Joseph."
+msgstr ""
+"[[USB|https://thenounproject.com/term/usb/28901]] : Creative Commons — "
+"Attribution, par Wilson Joseph."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Time|https://thenounproject.com/term/time/6732]]: Creative Commons — "
+"Attribution, by Richard de Vos."
+msgstr ""
+"[[Time|https://thenounproject.com/term/time/6732]] : Creative Commons — "
+"Attribution, par Richard de Vos."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Printer|https://thenounproject.com/term/printer/146674]]: Creative Commons "
+"— Attribution, by Diego Naive."
+msgstr ""
+"[[Printer|https://thenounproject.com/term/printer/146674]] : Creative "
+"Commons — Attribution, par Diego Naive."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Smart Phones|https://thenounproject.com/term/smartphone/25790]]: Creative "
+"Commons — Attribution, by Pham Thi Dieu Linh."
+msgstr ""
+"[[Smart Phones|https://thenounproject.com/term/smartphone/25790]] : Creative "
+"Commons — Attribution, par Pham Thi Dieu Linh."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Laptop|https://thenounproject.com/term/laptop/6729]]: Public Domain, by "
+"Jean Yashu."
+msgstr ""
+"[[Laptop|https://thenounproject.com/term/laptop/6729]] : domaine public, par "
+"Jean Yashu."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Love|https://thenounproject.com/term/love/218846/]]: Creative Commons — "
+"Attribution, by Thomas Helbig."
+msgstr ""
+"[[Love|https://thenounproject.com/term/love/218846/]] : Creative Commons — "
+"Attribution, par Thomas Helbig."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Survey|https://thenounproject.com/term/survey/1296072]]: Creative Commons "
+"— Attribution, by unlimicon."
+msgstr ""
+"[[Survey|https://thenounproject.com/term/survey/1296072]] : Creative Commons "
+"— Attribution, par unlimicon."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Info|https://thenounproject.com/term/info/808461]]: Creative Commons — "
+"Attribution, by icongeek."
+msgstr ""
+"[[Info|https://thenounproject.com/term/info/808461]] : Creative Commons — "
+"Attribution, par icongeek."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Command Line|https://thenounproject.com/icon/command-line-39108]]: Public "
+"Domain, by Daniel Gamage."
+msgstr ""
+"[[Command Line|https://thenounproject.com/icon/command-line-39108]] : "
+"domaine public, par Daniel Gamage."
+
+#~ msgid ""
+#~ "[Forge](https://github.com/digitalbazaar/forge/), copyright Digital "
+#~ "Bazaar, Inc."
+#~ msgstr ""
+#~ "[Forge](https://github.com/digitalbazaar/forge/), copyright Digital "
+#~ "Bazaar, Inc."
+
+#~ msgid ""
+#~ "Onion logo: registered trademark of The Tor Project, Inc.; the Tails "
+#~ "project is authorized to use it under certain conditions; licensed under "
+#~ "Creative Commons Attribution 3.0 United States License."
+#~ msgstr ""
+#~ "Logo Onion : marque déposée par The Tor Project, Inc. ; le projet Tails "
+#~ "est autorisé à l'utiliser sous certaines conditions ; sous licence "
+#~ "Creative Commons Attribution 3.0 États-Unis."
+
+#~ msgid "Tails is released under the GNU/GPL (version 3 or above)."
+#~ msgstr "Tails est publié sous la licence GNU/GPL (version 3 ou supérieure)."
+
+#~ msgid "Distribution of the source code\n"
+#~ msgstr "Distribution du code source\n"
+
+#~ msgid ""
+#~ "Most of the software distributed with Tails is taken directly from "
+#~ "upstream Debian packages, and is not modified or recompiled by Tails. "
+#~ "Software that is modified or recompiled by Tails are available in [[our "
+#~ "git repositories|/contribute/git]]. If you require or desire the sources "
+#~ "for unmodified Debian upstream packages, retrieving them from Debian is "
+#~ "the simplest solution for all parties (packages that can not be found in "
+#~ "the regular Debian archive anymore can be found at <http://"
+#~ "snapshot.debian.org/>)."
+#~ msgstr ""
+#~ "La plupart des logiciels distribués avec Tails proviennent directement "
+#~ "des paquets upstreams Debian, ils n'ont été ni modifiés ni recompilés par "
+#~ "Tails. Les logiciels qui ont été modifiés ou recompilés par Tails sont "
+#~ "disponibles dans [[nos dépôts git|/contribute/git]]. Si vous avez besoin "
+#~ "ou envie des sources pour les paquets upstreams Debian non modifiés, les "
+#~ "récupérer depuis Debian est la solution la plus simple pour toutes les "
+#~ "parties (les paquets qui ne peuvent plus être trouvés dans l'archive "
+#~ "Debian standard peuvent être trouvés à l'adresse <http://"
+#~ "snapshot.debian.org/>)."
+
+#~ msgid ""
+#~ "According to the GPL licence (section 3(b) of the GPLv2 and section 6(b) "
+#~ "of the GPLv3), complete sources for all Tails releases are available for "
+#~ "anyone who requests them, in DVD format, via postal mail, for a nominal "
+#~ "charge. If you only require one or two source packages, Tails can work "
+#~ "with you to send a copy of individual packages electronically."
+#~ msgstr ""
+#~ "Selon la licence GPL (section 3(b) de la GPLv2 et section 6(b) de la "
+#~ "GPLv3), les sources complètes de toutes les versions de Tails sont "
+#~ "disponibles pour toute personne en faisant la demande, au format DVD, par "
+#~ "courrier postal, pour un coût modique. Si vous avez seulement besoin d'un "
+#~ "ou deux paquets source, Tails peut vous envoyer une copie électronique "
+#~ "des paquets individuels."

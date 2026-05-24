@@ -1,0 +1,159 @@
+[[!meta title="Tails report for September, 2019"]]
+[[!meta date="Tue, 08 Oct 2019 15:06:24 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.16 was released on September 4|news/version_3.16]] (major release).
+
+* Tails 4.0 is [[scheduled for October 22|contribute/calendar]].
+
+These are some of the changes that were introduced in Tails 3.16:
+
+* Removed pre-generated Pidgin accounts
+* Removed LibreOffice Math
+* Upgraded Tor Browser to 8.5.5
+
+Code
+====
+
+* We started to integrate _Tor Browser_ 9.0 ([[!tails_ticket 16356]]).
+
+* We started working on the upgrade to _Thunderbird_ 68
+  ([[!tails_ticket 16771]]).
+
+* We did lots of work to improve the reliability of our test suite.
+
+* We did some initial research and tests on using _Portals_ to improve
+  the UX of saving downloaded files from _Tor Browser_ ([[!tails_ticket
+  10422]], [[!tails_ticket 15678]]).
+
+* We did some initial research on redesigning, in a Wayland-compatible
+  way, our current sudo-based privilege separation model
+  ([[!tails_ticket 12213]] and subtasks).
+
+* We improved the UX of the _Greeter_ and fixed a few of its most
+  annoying bugs ([[!tails_ticket 16095]] and the tickets it blocks).
+  This work will hopefully land in time for Tails 4.0 :)
+
+Documentation and website
+=========================
+
+- We rewrote completely the instructions to backup the persistent
+  volume.
+
+- We documented how to do right-click on Mac. ([[!tails_ticket 15718]])
+
+- We proposed to use Trimage to compress better the images on our
+  website. ([[!tails_ticket 17099]])
+
+- We agreed on having a "People" page. ([[!tails_ticket 17046]])
+
+User experience
+===============
+
+- We published a job offer on [[illustrations on what is Tails and how
+  it works|jobs/illustrations_how_tails_work]].
+
+- We did some stats on how good people upgrade their Tails, with data
+  from April 2019. ([[!tails_ticket 17069#note-4]])
+
+  - 16.6% of boots (3800/day) had no direct automatic upgrade path to
+    the latest version because they were more than 3 months old.
+
+  - 3.8% of boots (860/day) were stuck before 3.6, which had broken all
+    automatic upgrades. The impact of breaking all automatic upgrades in
+    3.6 was still huge even 1 year later.
+
+Hot topics on our help desk
+===========================
+
+* Unfortunately we had some problems with [[!tails_ticket 17110 desc="our
+  WhisperBack system"]], and because of that, some users were prevented
+  from contacting us.
+  We are looking into how to prevent so much downtime the next time.
+
+* [[!tails_ticket 15548 desc="Tails can't establish a connection with
+  obfs4 bridges and a hardware clock too far away from UTC"]] is still
+  ongoing
+
+* Graphics cards still give problems to some users ([[!tails_ticket 16447]])
+
+
+Infrastructure
+==============
+
+* We upgraded our very old Jenkins to the current LTS version
+  ([[!tails_ticket 10068]]). This in turn allowed us to implement
+  a bunch of improvements and bugfixes that had been blocked by this
+  postponed upgrade.
+
+* We kept working on making our [web translation
+  platform](https://translate.tails.net/) ready for prime-time.
+  We're almost there!
+
+Funding
+=======
+
+- We submitted a joint grant proposal with Tor and the
+  Guardian Project to the DRL Internet Freedom program.
+
+- We added Monero and Zcash as cryptocurrencies in which you can donate
+  to Tails.
+
+- We received a $1 000 donation from TOP10VPN.
+
+- We prepared most of the content for our upcoming donation campaign:
+  banner, blog posts, email, tweets, etc. ([[!tails_ticket 16096]])
+
+Outreach
+========
+
+Past events
+-----------
+
+* sajolida attended the 1st Café
+  Internet
+  on September 19 in Mexico City.
+
+Upcoming events
+---------------
+
+* intrigeri will facilitate a "Discover Tails and translate it into
+  your own language" session at the [Mozilla
+  Festival](https://www.mozillafestival.org/) on October 26-27
+  in London (UK).
+
+Translations
+============
+
+## All the website
+
+  - de: 38% (2189) strings translated, 10% strings fuzzy, 35% words translated
+  - es: 54% (3095) strings translated, 4% strings fuzzy, 45% words translated
+  - fa: 30% (1721) strings translated, 11% strings fuzzy, 32% words translated
+  - fr: 90% (5148) strings translated, 2% strings fuzzy, 89% words translated
+  - it: 33% (1887) strings translated, 8% strings fuzzy, 29% words translated
+  - pt: 24% (1383) strings translated, 9% strings fuzzy, 20% words translated
+
+Total original words: 59107
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 66% (1178) strings translated, 15% strings fuzzy, 68% words translated
+  - es: 88% (1572) strings translated, 4% strings fuzzy, 88% words translated
+  - fa: 34% (606) strings translated, 14% strings fuzzy, 31% words translated
+  - fr: 94% (1669) strings translated, 3% strings fuzzy, 94% words translated
+  - it: 62% (1114) strings translated, 17% strings fuzzy, 63% words translated
+  - pt: 45% (801) strings translated, 14% strings fuzzy, 47% words translated
+
+Total original words: 16513
+
+Metrics
+=======
+
+* Tails has been started more than 746 622 times this month. This makes 24 887 boots a day on average.
+

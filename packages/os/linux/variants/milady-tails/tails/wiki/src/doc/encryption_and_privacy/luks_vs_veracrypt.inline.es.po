@@ -1,0 +1,110 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-03-14 05:42+0000\n"
+"Last-Translator: cacu <cacukin@cryptolab.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid "We recommend that you use:"
+msgstr "Te recomendamos utilizar:"
+
+#. type: Bullet: '- '
+msgid ""
+"*VeraCrypt* to share encrypted files across different operating systems."
+msgstr ""
+"*VeraCrypt* para compartir archivos cifrados entre diferentes sistemas "
+"operativos."
+
+#. type: Bullet: '- '
+msgid "*LUKS* to encrypt files for Tails and Linux."
+msgstr "*LUKS* para cifrar archivos para Tails y Linux."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<table>\n"
+#| "<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+#| "<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+#| "<tr><td>Create new volumes</td><td class=\"check\"><span class=\"check\">Yes</span></td><td class=\"cross\">Outside of Tails</td></tr>\n"
+#| "<tr><td>Open and modify existing volumes</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Encrypted partitions (or entire disks) ¹</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Encrypted file containers ¹</td><td class=\"cross\">Complicated </td><td class=\"check\">Easy</td></tr>\n"
+#| "<tr><td>Plausible deniability ²</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+#| "<tr><td>Ease of use</td><td class=\"check\">Easier</td><td class=\"cross\">More complicated</td></tr>\n"
+#| "<tr><td>Speed</td><td class=\"check\">Faster</td><td class=\"cross\">Slower</td></tr>\n"
+#| "</table>\n"
+msgid ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+"<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+"<tr><td>Create new volumes</td><td class=\"check\"><span class=\"check\">Yes</span></td><td class=\"cross\">Outside of Tails</td></tr>\n"
+"<tr><td>Open and modify existing volumes</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted partitions (or entire disks)¹</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted file containers¹</td><td class=\"cross\">Complicated </td><td class=\"check\">Easy</td></tr>\n"
+"<tr><td>Plausible deniability²</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Ease of use</td><td class=\"check\">Easier</td><td class=\"cross\">More complicated</td></tr>\n"
+"<tr><td>Speed</td><td class=\"check\">Faster</td><td class=\"cross\">Slower</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+"<tr><td>Compatibilidad</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+"<tr><td>Crear nuevos volúmenes</td><td class=\"check\"><span class=\"check\">Si</span></td><td class=\"cross\">Fuera de Tails</td></tr>\n"
+"<tr><td>Abrir y modificar los volúmenes existentes</td><td class=\"check\">Si</td><td class=\"check\">Si</td></tr>\n"
+"<tr><td>Particiones cifradas (o discos enteros) ¹</td><td class=\"check\">Si</td><td class=\"check\">Si</td></tr>\n"
+"<tr><td>Contenedores de archivos cifrados ¹</td><td class=\"cross\">Complicado </td><td class=\"check\">Fácil</td></tr>\n"
+"<tr><td>Negación plausible ²</td><td class=\"cross\">No</td><td class=\"check\">Si</td></tr>\n"
+"<tr><td>Facilidad de uso</td><td class=\"check\">Más fácil</td><td class=\"cross\">Más complicado</td></tr>\n"
+"<tr><td>Velocidad</td><td class=\"check\">Más rápido</td><td class=\"cross\">Más lento</td></tr>\n"
+"</table>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"See the [[difference between *file containers* and *partitions*|"
+"veracrypt#container-vs-partition]]."
+msgstr ""
+"Consulta la [[diferencia entre *contenedores de archivos* y *particiones*|"
+"veracrypt#container-vs-partition]]."
+
+#. type: Bullet: '2. '
+msgid ""
+"*Plausible deniability*: in some cases (for example, with *VeraCrypt* hidden "
+"volumes), it is impossible for an adversary to technically prove the "
+"existence of an encrypted volume."
+msgstr ""
+"*Negación plausible*: en algunos casos (por ejemplo, con los volúmenes "
+"ocultos de *VeraCrypt* ), es imposible que un adversario pruebe técnicamente "
+"la existencia de un volumen cifrado."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Still, [[!wikipedia Deniable_encryption desc=\"deniable encryption\"]] might not protect you if\n"
+"   you are forced to reveal the existence of the encrypted volume. See\n"
+"   [VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/Plausible%20Deniability.html).\n"
+msgstr ""
+"   De todas formas, el "
+"[[!wikipedia_es Cifrado_negable desc=\"cifrado denegable\"]] podría no "
+"protegerte si\n"
+"   te obligan a revelar la existencia del volumen cifrado. Consulta\n"
+"   [VeraCrypt: negación plausible](https://www.veracrypt.fr/en/"
+"Plausible%20Deniability.html).\n"

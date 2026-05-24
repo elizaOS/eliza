@@ -1,0 +1,247 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2023-03-12 00:36+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails on PC\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/hide\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/standalone\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This page describes the basic and advanced techniques to start Tails from a "
+"USB stick on PC."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"windows-restart\">Starting from Windows</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "From Windows or the sign-in screen of Windows:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"next\">\n"
+"<p>If the Boot Loader appears, you can follow our [[instructions\n"
+"on the Welcome Screen|install/windows#tails]].</p>\n"
+"</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"boot-menu-key\">Starting with the Boot Menu key</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"automatically\">Starting on Tails automatically</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To start on Tails automatically when your Tails USB stick is plugged in:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Open the BIOS or UEFI settings of the computer."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To learn how to edit the BIOS or UEFI settings, search for the user manual of\n"
+"  the computer on the support website of the manufacturer.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Edit the **Boot Order**. You might see an entry for **Removable devices** or "
+"**USB media**. Move this entry to the top of the list to force the computer "
+"to start from the USB stick before starting from the internal hard disk."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Restart the computer."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-at-all\">Troubleshooting Tails not starting at all</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Use this section if the computer does not start from the USB stick and the "
+"Boot Loader does not display:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black screen ('GNU GRUB') with Tails\n"
+"logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"verify\">Verify your Tails USB stick</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>If you get the following error message in Windows:</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">The disc image file is corrupted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Then, you have to [[install Tails using <i>Rufus</i>|install/windows#rufus]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"known-issues\">Check our list of known issues</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Similar problems might have been reported already for your computer model in "
+"our [[list of known issues about Tails not starting at all|support/"
+"known_issues#pc-not-at-all]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"bios-settings\">Edit the BIOS or UEFI settings (advanced users)</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To learn how to edit the BIOS or UEFI settings, search for the user manual "
+"of the computer on the support website of the manufacturer."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Take note of the changes that you apply to the BIOS or UEFI settings. That way, you\n"
+"can revert the changes if they prevent the computer from starting on its usual\n"
+"operating system.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "In the BIOS or UEFI settings, try to apply the following changes:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Make sure that the Boot Menu key is enabled, in your BIOS or UEFI options.  "
+"This option might be called **Boot Device List** or something similar, "
+"depending on the computer."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Disable **Fast Boot**."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Enable **CSM Boot**."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Enable **Legacy Boot**, in addition to UEFI.  The computer might not start "
+"anymore on its regular operating system if you disable UEFI completely or if "
+"you only enable Legacy boot."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Try to upgrade the BIOS or UEFI. To do so, refer to the support website of "
+"the computer manufacturer."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"not-entirely\">Troubleshooting Tails not starting after the Boot Loader</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/start/not_entirely.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/first_steps/start/not_entirely.inline.fa\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/first_steps/start/reporting.inline.fa\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"

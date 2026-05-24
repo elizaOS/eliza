@@ -1,0 +1,16 @@
+[[!meta title="Developing and debugging GNOME Extensions"]]
+
+Reference:
+ * https://gjs.guide/extensions
+
+Reloading extensions
+--------------------
+
+Reloading extensions is useful to have a quick feedback loop. However, GNOME Shell under Wayland does not
+support it.
+
+A trick that works well enough is, [documented](https://gjs.guide/extensions/development/debugging.html#reloading-extensions) and as simple as:
+
+    dbus-run-session -- gnome-shell --nested --wayland
+
+This will create a nested session, and the logs are easily accessed. You will need to kill and open it again every time you want to reload.

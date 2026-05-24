@@ -1,0 +1,341 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-03-26 01:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Manually upgrade from your Tails\"]]\n"
+msgstr "[[!meta title=\"Manuelles Upgrade Ihres Tails\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/upgrade-tails\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/upgrade-tails\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install an intermediary Tails using <em>GNOME Disks</em></h1>\n"
+msgstr "<h1 id=\"install\" class=\"step\">Installieren Sie ein Zwischen-Tails mit <em>GNOME Disks</em></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img install/inc/infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img install/inc/infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+msgid ""
+"In this step, you will install an intermediary Tails using the Tails USB "
+"image that you downloaded earlier."
+msgstr ""
+"In diesem Schritt installieren Sie ein Zwischen-Tails mit dem Tails-USB-"
+"Image, das Sie zuvor heruntergeladen haben."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/install_with_gnome_disks.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/clone.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/clone.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta robots=\"noindex\"]]\n"
+#~ msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"hidden-step-1\"></div>\n"
+#~ msgstr "<div class=\"hidden-step-1\"></div>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"step-image\">[[!img install/inc/infography/os-tails.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr "<div class=\"step-image\">[[!img install/inc/infography/os-tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#, fuzzy, no-wrap
+#~| msgid "<p class=\"start\">Start in Tails.</p>\n"
+#~ msgid "<p class=\"start\">Start in Tails.</p>\n"
+#~ msgstr "<p class=\"start\">Starten Sie unter Tails.</p>\n"
+
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#~ msgid ""
+#~ "<p>The persistent storage of your Tails USB stick will not be\n"
+#~ "copied.</p>\n"
+#~ msgstr ""
+#~ "<p>Der beständige Speicherbereich Ihres USB-Sticks mit Tails wird nicht\n"
+#~ "kopiert.</p>\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#~ msgid "<p>All the data on this USB stick will be lost.</p>\n"
+#~ msgstr "<p>Alle Daten auf diesem USB-Stick werden verlorengehen.</p>\n"
+
+#~ msgid ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/plug-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/plug-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid "Plug the intermediary USB stick in the computer."
+#~ msgstr "Schließen Sie den zwischenzeitlichen USB-Stick an."
+
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   to start *Tails Installer*.\n"
+#~ msgstr ""
+#~ "1. Wählen Sie\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Anwendungen**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   um den *Tails Installer* zu starten.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   [[!img install/inc/screenshots/tails_installer_in_tails.png "
+#~| "link=\"no\"]]\n"
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/tails_installer_in_tails.png "
+#~ "link=\"no\" alt=\"Tails Installer: 'Install by cloning', 'Upgrade by "
+#~ "cloning', 'Upgrade from ISO'\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/tails_installer_in_tails.png "
+#~ "link=\"no\"]]\n"
+
+#, fuzzy
+#~| msgid "Close *Tails Installer*."
+#~ msgid "Choose **Use a downloaded Tails ISO image**."
+#~ msgstr "Schließen Sie den *Tails Installer*."
+
+#, fuzzy
+#~| msgid ""
+#~| "Use the **Target Device** drop-down list to specify the intermediary USB "
+#~| "stick."
+#~ msgid ""
+#~ "Use the **Target USB stick** drop-down list to specify the intermediary "
+#~ "USB stick."
+#~ msgstr ""
+#~ "Benutzen Sie Dropdown-Liste <span class=\"guilabel\">Target Device</"
+#~ "span>, um den zwischenzeitlichen USB-Stick anzugeben."
+
+#~ msgid ""
+#~ "To start the installation, click on the <span class=\"bold\">Install "
+#~ "Tails</span> button."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"bold\">Install Tails</"
+#~ "span>, um Tails zu installieren."
+
+#~ msgid ""
+#~ "Read the warning message in the confirmation dialog. Click on <span "
+#~ "class=\"bold\">Yes</span> to confirm."
+#~ msgstr ""
+#~ "Lesen Sie die Warnmeldung im Bestätigungsfenster. Klicken Sie auf <span "
+#~ "class=\"bold\">Yes</span>, um zu bestätigen."
+
+#~ msgid "   The installation takes a few minutes.\n"
+#~ msgstr "   Die Installation dauert einige Minuten.\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>The progress bar usually freezes for some time around 95 percent\n"
+#~ "   while synchronizing data on disk.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug\">\n"
+#~ "   <p>Der Fortschrittsbalken friert gewöhnlicherweise bei etwa 95% ein, "
+#~ "während\n"
+#~ "   die Daten auf das Medium synchronisiert werden.</p>\n"
+#~ "   </div>\n"
+
+#~ msgid "Close *Tails Installer*."
+#~ msgstr "Schließen Sie den *Tails Installer*."
+
+#~ msgid "   <div class=\"bug\">\n"
+#~ msgstr "   <div class=\"bug\">\n"
+
+#, fuzzy
+#~| msgid "Close *Tails Installer*."
+#~ msgid ""
+#~ "     <li>Start *Tails Installer* in\n"
+#~ "     English from the command line:\n"
+#~ msgstr "Schließen Sie den *Tails Installer*."
+
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "   [[!inline pages=\"news/version_3.5/manual_upgrade.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "   [[!inline pages=\"news/version_3.5/manual_upgrade.inline.de\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "In this step, you will install an intermediary Tails by cloning your\n"
+#~ "outdated Tails on another USB stick using <span "
+#~ "class=\"application\">Tails Installer</span>.\n"
+#~ msgstr ""
+#~ "In diesem Schritt werden Sie ein zwischenzeitliches Tails installieren, "
+#~ "indem Sie\n"
+#~ "mithilfe des *Tails Installers* Ihr veraltetes Tails auf einen anderen "
+#~ "USB-Stick klonen.\n"
+
+#~ msgid "Click on the **Install by cloning** button."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"bold\">Install by cloning</"
+#~ "span>."
+
+#~ msgid "Upgrade the intermediary Tails\n"
+#~ msgstr "Aktualisieren Sie das zwischenzeitliche Tails\n"
+
+#~ msgid ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/upgrade-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/upgrade-upgrade-"
+#~ "usb.png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   to start *Tails Installer* again.\n"
+#~ msgstr ""
+#~ "1. Wählen Sie\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Anwendungen**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Tails Installer**\n"
+#~ "   </span>\n"
+#~ "   um den *Tails Installer* erneut zu starten.\n"
+
+#~ msgid "Click on the **Upgrade from ISO** button."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"bold\">Upgrade from ISO</"
+#~ "span>."
+
+#~ msgid ""
+#~ "Click **Browse** and choose the ISO image that you downloaded earlier."
+#~ msgstr ""
+#~ "Klicken Sie auf **Durchsuchen** und wählen Sie das ISO-Image aus, das Sie "
+#~ "zuvor heruntergeladen haben."
+
+#~ msgid ""
+#~ "Choose the intermediary USB stick in the <span class=\"guilabel\">Target "
+#~ "Device</span> drop-down list."
+#~ msgstr ""
+#~ "Wählen Sie den zwischenzeitlichen USB-Stick in der <span "
+#~ "class=\"guilabel\">Target Device</span> Dropdown-Liste aus."
+
+#~ msgid ""
+#~ "To start the upgrade, click on the <span class=\"bold\">Install Tails</"
+#~ "span> button."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"bold\">Install Tails</"
+#~ "span>, um die Aktualisierung zu starten."
+
+#~ msgid ""
+#~ "Read the warning message in the pop-up window. Click on the <span "
+#~ "class=\"bold\">Yes</span> button to confirm."
+#~ msgstr ""
+#~ "Lesen Sie die Warnmeldung im Bestätigungsfenster. Klicken Sie auf <span "
+#~ "class=\"bold\">Yes</span>, um zu bestätigen."
+
+#~ msgid "   The upgrade takes a few minutes.\n"
+#~ msgstr "   Die Aktualisierung nimmt einige Minuten in Anspruch.\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"install/inc/tails-installation-assistant.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"install/inc/tails-installation-assistant.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "[[!inline pages=\"install/inc/steps/switch.inline\" raw=\"yes\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"install/inc/steps/switch.inline.de\" raw=\"yes\"]]\n"

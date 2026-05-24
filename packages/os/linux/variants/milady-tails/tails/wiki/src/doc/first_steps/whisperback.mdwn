@@ -1,0 +1,128 @@
+[[!meta title="Reporting an error using WhisperBack"]]
+
+*WhisperBack* allows you to report errors anonymously from inside Tails. Reports
+are sent to us encrypted and over the Tor network.
+
+Reporting errors is a great way of helping us improve Tails. Even if we are not
+able to reply to every report, we analyze all reports.
+
+The more effectively you report an error, the more likely we are
+to fix it.
+
+[[!toc levels=2]]
+
+<h1 id="known">Check if the error is already known</h1>
+
+You might already find help on our [[support pages|support]].
+
+<h1 id="whisperback">Reporting an error using <i>WhisperBack</i></h1>
+
+<div class="note">
+
+<p>If you are not connected to the Tor network yet, your cannot send us your
+report from Tails.</p>
+
+<p>Either, send your report after you connected to Tor or [[save your
+report|whisperback#offline]] and [[contact us outside of
+Tails|support/talk]].</p>
+
+</div>
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸
+   WhisperBack Error Reporting** to open *WhisperBack*.
+
+1. *WhisperBack* helps you write a useful error report.
+
+   - **Tell us exactly how to make the error happen again.**
+
+     Our team needs to be able to reproduce the error to know whether we really
+     fixed it.
+
+   - **Describe the error in detail.**
+
+     Write down the exact error messages.
+
+   - **Write clearly and precisely.**
+
+1. You can also enter an email address.
+
+   Giving us an email address allows us to ask you for more information if we
+   need it. This is the case for the vast majority of reports.
+
+   But giving us your email address also makes it possible for your email
+   provider to know that you are using Tails, if we write back to you.
+
+1. Optionally, enter your OpenPGP public key, if you want us to write back to
+   you in an encrypted email.
+
+   You can specify either:
+
+   - A **key ID**, if your key is available on <https://keys.openpgp.org/>
+
+   - A **link to the key**, if your key is available elsewhere on the web
+
+   - A **public key block**, if your key is not publicly available
+
+1. You can have a look at the **Technical Details** that are included in your
+   report. They give us information about your hardware, your version of Tails,
+   and all the errors that happened since you started Tails.
+
+1. Click **Send** to send your report.
+
+<h1 id="offline">Saving your <i>WhisperBack</i> report</h1>
+
+To save your *WhisperBack* report and share it with us outside of Tails, for
+example by email:
+
+1. Plug in another USB stick to be able to open your report outside of Tails.
+
+1. To open *WhisperBack*, choose **Apps&nbsp;▸ System Tools&nbsp;▸
+   WhisperBack Error Reporting**.
+
+1. In parallel, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Text Editor** to open
+   the *Text Editor*.
+
+1. In the **Technical Details** tab, copy everything from the **Headers**
+   section and paste it into the *Text Editor*.
+
+1. In the **Technical Details** tab, copy everything from the **Debugging
+   Information** section and paste it into the *Text Editor*.
+
+1. Save your report from the *Text Editor* to the other USB stick.
+
+1. Check the [[other ways of contacting us|support/talk]].
+
+<h1 id="debian">Reproducing the error in Debian (for advanced users)</h1>
+
+It is very useful for us to know if your error only affects Tails or also
+affects Debian, on which Tails is based.
+
+Doing so takes much more time so, in doubt, report your error as instructed
+earlier and wait for guidance from us.
+
+- If your error also affects Debian *stable*, then the problem must be fixed
+  in Debian directly and not in Tails.
+
+- If your error affects Debian *stable* but not Debian *testing*, then the problem
+  might have been solved already in Debian.
+
+Debian also distributes *live* images that you can install on a
+USB stick using the same installation procedure as for installing Tails.
+
+Debian stable
+-------------
+
+Live images for Debian stable, on which Tails is based, are available on:
+
+<https://cdimage.debian.org/images/release/current-live/amd64/iso-hybrid/>
+
+Download the file that ends with *amd64-gnome.iso* to have the GNOME desktop.
+
+Debian testing
+--------------
+
+Live images for the testing version of Debian are available on:
+
+<https://cdimage.debian.org/images/weekly-live-builds/amd64/iso-hybrid/>
+
+Download the file that ends with *amd64-gnome.iso* to have the GNOME desktop.

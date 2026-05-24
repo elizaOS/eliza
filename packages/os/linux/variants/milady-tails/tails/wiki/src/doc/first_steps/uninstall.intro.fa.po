@@ -1,0 +1,43 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2015-09-30 14:35+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"resetintro/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"To uninstall Tails from a USB stick, and use it for something else, you have "
+"to format it."
+msgstr ""
+"برای عزل تیلز از یواس‌بی یا کارت حافظه و استفاده از آن‌ها برای کارهای دیگر "
+"باید آن را دوباره راه‌اندازی کنید."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"The content of the USB stick is lost in the operation, but an attacker might "
+"still be able to tell that Tails was installed on that USB stick using "
+"[[data recovery techniques|doc/encryption_and_privacy/secure_deletion]]."
+msgstr ""
+"** محتوای دستگاه در طول این عمل پاک خواهد شد،** اما ممکن است همچنان\n"
+"یک مهاجم بتواند بفهمد با استفاده از [[شگردهای بازیابی داده‌ها|"
+"encryption_and_privacy/secure_deletion]] \n"
+"بفهمد تیلز روی آن دستگاه نصب شده بوده، مگر این که پس از عزل تیلز\n"
+"[[تمام فضای موجود دیسک را به شکلی امن پاک کنید|encryption_and_privacy/"
+"secure_deletion#usb_and_ssd]].\n"

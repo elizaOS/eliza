@@ -1,0 +1,42 @@
+[[!meta title="Install Tails from Linux"]]
+
+[[!meta stylesheet="inc/stylesheets/overview" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/download" rel="stylesheet" title=""]]
+[[!meta stylesheet="doc/about/warnings" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/linux" rel="stylesheet" title=""]]
+
+[[!meta script="install/inc/js/download"]]
+[[!meta script="install/inc/js/forge.min"]]
+
+[[!inline pages="install/inc/overview" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/warnings.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/download.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify.inline" raw="yes" sort="age"]]
+
+<h1 id="install" class="step">Install Tails using <i>GNOME Disks</i></h1>
+
+<div class="step-image">[[!img inc/infography/install-tails.png link="no" alt=""]]</div>
+
+1. Install *GNOME Disks*.
+
+   - If you are using the GNOME desktop environment,
+     *GNOME Disks* should be installed by
+     default.
+
+   - Otherwise, install the `gnome-disk-utility`
+     package using the usual installation method for your distribution.
+
+     You can also install Tails using the
+     `dd` command from any Linux distribution
+     as described in our instructions for [[installing from Debian using
+     the command line|install/expert#install]].
+
+[[!inline pages="install/inc/steps/install_with_gnome_disks.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/restart_first_time.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/welcome.inline" raw="yes" sort="age"]]

@@ -1,0 +1,10 @@
+#!/bin/sh
+
+# Without this wrapper, after closing Nautilus, one gets the prompt back
+# only after 5-15 seconds, which confuses users and makes our doc more
+# complicated than it should (#12034, #10391). So let's start Nautilus
+# silently in the background instead.
+
+set -eu
+
+exec /usr/bin/nautilus "$@" 2>/dev/null &
