@@ -110,8 +110,15 @@ function shouldReturnClientToken(
 ): boolean {
   const origin =
     originHost(c.req.header("origin")) ?? originHost(c.req.header("referer"));
-  if (origin === "elizaos.ai" || origin === "www.elizaos.ai") return true;
-  return !isProduction && origin !== null && LOCAL_DEV_ORIGIN_HOSTS.has(origin);
+  if (!origin) return false;
+  // The SPA reads localStorage to decide `isAuthenticated` on /dashboard
+  // mount. Without returning the JWT here, OAuth users bounce back to /login.
+  // All permitted CSRF origins are trusted to receive the token.
+  if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
+  if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
+    return true;
+  }
+  return !isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin);
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────

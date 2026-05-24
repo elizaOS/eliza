@@ -1,0 +1,523 @@
+{
+  "schema": "robot-alberta-checkpoint-video-validation-v1",
+  "ok": true,
+  "package_root": "/home/shaw/milady/eliza/packages/robot",
+  "evidence_dir": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos",
+  "manifest": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/manifest.json",
+  "review": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_video_review/video_review.json",
+  "profiles": [
+    "hiwonder-ainex",
+    "asimov-1",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1"
+  ],
+  "commands": [
+    "stand up",
+    "walk forward"
+  ],
+  "expected_video_count": 15,
+  "min_steps_executed": 1,
+  "checks": {
+    "manifest": true,
+    "manifest_ok": true,
+    "profiles": true,
+    "review": true,
+    "videos": true
+  },
+  "review_checks": {
+    "present": true,
+    "ok": true,
+    "video_count": true,
+    "profiles": true,
+    "actions": true,
+    "telemetry_present": true,
+    "telemetry_ok": true,
+    "telemetry_failed": true,
+    "all_videos_reviewed_good": true
+  },
+  "profile_reports": [
+    {
+      "profile": "hiwonder-ainex",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "checks": {
+        "manifest_entry": true,
+        "manifest_entry_ok": true,
+        "manifest_checkpoint": true,
+        "checkpoint_manifest": true,
+        "expected_videos": true
+      },
+      "ok": true,
+      "videos": [
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_stand_up.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 53964,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 54098,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 92463,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "profile": "asimov-1",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/asimov-1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "checks": {
+        "manifest_entry": true,
+        "manifest_entry_ok": true,
+        "manifest_checkpoint": true,
+        "checkpoint_manifest": true,
+        "expected_videos": true
+      },
+      "ok": true,
+      "videos": [
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_stand_up.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_stand_up.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 69397,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_walk_forward.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_walk_forward.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 69015,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_combined_actions.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 116728,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "profile": "unitree-g1",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-g1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "checks": {
+        "manifest_entry": true,
+        "manifest_entry_ok": true,
+        "manifest_checkpoint": true,
+        "checkpoint_manifest": true,
+        "expected_videos": true
+      },
+      "ok": true,
+      "videos": [
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_stand_up.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_stand_up.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 74129,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_walk_forward.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_walk_forward.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 74148,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_combined_actions.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_combined_actions.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 130755,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "profile": "unitree-h1",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-h1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "checks": {
+        "manifest_entry": true,
+        "manifest_entry_ok": true,
+        "manifest_checkpoint": true,
+        "checkpoint_manifest": true,
+        "expected_videos": true
+      },
+      "ok": true,
+      "videos": [
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_stand_up.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_stand_up.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 102028,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_walk_forward.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_walk_forward.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 100714,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_combined_actions.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_combined_actions.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 190192,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "profile": "unitree-r1",
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "checks": {
+        "manifest_entry": true,
+        "manifest_entry_ok": true,
+        "manifest_checkpoint": true,
+        "checkpoint_manifest": true,
+        "expected_videos": true
+      },
+      "ok": true,
+      "videos": [
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_stand_up.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_stand_up.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 78873,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 79169,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        },
+        {
+          "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.mp4",
+          "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+          "video_present": true,
+          "telemetry_present": true,
+          "video_bytes": 140145,
+          "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+          "policy_source_ok": true,
+          "rollout_ok": true,
+          "task_signal_ok": true,
+          "ok": true
+        }
+      ]
+    }
+  ],
+  "video_reports": [
+    {
+      "profile": "hiwonder-ainex",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_stand_up.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 53964,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 54098,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 92463,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "asimov-1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_stand_up.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_stand_up.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 69397,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "asimov-1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_walk_forward.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_walk_forward.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 69015,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "asimov-1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_combined_actions.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 116728,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-g1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_stand_up.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_stand_up.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 74129,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-g1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_walk_forward.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_walk_forward.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 74148,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-g1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_combined_actions.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-g1/unitree-g1_combined_actions.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 130755,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-h1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_stand_up.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_stand_up.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 102028,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-h1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_walk_forward.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_walk_forward.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 100714,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-h1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_combined_actions.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-h1/unitree-h1_combined_actions.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 190192,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-h1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-r1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_stand_up.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_stand_up.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 78873,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-r1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 79169,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    },
+    {
+      "profile": "unitree-r1",
+      "video": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.mp4",
+      "telemetry": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+      "video_present": true,
+      "telemetry_present": true,
+      "video_bytes": 140145,
+      "telemetry_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "expected_policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-r1/alberta",
+      "policy_source_ok": true,
+      "rollout_ok": true,
+      "task_signal_ok": true,
+      "ok": true
+    }
+  ]
+}

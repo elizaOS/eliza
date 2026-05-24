@@ -39,16 +39,16 @@
     {
       "part": "chest_upper_bridge_armor",
       "bbox_mm": [
-        17.98,
-        150.0,
-        17.98
+        14.0,
+        132.0,
+        14.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -59,16 +59,16 @@
     {
       "part": "chest_lower_bridge_armor",
       "bbox_mm": [
-        15.98,
-        130.0,
-        15.98
+        12.4,
+        114.0,
+        12.4
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -90,7 +90,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -107,7 +109,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -204,7 +208,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -221,7 +227,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -238,22 +246,24 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
       "part": "rear_back_spine_plate",
       "bbox_mm": [
-        28.0,
-        88.0,
-        224.0
+        23.0,
+        76.0,
+        216.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -275,7 +285,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -292,7 +304,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -309,7 +323,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -336,16 +352,16 @@
     {
       "part": "abdomen_center_armor",
       "bbox_mm": [
-        6.0,
-        20.0,
-        64.0
+        4.8,
+        18.0,
+        60.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "waist_yaw_link.STL",
@@ -368,7 +384,11 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -385,7 +405,11 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -410,16 +434,16 @@
     {
       "part": "pelvis_center_plate",
       "bbox_mm": [
-        8.0,
-        32.0,
-        60.0
+        6.8,
+        28.0,
+        56.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -429,16 +453,16 @@
     {
       "part": "pelvis_lower_nose_plate",
       "bbox_mm": [
-        33.96,
-        33.96,
-        94.0
+        28.0,
+        28.0,
+        108.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -448,16 +472,16 @@
     {
       "part": "rear_seat_bridge_armor",
       "bbox_mm": [
-        31.96,
-        144.0,
-        31.96
+        20.0,
+        90.0,
+        20.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -467,16 +491,16 @@
     {
       "part": "left_rear_hip_fairing",
       "bbox_mm": [
-        52.0,
-        44.0,
-        80.0
+        40.0,
+        30.0,
+        56.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -486,16 +510,16 @@
     {
       "part": "right_rear_hip_fairing",
       "bbox_mm": [
-        40.0,
-        32.0,
-        68.0
+        28.0,
+        20.0,
+        48.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -505,16 +529,16 @@
     {
       "part": "left_rear_glute_armor_skin",
       "bbox_mm": [
-        8.0,
-        40.0,
-        68.0
+        3.6,
+        22.0,
+        40.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -524,16 +548,16 @@
     {
       "part": "right_rear_glute_armor_skin",
       "bbox_mm": [
-        8.0,
-        40.0,
-        68.0
+        3.6,
+        22.0,
+        40.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -595,7 +619,10 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -612,7 +639,10 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -629,7 +659,10 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -666,7 +699,10 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_shoulder_pitch_link.STL",
+        "left_shoulder_roll_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -703,7 +739,10 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_shoulder_pitch_link.STL",
+        "right_shoulder_roll_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -728,8 +767,8 @@
     {
       "part": "left_upper_arm_outer_blade",
       "bbox_mm": [
-        20.0,
-        7.0,
+        16.0,
+        5.2,
         68.0
       ],
       "service_print_bbox_ok": true,
@@ -737,7 +776,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
@@ -747,8 +786,8 @@
     {
       "part": "left_upper_arm_front_armor",
       "bbox_mm": [
-        9.99,
-        17.98,
+        8.0,
+        15.0,
         44.0
       ],
       "service_print_bbox_ok": true,
@@ -756,7 +795,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
@@ -785,8 +824,8 @@
     {
       "part": "right_upper_arm_outer_blade",
       "bbox_mm": [
-        20.0,
-        7.0,
+        16.0,
+        5.2,
         68.0
       ],
       "service_print_bbox_ok": true,
@@ -794,7 +833,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
@@ -804,8 +843,8 @@
     {
       "part": "right_upper_arm_front_armor",
       "bbox_mm": [
-        9.99,
-        17.98,
+        8.0,
+        15.0,
         44.0
       ],
       "service_print_bbox_ok": true,
@@ -813,7 +852,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
@@ -851,7 +890,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
@@ -872,7 +911,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -887,7 +928,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
@@ -925,7 +966,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
@@ -946,7 +987,9 @@
       "step_solid_exported": true,
       "source_kind": "primitive",
       "source_asset": null,
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
       "requires_production_surface_rebuild_before_tooling": true
     },
     {
@@ -961,7 +1004,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
@@ -992,16 +1035,16 @@
     {
       "part": "left_thigh_front_armor",
       "bbox_mm": [
-        19.97,
-        39.95,
-        128.0
+        16.0,
+        34.0,
+        120.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
@@ -1011,16 +1054,16 @@
     {
       "part": "left_thigh_side_armor",
       "bbox_mm": [
-        32.0,
-        9.0,
-        80.0
+        26.0,
+        7.0,
+        76.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
@@ -1051,16 +1094,16 @@
     {
       "part": "right_thigh_front_armor",
       "bbox_mm": [
-        9.99,
-        12.98,
-        84.0
+        8.4,
+        10.4,
+        80.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
@@ -1070,16 +1113,16 @@
     {
       "part": "right_thigh_side_armor",
       "bbox_mm": [
-        28.0,
-        8.0,
-        68.0
+        23.0,
+        6.0,
+        64.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
@@ -1109,16 +1152,16 @@
     {
       "part": "left_shin_front_armor",
       "bbox_mm": [
-        15.0,
-        28.0,
-        200.0
+        8.4,
+        16.0,
+        112.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_knee_link.STL"
@@ -1128,16 +1171,16 @@
     {
       "part": "left_shin_side_armor",
       "bbox_mm": [
-        30.0,
-        12.0,
-        236.0
+        8.0,
+        1.6,
+        90.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_knee_link.STL"
@@ -1167,16 +1210,16 @@
     {
       "part": "right_shin_front_armor",
       "bbox_mm": [
-        12.0,
-        22.0,
-        180.0
+        10.0,
+        19.0,
+        120.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_knee_link.STL"
@@ -1186,16 +1229,16 @@
     {
       "part": "right_shin_side_armor",
       "bbox_mm": [
-        30.0,
-        12.0,
-        236.0
+        8.0,
+        1.6,
+        90.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_knee_link.STL"
@@ -1224,8 +1267,8 @@
     {
       "part": "left_foot_toe_armor",
       "bbox_mm": [
-        7.99,
-        7.99,
+        6.4,
+        6.4,
         5.0
       ],
       "service_print_bbox_ok": true,
@@ -1233,7 +1276,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -1243,16 +1286,16 @@
     {
       "part": "left_foot_sole_black",
       "bbox_mm": [
-        224.0,
-        72.0,
-        9.0
+        136.0,
+        48.0,
+        6.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -1262,16 +1305,16 @@
     {
       "part": "left_foot_heel_black",
       "bbox_mm": [
-        40.0,
-        50.0,
-        26.0
+        24.0,
+        28.0,
+        16.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -1281,16 +1324,16 @@
     {
       "part": "right_foot_top_shell",
       "bbox_mm": [
-        200.0,
-        66.0,
-        24.0
+        148.0,
+        46.0,
+        20.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -1300,16 +1343,16 @@
     {
       "part": "right_foot_toe_armor",
       "bbox_mm": [
-        19.97,
-        19.97,
-        10.0
+        13.0,
+        13.0,
+        8.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -1319,16 +1362,16 @@
     {
       "part": "right_foot_sole_black",
       "bbox_mm": [
-        216.0,
-        68.0,
-        8.0
+        148.0,
+        52.0,
+        7.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -1338,16 +1381,16 @@
     {
       "part": "right_foot_heel_black",
       "bbox_mm": [
-        32.0,
-        40.0,
-        20.0
+        24.0,
+        28.0,
+        16.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"

@@ -777,7 +777,7 @@ class _H2P:
     def _score(self, pc: int, hist: int, target_hist: int, path_hist: int) -> int:
         weights = self._weights_for(pc)
         total = weights[0]
-        for feature, bit in zip(weights[1:], self._feature_bits(hist, target_hist, path_hist)):
+        for feature, bit in zip(weights[1:], self._feature_bits(hist, target_hist, path_hist), strict=False):
             total = total + feature if bit else total - feature
         # RTL score width is intentionally wide for supported geometries; clamp
         # here instead of allowing Python evidence to exceed representable RTL.
@@ -1129,15 +1129,14 @@ class BPUSimulator:
                 if h2p_conf and bool(self.geometry.get("H2P_LOWCONF_ONLY", False)) and not low_conf:
                     self.counters["h2p_lowconf_blocked"] += 1
                     h2p_conf = False
-                if h2p_conf:
-                    if self.h2p_meta.allow(pc):
-                        if bool(self.geometry.get("H2P_SAME_EVENT_OVERRIDE", True)):
-                            taken = h2p_taken
-                            self.counters["h2p_override"] += int(h2p_taken != base_taken)
-                        else:
-                            self.counters["h2p_deferred_by_timing_model"] += int(
-                                h2p_taken != base_taken
-                            )
+                if h2p_conf and self.h2p_meta.allow(pc):
+                    if bool(self.geometry.get("H2P_SAME_EVENT_OVERRIDE", True)):
+                        taken = h2p_taken
+                        self.counters["h2p_override"] += int(h2p_taken != base_taken)
+                    else:
+                        self.counters["h2p_deferred_by_timing_model"] += int(
+                            h2p_taken != base_taken
+                        )
             target = (
                 ftb_entry["target"]
                 if (ftb_entry and taken)

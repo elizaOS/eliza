@@ -274,13 +274,6 @@ def run_cpu_ap_transcript_bundle_check() -> dict[str, Any]:
     gate: dict[str, Any] = {
         "name": "cpu_ap_transcript_bundle",
         "status": status,
-    report = load_json(MLPERF_MODELED_REPORT)
-    report_status = report.get("status")
-    return {
-        "name": "modeled_loadgen_npu_mlperf_subset",
-        "status": (
-            "passed" if completed.returncode == 0 and report_status == "pass" else "blocked"
-        ),
         "command": completed.args,
         "stdout": completed.stdout,
         "report": rel(CPU_AP_STALE_EVIDENCE_REPORT),

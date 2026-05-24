@@ -1,5 +1,5 @@
 #!/bin/sh
-# App-local-mode wiring for arches that ship the Electrobun app (amd64/arm64).
+# App-local-mode wiring for images that ship the Electrobun app.
 #
 # In the kiosk, the Electrobun app runs its OWN self-contained embedded runtime
 # (Resources/app/eliza-dist with full node_modules) and serves :31337 itself.

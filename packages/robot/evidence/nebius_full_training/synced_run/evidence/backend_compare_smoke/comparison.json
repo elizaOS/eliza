@@ -1,0 +1,342 @@
+{
+  "profile_id": "hiwonder-ainex",
+  "tasks": [
+    "stand_up",
+    "walk_forward"
+  ],
+  "steps": 64,
+  "seed": 0,
+  "pca_dim": 32,
+  "episode_steps": 200,
+  "eval_episodes": 1,
+  "max_steps": 20,
+  "domain_rand": false,
+  "wall_clock_s": 58.03,
+  "baseline": {
+    "profile_id": "hiwonder-ainex",
+    "env": "profile_mujoco",
+    "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/alberta_text_conditioned",
+    "policy": "untrained_zero",
+    "env_action_dim": 12,
+    "policy_action_dim": 0,
+    "policy_output_dim": 0,
+    "tasks": {
+      "stand_up": {
+        "mean_reward": -6.764396229650677,
+        "std_reward": 0.0,
+        "min_reward": -6.764396229650677,
+        "max_reward": -6.764396229650677,
+        "mean_steps_survived": 1.0,
+        "episodes": 1
+      },
+      "walk_forward": {
+        "mean_reward": -6.770996671881759,
+        "std_reward": 0.0,
+        "min_reward": -6.770996671881759,
+        "max_reward": -6.770996671881759,
+        "mean_steps_survived": 1.0,
+        "episodes": 1
+      }
+    },
+    "mean_reward_overall": -6.767696450766218
+  },
+  "alberta": {
+    "checkpoint": "evidence/backend_compare_smoke/alberta",
+    "manifest": {
+      "regime": "alberta_streaming",
+      "curriculum_version": 2,
+      "pca_dim": 32,
+      "active_tasks": [
+        "stand_up",
+        "walk_forward"
+      ],
+      "obs_dim": 77,
+      "action_dim": 12,
+      "output_dim": 24,
+      "profile_id": "hiwonder-ainex",
+      "profile_version": "1.0.0",
+      "proprio_dim": 45,
+      "text_dim": 32,
+      "ckpt": "alberta_policy.npz",
+      "requested_total_steps": 64,
+      "steps_per_task": 32,
+      "total_steps": 64,
+      "episode_steps": 200,
+      "eval_episodes": 1,
+      "seed": 0,
+      "domain_rand": false,
+      "controller": {
+        "gamma": 0.5,
+        "actor_step_size": 0.005,
+        "critic_step_size": 0.01,
+        "actor_lamda": 0.8,
+        "critic_lamda": 0.8,
+        "log_sigma_init": -1.0,
+        "log_sigma_min": -5.0,
+        "log_sigma_max": 0.5,
+        "action_low": -1.0,
+        "action_high": 1.0,
+        "obgd_kappa": 2.0,
+        "normalize": false,
+        "normalizer_decay": 0.999,
+        "decouple_global_bias": true,
+        "features": {
+          "mode": "sparse_gated",
+          "embed_dim": 32,
+          "n_prototypes": 64,
+          "gate_hard": true,
+          "gate_temperature": 0.1,
+          "proprio_random_dim": 32,
+          "random_dim": 256,
+          "scale": 1.0,
+          "seed": 0
+        }
+      },
+      "trained_at": "2026-05-22T22:27:01",
+      "history": [
+        {
+          "phase": 0,
+          "task": "stand_up",
+          "train_episodes": 32,
+          "train_mean_return": -6.765923341719635,
+          "eval_mean_return": -6.764432530155025
+        },
+        {
+          "phase": 1,
+          "task": "walk_forward",
+          "train_episodes": 32,
+          "train_mean_return": -6.772503156323451,
+          "eval_mean_return": -6.7712190200912294
+        }
+      ]
+    },
+    "validation": {
+      "ok": true,
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_smoke/alberta",
+      "profile_id": "hiwonder-ainex",
+      "required_tasks": [
+        "stand_up",
+        "walk_forward"
+      ],
+      "min_steps": 64,
+      "total_steps": 64,
+      "requested_total_steps": 64,
+      "checks": {
+        "checkpoint_dir": true,
+        "manifest": true,
+        "regime": true,
+        "profile_id": true,
+        "profile_loads": true,
+        "profile_version": true,
+        "curriculum_version": true,
+        "policy_artifact": true,
+        "ckpt_name": true,
+        "active_tasks": true,
+        "required_tasks": true,
+        "pca_text_dim": true,
+        "obs_layout": true,
+        "action_dim": true,
+        "output_dim": true,
+        "output_covers_action": true,
+        "total_steps": true,
+        "requested_total_steps": true,
+        "steps_per_task": true,
+        "not_tiny_validation": true,
+        "not_validation_checkpoint": true,
+        "not_marked_non_production": true,
+        "domain_rand": true,
+        "controller": true,
+        "history": true,
+        "inference": true
+      },
+      "manifest": {
+        "regime": "alberta_streaming",
+        "curriculum_version": 2,
+        "pca_dim": 32,
+        "active_tasks": [
+          "stand_up",
+          "walk_forward"
+        ],
+        "obs_dim": 77,
+        "action_dim": 12,
+        "output_dim": 24,
+        "profile_id": "hiwonder-ainex",
+        "profile_version": "1.0.0",
+        "proprio_dim": 45,
+        "text_dim": 32,
+        "ckpt": "alberta_policy.npz",
+        "requested_total_steps": 64,
+        "steps_per_task": 32,
+        "total_steps": 64,
+        "episode_steps": 200,
+        "eval_episodes": 1,
+        "seed": 0,
+        "domain_rand": false,
+        "controller": {
+          "gamma": 0.5,
+          "actor_step_size": 0.005,
+          "critic_step_size": 0.01,
+          "actor_lamda": 0.8,
+          "critic_lamda": 0.8,
+          "log_sigma_init": -1.0,
+          "log_sigma_min": -5.0,
+          "log_sigma_max": 0.5,
+          "action_low": -1.0,
+          "action_high": 1.0,
+          "obgd_kappa": 2.0,
+          "normalize": false,
+          "normalizer_decay": 0.999,
+          "decouple_global_bias": true,
+          "features": {
+            "mode": "sparse_gated",
+            "embed_dim": 32,
+            "n_prototypes": 64,
+            "gate_hard": true,
+            "gate_temperature": 0.1,
+            "proprio_random_dim": 32,
+            "random_dim": 256,
+            "scale": 1.0,
+            "seed": 0
+          }
+        },
+        "trained_at": "2026-05-22T22:27:01",
+        "history": [
+          {
+            "phase": 0,
+            "task": "stand_up",
+            "train_episodes": 32,
+            "train_mean_return": -6.765923341719635,
+            "eval_mean_return": -6.764432530155025
+          },
+          {
+            "phase": 1,
+            "task": "walk_forward",
+            "train_episodes": 32,
+            "train_mean_return": -6.772503156323451,
+            "eval_mean_return": -6.7712190200912294
+          }
+        ]
+      },
+      "profile_error": null,
+      "inference_report": {
+        "ok": true,
+        "results": [
+          {
+            "prompt": "stand_up",
+            "matched_task": "stand_up",
+            "shape": [
+              24
+            ],
+            "finite": true
+          },
+          {
+            "prompt": "walk_forward",
+            "matched_task": "walk_forward",
+            "shape": [
+              24
+            ],
+            "finite": true
+          }
+        ]
+      }
+    },
+    "eval": {
+      "profile_id": "hiwonder-ainex",
+      "env": "profile_mujoco",
+      "checkpoint": "evidence/backend_compare_smoke/alberta",
+      "policy": "alberta_streaming",
+      "env_action_dim": 12,
+      "policy_action_dim": 12,
+      "policy_output_dim": 24,
+      "tasks": {
+        "stand_up": {
+          "mean_reward": -6.7646181752903765,
+          "std_reward": 0.0,
+          "min_reward": -6.7646181752903765,
+          "max_reward": -6.7646181752903765,
+          "mean_steps_survived": 1.0,
+          "episodes": 1
+        },
+        "walk_forward": {
+          "mean_reward": -6.7712190200912294,
+          "std_reward": 0.0,
+          "min_reward": -6.7712190200912294,
+          "max_reward": -6.7712190200912294,
+          "mean_steps_survived": 1.0,
+          "episodes": 1
+        }
+      },
+      "mean_reward_overall": -6.767918597690803
+    },
+    "delta_vs_untrained": {
+      "stand_up": -0.00022194563969968328,
+      "walk_forward": -0.00022234820947009126
+    }
+  },
+  "ppo": {
+    "checkpoint": "evidence/backend_compare_smoke/ppo",
+    "manifest": {
+      "regime": "smoke_sb3_ppo",
+      "profile_id": "hiwonder-ainex",
+      "profile_version": "1.0.0",
+      "curriculum_version": 2,
+      "active_tasks": [
+        "stand_up",
+        "walk_forward"
+      ],
+      "obs_dim": 77,
+      "action_dim": 12,
+      "output_dim": 24,
+      "proprio_dim": 45,
+      "text_dim": 32,
+      "pca_dim": 32,
+      "requested_total_steps": 64,
+      "total_steps": 256,
+      "domain_rand": false,
+      "wall_clock_s": 13.23,
+      "seed": 0,
+      "ckpt": "policy.zip",
+      "encoder_model": "sentence-transformers/all-MiniLM-L6-v2"
+    },
+    "eval": {
+      "profile_id": "hiwonder-ainex",
+      "env": "profile_mujoco",
+      "checkpoint": "evidence/backend_compare_smoke/ppo",
+      "policy": "smoke_sb3_ppo",
+      "env_action_dim": 12,
+      "policy_action_dim": 12,
+      "policy_output_dim": 24,
+      "tasks": {
+        "stand_up": {
+          "mean_reward": -6.764415534518511,
+          "std_reward": 0.0,
+          "min_reward": -6.764415534518511,
+          "max_reward": -6.764415534518511,
+          "mean_steps_survived": 1.0,
+          "episodes": 1
+        },
+        "walk_forward": {
+          "mean_reward": -6.771017412552493,
+          "std_reward": 0.0,
+          "min_reward": -6.771017412552493,
+          "max_reward": -6.771017412552493,
+          "mean_steps_survived": 1.0,
+          "episodes": 1
+        }
+      },
+      "mean_reward_overall": -6.767716473535502
+    },
+    "delta_vs_untrained": {
+      "stand_up": -1.930486783408014e-05,
+      "walk_forward": -2.07406707337654e-05
+    }
+  },
+  "alberta_vs_ppo_delta": {
+    "mean_reward_overall": -0.0002021241553009645,
+    "tasks": {
+      "stand_up": -0.00020264077186560314,
+      "walk_forward": -0.00020160753873632586
+    }
+  },
+  "winner_by_mean_reward": "ppo"
+}

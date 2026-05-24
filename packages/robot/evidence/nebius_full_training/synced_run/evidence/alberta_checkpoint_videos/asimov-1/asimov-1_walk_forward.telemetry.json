@@ -1,0 +1,37 @@
+{
+  "profile": "asimov-1",
+  "label": "walk forward",
+  "task_id": "walk_forward",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+  "steps_requested": 30,
+  "steps_executed": 30,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 30,
+  "done_reason": "truncated",
+  "fall_threshold": 0.378,
+  "torso_z": {
+    "min": 0.6276437265174473,
+    "max": 0.6308482162911724,
+    "final": 0.6308482162911724,
+    "mean": 0.6290591174153417
+  },
+  "upright_proj": {
+    "min": 0.9980499542648383,
+    "max": 0.9999999731447071,
+    "final": 0.9980499542648383,
+    "mean": 0.9996305453213736
+  },
+  "reward": {
+    "min": 3.4648780517678235,
+    "max": 3.4889298571464105,
+    "final": 3.4724051178224156,
+    "mean": 3.4819562907495016
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

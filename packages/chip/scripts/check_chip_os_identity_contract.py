@@ -56,16 +56,6 @@ OS_VENDOR_ROOT = (
     OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR
     if BRAND_CONFIG
     else PACKAGES / "os/android/vendor/eliza"
-APP_GRADLE = PACKAGES / "app/android/app/build.gradle"
-APP_MANIFEST = PACKAGES / "app/android/app/src/main/AndroidManifest.xml"
-APP_CAPACITOR = PACKAGES / "app/android/app/src/main/assets/capacitor.config.json"
-APP_STRINGS = PACKAGES / "app/android/app/src/main/res/values/strings.xml"
-APP_SHORTCUTS = PACKAGES / "app/android/app/src/main/res/xml/shortcuts.xml"
-APP_AGENT_SERVICE = PACKAGES / "app/android/app/src/main/java/app/eliza/ElizaAgentService.java"
-APP_AGENT_PLUGIN = PACKAGES / "app/android/app/src/main/java/app/eliza/AgentPlugin.java"
-OS_VENDOR_COMMON = PACKAGES / "os/android/vendor/eliza/eliza_common.mk"
-OS_VENDOR_OVERLAY = (
-    PACKAGES / "os/android/vendor/eliza/overlays/frameworks/base/core/res/res/values/config.xml"
 )
 OS_VENDOR_COMMON = OS_VENDOR_ROOT / f"{VENDOR_DIR}_common.mk"
 OS_VENDOR_OVERLAY = OS_VENDOR_ROOT / "overlays/frameworks/base/core/res/res/values/config.xml"
@@ -90,7 +80,6 @@ ANDROID_RELEASE_MANIFESTS = (
     PACKAGES / "os/release/beta-2026-05-16/android-release-manifest.json",
 )
 APP_AGENT_PLUGIN_MANIFEST = APP_ANDROID_ROOT / "src/main/assets/agent/plugins-manifest.json"
-APP_AGENT_PLUGIN_MANIFEST = PACKAGES / "app/android/app/src/main/assets/agent/plugins-manifest.json"
 
 
 def rel(path: Path) -> str:

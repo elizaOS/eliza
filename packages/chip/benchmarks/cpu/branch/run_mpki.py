@@ -281,6 +281,12 @@ def _build_cbp5_envelope(external_results: dict[str, dict]) -> dict[str, object]
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "harness": "behavioural-bpu-model",
         "evidence_class": "cbp5_train_traces_only",
+        "claim_boundary": (
+            "cbp5_train_traces_only behavioural-model evidence is not SPEC2017, "
+            "Android, JavaScript-engine, phone, or release evidence."
+        ),
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
         "geometry": {
             key: list(value) if isinstance(value, tuple) else value
             for key, value in DEFAULT_GEOMETRY.items()

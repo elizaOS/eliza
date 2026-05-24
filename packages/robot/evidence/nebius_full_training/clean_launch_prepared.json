@@ -1,7 +1,7 @@
 {
-  "blocker": "Nebius CLI OAuth token expired; disk create blocks on browser authentication.",
+  "blocker": null,
   "bucket": "robot-rl-results-1779358330",
-  "compute_created": false,
+  "compute_created": true,
   "disk_create_request": "/tmp/robot-full-clean-1779556360/disk-create.json",
   "instance_create_redacted_request": "/tmp/robot-full-clean-1779556360/instance-create.redacted.json",
   "instance_launch_hygiene_ok": true,
@@ -11,7 +11,7 @@
     "ssh robot@<new-public-ip> and install /tmp/robot-full-clean-1779556360.env as /etc/robot-full/object-storage.env with root-only permissions"
   ],
   "ok": false,
-  "payload_bytes": 159760666,
+  "payload_bytes": 161428332,
   "payload_contains_latest_alberta_report": true,
   "payload_contains_production_report_paths": true,
   "payload_excludes": [
@@ -26,16 +26,31 @@
   ],
   "payload_large_bytes": 1849792375,
   "payload_optimized": true,
-  "payload_refreshed_at": "2026-05-24T02:24:15Z",
-  "payload_refreshed_for": "post_auth_retry_report_audit_refresh",
-  "payload_sha256": "19d61cd72d34917444dfb55085f1d46a664f8794074934e806072066911c80f2",
+  "payload_refreshed_at": "2026-05-24T03:53:53Z",
+  "payload_refreshed_for": "include_alberta_sibling_and_cloud_path_fix",
+  "payload_sha256": "b56d418224647e4daba44de1cfe552f858b935ebdeca833679450246f8cbeb4e",
   "payload_uploaded": true,
-  "payload_uploaded_at": "2026-05-24T02:24:15Z",
+  "payload_uploaded_at": "2026-05-24T03:53:53Z",
   "payload_uri": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/payload.tar.gz",
   "prefix": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/",
   "resume_command": "uv run eliza-robot-launch-prepared-nebius-clean-run --prepared-report evidence/nebius_full_training/clean_launch_prepared.json --secret-env /tmp/robot-full-clean-1779556360.env --identity ~/.ssh/id_ed25519 --ssh-timeout-seconds 900 --auth-timeout-seconds 20",
   "resume_command_ready": true,
   "run_id": "robot-full-clean-1779556360",
   "schema": "robot-nebius-clean-launch-prepared-v1",
-  "state": "awaiting_nebius_cli_auth"
+  "state": "launched",
+  "payload_contains_alberta_sibling": true,
+  "disk_id": "computedisk-e00bef82gpgk1qgx5y",
+  "instance_id": "computeinstance-e00vp47p03jxxtqev3",
+  "instance_name": "robot-full-clean-1779556360-h200",
+  "public_ip": "89.169.120.252",
+  "ssh_ready": true,
+  "runtime_env_injected": true,
+  "nebius_auth": {
+    "ok": true,
+    "reason": "nebius_cli_auth_ok",
+    "timeout_seconds": 20,
+    "auth_prompt_detected": false,
+    "redacted": true
+  },
+  "launched_at": "2026-05-24T03:49:59.927667Z"
 }

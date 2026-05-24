@@ -1,0 +1,101 @@
+{
+  "ok": true,
+  "benchmark_dir": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_obstacle_course_smoke",
+  "expected_env": "obstacle_course",
+  "min_seeds": 1,
+  "min_steps_per_task": 2500,
+  "min_tasks": 2,
+  "checks": {
+    "benchmark_dir": true,
+    "json": true,
+    "markdown": true,
+    "plot": true,
+    "schema": true,
+    "expected_env": true,
+    "seeds": true,
+    "steps_per_task": true,
+    "tasks": true,
+    "result_count": true,
+    "learner_seed_pairs": true,
+    "learner_seed_coverage": true,
+    "summary_learners": true,
+    "result_learners": true,
+    "matrix_shapes": true,
+    "metrics": true,
+    "alberta_acc_gte_ppo": true,
+    "alberta_forgetting_lte_ppo": true
+  },
+  "deltas": {
+    "alberta_acc_minus_ppo": 1.5960513927884201,
+    "alberta_forgetting_minus_ppo": 0.0
+  },
+  "required_deltas": {
+    "require_alberta_acc_gte_ppo": true,
+    "require_alberta_forgetting_lte_ppo": true
+  },
+  "config": {
+    "env_kind": "obstacle_course",
+    "n_tasks": 2,
+    "n_joints": 6,
+    "steps_per_task": 2500,
+    "eval_episodes": 3,
+    "seeds": 1,
+    "gamma": 0.5,
+    "actor_step_size": 0.01,
+    "critic_step_size": 0.02,
+    "actor_lamda": 0.7,
+    "critic_lamda": 0.7,
+    "log_sigma_init": -1.0,
+    "embed_dim": 16,
+    "n_prototypes": 192,
+    "gate_temperature": 0.1,
+    "proprio_random_dim": 64,
+    "obstacle_episode_steps": 80
+  },
+  "summary": {
+    "alberta": {
+      "acc": {
+        "mean": 4.098899901886456,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": 2.5028485090980355,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.7127826054889659,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": -0.3124985159142502,
+        "std": 0.0
+      }
+    }
+  },
+  "seed_coverage": {
+    "alberta": [
+      1000
+    ],
+    "ppo": [
+      1000
+    ]
+  }
+}

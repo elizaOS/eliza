@@ -1,0 +1,85 @@
+{
+  "profile": "hiwonder-ainex",
+  "label": "combined_actions",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+  "preserve_state_between_commands": false,
+  "commands": [
+    {
+      "profile": "hiwonder-ainex",
+      "label": "stand up",
+      "task_id": "stand_up",
+      "policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "steps_requested": 30,
+      "steps_executed": 30,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 30,
+      "done_reason": "truncated",
+      "fall_threshold": 0.15,
+      "torso_z": {
+        "min": 0.23653609019179317,
+        "max": 0.2778409780324815,
+        "final": 0.24222380902015278,
+        "mean": 0.24473958430864418
+      },
+      "upright_proj": {
+        "min": 0.9987063195273099,
+        "max": 0.9999998484334311,
+        "final": 0.9987768004826001,
+        "mean": 0.9993249722505222
+      },
+      "reward": {
+        "min": 3.4766014028895467,
+        "max": 3.4999493186201485,
+        "final": 3.4990733663916767,
+        "mean": 3.4953691866060077
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "label": "walk forward",
+      "task_id": "walk_forward",
+      "policy_source": "checkpoint:evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "steps_requested": 30,
+      "steps_executed": 30,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 30,
+      "done_reason": "truncated",
+      "fall_threshold": 0.15,
+      "torso_z": {
+        "min": 0.2365360870702514,
+        "max": 0.27784097892931237,
+        "final": 0.24219111116987269,
+        "mean": 0.2447270069028776
+      },
+      "upright_proj": {
+        "min": 0.9988064559389442,
+        "max": 0.9999998484190353,
+        "final": 0.9988829462665253,
+        "mean": 0.9993613094953936
+      },
+      "reward": {
+        "min": 3.4792987654459524,
+        "max": 3.493227367687807,
+        "final": 3.485021152969439,
+        "mean": 3.487724304006065
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    }
+  ],
+  "steps_requested": 60,
+  "steps_executed": 60,
+  "rollout_ok": true
+}

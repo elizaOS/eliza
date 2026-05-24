@@ -8,10 +8,13 @@
     "version": 2
   },
   "datasets": {
-    "data_dir": "/root/eliza/packages/robot/data",
-    "datasets_dir": "/root/eliza/packages/robot/datasets",
+    "data_dir": "/root/robot/data",
+    "datasets_dir": "/root/robot/datasets",
+    "imitation_training_ready": false,
     "offline_dataset_files": [],
+    "offline_datasets_block_current_plan": false,
     "offline_datasets_present": false,
+    "rl_from_sim_ready": true,
     "training_source": "RL-from-simulation; trajectory_db tooling is not wired into the Alberta/PPO text-conditioned policy trainers.",
     "trajectory_db_tooling_present": true
   },
@@ -28,11 +31,11 @@
   "profiles": [
     {
       "assets": {
-        "mesh_dir": "/root/eliza/packages/robot/assets/profiles/asimov-1/meshes",
-        "mjcf_xml": "/root/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
-        "mjx_xml": "/root/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+        "mesh_dir": "/root/robot/assets/profiles/asimov-1/meshes",
+        "mjcf_xml": "/root/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+        "mjx_xml": "/root/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
         "scene_xml": null,
-        "urdf": "/root/eliza/packages/robot/assets/profiles/asimov-1/asimov.urdf"
+        "urdf": "/root/robot/assets/profiles/asimov-1/asimov.urdf"
       },
       "dof": 25,
       "env_action_dim": 12,
@@ -48,11 +51,11 @@
     },
     {
       "assets": {
-        "mesh_dir": "/root/eliza/packages/robot/assets/profiles/hiwonder-ainex/meshes",
-        "mjcf_xml": "/root/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex.xml",
-        "mjx_xml": "/root/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex_mjx.xml",
+        "mesh_dir": "/root/robot/assets/profiles/hiwonder-ainex/meshes",
+        "mjcf_xml": "/root/robot/assets/profiles/hiwonder-ainex/mjcf/ainex.xml",
+        "mjx_xml": "/root/robot/assets/profiles/hiwonder-ainex/mjcf/ainex_mjx.xml",
         "scene_xml": null,
-        "urdf": "/root/eliza/packages/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf.xacro"
+        "urdf": "/root/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf.xacro"
       },
       "dof": 24,
       "env_action_dim": 12,
@@ -68,11 +71,11 @@
     },
     {
       "assets": {
-        "mesh_dir": "/root/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/assets",
-        "mjcf_xml": "/root/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
-        "mjx_xml": "/root/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
-        "scene_xml": "/root/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/scene.xml",
-        "urdf": "/root/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml"
+        "mesh_dir": "/root/robot/assets/profiles/unitree-g1/mjcf/assets",
+        "mjcf_xml": "/root/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
+        "mjx_xml": "/root/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
+        "scene_xml": "/root/robot/assets/profiles/unitree-g1/mjcf/scene.xml",
+        "urdf": "/root/robot/assets/profiles/unitree-g1/mjcf/g1.xml"
       },
       "dof": 29,
       "env_action_dim": 12,
@@ -88,11 +91,11 @@
     },
     {
       "assets": {
-        "mesh_dir": "/root/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/assets",
-        "mjcf_xml": "/root/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
-        "mjx_xml": "/root/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
-        "scene_xml": "/root/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/scene.xml",
-        "urdf": "/root/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml"
+        "mesh_dir": "/root/robot/assets/profiles/unitree-h1/mjcf/assets",
+        "mjcf_xml": "/root/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
+        "mjx_xml": "/root/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
+        "scene_xml": "/root/robot/assets/profiles/unitree-h1/mjcf/scene.xml",
+        "urdf": "/root/robot/assets/profiles/unitree-h1/mjcf/h1.xml"
       },
       "dof": 19,
       "env_action_dim": 10,
@@ -108,11 +111,11 @@
     },
     {
       "assets": {
-        "mesh_dir": "/root/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/assets",
-        "mjcf_xml": "/root/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
-        "mjx_xml": "/root/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
-        "scene_xml": "/root/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/scene.xml",
-        "urdf": "/root/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml"
+        "mesh_dir": "/root/robot/assets/profiles/unitree-r1/mjcf/assets",
+        "mjcf_xml": "/root/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
+        "mjx_xml": "/root/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
+        "scene_xml": "/root/robot/assets/profiles/unitree-r1/mjcf/scene.xml",
+        "urdf": "/root/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml"
       },
       "dof": 29,
       "env_action_dim": 12,

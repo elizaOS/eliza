@@ -44,6 +44,15 @@ DESKTOP_PACKAGE_REQUIREMENTS = (
     "plymouth-themes",
     "plymouth-label",
 )
+KIOSK_PACKAGE_REQUIREMENTS = (
+    "cage",
+    "seatd",
+    "libwebkit2gtk-4.1-0",
+    "libgtk-3-0",
+    "libgl1-mesa-dri",
+    "libegl1",
+    "grim",
+)
 
 DOCKERFILE_REQUIREMENTS = (
     "grub-efi-amd64-bin",
@@ -376,6 +385,82 @@ def validate_runtime_matrix(errors: list[str], matrix: dict) -> None:
     validate_runtime_artifacts(errors, matrix)
 
 
+def validate_kiosk_gui_contract(errors: list[str]) -> None:
+    common_packages = package_lines(ROOT / "config/package-lists/elizaos-common.list.chroot")
+    for package in KIOSK_PACKAGE_REQUIREMENTS:
+        require(
+            errors,
+            package in common_packages,
+            f"elizaos-common.list.chroot missing kiosk GUI package {package}",
+        )
+
+    graphical_hook = read("config/hooks/normal/0025-enable-graphical-session.hook.chroot")
+    require(
+        errors,
+        "systemctl set-default graphical.target" in graphical_hook,
+        "graphical-session hook must make graphical.target the default boot target",
+    )
+    require(
+        errors,
+        "systemctl mask --force" in graphical_hook and "gdm3" in graphical_hook,
+        "graphical-session hook must mask gdm3/display-manager so the kiosk owns the seat",
+    )
+    require(
+        errors,
+        "systemctl enable seatd.service" in graphical_hook,
+        "graphical-session hook must enable seatd for direct compositor seat access",
+    )
+    require(
+        errors,
+        "systemctl enable elizaos-kiosk.service" in graphical_hook,
+        "graphical-session hook must enable elizaos-kiosk.service",
+    )
+
+    kiosk_unit = read("config/includes.chroot/etc/systemd/system/elizaos-kiosk.service")
+    for token in (
+        "ExecStart=/usr/local/lib/elizaos/start-cage",
+        "WantedBy=graphical.target",
+        "Environment=LIBSEAT_BACKEND=seatd",
+        "SupplementaryGroups=input render video seat",
+    ):
+        require(errors, token in kiosk_unit, f"elizaos-kiosk.service missing {token}")
+
+    start_cage = read("config/includes.chroot/usr/local/lib/elizaos/start-cage")
+    for token in (
+        "pick_renderer()",
+        "virtio_gpu",
+        "grim",
+        "exec /usr/bin/cage -s -- /usr/local/lib/elizaos/start-kiosk",
+    ):
+        require(errors, token in start_cage, f"start-cage missing {token}")
+
+    start_kiosk = read("config/includes.chroot/usr/local/lib/elizaos/start-kiosk")
+    for token in (
+        "epiphany-browser --application-mode",
+        "curl -fsS",
+        "WEBKIT_DISABLE_DMABUF_RENDERER=1",
+        "LIBGL_ALWAYS_SOFTWARE=1",
+    ):
+        require(errors, token in start_kiosk, f"start-kiosk missing {token}")
+
+    modules = read("config/includes.chroot/etc/modules-load.d/elizaos-virtio-gpu.conf")
+    require(
+        errors,
+        "virtio_pci" in modules and "virtio_gpu" in modules,
+        "virtio GPU modules must be loaded for graphical QEMU boot",
+    )
+
+    capture_unit = read(
+        "config/includes.chroot/etc/systemd/system/elizaos-kiosk-capture.service"
+    )
+    require(
+        errors,
+        "ConditionKernelCommandLine=elizaos.capture_dir=" in capture_unit
+        and "Before=elizaos-kiosk.service" in capture_unit,
+        "kiosk capture service must be opt-in and ordered before the kiosk",
+    )
+
+
 def main() -> int:
     errors: list[str] = []
     auto_config = read("auto/config")
@@ -463,8 +548,9 @@ def main() -> int:
     )
     require(
         errors,
-        "qemu_virt_boot_20260523T071039Z_repoqemu_sigill.report.json" in readme,
-        "README.md must cite the fresh repo-QEMU riscv64 boot evidence",
+        "qemu_virt_boot_20260524T030430Z.transcript.log" in readme
+        and "out/elizaos-linux-riscv64-default-20260524T030430Z.iso" in readme,
+        "README.md must cite the fresh passing riscv64 qemu-virt boot evidence",
     )
     for token in RISCV64_PORT_CONTRACT.values():
         require(
@@ -520,6 +606,7 @@ def main() -> int:
         and "iso_boot_artifacts" in qemu_virt_smoke,
         "qemu_virt_smoke.py must validate recorded riscv64 ISO boot artifacts",
     )
+    validate_kiosk_gui_contract(errors)
 
     if errors:
         for error in errors:

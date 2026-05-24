@@ -19,6 +19,7 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = ROOT / "docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json"
+DEFAULT_STATUS_JSON = ROOT / "build/reports/e1_npu_android_proof_manifest_check.json"
 TEMPLATE_CLAIM_BOUNDARY = "template_only_not_android_boot_cts_vts_or_nnapi_evidence"
 SCHEMA = "eliza.e1_npu_android_proof_manifest.v1"
 REQUIRED_STATUSES = {
@@ -227,6 +228,15 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument(
+        "--status-json",
+        type=Path,
+        default=DEFAULT_STATUS_JSON,
+        help=(
+            "Output path for the checker report. Defaults to "
+            "build/reports/e1_npu_android_proof_manifest_check.json."
+        ),
+    )
+    parser.add_argument(
         "--require-pass",
         action="store_true",
         help="Return blocked unless the manifest is a complete passed proof.",
@@ -237,6 +247,9 @@ def main(argv: list[str]) -> int:
     manifest_path = args.manifest if args.manifest.is_absolute() else ROOT / args.manifest
     data = load_json(manifest_path)
     rc, report = validate_manifest(data, args.require_pass)
+    status_path = args.status_json if args.status_json.is_absolute() else ROOT / args.status_json
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))

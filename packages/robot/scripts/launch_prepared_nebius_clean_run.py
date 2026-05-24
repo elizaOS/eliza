@@ -129,6 +129,18 @@ def _write_launch_report(report: dict[str, Any]) -> None:
     write_markdown(report, out.with_suffix(".md"))
 
 
+def _normalize_instance_request_for_nebius(instance_request: dict[str, Any]) -> None:
+    boot_disk = (
+        instance_request.get("spec", {})
+        .get("boot_disk", {})
+    )
+    if boot_disk.get("attach_mode") == "read_write":
+        boot_disk["attach_mode"] = "READ_WRITE"
+    spec = instance_request.get("spec", {})
+    if spec.get("recovery_policy") == "fail":
+        spec["recovery_policy"] = "FAIL"
+
+
 def _public_ip(instance: dict[str, Any]) -> str | None:
     for iface in instance.get("status", {}).get("network_interfaces", []) or []:
         address = (iface.get("public_ip_address") or {}).get("address")
@@ -259,6 +271,7 @@ def launch_prepared_clean_run(
         raise RuntimeError("disk create returned no disk id")
     instance_request = _load_json(instance_template)
     instance_request["spec"]["boot_disk"]["existing_disk"]["id"] = disk_id
+    _normalize_instance_request_for_nebius(instance_request)
     instance_request_path = tmp_dir / "instance-create.json"
     _write_json(instance_request_path, instance_request)
     instance = _run_json(

@@ -11,6 +11,11 @@
  *   5 browser  - DOM/style/layout walk with event dispatch
  *   6 kernel   - syscall/file/socket scheduler control path
  *   7 gc       - mark/sweep/write-barrier runtime control path
+ *   8 gpu_mem  - GPU residency/page-fault/descriptor-table control path
+ *   9 gpu_irq  - GPU IRQ/fence scheduler and callback dispatch
+ *  10 nn       - NN delegate graph executor with fallback/shape guards
+ *  11 ui       - mobile frame scheduler, input, layout, composition phases
+ *  12 wasm     - WASM/JIT tiering, OSR, deopt, and inline-cache churn
  *
  * The goal is not numerical fidelity. It is a deterministic RV64 branch trace
  * with realistic branch shapes: correlated parser states, indirect dispatch,
@@ -415,6 +420,232 @@ static int run_gc(int cycles) {
     return acc;
 }
 
+/* ===================== 8. GPU residency/page-fault proxy ============== */
+#define GPU_PAGES 512
+#define GPU_DESCS 192
+static int run_gpu_residency(int batches) {
+    static uint8_t resident[GPU_PAGES];
+    static uint8_t dirty[GPU_PAGES];
+    static uint16_t desc_page[GPU_DESCS];
+    int acc = 0, faults = 0, evicts = 0;
+    for (int p = 0; p < GPU_PAGES; p++) {
+        resident[p] = (uint8_t)((p & 7) != 0);
+        dirty[p] = (uint8_t)(p & 1);
+    }
+    for (int d = 0; d < GPU_DESCS; d++) desc_page[d] = (uint16_t)((d * 17) & (GPU_PAGES - 1));
+
+    for (int b = 0; b < batches; b++) {
+        int burst = 24 + (lcg() & 31);
+        int phase = b & 3;
+        for (int i = 0; i < burst; i++) {
+            int d = (i * 13 + b * 7 + (int)(lcg() & 15)) % GPU_DESCS;
+            int page = desc_page[d];
+            if (phase == 1 && (i & 7) == 0) page = (page + 97) & (GPU_PAGES - 1);
+            if (!resident[page]) {
+                faults++;
+                resident[page] = 1;
+                dirty[page] = 0;
+                acc -= page & 31;
+            } else if (dirty[page]) {
+                acc += page ^ d;
+                if ((acc & 15) == 0) dirty[page] = 0;
+            } else {
+                acc += d;
+                if (((b + i) & 11) == 0) dirty[page] = 1;
+            }
+            if ((phase == 2) && ((i + faults) & 15) == 0) {
+                int victim = (page + 131 + evicts) & (GPU_PAGES - 1);
+                if (resident[victim] && !dirty[victim]) {
+                    resident[victim] = 0;
+                    evicts++;
+                } else {
+                    acc ^= victim;
+                }
+            }
+            desc_page[d] = (uint16_t)((page + (acc & 3)) & (GPU_PAGES - 1));
+        }
+    }
+    return acc ^ (faults << 4) ^ evicts;
+}
+
+/* ===================== 9. GPU IRQ/fence scheduler proxy =============== */
+enum { GPU_CB_SIGNAL, GPU_CB_TIMEOUT, GPU_CB_SUBMIT, GPU_CB_RETIRE, GPU_CB_MAX };
+typedef int (*gpu_cb_fn)(int, int);
+static int cb_signal(int a, int b) { return a + b + 3; }
+static int cb_timeout(int a, int b) { return a - (b * 5); }
+static int cb_submit(int a, int b) { return (a ^ (b << 2)) + 11; }
+static int cb_retire(int a, int b) { return a + ((b & 7) ? 17 : -13); }
+static gpu_cb_fn gpu_callbacks[GPU_CB_MAX] = {
+    cb_signal, cb_timeout, cb_submit, cb_retire
+};
+
+static int run_gpu_irq_fence(int ticks) {
+    static uint16_t fence_q[256];
+    static uint8_t kind_q[256];
+    int head = 0, tail = 0, next_fence = 1, acc = 0;
+    for (int t = 0; t < ticks; t++) {
+        int arrivals = 1 + ((lcg() >> 3) & 3);
+        for (int a = 0; a < arrivals; a++) {
+            int slot = tail++ & 255;
+            fence_q[slot] = (uint16_t)(next_fence + ((lcg() & 7) == 0 ? 7 : 0));
+            kind_q[slot] = (uint8_t)((t + a + (int)(lcg() & 3)) % GPU_CB_MAX);
+            next_fence++;
+        }
+        int budget = 1 + (t & 3);
+        while (budget-- > 0 && head != tail) {
+            int slot = head & 255;
+            int ready = ((fence_q[slot] <= next_fence) || ((t ^ fence_q[slot]) & 31) == 0);
+            if (!ready) {
+                if ((t & 15) == 0) {
+                    kind_q[slot] = GPU_CB_TIMEOUT;
+                    ready = 1;
+                } else {
+                    break;
+                }
+            }
+            acc = gpu_callbacks[kind_q[slot] % GPU_CB_MAX](acc, fence_q[slot]);
+            head++;
+            if ((acc & 63) == 0) {
+                int retry = tail++ & 255;
+                fence_q[retry] = (uint16_t)(next_fence + 3);
+                kind_q[retry] = GPU_CB_SUBMIT;
+            }
+        }
+    }
+    return acc ^ head ^ tail;
+}
+
+/* ===================== 10. NN delegate/fallback proxy ================= */
+enum { OP_CONV, OP_GEMM, OP_RELU, OP_RESHAPE, OP_SOFTMAX, OP_CUSTOM, NN_OP_MAX };
+static int run_nn_delegate(int graphs) {
+    static uint8_t op[256];
+    static uint8_t rank[256];
+    static uint8_t supported[NN_OP_MAX] = {1, 1, 1, 1, 0, 0};
+    int acc = 0, fallback = 0;
+    for (int g = 0; g < graphs; g++) {
+        int n = 48 + (lcg() & 63);
+        int dynamic_shape = ((g ^ (int)lcg()) & 7) == 0;
+        for (int i = 0; i < n; i++) {
+            uint32_t r = lcg();
+            op[i] = (uint8_t)((i + (r & 3) + (dynamic_shape ? 2 : 0)) % NN_OP_MAX);
+            rank[i] = (uint8_t)(1 + ((r >> 8) & 3));
+        }
+        for (int i = 0; i < n; i++) {
+            int o = op[i];
+            int ok = supported[o] && !(dynamic_shape && o == OP_RESHAPE && (i & 3));
+            if (ok) {
+                if (o == OP_CONV || o == OP_GEMM) acc += rank[i] * 17;
+                else if (o == OP_RELU) acc += 3;
+                else acc += i & 7;
+            } else {
+                fallback++;
+                for (int k = 0; k < rank[i] + 2; k++) {
+                    if ((fallback + k + i) & 1) acc -= k + o;
+                    else acc ^= (o << k);
+                }
+                if ((fallback & 15) == 0) supported[OP_SOFTMAX] = 1;
+            }
+            if ((i & 15) == 0 && (acc & 3) == 0) supported[OP_CUSTOM] ^= 1;
+        }
+    }
+    return acc ^ (fallback << 5);
+}
+
+/* ===================== 11. Mobile UI frame scheduler proxy ============ */
+enum { UI_INPUT, UI_ANIMATE, UI_LAYOUT, UI_COMPOSE, UI_GPU_WAIT, UI_MAX };
+static int run_mobile_ui(int frames) {
+    static uint8_t queue[256];
+    int head = 0, tail = 0, missed = 0, acc = 0;
+    for (int f = 0; f < frames; f++) {
+        int events = 2 + (lcg() & 7);
+        for (int e = 0; e < events; e++) queue[tail++ & 255] = (uint8_t)((e + f + (lcg() & 3)) % UI_MAX);
+        int budget = 16;
+        while (budget > 0 && head != tail) {
+            int ev = queue[head++ & 255];
+            switch (ev) {
+            case UI_INPUT:
+                budget -= 2;
+                acc += f & 31;
+                if ((acc & 7) == 0) queue[tail++ & 255] = UI_LAYOUT;
+                break;
+            case UI_ANIMATE:
+                budget -= 1 + (acc & 3);
+                acc ^= 0x51;
+                break;
+            case UI_LAYOUT:
+                budget -= 5;
+                for (int n = 0; n < 12; n++) {
+                    if (((n * f + acc) & 5) == 0) acc += n;
+                    else acc -= n & 3;
+                }
+                queue[tail++ & 255] = UI_COMPOSE;
+                break;
+            case UI_COMPOSE:
+                budget -= 4;
+                acc += tail - head;
+                if ((lcg() & 15) == 0) queue[tail++ & 255] = UI_GPU_WAIT;
+                break;
+            case UI_GPU_WAIT:
+                budget -= 6;
+                if ((f + acc) & 3) acc -= 19;
+                else acc += 23;
+                break;
+            }
+        }
+        if (budget <= 0 || ((tail - head) > 96)) {
+            missed++;
+            if ((missed & 3) == 0) head = tail - 24;
+        }
+    }
+    return acc ^ (missed << 8);
+}
+
+/* ===================== 12. WASM/JIT tiering proxy ===================== */
+enum { IC_MONO, IC_POLY, IC_MEGA, IC_MISS };
+static int run_wasm_jit(int calls) {
+    static uint8_t tier[128];
+    static uint8_t ic_state[128];
+    int acc = 0, deopts = 0;
+    for (int i = 0; i < 128; i++) {
+        tier[i] = (uint8_t)(i & 1);
+        ic_state[i] = IC_MONO;
+    }
+    for (int c = 0; c < calls; c++) {
+        int fn = (c * 13 + (int)(lcg() & 31)) & 127;
+        int shape = (int)((lcg() >> 4) & 7);
+        if (tier[fn] == 0) {
+            acc += fn;
+            if ((c & 15) == 0) tier[fn] = 1;
+        } else {
+            switch (ic_state[fn]) {
+            case IC_MONO:
+                if (shape == (fn & 7)) acc += shape * 3;
+                else ic_state[fn] = IC_POLY;
+                break;
+            case IC_POLY:
+                if ((shape ^ fn) & 1) acc += 11;
+                else ic_state[fn] = IC_MEGA;
+                break;
+            case IC_MEGA:
+                acc += (shape * fn) & 31;
+                if ((lcg() & 31) == 0) ic_state[fn] = IC_MISS;
+                break;
+            default:
+                deopts++;
+                tier[fn] = 0;
+                ic_state[fn] = IC_MONO;
+                acc -= fn;
+                break;
+            }
+            if ((acc & 127) == 0) {
+                deopts++;
+                tier[fn] = 0;
+            }
+        }
+    }
+    return acc ^ (deopts << 3);
+}
+
 int main(int argc, char **argv) {
     int scale = (argc > 1) ? atoi_simple(argv[1]) : 1000;
     int mode = (argc > 2) ? atoi_simple(argv[2]) : 0;
@@ -428,6 +659,11 @@ int main(int argc, char **argv) {
     case 5: out = run_browser(scale); break;
     case 6: out = run_kernel(scale); break;
     case 7: out = run_gc(scale); break;
+    case 8: out = run_gpu_residency(scale); break;
+    case 9: out = run_gpu_irq_fence(scale); break;
+    case 10: out = run_nn_delegate(scale); break;
+    case 11: out = run_mobile_ui(scale); break;
+    case 12: out = run_wasm_jit(scale); break;
     default: out = run_build(scale); break;
     }
     printf("mode=%d out=%d\n", mode, out);
