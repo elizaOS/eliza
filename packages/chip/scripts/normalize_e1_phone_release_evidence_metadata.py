@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 FIRST_ARTICLE_FILES = [
@@ -37,10 +36,7 @@ ROUTED_RELEASE_FILES = [
 
 def load_mapping(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
-    if path.suffix.lower() == ".json":
-        data = json.loads(text)
-    else:
-        data = yaml.safe_load(text)
+    data = json.loads(text) if path.suffix.lower() == ".json" else yaml.safe_load(text)
     if not isinstance(data, dict):
         raise SystemExit(f"{path}: expected mapping")
     return data

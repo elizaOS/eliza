@@ -140,7 +140,9 @@ def build_manifest() -> dict[str, Any]:
         source = meta.get("source") if isinstance(meta.get("source"), dict) else {}
         branch_count = int(meta.get("branch_count", 0))
         instruction_count = int(meta.get("instruction_count", 0))
-        class_counts = meta.get("class_counts") if isinstance(meta.get("class_counts"), dict) else {}
+        class_counts = (
+            meta.get("class_counts") if isinstance(meta.get("class_counts"), dict) else {}
+        )
         traces.append(
             {
                 "name": name,
@@ -276,12 +278,17 @@ def main() -> int:
         try:
             manifest = json.loads(args.output.read_text(encoding="utf-8"))
         except FileNotFoundError:
-            print(f"STATUS: BLOCKED bpu.workload_trace_manifest - missing {args.output}", file=sys.stderr)
+            print(
+                f"STATUS: BLOCKED bpu.workload_trace_manifest - missing {args.output}",
+                file=sys.stderr,
+            )
             return 2
     else:
         manifest = build_manifest()
         args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        args.output.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
 
     failures: list[str] = []
     validate_manifest(manifest, failures)

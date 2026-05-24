@@ -39,8 +39,8 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
                 self.assertIn(":6520", command[2])
                 return capture.Probe(
                     True,
-                    "LISTEN 0 128 127.0.0.1:5037 0.0.0.0:* users:((\"adb\"))\n"
-                    "LISTEN 0 128 0.0.0.0:6520 0.0.0.0:* users:((\"socket_vsock_proxy\"))\n",
+                    'LISTEN 0 128 127.0.0.1:5037 0.0.0.0:* users:(("adb"))\n'
+                    'LISTEN 0 128 0.0.0.0:6520 0.0.0.0:* users:(("socket_vsock_proxy"))\n',
                 )
             if command[:2] == ["sh", "-lc"] and "latest_instance=" in command[2]:
                 return capture.Probe(
@@ -117,7 +117,13 @@ class SystemBridgeRuntimeCaptureTests(unittest.TestCase):
                 capture.DEFAULT_BRIDGE_SYSTEM_APK,
             ]:
                 return capture.Probe(False, "No such file or directory\n")
-            if command[:5] == ["adb", "-s", "127.0.0.1:6520", "shell", "sh"] and "pm list packages -f | grep -i eliza" in " ".join(command):
+            if command[:5] == [
+                "adb",
+                "-s",
+                "127.0.0.1:6520",
+                "shell",
+                "sh",
+            ] and "pm list packages -f | grep -i eliza" in " ".join(command):
                 return capture.Probe(True, "")
             if command[:2] == ["sh", "-lc"] and "command -v" in command[2]:
                 return capture.Probe(True, "/usr/bin/tool\n")

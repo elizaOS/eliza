@@ -188,7 +188,9 @@ def blocker_class_counts(blockers: list[str]) -> dict[str, int]:
     return classes
 
 
-def collect_local_planning_evidence(manifest_path: Path, draft_path: Path) -> list[dict[str, object]]:
+def collect_local_planning_evidence(
+    manifest_path: Path, draft_path: Path
+) -> list[dict[str, object]]:
     evidence: list[dict[str, object]] = []
     if manifest_path.is_file():
         try:
@@ -245,7 +247,9 @@ def collect_local_planning_evidence(manifest_path: Path, draft_path: Path) -> li
     return evidence
 
 
-def release_credit_false_artifacts(local_evidence: list[dict[str, object]]) -> list[dict[str, object]]:
+def release_credit_false_artifacts(
+    local_evidence: list[dict[str, object]],
+) -> list[dict[str, object]]:
     return [
         {
             "name": str(row.get("name")),
@@ -409,19 +413,20 @@ def collect_manifest_release_blockers(manifest_path: Path) -> list[str]:
             field = f"{manifest_name}.{group_name}.{name}"
             artifact_status = artifact.get("status")
             if artifact_status != "complete":
-                blockers.append(
-                    f"{field}: release requires status complete, got {artifact_status}"
-                )
+                blockers.append(f"{field}: release requires status complete, got {artifact_status}")
             globs = as_list(artifact.get("globs"))
             files = matching_files(globs)
             if not files:
                 blockers.append(f"{field}: release artifact files are missing")
             checksum_manifest = artifact.get("checksum_manifest")
-            if isinstance(checksum_manifest, str) and checksum_manifest:
-                if not (ROOT / checksum_manifest).is_file():
-                    blockers.append(
-                        f"{field}: release checksum_manifest is missing: {checksum_manifest}"
-                    )
+            if (
+                isinstance(checksum_manifest, str)
+                and checksum_manifest
+                and not (ROOT / checksum_manifest).is_file()
+            ):
+                blockers.append(
+                    f"{field}: release checksum_manifest is missing: {checksum_manifest}"
+                )
             required_metadata = set(as_list(artifact.get("required_metadata")))
             metadata = artifact.get("metadata")
             metadata_keys = set(metadata) if isinstance(metadata, dict) else set()
@@ -441,7 +446,9 @@ def collect_manifest_release_blockers(manifest_path: Path) -> list[str]:
 
 def collect_draft_cross_probe_blockers(path: Path) -> list[str]:
     if not path.is_file():
-        return [f"{rel(path)} is missing; no fail-closed package cross-probe action inventory exists"]
+        return [
+            f"{rel(path)} is missing; no fail-closed package cross-probe action inventory exists"
+        ]
     try:
         report = yaml.safe_load(path.read_text())
     except yaml.YAMLError as exc:

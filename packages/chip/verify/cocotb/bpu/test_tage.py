@@ -44,9 +44,7 @@ def tage_tag(table_id, pc, hist):
     hist_slice = hist & hist_mask
     folded_pc = _fold(pc, VADDR_W, TAGE_TAG_W)
     folded_h = _fold(hist_slice, hist_len, TAGE_TAG_W)
-    rotated_h = ((folded_h & ((1 << (TAGE_TAG_W - 1)) - 1)) << 1) | (
-        folded_h >> (TAGE_TAG_W - 1)
-    )
+    rotated_h = ((folded_h & ((1 << (TAGE_TAG_W - 1)) - 1)) << 1) | (folded_h >> (TAGE_TAG_W - 1))
     return folded_pc ^ rotated_h ^ table_id
 
 
@@ -55,9 +53,9 @@ def alt_on_na_index(pc, provider):
 
 
 def tage_entry(valid, tag, ctr, useful):
-    return (valid << (TAGE_TAG_W + TAGE_CTR_W + 2)) | (
-        tag << (TAGE_CTR_W + 2)
-    ) | (ctr << 2) | useful
+    return (
+        (valid << (TAGE_TAG_W + TAGE_CTR_W + 2)) | (tag << (TAGE_CTR_W + 2)) | (ctr << 2) | useful
+    )
 
 
 async def reset(dut):

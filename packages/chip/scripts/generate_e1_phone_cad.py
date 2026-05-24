@@ -57,12 +57,24 @@ CAD_CONNECTION_TERMINAL_ENDPOINTS: tuple[tuple[str, str, str], ...] = (
     ("nfc_loop_antenna_flex", "nfc_controller_package_marker", "nfc_loop_match_marker"),
     ("compute_som_sodimm_carrier", "main_pcb", "compute_som_daughterboard_keepout"),
     ("cellular_main_rf_feed", "cellular_lga_module_keepout", "cellular_top_antenna_keepout"),
-    ("cellular_diversity_rf_feed", "cellular_lga_module_keepout", "cellular_bottom_antenna_keepout"),
-    ("cellular_antenna_aperture_tuner", "cellular_lga_module_keepout", "cellular_bottom_antenna_keepout"),
+    (
+        "cellular_diversity_rf_feed",
+        "cellular_lga_module_keepout",
+        "cellular_bottom_antenna_keepout",
+    ),
+    (
+        "cellular_antenna_aperture_tuner",
+        "cellular_lga_module_keepout",
+        "cellular_bottom_antenna_keepout",
+    ),
     ("cellular_gnss_rf_feed", "cellular_lga_module_keepout", "gnss_lna_package_marker"),
     ("wifi_bt_rf0_feed", "wifi_bt_module_keepout", "wifi_bt_side_antenna_keepout"),
     ("wifi_bt_rf1_feed", "wifi_bt_module_keepout", "wifi_bt_side_antenna_keepout"),
-    ("split_interconnect_side_flex", "split_interconnect_top_connector", "split_interconnect_bottom_connector"),
+    (
+        "split_interconnect_side_flex",
+        "split_interconnect_top_connector",
+        "split_interconnect_bottom_connector",
+    ),
 )
 
 ORANGE = [1.0, 0.32, 0.02, 1.0]
@@ -1756,10 +1768,7 @@ def cad_connection_terminal_parts(parts: list[Part]) -> list[Part]:
                 endpoint_terminal_counts[endpoint_name] = slot + 1
                 direction = center[:2].astype(float)
                 norm = float(np.linalg.norm(direction))
-                if norm < 1e-6:
-                    direction = np.array([1.0, 0.0], dtype=float)
-                else:
-                    direction = direction / norm
+                direction = np.array([1.0, 0.0], dtype=float) if norm < 1e-06 else direction / norm
                 perpendicular = np.array([-direction[1], direction[0]], dtype=float)
                 center[:2] += direction * 0.85 + perpendicular * ((slot % 3) - 1) * 0.55
                 center[2] = CONNECTION_TERMINAL_MARKER_Z_MM
@@ -2462,9 +2471,9 @@ def write_solid_cad_handoff_artifacts(
         fallback_error = ""
         try:
             from OCP.BRepPrimAPI import BRepPrimAPI_MakeBox
+            from OCP.gp import gp_Pnt
             from OCP.IFSelect import IFSelect_RetDone
             from OCP.STEPControl import STEPControl_AsIs, STEPControl_Writer
-            from OCP.gp import gp_Pnt
 
             for part in parts:
                 if part.role != "connection terminal":
@@ -2786,6 +2795,7 @@ def write_solid_cad_handoff_artifacts(
                 ],
             },
         ]
+
     wall = dev["wall_thickness_mm"]
     rear_camera_glass_t = comp["rear_camera_glass"]["envelope_mm"][2]
     rear_camera_center_z = rear_camera_buried_center_z(params)
@@ -3993,17 +4003,22 @@ def write_solid_cad_handoff_artifacts(
                 endpoint_terminal_counts[endpoint_name] = slot + 1
                 direction = np.array([terminal_center[0], terminal_center[1]], dtype=float)
                 norm = float(np.linalg.norm(direction))
-                if norm < 1e-6:
-                    direction = np.array([1.0, 0.0], dtype=float)
-                else:
-                    direction = direction / norm
+                direction = np.array([1.0, 0.0], dtype=float) if norm < 1e-06 else direction / norm
                 perpendicular = np.array([-direction[1], direction[0]], dtype=float)
                 terminal_center[0] = round(
-                    float(terminal_center[0] + direction[0] * 0.85 + perpendicular[0] * ((slot % 3) - 1) * 0.55),
+                    float(
+                        terminal_center[0]
+                        + direction[0] * 0.85
+                        + perpendicular[0] * ((slot % 3) - 1) * 0.55
+                    ),
                     3,
                 )
                 terminal_center[1] = round(
-                    float(terminal_center[1] + direction[1] * 0.85 + perpendicular[1] * ((slot % 3) - 1) * 0.55),
+                    float(
+                        terminal_center[1]
+                        + direction[1] * 0.85
+                        + perpendicular[1] * ((slot % 3) - 1) * 0.55
+                    ),
                     3,
                 )
                 terminal_center[2] = CONNECTION_TERMINAL_MARKER_Z_MM
@@ -4192,12 +4207,14 @@ def write_solid_cad_handoff_artifacts(
     required_solid_presence = {name: name in solid_names for name in required_solid_names}
     all_required_solids_present = all(required_solid_presence.values())
     all_steps_nonempty = all(row["bytes"] > 1000 for row in part_rows)
-    routed_intake_path = ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
-    routed_intake = yaml.safe_load(routed_intake_path.read_text()) if routed_intake_path.is_file() else {}
+    routed_intake_path = (
+        ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
+    )
+    routed_intake = (
+        yaml.safe_load(routed_intake_path.read_text()) if routed_intake_path.is_file() else {}
+    )
     routed_nets = {
-        str(route.get("net"))
-        for route in routed_intake.get("routes", [])
-        if route.get("net")
+        str(route.get("net")) for route in routed_intake.get("routes", []) if route.get("net")
     }
     connection_contracts = [
         {
@@ -4333,7 +4350,17 @@ def write_solid_cad_handoff_artifacts(
             "from": "main_pcb",
             "to": "sim_tray_keepout",
             "connection_type": "sim_esim_signal_marker",
-            "nets": ["USIM_VCC", "USIM_CLK", "USIM_RST", "USIM_IO", "USIM_DET", "ESIM_VCC", "ESIM_CLK", "ESIM_RST", "ESIM_IO"],
+            "nets": [
+                "USIM_VCC",
+                "USIM_CLK",
+                "USIM_RST",
+                "USIM_IO",
+                "USIM_DET",
+                "ESIM_VCC",
+                "ESIM_CLK",
+                "ESIM_RST",
+                "ESIM_IO",
+            ],
         },
         {
             "id": "nfc_loop_antenna_flex",
@@ -4415,7 +4442,16 @@ def write_solid_cad_handoff_artifacts(
             "from": "split_interconnect_top_connector",
             "to": "split_interconnect_bottom_connector",
             "connection_type": "top_bottom_board_flex",
-            "nets": ["USB_DP", "USB_DN", "I2S_BCLK", "I2S_LRCLK", "I2S_DOUT", "I2S_DIN", "PDM_CLK", "PDM_DAT"],
+            "nets": [
+                "USB_DP",
+                "USB_DN",
+                "I2S_BCLK",
+                "I2S_LRCLK",
+                "I2S_DOUT",
+                "I2S_DIN",
+                "PDM_CLK",
+                "PDM_DAT",
+            ],
         },
     ]
     connection_type_profiles = {
@@ -4563,7 +4599,9 @@ def write_solid_cad_handoff_artifacts(
         terminal_markers_present = all(name in solid_names for name in terminal_part_names)
         terminal_step_bytes_total = sum(int(row.get("bytes", 0)) for row in terminal_rows)
         connection_step_part_names = [contract["cad_part"], *terminal_part_names]
-        connection_step_parts_present = all(name in solid_names for name in connection_step_part_names)
+        connection_step_parts_present = all(
+            name in solid_names for name in connection_step_part_names
+        )
 
         def bbox_center(row: dict[str, Any]) -> list[float] | None:
             bbox = row.get("bbox_mm")
@@ -4571,7 +4609,12 @@ def write_solid_cad_handoff_artifacts(
                 return None
             low = bbox.get("min")
             high = bbox.get("max")
-            if not isinstance(low, list) or not isinstance(high, list) or len(low) != 3 or len(high) != 3:
+            if (
+                not isinstance(low, list)
+                or not isinstance(high, list)
+                or len(low) != 3
+                or len(high) != 3
+            ):
                 return None
             return [round((float(low[idx]) + float(high[idx])) / 2.0, 3) for idx in range(3)]
 
@@ -4581,10 +4624,7 @@ def write_solid_cad_handoff_artifacts(
         if from_center and to_center:
             endpoint_center_distance_mm = round(
                 math.sqrt(
-                    sum(
-                        (float(from_center[idx]) - float(to_center[idx])) ** 2
-                        for idx in range(3)
-                    )
+                    sum((float(from_center[idx]) - float(to_center[idx])) ** 2 for idx in range(3))
                 ),
                 3,
             )
@@ -4595,9 +4635,10 @@ def write_solid_cad_handoff_artifacts(
             not contract["controlled_impedance_required"]
             or contract["impedance_requirement"] != "not_controlled_impedance"
         )
-        bend_radius_requirement_defined = contract["min_bend_radius_mm"] is not None or contract[
-            "physical_medium"
-        ] == "board_to_board_edge_connector"
+        bend_radius_requirement_defined = (
+            contract["min_bend_radius_mm"] is not None
+            or contract["physical_medium"] == "board_to_board_edge_connector"
+        )
         connection_rows.append(
             {
                 **contract,
@@ -4684,16 +4725,15 @@ def write_solid_cad_handoff_artifacts(
         "connection_solid_step_part_bytes_total": sum(
             int(row["solid_step_part_bytes_total"]) for row in connection_rows
         ),
-        "represented_net_count_total": sum(int(row["represented_net_count"]) for row in connection_rows),
+        "represented_net_count_total": sum(
+            int(row["represented_net_count"]) for row in connection_rows
+        ),
         "visual_route_span_total_mm": round(
             sum(float(row["visual_route_span_mm"]) for row in connection_rows),
             3,
         ),
         "endpoint_pair_distance_total_mm": round(
-            sum(
-                float(row["endpoint_center_distance_mm"] or 0.0)
-                for row in connection_rows
-            ),
+            sum(float(row["endpoint_center_distance_mm"] or 0.0) for row in connection_rows),
             3,
         ),
         "physical_medium_counts": dict(sorted(physical_medium_counts.items())),
@@ -5154,18 +5194,25 @@ def write_part_review_artifacts(
         y1 = title_h + (row + 1) * cell_h - 24
         scale = min((x1 - x0) / global_span_x, (y1 - y0) / global_span_z)
 
-        def project(bounds: tuple[np.ndarray, np.ndarray]) -> tuple[int, int, int, int]:
+        def project(
+            bounds: tuple[np.ndarray, np.ndarray],
+            _x0: int = x0,
+            _y1: int = y1,
+            _scale: float = scale,
+        ) -> tuple[int, int, int, int]:
             low, high = bounds
-            left = x0 + int((float(low[0] - global_low[0])) * scale)
-            right = x0 + int((float(high[0] - global_low[0])) * scale)
-            top = y1 - int((float(high[2] - global_low[2])) * scale)
-            bottom = y1 - int((float(low[2] - global_low[2])) * scale)
+            left = _x0 + int((float(low[0] - global_low[0])) * _scale)
+            right = _x0 + int((float(high[0] - global_low[0])) * _scale)
+            top = _y1 - int((float(high[2] - global_low[2])) * _scale)
+            bottom = _y1 - int((float(low[2] - global_low[2])) * _scale)
             return left, top, max(right, left + 2), max(bottom, top + 2)
 
         for ghost in exploded_parts:
             exploded_draw.rectangle(project(ghost.bounds), fill=(42, 45, 52), outline=(68, 72, 82))
         highlighted = exploded_by_name.get(part.name, part)
-        exploded_draw.rectangle(project(highlighted.bounds), fill=rgb(part.color), outline=(255, 255, 255), width=2)
+        exploded_draw.rectangle(
+            project(highlighted.bounds), fill=rgb(part.color), outline=(255, 255, 255), width=2
+        )
         label(
             exploded_draw,
             (col * cell_w + 14, title_h + (row + 1) * cell_h - 19),
@@ -6207,7 +6254,9 @@ def write_compactness_optimization_artifacts(
         "power_button_elastomer_gasket",
         "volume_button_elastomer_gasket",
     }
-    molded_body_parts = [part for part in physical_parts if part.name not in side_control_part_names]
+    molded_body_parts = [
+        part for part in physical_parts if part.name not in side_control_part_names
+    ]
     molded_low = np.vstack([part.bounds[0] for part in molded_body_parts]).min(axis=0)
     molded_high = np.vstack([part.bounds[1] for part in molded_body_parts]).max(axis=0)
     molded_body_span = [round(float(value), 3) for value in (molded_high - molded_low)]
@@ -6302,15 +6351,9 @@ def write_compactness_optimization_artifacts(
                 "physical_width_with_buttons_mm": physical_span[0],
                 "molded_body_width_excluding_side_controls_mm": molded_body_span[0],
                 "molded_envelope_width_mm": width,
-                "side_button_left_protrusion_mm": round(
-                    side_control_left_protrusion_mm, 3
-                ),
-                "side_button_right_protrusion_mm": round(
-                    side_control_right_protrusion_mm, 3
-                ),
-                "side_button_total_protrusion_mm": round(
-                    side_control_total_protrusion_mm, 3
-                ),
+                "side_button_left_protrusion_mm": round(side_control_left_protrusion_mm, 3),
+                "side_button_right_protrusion_mm": round(side_control_right_protrusion_mm, 3),
+                "side_button_total_protrusion_mm": round(side_control_total_protrusion_mm, 3),
                 "side_button_max_single_side_protrusion_mm": round(
                     side_control_max_single_side_protrusion_mm, 3
                 ),
@@ -12830,18 +12873,14 @@ def write_assembly_clearance_artifacts(params: dict[str, Any], parts: list[Part]
             "actual_mm": round(min(rf_keepout_gaps), 3),
             "required_mm": 1.0,
             "pass": min(rf_keepout_gaps) >= 1.0,
-            "shield_to_antenna_keepout_gaps_mm": [
-                round(value, 3) for value in rf_keepout_gaps
-            ],
+            "shield_to_antenna_keepout_gaps_mm": [round(value, 3) for value in rf_keepout_gaps],
         },
         {
             "id": "snap_hooks_to_internal_components",
             "actual_mm": round(min(snap_to_internal_gaps), 3),
             "required_mm": 0.5,
             "pass": min(snap_to_internal_gaps) >= 0.5,
-            "retention_to_internal_gaps_mm": [
-                round(value, 3) for value in snap_to_internal_gaps
-            ],
+            "retention_to_internal_gaps_mm": [round(value, 3) for value in snap_to_internal_gaps],
         },
     ]
     report = {
@@ -14344,8 +14383,12 @@ def write_board_step_readiness_artifacts(
         "release_credit",
         "notes",
     ]
-    routed_candidate_path = ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
-    routed_candidate_sha256 = file_sha256(routed_candidate_path) if routed_candidate_path.is_file() else ""
+    routed_candidate_path = (
+        ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
+    )
+    routed_candidate_sha256 = (
+        file_sha256(routed_candidate_path) if routed_candidate_path.is_file() else ""
+    )
     routed_output_manifest_path = (
         ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
     )
@@ -14376,7 +14419,9 @@ def write_board_step_readiness_artifacts(
     )
     if not isinstance(traceability_matrix_for_intake, dict):
         traceability_matrix_for_intake = {}
-    routed_step_visual_detail = routed_output_manifest_for_intake.get("routed_step_visual_detail", {})
+    routed_step_visual_detail = routed_output_manifest_for_intake.get(
+        "routed_step_visual_detail", {}
+    )
     if not isinstance(routed_step_visual_detail, dict):
         routed_step_visual_detail = {}
     cad_connection_coverage = routed_output_manifest_for_intake.get("cad_connection_coverage", {})
@@ -14402,9 +14447,13 @@ def write_board_step_readiness_artifacts(
         "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb",
         "routed_step_artifact": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
         "routed_step_sha256": routed_candidate_sha256,
-        "source_board_sha256": str(routed_output_manifest_for_intake.get("source_board_sha256") or ""),
+        "source_board_sha256": str(
+            routed_output_manifest_for_intake.get("source_board_sha256") or ""
+        ),
         "source_step_artifact": str(routed_output_manifest_for_intake.get("source_step") or ""),
-        "source_step_sha256": str(routed_output_manifest_for_intake.get("source_step_sha256") or ""),
+        "source_step_sha256": str(
+            routed_output_manifest_for_intake.get("source_step_sha256") or ""
+        ),
         "drc_report_artifact": "board/kicad/e1-phone/production/reports/drc.json",
         "drc_status": "not_run",
         "erc_report_artifact": "board/kicad/e1-phone/production/reports/erc.json",
@@ -14421,7 +14470,9 @@ def write_board_step_readiness_artifacts(
         "route_segment_visual_count": str(
             int(routed_step_visual_detail.get("route_segment_visual_count") or 0)
         ),
-        "cad_connection_count": str(int(cad_connection_coverage.get("passing_connection_count") or 0)),
+        "cad_connection_count": str(
+            int(cad_connection_coverage.get("passing_connection_count") or 0)
+        ),
         "kicad_cad_traceability_matrix": (
             "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
         ),
@@ -14460,8 +14511,7 @@ def write_board_step_readiness_artifacts(
             ]
         )
         auto_generated_local_candidate = bool(existing_rows) and all(
-            row.get("release_id", "").strip()
-            == routed_intake_template_row["release_id"]
+            row.get("release_id", "").strip() == routed_intake_template_row["release_id"]
             and row.get("evidence_class", "").strip()
             == routed_intake_template_row["evidence_class"]
             for row in existing_rows
@@ -14474,7 +14524,8 @@ def write_board_step_readiness_artifacts(
             )
         )
         should_write_routed_intake_template = (
-            existing_fields != routed_intake_fieldnames or not has_release_response_content
+            existing_fields != routed_intake_fieldnames
+            or not has_release_response_content
             or stale_auto_generated_candidate
         )
     if should_write_routed_intake_template:
@@ -14561,7 +14612,11 @@ def write_board_step_readiness_artifacts(
         routed_step_path_text = row.get("routed_step_artifact", "").strip()
         routed_step_path = ROOT / routed_step_path_text if routed_step_path_text else None
         routed_step_sha256_matches = False
-        if routed_step_path and routed_step_path.is_file() and row.get("routed_step_sha256", "").strip():
+        if (
+            routed_step_path
+            and routed_step_path.is_file()
+            and row.get("routed_step_sha256", "").strip()
+        ):
             routed_step_sha256_matches = (
                 file_sha256(routed_step_path) == row["routed_step_sha256"].strip()
             )
@@ -14595,8 +14650,7 @@ def write_board_step_readiness_artifacts(
         with suppress(ValueError):
             traceability_gap_count_value = int(row.get("traceability_gap_count", "").strip())
         local_traceability_complete = bool(
-            row.get("traceability_status", "").strip()
-            == "local_traceability_complete_not_release"
+            row.get("traceability_status", "").strip() == "local_traceability_complete_not_release"
             and traceability_gap_count_value == 0
         )
         local_release_credit = row.get("release_credit", "").strip().lower() in {
@@ -14621,9 +14675,7 @@ def write_board_step_readiness_artifacts(
                 "local_traceability_complete": local_traceability_complete,
                 "local_traceability_release_credit": local_release_credit,
                 "enclosure_clearance_passed": enclosure_clearance_passed,
-                "approval_signature_present": bool(
-                    row.get("approval_signature", "").strip()
-                ),
+                "approval_signature_present": bool(row.get("approval_signature", "").strip()),
                 "pass": (
                     evidence_class_allowed
                     and required_fields_present
@@ -14693,9 +14745,7 @@ def write_board_step_readiness_artifacts(
             else 0
         ),
         "routed_development_missing_route_domain_net_count": int(
-            routed_development_intake.get("coverage", {}).get(
-                "missing_route_domain_net_count", 0
-            )
+            routed_development_intake.get("coverage", {}).get("missing_route_domain_net_count", 0)
             if isinstance(routed_development_intake.get("coverage"), dict)
             else 0
         ),
@@ -14793,8 +14843,10 @@ def write_board_step_readiness_artifacts(
         ),
         "candidate_matches_routed_output_manifest": bool(
             production_routed_candidate_sha256
-            and routed_output_manifest.get("source_step_sha256") == production_routed_candidate_sha256
-            and candidate_size_bytes == int(routed_output_manifest.get("source_step_size_bytes") or 0)
+            and routed_output_manifest.get("source_step_sha256")
+            == production_routed_candidate_sha256
+            and candidate_size_bytes
+            == int(routed_output_manifest.get("source_step_size_bytes") or 0)
         ),
         "candidate_matches_development_source": bool(
             production_routed_candidate_sha256
@@ -14829,7 +14881,9 @@ def write_board_step_readiness_artifacts(
         {
             "path": routed_development_step_output,
             "kind": "routed_development_step",
-            "present": bool(routed_development_step_path and routed_development_step_path.is_file()),
+            "present": bool(
+                routed_development_step_path and routed_development_step_path.is_file()
+            ),
             "size_bytes": routed_development_step_path.stat().st_size
             if routed_development_step_path and routed_development_step_path.is_file()
             else 0,

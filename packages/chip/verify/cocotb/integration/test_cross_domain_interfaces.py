@@ -585,10 +585,7 @@ async def bpu_fetch_stream_drives_soc_l1i_demand_lanes(dut):
     saw_demand_lanes = False
     for _ in range(16):
         await RisingEdge(dut.clk)
-        if (
-            int(dut.l1i_demand_valid_o.value) == 1
-            and int(dut.l1i_demand_valid_lane1_o.value) == 1
-        ):
+        if int(dut.l1i_demand_valid_o.value) == 1 and int(dut.l1i_demand_valid_lane1_o.value) == 1:
             saw_demand_lanes = True
             break
     dut.fetch_pop_i.value = 0

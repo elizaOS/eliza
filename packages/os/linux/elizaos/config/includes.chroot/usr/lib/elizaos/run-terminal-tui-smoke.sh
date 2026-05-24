@@ -12,7 +12,8 @@ if [ -x /opt/elizaos/bin/elizaos ]; then
     exit 0
 fi
 
-if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "riscv64" ] \
+ARCH="$(dpkg --print-architecture 2>/dev/null || true)"
+if { [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "arm64" ]; } \
     && command -v node >/dev/null 2>&1 \
     && [ -f /opt/elizaos/app/agent-bundle.js ]; then
     node /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"

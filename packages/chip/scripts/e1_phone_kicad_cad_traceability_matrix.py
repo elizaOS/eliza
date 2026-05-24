@@ -11,12 +11,15 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "board/kicad/e1-phone/kicad-cad-traceability-matrix-2026-05-22.yaml"
-FOOTPRINT_MANIFEST = ROOT / "board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml"
+FOOTPRINT_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml"
+)
 PAD_AUDIT = ROOT / "board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml"
-BOARD_BINDING = ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
+BOARD_BINDING = (
+    ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
+)
 STEP_INTAKE = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
 PINOUT_MANIFEST = ROOT / "board/kicad/e1-phone/supplier-pinouts/pinout-evidence-manifest.yaml"
 CAD_CONNECTIONS = ROOT / "mechanical/e1-phone/review/cad-connection-coverage.json"
@@ -65,7 +68,9 @@ def public_source_urls(pinout: dict[str, Any]) -> list[str]:
     if isinstance(source_doc, str):
         urls = [source_doc]
     elif isinstance(source_doc, list):
-        urls = [str(item.get("url", "")) if isinstance(item, dict) else str(item) for item in source_doc]
+        urls = [
+            str(item.get("url", "")) if isinstance(item, dict) else str(item) for item in source_doc
+        ]
     else:
         urls = []
     for item in pinout.get("source_doc_alt", []):
@@ -93,7 +98,9 @@ def declared_pin_count(pinout: dict[str, Any]) -> int:
         return int(row_a_end.removeprefix("A")) + int(row_b_end.removeprefix("B"))
     pins = pinout.get("pins")
     if isinstance(pins, list):
-        concrete = [item for item in pins if isinstance(item, dict) and str(item.get("pin")) != "ALL"]
+        concrete = [
+            item for item in pins if isinstance(item, dict) and str(item.get("pin")) != "ALL"
+        ]
         if concrete:
             return len(concrete)
     return 0
@@ -127,24 +134,16 @@ def build_report() -> dict[str, Any]:
         if isinstance(record, dict) and record.get("footprint")
     }
     binding_records = [
-        record
-        for record in board_binding.get("bindings", [])
-        if isinstance(record, dict)
+        record for record in board_binding.get("bindings", []) if isinstance(record, dict)
     ]
     step_records = [
-        record
-        for record in step_intake.get("footprints", [])
-        if isinstance(record, dict)
+        record for record in step_intake.get("footprints", []) if isinstance(record, dict)
     ]
     captured_pinouts = [
-        record
-        for record in pinouts.get("captured_pinouts", [])
-        if isinstance(record, dict)
+        record for record in pinouts.get("captured_pinouts", []) if isinstance(record, dict)
     ]
     connection_records = [
-        record
-        for record in connections.get("connections", [])
-        if isinstance(record, dict)
+        record for record in connections.get("connections", []) if isinstance(record, dict)
     ]
 
     binding_by_type: dict[str, list[dict[str, Any]]] = {}
@@ -161,7 +160,11 @@ def build_report() -> dict[str, Any]:
         pad = pad_records.get(name, {})
         bindings = binding_by_type.get(name, [])
         steps = step_by_type.get(name, [])
-        footprint_file = str(pad.get("footprint_file") or library.get("model_binding", {}).get("footprint_file") or "")
+        footprint_file = str(
+            pad.get("footprint_file")
+            or library.get("model_binding", {}).get("footprint_file")
+            or ""
+        )
         row = {
             "footprint": name,
             "footprint_file": footprint_file,
@@ -300,7 +303,8 @@ def build_report() -> dict[str, Any]:
         row["pass"] = bool(
             row["present"]
             and row["schema"] == "eliza.e1_phone_supplier_pinout.v1"
-            and row["evidence_class"] in {
+            and row["evidence_class"]
+            in {
                 "public_supplier_datasheet",
                 "public_som_connector_pinout",
                 "public_hardware_design_pdf",
@@ -361,9 +365,7 @@ def build_report() -> dict[str, Any]:
             "captured_pinout_public_source_count": sum(
                 1 for row in captured_pinout_rows if row["public_source_present"]
             ),
-            "pinout_bound_footprint_count": int(
-                pad_audit.get("pinout_bound_footprint_count") or 0
-            ),
+            "pinout_bound_footprint_count": int(pad_audit.get("pinout_bound_footprint_count") or 0),
             "all_pinout_bound_footprints_have_terminal_contract": bool(
                 pad_audit.get("all_pinout_bound_footprints_have_terminal_contract")
             ),
@@ -373,7 +375,10 @@ def build_report() -> dict[str, Any]:
                 for record in connection_records
             ),
             "cad_connection_visual_route_span_total_mm": round(
-                sum(float(record.get("visual_route_span_mm") or 0.0) for record in connection_records),
+                sum(
+                    float(record.get("visual_route_span_mm") or 0.0)
+                    for record in connection_records
+                ),
                 3,
             ),
             "cad_connection_terminal_marker_count": sum(
@@ -391,9 +396,7 @@ def build_report() -> dict[str, Any]:
             "cad_connection_solid_step_part_bytes_total": int(
                 connections.get("connection_solid_step_part_bytes_total", 0) or 0
             ),
-            "cad_connection_physical_medium_counts": connections.get(
-                "physical_medium_counts", {}
-            ),
+            "cad_connection_physical_medium_counts": connections.get("physical_medium_counts", {}),
             "cad_connection_electrical_class_counts": connections.get(
                 "electrical_class_counts", {}
             ),

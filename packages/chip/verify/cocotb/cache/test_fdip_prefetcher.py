@@ -33,9 +33,11 @@ def pack_req(paddr_line: int, confidence: int, branch_target: int) -> int:
 
 def pack_bundle(lane0: int = 0, lane1: int = 0, valid: int = 0) -> int:
     """Pack ftq_prefetch_bundle_t as req[1], req[0], valid[1:0]."""
-    return ((lane1 & ((1 << REQ_W) - 1)) << (REQ_W + 2)) | (
-        (lane0 & ((1 << REQ_W) - 1)) << 2
-    ) | (valid & 0x3)
+    return (
+        ((lane1 & ((1 << REQ_W) - 1)) << (REQ_W + 2))
+        | ((lane0 & ((1 << REQ_W) - 1)) << 2)
+        | (valid & 0x3)
+    )
 
 
 async def reset_dut(dut) -> None:

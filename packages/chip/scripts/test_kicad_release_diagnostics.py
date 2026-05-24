@@ -10,7 +10,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -96,14 +95,10 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
             self.assertFalse(inventory["missing_release_credit"])
 
         self.assertTrue(
-            report["release_evidence_inventory"]["command transcript"][
-                "diagnostic_only_paths"
-            ]
+            report["release_evidence_inventory"]["command transcript"]["diagnostic_only_paths"]
         )
         self.assertTrue(
-            report["release_evidence_inventory"]["KiCad tool versions"][
-                "diagnostic_only_paths"
-            ]
+            report["release_evidence_inventory"]["KiCad tool versions"]["diagnostic_only_paths"]
         )
 
         self.assertFalse(report["blocker_groups"]["release_evidence"])
@@ -233,7 +228,9 @@ class KicadReleaseDiagnosticsTest(unittest.TestCase):
         self.assertIn("fab_drawing", payload["required_release_outputs"])
         transcript_text = transcript.read_text(encoding="utf-8")
         self.assertIn("target_status_promotion_contract:", transcript_text)
-        self.assertIn("source_manifest: board/kicad/e1-demo/artifact-manifest.yaml", transcript_text)
+        self.assertIn(
+            "source_manifest: board/kicad/e1-demo/artifact-manifest.yaml", transcript_text
+        )
         self.assertIn("expected_command_output:", transcript_text)
 
 

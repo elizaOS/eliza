@@ -114,7 +114,9 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
                 mock.patch.object(inv, "REPO", repo),
                 contextlib.redirect_stdout(stdout),
             ):
-                rc = inv.main(["--root", "packages/chip/sw", "--report", str(output), "--json-only"])
+                rc = inv.main(
+                    ["--root", "packages/chip/sw", "--report", str(output), "--json-only"]
+                )
             written = json.loads(output.read_text(encoding="utf-8"))
 
         self.assertEqual(rc, 0)

@@ -456,7 +456,9 @@ def main() -> int:
             "has_fiducials": fiducial_count > 0,
             "has_mounting_holes": mounting_hole_count > 0,
             "has_production_outputs": any(item["present"] for item in production_outputs.values()),
-            "release_output_count": sum(1 for item in production_outputs.values() if item["present"]),
+            "release_output_count": sum(
+                1 for item in production_outputs.values() if item["present"]
+            ),
             "has_blocked_candidate_outputs": any(
                 item["blocked_candidate_present"] for item in production_outputs.values()
             ),

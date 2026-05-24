@@ -224,9 +224,7 @@ def test_closest_run_diagnostics_name_missing_artifact_classes() -> None:
         manifest = {
             "required_artifacts": {
                 "gds": {"globs": ["pd/openlane/runs/*/final/gds/*.gds"]},
-                "antenna_report": {
-                    "globs": ["pd/openlane/runs/*/reports/signoff/*antenna*.rpt"]
-                },
+                "antenna_report": {"globs": ["pd/openlane/runs/*/reports/signoff/*antenna*.rpt"]},
                 "sta_report": {"globs": ["pd/openlane/runs/*/reports/signoff/*sta*.rpt"]},
             }
         }
@@ -240,9 +238,7 @@ def test_closest_run_diagnostics_name_missing_artifact_classes() -> None:
         assert diagnostic["release_credit"] is False
         closest = diagnostic["closest_run"]
         assert closest["run"] == "pd/openlane/runs/RUN_one"
-        classes = {
-            row["blocker_class"] for row in closest["missing_artifact_classes"]
-        }
+        classes = {row["blocker_class"] for row in closest["missing_artifact_classes"]}
         assert {"antenna", "timing"} <= classes
         assert "python3 scripts/check_pd_signoff.py" in closest["next_command"]
         first_gap = closest["missing_artifact_classes"][0]
@@ -288,7 +284,9 @@ def test_blocked_artifact_report_summarizes_closest_run_gap() -> None:
                 "blocked",
                 "artifacts",
                 Path("pd/signoff/manifest.yaml"),
-                ["no single PD run contains all required signoff artifacts; closest run missing run manifest"],
+                [
+                    "no single PD run contains all required signoff artifacts; closest run missing run manifest"
+                ],
                 diagnostics=diagnostics,
             )
 
@@ -296,9 +294,10 @@ def test_blocked_artifact_report_summarizes_closest_run_gap() -> None:
         assert payload["summary"]["blockers"] == 1
         assert payload["summary"]["closest_run_missing_artifact_count"] == 1
         assert payload["summary"]["blocked_release_gate_count"] == 1
-        assert payload["diagnostics"]["blocker_classes"]["blocked_release_gates"][0][
-            "gate"
-        ] == "pd_release"
+        assert (
+            payload["diagnostics"]["blocker_classes"]["blocked_release_gates"][0]["gate"]
+            == "pd_release"
+        )
         assert payload["release_unblock_plan"]["release_credit"] is False
         assert payload["release_unblock_plan"]["missing_artifact_count"] == 1
         assert payload["release_unblock_plan"]["blocked_release_gate_count"] == 1
@@ -310,10 +309,7 @@ def test_blocked_artifact_report_summarizes_closest_run_gap() -> None:
         assert generation["blocked_release_gate_count"] == 1
         assert generation["blocked_generation_count"] == 2
         assert generation["missing_artifacts"][0]["repo_generatable_now"] is False
-        assert (
-            generation["missing_artifacts"][0]["can_close_release_from_current_repo"]
-            is False
-        )
+        assert generation["missing_artifacts"][0]["can_close_release_from_current_repo"] is False
         assert "blocked_release_gates" in generation["missing_artifacts"][0]["blocked_by"]
 
 

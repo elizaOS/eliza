@@ -10,24 +10,19 @@ from typing import Any
 
 import yaml
 
-
 CHIP_ROOT = Path(__file__).resolve().parents[1]
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
 REPORT_DATE = "2026-05-22"
 
 DEFAULT_MATRIX = (
-    BOARD_ROOT
-    / "production/test/readiness/"
+    BOARD_ROOT / "production/test/readiness/"
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_DIAGNOSTIC = (
-    BOARD_ROOT
-    / "production/test/readiness/"
-    "e1-phone-first-article-missing-evidence-2026-05-22.yaml"
+    BOARD_ROOT / "production/test/readiness/e1-phone-first-article-missing-evidence-2026-05-22.yaml"
 )
 DEFAULT_REPORT = (
-    BOARD_ROOT
-    / "production/test/readiness/"
+    BOARD_ROOT / "production/test/readiness/"
     "e1-phone-first-article-executed-log-contract-2026-05-22.yaml"
 )
 
@@ -104,9 +99,7 @@ def scalar_missing(data: dict[str, Any], field: str) -> bool:
         return True
     if isinstance(value, str) and not value.strip():
         return True
-    if isinstance(value, (list, dict)) and not value:
-        return True
-    return False
+    return bool(isinstance(value, (list, dict)) and not value)
 
 
 def validate_measured_results(value: Any) -> list[str]:

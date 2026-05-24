@@ -8,15 +8,16 @@ Gerber, drill, BOM, placement, fab drawing, or DFM release evidence.
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
-import json
 from pathlib import Path
 
 import yaml
-
 from check_kicad_artifacts import (
     MANIFEST as KICAD_MANIFEST_REL,
+)
+from check_kicad_artifacts import (
     REQUIRED_RELEASE_EVIDENCE,
     command_for_label,
     load_manifest_commands,
@@ -24,16 +25,13 @@ from check_kicad_artifacts import (
     target_status_promotion_contract,
 )
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "board/kicad/e1-demo/artifact-manifest.yaml"
 OUT_DIR = ROOT / "board/reports/fab/e1-demo-2026-05-17"
 TRANSCRIPT = OUT_DIR / "e1-demo-kicad-command-transcript.txt"
 TOOL_VERSION = OUT_DIR / "e1-demo-kicad-tool-version.txt"
 DIAGNOSTICS = OUT_DIR / "e1-demo-kicad-blocked-diagnostics.json"
-LOCAL_TMP_KICAD10_APPIMAGE_CLI = Path(
-    "/tmp/eliza-kicad-10/extract/AppDir/bin/kicad-cli"
-)
+LOCAL_TMP_KICAD10_APPIMAGE_CLI = Path("/tmp/eliza-kicad-10/extract/AppDir/bin/kicad-cli")
 SOURCE_GLOBS = {
     "project": ["*.kicad_pro"],
     "schematic": ["*.kicad_sch"],
@@ -60,7 +58,12 @@ def kicad_version() -> tuple[bool, str, str | None, str | None]:
     if LOCAL_TMP_KICAD10_APPIMAGE_CLI.is_file():
         candidates.append(("local_tmp_appimage", LOCAL_TMP_KICAD10_APPIMAGE_CLI.as_posix()))
     if not candidates:
-        return False, "kicad-cli not found on PATH or local KiCad 10 AppImage extraction", None, None
+        return (
+            False,
+            "kicad-cli not found on PATH or local KiCad 10 AppImage extraction",
+            None,
+            None,
+        )
     source, tool = candidates[0]
     completed = subprocess.run(
         [tool, "version"],
@@ -83,12 +86,7 @@ def source_inventory() -> dict[str, dict[str, object]]:
     inventory: dict[str, dict[str, object]] = {}
     for label, patterns in SOURCE_GLOBS.items():
         found = sorted(
-            {
-                path
-                for pattern in patterns
-                for path in board_dir.glob(pattern)
-                if path.is_file()
-            }
+            {path for pattern in patterns for path in board_dir.glob(pattern) if path.is_file()}
         )
         inventory[label] = {
             "present": bool(found),
@@ -160,9 +158,7 @@ def promotion_contract_lines(contract: dict[str, object]) -> list[str]:
         paths = criterion.get("accepted_artifact_paths")
         if paths is not None:
             lines.append(
-                "      accepted_artifact_paths: ["
-                + ", ".join(str(item) for item in paths)
-                + "]"
+                "      accepted_artifact_paths: [" + ", ".join(str(item) for item in paths) + "]"
             )
         output = criterion.get("expected_command_output")
         if isinstance(output, dict):
@@ -188,7 +184,9 @@ def main() -> int:
         "\n".join(
             [
                 "schema: eliza.e1_demo_kicad_tool_availability.v1",
-                "status: blocked_tool_unavailable" if not available else "status: tool_available_not_release_evidence",
+                "status: blocked_tool_unavailable"
+                if not available
+                else "status: tool_available_not_release_evidence",
                 "release_credit: false",
                 "tool: kicad-cli",
                 f"availability: {'present' if available else 'missing'}",
@@ -204,7 +202,9 @@ def main() -> int:
 
     lines = [
         "schema: eliza.e1_demo_kicad_command_transcript.v1",
-        "status: blocked_not_executed" if not available else "status: commands_declared_not_release_evidence",
+        "status: blocked_not_executed"
+        if not available
+        else "status: commands_declared_not_release_evidence",
         "release_credit: false",
         "claim_boundary: command-family capture only; outputs still require successful KiCad CLI execution and review",
         f"tool_availability: {'present' if available else 'missing'}",
@@ -214,9 +214,7 @@ def main() -> int:
         f"source_manifest: {MANIFEST.relative_to(ROOT).as_posix()}",
         "release_gate_command: python3 scripts/check_kicad_artifacts.py --release",
         "manifest_release_gate_command: python3 scripts/check_manufacturing_artifacts.py --manifest board/kicad/e1-demo/artifact-manifest.yaml --release",
-        *promotion_contract_lines(
-            target_status_promotion_contract(release_evidence_inventory())
-        ),
+        *promotion_contract_lines(target_status_promotion_contract(release_evidence_inventory())),
         "commands:",
     ]
     for name, command in commands.items():
@@ -226,7 +224,9 @@ def main() -> int:
                 f"    command: {command}",
                 "    executed: false",
                 "    accepted_exit_code: 0",
-                "    result: blocked_tool_unavailable" if not available else "    result: not_run_by_diagnostic_generator",
+                "    result: blocked_tool_unavailable"
+                if not available
+                else "    result: not_run_by_diagnostic_generator",
                 "    release_credit: false",
             ]
         )
@@ -281,7 +281,9 @@ def main() -> int:
             "fab_drawing": "board/reports/fab/e1-demo-2026-05-17/pdf/e1-demo-fab-drawing.pdf",
         },
     }
-    DIAGNOSTICS.write_text(json.dumps(diagnostics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    DIAGNOSTICS.write_text(
+        json.dumps(diagnostics, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
 
     print("STATUS: BLOCKED e1-demo KiCad CLI diagnostic evidence generated release_credit=false")
     print(TRANSCRIPT.relative_to(ROOT).as_posix())

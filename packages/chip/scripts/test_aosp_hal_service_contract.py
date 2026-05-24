@@ -184,8 +184,7 @@ class AospHalServiceContractTests(unittest.TestCase):
             patches = self._patch_tree(Path(tmpdir))
             with PatchStack(patches):
                 gate.DEVICE_MK.write_text(
-                    "PRODUCT_PACKAGES += \\\n"
-                    "    vendor.eliza.e1_npu@1.0-service\n",
+                    "PRODUCT_PACKAGES += \\\n    vendor.eliza.e1_npu@1.0-service\n",
                     encoding="utf-8",
                 )
                 gate.INIT_RC.write_text(

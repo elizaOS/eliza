@@ -301,9 +301,7 @@ def aosp_build_only_evidence_inventory() -> dict[str, Any]:
         for name, path in AOSP_BUILD_ONLY_EVIDENCE_LOGS.items()
     }
     incomplete = [
-        name
-        for name, record in stages.items()
-        if record["status"] not in {"pass", "missing"}
+        name for name, record in stages.items() if record["status"] not in {"pass", "missing"}
     ]
     passed = [name for name, record in stages.items() if record["status"] == "pass"]
     missing = [name for name, record in stages.items() if record["status"] == "missing"]
@@ -399,9 +397,9 @@ def aosp_image_only_resume_attempt(path: Path) -> dict[str, Any]:
         if any(marker.lower() in line.lower() for marker in failure_markers)
     ][-20:]
     record["timedOut"] = any("status=timeout" in line for line in lines)
-    record["soongGraphGenerationIncomplete"] = record[
-        "reachedSoongGraphNinjaGeneration"
-    ] and any("soong bootstrap failed" in line for line in lines)
+    record["soongGraphGenerationIncomplete"] = record["reachedSoongGraphNinjaGeneration"] and any(
+        "soong bootstrap failed" in line for line in lines
+    )
     if record["result"] == 0:
         record["status"] = "pass"
     elif record["timedOut"]:
@@ -415,7 +413,9 @@ def aosp_image_only_resume_attempt(path: Path) -> dict[str, Any]:
     return record
 
 
-def aosp_image_only_resume_inventory(evidence_dir: Path = ROOT / "docs/evidence/android") -> dict[str, Any]:
+def aosp_image_only_resume_inventory(
+    evidence_dir: Path = ROOT / "docs/evidence/android",
+) -> dict[str, Any]:
     attempts = [
         aosp_image_only_resume_attempt(path)
         for path in sorted(evidence_dir.glob(AOSP_IMAGE_ONLY_RESUME_LOG_GLOB))
@@ -495,9 +495,7 @@ def add_if(
     blocker_dependency: str = "repo_artifact_generation",
 ) -> None:
     if condition:
-        findings.append(
-            Finding(code, "blocker", message, evidence, next_step, blocker_dependency)
-        )
+        findings.append(Finding(code, "blocker", message, evidence, next_step, blocker_dependency))
 
 
 def android_artifacts(umbrella: dict[str, Any]) -> list[dict[str, Any]]:
@@ -609,9 +607,7 @@ def unresolved_evidence_file_payloads(artifact: dict[str, Any]) -> list[str]:
 def missing_required_android_evidence_rows(artifact: dict[str, Any]) -> list[str]:
     artifact_id = str(artifact.get("id", artifact.get("filename", "<unknown>")))
     row_ids = {
-        str(row.get("id", ""))
-        for row in evidence_rows(artifact)
-        if isinstance(row.get("id"), str)
+        str(row.get("id", "")) for row in evidence_rows(artifact) if isinstance(row.get("id"), str)
     }
     missing: list[str] = []
     if not any(row_id.endswith("-artifact-integrity") for row_id in row_ids):
@@ -647,9 +643,7 @@ def invalid_artifact_integrity_payloads(artifact: dict[str, Any]) -> list[str]:
         payload_sha = payload.get("sha256")
         payload_size = payload.get("sizeBytes")
         if payload_artifact_id != artifact.get("id"):
-            invalid.append(
-                f"{artifact_id}:{row_id}:artifact_id={payload_artifact_id!r}"
-            )
+            invalid.append(f"{artifact_id}:{row_id}:artifact_id={payload_artifact_id!r}")
         if payload_filename != filename:
             invalid.append(f"{artifact_id}:{row_id}:filename={payload_filename!r}")
         if payload_sha != manifest_sha:
@@ -765,9 +759,7 @@ def staged_android_archive_integrity_inventory(
             record["presentMembers"] = present
             record["missingMembers"] = missing
             record["extraReleaseMembers"] = [
-                name
-                for name in names
-                if name.endswith(".img") and name not in required
+                name for name in names if name.endswith(".img") and name not in required
             ]
             if missing:
                 mismatches.append(f"{artifact_id}:missing_zip_members={missing}")
@@ -806,11 +798,7 @@ def invalid_partition_artifact_integrity_payloads(
 ) -> list[str]:
     invalid: list[str] = []
     validation = android_manifest.get("validation")
-    integrity = (
-        validation.get("artifactIntegrity")
-        if isinstance(validation, dict)
-        else None
-    )
+    integrity = validation.get("artifactIntegrity") if isinstance(validation, dict) else None
     if not isinstance(integrity, dict):
         return ["artifactIntegrity=<missing>"]
     evidence_ref = integrity.get("evidence") or integrity.get("path")
@@ -850,15 +838,9 @@ def invalid_partition_artifact_integrity_payloads(
             invalid.append(f"{filename}:sha256={row.get('sha256')!r}")
         if row.get("sizeBytes") != artifact.get("sizeBytes"):
             invalid.append(f"{filename}:sizeBytes={row.get('sizeBytes')!r}")
-        if (
-            "manifestSha256" in row
-            and row.get("manifestSha256") != artifact.get("sha256")
-        ):
+        if "manifestSha256" in row and row.get("manifestSha256") != artifact.get("sha256"):
             invalid.append(f"{filename}:manifestSha256={row.get('manifestSha256')!r}")
-        if (
-            "manifestSizeBytes" in row
-            and row.get("manifestSizeBytes") != artifact.get("sizeBytes")
-        ):
+        if "manifestSizeBytes" in row and row.get("manifestSizeBytes") != artifact.get("sizeBytes"):
             invalid.append(f"{filename}:manifestSizeBytes={row.get('manifestSizeBytes')!r}")
         if row.get("status") == "mismatch":
             invalid.append(f"{filename}:status=mismatch")
@@ -937,9 +919,15 @@ def _launcher_runtime_payload_gaps(
         gaps.append(f"sys_boot_completed={device.get('sys_boot_completed')!r}")
     if not isinstance(package_name, str) or not package_name:
         gaps.append("package_name=<missing>")
-    elif not any(package_name in str(app.get(key, "")) for key in ("pm_path", "home_resolve_activity", "foreground_activity")):
+    elif not any(
+        package_name in str(app.get(key, ""))
+        for key in ("pm_path", "home_resolve_activity", "foreground_activity")
+    ):
         gaps.append("launcher_package_not_observed_in_pm_home_or_foreground")
-    if not _boolish_true(app.get("system_apk_present")) and app.get("system_apk_present") != "present":
+    if (
+        not _boolish_true(app.get("system_apk_present"))
+        and app.get("system_apk_present") != "present"
+    ):
         gaps.append(f"system_apk_present={app.get('system_apk_present')!r}")
     service_pid = app.get("service_pid")
     if service_pid in {None, "", "0", 0}:
@@ -979,9 +967,7 @@ def invalid_launcher_agent_payloads(artifact: dict[str, Any]) -> list[str]:
             if row_id != expected_row_id:
                 invalid.append(f"{artifact_id}:{row_id}:expected_row_id={expected_row_id!r}")
             if row.get("path") != expected_path:
-                invalid.append(
-                    f"{artifact_id}:{row_id}:expected_path={expected_path!r}"
-                )
+                invalid.append(f"{artifact_id}:{row_id}:expected_path={expected_path!r}")
         path = row.get("path")
         if not isinstance(path, str) or not path:
             invalid.append(f"{artifact_id}:{row_id}:missing_path")
@@ -1050,9 +1036,7 @@ def launcher_agent_live_evidence_status(artifact: dict[str, Any]) -> tuple[str, 
         if row_id != expected_row_id:
             blockers.append(f"row_id={row_id!r} expected_row_id={expected_row_id!r}")
         if row.get("path") != expected_path:
-            blockers.append(
-                f"row_path={row.get('path')!r} expected_path={expected_path!r}"
-            )
+            blockers.append(f"row_path={row.get('path')!r} expected_path={expected_path!r}")
     path = row.get("path")
     if not isinstance(path, str) or not path:
         blockers.append("row_path=<missing>")
@@ -1282,30 +1266,30 @@ def android_release_artifact_inventory(
         "commands": {
             "buildPixelCaimanPartitions": [
                 "make -C packages/os/android bootanimation",
-                "cd \"$AOSP_ROOT\" && source build/envsetup.sh && lunch eliza_caiman_phone-trunk_staging-userdebug && m -j\"$(nproc)\" bootimage vendorbootimage superimage",
+                'cd "$AOSP_ROOT" && source build/envsetup.sh && lunch eliza_caiman_phone-trunk_staging-userdebug && m -j"$(nproc)" bootimage vendorbootimage superimage',
             ],
             "stagePixelCaimanPartitions": [
                 f"mkdir -p {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}",
-                f"cp \"$AOSP_ROOT/out/target/product/caiman/boot.img\" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/boot.img",
-                f"cp \"$AOSP_ROOT/out/target/product/caiman/vendor_boot.img\" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/vendor_boot.img",
-                f"cp \"$AOSP_ROOT/out/target/product/caiman/super.img\" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/super.img",
+                f'cp "$AOSP_ROOT/out/target/product/caiman/boot.img" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/boot.img',
+                f'cp "$AOSP_ROOT/out/target/product/caiman/vendor_boot.img" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/vendor_boot.img',
+                f'cp "$AOSP_ROOT/out/target/product/caiman/super.img" {repo_rel(RELEASE_ANDROID_PARTITIONS_DIR)}/super.img',
             ],
             "buildCuttlefishX8664Archive": [
                 "make -C packages/os/android bootanimation",
-                "node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root \"$AOSP_ROOT\" --skip-libllama",
+                'node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root "$AOSP_ROOT" --skip-libllama',
                 f"mkdir -p {repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}",
-                f"cd \"$AOSP_ROOT/out/target/product/vsoc_x86_64_only\" && zip -qry \"$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-cf_x86_64_phone.zip\" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img",
+                f'cd "$AOSP_ROOT/out/target/product/vsoc_x86_64_only" && zip -qry "$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-cf_x86_64_phone.zip" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img',
             ],
             "buildPixelArm64Archive": [
                 "make -C packages/os/android bootanimation",
-                "cd \"$AOSP_ROOT\" && source build/envsetup.sh && lunch eliza_caiman_phone-trunk_staging-userdebug && m -j\"$(nproc)\"",
+                'cd "$AOSP_ROOT" && source build/envsetup.sh && lunch eliza_caiman_phone-trunk_staging-userdebug && m -j"$(nproc)"',
                 f"mkdir -p {repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}",
-                f"cd \"$AOSP_ROOT/out/target/product/caiman\" && zip -qry \"$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-pixel-arm64.zip\" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img",
+                f'cd "$AOSP_ROOT/out/target/product/caiman" && zip -qry "$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-pixel-arm64.zip" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img',
             ],
             "buildChipRiscv64Archive": [
-                "packages/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace \"$AOSP_WORKSPACE\" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report \"$AOSP_WORKSPACE/eliza-build-report.json\"",
+                'packages/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace "$AOSP_WORKSPACE" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report "$AOSP_WORKSPACE/eliza-build-report.json"',
                 f"mkdir -p {repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}",
-                f"cd \"$AOSP_WORKSPACE/out/target/product/eliza_ai_soc\" && zip -qry \"$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip\" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img",
+                f'cd "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc" && zip -qry "$OLDPWD/{repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/elizaos-beta-2026.05.16-android-eliza_ai_soc-riscv64.zip" android-info.txt boot.img vendor_boot.img super.img system.img system_ext.img vendor.img product.img',
             ],
             "generateArchiveIntegrityEvidence": [
                 f"stat -c '%n %s' {repo_rel(RELEASE_ANDROID_ARCHIVES_DIR)}/*.zip",
@@ -1419,8 +1403,8 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
         "cuttlefishX8664": [
             "export AOSP_ROOT=/home/shaw/aosp",
             "make -C packages/os/android bootanimation",
-            "node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root \"$AOSP_ROOT\" --skip-libllama",
-            "AOSP_DIR=\"$AOSP_ROOT\" packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish",
+            'node packages/scripts/distro-android/build-aosp.mjs --brand-config packages/scripts/distro-android/brand.eliza.json --aosp-root "$AOSP_ROOT" --skip-libllama',
+            'AOSP_DIR="$AOSP_ROOT" packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish',
             (
                 "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
                 "--artifact-id android-cuttlefish-x86_64-zip "
@@ -1442,17 +1426,17 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             "export ADB_SERIAL=<pixel-adb-or-fastboot-serial>",
             (
                 "packages/os/android/installer/install-elizaos-android.sh "
-                f"--device \"$ADB_SERIAL\" --manifest {release_manifest} --execute"
+                f'--device "$ADB_SERIAL" --manifest {release_manifest} --execute'
             ),
             (
                 "packages/os/android/installer/scripts/validate-post-flash.sh "
-                f"--device \"$ADB_SERIAL\" --manifest {release_manifest} "
+                f'--device "$ADB_SERIAL" --manifest {release_manifest} '
                 "--launcher-package ai.milady.milady "
                 "--launcher-activity ai.milady.milady/.MainActivity --execute"
             ),
             (
                 "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
-                "--adb-serial \"$ADB_SERIAL\" "
+                '--adb-serial "$ADB_SERIAL" '
                 "--artifact-id android-pixel-arm64-zip "
                 "--target-label pixel-arm64 "
                 "--expected-cpu-abi arm64-v8a "
@@ -1472,12 +1456,12 @@ def live_launcher_agent_capture_commands() -> dict[str, Any]:
             "export AOSP_DIR=/home/shaw/aosp",
             "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
             (
-                "AOSP_DIR=\"$AOSP_DIR\" AOSP_PRODUCT=eliza_openagent_ai_soc_phone-trunk_staging-userdebug "
+                'AOSP_DIR="$AOSP_DIR" AOSP_PRODUCT=eliza_openagent_ai_soc_phone-trunk_staging-userdebug '
                 "packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish"
             ),
             (
                 "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py "
-                "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" "
+                '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" '
                 "--artifact-id android-chip-riscv64-zip "
                 "--target-label chip-riscv64 "
                 "--expected-cpu-abi riscv64 "
@@ -1588,23 +1572,23 @@ def prioritized_live_evidence_capture_plan(
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
                 (
                     "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" rear_camera"
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" rear_camera'
                 ),
                 (
                     "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" front_camera"
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" front_camera'
                 ),
                 (
                     "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" wifi"
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" wifi'
                 ),
                 (
                     "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" bluetooth"
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" bluetooth'
                 ),
                 (
                     "python3 packages/chip/scripts/android/capture_simulated_peripheral_evidence.py "
-                    "--adb-connect \"$CHIP_ANDROID_ADB_HOSTPORT\" cellular_5g_lte"
+                    '--adb-connect "$CHIP_ANDROID_ADB_HOSTPORT" cellular_5g_lte'
                 ),
             ],
             "validation_commands": [
@@ -1630,8 +1614,8 @@ def prioritized_live_evidence_capture_plan(
             "capture_commands": [
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
                 (
-                    "adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\" && "
-                    "adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop ro.boot.verifiedbootstate "
+                    'adb connect "$CHIP_ANDROID_ADB_HOSTPORT" && '
+                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell getprop ro.boot.verifiedbootstate '
                     f"| tee {docs_evidence_dir}/security/verified_boot_acceptance.log"
                 ),
                 (
@@ -1639,7 +1623,7 @@ def prioritized_live_evidence_capture_plan(
                     "'<lab command that flashes a tampered boot image and returns RESULT=0 only when rejected>'"
                 ),
                 (
-                    "sh -c \"$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND\" "
+                    'sh -c "$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND" '
                     f"| tee {docs_evidence_dir}/security/tampered_boot_rejection.log"
                 ),
                 (
@@ -1647,7 +1631,7 @@ def prioritized_live_evidence_capture_plan(
                     "'<lab command that flashes an older rollback-index image and returns RESULT=0 only when rejected>'"
                 ),
                 (
-                    "sh -c \"$ELIZA_ROLLBACK_REJECTION_COMMAND\" "
+                    'sh -c "$ELIZA_ROLLBACK_REJECTION_COMMAND" '
                     f"| tee {docs_evidence_dir}/security/rollback_rejection.log"
                 ),
                 (
@@ -1655,7 +1639,7 @@ def prioritized_live_evidence_capture_plan(
                     "'<lab command that verifies production debug lock and key provisioning>'"
                 ),
                 (
-                    "sh -c \"$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND\" "
+                    'sh -c "$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND" '
                     f"| tee {docs_evidence_dir}/security/debug_lock_key_provisioning.log"
                 ),
             ],
@@ -1681,8 +1665,8 @@ def prioritized_live_evidence_capture_plan(
             "capture_commands": [
                 "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port>",
                 (
-                    "adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\" && "
-                    "adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell ps -A "
+                    'adb connect "$CHIP_ANDROID_ADB_HOSTPORT" && '
+                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell ps -A '
                     f"| tee {docs_evidence_dir}/eliza_ai_soc_cvd_hal_processes.txt"
                 ),
                 (
@@ -1690,11 +1674,11 @@ def prioritized_live_evidence_capture_plan(
                     "'<calibrated power harness command that writes the sustained NPU JSON trace>'"
                 ),
                 (
-                    "sh -c \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND "
-                    f"--output {docs_evidence_dir}/power/sustained_npu_power_thermal_trace.json\""
+                    'sh -c "$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND '
+                    f'--output {docs_evidence_dir}/power/sustained_npu_power_thermal_trace.json"'
                 ),
                 (
-                    "adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell cmd neuralnetworks list "
+                    'adb -s "$CHIP_ANDROID_ADB_HOSTPORT" shell cmd neuralnetworks list '
                     f"| tee {docs_evidence_dir}/eliza_ai_soc_e1_npu_hal_liveness.log"
                 ),
             ],

@@ -155,9 +155,7 @@ def required_fields_by_category(contract: dict[str, Any]) -> dict[str, set[str]]
         required = content_contract.get("required_content_fields")
         if not isinstance(category, str):
             continue
-        if not isinstance(required, list) or not all(
-            isinstance(field, str) for field in required
-        ):
+        if not isinstance(required, list) or not all(isinstance(field, str) for field in required):
             raise ValueError(f"content contract {category} missing required_content_fields")
         fields[category] = set(required)
     return fields
@@ -280,9 +278,7 @@ def content_findings(
     local_validation_state = (
         "locally_validated" if not local_failures else "local_blocked_fail_closed"
     )
-    release_validation_state = (
-        "blocked_fail_closed" if failures else "validated"
-    )
+    release_validation_state = "blocked_fail_closed" if failures else "validated"
 
     return {
         "evidence_id": row["evidence_id"],
@@ -346,9 +342,7 @@ def build_report(contract_path: Path, report_path: Path) -> dict[str, Any]:
         if "artifact_missing" in row["failures"] or "missing_path" in row["failures"]
     )
     present_blocked_by_category = Counter(str(row["category"]) for row in present_blocked)
-    failure_counts = Counter(
-        failure for row in validation_rows for failure in row["failures"]
-    )
+    failure_counts = Counter(failure for row in validation_rows for failure in row["failures"])
 
     return {
         "schema": "eliza.e1_phone_release_evidence_validation_dry_run.v1",

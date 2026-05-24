@@ -28,7 +28,10 @@ TARGET_RESULTS = {
     "tage": ("test_tage.py", "tage_tb_test_tage.xml"),
     "ittage": ("test_ittage.py", "ittage_tb_test_ittage.xml"),
     "sc": ("test_sc.py", "sc_tb_test_sc.xml"),
-    "l1i_frontend": ("test_bpu_l1i_frontend.py", "e1_bpu_l1i_frontend_tb_test_bpu_l1i_frontend.xml"),
+    "l1i_frontend": (
+        "test_bpu_l1i_frontend.py",
+        "e1_bpu_l1i_frontend_tb_test_bpu_l1i_frontend.xml",
+    ),
     "bpu_top": ("test_bpu_top.py", "bpu_top_tb_test_bpu_top.xml"),
 }
 
@@ -44,7 +47,14 @@ def rel(path: Path) -> str:
 
 def count_result(path: Path) -> dict[str, object]:
     if not path.exists():
-        return {"status": "missing", "path": rel(path), "tests": 0, "failures": 0, "errors": 0, "skipped": 0}
+        return {
+            "status": "missing",
+            "path": rel(path),
+            "tests": 0,
+            "failures": 0,
+            "errors": 0,
+            "skipped": 0,
+        }
 
     try:
         root = ElementTree.parse(path).getroot()

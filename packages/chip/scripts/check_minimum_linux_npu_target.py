@@ -538,7 +538,7 @@ def generated_ap_linux_boot_gate(
             "diagnostic only"
         ),
         "unblock_command": (
-            "eval \"$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)\" "
+            'eval "$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)" '
             "&& scripts/capture_chipyard_linux_evidence.sh linux-boot"
         ),
     }
@@ -551,15 +551,11 @@ def generated_ap_linux_boot_gate(
             gate["companion_report_instruction_trace"] = {
                 "path": instruction_trace.get("path"),
                 "fresh_for_log": instruction_trace.get("fresh_for_log"),
-                "bootrom_to_payload_handoff": instruction_trace.get(
-                    "bootrom_to_payload_handoff"
-                ),
+                "bootrom_to_payload_handoff": instruction_trace.get("bootrom_to_payload_handoff"),
                 "first_payload_pc": instruction_trace.get("first_payload_pc"),
                 "last_pc": instruction_trace.get("last_pc"),
                 "last_symbol": instruction_trace.get("last_symbol"),
-                "retired_instruction_count": instruction_trace.get(
-                    "retired_instruction_count"
-                ),
+                "retired_instruction_count": instruction_trace.get("retired_instruction_count"),
             }
         active_attempt = boot_report.get("active_smoke_attempt")
         if isinstance(active_attempt, dict) and active_attempt.get("exists"):
@@ -594,9 +590,7 @@ def build_report() -> dict[str, Any]:
     mvp = run_mvp_smoke()
     benchmark_gate = benchmark_command_gate(target_smoke)
     emulator_stack_gate = qemu_npu_emulator_stack_gate()
-    generated_boot_gate = generated_ap_linux_boot_gate(
-        accepted_boot_text, boot_text, boot_report
-    )
+    generated_boot_gate = generated_ap_linux_boot_gate(accepted_boot_text, boot_text, boot_report)
     gates = [
         linux_check,
         cpu_ap_transcript_bundle,
@@ -681,12 +675,8 @@ def build_report() -> dict[str, Any]:
             "attempt_log": rel(BOOT_LOG),
             "companion_report": rel(BOOT_REPORT),
             "companion_report_status": generated_boot_gate.get("companion_report_status", ""),
-            "companion_report_progress": generated_boot_gate.get(
-                "companion_report_progress", {}
-            ),
-            "companion_report_blockers": generated_boot_gate.get(
-                "companion_report_blockers", []
-            ),
+            "companion_report_progress": generated_boot_gate.get("companion_report_progress", {}),
+            "companion_report_blockers": generated_boot_gate.get("companion_report_blockers", []),
             "observed_markers": generated_boot_gate.get("observed_markers", {}),
             "missing_userland_npu_markers": generated_boot_gate.get(
                 "missing_userland_npu_markers", []

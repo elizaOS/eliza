@@ -3,13 +3,13 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import sys
 import tempfile
 import unittest
-import zipfile
 import warnings
-import hashlib
-import json
+import zipfile
 from argparse import Namespace
 from pathlib import Path
 
@@ -112,10 +112,7 @@ class AndroidSystemApkPayloadTests(unittest.TestCase):
             "; ".join(report["evidence"]["riscv64_runtime_provenance_requirements"]),
         )
         self.assertTrue(
-            any(
-                "ELIZA_BUN_RISCV64_FILE" in finding["next_step"]
-                for finding in report["findings"]
-            )
+            any("ELIZA_BUN_RISCV64_FILE" in finding["next_step"] for finding in report["findings"])
         )
 
     def test_complete_static_payload_passes(self) -> None:

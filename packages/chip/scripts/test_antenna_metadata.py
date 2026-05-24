@@ -16,7 +16,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-import check_antenna_metadata as gate
+import check_antenna_metadata as gate  # noqa: E402
 
 
 class AntennaMetadataBlockedStateTests(unittest.TestCase):
@@ -24,10 +24,11 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             report = root / "antenna_metadata.json"
-            with patch.object(gate, "RUNS", root / "runs"), patch.object(
-                gate, "REPORT", report
-            ), patch.object(gate, "PADFRAME", root / "missing-padframe.yaml"), patch(
-                "sys.argv", ["check_antenna_metadata.py", "--release"]
+            with (
+                patch.object(gate, "RUNS", root / "runs"),
+                patch.object(gate, "REPORT", report),
+                patch.object(gate, "PADFRAME", root / "missing-padframe.yaml"),
+                patch("sys.argv", ["check_antenna_metadata.py", "--release"]),
             ):
                 stdout = StringIO()
                 with redirect_stdout(stdout):
@@ -55,8 +56,11 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
             source = root / "report.yaml"
             source.write_text("not: a list\n", encoding="utf-8")
             report = root / "antenna_metadata.json"
-            with patch.object(gate, "REPORT", report), patch(
-                "sys.argv", ["check_antenna_metadata.py", "--release", "--report", str(source)]
+            with (
+                patch.object(gate, "REPORT", report),
+                patch(
+                    "sys.argv", ["check_antenna_metadata.py", "--release", "--report", str(source)]
+                ),
             ):
                 stdout = StringIO()
                 with redirect_stdout(stdout):
@@ -93,9 +97,13 @@ class AntennaMetadataBlockedStateTests(unittest.TestCase):
                 encoding="utf-8",
             )
             report = root / "antenna_metadata.json"
-            with patch.object(gate, "REPORT", report), patch.object(
-                gate, "PADFRAME", padframe
-            ), patch("sys.argv", ["check_antenna_metadata.py", "--release", "--report", str(source)]):
+            with (
+                patch.object(gate, "REPORT", report),
+                patch.object(gate, "PADFRAME", padframe),
+                patch(
+                    "sys.argv", ["check_antenna_metadata.py", "--release", "--report", str(source)]
+                ),
+            ):
                 stdout = StringIO()
                 with redirect_stdout(stdout):
                     exit_code = gate.main()

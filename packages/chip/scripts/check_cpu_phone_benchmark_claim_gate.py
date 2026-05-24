@@ -395,9 +395,7 @@ def target_metadata_validation_errors(
         artifact_root=ROOT,
     )
     if contract_errors:
-        errors.append(
-            f"{scope} target metadata contract failed: " + "; ".join(contract_errors)
-        )
+        errors.append(f"{scope} target metadata contract failed: " + "; ".join(contract_errors))
     calibration = metadata.get("calibration")
     assets = calibration.get("assets") if isinstance(calibration, dict) else None
     if isinstance(assets, dict):
@@ -480,28 +478,45 @@ def spec_run_manifest_validation_errors(data: dict[str, Any], *, scope: str) -> 
         else:
             if not config_resolved.is_file():
                 errors.append(f"{scope} SPEC run manifest config is missing: {config_path}")
-            elif has_sha256(config_sha) and sha256_file(config_resolved).lower() != str(config_sha).lower():
+            elif (
+                has_sha256(config_sha)
+                and sha256_file(config_resolved).lower() != str(config_sha).lower()
+            ):
                 errors.append(f"{scope} SPEC run manifest config file does not match config_sha256")
     if not has_sha256(manifest.get("result_bundle_sha256")) or is_placeholder_sha256(
         manifest.get("result_bundle_sha256")
     ):
-        errors.append(f"{scope} SPEC run manifest must include non-placeholder result_bundle_sha256")
+        errors.append(
+            f"{scope} SPEC run manifest must include non-placeholder result_bundle_sha256"
+        )
     raw_sha = raw_output_sha256(data)
     bundle_sha = manifest.get("result_bundle_sha256")
-    if has_sha256(raw_sha) and has_sha256(bundle_sha) and str(bundle_sha).lower() != str(raw_sha).lower():
-        errors.append(f"{scope} SPEC run manifest result_bundle_sha256 must match artifacts.raw_output_sha256")
+    if (
+        has_sha256(raw_sha)
+        and has_sha256(bundle_sha)
+        and str(bundle_sha).lower() != str(raw_sha).lower()
+    ):
+        errors.append(
+            f"{scope} SPEC run manifest result_bundle_sha256 must match artifacts.raw_output_sha256"
+        )
     bundle_path = resolve_artifact_path(manifest.get("result_bundle"))
     if bundle_path is not None:
         try:
             bundle_resolved = bundle_path.resolve()
             bundle_resolved.relative_to(ROOT.resolve())
         except ValueError:
-            errors.append(f"{scope} SPEC run manifest result_bundle must be archived under the chip tree")
+            errors.append(
+                f"{scope} SPEC run manifest result_bundle must be archived under the chip tree"
+            )
         else:
             if not bundle_resolved.is_file():
                 errors.append(f"{scope} SPEC run manifest result_bundle is missing: {bundle_path}")
-            elif has_sha256(raw_sha) and sha256_file(bundle_resolved).lower() != str(raw_sha).lower():
-                errors.append(f"{scope} SPEC run manifest result_bundle file does not match raw_output_sha256")
+            elif (
+                has_sha256(raw_sha) and sha256_file(bundle_resolved).lower() != str(raw_sha).lower()
+            ):
+                errors.append(
+                    f"{scope} SPEC run manifest result_bundle file does not match raw_output_sha256"
+                )
     return errors
 
 
@@ -578,10 +593,7 @@ def required_metric_errors(name: str, metrics: Any) -> list[str]:
     required_metrics = REQUIRED_SIDE_METRICS.get(name, set())
     missing_metrics = sorted(metric for metric in required_metrics if metric not in metrics)
     if missing_metrics:
-        errors.append(
-            "passed side result missing required metrics: "
-            + ", ".join(missing_metrics)
-        )
+        errors.append("passed side result missing required metrics: " + ", ".join(missing_metrics))
     for metric in sorted(required_metrics):
         if metric not in metrics:
             continue
@@ -657,10 +669,7 @@ def validate_passed_side_result(name: str, data: dict[str, Any]) -> list[str]:
 
     provenance = data.get("provenance")
     if provenance not in REQUIRED_SIDE_PROVENANCE:
-        reasons.append(
-            "provenance must be one of "
-            + ", ".join(sorted(REQUIRED_SIDE_PROVENANCE))
-        )
+        reasons.append("provenance must be one of " + ", ".join(sorted(REQUIRED_SIDE_PROVENANCE)))
 
     reasons.extend(required_metric_errors(name, data.get("metrics")))
 
@@ -684,7 +693,9 @@ def validate_passed_side_result(name: str, data: dict[str, Any]) -> list[str]:
         or not has_sha256(artifacts.get("spec_license_sha256"))
         or is_placeholder_sha256(artifacts.get("spec_license_sha256"))
     ):
-        reasons.append("SPEC side result must include non-placeholder artifacts.spec_license_sha256")
+        reasons.append(
+            "SPEC side result must include non-placeholder artifacts.spec_license_sha256"
+        )
     if name == "spec_cpu2017":
         reasons.extend(spec_run_manifest_validation_errors(data, scope="spec_cpu2017 side result"))
     return reasons
@@ -880,9 +891,7 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
             }
         )
 
-    results = {
-        item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)
-    }
+    results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
     results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
     for bench in sorted(REQUIRED_REPORT_BENCHES):
         result = results.get(bench)
@@ -1079,9 +1088,7 @@ def report_result_entry(
     if finding.get("status") != "pass":
         entry["reason"] = finding.get("reason")
         if finding.get("blocked_requirements_summary"):
-            entry["blocked_requirements_summary"] = finding[
-                "blocked_requirements_summary"
-            ]
+            entry["blocked_requirements_summary"] = finding["blocked_requirements_summary"]
     return entry
 
 
@@ -1119,9 +1126,7 @@ def build_l5_l6_report(
         }
 
     findings = {
-        item.get("name"): item
-        for item in gate_report.get("findings", [])
-        if isinstance(item, dict)
+        item.get("name"): item for item in gate_report.get("findings", []) if isinstance(item, dict)
     }
     entries: list[dict[str, Any]] = []
     for name, path in SIDE_RESULT_SPECS.items():
@@ -1192,7 +1197,13 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
             claim_satisfied = bool(entry["claim_satisfied"])
         if not claim_satisfied:
             blocked_count += 1
-        if entry.get("gate_status") not in {"pass", "blocked", "missing", "missing_or_invalid", "invalid"}:
+        if entry.get("gate_status") not in {
+            "pass",
+            "blocked",
+            "missing",
+            "missing_or_invalid",
+            "invalid",
+        }:
             errors.append(f"{name}: gate_status is invalid")
         elif claim_satisfied and entry.get("gate_status") != "pass":
             errors.append(f"{name}: satisfied entry must have gate_status pass")
@@ -1210,22 +1221,32 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
             if not has_sha256(entry.get("raw_output_sha256")) or is_placeholder_sha256(
                 entry.get("raw_output_sha256")
             ):
-                errors.append(f"{name}: satisfied entry must include non-placeholder raw_output_sha256")
+                errors.append(
+                    f"{name}: satisfied entry must include non-placeholder raw_output_sha256"
+                )
             if not has_sha256(entry.get("target_metadata_sha256")) or is_placeholder_sha256(
                 entry.get("target_metadata_sha256")
             ):
-                errors.append(f"{name}: satisfied entry must include non-placeholder target_metadata_sha256")
+                errors.append(
+                    f"{name}: satisfied entry must include non-placeholder target_metadata_sha256"
+                )
             if entry.get("target_runner") not in REQUIRED_TARGET_RUNNERS:
-                errors.append(f"{name}: satisfied entry must include prototype/silicon/phone target_runner")
+                errors.append(
+                    f"{name}: satisfied entry must include prototype/silicon/phone target_runner"
+                )
             if name == "spec_cpu2017":
                 if not has_sha256(entry.get("spec_license_sha256")) or is_placeholder_sha256(
                     entry.get("spec_license_sha256")
                 ):
-                    errors.append(f"{name}: satisfied SPEC entry must include non-placeholder spec_license_sha256")
+                    errors.append(
+                        f"{name}: satisfied SPEC entry must include non-placeholder spec_license_sha256"
+                    )
                 if not has_sha256(entry.get("spec_run_manifest_sha256")) or is_placeholder_sha256(
                     entry.get("spec_run_manifest_sha256")
                 ):
-                    errors.append(f"{name}: satisfied SPEC entry must include non-placeholder spec_run_manifest_sha256")
+                    errors.append(
+                        f"{name}: satisfied SPEC entry must include non-placeholder spec_run_manifest_sha256"
+                    )
             metrics = entry.get("metrics")
             metric_errors: list[str]
             if name in REQUIRED_SIDE_METRICS:
@@ -1243,7 +1264,9 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
             if not isinstance(unblock, dict):
                 errors.append(f"{name}: blocked entry must include unblock metadata")
             elif not unblock.get("next_command") and not unblock.get("required_evidence"):
-                errors.append(f"{name}: blocked entry unblock metadata must name a command or evidence")
+                errors.append(
+                    f"{name}: blocked entry unblock metadata must name a command or evidence"
+                )
             if entry.get("source") == "side_result":
                 expected = REQUIRED_BLOCKED_SIDE_REQUIREMENTS.get(str(name), set())
                 raw_names = entry.get("blocked_requirement_names")
@@ -1277,9 +1300,9 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
                             f"{name}: blocked side-result entry must include at least "
                             f"{len(expected)} blocked requirements"
                         )
-                    if not isinstance(entry.get("blocked_requirements_summary"), str) or not entry.get(
-                        "blocked_requirements_summary"
-                    ):
+                    if not isinstance(
+                        entry.get("blocked_requirements_summary"), str
+                    ) or not entry.get("blocked_requirements_summary"):
                         errors.append(
                             f"{name}: blocked side-result entry must include blocked_requirements_summary"
                         )
@@ -1368,7 +1391,9 @@ def main() -> int:
         report["claim_allowed"] = False
         report["phone_claim_allowed"] = False
         report["release_claim_allowed"] = False
-        report["blocked_count"] = len([item for item in report["findings"] if item.get("status") != "pass"])
+        report["blocked_count"] = len(
+            [item for item in report["findings"] if item.get("status") != "pass"]
+        )
         l5_l6_report = build_l5_l6_report(report_path, report)
     if not args.no_write:
         OUT.parent.mkdir(parents=True, exist_ok=True)

@@ -48,8 +48,7 @@ MARKERS = [
     ("userland", "ELIZA-USERLAND-OK"),
 ]
 
-TRANSCRIPT = EVIDENCE_DIR / os.environ.get(
-    "E1_BOOT_TRANSCRIPT", "linux_boot_cva6.transcript")
+TRANSCRIPT = EVIDENCE_DIR / os.environ.get("E1_BOOT_TRANSCRIPT", "linux_boot_cva6.transcript")
 REQUIRE = os.environ.get("E1_BOOT_REQUIRE", "S-MODE-OK")
 MAX_CYCLES = int(os.environ.get("E1_BOOT_MAX_CYCLES", "20000000"))
 # After the required marker (or the furthest goal) appears, drain a window of
@@ -122,7 +121,8 @@ async def test_boot_markers(dut):
         if cycles % HEARTBEAT == 0:
             dut._log.info(
                 f"heartbeat: cycle {cycles}/{MAX_CYCLES}, UART bytes "
-                f"{len(chars)}, furthest = {_furthest(chars.decode('latin-1'))}")
+                f"{len(chars)}, furthest = {_furthest(chars.decode('latin-1'))}"
+            )
         if int(dut.uart_tx_valid_o.value) == 1:
             byte = int(dut.uart_tx_byte_o.value) & 0xFF
             chars.append(byte)
@@ -143,7 +143,8 @@ async def test_boot_markers(dut):
             if cycles_since_byte >= IDLE_LIMIT:
                 dut._log.warning(
                     f"console idle for {IDLE_LIMIT} cycles at cycle {cycles}; "
-                    "boot wedged — recording furthest marker reached.")
+                    "boot wedged — recording furthest marker reached."
+                )
                 break
 
     transcript = chars.decode("latin-1")
@@ -156,13 +157,14 @@ async def test_boot_markers(dut):
     dut._log.info(
         f"E1 boot run: {len(chars)} UART bytes, {cycles} cycles, "
         f"DRAM AR={dram_ar} R={dram_r}, UART writes={uart_aw}; "
-        f"furthest marker = {furthest}; require={REQUIRE!r} seen={require_seen}")
+        f"furthest marker = {furthest}; require={REQUIRE!r} seen={require_seen}"
+    )
     dut._log.info("UART transcript:\n" + transcript)
 
-    assert dram_ar >= 1 and dram_r >= 1, (
-        f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r}).")
+    assert dram_ar >= 1 and dram_r >= 1, f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
     assert len(chars) > 0, "No UART output — OpenSBI never reached its console."
     assert require_seen, (
         f"Required marker {REQUIRE!r} not observed.  Furthest reached: "
-        f"{furthest}.  Transcript:\n{transcript!r}")
+        f"{furthest}.  Transcript:\n{transcript!r}"
+    )
     dut._log.info(f"PROVEN: reached required marker {REQUIRE!r}.")

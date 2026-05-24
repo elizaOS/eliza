@@ -53,13 +53,9 @@ async def issue_grant_and_collect(dut, *, lane1: bool, base: int) -> list[int]:
     got = []
     for _ in range(20):
         await Timer(1, units="ns")
-        valid = int(
-            dut.refill_valid_lane1_o.value if lane1 else dut.refill_valid_o.value
-        )
+        valid = int(dut.refill_valid_lane1_o.value if lane1 else dut.refill_valid_o.value)
         if valid:
-            got.append(
-                int(dut.refill_data_lane1_o.value if lane1 else dut.refill_data_o.value)
-            )
+            got.append(int(dut.refill_data_lane1_o.value if lane1 else dut.refill_data_o.value))
             if int(dut.refill_last_lane1_o.value if lane1 else dut.refill_last_o.value):
                 await RisingEdge(dut.clk)
                 break

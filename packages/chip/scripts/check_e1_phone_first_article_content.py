@@ -5,15 +5,12 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 import check_e1_phone_factory_output_content as factory_content
-
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = (
@@ -73,9 +70,7 @@ PLACEHOLDER_MARKERS = {
 }
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_first_article_content.py"
 FACTORY_VALIDATION_COMMAND = "python3 scripts/check_e1_phone_factory_output_content.py"
-MATRIX_REGENERATION_COMMAND = (
-    "python3 scripts/e1_phone_first_article_bench_acceptance_matrix.py"
-)
+MATRIX_REGENERATION_COMMAND = "python3 scripts/e1_phone_first_article_bench_acceptance_matrix.py"
 ROUTED_HARDWARE_PREREQUISITES = [
     "approved routed KiCad PCB matching the serialized board",
     "released production BOM/AVL and supplier lot records",
@@ -160,9 +155,7 @@ def row_owner(row: dict[str, Any]) -> str:
     refs = row.get("source_refs")
     if isinstance(refs, list):
         owners = [
-            str(ref.get("owner"))
-            for ref in refs
-            if isinstance(ref, dict) and ref.get("owner")
+            str(ref.get("owner")) for ref in refs if isinstance(ref, dict) and ref.get("owner")
         ]
         if owners:
             return ",".join(dict.fromkeys(owners))
@@ -175,7 +168,9 @@ def unblock_action(path_text: str, row: dict[str, Any], failures: list[str]) -> 
     if template:
         action = "Execute the first-article test on serialized routed hardware; templates cannot unlock release."
     elif missing:
-        action = "Capture the required first-article artifact at this exact path, then rerun validation."
+        action = (
+            "Capture the required first-article artifact at this exact path, then rerun validation."
+        )
     else:
         action = "Replace the unvalidated candidate with executed first-article measurements, fixture calibration, traceability, operator, limits, and approval, then rerun validation."
     return {
@@ -185,9 +180,7 @@ def unblock_action(path_text: str, row: dict[str, Any], failures: list[str]) -> 
         "template_only": row.get("template_only") is True,
         "missing_artifact": missing,
         "failures": failures,
-        "repo_generation_plan": first_article_repo_generation_plan(
-            path_text, row, failures
-        ),
+        "repo_generation_plan": first_article_repo_generation_plan(path_text, row, failures),
         "action": action,
         "validation_command": VALIDATION_COMMAND,
     }
@@ -336,7 +329,10 @@ def blocker_category(path_text: str, row: dict[str, Any], failures: list[str]) -
         for failure in failures
     ):
         return "directory_manifest_approval_incomplete"
-    if any(failure.startswith("external_") or failure.startswith("missing_external_") for failure in failures):
+    if any(
+        failure.startswith("external_") or failure.startswith("missing_external_")
+        for failure in failures
+    ):
         return "signed_external_metadata_incomplete"
     if suffix == ".csv" or any(failure.startswith("csv_") for failure in failures):
         return "execution_log_schema_or_measurement_gaps"
@@ -373,8 +369,7 @@ def factory_output_bridge_index() -> dict[str, Any]:
                 "factory_blocker_category": data.get("category"),
                 "missing_factory_output": data.get("missing_factory_output") is True,
                 "missing_approval_metadata": data.get("missing_approval_metadata") is True,
-                "candidate_present_but_blocked": data.get("candidate_present_but_blocked")
-                is True,
+                "candidate_present_but_blocked": data.get("candidate_present_but_blocked") is True,
                 "failures": data.get("failures") or [],
                 "release_credit": False,
                 "validation_command": FACTORY_VALIDATION_COMMAND,
@@ -412,9 +407,7 @@ def first_article_bridge_causes(
 ) -> list[str]:
     causes: list[str] = []
     factory_category = (
-        factory_dependency.get("factory_blocker_category")
-        if factory_dependency
-        else None
+        factory_dependency.get("factory_blocker_category") if factory_dependency else None
     )
     if factory_category == "true_missing_factory_outputs":
         causes.append("factory_packet_missing")
@@ -496,10 +489,7 @@ def factory_first_article_bridge(
             ),
             "cause_counts": dict(sorted(cause_counts.items())),
         },
-        "factory_output_blocker_counts": factory_index.get(
-            "factory_output_blocker_counts"
-        )
-        or {},
+        "factory_output_blocker_counts": factory_index.get("factory_output_blocker_counts") or {},
         "by_first_article_path": dict(sorted(by_first_article_path.items())),
         "by_factory_path": dict(sorted(by_factory_path.items())),
         "next_validation_commands": [FACTORY_VALIDATION_COMMAND, VALIDATION_COMMAND],
@@ -589,9 +579,7 @@ def first_article_execution_packet_inventory(
                 "artifact_present": repo_path(path_text).exists(),
                 "blocker_category": blocker_category(path_text, row, failures),
                 "factory_first_article_bridge": bridge_row,
-                "factory_dependency_present": bool(
-                    bridge_row.get("factory_dependency_present")
-                ),
+                "factory_dependency_present": bool(bridge_row.get("factory_dependency_present")),
                 "bridge_causes": bridge_row.get("causes") or [],
                 "execution_required": row_requires_execution(failures),
                 "approval_required": row_requires_approval(failures),
@@ -620,9 +608,7 @@ def repo_generation_summary(
     blocked: list[tuple[str, dict[str, Any], list[str]]],
 ) -> dict[str, Any]:
     missing_paths = [
-        path_text
-        for path_text, _row, failures in blocked
-        if "artifact_missing" in failures
+        path_text for path_text, _row, failures in blocked if "artifact_missing" in failures
     ]
     template_paths = [
         path_text
@@ -1069,8 +1055,7 @@ def main() -> int:
                     else []
                 ),
                 "blocked_evidence_inventory": [
-                    unblock_action(path_text, row, failures)
-                    for path_text, row, failures in blocked
+                    unblock_action(path_text, row, failures) for path_text, row, failures in blocked
                 ],
                 "first_article_execution_packet_inventory": (
                     first_article_execution_packet_inventory(blocked, bridge)

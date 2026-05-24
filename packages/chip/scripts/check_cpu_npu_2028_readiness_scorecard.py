@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import json
 import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -272,8 +272,7 @@ def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
         errors,
     )
     require(
-        source_artifacts.get("phone_cpu_l5_l6_command")
-        == "make cpu-phone-l5-l6-benchmark-report",
+        source_artifacts.get("phone_cpu_l5_l6_command") == "make cpu-phone-l5-l6-benchmark-report",
         "scorecard must list phone CPU L5/L6 report command",
         errors,
     )
@@ -284,9 +283,7 @@ def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
         listed = []
     missing_listed = sorted(REQUIRED_PHONE_CPU_L5_L6_ENTRIES - set(listed))
     if missing_listed:
-        errors.append(
-            "required_phone_cpu_l5_l6_entries missing: " + ", ".join(missing_listed)
-        )
+        errors.append("required_phone_cpu_l5_l6_entries missing: " + ", ".join(missing_listed))
 
     if not PHONE_CPU_GATE.exists() or not PHONE_CPU_L5_L6_REPORT.exists():
         run_required_check([sys.executable, str(PHONE_CPU_GATE_CHECK)], errors)
@@ -304,7 +301,9 @@ def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
         return
 
     try:
-        spec = importlib.util.spec_from_file_location("check_cpu_phone_benchmark_claim_gate", PHONE_CPU_GATE_CHECK)
+        spec = importlib.util.spec_from_file_location(
+            "check_cpu_phone_benchmark_claim_gate", PHONE_CPU_GATE_CHECK
+        )
         if spec is None or spec.loader is None:
             raise RuntimeError(f"unable to import {PHONE_CPU_GATE_CHECK}")
         phone_gate = importlib.util.module_from_spec(spec)
@@ -314,14 +313,20 @@ def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
         expected_l5_l6 = phone_gate.build_l5_l6_report(phone_gate.DEFAULT_REPORT, expected_gate)
         schema_errors = phone_gate.validate_l5_l6_report(expected_l5_l6)
         if schema_errors:
-            errors.extend("expected phone CPU L5/L6 report invalid: " + error for error in schema_errors)
+            errors.extend(
+                "expected phone CPU L5/L6 report invalid: " + error for error in schema_errors
+            )
         current_schema_errors = phone_gate.validate_l5_l6_report(report)
         if current_schema_errors:
             errors.extend("phone CPU L5/L6 report " + error for error in current_schema_errors)
         if gate != expected_gate:
-            errors.append("phone CPU benchmark gate report is stale; run make cpu-phone-l5-l6-benchmark-report")
+            errors.append(
+                "phone CPU benchmark gate report is stale; run make cpu-phone-l5-l6-benchmark-report"
+            )
         if report != expected_l5_l6:
-            errors.append("phone CPU L5/L6 report is stale; run make cpu-phone-l5-l6-benchmark-report")
+            errors.append(
+                "phone CPU L5/L6 report is stale; run make cpu-phone-l5-l6-benchmark-report"
+            )
     except Exception as exc:  # noqa: BLE001 - scorecard should report import/build failures as gate errors.
         errors.append(f"unable to rebuild expected phone CPU L5/L6 reports: {exc}")
 

@@ -228,9 +228,7 @@ def build_report(
             "required_output_path_count": len(required_outputs),
             "present_required_output_path_count": len(present),
             "missing_required_output_path_count": len(missing),
-            "candidate_present_blocked_required_output_path_count": len(
-                candidate_present_blocked
-            ),
+            "candidate_present_blocked_required_output_path_count": len(candidate_present_blocked),
             "truly_missing_required_output_path_count": len(truly_missing),
             "candidate_manifest_cad_connection_assembly_manifest_part_count": (
                 cad_connection_coverage.get("assembly_manifest_part_count")

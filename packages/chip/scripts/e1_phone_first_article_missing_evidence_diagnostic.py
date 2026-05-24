@@ -9,19 +9,15 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BOARD = ROOT / "board/kicad/e1-phone"
 REPORT_DATE = "2026-05-22"
 DEFAULT_MATRIX = (
-    BOARD
-    / "production/test/readiness/"
+    BOARD / "production/test/readiness/"
     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
 )
 DEFAULT_REPORT = (
-    BOARD
-    / "production/test/readiness/"
-    f"e1-phone-first-article-missing-evidence-{REPORT_DATE}.yaml"
+    BOARD / f"production/test/readiness/e1-phone-first-article-missing-evidence-{REPORT_DATE}.yaml"
 )
 
 
@@ -170,7 +166,9 @@ def split_rows(matrix: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
         elif state != "accepted_release_evidence":
             other_blocked.append(evidence_entry(row))
 
-    key = lambda item: str(item.get("path", ""))
+    def key(item):
+        return str(item.get("path", ""))
+
     return {
         "missing_required_non_template": sorted(missing_required, key=key),
         "template_only": sorted(template_only, key=key),

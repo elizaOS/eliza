@@ -19,12 +19,15 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 DATE = "2026-05-22"
-SOURCE_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
+SOURCE_BOARD = (
+    ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
+)
 SOURCE_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
-OUT_MANIFEST = ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+OUT_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+)
 STEP_INTAKE = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
 ROUTED_INTAKE = ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
 CAD_CONNECTION_COVERAGE = ROOT / "mechanical/e1-phone/review/cad-connection-coverage.json"
@@ -95,9 +98,7 @@ def routed_visual_detail() -> dict[str, Any]:
 def cad_connection_summary() -> dict[str, Any]:
     coverage = load_json_if_present(CAD_CONNECTION_COVERAGE)
     assembly_manifest = load_json_list_if_present(ASSEMBLY_MANIFEST)
-    assembly_names = {
-        str(item.get("name", "")) for item in assembly_manifest if item.get("name")
-    }
+    assembly_names = {str(item.get("name", "")) for item in assembly_manifest if item.get("name")}
     assembly_terminal_marker_count = sum(
         1 for item in assembly_manifest if item.get("role") == "connection terminal"
     )
@@ -135,9 +136,7 @@ def cad_connection_summary() -> dict[str, Any]:
                 "solid_step_part_names": item.get("solid_step_part_names", []),
                 "solid_step_parts_present": bool(item.get("solid_step_parts_present", False)),
                 "solid_step_part_count": int(item.get("solid_step_part_count", 0) or 0),
-                "solid_step_part_bytes_total": int(
-                    item.get("solid_step_part_bytes_total", 0) or 0
-                ),
+                "solid_step_part_bytes_total": int(item.get("solid_step_part_bytes_total", 0) or 0),
                 "net_count": len(item.get("nets", [])),
                 "nets": item.get("nets", []),
                 "represented_net_count": int(
@@ -160,13 +159,13 @@ def cad_connection_summary() -> dict[str, Any]:
             }
         )
     solid_step_part_names = {
-        str(name)
-        for item in connection_records
-        for name in item.get("solid_step_part_names", [])
+        str(name) for item in connection_records for name in item.get("solid_step_part_names", [])
     }
     missing_assembly_solid_step_part_names = sorted(solid_step_part_names - assembly_names)
     return {
-        "coverage_report": chip_rel(CAD_CONNECTION_COVERAGE) if CAD_CONNECTION_COVERAGE.is_file() else "",
+        "coverage_report": chip_rel(CAD_CONNECTION_COVERAGE)
+        if CAD_CONNECTION_COVERAGE.is_file()
+        else "",
         "assembly_manifest": chip_rel(ASSEMBLY_MANIFEST) if ASSEMBLY_MANIFEST.is_file() else "",
         "assembly_manifest_part_count": len(assembly_manifest),
         "assembly_manifest_connection_terminal_marker_count": assembly_terminal_marker_count,
@@ -197,12 +196,8 @@ def cad_connection_summary() -> dict[str, Any]:
         "connection_solid_step_part_bytes_total": int(
             coverage.get("connection_solid_step_part_bytes_total", 0) or 0
         ),
-        "represented_net_count_total": int(
-            coverage.get("represented_net_count_total", 0) or 0
-        ),
-        "visual_route_span_total_mm": float(
-            coverage.get("visual_route_span_total_mm", 0) or 0
-        ),
+        "represented_net_count_total": int(coverage.get("represented_net_count_total", 0) or 0),
+        "visual_route_span_total_mm": float(coverage.get("visual_route_span_total_mm", 0) or 0),
         "endpoint_pair_distance_total_mm": float(
             coverage.get("endpoint_pair_distance_total_mm", 0) or 0
         ),
@@ -250,9 +245,7 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
         "captured_pinout_public_source_count": int(
             summary.get("captured_pinout_public_source_count", 0) or 0
         ),
-        "pinout_bound_footprint_count": int(
-            summary.get("pinout_bound_footprint_count", 0) or 0
-        ),
+        "pinout_bound_footprint_count": int(summary.get("pinout_bound_footprint_count", 0) or 0),
         "all_pinout_bound_footprints_have_terminal_contract": bool(
             summary.get("all_pinout_bound_footprints_have_terminal_contract", False)
         ),
@@ -288,10 +281,7 @@ def kicad_cad_traceability_summary() -> dict[str, Any]:
             summary.get("cad_connection_controlled_impedance_count", 0) or 0
         ),
         "cad_connection_controlled_impedance_requirement_defined_count": int(
-            summary.get(
-                "cad_connection_controlled_impedance_requirement_defined_count", 0
-            )
-            or 0
+            summary.get("cad_connection_controlled_impedance_requirement_defined_count", 0) or 0
         ),
         "cad_connection_bend_radius_requirement_defined_count": int(
             summary.get("cad_connection_bend_radius_requirement_defined_count", 0) or 0
@@ -375,7 +365,11 @@ def write_dir_manifest(path: Path, artifact_id: str, source_requirement_id: str)
     manifest["candidate_children"] = [child.name]
     manifest["release_children_complete"] = False
     write_yaml(path / "release-manifest.yaml", manifest)
-    return {"path": chip_rel(path), "kind": "directory", "metadata": chip_rel(path / "release-manifest.yaml")}
+    return {
+        "path": chip_rel(path),
+        "kind": "directory",
+        "metadata": chip_rel(path / "release-manifest.yaml"),
+    }
 
 
 def write_json_report(path: Path, artifact_id: str, source_requirement_id: str) -> dict[str, Any]:
@@ -473,9 +467,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
         ]
         pad_record = pad_records.get(str(footprint.get("footprint", "")), {})
         terminal_contract = [
-            str(pin)
-            for pin in pad_record.get("local_terminal_contract", [])
-            if pin is not None
+            str(pin) for pin in pad_record.get("local_terminal_contract", []) if pin is not None
         ]
         terminal_contract_matches_pad_visuals = all(pin in pad_names for pin in terminal_contract)
         models.append(
@@ -494,9 +486,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "electrical_pad_count": int(pad_record.get("electrical_pad_count", 0) or 0),
                 "mechanical_pad_count": int(pad_record.get("mechanical_pad_count", 0) or 0),
                 "mechanical_pads": [
-                    str(pin)
-                    for pin in pad_record.get("mechanical_pads", [])
-                    if pin is not None
+                    str(pin) for pin in pad_record.get("mechanical_pads", []) if pin is not None
                 ],
                 "npth_mechanical_feature_count": int(
                     pad_record.get("npth_mechanical_feature_count", 0) or 0
@@ -515,9 +505,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                     "npth_mechanical_feature_contract_source", ""
                 ),
                 "npth_mechanical_feature_contract_matches_footprint": bool(
-                    pad_record.get(
-                        "npth_mechanical_feature_contract_matches_footprint", True
-                    )
+                    pad_record.get("npth_mechanical_feature_contract_matches_footprint", True)
                 ),
                 "non_signal_pad_contract": [
                     str(pin)
@@ -557,8 +545,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
     models_with_terminal_contract_or_no_pads = [
         model
         for model in models
-        if model["terminal_contract_count"] > 0
-        or int(model["electrical_pad_count"] or 0) == 0
+        if model["terminal_contract_count"] > 0 or int(model["electrical_pad_count"] or 0) == 0
     ]
     layer_counts: dict[str, int] = {}
     coverage_counts: dict[str, int] = {}
@@ -612,9 +599,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                 "layer_counts": dict(sorted(layer_counts.items())),
                 "coverage_counts": dict(sorted(coverage_counts.items())),
                 "pinout_status_counts": dict(sorted(pinout_status_counts.items())),
-                "visual_package_class_counts": dict(
-                    sorted(visual_package_class_counts.items())
-                ),
+                "visual_package_class_counts": dict(sorted(visual_package_class_counts.items())),
                 "total_electrical_pad_count": sum(
                     int(model.get("electrical_pad_count") or 0) for model in models
                 ),
@@ -656,8 +641,7 @@ def write_component_model_manifest(path: Path) -> dict[str, Any]:
                     model["terminal_contract_count"] > 0 for model in pinout_bound_models
                 ),
                 "all_pinout_bound_model_contracts_match_pad_visuals": all(
-                    model["terminal_contract_matches_pad_visuals"]
-                    for model in pinout_bound_models
+                    model["terminal_contract_matches_pad_visuals"] for model in pinout_bound_models
                 ),
                 "all_support_pattern_models_have_explicit_provenance": all(
                     bool(model["land_pattern_basis"])
@@ -711,10 +695,14 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
         shutil.rmtree(path)
     path.mkdir(parents=True, exist_ok=True)
 
-    source_routed_step = ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
+    source_routed_step = (
+        ROOT / "board/kicad/e1-phone/production/step/routed-board-with-components.step"
+    )
     source_routed_step_rel = chip_rel(source_routed_step)
     source_routed_step_sha256 = sha256(source_routed_step) if source_routed_step.is_file() else ""
-    source_routed_step_bytes = source_routed_step.stat().st_size if source_routed_step.is_file() else 0
+    source_routed_step_bytes = (
+        source_routed_step.stat().st_size if source_routed_step.is_file() else 0
+    )
     model_records = []
     for model in models:
         if not isinstance(model, dict):
@@ -749,9 +737,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "mechanical_pads": model.get("mechanical_pads", []),
             "npth_mechanical_feature_count": model.get("npth_mechanical_feature_count", 0),
             "npth_mechanical_features": model.get("npth_mechanical_features", []),
-            "npth_mechanical_feature_contract": model.get(
-                "npth_mechanical_feature_contract", []
-            ),
+            "npth_mechanical_feature_contract": model.get("npth_mechanical_feature_contract", []),
             "npth_mechanical_feature_contract_source": model.get(
                 "npth_mechanical_feature_contract_source", ""
             ),
@@ -759,9 +745,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "npth_mechanical_feature_contract_matches_footprint", False
             ),
             "non_signal_pad_contract": model.get("non_signal_pad_contract", []),
-            "non_signal_pad_contract_source": model.get(
-                "non_signal_pad_contract_source", ""
-            ),
+            "non_signal_pad_contract_source": model.get("non_signal_pad_contract_source", ""),
             "non_signal_pad_contract_matches_pad_visuals": model.get(
                 "non_signal_pad_contract_matches_pad_visuals", False
             ),
@@ -788,7 +772,9 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "release or enclosure clearance."
             ),
         }
-        record_path.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        record_path.write_text(
+            json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         record_sha256 = sha256(record_path)
         model_records.append(
             {
@@ -803,15 +789,11 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
                 "support_pattern_has_explicit_provenance": bool(
                     model.get("support_pattern_has_explicit_provenance", False)
                 ),
-                "terminal_contract_count": int(
-                    model.get("terminal_contract_count", 0) or 0
-                ),
+                "terminal_contract_count": int(model.get("terminal_contract_count", 0) or 0),
                 "terminal_contract_matches_pad_visuals": bool(
                     model.get("terminal_contract_matches_pad_visuals", False)
                 ),
-                "non_signal_pad_contract_count": len(
-                    model.get("non_signal_pad_contract", [])
-                ),
+                "non_signal_pad_contract_count": len(model.get("non_signal_pad_contract", [])),
                 "non_signal_pad_contract_matches_pad_visuals": bool(
                     model.get("non_signal_pad_contract_matches_pad_visuals", False)
                 ),
@@ -854,8 +836,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "terminal_contract_model_record_count": sum(
                 1
                 for model in models
-                if isinstance(model, dict)
-                and int(model.get("terminal_contract_count", 0) or 0) > 0
+                if isinstance(model, dict) and int(model.get("terminal_contract_count", 0) or 0) > 0
             ),
             "terminal_contract_total_count": sum(
                 int(model.get("terminal_contract_count", 0) or 0)
@@ -875,8 +856,7 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "models_with_npth_mechanical_feature_contract_count": sum(
                 1
                 for model in models
-                if isinstance(model, dict)
-                and model.get("npth_mechanical_feature_contract")
+                if isinstance(model, dict) and model.get("npth_mechanical_feature_contract")
             ),
             "all_pinout_bound_records_have_terminal_contract": all(
                 int(model.get("terminal_contract_count", 0) or 0) > 0
@@ -893,20 +873,17 @@ def write_component_model_directory(path: Path, component_manifest_path: Path) -
             "all_terminal_contracts_match_pad_visuals": all(
                 model.get("terminal_contract_matches_pad_visuals") is True
                 for model in models
-                if isinstance(model, dict)
-                and int(model.get("terminal_contract_count", 0) or 0) > 0
+                if isinstance(model, dict) and int(model.get("terminal_contract_count", 0) or 0) > 0
             ),
             "all_non_signal_pad_contracts_match_pad_visuals": all(
                 model.get("non_signal_pad_contract_matches_pad_visuals") is True
                 for model in models
-                if isinstance(model, dict)
-                and model.get("non_signal_pad_contract")
+                if isinstance(model, dict) and model.get("non_signal_pad_contract")
             ),
             "all_npth_mechanical_features_have_contract": all(
                 int(model.get("npth_mechanical_feature_count", 0) or 0)
                 == len(model.get("npth_mechanical_feature_contract", []))
-                and model.get("npth_mechanical_feature_contract_matches_footprint")
-                is True
+                and model.get("npth_mechanical_feature_contract_matches_footprint") is True
                 for model in models
                 if isinstance(model, dict)
                 and int(model.get("npth_mechanical_feature_count", 0) or 0) > 0
@@ -979,9 +956,11 @@ def write_text_pdf(path: Path, title: str) -> dict[str, Any]:
             "3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] >> endobj\n"
             f"% {title}: blocked local candidate, not release evidence\n"
             "%%EOF\n"
-        ).encode("utf-8")
+        ).encode()
     )
-    write_yaml(path.with_suffix(path.suffix + ".metadata.yaml"), blocked_metadata(title, title, path))
+    write_yaml(
+        path.with_suffix(path.suffix + ".metadata.yaml"), blocked_metadata(title, title, path)
+    )
     return {
         "path": chip_rel(path),
         "kind": "pdf",
@@ -1024,7 +1003,11 @@ def generate() -> dict[str, Any]:
                 "metadata": chip_rel(step.with_suffix(step.suffix + ".metadata.yaml")),
             }
         )
-        artifacts.append(write_dir_manifest(step.parent, "routed_step_directory_candidate", "board_step_with_supplier_models"))
+        artifacts.append(
+            write_dir_manifest(
+                step.parent, "routed_step_directory_candidate", "board_step_with_supplier_models"
+            )
+        )
         artifacts.append(
             write_component_model_manifest(
                 ROOT / "board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml"
@@ -1099,18 +1082,30 @@ def generate() -> dict[str, Any]:
             "board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json",
             "usb_c_pd_attach_log_candidate",
         ),
-        ("board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json", "rf_coexistence_candidate"),
+        (
+            "board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json",
+            "rf_coexistence_candidate",
+        ),
         ("board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json", "rf_vna_candidate"),
         ("board/kicad/e1-phone/production/reports/si-pi/usb2-channel.json", "usb2_si_candidate"),
-        ("board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json", "display_si_candidate"),
+        (
+            "board/kicad/e1-phone/production/reports/si-pi/display-touch-mipi-dsi.json",
+            "display_si_candidate",
+        ),
         ("board/kicad/e1-phone/production/reports/si-pi/camera-csi.json", "camera_si_candidate"),
         (
             "board/kicad/e1-phone/production/reports/si-pi/pcie-cellular-wifi.json",
             "pcie_cellular_wifi_si_candidate",
         ),
-        ("board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json", "memory_si_candidate"),
+        (
+            "board/kicad/e1-phone/production/reports/si-pi/memory-storage-length-skew.json",
+            "memory_si_candidate",
+        ),
         ("board/kicad/e1-phone/production/reports/si-pi/pdn-return-path.json", "pdn_candidate"),
-        ("board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json", "split_si_candidate"),
+        (
+            "board/kicad/e1-phone/production/reports/si-pi/split-interconnect-usb-audio.json",
+            "split_si_candidate",
+        ),
         (
             "board/kicad/e1-phone/production/reports/power-thermal/load-step.json",
             "power_thermal_load_step_candidate",
@@ -1119,8 +1114,14 @@ def generate() -> dict[str, Any]:
             "board/kicad/e1-phone/production/reports/rf/sar-prescan-plan.json",
             "rf_sar_prescan_plan_candidate",
         ),
-        ("board/kicad/e1-phone/production/reports/escape-density-via-count.yaml", "escape_density_candidate"),
-        ("board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml", "courtyard_candidate"),
+        (
+            "board/kicad/e1-phone/production/reports/escape-density-via-count.yaml",
+            "escape_density_candidate",
+        ),
+        (
+            "board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml",
+            "courtyard_candidate",
+        ),
     ]:
         path = ROOT / path_text
         if path.suffix == ".json":
@@ -1147,14 +1148,28 @@ def generate() -> dict[str, Any]:
         artifacts.append(
             write_csv_report(
                 ROOT / path_text,
-                [{"net": "candidate", "measured_value": "not_run", "limit": "not_approved", "result": "blocked"}],
+                [
+                    {
+                        "net": "candidate",
+                        "measured_value": "not_run",
+                        "limit": "not_approved",
+                        "result": "blocked",
+                    }
+                ],
             )
         )
 
     artifacts.append(
         write_csv_report(
             ROOT / "board/kicad/e1-phone/production/test/probe-coordinates.csv",
-            [{"net": "candidate", "measured_value": "not_measured", "limit": "not_approved", "result": "blocked"}],
+            [
+                {
+                    "net": "candidate",
+                    "measured_value": "not_measured",
+                    "limit": "not_approved",
+                    "result": "blocked",
+                }
+            ],
         )
     )
 

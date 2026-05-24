@@ -84,17 +84,15 @@ def make_blocker(
 ) -> dict[str, Any]:
     present = [path for path in acceptance_artifacts if exists(path)]
     missing = [path for path in acceptance_artifacts if not exists(path)]
-    non_release = {
-        path: reasons
-        for path in present
-        if (reasons := non_release_reasons(path))
-    }
+    non_release = {path: reasons for path in present if (reasons := non_release_reasons(path))}
     artifact_presence_complete = not missing and bool(acceptance_artifacts)
     status_release_blocked = any(
         marker in status.lower()
         for marker in ("blocked", "template", "not_supplier", "not_release", "missing")
     )
-    acceptance_complete = artifact_presence_complete and not non_release and not status_release_blocked
+    acceptance_complete = (
+        artifact_presence_complete and not non_release and not status_release_blocked
+    )
     evidence_class = "external_or_physical_release_evidence"
     if domain in {"routing", "production"}:
         evidence_class = "local_generated_outputs_plus_external_review"
@@ -267,7 +265,6 @@ def main() -> int:
             "artifact_presence_complete_blocker_count": sum(
                 1 for item in blockers if item["artifact_presence_complete"]
             ),
-            "acceptance_artifact_count": sum(len(item["acceptance_artifacts"]) for item in blockers),
             "acceptance_artifact_count": sum(
                 len(item["acceptance_artifacts"]) for item in blockers
             ),
@@ -285,16 +282,14 @@ def main() -> int:
                     "manufacturing_closure_blocked_candidate_output_file_count"
                 ]
             ),
-            "production_presence_has_blocked_candidate_outputs": production_presence[
-                "summary"
-            ]["manufacturing_closure_has_blocked_candidate_outputs"],
+            "production_presence_has_blocked_candidate_outputs": production_presence["summary"][
+                "manufacturing_closure_has_blocked_candidate_outputs"
+            ],
             "fabrication_ready": False,
             "enclosure_ready": False,
             "end_to_end_phone_ready": False,
             "local_development_route_count": local_progress.get("development_route_count", 0),
-            "local_development_segment_count": local_progress.get(
-                "development_segment_count", 0
-            ),
+            "local_development_segment_count": local_progress.get("development_segment_count", 0),
             "local_development_via_count": local_progress.get("development_via_count", 0),
             "local_development_required_shared_net_category_count": local_progress.get(
                 "development_required_shared_net_category_count", 0
@@ -347,18 +342,12 @@ def main() -> int:
             "local_routed_step_candidate_route_segment_visual_count": local_progress.get(
                 "routed_step_visual_detail", {}
             ).get("route_segment_visual_count", 0),
-            "local_pinout_captured_file_count": local_progress.get(
-                "pinout_captured_file_count", 0
-            ),
+            "local_pinout_captured_file_count": local_progress.get("pinout_captured_file_count", 0),
             "local_pinout_declared_pin_count_total": local_progress.get(
                 "pinout_declared_pin_count_total", 0
             ),
-            "local_pinout_record_count_total": local_progress.get(
-                "pinout_record_count_total", 0
-            ),
-            "local_pinout_public_source_count": local_progress.get(
-                "pinout_public_source_count", 0
-            ),
+            "local_pinout_record_count_total": local_progress.get("pinout_record_count_total", 0),
+            "local_pinout_public_source_count": local_progress.get("pinout_public_source_count", 0),
             "local_pinout_bound_footprint_count": local_progress.get(
                 "pinout_bound_footprint_count", 0
             ),
@@ -426,9 +415,7 @@ def main() -> int:
                 "cad_connection_all_records_have_represented_nets", False
             ),
             "local_cad_connection_all_represented_nets_match_routed_nets": (
-                local_progress.get(
-                    "cad_connection_all_represented_nets_match_routed_nets", False
-                )
+                local_progress.get("cad_connection_all_represented_nets_match_routed_nets", False)
             ),
             "local_cad_connection_controlled_impedance_count": local_progress.get(
                 "cad_connection_controlled_impedance_count", 0

@@ -75,7 +75,9 @@ def main() -> int:
     )
     ap.add_argument("--asid", type=int, default=0, help="BPU context ASID for all emitted branches")
     ap.add_argument("--vmid", type=int, default=0, help="BPU context VMID for all emitted branches")
-    ap.add_argument("--priv", type=int, default=0, help="BPU context privilege level for all emitted branches")
+    ap.add_argument(
+        "--priv", type=int, default=0, help="BPU context privilege level for all emitted branches"
+    )
     ap.add_argument(
         "--secure",
         action="store_true",

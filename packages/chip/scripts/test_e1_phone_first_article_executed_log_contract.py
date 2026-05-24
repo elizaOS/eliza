@@ -114,9 +114,7 @@ class E1PhoneFirstArticleExecutedLogContractTests(unittest.TestCase):
                 tmp / "matrix.yaml",
                 {
                     "schema": gate.EXPECTED_MATRIX_SCHEMA,
-                    "acceptance_matrix": [
-                        {"path": log_rel, "evidence_kind": "executed_log"}
-                    ],
+                    "acceptance_matrix": [{"path": log_rel, "evidence_kind": "executed_log"}],
                 },
             )
             diagnostic = write_yaml(tmp / "diagnostic.yaml", {})

@@ -183,11 +183,25 @@ def main() -> int:
     require(summary is not None, "cocotb-iommu results.xml missing or invalid", errors)
     if summary is not None:
         missing_xml = sorted(REQUIRED_TESTS - summary["test_names"])
-        require(not missing_xml, "cocotb-iommu XML missing tests: " + ", ".join(missing_xml), errors)
-        require(summary["tests"] >= len(REQUIRED_TESTS), "cocotb-iommu did not run every required test", errors)
-        require(summary["failures"] == 0, f"cocotb-iommu failures present: {summary['failures']}", errors)
+        require(
+            not missing_xml, "cocotb-iommu XML missing tests: " + ", ".join(missing_xml), errors
+        )
+        require(
+            summary["tests"] >= len(REQUIRED_TESTS),
+            "cocotb-iommu did not run every required test",
+            errors,
+        )
+        require(
+            summary["failures"] == 0,
+            f"cocotb-iommu failures present: {summary['failures']}",
+            errors,
+        )
         require(summary["errors"] == 0, f"cocotb-iommu errors present: {summary['errors']}", errors)
-        require(summary["skipped"] == 0, f"cocotb-iommu skipped tests present: {summary['skipped']}", errors)
+        require(
+            summary["skipped"] == 0,
+            f"cocotb-iommu skipped tests present: {summary['skipped']}",
+            errors,
+        )
 
     if errors:
         print("IOMMU evidence gate failed:")

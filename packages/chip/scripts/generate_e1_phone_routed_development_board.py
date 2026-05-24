@@ -8,7 +8,6 @@ separate from e1-phone-mainboard-concept.kicad_pcb and production/step.
 
 from __future__ import annotations
 
-import json
 import hashlib
 import re
 import shutil
@@ -19,12 +18,18 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 CONCEPT = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
-REAL_FOOTPRINT_BOARD = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
+REAL_FOOTPRINT_BOARD = (
+    ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb"
+)
 OUT = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb"
 DEV_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
 CAD_STEP = ROOT / "mechanical/e1-phone/out/main_pcb.step"
-DETAILED_DEV_STEP = ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
-DETAILED_DEV_STEP_INTAKE = ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+DETAILED_DEV_STEP = (
+    ROOT / "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step"
+)
+DETAILED_DEV_STEP_INTAKE = (
+    ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+)
 AUDIT = ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
 
 
@@ -269,7 +274,9 @@ def canonical_net(name: str) -> str:
 def route_coverage(route_records: list[dict[str, object]]) -> dict[str, object]:
     routed = {str(item["net"]) for item in route_records}
     block = yaml.safe_load((ROOT / "board/kicad/e1-phone/block-netlist.yaml").read_text())
-    burndown = yaml.safe_load((ROOT / "board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml").read_text())
+    burndown = yaml.safe_load(
+        (ROOT / "board/kicad/e1-phone/routed-layout-si-drc-burndown-2026-05-22.yaml").read_text()
+    )
     shared_records = []
     for category, nets in block["required_shared_nets"].items():
         required = sorted(set(str(net) for net in nets))
@@ -299,22 +306,35 @@ def route_coverage(route_records: list[dict[str, object]]) -> dict[str, object]:
         "alias_map": NET_ALIASES,
         "required_shared_net_categories": shared_records,
         "route_domains": domain_records,
-        "missing_required_shared_net_count": sum(len(item["missing_nets"]) for item in shared_records),
+        "missing_required_shared_net_count": sum(
+            len(item["missing_nets"]) for item in shared_records
+        ),
         "missing_route_domain_net_count": sum(len(item["missing_nets"]) for item in domain_records),
     }
 
 
-def segment(route_id: str, net_name: str, net_id: int, layer: str, width: float, a: tuple[float, float], b: tuple[float, float], idx: int) -> str:
+def segment(
+    route_id: str,
+    net_name: str,
+    net_id: int,
+    layer: str,
+    width: float,
+    a: tuple[float, float],
+    b: tuple[float, float],
+    idx: int,
+) -> str:
     return (
-        f'  (segment (start {a[0]:.3f} {a[1]:.3f}) (end {b[0]:.3f} {b[1]:.3f}) '
+        f"  (segment (start {a[0]:.3f} {a[1]:.3f}) (end {b[0]:.3f} {b[1]:.3f}) "
         f'(width {width:.3f}) (layer "{layer}") (net {net_id}) '
         f'(tstamp "{stable_uuid(route_id, net_name, idx)}"))'
     )
 
 
-def via(via_id: str, net_name: str, net_id: int, x: float, y: float, size: float, drill: float) -> str:
+def via(
+    via_id: str, net_name: str, net_id: int, x: float, y: float, size: float, drill: float
+) -> str:
     return (
-        f'  (via (at {x:.3f} {y:.3f}) (size {size:.3f}) (drill {drill:.3f}) '
+        f"  (via (at {x:.3f} {y:.3f}) (size {size:.3f}) (drill {drill:.3f}) "
         f'(layers "F.Cu" "B.Cu") (net {net_id}) '
         f'(tstamp "{stable_uuid("via", via_id, net_name)}"))'
     )
@@ -337,7 +357,7 @@ def main() -> int:
             missing_nets.append(net_name)
             continue
         start_count = len(lines)
-        for idx, (a, b) in enumerate(zip(points, points[1:]), start=1):
+        for idx, (a, b) in enumerate(zip(points, points[1:], strict=False), start=1):
             lines.append(segment(route_id, net_name, net_id, layer, width, a, b, idx))
         route_records.append(
             {
@@ -391,7 +411,9 @@ def main() -> int:
         "source_board": str(source_board.relative_to(ROOT)),
         "development_board": str(OUT.relative_to(ROOT)),
         "development_step": str(DEV_STEP.relative_to(ROOT)) if DEV_STEP.exists() else "",
-        "development_step_source": str(step_source.relative_to(ROOT)) if step_source.exists() else "",
+        "development_step_source": str(step_source.relative_to(ROOT))
+        if step_source.exists()
+        else "",
         "development_step_sha256": sha256(DEV_STEP) if DEV_STEP.exists() else "",
         "development_step_size_bytes": DEV_STEP.stat().st_size if DEV_STEP.exists() else 0,
         "development_step_visual_source_intake": (

@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 BOARD = ROOT / "board/kicad/e1-phone"
 READINESS = BOARD / "production/readiness"
@@ -55,16 +54,12 @@ CLEARANCE_CASE_SUPPLIER_FAMILIES = {
         "battery_power_thermal_stack",
         "rear_front_camera_stack",
     ],
-    "split_interconnect_connectors_on_pcb_islands": [
-        "audio_haptics_split_interconnect"
-    ],
+    "split_interconnect_connectors_on_pcb_islands": ["audio_haptics_split_interconnect"],
     "split_interconnect_flex_to_battery_edge": [
         "audio_haptics_split_interconnect",
         "battery_power_thermal_stack",
     ],
-    "split_interconnect_flex_within_side_rail": [
-        "audio_haptics_split_interconnect"
-    ],
+    "split_interconnect_flex_within_side_rail": ["audio_haptics_split_interconnect"],
     "usb_shell_to_external_aperture": ["usb_c_side_buttons_bottom_io"],
     "usb_to_bottom_speaker": [
         "audio_haptics_split_interconnect",
@@ -253,9 +248,7 @@ def supplier_splits(matrix: dict[str, Any]) -> dict[str, Any]:
             if isinstance(row, dict) and row.get("current_presence") is not True
         ]
         present = [
-            row
-            for row in evidence
-            if isinstance(row, dict) and row.get("current_presence") is True
+            row for row in evidence if isinstance(row, dict) and row.get("current_presence") is True
         ]
         lane_rows.append(
             {
@@ -313,9 +306,7 @@ def release_action_inventory(
     if not isinstance(first_article_summary, dict):
         first_article_summary = {}
 
-    supplier_required = summary_int(
-        supplier_summary, "required_supplier_return_evidence_count"
-    )
+    supplier_required = summary_int(supplier_summary, "required_supplier_return_evidence_count")
     supplier_missing = summary_int(supplier_summary, "missing_supplier_return_evidence_count")
     supplier_present_blocked = max(0, supplier_required - supplier_missing)
     routed_candidate_blocked = summary_int(
@@ -397,8 +388,7 @@ def release_action_inventory(
         {
             "id": "enclosure_clearance_and_handoff",
             "owner": "mechanical_release",
-            "blocked_rows": len(routed_gap.get("blocked_clearance_cases", []))
-            + len(handoff_gap),
+            "blocked_rows": len(routed_gap.get("blocked_clearance_cases", [])) + len(handoff_gap),
             "blocked_clearance_cases": len(routed_gap.get("blocked_clearance_cases", [])),
             "handoff_packets": len(handoff_gap),
             "required_action": (
@@ -645,10 +635,14 @@ def first_article_physical_fit_action_inventory(
             action = "rerun all physical clearance cases against the approved routed STEP"
         elif "full-cad-boolean-interference" in path:
             evidence_class = "routed_full_cad_boolean_interference_report"
-            action = "rerun boolean interference on the approved routed board and enclosure assembly"
+            action = (
+                "rerun boolean interference on the approved routed board and enclosure assembly"
+            )
         elif "assembly.pdf" in path:
             evidence_class = "released_assembly_drawing"
-            action = "release assembly drawing packet with production routed board and enclosure datums"
+            action = (
+                "release assembly drawing packet with production routed board and enclosure datums"
+            )
         elif "first-article-test-transcript" in path:
             evidence_class = "executed_first_article_test_transcript"
             action = "execute the first-article physical-fit test on serialized hardware"
@@ -678,9 +672,7 @@ def clearance_release_cases(contract: dict[str, Any]) -> dict[str, dict[str, Any
     if not isinstance(cases, list):
         return {}
     return {
-        str(row["case_id"]): row
-        for row in cases
-        if isinstance(row, dict) and row.get("case_id")
+        str(row["case_id"]): row for row in cases if isinstance(row, dict) and row.get("case_id")
     }
 
 
@@ -747,9 +739,7 @@ def routed_board_gap(
                     "supplier_geometry_families": supplier_families_for_case(
                         case_id, supplier_index
                     ),
-                    "next_artifacts": [
-                        artifact for artifact in next_artifacts if artifact
-                    ],
+                    "next_artifacts": [artifact for artifact in next_artifacts if artifact],
                     "next_commands": CLEARANCE_NEXT_COMMANDS,
                     "missing": missing,
                     "release_credit": False,
@@ -937,7 +927,9 @@ def build_report(
             "missing_release_evidence_count": len(missing_release_evidence),
             "supplier_geometry_family_count": len(supplier_families),
             "supplier_geometry_families_blocked": sum(
-                1 for row in supplier_families if isinstance(row, dict) and row.get("release_allowed") is not True
+                1
+                for row in supplier_families
+                if isinstance(row, dict) and row.get("release_allowed") is not True
             ),
             "physical_interface_count": len(interfaces),
             "physical_interfaces_blocked": len(interfaces),
@@ -965,14 +957,10 @@ def build_report(
             "routed_clearance_release_action_count": len(clearance_action_inventory),
             "first_article_physical_fit_action_count": len(first_article_fit_actions),
             "clearance_supplier_family_mapping_count": sum(
-                1
-                for row in clearance_action_inventory
-                if row.get("supplier_geometry_families")
+                1 for row in clearance_action_inventory if row.get("supplier_geometry_families")
             ),
             "clearance_routed_step_input_mapping_count": sum(
-                1
-                for row in clearance_action_inventory
-                if row.get("routed_step_input_map")
+                1 for row in clearance_action_inventory if row.get("routed_step_input_map")
             ),
             "release_unblock_blocked_row_count": sum(
                 int(row.get("blocked_rows") or 0) for row in unblock_inventory

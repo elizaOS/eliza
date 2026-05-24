@@ -163,7 +163,8 @@ def check_sepolicy(findings: list[Finding]) -> None:
     add_if(
         findings,
         not avf_policy_build_gated
-        and "neverallow { appdomain } virtualizationservice_service:service_manager find;" not in text,
+        and "neverallow { appdomain } virtualizationservice_service:service_manager find;"
+        not in text,
         "pvm_sepolicy_virtmgr_not_exclusive",
         "no neverallow keeps app domains from finding the protected-VM management service",
         rel(SEPOLICY_PVM),

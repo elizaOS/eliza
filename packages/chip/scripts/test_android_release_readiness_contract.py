@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
 import tempfile
 import unittest
-import json
-import os
 import zipfile
 from argparse import Namespace
 from pathlib import Path
@@ -355,12 +355,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 for command in live_commands["cuttlefishX8664"]
             )
         )
-        self.assertTrue(
-            any(
-                "--adb-connect" in command
-                for command in live_commands["chipRiscv64"]
-            )
-        )
+        self.assertTrue(any("--adb-connect" in command for command in live_commands["chipRiscv64"]))
         self.assertTrue(
             any(
                 "--expected-artifact-id android-chip-riscv64-zip" in command
@@ -419,7 +414,9 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             cuttlefish["expected_output_files"],
         )
         self.assertTrue(
-            any("--expected-cpu-abi x86_64" in command for command in cuttlefish["capture_commands"])
+            any(
+                "--expected-cpu-abi x86_64" in command for command in cuttlefish["capture_commands"]
+            )
         )
         peripherals = {row["capture_area"]: row for row in prioritized}["peripherals"]
         self.assertTrue(
@@ -429,11 +426,12 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             )
         )
         self.assertTrue(
-            any("capture_simulated_peripheral_evidence.py" in command for command in peripherals["capture_commands"])
+            any(
+                "capture_simulated_peripheral_evidence.py" in command
+                for command in peripherals["capture_commands"]
+            )
         )
-        security = {row["capture_area"]: row for row in prioritized}[
-            "security_lifecycle"
-        ]
+        security = {row["capture_area"]: row for row in prioritized}["security_lifecycle"]
         self.assertTrue(
             any(
                 path.endswith("docs/evidence/android/security/rollback_rejection.log")
@@ -441,19 +439,23 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             )
         )
         self.assertTrue(
-            any("ELIZA_ROLLBACK_REJECTION_COMMAND" in command for command in security["capture_commands"])
+            any(
+                "ELIZA_ROLLBACK_REJECTION_COMMAND" in command
+                for command in security["capture_commands"]
+            )
         )
         power = {row["capture_area"]: row for row in prioritized}["power_thermal"]
         self.assertTrue(
             any(
-                path.endswith(
-                    "docs/evidence/android/power/sustained_npu_power_thermal_trace.json"
-                )
+                path.endswith("docs/evidence/android/power/sustained_npu_power_thermal_trace.json")
                 for path in power["expected_output_files"]
             )
         )
         self.assertTrue(
-            any("ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" in command for command in power["capture_commands"])
+            any(
+                "ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND" in command
+                for command in power["capture_commands"]
+            )
         )
 
     def test_live_launcher_missing_evidence_inventory_is_target_specific(self) -> None:
@@ -537,7 +539,8 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertTrue(
             any(
-                "--adb-connect" in command and "--expected-cpu-abi riscv64" in command
+                "--adb-connect" in command
+                and "--expected-cpu-abi riscv64" in command
                 and "--target-label chip-riscv64" in command
                 for command in by_id["android-chip-riscv64-zip"]["collectionCommands"]
             )
@@ -626,9 +629,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 umbrella = json.loads(PASSING_UMBRELLA_MANIFEST)
                 umbrella["artifacts"][0]["sizeBytes"] = archive_size
                 umbrella["artifacts"][0]["sha256"] = archive_sha
-                gate.UMBRELLA_MANIFEST.write_text(
-                    json.dumps(umbrella), encoding="utf-8"
-                )
+                gate.UMBRELLA_MANIFEST.write_text(json.dumps(umbrella), encoding="utf-8")
                 write(
                     Path(tmpdir)
                     / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-artifact-integrity.json",
@@ -710,18 +711,14 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             7,
         )
         self.assertEqual(
-            inventory["latestBuildAttempt"]["buildLogProgress"][
-                "lastProgressCompletedActions"
-            ],
+            inventory["latestBuildAttempt"]["buildLogProgress"]["lastProgressCompletedActions"],
             3117,
         )
         self.assertIn(
             "FAILED: out/target/product/eliza_ai_soc/system.img",
             inventory["latestBuildAttempt"]["buildLogProgress"]["recentFailureLines"],
         )
-        system_tree = {
-            row["name"]: row for row in inventory["partialProductTrees"]
-        }["system"]
+        system_tree = {row["name"]: row for row in inventory["partialProductTrees"]}["system"]
         self.assertEqual(system_tree["releaseCredit"], False)
         self.assertEqual(system_tree["fileCount"], 1)
         self.assertEqual(system_tree["installedFilesList"]["exists"], True)
@@ -735,9 +732,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
         )
         self.assertIn(
             "systemextimage",
-            inventory["latestBuildAttempt"]["generationCommands"][
-                "imageOnlyResumeFromCurrentTree"
-            ],
+            inventory["latestBuildAttempt"]["generationCommands"]["imageOnlyResumeFromCurrentTree"],
         )
 
     def test_build_only_stage_logs_distinguish_timeout_from_pass(self) -> None:
@@ -750,8 +745,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             )
             vendorimage = write(
                 tmp / "vendorimage.log",
-                "COMMAND=m vendorimage\nSTART_UTC=2026-05-23T00:00:02Z\n"
-                "Running globs...\n",
+                "COMMAND=m vendorimage\nSTART_UTC=2026-05-23T00:00:02Z\nRunning globs...\n",
             )
             with mock.patch.object(
                 gate,
@@ -891,7 +885,9 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
             ],
         )
 
-    def test_archive_source_member_inventory_is_target_specific_and_not_release_credit(self) -> None:
+    def test_archive_source_member_inventory_is_target_specific_and_not_release_credit(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             aosp = tmp / "aosp"
@@ -934,9 +930,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 "system_ext.img",
                 by_id["android-cuttlefish-x86_64-zip"]["missingMembers"],
             )
-            self.assertFalse(
-                by_id["android-pixel-arm64-zip"]["sourceDirectoryExists"]
-            )
+            self.assertFalse(by_id["android-pixel-arm64-zip"]["sourceDirectoryExists"])
             self.assertIn("android-pixel-arm64-zip", inventory["incompleteArtifacts"])
 
     def test_artifact_integrity_payload_must_match_manifest(self) -> None:
@@ -974,9 +968,7 @@ class AndroidReleaseReadinessContractTests(unittest.TestCase):
                 umbrella = json.loads(PASSING_UMBRELLA_MANIFEST)
                 umbrella["artifacts"][0]["sizeBytes"] = archive_size
                 umbrella["artifacts"][0]["sha256"] = archive_sha
-                gate.UMBRELLA_MANIFEST.write_text(
-                    json.dumps(umbrella), encoding="utf-8"
-                )
+                gate.UMBRELLA_MANIFEST.write_text(json.dumps(umbrella), encoding="utf-8")
                 write(
                     Path(tmpdir)
                     / "os/release/beta-2026-05-16/evidence/android/chip-riscv64-artifact-integrity.json",

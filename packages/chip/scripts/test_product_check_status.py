@@ -45,11 +45,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     repo_groups = report.get("repo_artifact_generation_groups")
     assert isinstance(repo_groups, list)
     assert repo_groups
-    group_map = {
-        group.get("family"): group
-        for group in repo_groups
-        if isinstance(group, dict)
-    }
+    group_map = {group.get("family"): group for group in repo_groups if isinstance(group, dict)}
     for family in (
         "manufacturing_release_artifacts",
         "kicad_fabrication_artifacts",
@@ -89,11 +85,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
 
     release_plan = report.get("release_execution_plan")
     assert isinstance(release_plan, list)
-    phase_map = {
-        phase.get("phase"): phase
-        for phase in release_plan
-        if isinstance(phase, dict)
-    }
+    phase_map = {phase.get("phase"): phase for phase in release_plan if isinstance(phase, dict)}
     for phase in (
         "chip_pd_signoff",
         "fpga_board_bitstream_release",
@@ -114,9 +106,8 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             "blocked_by_live_hardware",
             "blocked_by_release_approval",
         }
-        assert (
-            sum(repo_generation_counts.values())
-            == row["blocker_dependency_counts"].get("repo_artifact_generation", 0)
+        assert sum(repo_generation_counts.values()) == row["blocker_dependency_counts"].get(
+            "repo_artifact_generation", 0
         )
         assert row["primary_commands"]
         assert row["primary_paths"]
@@ -126,29 +117,33 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
             for command in row["acceptance_commands"]
         )
         assert row["sample_findings"]
-    assert "python3 scripts/check_package_cross_probe.py --release" in phase_map[
-        "package_vendor_cross_probe_release"
-    ]["acceptance_commands"]
-    assert "python3 scripts/check_phone_runtime_readiness_contract.py" in phase_map[
-        "end_to_end_runtime_release"
-    ]["acceptance_commands"]
-    assert "python3 scripts/check_e1_phone_fabrication_release.py" in phase_map[
-        "phone_fabrication_enclosure_release"
-    ]["primary_commands"]
-    assert "python3 scripts/check_fpga_release.py --release" in phase_map[
-        "fpga_board_bitstream_release"
-    ]["acceptance_commands"]
-    assert "python3 scripts/check_pd_release_evidence.py" in phase_map[
-        "chip_pd_signoff"
-    ]["acceptance_commands"]
-    assert "python3 scripts/check_kicad_artifacts.py --release" in phase_map[
-        "manufacturing_package_release"
-    ]["acceptance_commands"]
+    assert (
+        "python3 scripts/check_package_cross_probe.py --release"
+        in phase_map["package_vendor_cross_probe_release"]["acceptance_commands"]
+    )
+    assert (
+        "python3 scripts/check_phone_runtime_readiness_contract.py"
+        in phase_map["end_to_end_runtime_release"]["acceptance_commands"]
+    )
+    assert (
+        "python3 scripts/check_e1_phone_fabrication_release.py"
+        in phase_map["phone_fabrication_enclosure_release"]["primary_commands"]
+    )
+    assert (
+        "python3 scripts/check_fpga_release.py --release"
+        in phase_map["fpga_board_bitstream_release"]["acceptance_commands"]
+    )
+    assert (
+        "python3 scripts/check_pd_release_evidence.py"
+        in phase_map["chip_pd_signoff"]["acceptance_commands"]
+    )
+    assert (
+        "python3 scripts/check_kicad_artifacts.py --release"
+        in phase_map["manufacturing_package_release"]["acceptance_commands"]
+    )
     if release_mode:
         manufacturing_phase = phase_map["manufacturing_package_release"]
-        manufacturing_generation_counts = manufacturing_phase[
-            "repo_generation_category_counts"
-        ]
+        manufacturing_generation_counts = manufacturing_phase["repo_generation_category_counts"]
         assert manufacturing_generation_counts["repo_generatable_now"] == 0
         assert (
             manufacturing_generation_counts["blocked_by_external_evidence"]
@@ -158,8 +153,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
         manufacturing_details = manufacturing_phase.get("manufacturing_artifact_details")
         assert isinstance(manufacturing_details, dict)
         assert (
-            manufacturing_details.get("report_path")
-            == "build/reports/manufacturing_artifacts.json"
+            manufacturing_details.get("report_path") == "build/reports/manufacturing_artifacts.json"
         )
         artifact_state_summary = manufacturing_details.get("artifact_state_summary")
         assert isinstance(artifact_state_summary, dict)
@@ -207,11 +201,7 @@ def assert_blocked_report(report: dict[str, object], *, release_mode: bool) -> N
     for check in release_checks:
         assert isinstance(check, dict)
         assert isinstance(check.get("blocked_status"), bool)
-    scripts = {
-        check.get("script")
-        for check in release_checks
-        if isinstance(check, dict)
-    }
+    scripts = {check.get("script") for check in release_checks if isinstance(check, dict)}
     assert "scripts/check_pd_release_evidence.py" in scripts
     assert "scripts/check_e1_phone_fabrication_release.py" in scripts
     assert "scripts/check_e1_phone_release_approval_signatures.py" in scripts

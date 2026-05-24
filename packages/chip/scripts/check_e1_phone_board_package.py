@@ -69,7 +69,9 @@ def is_blocked_candidate_artifact(path: Path) -> bool:
     if not probe.is_file() or probe.suffix not in {".yaml", ".yml", ".json"}:
         return False
     try:
-        data = load_yaml(probe) if probe.suffix in {".yaml", ".yml"} else json.loads(probe.read_text())
+        data = (
+            load_yaml(probe) if probe.suffix in {".yaml", ".yml"} else json.loads(probe.read_text())
+        )
     except Exception:
         return False
     if not isinstance(data, dict):
@@ -645,8 +647,7 @@ def check_top_bottom_interconnect_plan() -> None:
     for blocker_aliases in required_release_blockers:
         if not release_blockers.intersection(blocker_aliases):
             raise SystemExit(
-                "top/bottom interconnect plan missing release blocker: "
-                f"{blocker_aliases[0]}"
+                f"top/bottom interconnect plan missing release blocker: {blocker_aliases[0]}"
             )
     for claim in [
         "interconnect_ready",
@@ -1385,8 +1386,8 @@ def check_supplier_rfq_response_normalization() -> None:
         raise SystemExit("supplier RFQ response normalization expected pack count stale")
     if outputs["present_response_pack_count"] != len(response_packs_present):
         raise SystemExit("supplier RFQ response normalization present pack count stale")
-    release_missing_response_pack_count = (
-        len(response_packs_missing) + len(response_pack_placeholders_present)
+    release_missing_response_pack_count = len(response_packs_missing) + len(
+        response_pack_placeholders_present
     )
     if outputs["missing_response_pack_count"] != release_missing_response_pack_count:
         raise SystemExit("supplier RFQ response normalization missing pack count stale")
@@ -6901,8 +6902,8 @@ def check_trial_route_input_matrix() -> None:
         raise SystemExit("trial route matrix response pack count stale")
     if inventory["present_response_pack_count"] != len(present_response_packs):
         raise SystemExit("trial route matrix present response pack count stale")
-    release_missing_response_pack_count = (
-        len(missing_response_packs) + len(placeholder_response_packs)
+    release_missing_response_pack_count = len(missing_response_packs) + len(
+        placeholder_response_packs
     )
     if inventory["missing_response_pack_count"] != release_missing_response_pack_count:
         raise SystemExit("trial route matrix missing response pack count stale")
@@ -8392,9 +8393,15 @@ def check_enclosure_fit_execution_package() -> None:
         != board_step["board_state_detected"]["placeholder_marker_count"]
     ):
         raise SystemExit("enclosure fit execution placeholder count stale")
-    if blockers["production_concept_has_tracks"] != manufacturing["board_state_detected"]["has_tracks"]:
+    if (
+        blockers["production_concept_has_tracks"]
+        != manufacturing["board_state_detected"]["has_tracks"]
+    ):
         raise SystemExit("enclosure fit execution routed track state stale")
-    if blockers["production_concept_has_filled_zones"] != manufacturing["board_state_detected"]["has_filled_zones"]:
+    if (
+        blockers["production_concept_has_filled_zones"]
+        != manufacturing["board_state_detected"]["has_filled_zones"]
+    ):
         raise SystemExit("enclosure fit execution zone state stale")
     if blockers["has_production_step"]:
         raise SystemExit("enclosure fit execution unexpectedly sees production STEP")
@@ -14310,13 +14317,11 @@ def check_release_gates_fail_closed(manifest: dict) -> None:
 def check_release_evidence_manufacturing_candidate_propagation() -> None:
     manufacturing = load_yaml(ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml")
     presence = load_yaml(
-        ROOT
-        / "board/kicad/e1-phone/production/readiness/"
+        ROOT / "board/kicad/e1-phone/production/readiness/"
         "production-factory-required-output-presence-inventory-2026-05-22.yaml"
     )
     content = load_yaml(
-        ROOT
-        / "board/kicad/e1-phone/production/readiness/"
+        ROOT / "board/kicad/e1-phone/production/readiness/"
         "release-evidence-content-contract-2026-05-22.yaml"
     )
     objective = load_yaml(
@@ -14331,9 +14336,7 @@ def check_release_evidence_manufacturing_candidate_propagation() -> None:
         "manufacturing_closure_has_production_outputs": manufacturing_state[
             "has_production_outputs"
         ],
-        "manufacturing_closure_release_output_count": manufacturing_state[
-            "release_output_count"
-        ],
+        "manufacturing_closure_release_output_count": manufacturing_state["release_output_count"],
         "manufacturing_closure_has_blocked_candidate_outputs": manufacturing_state[
             "has_blocked_candidate_outputs"
         ],
@@ -14505,5 +14508,5 @@ if __name__ == "__main__":
     except SystemExit as exc:
         if exc.code and not isinstance(exc.code, int):
             print(f"STATUS: BLOCKED E1 phone board package validation: {exc.code}")
-            raise SystemExit(2)
+            raise SystemExit(2) from exc
         raise

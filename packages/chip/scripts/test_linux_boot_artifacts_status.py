@@ -53,7 +53,9 @@ class LinuxBootArtifactsStatusTests(unittest.TestCase):
             codes,
         )
         serial_finding = next(
-            item for item in findings if item["code"] == "linux_boot_artifact_missing_serial_boot_log"
+            item
+            for item in findings
+            if item["code"] == "linux_boot_artifact_missing_serial_boot_log"
         )
         self.assertIn(
             "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",

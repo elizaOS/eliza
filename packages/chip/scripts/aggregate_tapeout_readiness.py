@@ -794,12 +794,8 @@ GATES: tuple[GateSpec, ...] = (
     ),
 )
 
-CHIP_TAPEOUT_GATES: tuple[GateSpec, ...] = tuple(
-    spec for spec in GATES if spec.scope == "chip"
-)
-PHONE_PRODUCT_GATES: tuple[GateSpec, ...] = tuple(
-    spec for spec in GATES if spec.scope == "phone"
-)
+CHIP_TAPEOUT_GATES: tuple[GateSpec, ...] = tuple(spec for spec in GATES if spec.scope == "chip")
+PHONE_PRODUCT_GATES: tuple[GateSpec, ...] = tuple(spec for spec in GATES if spec.scope == "phone")
 
 
 def select_gates(scope: str) -> tuple[GateSpec, ...]:
@@ -1094,16 +1090,8 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
     }
     rows: list[dict[str, object]] = []
     for phase in AGGREGATE_RELEASE_PHASES:
-        gate_names = {
-            str(name)
-            for name in phase.get("gates", set())
-            if isinstance(name, str)
-        }
-        matched = [
-            blocked_by_name[name]
-            for name in sorted(gate_names)
-            if name in blocked_by_name
-        ]
+        gate_names = {str(name) for name in phase.get("gates", set()) if isinstance(name, str)}
+        matched = [blocked_by_name[name] for name in sorted(gate_names) if name in blocked_by_name]
         if not matched:
             continue
         next_actions = [blocker_action(result) for result in matched]
@@ -1156,9 +1144,7 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
                     }
                     for result, action in zip(matched, next_actions, strict=True)
                 ],
-                "validation_commands": [
-                    action["validation_command"] for action in next_actions
-                ],
+                "validation_commands": [action["validation_command"] for action in next_actions],
                 "acceptance_commands": phase["acceptance_commands"],
                 "sample_evidence": [result.evidence for result in matched[:5]],
             }
@@ -1212,12 +1198,13 @@ def run_gate(spec: GateSpec) -> GateResult:
             stdout, _ = proc.communicate()
         combined_timeout = stdout or ""
         evidence = (
-            f"STATUS: BLOCKED {spec.name} exceeded "
-            f"{GATE_TIMEOUT_SECONDS}s aggregate gate timeout"
+            f"STATUS: BLOCKED {spec.name} exceeded {GATE_TIMEOUT_SECONDS}s aggregate gate timeout"
         )
         if combined_timeout.strip():
-            evidence = evidence + "; partial output: " + _first_evidence_line(
-                spec.name, combined_timeout, 124
+            evidence = (
+                evidence
+                + "; partial output: "
+                + _first_evidence_line(spec.name, combined_timeout, 124)
             )
         return GateResult(
             name=spec.name,

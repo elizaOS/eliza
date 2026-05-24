@@ -27,9 +27,11 @@ class ProductStatusTests(unittest.TestCase):
                 encoding="utf-8",
             )
 
-            with mock.patch("check_mvp_status.ROOT", root):
-                with mock.patch("check_mvp_status.subprocess.run") as run:
-                    status = mvp.product_status()
+            with (
+                mock.patch("check_mvp_status.ROOT", root),
+                mock.patch("check_mvp_status.subprocess.run") as run,
+            ):
+                status = mvp.product_status()
 
         run.assert_not_called()
         self.assertEqual(status.status, mvp.BLOCK)
@@ -37,15 +39,15 @@ class ProductStatusTests(unittest.TestCase):
         self.assertIn("1 product release blockers", status.evidence)
 
     def test_product_status_timeout_is_block_not_hang(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with mock.patch("check_mvp_status.ROOT", Path(tmpdir)):
-                with mock.patch(
-                    "check_mvp_status.subprocess.run",
-                    side_effect=subprocess.TimeoutExpired(
-                        ["python3", "scripts/product_check.py"], 1
-                    ),
-                ):
-                    status = mvp.product_status()
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            mock.patch("check_mvp_status.ROOT", Path(tmpdir)),
+            mock.patch(
+                "check_mvp_status.subprocess.run",
+                side_effect=subprocess.TimeoutExpired(["python3", "scripts/product_check.py"], 1),
+            ),
+        ):
+            status = mvp.product_status()
 
         self.assertEqual(status.subsystem, "product-package")
         self.assertEqual(status.status, mvp.BLOCK)

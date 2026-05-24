@@ -7,7 +7,6 @@ import argparse
 import csv
 import hashlib
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -80,9 +79,7 @@ PLACEHOLDER_MARKERS = {
     "blocked",
 }
 VALIDATION_COMMAND = "python3 scripts/check_e1_phone_routed_output_content.py"
-LOCAL_CANDIDATE_GENERATOR_COMMAND = (
-    "python3 scripts/generate_e1_phone_routed_output_candidates.py"
-)
+LOCAL_CANDIDATE_GENERATOR_COMMAND = "python3 scripts/generate_e1_phone_routed_output_candidates.py"
 
 
 def rel(path: Path) -> str:
@@ -480,14 +477,14 @@ def source_manifest_refs(artifact: dict[str, Any]) -> list[dict[str, Any]]:
 
 def missing_field_group(failures: list[str], prefix: str) -> list[str]:
     marker = f"missing_{prefix}_field:"
-    return sorted(
-        failure.split(":", 1)[1] for failure in failures if failure.startswith(marker)
-    )
+    return sorted(failure.split(":", 1)[1] for failure in failures if failure.startswith(marker))
 
 
 def unblock_action(path_text: str, artifact: dict[str, Any], failures: list[str]) -> dict[str, Any]:
     missing = "artifact_missing" in failures
-    owner = artifact.get("owner") or ",".join(artifact.get("source_ids") or []) or "layout_fabrication"
+    owner = (
+        artifact.get("owner") or ",".join(artifact.get("source_ids") or []) or "layout_fabrication"
+    )
     action = (
         "Generate or stage the routed-board production output at this exact path, then rerun validation."
         if missing
@@ -525,20 +522,12 @@ def repo_generation_summary(
     generator_paths = [
         path_text
         for path_text in blocked_paths
-        if (outputs.get(path_text, {}).get("repo_generation") or {}).get(
-            "repo_generated_candidate"
-        )
+        if (outputs.get(path_text, {}).get("repo_generation") or {}).get("repo_generated_candidate")
         is True
     ]
-    missing_paths = [
-        path_text
-        for path_text, failures in blocked
-        if "artifact_missing" in failures
-    ]
+    missing_paths = [path_text for path_text, failures in blocked if "artifact_missing" in failures]
     present_blocked_paths = [
-        path_text
-        for path_text, failures in blocked
-        if "artifact_missing" not in failures
+        path_text for path_text, failures in blocked if "artifact_missing" not in failures
     ]
     plans = [
         repo_generation_plan(path_text, outputs.get(path_text, {}), failures)
@@ -551,9 +540,7 @@ def repo_generation_summary(
         plan["path"] for plan in plans if plan["external_release_required"] is True
     )
     local_candidate_metadata_only_paths = sorted(
-        plan["path"]
-        for plan in plans
-        if plan["local_candidate_metadata_only_blocker"] is True
+        plan["path"] for plan in plans if plan["local_candidate_metadata_only_blocker"] is True
     )
     return {
         "release_credit": False,
@@ -564,14 +551,11 @@ def repo_generation_summary(
         "repo_generatable_now_paths": repo_generatable_now_paths,
         "repo_generation_closes_release_blocker_count": 0,
         "repo_generation_closes_release_blocker_paths": [],
-        "local_candidate_metadata_only_blocker_count": len(
-            local_candidate_metadata_only_paths
-        ),
+        "local_candidate_metadata_only_blocker_count": len(local_candidate_metadata_only_paths),
         "local_candidate_metadata_only_blocker_paths": local_candidate_metadata_only_paths,
         "repo_generated_candidate_blocked_count": len(generator_paths),
         "repo_generated_candidate_blocked_paths": sorted(generator_paths),
-        "not_managed_by_local_generator_blocked_count": len(blocked_paths)
-        - len(generator_paths),
+        "not_managed_by_local_generator_blocked_count": len(blocked_paths) - len(generator_paths),
         "true_missing_generated_artifact_count": len(missing_paths),
         "true_missing_generated_artifact_paths": sorted(missing_paths),
         "present_fail_closed_artifact_count": len(present_blocked_paths),
@@ -607,21 +591,15 @@ def routed_execution_packet_inventory(
                     "routed_release_traceability": sorted(ROUTED_FIELDS),
                     "external_review_metadata": sorted(METADATA_FIELDS | ROUTED_FIELDS),
                 },
-                "missing_common_release_record_fields": missing_field_group(
-                    failures, "common"
-                ),
-                "missing_routed_traceability_fields": missing_field_group(
-                    failures, "routed"
-                ),
+                "missing_common_release_record_fields": missing_field_group(failures, "common"),
+                "missing_routed_traceability_fields": missing_field_group(failures, "routed"),
                 "missing_external_review_metadata_fields": missing_field_group(
                     failures, "external_metadata"
                 ),
                 "missing_directory_manifest_fields": missing_field_group(
                     failures, "directory_manifest"
                 ),
-                "missing_text_provenance_fields": missing_field_group(
-                    failures, "text_provenance"
-                ),
+                "missing_text_provenance_fields": missing_field_group(failures, "text_provenance"),
                 "required_action": packet["action"],
             }
         )
@@ -637,11 +615,7 @@ MISSING_APPROVAL_METADATA_FAILURES = {
 
 
 def routed_failure_buckets(failures: list[str]) -> dict[str, Any]:
-    missing_fields = [
-        failure.split(":", 1)[1]
-        for failure in failures
-        if "_field:" in failure
-    ]
+    missing_fields = [failure.split(":", 1)[1] for failure in failures if "_field:" in failure]
     return {
         "missing_generated_output": "artifact_missing" in failures,
         "missing_approval_metadata": bool(set(failures) & MISSING_APPROVAL_METADATA_FAILURES),
@@ -728,18 +702,14 @@ def routed_output_blocker_categories(
             "missing_generated_output": failure_buckets["missing_generated_output"],
             "missing_approval_metadata": failure_buckets["missing_approval_metadata"],
             "candidate_present_but_blocked": category_id == "candidate_present_but_blocked",
-            "present_unapproved_or_placeholder": category_id
-            == "present_unapproved_or_placeholder",
+            "present_unapproved_or_placeholder": category_id == "present_unapproved_or_placeholder",
             "failures": failures,
             "failure_buckets": failure_buckets,
             "required_metadata_record": metadata_record,
-            "repo_generation_plan": repo_generation_plan(
-                path_text, artifact, failures
-            ),
+            "repo_generation_plan": repo_generation_plan(path_text, artifact, failures),
             "candidate_fail_closed_metadata": {
                 "candidate_manifest": artifact.get("candidate_manifest") or "",
-                "candidate_present_blocked": artifact.get("candidate_present_blocked")
-                is True,
+                "candidate_present_blocked": artifact.get("candidate_present_blocked") is True,
                 "candidate_release_credit": False,
                 "required_release_metadata_record": metadata_record["primary_record_path"],
                 "required_non_placeholder_disposition": "approved",
@@ -771,10 +741,7 @@ def routed_output_blocker_categories(
             "release_credit": False,
         },
         "by_path": dict(sorted(by_path.items())),
-        "counts": {
-            category_id: category["count"]
-            for category_id, category in categories.items()
-        },
+        "counts": {category_id: category["count"] for category_id, category in categories.items()},
         "release_credit": False,
     }
 
@@ -903,7 +870,7 @@ def blocker_diagnostics(
         owner = artifact.get("owner") or ",".join(artifact.get("source_ids") or [])
         owner = str(owner or "layout_fabrication")
         by_owner[owner] += 1
-        source_ids = artifact.get("source_ids") or [artifact.get("source_id")] or ["layout"]
+        source_ids = artifact.get("source_ids") or [artifact.get("source_id")]
         for source_id in source_ids:
             if source_id:
                 by_source_id[str(source_id)] += 1
@@ -1099,7 +1066,9 @@ def content_failures(path_text: str) -> list[str]:
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml", ".json"}:
         failures.extend(approved_record_failures(parsed, COMMON_FIELDS, "common"))
-        failures.extend(f"missing_routed_field:{field}" for field in missing_fields(parsed, ROUTED_FIELDS))
+        failures.extend(
+            f"missing_routed_field:{field}" for field in missing_fields(parsed, ROUTED_FIELDS)
+        )
         failures.extend(
             f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
         )
@@ -1179,7 +1148,10 @@ def main() -> int:
             ("cad_connection_coverage", "assembly_manifest_part_count"): 222,
             ("cad_connection_coverage", "assembly_manifest_connection_terminal_marker_count"): 42,
             ("cad_connection_coverage", "assembly_manifest_connection_solid_step_part_count"): 63,
-            ("cad_connection_coverage", "assembly_manifest_missing_connection_solid_step_part_count"): 0,
+            (
+                "cad_connection_coverage",
+                "assembly_manifest_missing_connection_solid_step_part_count",
+            ): 0,
             ("cad_connection_coverage", "represented_net_count_total"): 94,
             ("cad_connection_coverage", "connection_record_count"): 21,
             ("cad_connection_coverage", "represented_net_list_total"): 94,
@@ -1346,8 +1318,12 @@ def main() -> int:
                 contract_mismatches.append(
                     f"candidate context traceability flag failed: {section}.{field}"
                 )
-        routed_step_path = repo_path("board/kicad/e1-phone/production/step/routed-board-with-components.step")
-        component_model_dir = repo_path(str(candidate_context.get("component_model_directory") or ""))
+        routed_step_path = repo_path(
+            "board/kicad/e1-phone/production/step/routed-board-with-components.step"
+        )
+        component_model_dir = repo_path(
+            str(candidate_context.get("component_model_directory") or "")
+        )
         if not routed_step_path.is_file():
             contract_mismatches.append("candidate routed STEP source missing")
         if not component_model_dir.is_dir():
@@ -1505,9 +1481,7 @@ def main() -> int:
                     "repo_generated_candidate_blocked_count": generation_summary[
                         "repo_generated_candidate_blocked_count"
                     ],
-                    "repo_generatable_now_count": generation_summary[
-                        "repo_generatable_now_count"
-                    ],
+                    "repo_generatable_now_count": generation_summary["repo_generatable_now_count"],
                     "repo_generation_closes_release_blocker_count": generation_summary[
                         "repo_generation_closes_release_blocker_count"
                     ],

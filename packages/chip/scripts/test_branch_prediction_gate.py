@@ -530,7 +530,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             evidence = root / "docs/evidence/cpu_ap"
             write_valid_evidence_set(root)
             write_bpu_verification_reports(root)
-            payload = json.loads((evidence / "mpki_results_cbp5_rtl.json").read_text(encoding="utf-8"))
+            payload = json.loads(
+                (evidence / "mpki_results_cbp5_rtl.json").read_text(encoding="utf-8")
+            )
             payload.pop("claim_boundary")
             payload["release_claim_allowed"] = True
             write_json(evidence / "mpki_results_cbp5_rtl.json", payload)
@@ -547,14 +549,18 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             evidence = root / "docs/evidence/cpu_ap"
             write_valid_evidence_set(root)
             write_bpu_verification_reports(root)
-            manifest = json.loads((evidence / "cbp5-trace-manifest.json").read_text(encoding="utf-8"))
+            manifest = json.loads(
+                (evidence / "cbp5-trace-manifest.json").read_text(encoding="utf-8")
+            )
             manifest["staged_traces"][0]["compressed_sha256"] = "0" * 64
             write_json(evidence / "cbp5-trace-manifest.json", manifest)
 
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any("compressed_sha256 does not match" in err for err in errors), errors)
+            self.assertTrue(
+                any("compressed_sha256 does not match" in err for err in errors), errors
+            )
 
     def test_workload_trace_manifest_hash_mismatch_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -571,7 +577,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any(".sha256 does not match staged trace" in err for err in errors), errors)
+            self.assertTrue(
+                any(".sha256 does not match staged trace" in err for err in errors), errors
+            )
 
     def test_workload_trace_manifest_must_match_rtl_replay_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -589,7 +597,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
                 errors = branch.evaluate_evidence_artifacts()
 
             self.assertTrue(
-                any("has traces absent from mpki_results_workload_rtl.json" in err for err in errors),
+                any(
+                    "has traces absent from mpki_results_workload_rtl.json" in err for err in errors
+                ),
                 errors,
             )
 
@@ -646,7 +656,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any("max_branches_per_trace must be 0" in err for err in errors), errors)
+            self.assertTrue(
+                any("max_branches_per_trace must be 0" in err for err in errors), errors
+            )
             self.assertTrue(any("trace_filter must match" in err for err in errors), errors)
 
     def test_full_io_media_shard_must_be_present_and_exact_trace_set(self) -> None:
@@ -658,9 +670,7 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             shard_path = evidence / "bpu_sweep_full_io_media_shard.json"
             shard = json.loads(shard_path.read_text(encoding="utf-8"))
             shard["trace_set"] = [
-                row
-                for row in shard["trace_set"]
-                if row["name"] != "audio_frames"
+                row for row in shard["trace_set"] if row["name"] != "audio_frames"
             ]
             write_json(shard_path, shard)
 
@@ -792,7 +802,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any(".status must be missing_external_trace" in err for err in errors), errors)
+            self.assertTrue(
+                any(".status must be missing_external_trace" in err for err in errors), errors
+            )
 
     def test_workload_trace_manifest_external_suite_claim_drift_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -802,13 +814,17 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             write_bpu_verification_reports(root)
             manifest_path = evidence / "bpu-workload-trace-manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["production_external_suites"][0]["required_for_claims"] = ["workload_mpki_claim"]
+            manifest["production_external_suites"][0]["required_for_claims"] = [
+                "workload_mpki_claim"
+            ]
             write_json(manifest_path, manifest)
 
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any("required_for_claims does not match" in err for err in errors), errors)
+            self.assertTrue(
+                any("required_for_claims does not match" in err for err in errors), errors
+            )
 
     def test_synthetic_positive_release_claim_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1042,7 +1058,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any("older than mpki_results_cbp5_rtl.json" in err for err in errors), errors)
+            self.assertTrue(
+                any("older than mpki_results_cbp5_rtl.json" in err for err in errors), errors
+            )
 
     def test_false_cbp5_claim_with_target_met_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1057,7 +1075,9 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
             with mock.patch.object(branch, "ROOT", root):
                 errors = branch.evaluate_evidence_artifacts()
 
-            self.assertTrue(any("cbp5_claim is false but aggregate MPKI" in err for err in errors), errors)
+            self.assertTrue(
+                any("cbp5_claim is false but aggregate MPKI" in err for err in errors), errors
+            )
 
     def test_false_claim_stale_supported_reason_blocks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

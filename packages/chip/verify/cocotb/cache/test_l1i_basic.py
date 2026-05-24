@@ -175,6 +175,5 @@ async def test_l1i_secondary_hit_lane_returns_non_contiguous_fetch(dut):
         if saw_lane0 and saw_lane1:
             return
     raise AssertionError(
-        f"wide non-contiguous hit did not return both lanes "
-        f"(lane0={saw_lane0}, lane1={saw_lane1})"
+        f"wide non-contiguous hit did not return both lanes (lane0={saw_lane0}, lane1={saw_lane1})"
     )

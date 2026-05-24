@@ -102,7 +102,9 @@ def test_scorecard_rejects_phone_cpu_claim_promotion() -> None:
     try:
         gate = json.loads(original_gate)
         gate["claim_allowed"] = True
-        PHONE_CPU_GATE.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        PHONE_CPU_GATE.write_text(
+            json.dumps(gate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         l5_l6 = json.loads(original_l5_l6)
         l5_l6["claim_allowed"] = True
         l5_l6["entries"][0]["claim_satisfied"] = True
@@ -131,7 +133,9 @@ def test_scorecard_rejects_stale_phone_cpu_gate_artifact() -> None:
     try:
         gate = json.loads(original_gate)
         gate["required_side_results"]["spec_cpu2017"] = "stale/spec.json"
-        PHONE_CPU_GATE.write_text(json.dumps(gate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        PHONE_CPU_GATE.write_text(
+            json.dumps(gate, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
         result = run_check()
         if result.returncode != 1:
             raise AssertionError(result.stdout)

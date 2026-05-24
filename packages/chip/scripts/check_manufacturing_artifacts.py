@@ -436,9 +436,7 @@ def write_report(
                     "code": f"manufacturing_artifacts_{status}_{index}",
                     "severity": "blocker" if status == "blocked" else "error",
                     "message": finding,
-                    "evidence": manifests[min(index - 1, len(manifests) - 1)]
-                    if manifests
-                    else "",
+                    "evidence": manifests[min(index - 1, len(manifests) - 1)] if manifests else "",
                     "next_step": (
                         "Archive complete package, board, FPGA, SI/PI, current, thermal, "
                         "and fabrication evidence before using this gate as release proof."
@@ -465,7 +463,10 @@ def release_action_bucket(finding: str) -> str:
         return "release_gate_closure"
     if ": release output remains missing: " in finding:
         return "phone_release_output_generation"
-    if ": release artifact files are missing" in finding or ": current artifact file is missing: " in finding:
+    if (
+        ": release artifact files are missing" in finding
+        or ": current artifact file is missing: " in finding
+    ):
         return "artifact_file_generation"
     if ": release checksum_manifest is missing: " in finding:
         return "checksum_manifest_generation"
@@ -699,9 +700,7 @@ def generation_plan_for_missing_finding(finding: str) -> dict[str, object]:
                 "generation_status": output_plan.get(
                     "generation_status", "blocked_by_phone_release_prerequisites"
                 ),
-                "can_generate_from_repo_now": output_plan.get(
-                    "can_generate_from_repo_now", False
-                ),
+                "can_generate_from_repo_now": output_plan.get("can_generate_from_repo_now", False),
                 "required_before_generation": list(
                     output_plan.get(
                         "required_before_generation",
@@ -883,9 +882,7 @@ def manifest_unblock_matrix(findings: list[str]) -> list[dict[str, object]]:
             {
                 **row,
                 "bucket_counts": {bucket: bucket_counts[bucket] for bucket in ordered},
-                "artifact_state_counts": {
-                    state: state_counts[state] for state in ordered_states
-                },
+                "artifact_state_counts": {state: state_counts[state] for state in ordered_states},
                 "next_steps": [
                     {
                         "bucket": bucket,
@@ -1070,12 +1067,8 @@ def blocker_execution_packets(findings: list[str]) -> list[dict[str, object]]:
                 "artifact_state": artifact_state_for_finding(finding),
                 "finding": finding,
                 "next_step": release_action_next_step(bucket),
-                "state_next_step": artifact_state_next_step(
-                    artifact_state_for_finding(finding)
-                ),
-                "class_next_step": release_blocker_class_next_step(
-                    release_blocker_class(finding)
-                ),
+                "state_next_step": artifact_state_next_step(artifact_state_for_finding(finding)),
+                "class_next_step": release_blocker_class_next_step(release_blocker_class(finding)),
                 "validation_commands": blocker_next_commands(finding),
                 "generation_commands": generation_commands,
                 "primary_paths": list(
@@ -1086,6 +1079,8 @@ def blocker_execution_packets(findings: list[str]) -> list[dict[str, object]]:
             }
         )
     return packets
+
+
 REQUIRED_KICAD_COMMANDS = {"erc", "drc", "gerbers", "drill", "bom", "position"}
 REQUIRED_FPGA_COMMANDS = {"synth", "place_route", "pack"}
 ALLOWED_RELEASE_GATES = {"pd_release", "tapeout_release", "board_fabrication_release"}
@@ -1146,17 +1141,17 @@ def classify_finding(finding: str) -> dict[str, object]:
         "release_action_bucket": release_action_bucket(finding),
         "release_blocker_class": release_blocker_class(finding),
         "artifact_state": artifact_state_for_finding(finding),
-        "artifact_state_next_step": artifact_state_next_step(
-            artifact_state_for_finding(finding)
-        ),
-        "class_next_step": release_blocker_class_next_step(
-            release_blocker_class(finding)
-        ),
+        "artifact_state_next_step": artifact_state_next_step(artifact_state_for_finding(finding)),
+        "class_next_step": release_blocker_class_next_step(release_blocker_class(finding)),
         "next_commands": blocker_next_commands(finding),
         "primary_paths": list(
             MANIFEST_GENERATION_GUIDANCE.get(finding_manifest_owner(finding), {}).get(
                 "primary_paths",
-                [MANIFEST_OWNER_PATHS.get(finding_manifest_owner(finding), finding_manifest_owner(finding))],
+                [
+                    MANIFEST_OWNER_PATHS.get(
+                        finding_manifest_owner(finding), finding_manifest_owner(finding)
+                    )
+                ],
             )
         ),
     }

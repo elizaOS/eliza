@@ -23,7 +23,7 @@ import {
 } from "../src/services/imagegen/backend-selector";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const EXTRAS_PATH = resolve(__dirname, "../../../docs/ELIZA_1_BUNDLE_EXTRAS.json");
+const EXTRAS_PATH = resolve(__dirname, "../../../packages/chip/ELIZA_1_BUNDLE_EXTRAS.json");
 
 interface ExtrasShape {
 	imagegen?: {

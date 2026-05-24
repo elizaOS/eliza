@@ -30,9 +30,7 @@ JETSTREAM_ENGINE_EVIDENCE_SHA = hashlib.sha256(
     JETSTREAM_ENGINE_EVIDENCE_TEXT.encode("utf-8")
 ).hexdigest()
 PROCESS_EFFECTS_CONTRACT = ROOT / "docs/spec-db/process-14a-effects.yaml"
-PROCESS_EFFECTS_CONTRACT_SHA = hashlib.sha256(
-    PROCESS_EFFECTS_CONTRACT.read_bytes()
-).hexdigest()
+PROCESS_EFFECTS_CONTRACT_SHA = hashlib.sha256(PROCESS_EFFECTS_CONTRACT.read_bytes()).hexdigest()
 
 
 class PreserveFile:
@@ -258,8 +256,7 @@ def test_jetstream_ingests_target_transcript_without_local_engine() -> None:
         tmp_path = Path(tmp)
         raw = tmp_path / "jetstream-target.log"
         raw.write_text(
-            "BrowserBench JetStream 2.2\n"
-            "JetStream 2 Score: 271.5\n",
+            "BrowserBench JetStream 2.2\nJetStream 2 Score: 271.5\n",
             encoding="utf-8",
         )
         metadata = tmp_path / "target-metadata.json"
@@ -332,7 +329,10 @@ def test_l5_l6_target_command_capture_ingests_transcript() -> None:
             metric_name,
             metric_value,
         ) in cases:
-            with tempfile.TemporaryDirectory(dir=archived_tmp_root()) as tmp, PreserveFile(result_path):
+            with (
+                tempfile.TemporaryDirectory(dir=archived_tmp_root()) as tmp,
+                PreserveFile(result_path),
+            ):
                 tmp_path = Path(tmp)
                 metadata = tmp_path / "target-metadata.json"
                 metadata.write_text(target_metadata_json(), encoding="utf-8")
@@ -368,8 +368,7 @@ def test_jetstream_quotes_artifact_paths() -> None:
         tmp_path = Path(tmp)
         raw = tmp_path / 'jetstream "target".log'
         raw.write_text(
-            "BrowserBench JetStream 2.2\n"
-            "JetStream 2 Score: 271.5\n",
+            "BrowserBench JetStream 2.2\nJetStream 2 Score: 271.5\n",
             encoding="utf-8",
         )
         metadata = tmp_path / 'target "metadata".json'
@@ -593,7 +592,9 @@ def test_coremark_l5_l6_rejects_placeholder_metadata() -> None:
             encoding="utf-8",
         )
         metadata = tmp_path / "target-metadata.json"
-        metadata.write_text('{"target":"prototype","clock_source":"calibrated"}\n', encoding="utf-8")
+        metadata.write_text(
+            '{"target":"prototype","clock_source":"calibrated"}\n', encoding="utf-8"
+        )
         proc = run_script(
             "scripts/run_coremark_l5_l6.sh",
             {
@@ -913,7 +914,9 @@ def test_score_only_transcripts_do_not_promote_l5_l6() -> None:
                 "E1_SPEC_RAW_OUTPUT": None,
                 "E1_SPEC_TARGET_METADATA": None,
                 "E1_SPEC_TARGET_RUNNER": "prototype",
-                "SPEC_LICENSE_SHA256": hashlib.sha256(b"licensed-spec-run-entitlement-fixture").hexdigest(),
+                "SPEC_LICENSE_SHA256": hashlib.sha256(
+                    b"licensed-spec-run-entitlement-fixture"
+                ).hexdigest(),
             },
             "SPEC",
         ),
@@ -929,7 +932,13 @@ def test_score_only_transcripts_do_not_promote_l5_l6() -> None:
                 run_manifest = tmp_path / "spec-run-manifest.json"
                 run_manifest.write_text(spec_run_manifest_json(raw), encoding="utf-8")
             resolved_env = {
-                key: (str(raw) if key.endswith("_RAW_OUTPUT") else str(metadata) if key.endswith("_TARGET_METADATA") else value)
+                key: (
+                    str(raw)
+                    if key.endswith("_RAW_OUTPUT")
+                    else str(metadata)
+                    if key.endswith("_TARGET_METADATA")
+                    else value
+                )
                 for key, value in env.items()
             }
             if script == "scripts/run_spec.sh":
@@ -947,7 +956,11 @@ def test_score_only_transcripts_do_not_promote_l5_l6() -> None:
 
 def test_out_of_tree_transcript_does_not_promote_l5_l6() -> None:
     result_path = ROOT / "benchmarks/results/cpu/coremark/l5_l6_result.json"
-    with tempfile.TemporaryDirectory() as out_tmp, tempfile.TemporaryDirectory(dir=archived_tmp_root()) as in_tmp, PreserveFile(result_path):
+    with (
+        tempfile.TemporaryDirectory() as out_tmp,
+        tempfile.TemporaryDirectory(dir=archived_tmp_root()) as in_tmp,
+        PreserveFile(result_path),
+    ):
         raw = Path(out_tmp) / "coremark-target.log"
         raw.write_text(
             "CoreMark Size    : 666\n"

@@ -14,10 +14,10 @@ import argparse
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+import xml.etree.ElementTree as ET
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
-import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = ROOT / "docs/evidence/cache/cache_pressure_report.json"
@@ -129,7 +129,7 @@ def parse_utc_timestamp(value: Any) -> datetime | None:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def resolve_artifact_path(value: Any) -> Path | None:
@@ -283,7 +283,8 @@ def junit_result_artifact_findings(data: dict[str, Any], report_path: Path) -> l
                     "name": f"{scope}.xml",
                     "path": rel(path),
                     "status": "invalid",
-                    "reason": "JUnit XML contains non-passing testcase nodes: " + ", ".join(bad_nodes),
+                    "reason": "JUnit XML contains non-passing testcase nodes: "
+                    + ", ".join(bad_nodes),
                 }
             )
         active = None
@@ -506,7 +507,7 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
             }
         )
     else:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if captured > now + timedelta(minutes=5):
             findings.append(
                 {
@@ -573,10 +574,7 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "name": "evidence_class",
                 "path": rel(report_path),
                 "status": "invalid",
-                "reason": (
-                    "measured cache-pressure reports must use "
-                    f"{MEASURED_EVIDENCE_CLASS}"
-                ),
+                "reason": (f"measured cache-pressure reports must use {MEASURED_EVIDENCE_CLASS}"),
             }
         )
     findings.extend(generated_by_findings(data, report_path))
@@ -677,7 +675,6 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
     blocked_cycles = metrics.get("blocked_cycles")
     p95_miss_latency_cycles = metrics.get("p95_miss_latency_cycles")
     display_violations = metrics.get("display_service_window_violations")
-    if isinstance(attempted_misses, int | float) and attempted_misses <= 0:
     if (
         isinstance(metrics.get("attempted_misses"), int | float)
         and metrics["attempted_misses"] <= 0
@@ -730,9 +727,6 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "p95 miss latency must be positive",
             }
         )
-    if isinstance(metrics.get("max_in_flight_misses"), int | float) and metrics[
-        "max_in_flight_misses"
-    ] < 2:
     if (
         isinstance(metrics.get("max_in_flight_misses"), int | float)
         and metrics["max_in_flight_misses"] < 2
@@ -754,7 +748,6 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "display/QoS service window violations cannot be negative",
             }
         )
-    if isinstance(display_violations, int | float) and display_violations > 0:
     if (
         isinstance(metrics.get("display_service_window_violations"), int | float)
         and metrics["display_service_window_violations"] > 0
@@ -774,9 +767,7 @@ def measured_report(report_path: Path, data: dict[str, Any]) -> dict[str, Any]:
     pressure_findings = validate_measured_report(data, report_path)
     memory_findings = memory_evidence_findings()
     findings = pressure_findings + memory_findings
-    blocking = [
-        item for item in pressure_findings if item["status"] in {"invalid", "missing"}
-    ]
+    blocking = [item for item in pressure_findings if item["status"] in {"invalid", "missing"}]
     gaps = [item for item in pressure_findings if item["status"] == "gap_observed"]
     status = "pass" if not blocking and not gaps else "blocked"
     return {

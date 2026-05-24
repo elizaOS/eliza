@@ -61,8 +61,7 @@ AOSP_EXPECTED_EVIDENCE = (
     ROOT / "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
 )
 AOSP_PRODUCT_OUT = (
-    Path(os.environ.get("AOSP_DIR", "/home/shaw/aosp"))
-    / "out/target/product/eliza_ai_soc"
+    Path(os.environ.get("AOSP_DIR", "/home/shaw/aosp")) / "out/target/product/eliza_ai_soc"
 )
 AOSP_EXPECTED_ARTIFACT_NAMES = (
     "vendor.img",
@@ -139,13 +138,23 @@ def parse_adb_targets(adb_devices_output: str) -> list[dict[str, str]]:
 
 
 def choose_ready_serial(adb_devices_output: str) -> str | None:
-    ready = [target["serial"] for target in parse_adb_targets(adb_devices_output) if target["state"] == "device"]
+    ready = [
+        target["serial"]
+        for target in parse_adb_targets(adb_devices_output)
+        if target["state"] == "device"
+    ]
     return ready[0] if len(ready) == 1 else None
 
 
-def maybe_connect_adb(args: argparse.Namespace, adb_devices: Probe) -> tuple[Probe, str | None, list[dict[str, object]]]:
+def maybe_connect_adb(
+    args: argparse.Namespace, adb_devices: Probe
+) -> tuple[Probe, str | None, list[dict[str, object]]]:
     attempts: list[dict[str, object]] = [
-        {"command": ["adb", "devices", "-l"], "ok": adb_devices.ok, "output": adb_devices.output.strip()}
+        {
+            "command": ["adb", "devices", "-l"],
+            "ok": adb_devices.ok,
+            "output": adb_devices.output.strip(),
+        }
     ]
     if args.adb_serial:
         return adb_devices, args.adb_serial, attempts
@@ -159,7 +168,11 @@ def maybe_connect_adb(args: argparse.Namespace, adb_devices: Probe) -> tuple[Pro
     if args.adb_connect:
         adb_devices = run(["adb", "devices", "-l"], args.timeout_seconds)
         attempts.append(
-            {"command": ["adb", "devices", "-l"], "ok": adb_devices.ok, "output": adb_devices.output.strip()}
+            {
+                "command": ["adb", "devices", "-l"],
+                "ok": adb_devices.ok,
+                "output": adb_devices.output.strip(),
+            }
         )
     return adb_devices, choose_ready_serial(adb_devices.output), attempts
 
@@ -174,9 +187,12 @@ def file_snapshot(path: Path, *, tail_lines: int = 0) -> dict[str, object]:
         return record
     stat = path.stat()
     record["size_bytes"] = stat.st_size
-    record["mtime_utc"] = datetime.fromtimestamp(stat.st_mtime, UTC).replace(
-        microsecond=0
-    ).isoformat().replace("+00:00", "Z")
+    record["mtime_utc"] = (
+        datetime.fromtimestamp(stat.st_mtime, UTC)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
     if tail_lines:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
         record["tail"] = lines[-tail_lines:]

@@ -24,6 +24,7 @@ REPORT = ROOT / "build/reports/chip-os-identity-contract.json"
 SCHEMA = "eliza.chip_os_identity_contract.v1"
 CLAIM_BOUNDARY = "static_identity_contract_only_not_android_boot_or_launcher_evidence"
 
+
 def package_name_to_path(package_name: str) -> Path:
     return Path(*package_name.split("."))
 
@@ -345,7 +346,11 @@ def build_report() -> dict[str, Any]:
         )
 
     expected_service = f"{vendor_home}/.ElizaAgentService" if vendor_home else None
-    app_service_names = {".ElizaAgentService", f"{APP_PACKAGE}.ElizaAgentService", "app.eliza.ElizaAgentService"}
+    app_service_names = {
+        ".ElizaAgentService",
+        f"{APP_PACKAGE}.ElizaAgentService",
+        "app.eliza.ElizaAgentService",
+    }
     if not (services & app_service_names):
         findings.append(
             finding(
@@ -403,7 +408,10 @@ def build_report() -> dict[str, Any]:
         "Deep capability detail" in read_text(path) and "/api/agent/self-status" in read_text(path)
         for path in CHIP_SCRIPTS
     )
-    if "/api/agent/self-status" in script_endpoint_union and not self_status_is_documented_secondary:
+    if (
+        "/api/agent/self-status" in script_endpoint_union
+        and not self_status_is_documented_secondary
+    ):
         findings.append(
             finding(
                 "legacy_self_status_endpoint_still_required",
@@ -488,11 +496,10 @@ def build_report() -> dict[str, Any]:
         "release_validation_tokens": release_validation,
         "agent_plugin_manifest": {
             "path": rel(APP_AGENT_PLUGIN_MANIFEST),
-            "externals_as_stubs_count": len(externals_as_stubs) if isinstance(externals_as_stubs, list) else None,
-            "unsupported_android_runtime_stubs": sorted(unsupported_android_runtime_stubs),
             "externals_as_stubs_count": len(externals_as_stubs)
             if isinstance(externals_as_stubs, list)
             else None,
+            "unsupported_android_runtime_stubs": sorted(unsupported_android_runtime_stubs),
             "runtime_stub_externals": runtime_stub_externals,
         },
     }
@@ -510,7 +517,7 @@ def report_payload(findings: list[dict[str, Any]], evidence: dict[str, Any]) -> 
                 {
                     value
                     for value in json.dumps(evidence).replace('"', " ").split()
-                if value in {"app.eliza", "ai.elizaos.app", "com.elizaos.agent", APP_PACKAGE}
+                    if value in {"app.eliza", "ai.elizaos.app", "com.elizaos.agent", APP_PACKAGE}
                 }
             ),
         },

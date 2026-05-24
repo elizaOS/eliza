@@ -188,9 +188,9 @@ def main() -> int:
                     "manufacturing_closure_blocked_candidate_output_file_count"
                 ]
             ),
-            "manufacturing_closure_has_blocked_candidate_outputs": production_presence[
-                "summary"
-            ]["manufacturing_closure_has_blocked_candidate_outputs"],
+            "manufacturing_closure_has_blocked_candidate_outputs": production_presence["summary"][
+                "manufacturing_closure_has_blocked_candidate_outputs"
+            ],
         },
         "live_pcb_evidence": {
             "board_file": route_inventory["inputs"]["board_file"],

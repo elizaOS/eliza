@@ -308,9 +308,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                     ],
                 },
             )
-            args = inv.parse_args(
-                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
-            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, exit_code = inv.build_inventory(args)
         self.assertEqual(exit_code, 0)
         self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)

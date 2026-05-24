@@ -231,7 +231,9 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
                     report_path.write_text(original, encoding="utf-8")
 
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("schema must be eliza.memory.lpddr_bandwidth_latency_benchmark.v1", result.stdout)
+        self.assertIn(
+            "schema must be eliza.memory.lpddr_bandwidth_latency_benchmark.v1", result.stdout
+        )
 
     def test_real_report_requires_declared_minimum_fields(self) -> None:
         report = valid_real_report()
@@ -330,9 +332,7 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
 
     def test_real_report_without_process_contract_hash_is_rejected(self) -> None:
         report = valid_real_report()
-        report["process_corners"]["process_effects_contract"][
-            "sha256"
-        ] = "__REQUIRED_SHA256__"
+        report["process_corners"]["process_effects_contract"]["sha256"] = "__REQUIRED_SHA256__"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing-process-hash.json"
             path.write_text(json.dumps(report), encoding="utf-8")
@@ -397,9 +397,7 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
 
     def test_real_report_without_peak_pass_fail_is_rejected(self) -> None:
         report = valid_real_report()
-        del report["pass_fail_against_phone_2028_target_profile"][
-            "peak_bandwidth_gbps_min_180"
-        ]
+        del report["pass_fail_against_phone_2028_target_profile"]["peak_bandwidth_gbps_min_180"]
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "missing-peak-pass-fail.json"
             path.write_text(json.dumps(report), encoding="utf-8")
@@ -421,9 +419,7 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
 
     def test_overall_pass_requires_every_memory_target_key_to_pass(self) -> None:
         report = valid_real_report()
-        report["pass_fail_against_phone_2028_target_profile"][
-            "contended_trace_present"
-        ] = "fail"
+        report["pass_fail_against_phone_2028_target_profile"]["contended_trace_present"] = "fail"
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "drifted-overall-pass.json"
             path.write_text(json.dumps(report), encoding="utf-8")
@@ -509,9 +505,7 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
             errors: list[str] = []
             templates.validate_dramsim_aggregate(errors, path)
 
-        self.assertTrue(
-            any("missing sustained workloads" in error for error in errors), errors
-        )
+        self.assertTrue(any("missing sustained workloads" in error for error in errors), errors)
 
     def test_dramsim_aggregate_missing_listed_report_is_rejected(self) -> None:
         aggregate = yaml.safe_load(templates.DRAM_SIM_EVIDENCE.read_text())
@@ -525,7 +519,9 @@ class MemoryEvidenceTemplateTest(unittest.TestCase):
             errors: list[str] = []
             templates.validate_dramsim_aggregate(errors, path)
 
-        self.assertTrue(any("listed DRAMSim report is missing" in error for error in errors), errors)
+        self.assertTrue(
+            any("listed DRAMSim report is missing" in error for error in errors), errors
+        )
 
     def test_dramsim_aggregate_missing_report_hash_binding_is_rejected(self) -> None:
         aggregate = yaml.safe_load(templates.DRAM_SIM_EVIDENCE.read_text())

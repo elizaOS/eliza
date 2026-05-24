@@ -233,9 +233,7 @@ class AospTeeContractTests(unittest.TestCase):
             patches = self._patch_tree(Path(tmpdir), complete=True)
             with PatchStack(patches):
                 gate.SEPOLICY_PVM.write_text(BUILD_GATED_SEPOLICY, encoding="utf-8")
-                gate.SEPOLICY_FILE_CONTEXTS.write_text(
-                    BUILD_GATED_FILE_CONTEXTS, encoding="utf-8"
-                )
+                gate.SEPOLICY_FILE_CONTEXTS.write_text(BUILD_GATED_FILE_CONTEXTS, encoding="utf-8")
                 report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass", report["findings"])
 

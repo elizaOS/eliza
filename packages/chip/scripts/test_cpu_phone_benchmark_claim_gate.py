@@ -209,19 +209,22 @@ def raw_output_sha256(name: str) -> str:
 
 
 def spec_run_manifest_text() -> str:
-    return json.dumps(
-        {
-            "schema": "eliza.spec_cpu2017_run_manifest.v1",
-            "spec_version": "SPEC CPU2017 v1.1.9",
-            "runcpu_command": "runcpu --config=e1.cfg --reportable --tune=base",
-            "config": "benchmarks/results/cpu/spec/e1.cfg",
-            "config_sha256": SPEC_CONFIG_SHA,
-            "reportable": True,
-            "result_bundle": "spec_cpu2017.log",
-            "result_bundle_sha256": raw_output_sha256("spec_cpu2017"),
-        },
-        indent=2,
-    ) + "\n"
+    return (
+        json.dumps(
+            {
+                "schema": "eliza.spec_cpu2017_run_manifest.v1",
+                "spec_version": "SPEC CPU2017 v1.1.9",
+                "runcpu_command": "runcpu --config=e1.cfg --reportable --tune=base",
+                "config": "benchmarks/results/cpu/spec/e1.cfg",
+                "config_sha256": SPEC_CONFIG_SHA,
+                "reportable": True,
+                "result_bundle": "spec_cpu2017.log",
+                "result_bundle_sha256": raw_output_sha256("spec_cpu2017"),
+            },
+            indent=2,
+        )
+        + "\n"
+    )
 
 
 def spec_run_manifest_sha256() -> str:
@@ -279,7 +282,9 @@ def side_result(name: str, status: str = "passed") -> dict[str, Any]:
         )
         if name == "spec_cpu2017":
             payload["artifacts"]["spec_license_sha256"] = "1234567890abcdef" * 4
-            payload["artifacts"]["spec_run_manifest"] = "benchmarks/results/cpu/spec/run-manifest.json"
+            payload["artifacts"]["spec_run_manifest"] = (
+                "benchmarks/results/cpu/spec/run-manifest.json"
+            )
             payload["artifacts"]["spec_run_manifest_sha256"] = spec_run_manifest_sha256()
     elif status == "blocked":
         blocked_requirements = [
@@ -529,9 +534,7 @@ def populate_valid_root(root: Path) -> Path:
         )
     report_path = root / "benchmarks/results/cpu-phone/report.json"
     report_path.parent.mkdir(parents=True, exist_ok=True)
-    (report_path.parent / "target-session.log").write_text(
-        REPORT_TRANSCRIPT_TEXT, encoding="utf-8"
-    )
+    (report_path.parent / "target-session.log").write_text(REPORT_TRANSCRIPT_TEXT, encoding="utf-8")
     (root / "bw.log").write_text(lmbench_raw_output_text("lmbench_bw_mem"), encoding="utf-8")
     (root / "lat.log").write_text(lmbench_raw_output_text("lmbench_lat_mem_rd"), encoding="utf-8")
     lmbench_metadata_path = root / "benchmarks/metadata/lmbench-target.json"
@@ -890,7 +893,9 @@ def test_side_result_missing_calibration_evidence_artifact_blocks_claim() -> Non
         report = gate.build_report(report_path)
         expect_status(report, "blocked")
         finding = next(item for item in report["findings"] if item["name"] == "coremark")
-        if "clock_source" not in finding.get("reason", "") or "artifact is missing" not in finding.get("reason", ""):
+        if "clock_source" not in finding.get(
+            "reason", ""
+        ) or "artifact is missing" not in finding.get("reason", ""):
             raise AssertionError(finding)
     print("PASS missing calibration evidence artifact blocks phone CPU claim")
 
@@ -905,7 +910,9 @@ def test_side_result_calibration_evidence_hash_mismatch_blocks_claim() -> None:
         report = gate.build_report(report_path)
         expect_status(report, "blocked")
         finding = next(item for item in report["findings"] if item["name"] == "coremark")
-        if "power_meter" not in finding.get("reason", "") or "does not match" not in finding.get("reason", ""):
+        if "power_meter" not in finding.get("reason", "") or "does not match" not in finding.get(
+            "reason", ""
+        ):
             raise AssertionError(finding)
     print("PASS calibration evidence hash mismatch blocks phone CPU claim")
 
@@ -1260,9 +1267,7 @@ def test_lmbench_missing_required_calibration_asset_blocks_claim() -> None:
     with tmp:
         report_path = populate_valid_root(root)
         payload = copy.deepcopy(valid_benchmark_report())
-        payload["results"][0]["run_metadata"]["required_calibration_assets"].remove(
-            "memory_model"
-        )
+        payload["results"][0]["run_metadata"]["required_calibration_assets"].remove("memory_model")
         write_json(report_path, payload)
         report = gate.build_report(report_path)
         expect_status(report, "blocked")
@@ -1280,7 +1285,9 @@ def test_lmbench_missing_required_calibration_asset_evidence_blocks_claim() -> N
         report = gate.build_report(report_path)
         expect_status(report, "blocked")
         finding = next(item for item in report["findings"] if item["name"] == "lmbench_bw_mem")
-        if "lmbench_binary" not in finding.get("reason", "") or "artifact is missing" not in finding.get("reason", ""):
+        if "lmbench_binary" not in finding.get(
+            "reason", ""
+        ) or "artifact is missing" not in finding.get("reason", ""):
             raise AssertionError(finding)
     print("PASS lmbench required calibration asset evidence is checked")
 
@@ -1422,7 +1429,9 @@ def test_non_strict_mode_writes_blocked_l5_l6_report() -> None:
             or l5_l6_report.get("release_claim_allowed") is not False
         ):
             raise AssertionError(l5_l6_report)
-        spec_entry = next(item for item in l5_l6_report["entries"] if item["name"] == "spec_cpu2017")
+        spec_entry = next(
+            item for item in l5_l6_report["entries"] if item["name"] == "spec_cpu2017"
+        )
         if spec_entry.get("claim_satisfied") is not False or not spec_entry.get("reason"):
             raise AssertionError(spec_entry)
     print("PASS non-strict mode writes blocked L5/L6 report")
@@ -1465,7 +1474,8 @@ def test_l5_l6_rollup_schema_validator_rejects_drift() -> None:
             != len(gate.REQUIRED_BLOCKED_SIDE_REQUIREMENTS["spec_cpu2017"])
             or set(blocked_spec.get("blocked_requirement_names") or [])
             != gate.REQUIRED_BLOCKED_SIDE_REQUIREMENTS["spec_cpu2017"]
-            or "licensed_spec_cpu2017_install" not in blocked_spec.get("blocked_requirements_summary", "")
+            or "licensed_spec_cpu2017_install"
+            not in blocked_spec.get("blocked_requirements_summary", "")
             or blocked_spec.get("claim_allowed") is not False
             or blocked_spec.get("phone_claim_allowed") is not False
             or blocked_spec.get("release_claim_allowed") is not False
@@ -1523,9 +1533,9 @@ def test_l5_l6_rollup_schema_validator_rejects_drift() -> None:
             raise AssertionError(errors)
         drifted = copy.deepcopy(gate.build_l5_l6_report(report_path, report))
         drifted["entries"][0]["raw_output_sha256"] = "0" * 64
-        drifted["entries"][0]["target_metadata_sha256"] = (
-            drifted["entries"][0]["target_metadata_sha256"].upper()
-        )
+        drifted["entries"][0]["target_metadata_sha256"] = drifted["entries"][0][
+            "target_metadata_sha256"
+        ].upper()
         errors = gate.validate_l5_l6_report(drifted)
         if not any("non-placeholder raw_output_sha256" in error for error in errors):
             raise AssertionError(errors)
