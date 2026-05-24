@@ -41,19 +41,42 @@ from eliza_robot.bridge.backends.ainex_remote import AinexRemoteBackend
 from eliza_robot.bridge.backends.calibrated import CalibratedBackend
 from eliza_robot.bridge.backends.dual_target import DualTargetBackend
 from eliza_robot.bridge.backends.mujoco_backend import MuJocoBackend
-from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso
 from eliza_robot.rl.text_conditioned.inference_loop import (
     InferenceLoopConfig,
     run_inference,
 )
 from eliza_robot.sim.mujoco.demo_env import DemoEnv
 
+PKG_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ALBERTA_CHECKPOINT = PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
+SUPPORTED_PROFILE_ID = "hiwonder-ainex"
+
+
+def _load_checkpoint_manifest(checkpoint: Path) -> dict:
+    manifest = checkpoint / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def _validate_checkpoint_profile(checkpoint: Path) -> dict:
+    manifest = _load_checkpoint_manifest(checkpoint)
+    profile_id = manifest.get("profile_id")
+    if not profile_id:
+        raise ValueError(f"checkpoint manifest has no profile_id: {checkpoint}")
+    if profile_id != SUPPORTED_PROFILE_ID:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"checkpoint={profile_id!r} script_profile={SUPPORTED_PROFILE_ID!r}"
+        )
+    return manifest
+
 
 async def _build_backend(args):
     """Real + (optionally calibrated) sim, wrapped in DualTargetBackend."""
     real = AinexRemoteBackend(host=args.host, port=args.port)
     sim_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-    sim = MuJocoBackend(sim_env, profile_id="hiwonder-ainex")
+    sim = MuJocoBackend(sim_env, profile_id=SUPPORTED_PROFILE_ID)
     if args.calibration is not None and Path(args.calibration).is_file():
         sim_wrapped = CalibratedBackend.from_file(sim, args.calibration)
         print(f"[e2e] calibrated sim with {args.calibration}")
@@ -115,6 +138,7 @@ async def _read_sim_joints(sim_env) -> dict[str, float]:
 async def _run(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = _validate_checkpoint_profile(Path(args.checkpoint))
 
     backend, sim_env = await _build_backend(args)
     real_inner = backend._real  # type: ignore[attr-defined]
@@ -265,6 +289,8 @@ async def _run(args) -> int:
 
     summary = {
         "checkpoint": str(args.checkpoint),
+        "checkpoint_regime": manifest.get("regime"),
+        "profile_id": SUPPORTED_PROFILE_ID,
         "calibration": str(args.calibration) if args.calibration else None,
         "host": f"{args.host}:{args.port}",
         "policy_hz": args.policy_hz,
@@ -315,7 +341,7 @@ def main() -> int:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "checkpoints" / "text_conditioned_v2",
+        default=DEFAULT_ALBERTA_CHECKPOINT,
     )
     parser.add_argument(
         "--calibration",

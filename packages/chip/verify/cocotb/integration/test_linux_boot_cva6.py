@@ -1,7 +1,7 @@
-"""M->S handoff and Linux-kernel bring-up on the REAL CVA6 from REAL DRAM.
+"""M->S handoff and Linux-kernel bring-up on the CVA6 RTL from the DRAM path.
 
-Same DUT as `test_opensbi_cva6_boot.py` (`e1_cva6_dram_boot_top`: real CVA6
-v5.3.0 fetching from the real `e1_dram_ctrl` through the real fabric, real
+Same DUT as `test_opensbi_cva6_boot.py` (`e1_cva6_dram_boot_top`: CVA6
+v5.3.0 RTL fetching from the `e1_dram_ctrl` RTL model through the fabric RTL,
 CLINT/PLIC, RoT-gated reset), now driven PAST the OpenSBI banner.  The bespoke
 read-modify-write atomics adapter has been replaced by the vendored
 pulp-platform `axi_riscv_atomics` filter (e1_axi4_riscv_atomics), which resolves
@@ -161,6 +161,8 @@ async def test_boot_markers(dut):
     )
     dut._log.info("UART transcript:\n" + transcript)
 
+    assert dram_ar >= 1 and dram_r >= 1, (
+        f"CVA6 never fetched through the RTL DRAM path (AR={dram_ar}, R={dram_r}).")
     assert dram_ar >= 1 and dram_r >= 1, f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
     assert len(chars) > 0, "No UART output — OpenSBI never reached its console."
     assert require_seen, (

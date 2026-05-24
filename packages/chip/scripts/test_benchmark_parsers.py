@@ -39,6 +39,127 @@ def assert_equal(actual: object, expected: object, message: str) -> None:
         raise AssertionError(f"{message}: expected {expected!r}, got {actual!r}")
 
 
+def valid_l5_l6_report() -> dict[str, Any]:
+    return {
+        "schema": "eliza.benchmark_run.v1",
+        "report_id": "l5-l6-target-test",
+        "status": "passed",
+        "date_utc": "2026-05-22T00:00:00+00:00",
+        "dry_run": False,
+        "claim_allowed": True,
+        "phone_claim_allowed": True,
+        "release_claim_allowed": False,
+        "claim_level": "L5_PROTOTYPE_SILICON",
+        "platform": {
+            "name": "e1-phone-prototype",
+            "revision": "evt",
+            "source_tree_sha": "unknown",
+            "host": "target",
+            "host_system": "linux",
+        },
+        "target_execution": {
+            "runner": "prototype",
+            "transcript_sha256": "1" * 64,
+        },
+        "software": {
+            "os": "linux",
+            "kernel": "test",
+            "firmware": "test",
+            "runtime": "bare",
+            "build_id": "test",
+        },
+        "clocks": {
+            "source": "measured",
+            "cpu_hz": 1,
+            "npu_hz": 1,
+            "memory_hz": 1,
+            "governor": "performance",
+        },
+        "memory": {
+            "type": "lpddr",
+            "capacity_bytes": 1,
+            "bandwidth_bytes_per_second": 1,
+            "channels": 1,
+        },
+        "thermal": {
+            "ambient_c": 25,
+            "die_c": 40,
+            "cooling": "passive",
+            "throttle_state": "none",
+        },
+        "power": {
+            "source": "meter",
+            "watts": 1.0,
+            "measurement_method": "shunt",
+            "sample_count": 1,
+            "averaging_window_seconds": 1.0,
+        },
+        "process": {
+            "node": "14A-test",
+            "pdk": "test",
+            "process_effects_contract": {
+                "path": run_benchmarks.PROCESS_EFFECTS_CONTRACT_PATH,
+                "sha256": run_benchmarks.sha256_file(
+                    ROOT / run_benchmarks.PROCESS_EFFECTS_CONTRACT_PATH
+                ),
+            },
+            "process_corner_count": 1,
+            "worst_process_corner": "14a_tt",
+            "pdk_signoff_claim": run_benchmarks.PROCESS_PDK_SIGNOFF_PASSED,
+        },
+        "calibration": {
+            "status": "calibrated",
+            "source": "lab",
+            "ground_truth_reference": "meter",
+            "last_calibrated_utc": "2026-05-22T00:00:00+00:00",
+            "assets": {
+                "clock_source": {
+                    "status": "calibrated",
+                    "source": "lab",
+                    "sha256": "3" * 64,
+                    "evidence": "clock transcript",
+                }
+            },
+        },
+        "config": {"version": "test", "benchmarks": []},
+        "results": [
+            {
+                "name": "coremark",
+                "suite": "CoreMark",
+                "version": "test",
+                "command": ["coremark"],
+                "input_dataset": "default",
+                "primary_metric": "CoreMark/MHz",
+                "units": "score_per_mhz",
+                "dependencies": [],
+                "artifacts": {"raw_output": "coremark.log", "raw_output_sha256": "4" * 64},
+                "status": "passed",
+                "parser": "coremark_v1",
+                "provenance": "measured",
+                "metrics": {"coremark_per_mhz": 1.0},
+                "target_execution": {
+                    "runner": "prototype",
+                    "transcript_sha256": "5" * 64,
+                },
+                "run_metadata": {
+                    "required_metadata": [
+                        "software",
+                        "clocks",
+                        "memory",
+                        "thermal",
+                        "power",
+                        "process",
+                        "calibration",
+                    ],
+                    "required_metrics": ["coremark_per_mhz"],
+                    "metric_gates": [],
+                    "required_calibration_assets": ["clock_source"],
+                },
+            }
+        ],
+    }
+
+
 def test_suite_parsers_accept_real_formats() -> None:
     coremark = run_benchmarks.parse_coremark("Iterations/Sec   : 123.5\nCoreMark/MHz : 4.25\n")
     assert_equal(coremark["coremark_per_mhz"], 4.25, "CoreMark/MHz")
@@ -351,6 +472,132 @@ def test_strict_missing_exits_two_and_preserves_blockers() -> None:
     assert_equal(blocked[0]["release_blocking"], True, "tflite release blocker")
 
 
+def test_blocked_results_require_blocked_placeholder_provenance() -> None:
+    report_path = ROOT / "benchmarks/results/strict-release-gate-test/report.json"
+    for provenance in ("measured", "target-measured", "silicon-measured", "imported"):
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        result = next(row for row in report["results"] if row["status"] == "blocked")
+        result["provenance"] = provenance
+        errors = run_benchmarks.validate_report(report)
+        if not any("blocked result provenance must be blocked_placeholder" in e for e in errors):
+            raise AssertionError((provenance, errors))
+
+
+def test_l5_l6_passed_results_require_target_execution() -> None:
+    report = valid_l5_l6_report()
+    errors = run_benchmarks.validate_report(report)
+    if errors:
+        raise AssertionError(errors)
+
+    missing_report_target = json.loads(json.dumps(report))
+    del missing_report_target["target_execution"]
+    errors = run_benchmarks.validate_report(missing_report_target)
+    if not any("report missing target_execution" in error for error in errors):
+        raise AssertionError(errors)
+
+    missing_result_target = json.loads(json.dumps(report))
+    del missing_result_target["results"][0]["target_execution"]
+    errors = run_benchmarks.validate_report(missing_result_target)
+    if not any("report.results[0] missing target_execution" in error for error in errors):
+        raise AssertionError(errors)
+
+
+def test_l5_l6_blocked_report_does_not_require_target_execution() -> None:
+    report = valid_l5_l6_report()
+    del report["target_execution"]
+    report["status"] = "blocked"
+    report["claim_allowed"] = False
+    report["phone_claim_allowed"] = False
+    report["release_claim_allowed"] = False
+    result = report["results"][0]
+    result.pop("target_execution")
+    result.pop("metrics")
+    result.pop("run_metadata")
+    result["status"] = "blocked"
+    result["provenance"] = "blocked_placeholder"
+    result["blocked_requirements"] = [
+        {
+            "name": "target.runner",
+            "reason": "missing target evidence",
+            "resolution": "Run on an L5/L6 target and archive the target transcript.",
+        }
+    ]
+
+    errors = run_benchmarks.validate_report(report)
+    if errors:
+        raise AssertionError(errors)
+
+
+def test_report_status_and_claim_flags_match_results() -> None:
+    report = valid_l5_l6_report()
+
+    missing_status = json.loads(json.dumps(report))
+    missing_status.pop("status")
+    errors = run_benchmarks.validate_report(missing_status)
+    if not any("report missing status" in error for error in errors):
+        raise AssertionError(errors)
+
+    empty_results = json.loads(json.dumps(report))
+    empty_results["results"] = []
+    errors = run_benchmarks.validate_report(empty_results)
+    if not any("results must contain at least one benchmark result" in error for error in errors):
+        raise AssertionError(errors)
+
+    blocked_result = json.loads(json.dumps(report))
+    result = blocked_result["results"][0]
+    result["status"] = "blocked"
+    result["provenance"] = "blocked_placeholder"
+    result.pop("metrics", None)
+    result.pop("run_metadata", None)
+    result["blocked_requirements"] = [
+        {
+            "name": "target.runner",
+            "reason": "missing target evidence",
+            "resolution": "Run on an L5/L6 target and archive the target transcript.",
+        }
+    ]
+    errors = run_benchmarks.validate_report(blocked_result)
+    if not any("report.status must be blocked" in error for error in errors):
+        raise AssertionError(errors)
+
+    blocked_result["status"] = "blocked"
+    blocked_result["claim_allowed"] = False
+    blocked_result["phone_claim_allowed"] = False
+    blocked_result["release_claim_allowed"] = False
+    errors = run_benchmarks.validate_report(blocked_result)
+    if errors:
+        raise AssertionError(errors)
+
+    dry_run = json.loads(json.dumps(report))
+    dry_run["dry_run"] = True
+    dry_run["claim_allowed"] = True
+    dry_run["phone_claim_allowed"] = True
+    dry_run["release_claim_allowed"] = False
+    dry_run["results"][0]["status"] = "planned"
+    dry_run["results"][0]["provenance"] = "dry_run"
+    dry_run["results"][0].pop("metrics", None)
+    dry_run["results"][0].pop("run_metadata", None)
+    errors = run_benchmarks.validate_report(dry_run)
+    if not any("claim_allowed must match passed real-run status" in error for error in errors):
+        raise AssertionError(errors)
+
+
+def test_blocked_requirements_require_shape() -> None:
+    report = valid_l5_l6_report()
+    result = report["results"][0]
+    result["status"] = "blocked"
+    result["provenance"] = "blocked_placeholder"
+    result.pop("metrics", None)
+    result.pop("run_metadata", None)
+    result["blocked_requirements"] = [{"name": "target.runner", "reason": ""}]
+
+    errors = run_benchmarks.validate_report(report)
+    if not any("blocked_requirements[0].reason" in error for error in errors):
+        raise AssertionError(errors)
+    if not any("blocked_requirements[0].resolution" in error for error in errors):
+        raise AssertionError(errors)
+
+
 def test_blocked_metadata_template_covers_config_assets() -> None:
     plan = json.loads(PLAN_PATH.read_text(encoding="utf-8"))
     metadata = json.loads(BLOCKED_METADATA.read_text(encoding="utf-8"))
@@ -553,6 +800,11 @@ def main() -> int:
         test_mlperf_inference_parser_accepts_modeled_npu_output,
         test_mlperf_inference_parser_rejects_claim_and_power_drift,
         test_strict_missing_exits_two_and_preserves_blockers,
+        test_blocked_results_require_blocked_placeholder_provenance,
+        test_l5_l6_passed_results_require_target_execution,
+        test_l5_l6_blocked_report_does_not_require_target_execution,
+        test_report_status_and_claim_flags_match_results,
+        test_blocked_requirements_require_shape,
         test_blocked_metadata_template_covers_config_assets,
         test_process_metadata_blocks_without_pdk_signoff,
         test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker,

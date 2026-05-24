@@ -21,6 +21,7 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_LEG_JOINT_ORDER,
     ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS,
     ASIMOV1_PHYSICS_HZ,
+    ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM,
 )
 from eliza_robot.asimov_1.mujoco_assets import generate_asimov1_mjcf
 from eliza_robot.curriculum.loader import load_curriculum
@@ -55,6 +56,7 @@ def default_config(
     active_tasks: Sequence[str] = DEFAULT_ACTIVE_TASKS,
     pca_dim: int = DEFAULT_PCA_DIM,
     domain_randomization: dict[str, Sequence[float]] | None = None,
+    observation_delay_steps: dict[str, int] | None = None,
 ):
     from ml_collections import config_dict
 
@@ -78,8 +80,7 @@ def default_config(
             tracking_sigma=0.25,
         ),
         observation_delay_steps=config_dict.create(
-            left_leg=1,
-            right_leg=2,
+            **dict(observation_delay_steps or {"left_leg": 1, "right_leg": 2}),
         ),
         text_conditioned=config_dict.create(
             active_tasks=tuple(active_tasks),
@@ -159,9 +160,28 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         self._history_len = int(np.max(np.asarray(self._observation_delay_steps))) + 1
 
         self._sensor_addr: dict[str, tuple[int, int]] = {}
-        for sensor in ("imu_ang_vel", "imu_quat"):
+        for sensor in ("imu_ang_vel", "imu_lin_vel", "imu_quat", "root_angmom"):
             sid = model.sensor(sensor).id
             self._sensor_addr[sensor] = (int(model.sensor_adr[sid]), int(model.sensor_dim[sid]))
+        toe_geom_ids = []
+        for geom_id in range(model.ngeom):
+            name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) or ""
+            if "toe" in name.lower() and "collision" in name.lower():
+                toe_geom_ids.append(geom_id)
+        left_toe_geom_ids = [
+            geom_id
+            for geom_id in toe_geom_ids
+            if "left_" in (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) or "")
+        ]
+        right_toe_geom_ids = [
+            geom_id
+            for geom_id in toe_geom_ids
+            if "right_" in (mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_GEOM, geom_id) or "")
+        ]
+        if not left_toe_geom_ids or not right_toe_geom_ids:
+            raise ValueError("ASIMOV MJX privileged critic requires left/right toe collision geoms")
+        self._left_toe_geom_ids = jp.asarray(left_toe_geom_ids, dtype=jp.int32)
+        self._right_toe_geom_ids = jp.asarray(right_toe_geom_ids, dtype=jp.int32)
 
         self._active_tasks = tuple(self._config.text_conditioned.active_tasks)
         unknown = [task for task in self._active_tasks if task not in _TASK_COMMANDS]
@@ -198,7 +218,18 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
 
     @property
     def observation_size(self) -> int:
+        return {
+            "state": self.actor_observation_size,
+            "privileged_state": self.privileged_observation_size,
+        }
+
+    @property
+    def actor_observation_size(self) -> int:
         return ASIMOV1_ACTOR_OBSERVATION_DIM + self._text_dim
+
+    @property
+    def privileged_observation_size(self) -> int:
+        return self.actor_observation_size + ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM
 
     @property
     def proprio_dim(self) -> int:
@@ -280,7 +311,7 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
             "qvel_history": jp.tile(qvel, (self._history_len, 1)),
             "step": jp.zeros((), dtype=jp.int32),
         }
-        obs = jp.concatenate([self._get_proprio(data, info), text_embed])
+        obs = self._get_obs(data, info)
         metrics = {f"reward/{name}": jp.zeros(()) for name in self._config.reward_config.scales}
         reward, done = jp.zeros(2)
         return mjx_env.State(data, obs, reward, done, metrics, info)
@@ -315,7 +346,7 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         info["qvel_history"] = qvel_history
         info["step"] = state.info["step"] + 1
         done = jp.where(info["step"] >= int(self._config.episode_length), 1.0, done)
-        obs = jp.concatenate([self._get_proprio(data, info), info["text_embed"]])
+        obs = self._get_obs(data, info)
         metrics = dict(state.metrics)
         for name, value in scaled_rewards.items():
             metrics[f"reward/{name}"] = value
@@ -336,6 +367,35 @@ class TextConditionedAsimovMJX(mjx_env.MjxEnv):
         )
         qvel = data.qvel[self._leg_dof_adrs] * 0.05
         return qpos, qvel
+
+    def _get_obs(self, data, info):
+        actor_obs = self._get_actor_obs(data, info)
+        return {
+            "state": actor_obs,
+            "privileged_state": self._get_privileged_state(data, actor_obs),
+        }
+
+    def _get_actor_obs(self, data, info):
+        import jax.numpy as jp
+
+        return jp.concatenate([self._get_proprio(data, info), info["text_embed"]])
+
+    def _get_privileged_state(self, data, actor_obs):
+        import jax.numpy as jp
+
+        lin_adr, lin_dim = self._sensor_addr["imu_lin_vel"]
+        angmom_adr, angmom_dim = self._sensor_addr["root_angmom"]
+        imu_lin_vel = data.sensordata[lin_adr : lin_adr + lin_dim]
+        root_height = data.qpos[2:3]
+        root_angmom = data.sensordata[angmom_adr : angmom_adr + angmom_dim]
+        toe_contact_proxy = jp.asarray(
+            [
+                jp.min(data.geom_xpos[self._left_toe_geom_ids, 2]) < 0.03,
+                jp.min(data.geom_xpos[self._right_toe_geom_ids, 2]) < 0.03,
+            ],
+            dtype=jp.float32,
+        )
+        return jp.concatenate([actor_obs, imu_lin_vel, root_height, root_angmom, toe_contact_proxy])
 
     def _get_proprio(self, data, info):
         import jax.numpy as jp
@@ -410,11 +470,13 @@ def make_asimov_text_conditioned_mjx_env(
     pca_dim: int = DEFAULT_PCA_DIM,
     episode_length: int = 500,
     domain_randomization: dict[str, Sequence[float]] | None = None,
+    observation_delay_steps: dict[str, int] | None = None,
 ) -> TextConditionedAsimovMJX:
     config = default_config(
         active_tasks=active_tasks,
         pca_dim=pca_dim,
         domain_randomization=domain_randomization,
+        observation_delay_steps=observation_delay_steps,
     )
     config.episode_length = int(episode_length)
     return TextConditionedAsimovMJX(config=config)
@@ -442,6 +504,7 @@ def _train_from_job_impl(
         pca_dim=int(manifest.get("pca_dim", DEFAULT_PCA_DIM)),
         episode_length=int(ppo.get("episode_length", job.get("episode_length", 500))),
         domain_randomization=job.get("domain_randomization", {}),
+        observation_delay_steps=job.get("observation_delay_steps"),
     )
 
     def progress_fn(num_steps, train_metrics):
@@ -481,6 +544,8 @@ def _train_from_job_impl(
             preprocess_observations_fn=preprocess_observations_fn,
             policy_hidden_layer_sizes=tuple(ppo.get("policy_hidden_layer_sizes", (512, 256, 128))),
             value_hidden_layer_sizes=tuple(ppo.get("value_hidden_layer_sizes", (512, 256, 128))),
+            policy_obs_key=ppo.get("policy_obs_key", "state"),
+            value_obs_key=ppo.get("value_obs_key", "privileged_state"),
         ),
         seed=int(ppo.get("seed", manifest.get("seed", 0))),
         progress_fn=progress_fn,
@@ -499,11 +564,19 @@ def _train_from_job_impl(
             "regime": "brax_ppo",
             "profile_id": "asimov-1",
             "ckpt": policy_path.name,
-            "obs_dim": env.observation_size,
+            "mjcf_xml": str(job.get("mjcf_xml", ASIMOV1_GENERATED_MJCF)),
+            "mjcf_xml_sha256": job.get("mjcf_xml_sha256"),
+            "asset_manifest": str(job.get("asset_manifest", "")),
+            "asset_manifest_sha256": job.get("asset_manifest_sha256"),
+            "obs_dim": getattr(env, "actor_observation_size", env.observation_size),
             "proprio_dim": env.proprio_dim,
             "text_dim": env.text_dim,
+            "critic_obs_dim": getattr(env, "privileged_observation_size", env.observation_size),
+            "policy_obs_key": ppo.get("policy_obs_key", "state"),
+            "value_obs_key": ppo.get("value_obs_key", "privileged_state"),
             "action_dim": env.action_size,
             "output_dim": len(ASIMOV1_FIRMWARE_JOINT_ORDER),
+            "observation_delay_steps": dict(job.get("observation_delay_steps") or {"left_leg": 1, "right_leg": 2}),
             "wall_clock_s": round(time.time() - start, 3),
         }
     )
@@ -512,8 +585,12 @@ def _train_from_job_impl(
         json.dumps(
             {
                 "job": job["job"],
-                "mjcf_xml": str(ASIMOV1_GENERATED_MJCF),
+                "mjcf_xml": str(job.get("mjcf_xml", ASIMOV1_GENERATED_MJCF)),
+                "mjcf_xml_sha256": job.get("mjcf_xml_sha256"),
+                "asset_manifest": str(job.get("asset_manifest", "")),
+                "asset_manifest_sha256": job.get("asset_manifest_sha256"),
                 "active_tasks": list(env.active_tasks),
+                "observation_delay_steps": dict(job.get("observation_delay_steps") or {"left_leg": 1, "right_leg": 2}),
                 "ppo": ppo,
             },
             indent=2,

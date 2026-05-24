@@ -28,9 +28,29 @@ on post-fs-data
     # Ensure the Eliza process has writable scratch directory regardless
     # of which volume the user-data partition lands on. mkdir is idempotent.
     mkdir /data/eliza 0770 system system
+    # Runtime TEE evidence export directory (ELIZA_TEE_EVIDENCE_PATH parent).
+    # Labeled eliza_tee_runtime_file by vendor/eliza/sepolicy/file_contexts;
+    # only eliza_pvm_mgr may write here.
+    mkdir /run/elizaos 0750 root system
+    mkdir /run/elizaos/tee 0750 root system
+
+# Protected-VM management + TeeEvidence export daemon (plan §5 AOSP path).
+# This is the ONLY domain (eliza_pvm_mgr) permitted to reach the pVM
+# management binder + vsock control channel; it writes the normalized
+# TeeEvidence document to ELIZA_TEE_EVIDENCE_PATH. Confidentiality is BLOCKED
+# on the riscv64 bring-up track, so the service runs with the management
+# contract enforced but no confidential boot claim.
+service eliza_pvm_mgr /system/bin/eliza_pvm_mgr
+    class core
+    user root
+    group system
+    seclabel u:r:eliza_pvm_mgr:s0
+    disabled
+    oneshot
 
 on boot
     setprop elizaos.boot_phase boot
+    start eliza_pvm_mgr
 
 on property:sys.boot_completed=1
     setprop elizaos.boot_phase completed

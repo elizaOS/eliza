@@ -50,7 +50,7 @@ Gap to A19 Pro / Oryon Gen 3 / C1-Ultra:
 | Front-end fetch | 32 B / cycle | RVC means up to 16 inst in 32 B; supports 10-wide decode |
 | Decode | 8-wide native + 2 fused = 10 effective | Match X925/C1-Ultra; macro-op fusion recovers density loss vs ARM |
 | L0 µop cache | 3 K entries, 12-wide read | Apple/Lion Cove style; bypasses decode for hot loops |
-| Branch predictor | 16K-entry L1 BTB, 64K L2 BTB, TAGE-SC-L, 32-entry RAS, ITTAGE | Matches X925's 16K/2048+L2. Mispredict <14 cyc |
+| Branch predictor | 16K-entry L1 BTB, 64K L2 BTB, TAGE-SC-L, 32-entry RAS, ITTAGE | Target contract: matches X925's 16K/2048+L2 class; <14-cycle mispredict recovery remains an implementation target until timing evidence exists. |
 | Dispatch / Rename / Retire | 8 / 8 | PRF-based renaming (not ROB-based) for energy |
 | ROB | 512 entries (~700 effective with fusion expansion) | Between X925 effective (~525) and Apple (~700) |
 | PRF | 400 INT (64-bit) / 400 FP+V (256-bit) | Apple-class. Vector reg width 256b matches RVV DLEN=256 |

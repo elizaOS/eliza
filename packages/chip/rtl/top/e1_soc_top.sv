@@ -56,12 +56,12 @@ module e1_soc_top
     output logic        msip_o,
     output logic        mtip_o,
 `ifdef E1_SOC_REAL_IRQ
-    // Real-PLIC external-interrupt line to the CPU (mip.MEIP). Only present in
+    // PLIC external-interrupt line to the CPU (mip.MEIP). Only present in
     // the E1_SOC_REAL_IRQ config; the legacy path has no PLIC claim output.
     output logic        meip_o,
 `endif
 `ifdef E1_SOC_REAL_DRAM
-    // Discoverable main-memory geometry from the real AXI4 DRAM controller,
+    // Discoverable main-memory geometry from the AXI4 DRAM-controller RTL model,
     // surfaced for boot enumeration / DTB memory-node sizing.
     output logic [63:0] mem_capacity_bytes,
     output logic [63:0] mem_base_addr,
@@ -222,11 +222,11 @@ module e1_soc_top
     // behavioural-DRAM path is preserved when the defines are absent, so the
     // existing gates (test_e1_soc.py, PD/synth/formal) stay green.
     //
-    //   E1_SOC_REAL_IRQ  : real CLINT @ 0x0200_0000 drives msip_o/mtip_o;
-    //                      real PLIC  @ 0x0C00_0000 drives meip_o via a
+    //   E1_SOC_REAL_IRQ  : CLINT RTL @ 0x0200_0000 drives msip_o/mtip_o;
+    //                      PLIC RTL  @ 0x0C00_0000 drives meip_o via a
     //                      claim/complete round-trip. PLIC sources are the
     //                      peripheral IRQs (timer/dma/npu/vsync).
-    //   E1_SOC_REAL_DRAM : real AXI4 DRAM controller (2 GiB @ 0x8000_0000)
+    //   E1_SOC_REAL_DRAM : AXI4 DRAM-controller RTL model (2 GiB @ 0x8000_0000)
     //                      backs the CPU/debug MMIO DRAM window.
 `ifdef E1_SOC_REAL_SUBSYS
     localparam int unsigned PLIC_NUM_SOURCES = 4;

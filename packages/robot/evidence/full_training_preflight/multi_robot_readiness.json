@@ -1,0 +1,479 @@
+{
+  "alberta": {
+    "controller": "AlbertaContinualController",
+    "import_stderr": [],
+    "ok": true,
+    "trainer": "train_robot"
+  },
+  "ok": true,
+  "profiles": {
+    "asimov-1": {
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "fall_z_threshold": 0.378,
+      "leg_action_dim": 12,
+      "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+      "mjcf_exists": true,
+      "mujoco_nu": 25,
+      "mujoco_version": "3.8.1",
+      "name": "ASIMOV-1",
+      "ok": true,
+      "profile_dof": 25,
+      "required_zero_action_survival_steps": 2,
+      "reset_torso_z": 0.63,
+      "reset_upright_proj": 1.0,
+      "root_qpos_idx": 0,
+      "root_qvel_idx": 0,
+      "step_obs_dim": 77,
+      "zero_action_survival_ok": true,
+      "zero_action_survival_steps": 2,
+      "zero_action_terminal_info": null
+    },
+    "hiwonder-ainex": {
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "fall_z_threshold": 0.15,
+      "leg_action_dim": 12,
+      "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex.xml",
+      "mjcf_exists": true,
+      "mujoco_nu": 24,
+      "mujoco_version": "3.8.1",
+      "name": "Hiwonder AiNex",
+      "ok": true,
+      "profile_dof": 24,
+      "required_zero_action_survival_steps": 2,
+      "reset_torso_z": 0.28,
+      "reset_upright_proj": 1.0,
+      "root_qpos_idx": 3,
+      "root_qvel_idx": 3,
+      "step_obs_dim": 77,
+      "zero_action_survival_ok": true,
+      "zero_action_survival_steps": 2,
+      "zero_action_terminal_info": null
+    },
+    "unitree-g1": {
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "fall_z_threshold": 0.474,
+      "leg_action_dim": 12,
+      "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/scene.xml",
+      "mjcf_exists": true,
+      "mujoco_nu": 29,
+      "mujoco_version": "3.8.1",
+      "name": "Unitree G1",
+      "ok": true,
+      "profile_dof": 29,
+      "required_zero_action_survival_steps": 2,
+      "reset_torso_z": 0.79,
+      "reset_upright_proj": 1.0,
+      "root_qpos_idx": 0,
+      "root_qvel_idx": 0,
+      "step_obs_dim": 77,
+      "zero_action_survival_ok": true,
+      "zero_action_survival_steps": 2,
+      "zero_action_terminal_info": null
+    },
+    "unitree-h1": {
+      "env_action_dim": 10,
+      "env_obs_dim": 71,
+      "fall_z_threshold": 0.612,
+      "leg_action_dim": 10,
+      "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/scene.xml",
+      "mjcf_exists": true,
+      "mujoco_nu": 19,
+      "mujoco_version": "3.8.1",
+      "name": "Unitree H1",
+      "ok": true,
+      "profile_dof": 19,
+      "required_zero_action_survival_steps": 2,
+      "reset_torso_z": 0.98,
+      "reset_upright_proj": 1.0,
+      "root_qpos_idx": 0,
+      "root_qvel_idx": 0,
+      "step_obs_dim": 71,
+      "zero_action_survival_ok": true,
+      "zero_action_survival_steps": 2,
+      "zero_action_terminal_info": null
+    },
+    "unitree-r1": {
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "fall_z_threshold": 0.444,
+      "leg_action_dim": 12,
+      "mjcf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/scene.xml",
+      "mjcf_exists": true,
+      "mujoco_nu": 29,
+      "mujoco_version": "3.8.1",
+      "name": "Unitree R1",
+      "ok": true,
+      "profile_dof": 29,
+      "required_zero_action_survival_steps": 2,
+      "reset_torso_z": 0.74,
+      "reset_upright_proj": 1.0,
+      "root_qpos_idx": 0,
+      "root_qvel_idx": 0,
+      "step_obs_dim": 77,
+      "zero_action_survival_ok": true,
+      "zero_action_survival_steps": 2,
+      "zero_action_terminal_info": null
+    }
+  },
+  "video_evidence": {
+    "combined_recording_match": true,
+    "commands_match": true,
+    "manifest": "evidence/agent_videos/manifest.json",
+    "manifest_commands": [
+      "stand up",
+      "walk forward",
+      "turn left",
+      "turn right"
+    ],
+    "manifest_ok_field": true,
+    "manifest_record_combined": true,
+    "min_video_bytes": 1024,
+    "ok": true,
+    "profiles": [
+      {
+        "exit_code": 0,
+        "expected": [
+          "hiwonder-ainex_stand_up.mp4",
+          "hiwonder-ainex_walk_forward.mp4",
+          "hiwonder-ainex_turn_left.mp4",
+          "hiwonder-ainex_turn_right.mp4",
+          "hiwonder-ainex_combined_actions.mp4"
+        ],
+        "expected_telemetry": [
+          "hiwonder-ainex_stand_up.telemetry.json",
+          "hiwonder-ainex_walk_forward.telemetry.json",
+          "hiwonder-ainex_turn_left.telemetry.json",
+          "hiwonder-ainex_turn_right.telemetry.json",
+          "hiwonder-ainex_combined_actions.telemetry.json"
+        ],
+        "manifest_entry": true,
+        "manifest_expects_telemetry": true,
+        "missing": [],
+        "missing_telemetry": [],
+        "ok": true,
+        "present": [
+          {
+            "bytes": 78058,
+            "name": "hiwonder-ainex_stand_up.mp4"
+          },
+          {
+            "bytes": 78058,
+            "name": "hiwonder-ainex_walk_forward.mp4"
+          },
+          {
+            "bytes": 78058,
+            "name": "hiwonder-ainex_turn_left.mp4"
+          },
+          {
+            "bytes": 78058,
+            "name": "hiwonder-ainex_turn_right.mp4"
+          },
+          {
+            "bytes": 261516,
+            "name": "hiwonder-ainex_combined_actions.mp4"
+          }
+        ],
+        "profile": "hiwonder-ainex",
+        "telemetry_present": [
+          {
+            "bytes": 869,
+            "name": "hiwonder-ainex_stand_up.telemetry.json"
+          },
+          {
+            "bytes": 877,
+            "name": "hiwonder-ainex_walk_forward.telemetry.json"
+          },
+          {
+            "bytes": 870,
+            "name": "hiwonder-ainex_turn_left.telemetry.json"
+          },
+          {
+            "bytes": 871,
+            "name": "hiwonder-ainex_turn_right.telemetry.json"
+          },
+          {
+            "bytes": 4317,
+            "name": "hiwonder-ainex_combined_actions.telemetry.json"
+          }
+        ],
+        "too_small": []
+      },
+      {
+        "exit_code": 0,
+        "expected": [
+          "asimov-1_stand_up.mp4",
+          "asimov-1_walk_forward.mp4",
+          "asimov-1_turn_left.mp4",
+          "asimov-1_turn_right.mp4",
+          "asimov-1_combined_actions.mp4"
+        ],
+        "expected_telemetry": [
+          "asimov-1_stand_up.telemetry.json",
+          "asimov-1_walk_forward.telemetry.json",
+          "asimov-1_turn_left.telemetry.json",
+          "asimov-1_turn_right.telemetry.json",
+          "asimov-1_combined_actions.telemetry.json"
+        ],
+        "manifest_entry": true,
+        "manifest_expects_telemetry": true,
+        "missing": [],
+        "missing_telemetry": [],
+        "ok": true,
+        "present": [
+          {
+            "bytes": 94772,
+            "name": "asimov-1_stand_up.mp4"
+          },
+          {
+            "bytes": 93393,
+            "name": "asimov-1_walk_forward.mp4"
+          },
+          {
+            "bytes": 92717,
+            "name": "asimov-1_turn_left.mp4"
+          },
+          {
+            "bytes": 93662,
+            "name": "asimov-1_turn_right.mp4"
+          },
+          {
+            "bytes": 302348,
+            "name": "asimov-1_combined_actions.mp4"
+          }
+        ],
+        "profile": "asimov-1",
+        "telemetry_present": [
+          {
+            "bytes": 862,
+            "name": "asimov-1_stand_up.telemetry.json"
+          },
+          {
+            "bytes": 869,
+            "name": "asimov-1_walk_forward.telemetry.json"
+          },
+          {
+            "bytes": 861,
+            "name": "asimov-1_turn_left.telemetry.json"
+          },
+          {
+            "bytes": 863,
+            "name": "asimov-1_turn_right.telemetry.json"
+          },
+          {
+            "bytes": 4279,
+            "name": "asimov-1_combined_actions.telemetry.json"
+          }
+        ],
+        "too_small": []
+      },
+      {
+        "exit_code": 0,
+        "expected": [
+          "unitree-g1_stand_up.mp4",
+          "unitree-g1_walk_forward.mp4",
+          "unitree-g1_turn_left.mp4",
+          "unitree-g1_turn_right.mp4",
+          "unitree-g1_combined_actions.mp4"
+        ],
+        "expected_telemetry": [
+          "unitree-g1_stand_up.telemetry.json",
+          "unitree-g1_walk_forward.telemetry.json",
+          "unitree-g1_turn_left.telemetry.json",
+          "unitree-g1_turn_right.telemetry.json",
+          "unitree-g1_combined_actions.telemetry.json"
+        ],
+        "manifest_entry": true,
+        "manifest_expects_telemetry": true,
+        "missing": [],
+        "missing_telemetry": [],
+        "ok": true,
+        "present": [
+          {
+            "bytes": 78170,
+            "name": "unitree-g1_stand_up.mp4"
+          },
+          {
+            "bytes": 73482,
+            "name": "unitree-g1_walk_forward.mp4"
+          },
+          {
+            "bytes": 79655,
+            "name": "unitree-g1_turn_left.mp4"
+          },
+          {
+            "bytes": 64906,
+            "name": "unitree-g1_turn_right.mp4"
+          },
+          {
+            "bytes": 238844,
+            "name": "unitree-g1_combined_actions.mp4"
+          }
+        ],
+        "profile": "unitree-g1",
+        "telemetry_present": [
+          {
+            "bytes": 862,
+            "name": "unitree-g1_stand_up.telemetry.json"
+          },
+          {
+            "bytes": 869,
+            "name": "unitree-g1_walk_forward.telemetry.json"
+          },
+          {
+            "bytes": 866,
+            "name": "unitree-g1_turn_left.telemetry.json"
+          },
+          {
+            "bytes": 866,
+            "name": "unitree-g1_turn_right.telemetry.json"
+          },
+          {
+            "bytes": 4289,
+            "name": "unitree-g1_combined_actions.telemetry.json"
+          }
+        ],
+        "too_small": []
+      },
+      {
+        "exit_code": 0,
+        "expected": [
+          "unitree-h1_stand_up.mp4",
+          "unitree-h1_walk_forward.mp4",
+          "unitree-h1_turn_left.mp4",
+          "unitree-h1_turn_right.mp4",
+          "unitree-h1_combined_actions.mp4"
+        ],
+        "expected_telemetry": [
+          "unitree-h1_stand_up.telemetry.json",
+          "unitree-h1_walk_forward.telemetry.json",
+          "unitree-h1_turn_left.telemetry.json",
+          "unitree-h1_turn_right.telemetry.json",
+          "unitree-h1_combined_actions.telemetry.json"
+        ],
+        "manifest_entry": true,
+        "manifest_expects_telemetry": true,
+        "missing": [],
+        "missing_telemetry": [],
+        "ok": true,
+        "present": [
+          {
+            "bytes": 111999,
+            "name": "unitree-h1_stand_up.mp4"
+          },
+          {
+            "bytes": 111402,
+            "name": "unitree-h1_walk_forward.mp4"
+          },
+          {
+            "bytes": 110847,
+            "name": "unitree-h1_turn_left.mp4"
+          },
+          {
+            "bytes": 110214,
+            "name": "unitree-h1_turn_right.mp4"
+          },
+          {
+            "bytes": 429215,
+            "name": "unitree-h1_combined_actions.mp4"
+          }
+        ],
+        "profile": "unitree-h1",
+        "telemetry_present": [
+          {
+            "bytes": 868,
+            "name": "unitree-h1_stand_up.telemetry.json"
+          },
+          {
+            "bytes": 874,
+            "name": "unitree-h1_walk_forward.telemetry.json"
+          },
+          {
+            "bytes": 869,
+            "name": "unitree-h1_turn_left.telemetry.json"
+          },
+          {
+            "bytes": 875,
+            "name": "unitree-h1_turn_right.telemetry.json"
+          },
+          {
+            "bytes": 4313,
+            "name": "unitree-h1_combined_actions.telemetry.json"
+          }
+        ],
+        "too_small": []
+      },
+      {
+        "exit_code": 0,
+        "expected": [
+          "unitree-r1_stand_up.mp4",
+          "unitree-r1_walk_forward.mp4",
+          "unitree-r1_turn_left.mp4",
+          "unitree-r1_turn_right.mp4",
+          "unitree-r1_combined_actions.mp4"
+        ],
+        "expected_telemetry": [
+          "unitree-r1_stand_up.telemetry.json",
+          "unitree-r1_walk_forward.telemetry.json",
+          "unitree-r1_turn_left.telemetry.json",
+          "unitree-r1_turn_right.telemetry.json",
+          "unitree-r1_combined_actions.telemetry.json"
+        ],
+        "manifest_entry": true,
+        "manifest_expects_telemetry": true,
+        "missing": [],
+        "missing_telemetry": [],
+        "ok": true,
+        "present": [
+          {
+            "bytes": 92694,
+            "name": "unitree-r1_stand_up.mp4"
+          },
+          {
+            "bytes": 92822,
+            "name": "unitree-r1_walk_forward.mp4"
+          },
+          {
+            "bytes": 92822,
+            "name": "unitree-r1_turn_left.mp4"
+          },
+          {
+            "bytes": 92822,
+            "name": "unitree-r1_turn_right.mp4"
+          },
+          {
+            "bytes": 316241,
+            "name": "unitree-r1_combined_actions.mp4"
+          }
+        ],
+        "profile": "unitree-r1",
+        "telemetry_present": [
+          {
+            "bytes": 872,
+            "name": "unitree-r1_stand_up.telemetry.json"
+          },
+          {
+            "bytes": 882,
+            "name": "unitree-r1_walk_forward.telemetry.json"
+          },
+          {
+            "bytes": 874,
+            "name": "unitree-r1_turn_left.telemetry.json"
+          },
+          {
+            "bytes": 876,
+            "name": "unitree-r1_turn_right.telemetry.json"
+          },
+          {
+            "bytes": 4333,
+            "name": "unitree-r1_combined_actions.telemetry.json"
+          }
+        ],
+        "too_small": []
+      }
+    ],
+    "require_combined": true
+  }
+}

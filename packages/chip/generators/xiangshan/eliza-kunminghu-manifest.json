@@ -91,6 +91,6 @@
     "spec2017_mpki_claim": false,
     "geekbench6_mpki_claim": false,
     "jetstream2_indirect_misp_claim": false,
-    "reason": "Open topology is wired in synthesisable SystemVerilog, verilator strict-lint clean across 13 modules, cocotb regression 33/33 across 9 modules. Workload MPKI claims remain blocked until benchmarks/cpu/branch/ ingests SPEC, AOSP, and JS-engine traces."
+    "reason": "Open topology is wired in synthesisable SystemVerilog, verilator strict-lint clean across 14 modules, cocotb regression 94/94 target-module tests across 10 modules including the L1I frontend. Workload MPKI claims remain blocked until benchmarks/cpu/branch/ ingests SPEC, AOSP, and JS-engine traces."
   }
 }

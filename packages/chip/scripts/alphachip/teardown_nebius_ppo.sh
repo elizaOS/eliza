@@ -56,13 +56,9 @@ if [ -n "$DISK_ID" ]; then
     fi
 fi
 
-# 3. ephemeral access key
-if [ -n "$KEY_ID" ]; then
-    echo "[td] deleting access key $KEY_ID"
-    nebius iam v2 access-key delete --id "$KEY_ID" 2>&1 | strip | tail -2 || true
-fi
-
-# 4. result bucket (empty objects first, then delete bucket)
+# 3. result bucket — empty objects + delete BEFORE the access key, because the
+# S3 empty operation authenticates with that key. Deleting the key first leaves
+# the bucket non-deletable (AccessDenied on ListObjects).
 if [ -n "${PPO_BUCKET:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
     echo "[td] emptying bucket s3://$PPO_BUCKET"
     aws --endpoint-url "$NEBIUS_S3_ENDPOINT" s3 rm "s3://$PPO_BUCKET" --recursive 2>&1 | tail -3 || true
@@ -71,11 +67,17 @@ if [ -n "${PPO_BUCKET_ID:-}" ]; then
     echo "[td] deleting bucket $PPO_BUCKET_ID"
     nebius storage bucket delete --id "$PPO_BUCKET_ID" 2>&1 | strip | tail -3 || true
     sleep 3
-    if nebius storage bucket get --id "$PPO_BUCKET_ID" 2>&1 | strip | grep -qiE 'not.?found|no resource'; then
+    if nebius storage bucket get --id "$PPO_BUCKET_ID" 2>&1 | strip | grep -qiE 'not.?found|no.?such.?bucket|no resource'; then
         echo "[td] bucket VERIFIED gone (NotFound)"
     else
         echo "[td] WARN bucket may still exist:"; nebius storage bucket get --id "$PPO_BUCKET_ID" 2>&1 | strip | head -3
     fi
+fi
+
+# 4. ephemeral access key (last — only after the bucket no longer needs it)
+if [ -n "$KEY_ID" ]; then
+    echo "[td] deleting access key $KEY_ID"
+    nebius iam v2 access-key delete --id "$KEY_ID" 2>&1 | strip | tail -2 || true
 fi
 
 echo "=== TEARDOWN COMPLETE ==="

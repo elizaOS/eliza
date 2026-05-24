@@ -187,8 +187,23 @@ def test_evt0_phone_cad_required_parts_are_named() -> None:
         "pmic_package_marker",
         "rf_transceiver_package_marker",
         "gnss_lna_package_marker",
-        "wifi_bt_rf_feed_coax_stub",
-        "cellular_rf_feed_coax_stub",
+        "wifi_bt_rf_feed_development_envelope",
+        "cellular_rf_feed_development_envelope",
+        "display_fpc_tail",
+        "rear_camera_fpc_tail",
+        "front_camera_fpc_tail",
+        "side_key_flex_tail",
+        "battery_connector_lead_flex",
+        "usb_c_power_data_escape_tail",
+        "bottom_speaker_lead_pair",
+        "bottom_microphone_flex_leads",
+        "top_microphone_flex_tail",
+        "earpiece_receiver_lead_flex",
+        "haptic_flex_tail",
+        "sim_esim_signal_flex_marker",
+        "cellular_div_rf_feed_development_envelope",
+        "cellular_gnss_rf_feed_development_envelope",
+        "wifi_bt_rf1_feed_development_envelope",
         "soc_shield_can",
         "pmic_shield_can",
         "radio_shield_can",
@@ -845,6 +860,30 @@ def test_evt0_phone_step_validation_reimports_step_files(tmp_path, monkeypatch) 
     assert cover_glass_cutouts["cutout_count"] == 1
     assert cover_glass_cutouts["removed_volume_mm3"] > 0
     assert cover_glass_cutouts["cutouts"][0]["source_aperture"] == "handset_acoustic_slot"
+    connection_coverage = solid_cad["connection_coverage"]
+    assert connection_coverage["status"] == "cad_connection_markers_complete_not_release"
+    assert connection_coverage["required_connection_count"] == 21
+    assert connection_coverage["passing_connection_count"] == 21
+    connection_ids = {row["id"] for row in connection_coverage["connections"]}
+    assert {
+        "display_touch_fpc",
+        "rear_camera_csi_fpc",
+        "front_camera_csi_fpc",
+        "usb_c_escape_tail",
+        "battery_lead_flex",
+        "top_microphone_flex",
+        "earpiece_receiver_lead_flex",
+        "nfc_loop_antenna_flex",
+        "compute_som_sodimm_carrier",
+        "cellular_main_rf_feed",
+        "cellular_antenna_aperture_tuner",
+        "wifi_bt_rf0_feed",
+        "split_interconnect_side_flex",
+    }.issubset(connection_ids)
+    assert all(row["cad_step_bytes"] > 1000 for row in connection_coverage["connections"])
+    assert all(row["all_nets_in_routed_development_board"] for row in connection_coverage["connections"])
+    assert (cad.REVIEW_DIR / "cad-connection-coverage.json").is_file()
+    assert (cad.REVIEW_DIR / "cad-connection-coverage.md").is_file()
     validation = cad.write_step_validation_artifacts(solid_cad)
 
     assert validation["status"] == "pass"
@@ -2571,11 +2610,47 @@ def test_evt0_phone_board_step_readiness_fails_closed_on_concept_pcb(tmp_path, m
     assert report["board_state_detected"]["has_production_step"] is False
     assert report["board_state_detected"]["has_complete_routed_board_release_intake"] is False
     assert report["board_state_detected"]["placeholder_marker_count"] > 0
+    assert report["board_state_detected"]["has_development_routed_tracks_for_local_review"] is True
+    assert (
+        report["board_state_detected"]["has_development_footprints_replaced_for_local_review"]
+        is True
+    )
+    assert report["development_board_local_review_state"]["routed_development_route_count"] == 153
+    assert (
+        report["development_board_local_review_state"]["routed_development_segment_count"] == 306
+    )
+    assert (
+        report["development_board_local_review_state"][
+            "routed_development_missing_required_shared_net_count"
+        ]
+        == 0
+    )
+    assert (
+        report["development_board_local_review_state"][
+            "routed_development_missing_route_domain_net_count"
+        ]
+        == 0
+    )
     assert report["required_routed_board_evidence_class"] == "physical_routed_board_release"
     assert report["routed_board_intake_cases"][0]["evidence_class_allowed"] is False
+    detailed_candidate = report["detailed_routed_step_candidate"]
+    assert detailed_candidate["release_credit"] is False
+    assert detailed_candidate["present"] is True
+    assert detailed_candidate["blocked_metadata"] is True
+    assert detailed_candidate["size_bytes"] > 1_000_000
+    assert detailed_candidate["route_count"] == 153
+    assert detailed_candidate["segment_count"] == 306
+    assert detailed_candidate["candidate_matches_routed_output_manifest"] is True
+    assert detailed_candidate["candidate_matches_development_source"] is True
+    assert report["board_state_detected"]["has_detailed_blocked_routed_step_candidate"] is True
+    assert len(report["development_step_candidates"]) == 3
     assert case_map["kicad_placement_reconciled_to_cad"]["pass"]
     assert not case_map["production_board_step_present"]["pass"]
+    assert case_map["development_routed_tracks_present_for_local_review"]["pass"]
+    assert case_map["detailed_routed_step_candidate_available_for_local_review"]["pass"]
     assert not case_map["routed_board_release_intake_complete"]["pass"]
+    assert not case_map["placeholder_footprints_replaced"]["pass"]
+    assert case_map["development_footprints_replaced_for_local_review"]["pass"]
     assert (tmp_path / "routed-board-step-intake-template.csv").is_file()
     assert (tmp_path / "board-step-readiness.json").is_file()
     assert (tmp_path / "board-step-readiness.md").is_file()
@@ -2602,14 +2677,20 @@ def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(tmp_path, mo
             "release_id": "DEMO-ONLY",
             "kicad_pcb_path": "board/kicad/e1-phone/pcb/e1-phone-mainboard-demo.kicad_pcb",
             "routed_step_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step",
+            "routed_step_sha256": "demo-not-release-sha",
             "drc_report_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
+            "drc_status": "clean",
             "erc_report_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
+            "erc_status": "clean",
             "gerber_job_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-job.gbrjob",
             "pick_place_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-pos.csv",
             "bom_artifact": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo-bom.csv",
             "component_3d_model_manifest": "board/kicad/e1-phone/artifact-manifest.yaml",
+            "component_3d_model_manifest_status": "approved",
             "enclosure_clearance_rerun_artifact": "mechanical/e1-phone/review/board-step-readiness.json",
+            "enclosure_clearance_status": "pass",
             "reviewer": "simulation",
+            "approval_signature": "simulation-not-release",
             "evidence_class": "demo_routed_board_for_planning_not_release",
         }
     )
@@ -2629,9 +2710,16 @@ def test_evt0_phone_board_step_readiness_rejects_demo_routed_intake(tmp_path, mo
     assert report["routed_board_intake_cases"][0]["required_fields_present"] is True
     assert report["routed_board_intake_cases"][0]["artifact_paths_exist"] is True
     assert report["routed_board_intake_cases"][0]["evidence_class_allowed"] is False
+    assert report["routed_board_intake_cases"][0]["routed_step_sha256_matches"] is False
+    assert report["routed_board_intake_cases"][0]["drc_status_clean"] is True
+    assert report["routed_board_intake_cases"][0]["erc_status_clean"] is True
+    assert report["routed_board_intake_cases"][0]["component_3d_model_manifest_approved"] is True
+    assert report["routed_board_intake_cases"][0]["enclosure_clearance_passed"] is True
+    assert report["routed_board_intake_cases"][0]["approval_signature_present"] is True
     assert report["routed_board_intake_cases"][0]["pass"] is False
     assert case_map["routed_board_release_intake_complete"]["pass"] is False
     assert case_map["production_board_step_present"]["pass"] is False
+    assert case_map["detailed_routed_step_candidate_available_for_local_review"]["pass"] is True
 
 
 def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
@@ -2664,6 +2752,11 @@ def test_evt0_phone_routed_board_clearance_fails_closed_until_routed_step(
     assert report["expected_clearance_case_count"] >= 8
     assert report["complete_clearance_result_count"] == 0
     assert report["required_evidence_class"] == "physical_routed_board_clearance_result"
+    assert report["development_clearance_context"]["release_credit"] is False
+    assert report["development_clearance_context"]["candidate_ready_for_local_review"] is True
+    assert report["development_clearance_context"]["cases_mapped_to_candidate_step"] == report[
+        "expected_clearance_case_count"
+    ]
     assert report["cases"][0]["id"] == "routed_board_step_available_for_import"
     assert report["cases"][0]["pass"] is False
     assert report["result_cases"][0]["evidence_class_allowed"] is False

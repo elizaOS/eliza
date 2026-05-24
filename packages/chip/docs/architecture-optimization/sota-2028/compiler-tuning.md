@@ -83,12 +83,19 @@ Evidence from these files:
 - `docs/arch/npu-microarch.md` — planned v0: Chipyard-default Gemmini (16×16 INT8) wrapped through MMIO with 64-byte descriptor ring, `0x1002_0000` window. Implemented today: scalar fallback (`e1_npu.sv`); Gemmini wrapper "to be added".
 - `docs/toolchain/riscv64-cross-host.md` — host has only **`riscv64-elf-gcc` 16.1.0 + `riscv64-elf-binutils` + QEMU 11.0.0**. No glibc cross. No LLVM/Clang for RISC-V. No ART. No NDK. No AOSP toolchain.
 - `docs/architecture-optimization/software-ci.md` — 25 lines; says benchmark/AOSP/firmware claims must have real tool execution and fail-closed gates. **No compiler tuning section exists.**
-- `docs/toolchain/benchmark-simulator-critical-gap-audit.md` — CoreMark/STREAM/lmbench/fio/TFLite benchmark_model/MLPerf Mobile all `planned_missing_deps` or `blocked`. Docker base not pinned. No `flake.lock`. No ELF hash archive. No PGO/AutoFDO/Propeller/BOLT tooling listed at all.
+- `docs/toolchain/benchmark-simulator-critical-gap-audit.md` — CoreMark and Dhrystone now have CVA6 Verilator L1 RTL evidence; STREAM/fio/TFLite benchmark_model/MLPerf Mobile remain `planned_missing_deps` or `blocked`, and lmbench remains blocked for phone-class claims by missing L5/L6 target metadata/calibration. Docker base is not pinned, there is no `flake.lock`, and no ELF hash archive is present.
 - `docs/npu/2028-targets.md` — target (160 TOPS dense INT8 peak, 80 sustained, 512 sparse INT4 peak, 18 TOPS/W). Software direction names "AIDL HAL, TFLite delegate, NNAPI, StableHLO MLIR, IREE or TVM, ExecuTorch". All future; none implemented.
 
-`grep -r "LLVM|AutoFDO|Propeller|BOLT|ThinLTO|MLIR|IREE|TVM|ExecuTorch|PGO|LTO"` across all docs: 4 hits — benchmark matrix (ExecuTorch as Samsung Exynos competitor signal), 2028-targets aspirational list, `chipyard/circt` toolchain note, MediaTek competitor reference. **No checked-in evidence of any of these in actual build/CI flow.** No PGO profile capture script. No Propeller integration. No ThinLTO toggle. No AutoFDO collection harness. No MLIR/IREE backend dialect. No ExecuTorch lowering. No baseline profile workflow.
+Current compiler-tuning state is mixed: the repo has checked-in AutoFDO,
+Propeller, and BOLT harness scaffolds plus Make targets, but they are not yet
+tied to a pinned LLVM/RVA23 toolchain, CI profile capture, hashed ELF archives,
+or phone-class benchmark promotion. ThinLTO, MLIR/IREE backend dialect,
+ExecuTorch lowering, Android baseline profiles, and AOSP/NDK integration remain
+future work.
 
-State: a Python MMIO contract enforcer plus aspirational competitor citations, with no compiler tuning evidence in the repo.
+State: a Python MMIO contract enforcer plus early AutoFDO/Propeller/BOLT
+harness scaffolding. There is still no production compiler-tuning evidence
+usable for phone-class claims.
 
 ## C. Recommended 2028 target
 
@@ -147,7 +154,7 @@ State: a Python MMIO contract enforcer plus aspirational competitor citations, w
 - **llvm-test-suite nightly** on RISC-V CI. Catches autovec regressions at IR-level.
 - **rgo / TSVC / vector-test-suite** for autovec health checks.
 - **OpenMP vectorization tests**.
-- **CoreMark, STREAM, lmbench (bw_mem, lat_mem_rd), fio** — repo plans these but `planned_missing_deps`. Pin CoreMark/STREAM/lmbench/fio build recipe.
+- **CoreMark, Dhrystone, STREAM, lmbench (bw_mem, lat_mem_rd), fio** — CoreMark and Dhrystone have CVA6 Verilator L1 RTL runs only; STREAM/fio remain planned/missing, and lmbench is blocked for L5/L6 by real target metadata/calibration. `make cpu-phone-l5-l6-benchmark-report` now emits the unified phone-class matrix; pin CoreMark/Dhrystone/STREAM/lmbench/fio build recipes before using results for phone-class claims.
 - **Android boot time, app startup (cold/warm), camera capture-to-shutter, scroll jank** under `-Os` / `-O2` / `-O3+AutoFDO` matrix. Boot time and `Activity#onCreate → first frame` are headline numbers vendors publish.
 - **AOSP RISC-V CTS** where applicable — architecture-neutral suites, plus NNAPI VTS for e1-npu accelerator.
 - **MLPerf Mobile v3+** with both TFLite (LiteRT) and ExecuTorch backends. Compare against Pixel/Snapdragon/Dimensity reference on MLCommons leaderboard.

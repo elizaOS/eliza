@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
 import stat
 import subprocess
@@ -18,6 +19,7 @@ from pathlib import Path
 
 import locate_chipyard_linux_payload
 import repair_chipyard_generated_paths
+from cpu_ap_evidence_lib import reconstruct_uart_tx_text
 
 ROOT = Path(__file__).resolve().parents[1]
 CHECKOUT = ROOT / "external/chipyard"
@@ -30,6 +32,11 @@ LOCK_DIR = OUT_DIR / "verilator-linux-smoke.lock"
 CONFIG = "ElizaRocketConfig"
 CONFIG_PACKAGE = "eliza"
 PAYLOAD_ENV = "CHIPYARD_LINUX_BINARY"
+LARGE_LOG_SAMPLE_HEAD_BYTES = 4 * 1024 * 1024
+LARGE_LOG_SAMPLE_TAIL_BYTES = 64 * 1024 * 1024
+LARGE_LOG_FULL_READ_LIMIT_BYTES = (
+    LARGE_LOG_SAMPLE_HEAD_BYTES + LARGE_LOG_SAMPLE_TAIL_BYTES
+)
 
 REQUIRED_GENERATED_ARTIFACTS = (
     OUT_DIR / "eliza_rocket_ap.v",
@@ -40,6 +47,12 @@ REQUIRED_GENERATED_ARTIFACTS = (
 REQUIRED_LOG_MARKERS = ("OpenSBI/SBI handoff", "Linux version")
 OPENSBI_MARKERS = ("OpenSBI", "SBI specification", "Domain0 Next Address", "Boot HART ID")
 OPENSBI_ACCEPTANCE_MARKERS = ("SBI specification", "Domain0 Next Address", "Boot HART ID")
+EXPECTED_OPENSBI_FDT_ADDR = 0x88000000
+EXPECTED_KERNEL_ENTRY = 0x80200000
+DRAM_BASE = 0x80000000
+DRAM_SIZE = 0x10000000
+DRAM_END = DRAM_BASE + DRAM_SIZE
+KERNEL_LOW_WINDOW_BYTES = 64 * 1024 * 1024
 LINUX_MARKERS = (
     "Linux version",
     "Kernel command line:",
@@ -59,6 +72,7 @@ PROGRESS_MARKERS = (
     "SimDRAM loaded ELF entry=",
     "SimDRAM loading ELF ",
     "[UART] UART0 is here",
+    "OpenSBI v",
     "Linux version",
     "Machine model:",
     "Domain0 Next Address",
@@ -112,6 +126,27 @@ SIM_OUTPUT_DIR = SIM_DIR / "output" / f"chipyard.harness.TestHarness.{CONFIG}"
 SIMAXIMEM_SOURCE = CHECKOUT / "generators/rocket-chip/src/main/scala/system/SimAXIMem.scala"
 SIMDRAM_SOURCE = CHECKOUT / "generators/testchipip/src/main/resources/testchipip/csrc/SimDRAM.cc"
 SIMDRAM_LOADMEM_ENTRY_MARKER = "SimDRAM loaded ELF entry="
+FIREMARSHAL_SMOKE_KFRAG = (
+    ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
+)
+FIREMARSHAL_SMOKE_LINUX_CONFIG = (
+    CHECKOUT / "software/firemarshal/images/firechip/eliza-e1-linux-smoke/linux_config"
+)
+FIREMARSHAL_SMOKE_PAYLOAD = (
+    CHECKOUT
+    / "software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+)
+FIREMARSHAL_SMOKE_PAYLOAD_MANIFEST = (
+    CHECKOUT
+    / "software/firemarshal/images/firechip/eliza-e1-linux-smoke/payload_freshness_manifest.json"
+)
+FIREMARSHAL_SMOKE_JSON = ROOT / "sw/firemarshal/eliza-e1-linux-smoke.json"
+FIREMARSHAL_SMOKE_DIR = ROOT / "sw/firemarshal/eliza-e1-linux-smoke"
+FIREMARSHAL_SMOKE_WORKLOAD = FIREMARSHAL_SMOKE_DIR / "eliza-e1-linux-smoke.sh"
+FIREMARSHAL_HWPROBE_BUILD_SCRIPT = FIREMARSHAL_SMOKE_DIR / "build-hwprobe.sh"
+FIREMARSHAL_HWPROBE_SOURCE = FIREMARSHAL_SMOKE_DIR / "eliza-riscv-hwprobe.c"
+FIREMARSHAL_HWPROBE_BINARY = FIREMARSHAL_SMOKE_DIR / "eliza-riscv-hwprobe"
+FIREMARSHAL_NPU_ML_SMOKE_BINARY = FIREMARSHAL_SMOKE_DIR / "e1-npu-ml-smoke"
 BOOTROM_RV64_IMAGE = (
     CHECKOUT / "generators/testchipip/src/main/resources/testchipip/bootrom/bootrom.rv64.img"
 )
@@ -120,6 +155,10 @@ GENERATED_METADATA_PATTERNS = repair_chipyard_generated_paths.GENERATED_METADATA
 STALE_ABSOLUTE_ROOTS = ("/work/", "/workspace/", "/__w/")
 TRACE_LINE_RE = re.compile(
     r"^C(?P<hart>\d+):\s+(?P<cycle>\d+)\s+\[(?P<valid>[01])\]\s+pc=\[(?P<pc>[0-9a-fA-F]+)\]"
+)
+OPENSBI_DOMAIN_FIELD_RE = re.compile(
+    r"^\s*(Domain0 Next (?:Address|Arg1|Mode))\s*:\s*(?P<value>\S+)",
+    re.MULTILINE,
 )
 OBJDUMP_CANDIDATES = (
     ROOT / "build/riscv-chipyard-prefix/bin/riscv64-unknown-elf-objdump",
@@ -144,6 +183,26 @@ GENERATED_MODEL_FAILURE_PATTERNS = (
     ),
     re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
 )
+
+
+def read_text_sample(path: Path) -> str:
+    """Read all of a normal text file, or head+tail for huge verbose logs."""
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return ""
+    if size <= LARGE_LOG_FULL_READ_LIMIT_BYTES:
+        return path.read_text(encoding="utf-8", errors="replace")
+    with path.open("rb") as handle:
+        head = handle.read(LARGE_LOG_SAMPLE_HEAD_BYTES)
+        handle.seek(max(0, size - LARGE_LOG_SAMPLE_TAIL_BYTES))
+        tail = handle.read(LARGE_LOG_SAMPLE_TAIL_BYTES)
+    omitted = size - len(head) - len(tail)
+    marker = (
+        f"\n[eliza-checker: omitted {omitted} bytes from middle of large log "
+        f"{rel(path)}]\n"
+    ).encode()
+    return (head + marker + tail).decode("utf-8", errors="replace")
 KERNEL_PANIC_MARKERS = ("Kernel panic - not syncing", "panic - not syncing")
 TESTDRIVER_SUCCESS_FINISH_MARKER = "TestDriver.v:158: Verilog $finish"
 SIM_RUNTIME_MARKERS = (
@@ -165,6 +224,19 @@ ACTIVE_SMOKE_PROCESS_MARKERS = (
     "run-binary",
     f"simulator-chipyard.harness-{CONFIG}",
 )
+FDT_LOOP_SYMBOLS = {
+    "fdt_offset_ptr",
+    "fdt_next_tag",
+    "fdt_string",
+    "fdt_get_string",
+    "fdt_check_header",
+    "fdt_next_node",
+    "sbi_memchr",
+    "sbi_memcmp",
+    "sbi_strncmp",
+}
+FDT_LOOP_RETIRED_THRESHOLD = 5_000_000
+FDT_LOOP_CYCLE_THRESHOLD = 5_000_000
 
 
 def rel(path: Path) -> str:
@@ -205,8 +277,244 @@ def simdram_source_newer_than_simulator(metadata: dict[str, object] | None = Non
     )
 
 
-def next_command(payload: str = f"${PAYLOAD_ENV}") -> str:
-    prefix = f"{PAYLOAD_ENV}={payload}"
+def config_cmdline(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("CONFIG_CMDLINE="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return None
+
+
+def kfrag_options_missing_from_linux_config(kfrag: Path, linux_config: Path) -> list[str]:
+    if not kfrag.is_file() or not linux_config.is_file():
+        return []
+    built_lines = linux_config.read_text(encoding="utf-8", errors="replace").splitlines()
+    built = set(built_lines)
+    built_enabled_symbols = {
+        line.split("=", 1)[0].strip()
+        for line in built_lines
+        if line.strip().startswith("CONFIG_") and "=" in line
+    }
+    missing: list[str] = []
+    for line in kfrag.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        unset_match = re.fullmatch(r"# (CONFIG_[A-Za-z0-9_]+) is not set", stripped)
+        if unset_match:
+            symbol = unset_match.group(1)
+            if stripped in built or symbol not in built_enabled_symbols:
+                continue
+        if stripped not in built:
+            missing.append(stripped)
+    return missing
+
+
+def firemarshal_payload_config_blockers() -> list[str]:
+    blockers: list[str] = []
+    if not FIREMARSHAL_SMOKE_KFRAG.is_file():
+        return blockers
+    workload_json: dict[str, object] = {}
+    if not FIREMARSHAL_SMOKE_JSON.is_file():
+        blockers.append(
+            "preferred FireMarshal eliza-e1 Linux smoke workload JSON is missing: "
+            f"{rel(FIREMARSHAL_SMOKE_JSON)}"
+        )
+    else:
+        try:
+            loaded = json.loads(FIREMARSHAL_SMOKE_JSON.read_text(encoding="utf-8"))
+            if isinstance(loaded, dict):
+                workload_json = loaded
+            else:
+                blockers.append(
+                    "preferred FireMarshal eliza-e1 Linux smoke workload JSON must be an object: "
+                    f"{rel(FIREMARSHAL_SMOKE_JSON)}"
+                )
+        except json.JSONDecodeError as exc:
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload JSON is invalid: "
+                f"{rel(FIREMARSHAL_SMOKE_JSON)}: {exc}"
+            )
+    if workload_json:
+        files = workload_json.get("files")
+        file_sources: set[str] = set()
+        file_targets: set[str] = set()
+        if isinstance(files, list):
+            for item in files:
+                if (
+                    isinstance(item, list)
+                    and len(item) >= 2
+                    and isinstance(item[0], str)
+                    and isinstance(item[1], str)
+                ):
+                    file_sources.add(item[0])
+                    file_targets.add(item[1])
+        if workload_json.get("host-init") != "build-hwprobe.sh":
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload does not run "
+                "build-hwprobe.sh as host-init; generated-AP userspace cannot prove "
+                "riscv_hwprobe packaging"
+            )
+        firmware = workload_json.get("firmware")
+        opensbi_args = ""
+        if isinstance(firmware, dict) and isinstance(firmware.get("opensbi-build-args"), str):
+            opensbi_args = firmware["opensbi-build-args"]
+        opensbi_tokens = shlex.split(opensbi_args)
+        if "FW_OPTIONS=0" not in opensbi_tokens:
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload must build OpenSBI "
+                "with FW_OPTIONS=0 so Platform/Domain boot prints remain observable"
+            )
+        if "FW_PAYLOAD_FDT_ADDR=0x88000000" not in opensbi_tokens:
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload must override "
+                "FW_PAYLOAD_FDT_ADDR=0x88000000 so OpenSBI copies the boot ROM DTB "
+                "to writable DRAM before applying fixups"
+            )
+        if (
+            "eliza-riscv-hwprobe" not in file_sources
+            or "/usr/bin/eliza-riscv-hwprobe" not in file_targets
+        ):
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload does not package "
+                "eliza-riscv-hwprobe at /usr/bin/eliza-riscv-hwprobe"
+            )
+        if "e1-npu-ml-smoke" not in file_sources or "/usr/bin/e1-npu-ml-smoke" not in file_targets:
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke workload does not package "
+                "e1-npu-ml-smoke at /usr/bin/e1-npu-ml-smoke"
+            )
+    for path, label, executable in (
+        (FIREMARSHAL_SMOKE_WORKLOAD, "workload script", True),
+        (FIREMARSHAL_HWPROBE_BUILD_SCRIPT, "hwprobe host-init build script", True),
+        (FIREMARSHAL_HWPROBE_SOURCE, "hwprobe source", False),
+        (FIREMARSHAL_HWPROBE_BINARY, "built hwprobe helper", True),
+        (FIREMARSHAL_NPU_ML_SMOKE_BINARY, "built NPU ML smoke helper", True),
+    ):
+        if not path.is_file():
+            blockers.append(
+                f"preferred FireMarshal eliza-e1 Linux smoke {label} is missing: {rel(path)}"
+            )
+        elif executable and not os.access(path, os.X_OK):
+            blockers.append(
+                f"preferred FireMarshal eliza-e1 Linux smoke {label} is not executable: {rel(path)}"
+            )
+    if not FIREMARSHAL_SMOKE_LINUX_CONFIG.is_file():
+        blockers.append(
+            "preferred FireMarshal eliza-e1 Linux smoke payload has no built linux_config; "
+            "run scripts/build_firemarshal_eliza_linux_smoke_payload.sh before using it "
+            "as generated-AP boot evidence"
+        )
+        return blockers
+    missing_kfrag_options = kfrag_options_missing_from_linux_config(
+        FIREMARSHAL_SMOKE_KFRAG, FIREMARSHAL_SMOKE_LINUX_CONFIG
+    )
+    if FIREMARSHAL_SMOKE_PAYLOAD.is_file() and missing_kfrag_options:
+        blockers.append(
+            "preferred FireMarshal eliza-e1 Linux smoke payload is missing current "
+            f"{rel(FIREMARSHAL_SMOKE_KFRAG)} option(s): "
+            + ", ".join(missing_kfrag_options[:5])
+            + (
+                ""
+                if len(missing_kfrag_options) <= 5
+                else f", +{len(missing_kfrag_options) - 5} more"
+            )
+            + "; rebuild with "
+            "scripts/build_firemarshal_eliza_linux_smoke_payload.sh so the next smoke "
+            "uses the current console/debug kernel fragment"
+        )
+    kfrag_cmdline = config_cmdline(FIREMARSHAL_SMOKE_KFRAG)
+    built_cmdline = config_cmdline(FIREMARSHAL_SMOKE_LINUX_CONFIG)
+    if kfrag_cmdline and built_cmdline and kfrag_cmdline != built_cmdline:
+        blockers.append(
+            "preferred FireMarshal eliza-e1 Linux smoke payload kernel cmdline is stale: "
+            f"built linux_config has {built_cmdline!r}, source kfrag has {kfrag_cmdline!r}; "
+            "rebuild with scripts/build_firemarshal_eliza_linux_smoke_payload.sh before "
+            "claiming missing UART markers reflect the current payload"
+        )
+    if FIREMARSHAL_SMOKE_PAYLOAD.is_file():
+        payload_mtime = FIREMARSHAL_SMOKE_PAYLOAD.stat().st_mtime
+        freshness_inputs = firemarshal_payload_freshness_inputs()
+        newer_inputs = [
+            rel(path)
+            for path in freshness_inputs
+            if path.is_file() and path.stat().st_mtime > payload_mtime
+        ]
+        if newer_inputs and not firemarshal_payload_freshness_manifest_matches(
+            FIREMARSHAL_SMOKE_PAYLOAD,
+            FIREMARSHAL_SMOKE_PAYLOAD_MANIFEST,
+            freshness_inputs,
+        ):
+            blockers.append(
+                "preferred FireMarshal eliza-e1 Linux smoke payload predates packaged "
+                "userspace/helper inputs: "
+                + ", ".join(newer_inputs[:6])
+                + ("" if len(newer_inputs) <= 6 else f", +{len(newer_inputs) - 6} more")
+                + (
+                    "; rebuild with scripts/build_firemarshal_eliza_linux_smoke_payload.sh "
+                    "so payload_freshness_manifest.json records the exact current "
+                    "hwprobe/MMIO/NPU userspace inputs"
+                )
+            )
+    return blockers
+
+
+def firemarshal_payload_freshness_inputs() -> list[Path]:
+    return [
+        FIREMARSHAL_SMOKE_JSON,
+        FIREMARSHAL_SMOKE_KFRAG,
+        FIREMARSHAL_SMOKE_WORKLOAD,
+        FIREMARSHAL_HWPROBE_BUILD_SCRIPT,
+        FIREMARSHAL_HWPROBE_SOURCE,
+        FIREMARSHAL_HWPROBE_BINARY,
+        FIREMARSHAL_NPU_ML_SMOKE_BINARY,
+    ]
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def firemarshal_payload_freshness_manifest_matches(
+    payload: Path, manifest: Path, inputs: list[Path]
+) -> bool:
+    if not payload.is_file() or not manifest.is_file():
+        return False
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    if not isinstance(data, dict):
+        return False
+    if data.get("schema") != "eliza.firemarshal_linux_smoke_payload_freshness.v1":
+        return False
+    payload_record = data.get("payload")
+    if not isinstance(payload_record, dict):
+        return False
+    if payload_record.get("sha256") != sha256_file(payload):
+        return False
+    input_records = data.get("inputs")
+    if not isinstance(input_records, dict):
+        return False
+    for path in inputs:
+        if not path.is_file():
+            return False
+        record = input_records.get(rel(path))
+        if not isinstance(record, dict):
+            return False
+        if record.get("sha256") != sha256_file(path):
+            return False
+    return True
+
+
+def next_command(payload: str | None = None) -> str:
+    payload_value = shlex.quote(payload) if payload else f"${PAYLOAD_ENV}"
+    prefix = f"{PAYLOAD_ENV}={payload_value}"
     if simdram_source_newer_than_simulator():
         prefix = (
             f"{prefix} CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ=0 "
@@ -227,6 +535,7 @@ def next_safe_action(
     active_simulator_users: list[dict[str, object]],
     active_processes: list[dict[str, object]] | None = None,
     active_attempt: dict[str, object] | None = None,
+    payload: str | None = None,
 ) -> str:
     if active_processes:
         stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
@@ -249,7 +558,7 @@ def next_safe_action(
             "wait for active ElizaRocketConfig simulator user(s) to finish before rebuilding: "
             f"{users}{extra}"
         )
-    return next_command()
+    return next_command(payload)
 
 
 def progress_with_active_attempt(
@@ -259,6 +568,12 @@ def progress_with_active_attempt(
 ) -> dict[str, str]:
     if not active_processes:
         return progress
+    if progress.get("stage") == "payload_fdt_parse_loop":
+        next_step = progress["next_step"] + "; leave the active smoke running for final status"
+        return {"stage": "active_payload_fdt_parse_loop", "next_step": next_step}
+    if progress.get("stage") == "kernel_virtual_execution_no_console":
+        next_step = progress["next_step"] + "; leave the active smoke running for final status"
+        return {"stage": "active_kernel_virtual_execution_no_console", "next_step": next_step}
     stage = active_attempt.get("stage") if isinstance(active_attempt, dict) else None
     if not stage:
         return progress
@@ -296,14 +611,6 @@ def is_generated_model_artifact_failure(log_text: str) -> bool:
     return any(pattern.search(log_text) is not None for pattern in GENERATED_MODEL_FAILURE_PATTERNS)
 
 
-def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
 def find_objdump() -> Path | None:
     for candidate in OBJDUMP_CANDIDATES:
         if candidate.is_file() and os.access(candidate, os.X_OK):
@@ -326,7 +633,7 @@ def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, obj
         "symbol_offset": None,
         "symbol_address": None,
     }
-    if not payload or pc is None:
+    if not payload or pc is None or pc >= 0xFFFF_FFFF_8000_0000:
         return result
     payload_path = Path(payload)
     if not payload_path.is_file():
@@ -655,6 +962,21 @@ def generated_fdt_audit(dts_path: Path = GENERATED_DTS) -> dict[str, object]:
         "fits_bootrom_region": (
             total_bootrom_dtb_bytes is not None and total_bootrom_dtb_bytes <= 0x10000
         ),
+        "expected_opensbi_payload_fdt_addr": f"0x{EXPECTED_OPENSBI_FDT_ADDR:08x}",
+        "expected_opensbi_payload_fdt_addr_in_dram": (
+            DRAM_BASE <= EXPECTED_OPENSBI_FDT_ADDR < DRAM_END
+        ),
+        "expected_opensbi_payload_fdt_addr_fits_dram": (
+            dtb_size_bytes is not None
+            and DRAM_BASE <= EXPECTED_OPENSBI_FDT_ADDR
+            and EXPECTED_OPENSBI_FDT_ADDR + dtb_size_bytes <= DRAM_END
+        ),
+        "expected_kernel_entry": f"0x{EXPECTED_KERNEL_ENTRY:08x}",
+        "expected_opensbi_payload_fdt_addr_clear_of_kernel_low_window": not (
+            EXPECTED_KERNEL_ENTRY
+            <= EXPECTED_OPENSBI_FDT_ADDR
+            < EXPECTED_KERNEL_ENTRY + KERNEL_LOW_WINDOW_BYTES
+        ),
         "required_tokens": required_tokens,
         "missing_required_tokens": [
             name for name, present in required_tokens.items() if not present
@@ -662,8 +984,64 @@ def generated_fdt_audit(dts_path: Path = GENERATED_DTS) -> dict[str, object]:
     }
 
 
+def parse_opensbi_domain_handoff(text: str, dtb_size_bytes: int | None = None) -> dict[str, object]:
+    fields = {
+        match.group(1): match.group("value")
+        for match in OPENSBI_DOMAIN_FIELD_RE.finditer(text)
+    }
+
+    def parse_hex(value: str | None) -> int | None:
+        if not value or not value.startswith("0x"):
+            return None
+        try:
+            return int(value, 16)
+        except ValueError:
+            return None
+
+    next_addr = parse_hex(fields.get("Domain0 Next Address"))
+    next_arg1 = parse_hex(fields.get("Domain0 Next Arg1"))
+    fdt_fits_dram = (
+        next_arg1 is not None
+        and dtb_size_bytes is not None
+        and DRAM_BASE <= next_arg1
+        and next_arg1 + dtb_size_bytes <= DRAM_END
+    )
+    fdt_clear_of_kernel_low_window = (
+        next_arg1 is not None
+        and next_addr is not None
+        and not (next_addr <= next_arg1 < next_addr + KERNEL_LOW_WINDOW_BYTES)
+    )
+    return {
+        "observed": bool(fields),
+        "domain0_next_address": fields.get("Domain0 Next Address", ""),
+        "domain0_next_arg1": fields.get("Domain0 Next Arg1", ""),
+        "domain0_next_mode": fields.get("Domain0 Next Mode", ""),
+        "expected_domain0_next_arg1": f"0x{EXPECTED_OPENSBI_FDT_ADDR:016x}",
+        "domain0_next_arg1_matches_expected": next_arg1 == EXPECTED_OPENSBI_FDT_ADDR,
+        "domain0_next_arg1_in_dram": (
+            next_arg1 is not None and DRAM_BASE <= next_arg1 < DRAM_END
+        ),
+        "domain0_next_arg1_fits_dram": fdt_fits_dram,
+        "domain0_next_arg1_clear_of_kernel_low_window": fdt_clear_of_kernel_low_window,
+        "expected_domain0_next_address": f"0x{EXPECTED_KERNEL_ENTRY:016x}",
+        "domain0_next_address_matches_expected": next_addr == EXPECTED_KERNEL_ENTRY,
+        "bounded_bad_dtb_fix": (
+            "If Linux still receives a bad DTB with this handoff, keep FW_PAYLOAD_FDT_ADDR "
+            "in writable DRAM and regenerate only the generated DTS/BootROM DTB collateral; "
+            "do not preserve the ROM a1 pointer because OpenSBI mutates the FDT during fixups."
+        ),
+    }
+
+
 def has_marker_group(text: str, required: tuple[str, ...], any_of: tuple[str, ...]) -> bool:
     return all(marker in text for marker in required) and any(marker in text for marker in any_of)
+
+
+def observable_boot_text(text: str) -> str:
+    reconstructed = reconstruct_uart_tx_text(text)
+    if not reconstructed:
+        return text
+    return "\n".join((text, reconstructed))
 
 
 def has_accepted_opensbi_markers(text: str) -> bool:
@@ -758,7 +1136,7 @@ def repair_incomplete_attempt() -> int:
         print("STATUS: PASS chipyard.verilator_linux_smoke.incomplete_attempt - no smoke log")
         return 0
     log_metadata = parse_log_metadata()
-    log_text = LOG.read_text(encoding="utf-8", errors="replace")
+    log_text = read_text_sample(LOG)
     if "eliza-evidence: raw_transcript_begin" not in log_text or log_metadata.get(
         "raw_transcript_closed"
     ):
@@ -1010,7 +1388,8 @@ def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
     last_progress = ""
     sim_failures: list[str] = []
     sim_success_finishes: list[str] = []
-    for line in text.splitlines():
+    observable_text = observable_boot_text(text)
+    for line in observable_text.splitlines():
         if any(marker in line for marker in PROGRESS_MARKERS):
             last_progress = clean_progress_marker(line)
         if (
@@ -1028,10 +1407,11 @@ def progress_metadata_for_text(path: Path, text: str) -> dict[str, object]:
         "size_bytes": path.stat().st_size,
         "mtime": path.stat().st_mtime,
         "last_progress_marker": last_progress,
-        "has_opensbi_handoff": has_accepted_opensbi_markers(text),
-        "has_linux_banner": "Linux version" in text,
-        "has_linux_boot_markers": has_accepted_linux_markers(text),
-        "has_kernel_panic": has_kernel_panic(text),
+        "has_opensbi_banner": "OpenSBI" in observable_text,
+        "has_opensbi_handoff": has_accepted_opensbi_markers(observable_text),
+        "has_linux_banner": "Linux version" in observable_text,
+        "has_linux_boot_markers": has_accepted_linux_markers(observable_text),
+        "has_kernel_panic": has_kernel_panic(observable_text),
         "sim_failures": sim_failures[-8:],
         "sim_success_finishes": sim_success_finishes[-8:],
     }
@@ -1059,7 +1439,12 @@ def live_sim_output_metadata(
         except OSError:
             continue
         logs.append(progress_metadata_for_text(candidate, text))
-    logs.sort(key=lambda item: float(item.get("mtime") or 0.0), reverse=True)
+
+    def log_mtime(item: dict[str, object]) -> float:
+        value = item.get("mtime")
+        return float(value) if isinstance(value, (int, float, str)) else 0.0
+
+    logs.sort(key=log_mtime, reverse=True)
     return {
         "output_dir": rel(SIM_OUTPUT_DIR),
         "logs": logs,
@@ -1077,10 +1462,38 @@ def active_attempt_temp_logs(out_dir: Path = OUT_DIR) -> list[Path]:
     )
 
 
-def classify_active_attempt_text(text: str) -> tuple[str, str]:
+def active_attempt_payload_from_text(text: str) -> str | None:
+    for line in text.splitlines():
+        if line.startswith("eliza-evidence: payload=") or line.startswith(
+            "eliza-evidence: binary_arg="
+        ):
+            return line.split("=", 1)[1].strip()
+        if "+loadmem=" in line:
+            for token in line.split():
+                if token.startswith("+loadmem="):
+                    return token.split("=", 1)[1].strip()
+    return None
+
+
+def classify_active_attempt_text(
+    text: str, instruction_trace: dict[str, object] | None = None
+) -> tuple[str, str]:
+    observable_text = observable_boot_text(text)
+    if (
+        instruction_trace
+        and instruction_trace.get("entered_kernel_virtual")
+        and not has_accepted_opensbi_markers(observable_text)
+        and "Linux version" not in observable_text
+    ):
+        last_pc = instruction_trace.get("last_pc") or "unknown"
+        retired = instruction_trace.get("retired_instruction_count") or 0
+        return (
+            "active_kernel_virtual_execution_no_console",
+            f"kernel virtual execution without console: last_pc={last_pc} retired={retired}",
+        )
     if simulator_log_reached_runtime(text):
         progress = ""
-        for line in text.splitlines():
+        for line in observable_text.splitlines():
             if any(marker in line for marker in PROGRESS_MARKERS):
                 progress = clean_progress_marker(line)
         return "simulator_runtime_in_progress", progress
@@ -1110,10 +1523,15 @@ def classify_active_attempt_text(text: str) -> tuple[str, str]:
 def active_smoke_attempt_metadata(out_dir: Path = OUT_DIR) -> dict[str, object]:
     for raw_log in active_attempt_temp_logs(out_dir):
         try:
-            text = raw_log.read_text(encoding="utf-8", errors="replace")
+            text = read_text_sample(raw_log)
         except OSError:
             continue
-        stage, progress = classify_active_attempt_text(text)
+        payload = active_attempt_payload_from_text(text)
+        trace = trace_metadata_template(raw_log)
+        trace["exists"] = True
+        trace["fresh_for_log"] = True
+        trace = parse_trace_text(raw_log, text, payload, trace)
+        stage, progress = classify_active_attempt_text(text, trace)
         return {
             "path": rel(raw_log),
             "exists": True,
@@ -1122,6 +1540,21 @@ def active_smoke_attempt_metadata(out_dir: Path = OUT_DIR) -> dict[str, object]:
             "stage": stage,
             "last_progress_marker": progress,
             "reached_simulator_runtime": simulator_log_reached_runtime(text),
+            "payload": payload,
+            "entered_bootrom": trace.get("entered_bootrom"),
+            "entered_payload": trace.get("entered_payload"),
+            "entered_kernel_virtual": trace.get("entered_kernel_virtual"),
+            "bootrom_to_payload_handoff": trace.get("bootrom_to_payload_handoff"),
+            "first_pc": trace.get("first_pc"),
+            "first_payload_pc": trace.get("first_payload_pc"),
+            "first_payload_cycle": trace.get("first_payload_cycle"),
+            "last_pc": trace.get("last_pc"),
+            "last_cycle": trace.get("last_cycle"),
+            "retired_instruction_count": trace.get("retired_instruction_count"),
+            "last_symbol": trace.get("last_symbol"),
+            "last_symbol_offset": trace.get("last_symbol_offset"),
+            "last_symbol_address": trace.get("last_symbol_address"),
+            "last_symbol_objdump": trace.get("last_symbol_objdump"),
         }
     return {"exists": False}
 
@@ -1169,6 +1602,8 @@ def parse_log_metadata() -> dict[str, object]:
         "tilelink_timeout_cycles": None,
         "run_target": None,
         "disable_dramsim": None,
+        "trace_verbose": None,
+        "extra_sim_flags": None,
         "raw_transcript_closed": False,
         "lines_after_raw_transcript_end": 0,
         "fatal_errors": [],
@@ -1191,7 +1626,7 @@ def parse_log_metadata() -> dict[str, object]:
 
     raw_transcript_closed = False
     lines_after_raw_transcript_end = 0
-    log_text = LOG.read_text(encoding="utf-8", errors="replace")
+    log_text = read_text_sample(LOG)
     for line in log_text.splitlines():
         if raw_transcript_closed and line.strip() and not line.startswith("eliza-evidence:"):
             lines_after_raw_transcript_end += 1
@@ -1221,6 +1656,10 @@ def parse_log_metadata() -> dict[str, object]:
             metadata["run_target"] = line.split("=", 1)[1].strip()
         elif line.startswith("eliza-evidence: disable_dramsim="):
             metadata["disable_dramsim"] = line.split("=", 1)[1].strip()
+        elif line.startswith("eliza-evidence: trace_verbose="):
+            metadata["trace_verbose"] = line.split("=", 1)[1].strip()
+        elif line.startswith("eliza-evidence: extra_sim_flags="):
+            metadata["extra_sim_flags"] = line.split("=", 1)[1].strip()
         elif line.startswith("eliza-evidence: raw_transcript_end"):
             metadata["raw_transcript_closed"] = True
             raw_transcript_closed = True
@@ -1302,6 +1741,28 @@ def output_stem_for_payload(payload: str | None) -> str:
     return Path(payload).name
 
 
+def trace_metadata_template(trace: Path) -> dict[str, object]:
+    return {
+        "path": rel(trace),
+        "exists": trace.is_file(),
+        "fresh_for_log": False,
+        "retired_instruction_count": 0,
+        "first_pc": None,
+        "last_pc": None,
+        "last_symbol": None,
+        "last_symbol_offset": None,
+        "last_symbol_address": None,
+        "last_symbol_objdump": "",
+        "last_cycle": None,
+        "first_payload_pc": None,
+        "first_payload_cycle": None,
+        "entered_bootrom": False,
+        "entered_payload": False,
+        "entered_kernel_virtual": False,
+        "bootrom_to_payload_handoff": False,
+    }
+
+
 def simulator_log_reached_runtime(log_text: str) -> bool:
     return any(marker in log_text for marker in SIM_RUNTIME_MARKERS)
 
@@ -1344,28 +1805,52 @@ def parse_instruction_trace(
         / f"chipyard.harness.TestHarness.{CONFIG}"
         / f"{output_stem_for_payload(payload)}.out"
     )
-    metadata: dict[str, object] = {
-        "path": rel(trace),
-        "exists": trace.is_file(),
-        "fresh_for_log": False,
-        "retired_instruction_count": 0,
-        "first_pc": None,
-        "last_pc": None,
-        "last_symbol": None,
-        "last_symbol_offset": None,
-        "last_symbol_address": None,
-        "last_symbol_objdump": "",
-        "last_cycle": None,
-        "first_payload_pc": None,
-        "first_payload_cycle": None,
-        "entered_bootrom": False,
-        "entered_payload": False,
-        "bootrom_to_payload_handoff": False,
-    }
+    metadata = parse_trace_file(trace, payload, log_metadata)
+    if metadata.get("exists"):
+        return metadata
+    trace_verbose = "" if log_metadata is None else str(log_metadata.get("trace_verbose") or "")
+    extra_sim_flags = "" if log_metadata is None else str(log_metadata.get("extra_sim_flags") or "")
+    if LOG.is_file() and (trace_verbose == "1" or "+verbose" in extra_sim_flags):
+        metadata = trace_metadata_template(LOG)
+        metadata["exists"] = True
+        metadata["fresh_for_log"] = True
+        metadata["source"] = "sampled_smoke_log"
+        metadata["sampled"] = LOG.stat().st_size > LARGE_LOG_FULL_READ_LIMIT_BYTES
+        return parse_trace_text(LOG, read_text_sample(LOG), payload, metadata)
+    return metadata
+
+
+def parse_trace_file(
+    trace: Path, payload: str | None, log_metadata: dict[str, object] | None = None
+) -> dict[str, object]:
+    metadata = trace_metadata_template(trace)
     if not trace.is_file():
         return metadata
     metadata["fresh_for_log"] = trace_fresh_for_log(trace, log_metadata)
+    try:
+        with trace.open("r", encoding="utf-8", errors="replace") as handle:
+            return parse_trace_lines(trace, handle, payload, metadata)
+    except OSError:
+        return metadata
 
+
+def parse_trace_text(
+    trace: Path,
+    text: str,
+    payload: str | None,
+    metadata: dict[str, object] | None = None,
+) -> dict[str, object]:
+    if metadata is None:
+        metadata = trace_metadata_template(trace)
+    return parse_trace_lines(trace, text.splitlines(), payload, metadata)
+
+
+def parse_trace_lines(
+    trace: Path,
+    lines,
+    payload: str | None,
+    metadata: dict[str, object],
+) -> dict[str, object]:
     first_pc: int | None = None
     last_pc: int | None = None
     last_cycle: int | None = None
@@ -1374,7 +1859,8 @@ def parse_instruction_trace(
     retired = 0
     entered_bootrom = False
     entered_payload = False
-    for line in trace.read_text(encoding="utf-8", errors="replace").splitlines():
+    entered_kernel_virtual = False
+    for line in lines:
         match = TRACE_LINE_RE.match(line)
         if not match or match.group("valid") != "1":
             continue
@@ -1391,6 +1877,8 @@ def parse_instruction_trace(
             if first_payload_pc is None:
                 first_payload_pc = pc
                 first_payload_cycle = last_cycle
+        if pc >= 0xFFFF_FFFF_8000_0000:
+            entered_kernel_virtual = True
 
     metadata.update(
         {
@@ -1404,6 +1892,7 @@ def parse_instruction_trace(
             "first_payload_cycle": first_payload_cycle,
             "entered_bootrom": entered_bootrom,
             "entered_payload": entered_payload,
+            "entered_kernel_virtual": entered_kernel_virtual,
             "bootrom_to_payload_handoff": entered_bootrom and entered_payload,
         }
     )
@@ -1416,6 +1905,27 @@ def parse_instruction_trace(
             "last_symbol_objdump": symbol["objdump"],
         }
     )
+    return metadata
+
+
+def diagnostic_instruction_trace(
+    payload: str | None, log_metadata: dict[str, object] | None = None
+) -> dict[str, object]:
+    output_dir = SIM_DIR / "output" / f"chipyard.harness.TestHarness.{CONFIG}"
+    stem = output_stem_for_payload(payload)
+    candidates = sorted(
+        output_dir.glob(f"{stem}.diag-trace-*.out"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not candidates:
+        missing = output_dir / f"{stem}.diag-trace-*.out"
+        metadata = trace_metadata_template(missing)
+        metadata["diagnostic_only"] = True
+        return metadata
+    metadata = parse_trace_file(candidates[0], payload, log_metadata)
+    metadata["diagnostic_only"] = True
+    metadata["candidate_count"] = len(candidates)
     return metadata
 
 
@@ -1478,6 +1988,140 @@ def loadmem_diagnosis(
     }
 
 
+def fdt_handoff_diagnosis(
+    instruction_trace: dict[str, object],
+    fdt_audit: dict[str, object],
+) -> dict[str, object]:
+    last_symbol = str(instruction_trace.get("last_symbol") or "")
+    retired_raw = instruction_trace.get("retired_instruction_count")
+    cycle_raw = instruction_trace.get("last_cycle")
+    try:
+        retired_count = int(retired_raw) if retired_raw is not None else 0
+    except (TypeError, ValueError):
+        retired_count = 0
+    try:
+        last_cycle = int(cycle_raw) if cycle_raw is not None else 0
+    except (TypeError, ValueError):
+        last_cycle = 0
+    in_fdt_symbol = last_symbol.startswith("fdt_") or last_symbol in FDT_LOOP_SYMBOLS
+    generated_dtb_plausible = (
+        fdt_audit.get("dtc_status") == "pass"
+        and fdt_audit.get("fits_bootrom_region") is True
+        and not fdt_audit.get("missing_required_tokens")
+    )
+    loop_detected = bool(
+        instruction_trace.get("fresh_for_log")
+        and instruction_trace.get("bootrom_to_payload_handoff")
+        and in_fdt_symbol
+        and (
+            retired_count >= FDT_LOOP_RETIRED_THRESHOLD
+            or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD
+        )
+    )
+    if loop_detected and generated_dtb_plausible:
+        reason = (
+            "fresh CPU trace is stuck in OpenSBI/libfdt after boot ROM handoff even "
+            "though the generated DTS compiles, required Linux/OpenSBI tokens are "
+            "present, and bootrom+DTB fits the BootROM region; investigate runtime "
+            "FDT handoff/copy corruption or OpenSBI FDT relocation, not payload load"
+        )
+    elif loop_detected:
+        reason = (
+            "fresh CPU trace is stuck in OpenSBI/libfdt after boot ROM handoff; fix "
+            "the generated DTS/DTB audit blockers first, then rerun the traced smoke"
+        )
+    elif in_fdt_symbol:
+        reason = "fresh trace is in OpenSBI/libfdt but has not crossed the loop threshold"
+    else:
+        reason = ""
+    return {
+        "loop_detected": loop_detected,
+        "last_symbol": last_symbol,
+        "last_pc": instruction_trace.get("last_pc"),
+        "retired_instruction_count": retired_count,
+        "last_cycle": last_cycle,
+        "first_payload_pc": instruction_trace.get("first_payload_pc"),
+        "generated_dtb_plausible": generated_dtb_plausible,
+        "dtc_status": fdt_audit.get("dtc_status"),
+        "dtb_size_bytes": fdt_audit.get("dtb_size_bytes"),
+        "bootrom_plus_dtb_bytes": fdt_audit.get("bootrom_plus_dtb_bytes"),
+        "bootrom_region_size_bytes": fdt_audit.get("bootrom_region_size_bytes"),
+        "missing_required_tokens": fdt_audit.get("missing_required_tokens"),
+        "reason": reason,
+    }
+
+
+def uart_console_diagnosis(
+    log_text: str,
+    log_metadata: dict[str, object],
+    instruction_trace: dict[str, object],
+    fdt_audit: dict[str, object],
+) -> dict[str, object]:
+    command = str(log_metadata.get("command") or "")
+    built_cmdline = config_cmdline(FIREMARSHAL_SMOKE_LINUX_CONFIG) or ""
+    hvc_sbi_console = "console=hvc0" in built_cmdline and "earlycon=sbi" in built_cmdline
+    sifive_uart_console = "console=ttySIF0" in built_cmdline
+    hvc_sbi_config = False
+    if FIREMARSHAL_SMOKE_LINUX_CONFIG.is_file():
+        linux_config = FIREMARSHAL_SMOKE_LINUX_CONFIG.read_text(
+            encoding="utf-8", errors="replace"
+        )
+        hvc_sbi_config = (
+            "CONFIG_RISCV_SBI_V01=y" in linux_config
+            and "CONFIG_HVC_RISCV_SBI=y" in linux_config
+            and "CONFIG_SERIAL_EARLYCON_RISCV_SBI=y" in linux_config
+        )
+    uart_bridge_alive = "[UART] UART0 is here" in log_text
+    uart_tx_printf_enabled = "+uart_tx_printf=1" in log_text or "+uart_tx_printf=1" in command
+    uart_tx_events = log_text.count("UART TX (")
+    reconstructed_uart = reconstruct_uart_tx_text(log_text)
+    observable_text = observable_boot_text(log_text)
+    kernel_virtual = bool(instruction_trace.get("entered_kernel_virtual"))
+    chosen_stdout = False
+    required = fdt_audit.get("required_tokens")
+    if isinstance(required, dict):
+        chosen_stdout = bool(required.get("chosen_stdout"))
+    no_observable_uart_tx = bool(
+        kernel_virtual
+        and uart_bridge_alive
+        and uart_tx_printf_enabled
+        and uart_tx_events == 0
+        and not has_accepted_opensbi_markers(observable_text)
+        and "Linux version" not in observable_text
+    )
+    reason = ""
+    if no_observable_uart_tx:
+        reason = (
+            "CPU reached kernel virtual-address execution with UART bridge initialized "
+            "and +uart_tx_printf enabled, but no UART TX FIFO writes were printed; "
+            "debug OpenSBI/Linux console selection, earlycon/SBI console availability, "
+            "and whether the kernel is intentionally quiet before claiming serial boot evidence"
+        )
+    return {
+        "uart_bridge_alive": uart_bridge_alive,
+        "uart_tx_printf_enabled": uart_tx_printf_enabled,
+        "uart_tx_event_count": uart_tx_events,
+        "reconstructed_uart_size_bytes": len(reconstructed_uart.encode("utf-8")),
+        "reconstructed_uart_preview": reconstructed_uart[:512],
+        "reconstructed_uart_has_opensbi_banner": "OpenSBI" in reconstructed_uart,
+        "reconstructed_uart_has_opensbi_handoff": has_accepted_opensbi_markers(
+            reconstructed_uart
+        ),
+        "reconstructed_uart_has_linux_banner": "Linux version" in reconstructed_uart,
+        "reconstructed_uart_has_linux_boot_markers": has_accepted_linux_markers(
+            reconstructed_uart
+        ),
+        "built_cmdline": built_cmdline,
+        "hvc_sbi_console": hvc_sbi_console,
+        "hvc_sbi_config": hvc_sbi_config,
+        "sifive_uart_console": sifive_uart_console,
+        "entered_kernel_virtual": kernel_virtual,
+        "chosen_stdout_token_present": chosen_stdout,
+        "no_observable_uart_tx": no_observable_uart_tx,
+        "reason": reason,
+    }
+
+
 def classify_smoke_progress(
     log_text: str, instruction_trace: dict[str, object], log_metadata: dict[str, object]
 ) -> dict[str, str]:
@@ -1486,7 +2130,8 @@ def classify_smoke_progress(
             "stage": "no_run",
             "next_step": "run scripts/run_chipyard_eliza_linux_smoke.sh with a real OpenSBI/Linux payload",
         }
-    if has_kernel_panic(log_text):
+    observable_text = observable_boot_text(log_text)
+    if has_kernel_panic(observable_text):
         return {
             "stage": "linux_kernel_panic",
             "next_step": (
@@ -1494,7 +2139,7 @@ def classify_smoke_progress(
                 "memory map, initramfs, and generated DTS handoff evidence"
             ),
         }
-    if has_accepted_linux_markers(log_text):
+    if has_accepted_linux_markers(observable_text):
         return {
             "stage": "linux_boot",
             "next_step": "capture the complete generated-AP Linux boot transcript",
@@ -1520,7 +2165,7 @@ def classify_smoke_progress(
     sim_timeout = isinstance(sim_failures, list) and any(
         "timeout" in str(failure) for failure in sim_failures
     )
-    if "Linux version" in log_text:
+    if "Linux version" in observable_text:
         if sim_timeout:
             return {
                 "stage": "linux_banner_then_max_cycles",
@@ -1543,7 +2188,7 @@ def classify_smoke_progress(
                 "before claiming generated AP Linux boot"
             ),
         }
-    if "OpenSBI" in log_text and (
+    if "OpenSBI" in observable_text and (
         "Assertion failed in TestDriver" in log_text or "Verilog $stop" in log_text
     ):
         if sim_timeout:
@@ -1565,12 +2210,12 @@ def classify_smoke_progress(
                 "to reach OpenSBI handoff and Linux boot markers"
             ),
         }
-    if has_accepted_opensbi_markers(log_text):
+    if has_accepted_opensbi_markers(observable_text):
         return {
             "stage": "opensbi_boot",
             "next_step": "continue the smoke until the Linux kernel banner appears",
         }
-    if "OpenSBI" in log_text:
+    if "OpenSBI" in observable_text:
         return {
             "stage": "opensbi_banner_only",
             "next_step": "continue until OpenSBI handoff markers and the Linux banner appear",
@@ -1588,6 +2233,15 @@ def classify_smoke_progress(
             "sbi_memcmp",
             "sbi_strncmp",
         }:
+            if retired_count >= FDT_LOOP_RETIRED_THRESHOLD or last_cycle >= FDT_LOOP_CYCLE_THRESHOLD:
+                return {
+                    "stage": "payload_fdt_parse_loop",
+                    "next_step": (
+                        "debug the boot ROM FDT handoff/copy and OpenSBI FDT "
+                        "relocation path; CPU is spending millions of instructions "
+                        "inside OpenSBI/libfdt before any OpenSBI banner"
+                    ),
+                }
             if retired_count < 1_000_000 or last_cycle < 2_000_000:
                 return {
                     "stage": "payload_fdt_parse_in_progress",
@@ -1636,6 +2290,15 @@ def classify_smoke_progress(
                     "expecting banner output"
                 ),
             }
+        if instruction_trace.get("entered_kernel_virtual"):
+            return {
+                "stage": "kernel_virtual_execution_no_console",
+                "next_step": (
+                    "debug why OpenSBI/Linux reached kernel virtual-address execution "
+                    "without UART boot markers; inspect console DT stdout-path, SBI "
+                    "console handoff, and UART host bridge capture"
+                ),
+            }
         return {
             "stage": "cpu_progress_to_payload",
             "next_step": "debug why the payload runs after boot ROM handoff but emits no OpenSBI/Linux UART markers",
@@ -1655,7 +2318,10 @@ def classify_smoke_progress(
         and log_metadata.get("exit_code")
         and log_metadata.get("exit_code") != "0"
         and not instruction_trace.get("exists")
-        and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
+        and not (
+            has_accepted_opensbi_markers(observable_text)
+            or "Linux version" in observable_text
+        )
     ):
         if log_metadata.get("disable_dramsim") == "1" and "[UART] UART0 is here" not in log_text:
             return {
@@ -1681,6 +2347,44 @@ def classify_smoke_progress(
                     "instruction trace evidence, and rebuild with SimDRAM loadmem "
                     "entry instrumentation because UART and DRAMSim initialized but "
                     "no observable payload entry or OpenSBI/Linux marker was recorded"
+                ),
+            }
+        built_cmdline = config_cmdline(FIREMARSHAL_SMOKE_LINUX_CONFIG) or ""
+        if (
+            log_metadata.get("disable_dramsim") == "0"
+            and "[UART] UART0 is here" in log_text
+            and "SimDRAM loaded ELF entry=" in log_text
+            and "+uart_tx_printf=1" in str(log_metadata.get("extra_sim_flags") or "")
+            and "UART TX (" not in log_text
+            and "console=ttySIF0" in built_cmdline
+        ):
+            return {
+                "stage": "sifive_uart_fast_timeout_no_tx",
+                "next_step": (
+                    "run a short traced generated-AP smoke to locate the payload PC, then "
+                    "debug the SiFive UART console path because the rebuilt payload uses "
+                    "console=ttySIF0, SimDRAM loaded the ELF, DRAMSim and the UART bridge "
+                    "initialized, but no OpenSBI/Linux text or UART TX events were observed "
+                    "before timeout"
+                ),
+            }
+        if (
+            log_metadata.get("disable_dramsim") == "0"
+            and "[UART] UART0 is here" in log_text
+            and "SimDRAM loaded ELF entry=" in log_text
+            and "+uart_tx_printf=1" in str(log_metadata.get("extra_sim_flags") or "")
+            and "UART TX (" not in log_text
+            and "console=hvc0" in built_cmdline
+            and "earlycon=sbi" in built_cmdline
+        ):
+            return {
+                "stage": "hvc_sbi_fast_timeout_no_target_console",
+                "next_step": (
+                    "run a short traced generated-AP smoke to locate the payload PC, then "
+                    "debug the HTIF/SBI console path because the rebuilt payload uses "
+                    "console=hvc0 earlycon=sbi, SimDRAM loaded the ELF, DRAMSim and the "
+                    "UART bridge initialized, but no OpenSBI/Linux/HVC text or UART TX "
+                    "events were observed before timeout"
                 ),
             }
         return {
@@ -1730,17 +2434,27 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     allow_container_paths = os.environ.get(CONTAINER_PATH_ENV) == "1"
     log_metadata = parse_log_metadata()
     instruction_trace = parse_instruction_trace(payload, log_metadata)
+    diagnostic_trace = diagnostic_instruction_trace(payload, log_metadata)
     simulator_artifact = simulator_artifact_metadata()
-    log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
+    log_text = read_text_sample(LOG) if LOG.is_file() else ""
     loadmem = loadmem_diagnosis(log_text, log_metadata, instruction_trace, simulator_artifact)
     active_processes = active_chipyard_smoke_processes()
     active_simulator_users = active_simulator_artifact_users()
     active_attempt = active_smoke_attempt_metadata()
     live_output = live_sim_output_metadata(payload, log_metadata)
     fdt_audit = generated_fdt_audit()
-    deferred_next_command = next_command()
+    opensbi_fdt_handoff = parse_opensbi_domain_handoff(
+        observable_boot_text(log_text),
+        fdt_audit.get("dtb_size_bytes") if isinstance(fdt_audit.get("dtb_size_bytes"), int) else None,
+    )
+    fdt_handoff = fdt_handoff_diagnosis(instruction_trace, fdt_audit)
+    diagnostic_fdt_handoff = fdt_handoff_diagnosis(diagnostic_trace, fdt_audit)
+    uart_console = uart_console_diagnosis(
+        log_text, log_metadata, instruction_trace, fdt_audit
+    )
+    deferred_next_command = next_command(payload)
     safe_action = next_safe_action(
-        simulator_artifact, active_simulator_users, active_processes, active_attempt
+        simulator_artifact, active_simulator_users, active_processes, active_attempt, payload
     )
     quiet_linux_completion = has_quiet_linux_completion_evidence(log_text, log_metadata, payload)
     progress = progress_with_active_attempt(
@@ -1760,6 +2474,7 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "log": rel(LOG),
         "log_metadata": log_metadata,
         "instruction_trace": instruction_trace,
+        "diagnostic_instruction_trace": diagnostic_trace,
         "progress": progress,
         "quiet_linux_completion_evidence": quiet_linux_completion,
         "host": {
@@ -1777,6 +2492,10 @@ def write_report(status: str, blockers: list[str], payload: str | None) -> None:
         "sim_memory_model_audit": sim_memory_model_audit(),
         "loadmem_diagnosis": loadmem,
         "generated_fdt_audit": fdt_audit,
+        "opensbi_fdt_handoff_audit": opensbi_fdt_handoff,
+        "fdt_handoff_diagnosis": fdt_handoff,
+        "diagnostic_fdt_handoff_diagnosis": diagnostic_fdt_handoff,
+        "uart_console_diagnosis": uart_console,
         "required_log_markers": list(REQUIRED_LOG_MARKERS),
         "next_safe_action": safe_action,
         "next_command": safe_action if safe_action == deferred_next_command else "",
@@ -1822,9 +2541,7 @@ def main() -> int:
     )
     args = parser.parse_args()
     if args.classify_generated_artifact_failure:
-        log_text = Path(args.classify_generated_artifact_failure).read_text(
-            encoding="utf-8", errors="replace"
-        )
+        log_text = read_text_sample(Path(args.classify_generated_artifact_failure))
         return 0 if is_generated_model_artifact_failure(log_text) else 1
     if args.repair_incomplete_attempt:
         return repair_incomplete_attempt()
@@ -1860,8 +2577,10 @@ def main() -> int:
     for artifact in REQUIRED_GENERATED_ARTIFACTS:
         if not artifact.is_file():
             blockers.append(f"missing generated Verilog artifact: {rel(artifact)}")
+    blockers.extend(firemarshal_payload_config_blockers())
 
-    initial_log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
+    initial_log_text = read_text_sample(LOG) if LOG.is_file() else ""
+    initial_observable_text = observable_boot_text(initial_log_text)
     quiet_linux_completion = has_quiet_linux_completion_evidence(
         initial_log_text, log_metadata, payload
     )
@@ -1878,11 +2597,21 @@ def main() -> int:
         )
 
     instruction_trace = parse_instruction_trace(payload, log_metadata)
+    diagnostic_trace = diagnostic_instruction_trace(payload, log_metadata)
     active_processes = active_chipyard_smoke_processes()
     active_simulator_users = active_simulator_artifact_users()
     active_attempt = active_smoke_attempt_metadata()
     live_output = live_sim_output_metadata(payload, log_metadata)
     fdt_audit = generated_fdt_audit()
+    opensbi_fdt_handoff = parse_opensbi_domain_handoff(
+        initial_observable_text,
+        fdt_audit.get("dtb_size_bytes") if isinstance(fdt_audit.get("dtb_size_bytes"), int) else None,
+    )
+    fdt_handoff = fdt_handoff_diagnosis(instruction_trace, fdt_audit)
+    diagnostic_fdt_handoff = fdt_handoff_diagnosis(diagnostic_trace, fdt_audit)
+    uart_console = uart_console_diagnosis(
+        initial_log_text, log_metadata, instruction_trace, fdt_audit
+    )
     latest_live = live_output.get("latest")
     if active_processes:
         blocker = (
@@ -1919,6 +2648,40 @@ def main() -> int:
                 f"trace={instruction_trace.get('path')}"
             )
         blockers.append(blocker)
+    if fdt_handoff.get("loop_detected"):
+        blockers.append(
+            "generated AP CPU trace is stuck in OpenSBI/libfdt before the OpenSBI "
+            f"banner: last_symbol={fdt_handoff.get('last_symbol')} "
+            f"last_pc={fdt_handoff.get('last_pc')} "
+            f"retired={fdt_handoff.get('retired_instruction_count')} "
+            f"last_cycle={fdt_handoff.get('last_cycle')}; "
+            f"{fdt_handoff.get('reason')}"
+        )
+    if (
+        not instruction_trace.get("exists")
+        and diagnostic_trace.get("bootrom_to_payload_handoff")
+        and diagnostic_fdt_handoff.get("last_symbol")
+    ):
+        blockers.append(
+            "latest diagnostic-only generated AP trace is not current acceptance "
+            "evidence, but it shows BootROM-to-payload handoff followed by "
+            f"OpenSBI/libfdt execution: first_payload_pc={diagnostic_trace.get('first_payload_pc')} "
+            f"last_pc={diagnostic_trace.get('last_pc')} "
+            f"last_symbol={diagnostic_fdt_handoff.get('last_symbol')} "
+            f"retired={diagnostic_trace.get('retired_instruction_count')} "
+            f"last_cycle={diagnostic_trace.get('last_cycle')} "
+            f"entered_kernel_virtual={diagnostic_trace.get('entered_kernel_virtual')} "
+            f"trace={diagnostic_trace.get('path')}"
+        )
+    if uart_console.get("no_observable_uart_tx"):
+        blockers.append(
+            "generated AP run reached kernel virtual-address execution with no "
+            "observable SiFive UART TX writes: "
+            f"uart_bridge_alive={uart_console.get('uart_bridge_alive')} "
+            f"uart_tx_printf_enabled={uart_console.get('uart_tx_printf_enabled')} "
+            f"uart_tx_event_count={uart_console.get('uart_tx_event_count')}; "
+            f"{uart_console.get('reason')}"
+        )
     if simdram_source_newer_than_simulator(simulator_metadata) and active_simulator_users:
         users = ", ".join(
             f"pid={user.get('pid')} elapsed={user.get('elapsed')}"
@@ -1945,12 +2708,35 @@ def main() -> int:
             f"{fdt_audit.get('bootrom_plus_dtb_bytes')} > "
             f"{fdt_audit.get('bootrom_region_size_bytes')}"
         )
+    if opensbi_fdt_handoff.get("observed"):
+        if not opensbi_fdt_handoff.get("domain0_next_arg1_matches_expected"):
+            blockers.append(
+                "OpenSBI Domain0 handoff does not pass Linux the expected writable "
+                "DRAM FDT address: "
+                f"observed a1={opensbi_fdt_handoff.get('domain0_next_arg1') or '<missing>'} "
+                f"expected={opensbi_fdt_handoff.get('expected_domain0_next_arg1')}"
+            )
+        elif not opensbi_fdt_handoff.get("domain0_next_arg1_fits_dram"):
+            blockers.append(
+                "OpenSBI Domain0 handoff FDT address does not fit inside generated "
+                "DRAM with the audited DTB size: "
+                f"a1={opensbi_fdt_handoff.get('domain0_next_arg1')} "
+                f"dtb_size={fdt_audit.get('dtb_size_bytes')}"
+            )
+        elif not opensbi_fdt_handoff.get("domain0_next_arg1_clear_of_kernel_low_window"):
+            blockers.append(
+                "OpenSBI Domain0 handoff FDT address collides with the kernel low "
+                "load window: "
+                f"kernel={opensbi_fdt_handoff.get('domain0_next_address')} "
+                f"a1={opensbi_fdt_handoff.get('domain0_next_arg1')}"
+            )
     log_text = ""
     if not LOG.is_file():
         if not quiet_linux_completion:
             blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")
     else:
         log_text = initial_log_text
+        observable_text = initial_observable_text
         if (
             not quiet_linux_completion
             and "eliza-evidence: raw_transcript_begin" in log_text
@@ -2006,8 +2792,8 @@ def main() -> int:
             blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
         if last_progress and not (
             quiet_linux_completion
-            or has_accepted_opensbi_markers(log_text)
-            or "Linux version" in log_text
+            or has_accepted_opensbi_markers(observable_text)
+            or "Linux version" in observable_text
         ):
             blockers.append(f"last simulator progress before missing boot markers: {last_progress}")
         trace_is_fresh = bool(instruction_trace.get("fresh_for_log"))
@@ -2017,12 +2803,29 @@ def main() -> int:
                 "with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC evidence: "
                 f"{instruction_trace.get('path')}"
             )
+        extra_sim_flags = str(log_metadata.get("extra_sim_flags") or "")
+        if (
+            not quiet_linux_completion
+            and simulator_log_reached_runtime(log_text)
+            and not instruction_trace.get("exists")
+            and "+verbose" not in extra_sim_flags
+        ):
+            blockers.append(
+                "current generated AP smoke reached simulator runtime without a "
+                "fresh instruction trace; rerun with "
+                "CHIPYARD_LINUX_SMOKE_TRACE_VERBOSE=1 and +verbose for PC-stage "
+                "diagnostics only if the longer non-traced evidence attempt still "
+                "lacks OpenSBI/Linux markers"
+            )
         if (
             not quiet_linux_completion
             and simulator_log_reached_runtime(log_text)
             and trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
-            and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
+            and not (
+                has_accepted_opensbi_markers(observable_text)
+                or "Linux version" in observable_text
+            )
         ):
             blockers.append(
                 "instruction trace proves CPU forward progress through boot ROM "
@@ -2032,26 +2835,42 @@ def main() -> int:
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )
-        if not has_accepted_opensbi_markers(log_text) and not quiet_linux_completion:
+        if (
+            not quiet_linux_completion
+            and trace_is_fresh
+            and instruction_trace.get("entered_kernel_virtual")
+            and not (
+                has_accepted_opensbi_markers(observable_text)
+                or "Linux version" in observable_text
+            )
+        ):
+            blockers.append(
+                "instruction trace reached kernel virtual-address execution but UART "
+                "boot markers are still absent: "
+                f"last_pc={instruction_trace.get('last_pc')} "
+                f"retired={instruction_trace.get('retired_instruction_count')} "
+                f"trace={instruction_trace.get('path')}"
+            )
+        if not has_accepted_opensbi_markers(observable_text) and not quiet_linux_completion:
             blockers.append(f"{rel(LOG)} lacks required marker: OpenSBI/SBI handoff")
-        if "OpenSBI" in log_text and not has_accepted_opensbi_markers(log_text):
+        if "OpenSBI" in observable_text and not has_accepted_opensbi_markers(observable_text):
             blockers.append(
                 f"{rel(LOG)} has an OpenSBI banner but lacks accepted OpenSBI handoff markers: "
                 + ", ".join(OPENSBI_ACCEPTANCE_MARKERS)
             )
         if (
-            "SBI specification" in log_text
-            and "OpenSBI" not in log_text
-            and not has_accepted_opensbi_markers(log_text)
+            "SBI specification" in observable_text
+            and "OpenSBI" not in observable_text
+            and not has_accepted_opensbi_markers(observable_text)
         ):
             blockers.append(
                 f"{rel(LOG)} has Linux-observed SBI markers but lacks accepted implementation markers"
             )
-        if "Linux version" not in log_text and not quiet_linux_completion:
+        if "Linux version" not in observable_text and not quiet_linux_completion:
             blockers.append(f"{rel(LOG)} lacks required marker: Linux version")
         if (
-            "Linux version" in log_text
-            and not has_accepted_linux_markers(log_text)
+            "Linux version" in observable_text
+            and not has_accepted_linux_markers(observable_text)
             and not quiet_linux_completion
         ):
             blockers.append(
@@ -2060,7 +2879,7 @@ def main() -> int:
             )
 
     progress = progress_with_active_attempt(
-        classify_smoke_progress(log_text, instruction_trace, log_metadata),
+        classify_smoke_progress(observable_boot_text(log_text), instruction_trace, log_metadata),
         active_processes,
         active_attempt,
     )
@@ -2071,9 +2890,9 @@ def main() -> int:
         print(f"  progress_stage: {progress['stage']}")
         print(f"  next_progress_step: {progress['next_step']}")
         safe_action = next_safe_action(
-            simulator_metadata, active_simulator_users, active_processes, active_attempt
+            simulator_metadata, active_simulator_users, active_processes, active_attempt, payload
         )
-        deferred_next_command = next_command()
+        deferred_next_command = next_command(payload)
         print(f"  next_safe_action: {safe_action}")
         if safe_action != deferred_next_command:
             print(f"  next_command_after_active_simulator_users: {deferred_next_command}")

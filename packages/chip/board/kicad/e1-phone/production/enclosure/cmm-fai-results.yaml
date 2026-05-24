@@ -1,0 +1,18 @@
+schema: eliza.e1_phone_production_enclosure_handoff_packet.v1
+packet_id: enclosure_cmm_fai_results
+status: blocked_not_measured
+release_credit: false
+source_burndown: board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+expected_evidence_type: cmm_fai_measurement_report
+required_fields_unpopulated:
+  - unit_serial
+  - fixture_id
+  - measured_features
+  - tolerance_limits
+  - pass_fail_disposition
+  - measurement_artifacts
+  - inspector_signature
+blockers:
+  - CMM/FAI has not been run on release enclosure and board assemblies.
+  - Feature measurements, tolerance limits, artifacts, disposition, and inspector signature are missing.
+validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py

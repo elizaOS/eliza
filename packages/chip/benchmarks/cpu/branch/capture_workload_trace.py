@@ -73,6 +73,20 @@ def main() -> int:
         default=0,
         help="workload mode argv[2] (domain/variant selector)",
     )
+    ap.add_argument("--asid", type=int, default=0, help="BPU context ASID for all emitted branches")
+    ap.add_argument("--vmid", type=int, default=0, help="BPU context VMID for all emitted branches")
+    ap.add_argument("--priv", type=int, default=0, help="BPU context privilege level for all emitted branches")
+    ap.add_argument(
+        "--secure",
+        action="store_true",
+        help="mark emitted branches as secure-context BPU events",
+    )
+    ap.add_argument(
+        "--workload-class",
+        type=int,
+        default=0,
+        help="BPU workload_class field for all emitted branches",
+    )
     ap.add_argument(
         "--keep-execlog",
         action="store_true",
@@ -130,6 +144,12 @@ def main() -> int:
     branches, stats = decode_execlog(execlog)
     if stats.branch_count == 0:
         return _blocked("decoded zero branches — check execlog format")
+    for branch in branches:
+        branch.asid = args.asid
+        branch.vmid = args.vmid
+        branch.priv = args.priv
+        branch.secure = int(args.secure)
+        branch.workload_class = args.workload_class
 
     write_workload_trace(
         out_trace,
@@ -143,6 +163,13 @@ def main() -> int:
             "qemu": "qemu-riscv64 user-mode + libexeclog",
             "scale": args.steps,
             "mode": args.mode,
+            "bpu_context": {
+                "asid": args.asid,
+                "vmid": args.vmid,
+                "priv": args.priv,
+                "secure": bool(args.secure),
+                "workload_class": args.workload_class,
+            },
         },
     )
     if not args.keep_execlog:

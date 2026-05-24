@@ -1,26 +1,36 @@
 {
-  "boot_completed": true,
+  "boot_completed": false,
   "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
   "cpus": 4,
-  "duration_s": 77,
+  "duration_s": 81,
   "forbidden_markers_present": [],
-  "iso_path": "packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260521T131111Z.iso",
-  "iso_sha256": "07519ebc789eb1cb83d9aea94a72265ca694e147af24d1f0d5070214450c1eb1",
+  "iso_boot_artifacts": {
+    "found": {
+      "grub_config": "/boot/grub/grub.cfg",
+      "riscv64_live_initrd": "/live/initrd.img-6.12.90+deb13-riscv64",
+      "riscv64_live_kernel": "/live/vmlinux-6.12.90+deb13-riscv64",
+      "riscv64_removable_uefi_loader": "/EFI/boot/bootriscv64.efi"
+    },
+    "missing": []
+  },
+  "iso_path": "packages/os/linux/elizaos/out/elizaos-linux-riscv64-default-20260524T005108Z.iso",
+  "iso_sha256": "bc2306a6f2c9a343b61c25f9b77f64a5cdd98211cde4e48a190ffb61700f8c9a",
   "markers_found": [
-    "Linux version",
+    "Linux version"
+  ],
+  "markers_missing": [
     "elizaos-firstboot-ready",
     "elizaos-curl-health-ready",
     "elizaos-agent-ready",
     "elizaos-tui-ready"
   ],
-  "markers_missing": [],
   "memory_mb": 4096,
   "provenance": "qemu_virt",
   "qemu_exit_code": 0,
   "schema": "eliza.os.linux.qemu_virt_boot.v1",
-  "start_utc": "2026-05-21T13:45:29Z",
-  "timeout_s": 1200,
+  "start_utc": "2026-05-24T01:30:54Z",
+  "timeout_s": 900,
   "transcript_path": "evidence/qemu_virt_boot.transcript.log",
-  "transcript_sha256": "f136644da35156405ff197054225e1329571d67aa0549219a44b62ba843c0952",
+  "transcript_sha256": "a9e8675e0a117f50f26b6869c21e525dbe93dd8f4e78b46b12537e33fb0090ad",
   "u_boot_path": null
 }

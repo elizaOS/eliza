@@ -1,0 +1,2649 @@
+schema: eliza.e1_phone_enclosure_readiness_gap_map.v1
+status: blocked_fail_closed_diagnostic_only
+date: '2026-05-22'
+claim_boundary: Diagnostic gap map joining enclosure burndown, mechanical CAD inventory, supplier-return
+  matrix, and first-article matrix. It is not supplier evidence, not routed-board STEP evidence, not physical
+  fit evidence, and grants no release credit.
+inputs:
+  enclosure_mechanical_burndown: board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  mechanical_cad_evidence_inventory: mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
+  first_article_matrix: board/kicad/e1-phone/production/test/readiness/e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml
+  supplier_return_matrix: board/kicad/e1-phone/production/sourcing/readiness/supplier-return-evidence-acceptance-matrix-2026-05-22.yaml
+  routed_output_matrix: board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
+  factory_output_inventory: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
+  report_path: board/kicad/e1-phone/production/readiness/enclosure-readiness-gap-map-2026-05-22.yaml
+summary:
+  release_allowed: false
+  release_credit: false
+  missing_release_evidence_count: 5
+  supplier_geometry_family_count: 6
+  supplier_geometry_families_blocked: 6
+  physical_interface_count: 8
+  physical_interfaces_blocked: 8
+  supplier_return_blocked_lane_count: 13
+  supplier_return_present_but_not_release_evidence_count: 221
+  first_article_missing_required_non_template_count: 0
+  first_article_template_row_count: 6
+  first_article_present_unvalidated_count: 61
+  production_enclosure_handoff_packet_count: 6
+  production_routed_step_release_count: 0
+  candidate_routed_step_count: 3
+  clearance_results_complete: 0
+  clearance_results_expected: 12
+  blocked_clearance_case_count: 12
+  release_unblock_action_group_count: 5
+  approval_metadata_action_group_count: 5
+  routed_clearance_release_action_count: 12
+  first_article_physical_fit_action_count: 7
+  clearance_supplier_family_mapping_count: 12
+  clearance_routed_step_input_mapping_count: 12
+  release_unblock_blocked_row_count: 387
+fail_closed_policy:
+  release_allowed: false
+  release_credit: false
+  candidate_or_concept_cad_counts_as_release_evidence: false
+  presence_only_counts_as_release_evidence: false
+  external_supplier_and_physical_fit_evidence_required: true
+mechanical_missing_release_evidence:
+- gate: routed_board_step_intake
+  required_evidence: physical routed-board release STEP with component height models
+  status: blocked_concept_pcb_no_routed_step
+  path: mechanical/e1-phone/review/board-step-readiness.json
+  production_step_files: []
+  approved_production_step_files: []
+  blocked_candidate_step_files:
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  development_step_candidates:
+  - path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    kind: real_footprint_development_step
+    present: true
+    size_bytes: 32959460
+    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    release_credit: false
+  - path: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    kind: routed_development_step
+    present: true
+    size_bytes: 32959460
+    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    release_credit: false
+  - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    kind: blocked_routed_output_candidate_step
+    present: true
+    size_bytes: 32959460
+    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    release_credit: false
+  detailed_routed_step_candidate:
+    path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    present: true
+    blocked_metadata: true
+    release_credit: false
+    reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+      physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and
+      measured enclosure clearance
+    size_bytes: 32959460
+    sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    source_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+    source_step_size_bytes: 32959460
+    route_count: 153
+    segment_count: 306
+    footprint_envelope_count: 89
+    pad_contact_visual_count: 1452
+    route_segment_visual_count: 306
+    candidate_matches_routed_output_manifest: true
+    candidate_matches_development_source: true
+    routed_development_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
+    routed_output_manifest: board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml
+- gate: routed_board_clearance
+  required_evidence: measured enclosure clearance against routed board STEP
+  status: blocked_waiting_for_routed_board_step
+  path: mechanical/e1-phone/review/routed-board-clearance.json
+  production_step_files: []
+  blocked_candidate_step_files:
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  complete_clearance_result_count: 0
+  expected_clearance_case_count: 12
+- gate: supplier_evidence
+  required_evidence: supplier-returned quote, 2D drawing, STEP, sample, and traceability artifacts
+  status: blocked_no_supplier_evidence
+  path: mechanical/e1-phone/review/supplier-evidence-acceptance.json
+  complete_family_count: 0
+  expected_family_count: 6
+  missing_or_incomplete_families:
+  - display_touch_stack
+  - usb_audio_bottom_io
+  - power_volume_buttons
+  - camera_modules
+  - wireless_modules
+  - orange_enclosure_tooling
+- gate: physical_fit_evidence
+  required_evidence: fabricated enclosure/board/display/battery/button/port fit-check results with reviewer
+    identity
+  status: missing_release_physical_fit_evidence
+  path: mechanical/e1-phone/review/fit-check-report.json
+  source_status: pass
+  source_claim_boundary: EVT0 mechanical concept; not released tooling CAD or fabricated hardware.
+- gate: physical_process_validation
+  required_evidence: finished-phone lab, EVT, FAI, build, traceability, and process-control results
+  status: blocked_no_physical_process_validation_results
+  path: mechanical/e1-phone/review/physical-process-validation-acceptance.json
+  complete_gate_count: 0
+  expected_gate_count: 11
+  missing_or_incomplete_gates:
+  - display_touch_lab_results
+  - acoustic_lab_results
+  - camera_optical_lab_results
+  - thermal_rf_drop_ingress_environmental_results
+  - button_usb_screen_evt_physical_results
+  - fixture_calibration_results
+  - mechanical_lifecycle_results
+  - gdt_first_article_results
+  - unit_traceability_records
+  - assembly_build_traveler_records
+  - factory_process_control_records
+supplier_return_gap:
+  lane_count: 13
+  blocked_lane_count: 13
+  present_but_not_release_evidence_count: 221
+  lanes:
+  - lane: display_touch
+    function: display_touch
+    selected_hardware: CH550FH01A-CT
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: rear_camera
+    function: rear_camera
+    selected_hardware: SF-XR3855A-A0_OV13855_or_OV13850_13MP_AF
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: front_camera
+    function: front_camera
+    selected_hardware: SF-G5035S60FY_GC5035_5MP_FF_MIPI
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: cellular
+    function: cellular
+    selected_hardware: Quectel_RG255C_or_RM255C_5G_RedCap
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: wifi_bluetooth
+    function: wifi_bluetooth
+    selected_hardware: Murata_LBEE5XV2EA-802_Type_2EA
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: usb_c_receptacle_evt0
+    function: usb_c_receptacle_evt0
+    selected_hardware: GCT_USB4105_class_USB2_Type_C
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: charger_pd
+    function: usb_pd_controller
+    selected_hardware: TI_TPS65987DDH
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: charger_pd
+    function: charger_power_path
+    selected_hardware: MAX77860_class
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: side_buttons
+    function: side_buttons
+    selected_hardware: Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7_side_push_tactile
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: battery
+    function: battery_pack
+    selected_hardware: LiPol_LP566487_3p85V_5727mAh_22p05Wh_PCM_NTC_JST_SHR_03V_class
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: split_interconnect
+    function: top_bottom_interconnect
+    selected_hardware: Hirose_BM28_hybrid_power_signal_fpc_bridge_class
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: audio_haptics
+    function: audio_speaker_microphone_flexes
+    selected_hardware: ALC5688_CS35L41_SPH0641LM4H_speaker_receiver_haptic_stack
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+  - lane: null
+    function: pmic
+    selected_hardware: DA9063_class
+    required_count: 17
+    present_count: 17
+    missing_count: 0
+    present_but_not_release_evidence_count: 17
+    release_allowed: false
+    blocked_reason: supplier-return files are present but fail-closed as placeholder/non-release intake
+      evidence
+    missing_evidence_classes: []
+physical_interface_gap_map:
+- interface: display
+  placement_refs:
+  - J_DISPLAY_TOUCH
+  release_allowed: false
+  required_release_checks:
+  - cover-lens to enclosure datum and adhesive thickness stack
+  - display FPC bend radius, stiffener, and mated connector height
+  - display outline clearance in 78.0 x 153.6 x 11.8 mm envelope
+  - routed MIPI, touch, backlight, reset, and bias clearances
+  required_evidence:
+  - supplier display STEP or B-rep and signed drawing
+  - routed board STEP display connector clearance report
+  - display bring-up and touch functional log
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - supplier display STEP or B-rep and signed drawing
+  - routed board STEP display connector clearance report
+  - display bring-up and touch functional log
+- interface: battery
+  placement_refs:
+  - J_BATTERY
+  release_allowed: false
+  required_release_checks:
+  - 64 x 87 mm pack cavity and no rigid component intrusion
+  - pack swelling, pull-tab, PCM, connector, NTC, pack-ID, and foam compression
+  - battery-to-PCB-islands and battery-back-void clearance
+  required_evidence:
+  - signed pack drawing and swelling envelope
+  - routed clearance reports for battery_to_pcb_islands and battery_back_void_foam_to_pouch
+  - insertion/removal and closed-enclosure thermal evidence
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - signed pack drawing and swelling envelope
+  - routed clearance reports for battery_to_pcb_islands and battery_back_void_foam_to_pouch
+  - insertion/removal and closed-enclosure thermal evidence
+- interface: cameras
+  placement_refs:
+  - J_CAM0_CAM1
+  release_allowed: false
+  required_release_checks:
+  - rear lens axis to cover-glass aperture and camera bump clearance
+  - front camera to earpiece and black-mask datum
+  - camera FPC bend, connector height, focus alignment, and dust clearance
+  required_evidence:
+  - signed rear/front camera STEP or B-rep and optical datum drawings
+  - routed clearance reports for rear_camera_to_battery and front_camera_to_earpiece
+  - capture, focus, and thermal drift logs
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - signed rear/front camera STEP or B-rep and optical datum drawings
+  - routed clearance reports for rear_camera_to_battery and front_camera_to_earpiece
+  - capture, focus, and thermal drift logs
+- interface: usb_c
+  placement_refs:
+  - J_USB_C
+  release_allowed: false
+  required_release_checks:
+  - shell saddle or through-hole stake load path bypasses solder joints
+  - external aperture and cable overmold plug sweep
+  - shield ground, ESD gap, bottom mic, and bottom speaker clearances
+  required_evidence:
+  - signed USB-C drawing, land pattern, STEP or B-rep, and insertion-force data
+  - routed clearance reports for usb_shell_to_external_aperture, bottom_mic_to_usb, and usb_to_bottom_speaker
+  - USB attach, charge, debug, insertion-cycle, and ESD/chassis review logs
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - signed USB-C drawing, land pattern, STEP or B-rep, and insertion-force data
+  - routed clearance reports for usb_shell_to_external_aperture, bottom_mic_to_usb, and usb_to_bottom_speaker
+  - USB attach, charge, debug, insertion-cycle, and ESD/chassis review logs
+- interface: side_buttons
+  placement_refs:
+  - SW_POWER_VOL
+  release_allowed: false
+  required_release_checks:
+  - external cap pushes enclosure rib, elastomer, flex stiffener, or side-key subassembly
+  - load path bypasses switch solder joints and PCB edge copper
+  - power, volume-up, volume-down, return force, cap rattle, and recovery-combo access
+  required_evidence:
+  - signed side-key drawing, switch or flex STEP or B-rep, and force-travel CSV
+  - button actuation clearance report in routed board STEP
+  - wake, bootloader recovery combo, cycle, and side-load drop logs
+  supplier_missing_count: 0
+  next_external_or_physical_evidence_required:
+  - signed side-key drawing, switch or flex STEP or B-rep, and force-travel CSV
+  - button actuation clearance report in routed board STEP
+  - wake, bootloader recovery combo, cycle, and side-load drop logs
+- interface: speaker_audio_haptics
+  placement_refs:
+  - U_AUDIO_SPK_MIC
+  release_allowed: false
+  required_release_checks:
+  - speaker chamber, receiver, microphone ports, mesh, gasket compression, and haptic mass clearance
+  - bottom speaker to USB and haptic to battery or PCB-island clearances
+  required_evidence:
+  - acoustic, microphone, receiver, haptic, gasket, and mesh supplier geometry
+  - routed clearance reports for usb_to_bottom_speaker, haptic_to_battery, and haptic_to_pcb_islands
+  - audio functional, haptic current, and gasket compression logs
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - acoustic, microphone, receiver, haptic, gasket, and mesh supplier geometry
+  - routed clearance reports for usb_to_bottom_speaker, haptic_to_battery, and haptic_to_pcb_islands
+  - audio functional, haptic current, and gasket compression logs
+- interface: antennas_radios
+  placement_refs:
+  - U_CELL
+  - U_WIFI_BT
+  release_allowed: false
+  required_release_checks:
+  - cellular and Wi-Fi/Bluetooth shield-can height and enclosure plastic clearances
+  - antenna keepout, RF feed, matching access, SAR keepout, and closed-cover detuning
+  required_evidence:
+  - supplier module STEP or B-rep, antenna keepout, and reference layout
+  - routed RF feed clearance and closed-enclosure VNA/conducted/coexistence logs
+  - SAR pre-scan and regulatory traceability evidence
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - supplier module STEP or B-rep, antenna keepout, and reference layout
+  - routed RF feed clearance and closed-enclosure VNA/conducted/coexistence logs
+  - SAR pre-scan and regulatory traceability evidence
+- interface: split_interconnect
+  placement_refs:
+  - J_TOP_BOTTOM_FLEX_TOP
+  - J_TOP_BOTTOM_FLEX_BOTTOM
+  release_allowed: false
+  required_release_checks:
+  - top-bottom connector mated height and side-rail flex path
+  - bend radius, stiffener, battery-edge clearance, strain relief, and service loop
+  required_evidence:
+  - flex and connector supplier drawings, land patterns, and STEP or B-rep models
+  - routed clearance reports for split_interconnect_connectors_on_pcb_islands, split_interconnect_flex_to_battery_edge,
+    and split_interconnect_flex_within_side_rail
+  - continuity, mate-sequence, and inspection evidence
+  supplier_missing_count: null
+  next_external_or_physical_evidence_required:
+  - flex and connector supplier drawings, land patterns, and STEP or B-rep models
+  - routed clearance reports for split_interconnect_connectors_on_pcb_islands, split_interconnect_flex_to_battery_edge,
+    and split_interconnect_flex_within_side_rail
+  - continuity, mate-sequence, and inspection evidence
+routed_board_clearance_gap:
+  release_allowed: false
+  release_credit: false
+  board_step_status: blocked_concept_pcb_no_routed_step
+  routed_clearance_status: blocked_waiting_for_routed_board_step
+  production_routed_step_release_count: 0
+  candidate_routed_step_count: 3
+  candidate_routed_step_paths:
+  - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+  - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  candidate_paths_do_not_grant_release_credit: true
+  clearance_results_complete: 0
+  clearance_results_expected: 12
+  blocked_clearance_cases:
+  - case_id: battery_to_pcb_islands
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
+    required_min_gap_mm: 0.5
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: battery_power_thermal_stack
+      selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+      required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+      required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: haptic_to_battery
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
+    required_min_gap_mm: 0.5
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    - family: battery_power_thermal_stack
+      selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+      required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+      required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: split_interconnect_connectors_on_pcb_islands
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
+    required_min_gap_mm: 0.0
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: usb_shell_to_external_aperture
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+    required_min_gap_mm: 0.15
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: usb_c_side_buttons_bottom_io
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      required_step_or_brep_inputs:
+      - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+      - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+      - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+        datums
+      required_before_release:
+      - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+      - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: battery_back_void_foam_to_pouch
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
+    required_min_gap_mm: 0.25
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: battery_power_thermal_stack
+      selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+      required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+      required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: bottom_mic_to_usb
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
+    required_min_gap_mm: 1.0
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    - family: usb_c_side_buttons_bottom_io
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      required_step_or_brep_inputs:
+      - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+      - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+      - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+        datums
+      required_before_release:
+      - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+      - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: front_camera_to_earpiece
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
+    required_min_gap_mm: 1.0
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    - family: rear_front_camera_stack
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      required_step_or_brep_inputs:
+      - rear and front camera module bodies, lens barrels, FPC tails, stiffeners, and connector heights
+      - optical-center, lens-axis, cover-glass, dust-clearance, and focus datums
+      - signed 2D drawings and sample lot traceability
+      required_before_release:
+      - camera connector land patterns and routed placement datums
+      - focus fixture and image-capture clearance evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: haptic_to_pcb_islands
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
+    required_min_gap_mm: 0.5
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: rear_camera_to_battery
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
+    required_min_gap_mm: 2.0
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: battery_power_thermal_stack
+      selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+      required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+      required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+      release_allowed: false
+      release_credit: false
+    - family: rear_front_camera_stack
+      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+      required_step_or_brep_inputs:
+      - rear and front camera module bodies, lens barrels, FPC tails, stiffeners, and connector heights
+      - optical-center, lens-axis, cover-glass, dust-clearance, and focus datums
+      - signed 2D drawings and sample lot traceability
+      required_before_release:
+      - camera connector land patterns and routed placement datums
+      - focus fixture and image-capture clearance evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: split_interconnect_flex_to_battery_edge
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
+    required_min_gap_mm: 0.5
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    - family: battery_power_thermal_stack
+      selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+      required_step_or_brep_inputs:
+      - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+      - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+      required_before_release:
+      - pack supplier drawing with service-life swelling allowance
+      - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: split_interconnect_flex_within_side_rail
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
+    required_min_gap_mm: 1.5
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  - case_id: usb_to_bottom_speaker
+    required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
+    required_min_gap_mm: 1.0
+    required_inputs:
+      required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+      required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+      required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+      approved_production_step_files: []
+      blocked_candidate_step_files:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      candidate_step_paths_present:
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+      - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      detailed_candidate:
+        path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        present: true
+        sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+        size_bytes: 32959460
+        reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+          physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+          and measured enclosure clearance
+        release_credit: false
+      next_artifacts:
+      - board/kicad/e1-phone/production/step/routed-board-with-components.step
+      - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+      - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+      release_credit: false
+    supplier_geometry_families:
+    - family: audio_haptics_split_interconnect
+      selected_hardware: audio_haptics_top_bottom_flex_stack
+      required_step_or_brep_inputs:
+      - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+      - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+      required_before_release:
+      - acoustic gasket compression and port alignment report
+      - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+      release_allowed: false
+      release_credit: false
+    - family: usb_c_side_buttons_bottom_io
+      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+      required_step_or_brep_inputs:
+      - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+      - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+      - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+        datums
+      required_before_release:
+      - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+      - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+      release_allowed: false
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    next_commands:
+    - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+    - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+    - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+    missing:
+    - physical_routed_board_clearance_result
+    - measured_min_gap_mm
+    - interference_count_zero
+    - reviewer
+    - measurement_artifact
+    - pass
+    release_credit: false
+  missing_routed_board_intake_fields: []
+  missing_routed_board_intake_artifacts: []
+production_enclosure_handoff_gap:
+- id: enclosure_drawing_pack
+  deliverable: production enclosure drawing pack with datums, GD&T, material, finish, color, texture,
+    and inspection plan
+  expected_path: board/kicad/e1-phone/production/enclosure/drawing-pack.yaml
+  owner: mechanical_release
+  required_action: collect supplier/toolmaker drawing pack, verify datums/GD&T/material/finish/color/texture/inspection
+    content, and record approval signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - supplier
+  - drawing_revision
+  - datum_scheme
+  - gd_t_callouts
+  - material_spec
+  - finish_spec
+  - color_texture_spec
+  - inspection_plan
+  - approval_signature
+  status: missing
+  release_credit: false
+- id: toolmaker_dfm_pack
+  deliverable: toolmaker DFM markup, mold-flow plan, gate/runner/ejector strategy, and critical-to-fit
+    dimensions
+  expected_path: board/kicad/e1-phone/production/enclosure/toolmaker-dfm-pack.yaml
+  owner: toolmaker_dfm
+  required_action: capture toolmaker DFM response with mold-flow plan, gate/runner/ejector strategy, critical-to-fit
+    dimensions, open issues, and approval signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - toolmaker
+  - dfm_markup_revision
+  - mold_flow_plan
+  - gate_runner_ejector_strategy
+  - critical_to_fit_dimensions
+  - open_issues
+  - approval_signature
+  status: missing
+  release_credit: false
+- id: enclosure_assembly_traveler
+  deliverable: assembly traveler with signed mechanical inspection, functional logs, and nonconformance
+    disposition
+  expected_path: board/kicad/e1-phone/production/enclosure/assembly-traveler.yaml
+  owner: manufacturing_engineering
+  required_action: execute first-article assembly traveler against routed board and enclosure revisions,
+    attach functional logs, nonconformance disposition, operator signature, and QA signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - unit_serial
+  - routed_board_revision
+  - enclosure_revision
+  - signed_mechanical_inspection
+  - functional_log_refs
+  - nonconformance_disposition
+  - operator_signature
+  - qa_signature
+  status: missing
+  release_credit: false
+- id: enclosure_cmm_fai_results
+  deliverable: CMM/FAI results for enclosure, board, display, USB-C aperture, side buttons, camera windows,
+    and acoustic ports
+  expected_path: board/kicad/e1-phone/production/enclosure/cmm-fai-results.yaml
+  owner: quality_metrology
+  required_action: run CMM/FAI on release units and attach fixture ID, measured features, tolerance limits,
+    pass/fail disposition, measurement artifacts, and inspector signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - unit_serial
+  - fixture_id
+  - measured_features
+  - tolerance_limits
+  - pass_fail_disposition
+  - measurement_artifacts
+  - inspector_signature
+  status: missing
+  release_credit: false
+- id: compression_process_limits
+  deliverable: gasket, adhesive, foam, and compression process limits
+  expected_path: board/kicad/e1-phone/production/enclosure/compression-process-limits.yaml
+  owner: process_engineering
+  required_action: approve controlled gasket, adhesive, foam, and compression windows with inspection
+    method and release signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - process_revision
+  - gasket_limits
+  - adhesive_limits
+  - foam_limits
+  - compression_limits
+  - inspection_method
+  - approval_signature
+  status: missing
+  release_credit: false
+- id: enclosure_validation_results
+  deliverable: drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and
+    cosmetic inspection results
+  expected_path: board/kicad/e1-phone/production/enclosure/validation-results.yaml
+  owner: validation_engineering
+  required_action: execute release validation across drop, side-key cycle, USB-C insertion-cycle, ingress
+    path, thermal, RF/SAR pre-scan, and cosmetic inspection; attach unit serials and QA signature
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  required_fields:
+  - unit_serials
+  - drop_results
+  - side_key_cycle_results
+  - usb_c_insertion_cycle_results
+  - ingress_path_results
+  - thermal_results
+  - rf_sar_prescan_refs
+  - cosmetic_inspection
+  - pass_fail_disposition
+  - qa_signature
+  status: missing
+  release_credit: false
+first_article_gap:
+  missing_required_non_template_count: 0
+  template_row_count: 6
+  present_unvalidated_count: 61
+  missing_required_paths: []
+  template_paths:
+  - board/kicad/e1-phone/production/test/charger-cc-cv-cycle.template.json
+  - board/kicad/e1-phone/production/test/first-article-test-transcript.template.json
+  - board/kicad/e1-phone/production/test/first-article-traveler.template.yaml
+  - board/kicad/e1-phone/production/test/side-key-force-travel-wake-log.template.json
+  - board/kicad/e1-phone/production/test/usb-c-pd-attach-log.template.json
+  - board/kicad/e1-phone/production/test/usb2-adb-fastboot-attach-log.template.json
+fabrication_enclosure_unblock_action_inventory:
+- id: supplier_return_content_validation
+  owner: sourcing
+  blocked_rows: 221
+  missing_artifacts: 0
+  present_but_unvalidated_or_placeholder: 221
+  required_action: replace outbound/template supplier returns with signed supplier quote, drawing, pinout,
+    sample-lot, lifecycle, compliance, and STEP/B-rep records carrying approved metadata
+  validation_command: python3 scripts/check_e1_phone_supplier_return_content.py
+  release_credit: false
+- id: routed_board_release_outputs
+  owner: layout_fabrication
+  blocked_rows: 37
+  missing_artifacts: 0
+  present_but_unvalidated_or_placeholder: 37
+  required_action: replace routed-output candidates with real routed PCB release outputs, DRC/ERC, exact-net,
+    SI/PI/RF, fabrication package, routed STEP, hashes, and approval records
+  validation_command: python3 scripts/check_e1_phone_routed_output_content.py
+  release_credit: false
+- id: production_factory_release_outputs
+  owner: manufacturing
+  blocked_rows: 44
+  missing_artifacts: 0
+  present_but_unvalidated_or_placeholder: 44
+  required_action: replace local factory-output candidates with fabricator/assembler release packages,
+    fixture/program revisions, calibration, lot traceability, and signed package metadata
+  validation_command: python3 scripts/check_e1_phone_factory_output_content.py
+  release_credit: false
+- id: first_article_execution_outputs
+  owner: manufacturing_validation
+  blocked_rows: 67
+  missing_artifacts: 0
+  present_but_unvalidated_or_placeholder: 61
+  template_rows: 6
+  required_action: execute first-article traveler and bench logs on serialized routed hardware; templates
+    and presence-only logs must be replaced with fixture-calibrated measurements and pass/fail disposition
+  validation_command: python3 scripts/check_e1_phone_first_article_content.py
+  release_credit: false
+- id: enclosure_clearance_and_handoff
+  owner: mechanical_release
+  blocked_rows: 18
+  blocked_clearance_cases: 12
+  handoff_packets: 6
+  required_action: rerun all clearance cases against routed KiCad STEP with supplier component models,
+    then attach physical-fit, process, drawing-pack, CMM/FAI, and approval-signature handoff evidence
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  release_credit: false
+approval_metadata_action_inventory:
+- family: supplier_return_approvals
+  owner: sourcing
+  blocked_rows: 221
+  required_metadata:
+  - supplier_name
+  - manufacturer_part_number
+  - drawing_revision
+  - sample_lot_or_quote_id
+  - signed_supplier_response
+  - pinout_or_land_pattern_source
+  - mechanical_model_source
+  - reviewer
+  - reviewed_at
+  - disposition=approved
+  required_action: attach signed supplier-return metadata to each supplier evidence family before rerunning
+    the supplier content gate
+  validation_command: python3 scripts/check_e1_phone_supplier_return_content.py
+  release_credit: false
+- family: routed_release_approvals
+  owner: layout_fabrication
+  blocked_rows: 37
+  required_metadata:
+  - artifact_sha256
+  - routed_pcb_hash
+  - erc_result
+  - drc_result
+  - stackup_revision
+  - si_pi_rf_report_references
+  - routed_step_reference
+  - external_review_authority
+  - signature_or_approval_record
+  - disposition=approved
+  required_action: attach approved routed-output metadata, hashes, review authority, and signoff to real
+    routed release artifacts
+  validation_command: python3 scripts/check_e1_phone_routed_output_content.py
+  release_credit: false
+- family: factory_release_approvals
+  owner: manufacturing
+  blocked_rows: 44
+  required_metadata:
+  - release_package_revision
+  - fab_vendor_or_assembler
+  - program_or_fixture_revision
+  - limits_revision
+  - calibration_state
+  - lot_or_serial_traceability
+  - signature_or_approval_record
+  - disposition=approved
+  required_action: attach signed factory package metadata with lot traceability, fixture or program revisions,
+    calibration, limits, and approved disposition
+  validation_command: python3 scripts/check_e1_phone_factory_output_content.py
+  release_credit: false
+- family: first_article_approvals
+  owner: manufacturing_validation
+  blocked_rows: 67
+  required_metadata:
+  - board_serial
+  - supplier_lot_ids
+  - fixture_id
+  - fixture_calibration_id
+  - test_software_revision
+  - operator
+  - limits_file
+  - measured_results
+  - pass_fail_disposition
+  - signature_or_approval_record
+  - disposition=approved
+  required_action: replace templates with executed first-article records from serialized hardware and
+    attach approval metadata
+  validation_command: python3 scripts/check_e1_phone_first_article_content.py
+  release_credit: false
+- family: enclosure_handoff_approvals
+  owner: mechanical_release
+  blocked_rows: 6
+  missing_required_fields:
+    adhesive_limits: 1
+    approval_signature: 3
+    color_texture_spec: 1
+    compression_limits: 1
+    cosmetic_inspection: 1
+    critical_to_fit_dimensions: 1
+    datum_scheme: 1
+    dfm_markup_revision: 1
+    drawing_revision: 1
+    drop_results: 1
+    enclosure_revision: 1
+    finish_spec: 1
+    fixture_id: 1
+    foam_limits: 1
+    functional_log_refs: 1
+    gasket_limits: 1
+    gate_runner_ejector_strategy: 1
+    gd_t_callouts: 1
+    ingress_path_results: 1
+    inspection_method: 1
+    inspection_plan: 1
+    inspector_signature: 1
+    material_spec: 1
+    measured_features: 1
+    measurement_artifacts: 1
+    mold_flow_plan: 1
+    nonconformance_disposition: 1
+    open_issues: 1
+    operator_signature: 1
+    pass_fail_disposition: 2
+    process_revision: 1
+    qa_signature: 2
+    rf_sar_prescan_refs: 1
+    routed_board_revision: 1
+    side_key_cycle_results: 1
+    signed_mechanical_inspection: 1
+    supplier: 1
+    thermal_results: 1
+    tolerance_limits: 1
+    toolmaker: 1
+    unit_serial: 2
+    unit_serials: 1
+    usb_c_insertion_cycle_results: 1
+  required_action: complete drawing, DFM, FAI/CMM, gasket/process, and validation handoff packets with
+    approval signatures and executed physical evidence
+  validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  release_credit: false
+routed_clearance_release_action_inventory:
+- case_id: haptic_to_battery
+  risk_level: high
+  rerun_priority: 1
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+    - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+    - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+    - pack supplier drawing with service-life swelling allowance
+    - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/haptic_to_battery.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: split_interconnect_connectors_on_pcb_islands
+  risk_level: high
+  rerun_priority: 1
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/split_interconnect_connectors_on_pcb_islands.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: usb_shell_to_external_aperture
+  risk_level: high
+  rerun_priority: 1
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: usb_c_side_buttons_bottom_io
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    required_step_or_brep_inputs:
+    - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+    - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+    - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+      datums
+    required_before_release:
+    - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+    - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/usb_shell_to_external_aperture.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: battery_back_void_foam_to_pouch
+  risk_level: medium
+  rerun_priority: 2
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+    - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+    - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+    - pack supplier drawing with service-life swelling allowance
+    - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/battery_back_void_foam_to_pouch.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: battery_to_pcb_islands
+  risk_level: medium
+  rerun_priority: 2
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+    - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+    - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+    - pack supplier drawing with service-life swelling allowance
+    - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/battery_to_pcb_islands.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: bottom_mic_to_usb
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  - family: usb_c_side_buttons_bottom_io
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    required_step_or_brep_inputs:
+    - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+    - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+    - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+      datums
+    required_before_release:
+    - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+    - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/bottom_mic_to_usb.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: front_camera_to_earpiece
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  - family: rear_front_camera_stack
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    required_step_or_brep_inputs:
+    - rear and front camera module bodies, lens barrels, FPC tails, stiffeners, and connector heights
+    - optical-center, lens-axis, cover-glass, dust-clearance, and focus datums
+    - signed 2D drawings and sample lot traceability
+    required_before_release:
+    - camera connector land patterns and routed placement datums
+    - focus fixture and image-capture clearance evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/front_camera_to_earpiece.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: haptic_to_pcb_islands
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/haptic_to_pcb_islands.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: rear_camera_to_battery
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+    - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+    - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+    - pack supplier drawing with service-life swelling allowance
+    - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+    release_credit: false
+  - family: rear_front_camera_stack
+    selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
+    required_step_or_brep_inputs:
+    - rear and front camera module bodies, lens barrels, FPC tails, stiffeners, and connector heights
+    - optical-center, lens-axis, cover-glass, dust-clearance, and focus datums
+    - signed 2D drawings and sample lot traceability
+    required_before_release:
+    - camera connector land patterns and routed placement datums
+    - focus fixture and image-capture clearance evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/rear_camera_to_battery.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: split_interconnect_flex_to_battery_edge
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  - family: battery_power_thermal_stack
+    selected_hardware: E1_phone_64x87_battery_window_and_power_stack
+    required_step_or_brep_inputs:
+    - pouch cell swelling envelope, PCM, connector, NTC, pack-ID, pull-tab, and adhesive or foam model
+    - battery cavity datum, back-void foam compression, thermal spreader, and no-rigid-intrusion keepout
+    required_before_release:
+    - pack supplier drawing with service-life swelling allowance
+    - insertion, removal, pull-tab, thermal soak, and compression-set evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_to_battery_edge.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: split_interconnect_flex_within_side_rail
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/split_interconnect_flex_within_side_rail.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- case_id: usb_to_bottom_speaker
+  risk_level: normal
+  rerun_priority: 3
+  required_release_report: board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
+  required_evidence_class: physical_routed_board_clearance_result
+  required_inputs:
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_binding_report: board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    physical_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+    routed_boolean_interference_report: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    assembly_drawing: board/kicad/e1-phone/production/pdf/assembly.pdf
+  routed_step_input_map:
+    required_production_routed_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    required_routed_kicad_pcb: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    required_drc_report: board/kicad/e1-phone/production/reports/drc.json
+    required_erc_report: board/kicad/e1-phone/production/reports/erc.json
+    approved_production_step_files: []
+    blocked_candidate_step_files:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_step_paths_present:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    detailed_candidate:
+      path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+      present: true
+      sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+      size_bytes: 32959460
+      reason_not_release: local routed-output candidate copied from non-release development STEP; lacks
+        physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models,
+        and measured enclosure clearance
+      release_credit: false
+    next_artifacts:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+    - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+    - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+    release_credit: false
+  supplier_geometry_families:
+  - family: audio_haptics_split_interconnect
+    selected_hardware: audio_haptics_top_bottom_flex_stack
+    required_step_or_brep_inputs:
+    - speaker, receiver, microphone, haptic LRA, acoustic chamber, mesh, gasket, and port models
+    - top-bottom flex, mated connectors, stiffeners, bend radius, and side-rail service-loop geometry
+    required_before_release:
+    - acoustic gasket compression and port alignment report
+    - flex mate sequence, strain-relief inspection, continuity, haptic clearance, and audio logs
+    release_allowed: false
+    release_credit: false
+  - family: usb_c_side_buttons_bottom_io
+    selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
+    required_step_or_brep_inputs:
+    - USB-C receptacle shell, tongue, through-hole stakes, board-edge datum, and maximum-height model
+    - USB-C external aperture, saddle, gasket or chamfer geometry, and plug overmold sweep body
+    - side-key switch or flex subassembly, actuator spine, cap, rib, elastomer or stiffener, and tolerance
+      datums
+    required_before_release:
+    - USB-C signed drawing, land pattern, insertion/extraction force, cycle, and shell-load evidence
+    - side-key signed drawing, force-travel curve, lifecycle cycle data, and recovery-combo access evidence
+    release_allowed: false
+    release_credit: false
+  next_artifacts:
+  - board/kicad/e1-phone/production/reports/clearance/usb_to_bottom_speaker.yaml
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  - board/kicad/e1-phone/production/reports/drc.json
+  - board/kicad/e1-phone/production/reports/erc.json
+  - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  - board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  - board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  missing:
+  - physical_routed_board_clearance_result
+  - measured_min_gap_mm
+  - interference_count_zero
+  - reviewer
+  - measurement_artifact
+  - pass
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/e1_phone_enclosure_readiness_gap_map.py --write-report
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+first_article_physical_fit_action_inventory:
+- path: mechanical/e1-phone/review/enclosure-fit-first-article.yaml
+  evidence_class: first_article_physical_fit_record
+  present: true
+  owner: manufacturing_validation
+  required_action: capture approved physical-fit first-article evidence from serialized hardware
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+  evidence_class: production_routed_board_step_release
+  present: true
+  owner: manufacturing_validation
+  required_action: export the approved routed KiCad board with production component STEP models
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  evidence_class: approved_routed_kicad_pcb
+  present: true
+  owner: manufacturing_validation
+  required_action: attach approved routed KiCad PCB evidence and release metadata
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+  evidence_class: physical_routed_board_clearance_result
+  present: true
+  owner: manufacturing_validation
+  required_action: rerun all physical clearance cases against the approved routed STEP
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/production/reports/full-cad-boolean-interference-routed.yaml
+  evidence_class: routed_full_cad_boolean_interference_report
+  present: true
+  owner: manufacturing_validation
+  required_action: rerun boolean interference on the approved routed board and enclosure assembly
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/production/pdf/assembly.pdf
+  evidence_class: released_assembly_drawing
+  present: true
+  owner: manufacturing_validation
+  required_action: release assembly drawing packet with production routed board and enclosure datums
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false
+- path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+  evidence_class: executed_first_article_test_transcript
+  present: true
+  owner: manufacturing_validation
+  required_action: execute the first-article physical-fit test on serialized hardware
+  required_inputs:
+    serialized_routed_phone: serialized EVT/DVT phone built from the routed production package
+    routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    supplier_3d_models: approved supplier STEP/B-rep models for physical interfaces
+    routed_clearance_report: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    fixture_calibration: calibrated force, plug-sweep, and measurement fixtures
+  next_commands:
+  - python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+  - python3 scripts/check_e1_phone_first_article_content.py
+  - python3 scripts/aggregate_tapeout_readiness.py --scope phone --report build/reports/phone-release-readiness-current.json
+  release_credit: false

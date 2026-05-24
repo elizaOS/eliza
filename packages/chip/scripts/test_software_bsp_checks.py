@@ -108,21 +108,40 @@ def test_log_parser_requires_provenance_metadata() -> None:
         assert any("provenance" in error for error in errors), errors
 
 
+def write_minimal_aosp_product_inputs(device: Path) -> Path:
+    device.mkdir(parents=True, exist_ok=True)
+    (device / "AndroidProducts.mk").write_text(
+        "COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n"
+    )
+    (device / "eliza_ai_soc.mk").write_text(
+        "$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)\n"
+    )
+    (device / "BoardConfig.mk").write_text(
+        "TARGET_ARCH := riscv64\n"
+        "BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy\n"
+        "ELIZA_KERNEL_CONFIG_FRAGMENT := kernel/eliza_ai_soc.fragment\n"
+        "ELIZA_DTS := dts/eliza-e1-android.dts\n"
+    )
+    e1_hal = device / "hal/e1_npu"
+    e1_hal.mkdir(parents=True, exist_ok=True)
+    (e1_hal / "vendor.eliza.e1_npu@1.0-service.xml").write_text(
+        "<manifest><hal><name>vendor.eliza.e1_npu</name>"
+        "<interface><name>IE1Npu</name></interface></hal></manifest>\n"
+    )
+    (device / "device_framework_matrix.xml").write_text(
+        "<compatibility-matrix><hal><name>vendor.eliza.e1_npu</name>"
+        "<interface><name>IE1Npu</name></interface></hal></compatibility-matrix>\n"
+    )
+    return e1_hal
+
+
 def test_aosp_product_glue_rejects_hal_packages_without_sources() -> None:
     checker = load_checker()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         device = root / "sw/aosp-device/device/eliza/eliza_ai_soc"
         device.mkdir(parents=True)
-        (device / "AndroidProducts.mk").write_text(
-            "COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n"
-        )
-        (device / "BoardConfig.mk").write_text(
-            "TARGET_ARCH := riscv64\n"
-            "BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy\n"
-            "ELIZA_KERNEL_CONFIG_FRAGMENT := kernel/eliza_ai_soc.fragment\n"
-            "ELIZA_DTS := dts/eliza-e1-android.dts\n"
-        )
+        write_minimal_aosp_product_inputs(device)
         (device / "manifest.xml").write_text("<manifest><hal></hal></manifest>\n")
         (device / "device.mk").write_text("PRODUCT_PACKAGES += e1_npu.default\n")
         checker.ROOT = root
@@ -137,15 +156,7 @@ def test_aosp_product_glue_rejects_active_vintf_hal_without_sources() -> None:
         root = Path(tmp)
         device = root / "sw/aosp-device/device/eliza/eliza_ai_soc"
         device.mkdir(parents=True)
-        (device / "AndroidProducts.mk").write_text(
-            "COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n"
-        )
-        (device / "BoardConfig.mk").write_text(
-            "TARGET_ARCH := riscv64\n"
-            "BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy\n"
-            "ELIZA_KERNEL_CONFIG_FRAGMENT := kernel/eliza_ai_soc.fragment\n"
-            "ELIZA_DTS := dts/eliza-e1-android.dts\n"
-        )
+        write_minimal_aosp_product_inputs(device)
         (device / "manifest.xml").write_text(
             "<manifest>"
             "<!-- e1_npu hwcomposer.eliza_ai_soc -->"
@@ -159,48 +170,22 @@ def test_aosp_product_glue_rejects_active_vintf_hal_without_sources() -> None:
         assert any("must not declare active HAL entries" in error for error in errors), errors
 
 
-def test_aosp_product_glue_allows_active_hals_with_checked_in_sources() -> None:
+def test_aosp_product_glue_allows_e1_hal_and_inherited_modern_graphics() -> None:
     checker = load_checker()
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         device = root / "sw/aosp-device/device/eliza/eliza_ai_soc"
-        e1_hal = device / "hal/e1_npu"
-        hwc_hal = device / "hal/hwcomposer"
-        e1_hal.mkdir(parents=True)
-        hwc_hal.mkdir(parents=True)
-        (device / "AndroidProducts.mk").write_text(
-            "COMMON_LUNCH_CHOICES := eliza_ai_soc-userdebug\n"
-        )
-        (device / "BoardConfig.mk").write_text(
-            "TARGET_ARCH := riscv64\n"
-            "BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy\n"
-            "ELIZA_KERNEL_CONFIG_FRAGMENT := kernel/eliza_ai_soc.fragment\n"
-            "ELIZA_DTS := dts/eliza-e1-android.dts\n"
-        )
-        (device / "manifest.xml").write_text(
-            "<manifest>"
-            "<!-- e1_npu hwcomposer.eliza_ai_soc -->"
-            "<hal><name>vendor.eliza.e1_npu</name></hal>"
-            "<hal><name>android.hardware.graphics.composer</name></hal>"
-            "</manifest>\n"
-        )
+        e1_hal = write_minimal_aosp_product_inputs(device)
+        (device / "manifest.xml").write_text("<manifest></manifest>\n")
         (device / "device.mk").write_text(
             "PRODUCT_PACKAGES += \\\n"
-            "    vendor.eliza.e1_npu@1.0-service \\\n"
-            "    android.hardware.graphics.composer@2.4-service.eliza_ai_soc \\\n"
-            "    hwcomposer.eliza_ai_soc\n"
+            "    vendor.eliza.e1_npu@1.0-service\n"
         )
         for path in [
             e1_hal / "Android.bp",
             e1_hal / "service.cpp",
             e1_hal / "E1Npu.cpp",
             e1_hal / "vendor.eliza.e1_npu@1.0-service.rc",
-            e1_hal / "vendor.eliza.e1_npu@1.0-service.xml",
-            hwc_hal / "Android.bp",
-            hwc_hal / "service.cpp",
-            hwc_hal / "hwcomposer.cpp",
-            hwc_hal / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc",
-            hwc_hal / "android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml",
         ]:
             path.write_text("// source scaffold\n")
         checker.ROOT = root
@@ -209,12 +194,32 @@ def test_aosp_product_glue_allows_active_hals_with_checked_in_sources() -> None:
         assert not errors
 
 
+def test_aosp_product_glue_rejects_deprecated_local_hwcomposer() -> None:
+    checker = load_checker()
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        device = root / "sw/aosp-device/device/eliza/eliza_ai_soc"
+        device.mkdir(parents=True)
+        write_minimal_aosp_product_inputs(device)
+        (device / "manifest.xml").write_text("<manifest></manifest>\n")
+        (device / "device.mk").write_text(
+            "PRODUCT_PACKAGES += "
+            "android.hardware.graphics.composer@2.4-service.eliza_ai_soc "
+            "hwcomposer.eliza_ai_soc\n"
+        )
+        checker.ROOT = root
+        errors: list[str] = []
+        checker.check_aosp_product_glue(errors)
+        assert any("deprecated local composer@2.4" in error for error in errors), errors
+
+
 def main() -> int:
     test_log_parser_rejects_placeholder_failure()
     test_log_parser_requires_provenance_metadata()
     test_aosp_product_glue_rejects_hal_packages_without_sources()
     test_aosp_product_glue_rejects_active_vintf_hal_without_sources()
-    test_aosp_product_glue_allows_active_hals_with_checked_in_sources()
+    test_aosp_product_glue_allows_e1_hal_and_inherited_modern_graphics()
+    test_aosp_product_glue_rejects_deprecated_local_hwcomposer()
     print("software BSP parser tests passed")
     return 0
 

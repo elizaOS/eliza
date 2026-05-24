@@ -1,0 +1,182 @@
+{
+  "started_at": "2026-05-24T01:12:04Z",
+  "commands": [
+    "stand up",
+    "walk forward"
+  ],
+  "record_combined": true,
+  "preserve_state_between_commands": false,
+  "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta",
+  "profiles": [
+    {
+      "profile": "unitree-r1",
+      "videos": [
+        "unitree-r1_combined_actions.mp4",
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-r1_combined_actions.telemetry.json",
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_walk_forward.mp4",
+        "unitree-r1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json",
+        "unitree-r1_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-r1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-r1/alberta",
+      "stdout_tail": "",
+      "stderr_tail": "  self.pid = _fork_exec(\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_walk_forward.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/alberta_checkpoint_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 12.29
+    },
+    {
+      "profile": "hiwonder-ainex",
+      "videos": [
+        "hiwonder-ainex_combined_actions.mp4",
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "hiwonder-ainex_combined_actions.telemetry.json",
+        "hiwonder-ainex_stand_up.telemetry.json",
+        "hiwonder-ainex_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_walk_forward.mp4",
+        "hiwonder-ainex_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "hiwonder-ainex_stand_up.telemetry.json",
+        "hiwonder-ainex_walk_forward.telemetry.json",
+        "hiwonder-ainex_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "hiwonder-ainex_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/hiwonder-ainex/alberta",
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "exit_code": null,
+      "ok": true,
+      "wall_clock_s": 0.0,
+      "manifest_source": "existing_files"
+    },
+    {
+      "profile": "asimov-1",
+      "videos": [
+        "asimov-1_combined_actions.mp4",
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "asimov-1_combined_actions.telemetry.json",
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4",
+        "asimov-1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json",
+        "asimov-1_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "asimov-1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/asimov-1/alberta",
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "exit_code": null,
+      "ok": true,
+      "wall_clock_s": 0.0,
+      "manifest_source": "existing_files"
+    },
+    {
+      "profile": "unitree-g1",
+      "videos": [
+        "unitree-g1_combined_actions.mp4",
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-g1_combined_actions.telemetry.json",
+        "unitree-g1_stand_up.telemetry.json",
+        "unitree-g1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_walk_forward.mp4",
+        "unitree-g1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-g1_stand_up.telemetry.json",
+        "unitree-g1_walk_forward.telemetry.json",
+        "unitree-g1_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-g1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-g1/alberta",
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "exit_code": null,
+      "ok": true,
+      "wall_clock_s": 0.0,
+      "manifest_source": "existing_files"
+    },
+    {
+      "profile": "unitree-h1",
+      "videos": [
+        "unitree-h1_combined_actions.mp4",
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-h1_combined_actions.telemetry.json",
+        "unitree-h1_stand_up.telemetry.json",
+        "unitree-h1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_walk_forward.mp4",
+        "unitree-h1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-h1_stand_up.telemetry.json",
+        "unitree-h1_walk_forward.telemetry.json",
+        "unitree-h1_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-h1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_all_profiles/unitree-h1/alberta",
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "exit_code": null,
+      "ok": true,
+      "wall_clock_s": 0.0,
+      "manifest_source": "existing_files"
+    }
+  ],
+  "ok": true
+}

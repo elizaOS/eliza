@@ -50,6 +50,10 @@ module tage_table
     input  logic                upd_alloc,
     input  logic                upd_useful_inc,
     input  logic                upd_useful_dec,
+    output logic                upd_hit_o,
+    output logic                upd_taken_o,
+    output logic [TAGE_CTR_W-1:0] upd_ctr_o,
+    output logic [TAGE_USEFUL_W-1:0] upd_useful_o,
 
     input  logic                useful_reset_lsb,
     input  logic                useful_reset_msb,
@@ -133,6 +137,10 @@ module tage_table
         upd_i = index_hash(upd_pc, upd_hist);
         upd_t = tag_hash(upd_pc, upd_hist);
         upd_hit = storage_q[upd_i].valid && (storage_q[upd_i].tag == upd_t);
+        upd_hit_o = upd_hit;
+        upd_ctr_o = storage_q[upd_i].ctr;
+        upd_useful_o = storage_q[upd_i].useful;
+        upd_taken_o = storage_q[upd_i].ctr[TAGE_CTR_W-1];
     end
 
     always_comb begin

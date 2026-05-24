@@ -2,9 +2,11 @@ schema: eliza.e1_phone_routed_board_step_export_contract.v1
 status: blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
 date: '2026-05-21'
 claim_boundary: >
-  Contract for the exact routed KiCad STEP export the mechanical CAD package
-  needs before enclosure clearance can become release evidence. This is not a
-  routed board, not a supplier STEP pack, and not enclosure signoff.
+  Contract for the exact supplier-approved routed KiCad STEP export the
+  mechanical CAD package needs before enclosure clearance can become release
+  evidence. A local real-footprint routed development STEP exists for visual
+  CAD review only; it is not a native KiCad production STEP, not a supplier STEP
+  pack, and not enclosure signoff.
 source_artifacts:
   - board/kicad/e1-phone/artifact-manifest.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
@@ -18,6 +20,9 @@ source_artifacts:
   - board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml
   - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml
+  - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+  - board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml
   - board/kicad/e1-phone/enclosure-fit-execution-package.yaml
   - board/kicad/e1-phone/mechanical-overlay.yaml
   - board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
@@ -33,13 +38,44 @@ current_state:
   board_step_readiness_status: blocked_concept_pcb_no_routed_step
   routed_board_clearance_status: blocked_waiting_for_routed_board_step
   full_cad_boolean_status: pass
+  full_cad_concept_aabb_interference_scan_pass: true
+  full_cad_concept_aabb_interference_count: 0
+  full_cad_boolean_evidence_class: concept_envelope_brep_boolean_interference_result
+  full_cad_boolean_parts_loaded: 222
+  full_cad_boolean_pair_count_brep_evaluated: 763
+  full_cad_boolean_unintentional_clash_count: 0
+  full_cad_boolean_scope_result_count: 11
+  full_cad_boolean_passing_scope_result_count: 11
   concept_pcb_only: true
   placeholder_footprints_present: true
   production_step_present: false
+  local_development_step_context:
+    status: development_routed_real_footprint_step_present_not_release
+    source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+    source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    candidate_production_step_copy: board/kicad/e1-phone/production/step/routed-board-with-components.step
+    candidate_production_step_present_but_blocked: true
+    source_step_size_bytes: 32959460
+    candidate_step_size_bytes: 32959460
+    footprint_envelope_count: 89
+    pad_contact_visual_count: 1452
+    route_segment_visual_count: 306
+    board_segment_count: 306
+    board_via_count: 24
+    development_footprint_refs: 89
+    remaining_placeholder_marker_count: 0
+    supplier_approved_model_count: 0
+    release_credit: false
+    reason_not_release: >
+      local CadQuery STEP contains development envelopes, pad/contact solids,
+      and route visuals, but lacks supplier-approved STEP/B-rep models,
+      production DRC/ERC/SI/PI/RF signoff, and measured routed enclosure
+      clearance.
 export_contract:
   required_kicad_source: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
   required_step_output: board/kicad/e1-phone/production/step/routed-board-with-components.step
   required_component_model_directory: board/kicad/e1-phone/production/step/component-models
+  required_component_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   required_report_output: board/kicad/e1-phone/production/reports/routed-board-step-export-contract.yaml
   selected_supplier_response_step_gate:
     source_artifact: board/kicad/e1-phone/supplier-rfq-response-normalization.yaml
@@ -204,14 +240,16 @@ post_export_acceptance:
     - id: full_cad_boolean_interference_passed
       evidence: mechanical/e1-phone/review/full-cad-boolean-interference.json
 release_blockers:
-  - routed KiCad PCB source is missing
-  - production STEP export is missing
+  - production routed KiCad PCB source is present only as non-release local candidate evidence
+  - candidate routed board STEP exists for review only; supplier-approved production STEP export is missing
   - selected supplier response packs with STEP/B-rep models for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter routed STEP export until supplier STEP/B-rep, connector, touch/power, sample, promotion review, and routed-clearance evidence exist
   - supplier component STEP/B-rep models are missing
-  - placeholder footprints are still present in the concept board
+  - production concept board still contains placeholder footprints; local real-footprint development replacements do not grant release credit
   - routed-board clearance rerun is blocked
   - full CAD boolean interference using routed board and supplier geometry is blocked
+  - local concept-envelope full CAD boolean interference passes with zero unintentional
+    clashes, but routed-board/supplier-geometry boolean rerun is still blocked
 forbidden_claims:
   - routed_board_step_ready
   - supplier_3d_models_loaded

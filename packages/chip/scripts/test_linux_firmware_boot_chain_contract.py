@@ -90,9 +90,39 @@ def manifest() -> dict:
     }
 
 
+def multiarch_matrix(
+    *, status: str = "candidate-reference", gaps: list[str] | None = None
+) -> dict:
+    return {
+        "schema": "eliza.os.linux.multiarch_boot_matrix.v1",
+        "debian_riscv64_port_contract": {
+            "architecture": "riscv64",
+            "bootloader_packages": ["grub-efi-riscv64", "grub-efi-riscv64-bin"],
+            "firmware_chain": gate.SELECTED_RISCV64_FIRMWARE_CHAIN,
+            "removable_uefi_path": "EFI/boot/bootriscv64.efi",
+        },
+        "architectures": [
+            {
+                "arch": "riscv64",
+                "status": status,
+                "iso": "out/elizaos-linux-riscv64-default.iso",
+                "sha256": "a" * 64,
+                "evidence": "evidence/qemu_virt_boot.json",
+                "gaps": gaps
+                if gaps is not None
+                else ["current riscv64 ISO evidence must be recaptured"],
+            }
+        ],
+    }
+
+
 class LinuxFirmwareBootChainContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         write_json(tmp / "docs/evidence/software-bsp-evidence-manifest.json", manifest())
+        write_json(
+            tmp / "packages/os/linux/elizaos/evidence/multiarch_boot_matrix.json",
+            multiarch_matrix(),
+        )
         write_json(
             tmp / "docs/evidence/software-bsp-external-preflight-status.json",
             {
@@ -149,6 +179,12 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
                 tmp / "sw/buildroot/scripts/capture-buildroot-qemu-virt-smoke.sh",
             ),
             mock.patch.object(gate, "BUILDROOT_BLOCKED_DIR", tmp / "docs/evidence/buildroot"),
+            mock.patch.object(gate, "REPO_ROOT", tmp),
+            mock.patch.object(
+                gate,
+                "ELIZAOS_MULTIARCH_BOOT_MATRIX",
+                tmp / "packages/os/linux/elizaos/evidence/multiarch_boot_matrix.json",
+            ),
             mock.patch.object(
                 gate,
                 "REPORT",
@@ -164,7 +200,8 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("buildroot_external_evidence_missing", codes)
         self.assertIn("opensbi_external_evidence_missing", codes)
-        self.assertIn("u_boot_boot_chain_evidence_missing", codes)
+        self.assertIn("selected_riscv64_grub_chain_evidence_incomplete", codes)
+        self.assertIn("u_boot_alternate_boot_chain_not_selected", codes)
         self.assertIn("uboot_evidence_not_in_software_bsp_gate", codes)
         self.assertIn("buildroot_qemu_virt_reference_only", codes)
         self.assertIn("buildroot_blocked_sidecars_use_openphone_markers", codes)
@@ -188,6 +225,26 @@ class LinuxFirmwareBootChainContractTests(unittest.TestCase):
                 )
                 gate.QEMU_VIRT_SCRIPT.write_text(
                     "qemu helper kept outside chip readiness.\n", encoding="utf-8"
+                )
+                iso = tmp / "packages/os/linux/elizaos/out/elizaos-linux-riscv64-default.iso"
+                write(iso, "iso")
+                evidence = tmp / "packages/os/linux/elizaos/evidence/qemu_virt_boot.json"
+                write(evidence, "{}\n")
+                write_json(
+                    gate.ELIZAOS_MULTIARCH_BOOT_MATRIX,
+                    multiarch_matrix(
+                        status="candidate",
+                        gaps=["not physical silicon evidence"],
+                    )
+                    | {
+                        "architectures": [
+                            {
+                                **multiarch_matrix(status="candidate")["architectures"][0],
+                                "sha256": gate.sha256_file(iso),
+                                "gaps": ["not physical silicon evidence"],
+                            }
+                        ]
+                    },
                 )
                 for sidecar in gate.BUILDROOT_BLOCKED_DIR.glob("*.BLOCKED"):
                     sidecar.unlink()

@@ -116,6 +116,9 @@ themselves locally with `Co-Authored-By: Claude Opus 4.7 (1M context)
 | `0001-cherry-pick-llint-riscv64.recipe`           | recipe | 15-commit cherry-pick chain; operator realizes it    |
 | `0002-cherry-pick-baseline-jit-riscv64.recipe`    | recipe | enables Baseline JIT after 0001's chain              |
 | `0003-disable-dfg-ftl-on-riscv64.patch`           | patch  | pin DFG/FTL OFF on riscv64 in `PlatformEnable.h`     |
+| `0004-riscv64-do-not-force-wasm-in-c-loop.patch`  | patch  | do not force WebAssembly when C_LOOP is enabled      |
+| `0005-domjit-effect-allow-no-dfg-c-loop.patch`    | patch  | allow DOMJIT effect metadata when DFG is disabled    |
+| `0006-disable-usewasm-when-webassembly-compiled-out.patch` | patch | skip wasm coherence checks when WebAssembly is compiled out |
 
 `build.sh` refuses to proceed with Baseline JIT while any `*.recipe`
 file remains. Operator paths:

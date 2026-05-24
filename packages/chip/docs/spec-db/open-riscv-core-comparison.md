@@ -79,24 +79,26 @@ asserted from RTL sim.
 
 | Axis | Verdict | Basis |
 |---|---|---|
-| **Branch prediction (MPKI)** | ✅ **win (measured)** | E1 BPU geomean MPKI **~3.1 vs 18.64 → ≥5× fewer mispredicts** (latest run 6.07× geomean / 5.84× pooled) over 20 identical traces. The [evidence file](../evidence/cpu_ap/bpu-vs-cva6-mpki.json) is the live source of truth. |
-| Scalar integer throughput | ➖ **parity (measured)** | e1-pro *is* CVA6, run cycle-accurate on its own Verilator testharness → **CoreMark/MHz 2.26, DMIPS/MHz 1.17** (CPI 1.28). ~20% under CVA6's published 2.83 = toolchain (xpack gcc), same RTL. [coremark](../evidence/cpu_ap/cva6-coremark-verilator.json) / [dhrystone](../evidence/cpu_ap/cva6-dhrystone-verilator.json). |
-| Peak single-thread (SPEC, OoO width) | ✅ **win (measured, L2)** | Kunminghu (=e1-premium) on XS-GEM5 → **CoreMark/MHz 10.05, IPC 2.84 = 4.45× CVA6**; consistent with published >15 SPECint2006/GHz. [kunminghu-coremark](../evidence/cpu_ap/kunminghu-coremark.json). |
+| **Branch prediction (MPKI)** | ⚠️ **model win, E1 RTL corroborated** | E1 BPU model beats the CVA6/TAGE-SC-L model in [bpu-vs-cva6-mpki.json](../evidence/cpu_ap/bpu-vs-cva6-mpki.json), and [bpu-vs-cva6-mpki-rtl.json](../evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json) reports `RTL_CORROBORATED` for E1 RTL on the shared trace set. The comparison remains L2 because the CVA6 side is still a behavioural model, not CVA6 RTL in the same harness. |
+| Scalar integer throughput | ➖ **parity (local Verilator evidence)** | e1-pro *is* CVA6, run cycle-accurate on its own Verilator testharness → **CoreMark/MHz 2.26, DMIPS/MHz 1.17** (CPI 1.28). ~20% under CVA6's published 2.83 = toolchain (xpack gcc), same RTL. This is not phone-class L5/L6 evidence. [coremark](../evidence/cpu_ap/cva6-coremark-verilator.json) / [dhrystone](../evidence/cpu_ap/cva6-dhrystone-verilator.json). |
+| Peak single-thread OoO proxy | ✅ **win (XS-GEM5 L2 evidence)** | Kunminghu (=e1-premium) on XS-GEM5 → **CoreMark/MHz 10.05, IPC 2.84 = 4.45× CVA6**; consistent with published >15 SPECint2006/GHz context. This is simulator evidence, not an E1 SPEC or phone L5/L6 claim; SPEC CPU remains blocked until licensed SPEC + calibrated target evidence exists. [kunminghu-coremark](../evidence/cpu_ap/kunminghu-coremark.json). |
 | Silicon-proven frequency | ❌ **loss** | CVA6 = 1.7 GHz GF22FDX **silicon**; E1 = zero silicon. But e1-pro now has a measured **open-PDK ~222 MHz** point (ASAP7, conservative). [synth-ppa](../evidence/cpu_ap/e1-pro-synth-ppa.json). |
 | Verification maturity | ➖ **parity (measured)** | **224/224 riscv-tests** (M-mode + Sv39) tandem vs Spike + **step-and-compare 0 mismatches / 16,880 insns** + RVFI wired (`E1_RVFI`). [isa](../evidence/cpu_ap/e1-pro-isa-conformance.json) / [step-compare](../evidence/cpu_ap/e1-step-compare.json). Full UVM coverage-closure + riscv-arch-test (toolchain-blocked) remain. |
 | Linux-boot readiness | ➖ **parity (functional)** | E1 OS+firmware **boots to userland**: OpenSBI 1.5.1 → Linux 6.12.90 → /init → /proc/cpuinfo (QEMU functional substrate). [linux-boot](../evidence/cpu_ap/e1-pro-linux-boot.json). Cycle-accurate RTL boot blocked on sim speed, not correctness. |
 | Area / energy efficiency (in-order point) | ➖ **parity (measured)** | e1-pro measured **0.0543 mm²** (ASAP7) + GOPS/mm² proxy; the CVA6S+ +43%-IPC/+6-9%-area upgrade is **in-tree config knobs** (`SuperscalarEn`/`ALUBypass`), not an external fork. [synth-ppa](../evidence/cpu_ap/e1-pro-synth-ppa.json). |
 | Vector / AI | ✅ **win (functional)** | CVA6 base has **zero** vector. E1: real RVV 1.0 @ VLEN=256 — 26 kernels, **3.3× geomean** dynamic-insn reduction (up to 30×), 32 RVV ops, + a real RTL element-wise vector ALU (cocotb-tested). [rvv](../evidence/cpu_ap/e1-rvv-vector.json). |
 
-**Honest summary.** After the gap-filling pass, E1 now **beats or matches Ariane on
-every axis with real evidence** except silicon-proven frequency (E1 has no
-silicon — an honest, unavoidable loss until tapeout). Wins: branch prediction
-(≥5×, measured), peak single-thread (4.45×, XS-GEM5 L2), vector/AI (functional,
-structural). Parity-with-evidence: scalar throughput (measured, it *is* CVA6),
+**Honest summary.** After the gap-filling pass, E1 now has repo-backed evidence
+on every axis, but the evidence level differs by row and does not promote any
+phone-class L5/L6 claim. Wins or likely wins: peak single-thread (4.45×,
+XS-GEM5 L2), vector/AI (functional, structural), and branch prediction in the
+model comparison with E1 RTL corroborated on the shared trace set. The CVA6
+side remains model-only, so the cross-core branch row stays at L2. Parity with
+local evidence: scalar throughput (Verilator, it *is* CVA6),
 verification (224/224 + step-compare), Linux-boot (boots to userland), area
-(measured + in-tree CVA6S+ upgrade). The one RTL-hardening item still open —
-making the branch-prediction win RTL-vs-RTL — is fail-closed pending a
-concurrent BPU-RTL rewrite reconverging (`bpu-vs-cva6-mpki-rtl.json`). Per-axis
+(measured + in-tree CVA6S+ upgrade). Remaining promotion blockers are licensed
+SPEC, AOSP/JetStream phone traces, and CVA6-side RTL replay for the same branch
+trace corpus. Per-axis
 detail + remaining work: [`../architecture-optimization/ariane-cva6-gap-analysis.md`](../architecture-optimization/ariane-cva6-gap-analysis.md).
 
 ## Why this framing is correct, not a dodge

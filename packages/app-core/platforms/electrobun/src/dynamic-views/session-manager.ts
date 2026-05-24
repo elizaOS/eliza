@@ -51,9 +51,15 @@ interface DynamicViewSessionManagerOptions {
   sessionIdFactory?: () => string;
   maxSessionHistory?: number;
   entrypointBaseDir?: string;
+  /**
+   * Placements this canvas can render. Defaults to native-window placements
+   * (`canvas`/`floating`/`debug`). The kiosk in-window canvas widens this to
+   * also mount `panel`/`chat-inline` views as in-canvas surfaces.
+   */
+  supportedPlacements?: readonly DynamicViewPlacement[];
 }
 
-const SUPPORTED_CANVAS_PLACEMENTS: readonly DynamicViewPlacement[] = [
+const DEFAULT_SUPPORTED_CANVAS_PLACEMENTS: readonly DynamicViewPlacement[] = [
   "canvas",
   "floating",
   "debug",
@@ -172,6 +178,7 @@ export class DynamicViewSessionManager {
   private readonly sessionIdFactory: () => string;
   private readonly maxSessionHistory: number;
   private readonly entrypointBaseDir: string;
+  private readonly supportedPlacements: readonly DynamicViewPlacement[];
   private readonly sessions = new Map<
     DynamicViewSessionId,
     DynamicViewSession
@@ -186,6 +193,8 @@ export class DynamicViewSessionManager {
     this.maxSessionHistory =
       options.maxSessionHistory ?? DEFAULT_MAX_SESSION_HISTORY;
     this.entrypointBaseDir = options.entrypointBaseDir ?? DYNAMIC_VIEW_DIR;
+    this.supportedPlacements =
+      options.supportedPlacements ?? DEFAULT_SUPPORTED_CANVAS_PLACEMENTS;
   }
 
   async open(params: DynamicViewOpenParams): Promise<DynamicViewSession> {
@@ -297,7 +306,7 @@ export class DynamicViewSessionManager {
   }
 
   private assertPlacementSupported(placement: DynamicViewPlacement): void {
-    if (!SUPPORTED_CANVAS_PLACEMENTS.includes(placement)) {
+    if (!this.supportedPlacements.includes(placement)) {
       throw new DynamicViewError(
         "DYNAMIC_VIEW_UNSUPPORTED_PLACEMENT",
         `Dynamic view placement is not supported yet: ${placement}`,

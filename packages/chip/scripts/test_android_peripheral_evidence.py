@@ -6,10 +6,16 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts/android/capture_simulated_peripheral_evidence.py"
 DEFAULT_PROBE_DIR = ROOT / "sw/aosp-device/peripherals"
+SCRIPT_DIR = ROOT / "scripts" / "android"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import capture_simulated_peripheral_evidence as capture  # noqa: E402
 
 
 def run_capture(
@@ -166,6 +172,36 @@ def test_speaker_tone_fixture_is_valid_wav() -> None:
         raise AssertionError(f"tone fixture is not a RIFF/WAVE file: {header!r}")
 
 
+def test_prepare_adb_connects_when_no_ready_device() -> None:
+    calls: list[list[str]] = []
+
+    def fake_run_command(args: list[str], timeout_seconds: int) -> tuple[int, str]:
+        del timeout_seconds
+        calls.append(args)
+        if args == ["adb", "devices", "-l"] and len(calls) == 1:
+            return 0, "List of devices attached\n"
+        if args == ["adb", "connect", "127.0.0.1:6520"]:
+            return 0, "connected to 127.0.0.1:6520\n"
+        if args == ["adb", "devices", "-l"]:
+            return 0, "List of devices attached\n127.0.0.1:6520 device product:cf_riscv64\n"
+        return 1, "unexpected\n"
+
+    args = type(
+        "Args",
+        (),
+        {"adb_serial": None, "adb_connect": ["127.0.0.1:6520"], "timeout_seconds": 1},
+    )()
+    with mock.patch.object(capture, "run_command", side_effect=fake_run_command):
+        serial = capture.prepare_adb(args)
+    if serial != "127.0.0.1:6520":
+        raise AssertionError(f"expected connected serial, got {serial!r}")
+    if ["adb", "connect", "127.0.0.1:6520"] not in calls:
+        raise AssertionError(f"adb connect was not attempted: {calls}")
+    transcript = os.environ.get("ELIZA_ANDROID_PERIPHERAL_ADB_PREP", "")
+    if "adb connect 127.0.0.1:6520" not in transcript:
+        raise AssertionError(f"adb prep transcript did not record connect attempt: {transcript}")
+
+
 if __name__ == "__main__":
     test_empty_env_var_writes_blocked_log()
     test_unset_env_var_resolves_to_default_probe()
@@ -174,4 +210,5 @@ if __name__ == "__main__":
     test_env_override_wins_over_default_probe()
     test_all_default_probes_exist_and_are_syntactically_valid()
     test_speaker_tone_fixture_is_valid_wav()
+    test_prepare_adb_connects_when_no_ready_device()
     print("OK")

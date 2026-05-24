@@ -7,7 +7,8 @@ smtbmc z3
 smtbmc bitwuzla
 
 [script]
-read -formal bpu_pkg.sv ras.sv ras_formal.sv
+plugin -i slang
+read_slang --std 1800-2017 -D FORMAL --top ras_formal bpu_pkg.sv ras.sv ras_formal.sv
 prep -top ras_formal
 
 [files]

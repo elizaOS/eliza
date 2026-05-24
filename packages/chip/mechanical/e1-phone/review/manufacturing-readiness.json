@@ -1,6 +1,6 @@
 {
   "claim_boundary": "CAD automation readiness audit; not a manufacturing release.",
-  "overall_status": "cad_package_pass",
+  "overall_status": "blocked",
   "manufacturing_release_ready": false,
   "why_not_release_ready": [
     "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
@@ -18,9 +18,9 @@
     "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
     "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
     "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
-    "estimated_mass_g": 183.15,
+    "estimated_mass_g": 182.18,
     "target_mass_g": 185,
-    "compactness_status": "cad_compactness_optimized",
+    "compactness_status": "blocked",
     "compactness_width_excess_mm": 0.3,
     "compactness_height_excess_mm": 1.23,
     "compactness_area_excess_mm2": 141.7,
@@ -33,7 +33,7 @@
     "board_step_has_tracks": false,
     "board_step_has_production_step": false,
     "board_step_has_concept_pcb_step": true,
-    "board_step_concept_split_islands_match_kicad": false,
+    "board_step_concept_split_islands_match_kicad": true,
     "engineering_validation_status": "cad_validation_inputs_ready",
     "interface_validation_status": "cad_interface_validation_pass",
     "interface_validation_case_count": 7,
@@ -78,16 +78,16 @@
     "manual_visual_signoff_status": "blocked_manual_visual_review_open",
     "production_visual_signoff_ready": false,
     "open_manual_visual_review_count": 5,
-    "solid_cad_handoff_status": "generated",
-    "solid_cad_step_part_count": 142,
-    "step_validation_status": "pass",
-    "step_validation_count": 142,
-    "supplier_rfq_status": "rfq_ready",
+    "solid_cad_handoff_status": "blocked",
+    "solid_cad_step_part_count": 0,
+    "step_validation_status": "blocked",
+    "step_validation_count": 0,
+    "supplier_rfq_status": "blocked",
     "supplier_rfq_package_count": 5,
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0,
     "supplier_response_expected_count": 8,
-    "part_review_count": 142
+    "part_review_count": 222
   },
   "required_outputs": {
     "assembly_glb": true,
@@ -98,7 +98,7 @@
     "visual_review": true,
     "manufacturing_drawing": true,
     "mass_budget": true,
-    "compactness_optimization": true,
+    "compactness_optimization": false,
     "battery_swell_management": true,
     "supplier_lock": true,
     "kicad_mechanical_handoff": true,
@@ -127,8 +127,8 @@
     "gdt_release_package": true,
     "gdt_fai_results_review": true,
     "visual_decision_report": true,
-    "solid_cad_handoff": true,
-    "supplier_rfq_package": true,
+    "solid_cad_handoff": false,
+    "supplier_rfq_package": false,
     "supplier_response_review": true,
     "part_review": true,
     "component_selection_review": true
@@ -190,7 +190,7 @@
     },
     {
       "subsystem": "compact_envelope_optimization",
-      "status": "cad_pass",
+      "status": "blocked",
       "evidence": [
         "compactness-optimization.json",
         "compactness-optimization.md",
@@ -296,7 +296,7 @@
     },
     {
       "subsystem": "solid_cad_handoff",
-      "status": "cad_pass",
+      "status": "blocked",
       "evidence": [
         "solid-cad-handoff.json",
         "solid-cad-handoff.md",
@@ -355,7 +355,7 @@
     },
     {
       "subsystem": "supplier_rfq_package",
-      "status": "cad_pass",
+      "status": "blocked",
       "evidence": [
         "supplier-rfq-package.json",
         "supplier-rfq-package.md",

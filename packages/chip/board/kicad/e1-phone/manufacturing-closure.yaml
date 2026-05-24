@@ -12,10 +12,6 @@ source_artifacts:
   - board/kicad/e1-phone/layout-utilization.yaml
   - board/kicad/e1-phone/production-readiness.yaml
   - board/kicad/e1-phone/procurement-readiness.yaml
-  - board/kicad/e1-phone/display-envelope-downselect.yaml
-  - board/kicad/e1-phone/camera-module-fit-downselect.yaml
-  - board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
-  - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
 board_state_detected:
   has_kicad_footprints: true
   has_tracks: false
@@ -25,6 +21,9 @@ board_state_detected:
   has_fiducials: true
   has_mounting_holes: true
   has_production_outputs: false
+  release_output_count: 0
+  has_blocked_candidate_outputs: true
+  blocked_candidate_output_file_count: 47
   kibot_outputs_are_skeleton_commented: true
 non_release_pcb_implementation_scaffold:
   status: placeholder_footprints_parse_and_render_not_fabrication_footprints
@@ -49,12 +48,6 @@ non_release_pcb_implementation_scaffold:
     - USB_CC2
     - USB_DP
     - USB_DN
-  side_key_support_nets_assigned:
-    - PWR_KEY_N
-    - VOL_UP_N
-    - VOL_DOWN_N
-    - AON_1V8
-    - GND
   display_support_placeholders: 3
   camera_support_placeholders: 4
   display_support_nets_assigned:
@@ -191,12 +184,6 @@ non_release_pcb_implementation_scaffold:
     - AON_1V8
     - IO_1V8
     - RF_VBAT
-  cellular_high_speed_support_nets_assigned:
-    - CELL_USB2_DP
-    - CELL_USB2_DN
-  wifi_high_speed_support_nets_assigned:
-    - WIFI_PCIE_TX_P
-    - WIFI_PCIE_RX_P
   split_interconnect_nets_assigned:
     - USB_DP
     - USB_DN
@@ -258,46 +245,165 @@ production_outputs:
   gerber_x2:
     path: board/kicad/e1-phone/production/gerbers
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 4
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/gerbers/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots/release-manifest.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/gerbers/release-manifest.yaml
+        reason: release_allowed_false
     required_before_release: true
   ipc_2581:
     path: board/kicad/e1-phone/production/ipc-2581
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 2
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/ipc-2581/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/ipc-2581/release-manifest.yaml
+        reason: release_allowed_false
     required_before_release: true
   drill:
     path: board/kicad/e1-phone/production/gerbers
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 4
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/gerbers/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots/release-manifest.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/gerbers/release-manifest.yaml
+        reason: release_allowed_false
     required_before_release: true
   bom_csv_or_ibom:
     path: board/kicad/e1-phone/production/bom
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 2
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/bom/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/bom/release-manifest.yaml
+        reason: release_allowed_false
     required_before_release: true
   pick_and_place:
     path: board/kicad/e1-phone/production/pos
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 2
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/pos/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/pos/release-manifest.yaml
+        reason: release_allowed_false
     required_before_release: true
   step:
     path: board/kicad/e1-phone/production/step
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 5
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/step/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/step/component-models/release-manifest.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/step/release-manifest.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/step/routed-board-with-components.step
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/step/routed-board-with-components.step.metadata.yaml
+        reason: release_allowed_false
     required_before_release: true
   schematic_pdf:
     path: board/kicad/e1-phone/production/pdf
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 6
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+        reason: release_allowed_false
     required_before_release: true
   layout_pdf:
     path: board/kicad/e1-phone/production/pdf
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 6
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+        reason: release_allowed_false
     required_before_release: true
   assembly_drawing:
     path: board/kicad/e1-phone/production/pdf
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 6
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/assembly.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+        reason: release_allowed_false
     required_before_release: true
   dfm_dfa_report:
     path: board/kicad/e1-phone/production/dfm
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 4
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf.metadata.yaml
+        reason: release_allowed_false
     required_before_release: true
   fab_quote:
     path: board/kicad/e1-phone/production/fab-quote
     present: false
+    blocked_candidate_present: true
+    blocked_candidate_file_count: 6
+    blocked_candidate_examples:
+      - path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf.metadata.yaml
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/fab-quote/candidate-placeholder.txt
+        reason: candidate_placeholder
+      - path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+        reason: release_allowed_false
+      - path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf.metadata.yaml
+        reason: release_allowed_false
     required_before_release: true
 release_gates_seen:
   schematic: missing
@@ -322,45 +428,6 @@ manufacturing_requirements:
   - split-board interconnect inspection and continuity coverage across top and bottom mating connectors
   - first-article limits for impedance coupons, rail power-up, thermal, RF conducted checks, and functional
     smoke
-selected_hardware_manufacturing_replacement_gate:
-  status: blocked_until_selected_hardware_placeholders_are_replaced_by_supplier_footprints_bom_step_and_fixture_evidence
-  function_count: 5
-  functions:
-    - function: display_touch
-      selected_hardware: CH550FH01A-CT
-      source_artifact: board/kicad/e1-phone/display-envelope-downselect.yaml
-      placeholder_groups: [display_support_placeholders]
-      required_output_keys: [bom_csv_or_ibom, pick_and_place, step, assembly_drawing]
-      required_nets: [DSI_CLK_P, DSI_D0_P, DISP_AVDD_5V5, DISP_RESET_N, TOUCH_I2C_SCL]
-      status: blocked_display_placeholders_not_replaced_by_supplier_footprints_bom_step_or_fixture_evidence
-    - function: rear_front_cameras
-      selected_hardware: Sincere_First_OV13855_rear_and_GC5035_front
-      source_artifact: board/kicad/e1-phone/camera-module-fit-downselect.yaml
-      placeholder_groups: [camera_support_placeholders]
-      required_output_keys: [bom_csv_or_ibom, pick_and_place, step, assembly_drawing]
-      required_nets: [CAM0_CSI_CLK_P, CAM1_CSI_CLK_P, CAM_AVDD_2V8, CAM0_RESET_N, CAM1_RESET_N]
-      status: blocked_camera_placeholders_not_replaced_by_supplier_footprints_bom_step_or_fixture_evidence
-    - function: usb_c_power_sidekeys
-      selected_hardware: GCT_USB4105_TPS65987DDH_MAX77860_Panasonic_EVQ-P7_EVQ-P3_EVQ-9P7
-      source_artifact: board/kicad/e1-phone/usb-sidekey-selection-wiring-decision.yaml
-      placeholder_groups: [usb_c_protection_placeholders, usb_c_signal_test_placeholders, side_key_support_placeholders, power_management_support_placeholders]
-      required_output_keys: [bom_csv_or_ibom, pick_and_place, step, assembly_drawing, dfm_dfa_report]
-      required_nets: [VBUS, USB_CC1, USB_CC2, USB_DP, USB_DN, PWR_KEY_N, VOL_UP_N, VOL_DOWN_N]
-      status: blocked_usb_power_sidekey_placeholders_not_replaced_by_supplier_footprints_bom_step_or_fixture_evidence
-    - function: cellular
-      selected_hardware: Quectel_RG255C_or_RM255C_RedCap_reference
-      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
-      placeholder_groups: [rf_matching_placeholders, rf_conducted_test_placeholders, identity_sensor_support_placeholders]
-      required_output_keys: [bom_csv_or_ibom, pick_and_place, step, assembly_drawing, dfm_dfa_report]
-      required_nets: [CELL_RF_MAIN, CELL_RF_DIV, CELL_GNSS_RF, CELL_USB2_DP, CELL_USB2_DN, USIM_IO, ESIM_IO]
-      status: blocked_cellular_placeholders_not_replaced_by_supplier_footprints_bom_step_or_fixture_evidence
-    - function: wifi_bluetooth
-      selected_hardware: Murata_LBEE5XV2EA-802
-      source_artifact: board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
-      placeholder_groups: [rf_matching_placeholders, rf_conducted_test_placeholders]
-      required_output_keys: [bom_csv_or_ibom, pick_and_place, step, assembly_drawing, dfm_dfa_report]
-      required_nets: [WIFI_BT_RF0, WIFI_BT_RF1, WIFI_PCIE_TX_P, WIFI_PCIE_RX_P]
-      status: blocked_wifi_bt_placeholders_not_replaced_by_supplier_footprints_bom_step_or_fixture_evidence
 release_blockers:
   - routed KiCad PCB
   - Gerber X2 or IPC-2581
@@ -371,7 +438,6 @@ release_blockers:
   - DFM/DFA
   - fab quote
   - first article
-  - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth placeholders are not replaced by supplier manufacturing evidence
   - split-board interconnect continuity and assembly inspection
 forbidden_claims:
   - manufacturing_ready

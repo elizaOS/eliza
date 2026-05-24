@@ -1,7 +1,7 @@
 apply plugin: 'com.android.application'
 
 android {
-    namespace "ai.elizaos.app"
+    namespace "ai.milady.milady"
     compileSdk rootProject.ext.compileSdkVersion
     // BuildConfig is needed for AOSP_BUILD gating in ElizaAgentService.java —
     // see eliza/packages/agent/src/runtime/aosp-llama-adapter.ts and
@@ -15,7 +15,7 @@ android {
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"+14159611510\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"Eliza Cloud Gateway (+14159611510)\""
-        applicationId "ai.elizaos.app"
+        applicationId "ai.milady.milady"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode System.getenv("ELIZAOS_VERSION_CODE")?.toInteger() ?: 1
@@ -331,4 +331,23 @@ try {
     }
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}
+
+// [cloud-app-thinning] Cloud builds must never package the local agent payload.
+// This second hook patches older generated projects whose existing
+// [app-thinning] block only honored -PelizaStripAndroidAgentAssets.
+afterEvaluate {
+    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.all { mergeTask ->
+        mergeTask.inputs.property('elizaCloudBuild', project.findProperty('elizaCloudBuild') ?: 'false')
+        mergeTask.doLast {
+            if (project.findProperty('elizaCloudBuild') == 'true') {
+                def assetsDir = mergeTask.outputDir.get().asFile
+                def agentDir = new File(assetsDir, 'agent')
+                if (agentDir.exists()) {
+                    println "[cloud-app-thinning] removing assets/agent/ from ${mergeTask.name}"
+                    agentDir.deleteDir()
+                }
+            }
+        }
+    }
 }

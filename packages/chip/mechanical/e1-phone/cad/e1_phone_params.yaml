@@ -66,19 +66,17 @@ pcb:
     board is therefore cut into two rigid islands placed in the Y regions NOT
     occupied by the battery (battery spans y[-50.5,+36.5]); the islands sit above
     and below it and the existing 49-contact split_interconnect flex bridges them.
-  top_island_outline_mm: [64.0, 35.5, 0.8]
-  top_island_center_y_mm: 55.5
+  top_island_outline_mm: [64.0, 29.0, 0.8]
+  top_island_center_y_mm: 51.5
   top_island_role: SoC/modem/LPDDR/UFS/RF shields and display+camera FPC region
-  bottom_island_outline_mm: [64.0, 22.0, 0.8]
-  bottom_island_center_y_mm: -62.5
+  bottom_island_outline_mm: [64.0, 15.0, 0.8]
+  bottom_island_center_y_mm: -58.5
   bottom_island_role: USB-C, USB-PD/charger, PMIC, audio, factory test access
   bottom_island_size_basis: >-
-    The battery bottom edge sits at y=-50.5 and the bottom interior wall+clearance
-    limit is ~y=-74.15, leaving ~22.6 mm of board-bearing length below the pack.
-    The bottom island is sized to 22.0 mm (1.0 mm battery-edge gap, ~0.65 mm wall
-    margin) rather than the nominal ~30 mm request because the full-width pack
-    geometrically forecloses a 30 mm bottom island; USB-C/PMIC/charger fit in
-    22 mm at this width.
+    Held to the KiCad Edge.Cuts and layout-utilization concept geometry:
+    top island 64x29 mm at board y=0 and bottom island 64x15 mm at board y=117.
+    This is intentionally a non-release concept outline until the routed-board
+    STEP replaces the placeholder PCB and supplier land patterns close.
 
 battery:
   candidate: LiPol LP566487 class 3.85 V 5727 mAh 22.05 Wh thick pouch

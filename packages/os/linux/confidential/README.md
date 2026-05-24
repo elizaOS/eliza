@@ -19,9 +19,31 @@ confidential/
   dstack-pins.json              dstack hardening/pin-set (OS-4, plan §2.3)
   policy/
     confidential-policy.json    memory + side-channel posture (OS-3); source of measurements.policy
-  meta-elizaos/                 elizaOS Yocto layer (recipes); image build BLOCKED
-    recipes-elizaos/elizaos-agent/   agent container + in-domain attestation agent + TEE policy recipe (placeholder)
+  cmdline.conf                  GENERATED kernel-cmdline fragment (noswap/nohibernate/nosmt/lockdown/...)
+  sysctl.d/99-confidential.conf GENERATED sysctl drop-in (kptr_restrict/perf_event_paranoid/dmesg_restrict/...)
+  masked-units.txt              GENERATED systemd masked-units list (swap.target/hibernate.target/kdump.service)
+  meta-elizaos/                 elizaOS Yocto layer (real layer.conf + recipe); full image build BLOCKED
+    conf/layer.conf                              OE layer config (BBFILE_COLLECTIONS/PATTERN/PRIORITY/...)
+    recipes-elizaos/elizaos-confidential-profile/  REAL recipe: installs policy + measurements + cmdline/sysctl/masked
+    recipes-elizaos/elizaos-agent/                 agent container + attestation agent recipe (BLOCKED on a build host)
 ```
+
+## Policy-digest binding (OS-3 enforcement)
+
+`measurements.policy` is the sha256 of the **canonicalized** (stable key order)
+`policy/confidential-policy.json`. Regenerate it and the boot artifacts after any
+policy change:
+
+```
+node packages/os/scripts/generate-tee-measurements.mjs --policy policy/confidential-policy.json ...
+node packages/os/scripts/generate-confidential-artifacts.mjs
+```
+
+`check-confidential-policy.mjs` recomputes that canonical digest and asserts it
+equals both manifests' `policy` digest (fail-closed on drift), and
+`check-confidential-artifacts.mjs` asserts `cmdline.conf` / `sysctl.d/` /
+`masked-units.txt` are exactly the enforcement form of the policy. Editing the
+policy without regenerating fails both gates.
 
 ## What is buildable now (OS-0..OS-4)
 

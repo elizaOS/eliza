@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 const args = process.argv.slice(2);
+const DEFAULT_RISCV64_ARTIFACT_DIR =
+  "packages/os/release/beta-2026-05-16/android/partitions";
+const DEFAULT_RISCV64_PRODUCT_OUT =
+  "$AOSP_WORKSPACE/out/target/product/eliza_ai_soc";
 
 function usage() {
   console.log(`Usage:
-  validate-release-manifest.mjs MANIFEST.json [--artifact-dir DIR] [--allow-placeholders]
+  validate-release-manifest.mjs MANIFEST.json [--artifact-dir DIR] [--allow-placeholders] [--write-evidence FILE]
 
 Validates the Android release manifest shape without requiring devices.
 When --artifact-dir is provided, artifact sizes and SHA-256 hashes are checked.
+When --write-evidence is provided, writes a machine-readable integrity report.
 Use --allow-placeholders only for checked-in pre-release draft manifests.`);
 }
 
@@ -22,6 +27,7 @@ function die(message) {
 function parseArgs(argv) {
   let manifestPath = "";
   let artifactDir = "";
+  let writeEvidence = "";
   let allowPlaceholders = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -39,12 +45,18 @@ function parseArgs(argv) {
       allowPlaceholders = true;
       continue;
     }
+    if (arg === "--write-evidence") {
+      writeEvidence = argv[index + 1] ?? "";
+      if (!writeEvidence) die("--write-evidence requires a file path");
+      index += 1;
+      continue;
+    }
     if (arg.startsWith("--")) die(`unknown argument: ${arg}`);
     if (manifestPath) die(`unexpected extra argument: ${arg}`);
     manifestPath = arg;
   }
   if (!manifestPath) die("provide a manifest path");
-  return { manifestPath, artifactDir, allowPlaceholders };
+  return { manifestPath, artifactDir, allowPlaceholders, writeEvidence };
 }
 
 function readJson(path) {
@@ -61,6 +73,70 @@ function expect(condition, errors, path, message) {
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function manifestHasRiscv64ChipTarget(manifest) {
+  return (manifest.supportedDevices ?? []).some(
+    (device) =>
+      isObject(device) &&
+      (String(device.architecture ?? "").toLowerCase() === "riscv64" ||
+        String(device.codename ?? "").toLowerCase().includes("riscv64")) &&
+      (String(device.deviceClass ?? "").toLowerCase() === "chip" ||
+        String(device.codename ?? "").toLowerCase().includes("eliza_ai_soc")),
+  );
+}
+
+function artifactIntegrityDirectory(manifest, artifactDir) {
+  if (artifactDir) return artifactDir;
+  const integrity = manifest.validation?.artifactIntegrity;
+  if (isObject(integrity) && typeof integrity.artifactDirectory === "string") {
+    return integrity.artifactDirectory;
+  }
+  return DEFAULT_RISCV64_ARTIFACT_DIR;
+}
+
+function releaseArtifactInstructions(manifest, artifactDir, manifestPath = "MANIFEST.json") {
+  const stageDir = artifactIntegrityDirectory(manifest, artifactDir);
+  const requiredFiles = (manifest.artifacts ?? [])
+    .map((artifact) => artifact?.filename)
+    .filter((filename) => typeof filename === "string" && filename.length > 0);
+  const copyCommands = requiredFiles.map(
+    (filename) => `cp "${DEFAULT_RISCV64_PRODUCT_OUT}/${filename}" "${stageDir}/${filename}"`,
+  );
+  return {
+    applies_to: manifestHasRiscv64ChipTarget(manifest)
+      ? "eliza_ai_soc_riscv64"
+      : "generic_android_release",
+    build_commands: [
+      "packages/chip/sw/aosp-device/build-aosp-riscv64.sh --workspace \"$AOSP_WORKSPACE\" --lunch-target eliza_openagent_ai_soc_phone-trunk_staging-userdebug --report \"$AOSP_WORKSPACE/eliza-build-report.json\"",
+    ],
+    stage_commands: [`mkdir -p "${stageDir}"`, ...copyCommands],
+    manifest_update_commands: [
+      `stat -c '%n %s' "${stageDir}"/*.img`,
+      `sha256sum "${stageDir}"/*.img`,
+      "replace each artifacts[].sizeBytes and artifacts[].sha256 with those exact values; do not use placeholders or copied hashes",
+    ],
+    validate_commands: [
+      `node packages/os/android/installer/scripts/validate-release-manifest.mjs "${manifestPath}" --artifact-dir "${stageDir}" --write-evidence packages/os/release/beta-2026-05-16/evidence/android/android-partition-artifacts-integrity.json`,
+    ],
+    provenance_requirements: [
+      "AOSP workspace path and manifest branch",
+      "lunch target eliza_openagent_ai_soc_phone-trunk_staging-userdebug",
+      "build report path and result_code=0",
+      "product_out_dir used as source for staged images",
+      "per-file byte size and SHA-256 computed from staged boot/vendor_boot/super images",
+      "evidence JSON from this validator with status=pass",
+    ],
+  };
+}
+
+function instructionSummary(instructions) {
+  return [
+    `build: ${instructions.build_commands.join(" && ")}`,
+    `stage: ${instructions.stage_commands.join(" && ")}`,
+    `validate: ${instructions.validate_commands.join(" && ")}`,
+    `provenance: ${instructions.provenance_requirements.join("; ")}`,
+  ].join(" | ");
 }
 
 function validateManifest(manifest, { allowPlaceholders = false } = {}) {
@@ -278,39 +354,105 @@ function sha256File(path) {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
-function validateArtifacts(manifest, artifactDir) {
-  const errors = [];
-  if (!artifactDir) return errors;
+function inspectArtifacts(manifest, artifactDir) {
+  const records = [];
+  if (!artifactDir) return records;
   for (const artifact of manifest.artifacts ?? []) {
-    const path = join(artifactDir, artifact.filename);
+    const artifactPath = join(artifactDir, artifact.filename);
     let stats;
     try {
-      stats = statSync(path);
+      stats = statSync(artifactPath);
     } catch {
-      errors.push(`${path}: artifact file not found`);
+      records.push({
+        partition: artifact.partition,
+        filename: artifact.filename,
+        path: artifactPath,
+        status: "missing",
+        manifestSizeBytes: artifact.sizeBytes,
+        manifestSha256: artifact.sha256,
+      });
       continue;
     }
-    if (stats.size !== artifact.sizeBytes) {
+    const sha256 = sha256File(artifactPath);
+    const sizeMatches = stats.size === artifact.sizeBytes;
+    const sha256Matches =
+      typeof artifact.sha256 === "string" &&
+      sha256.toLowerCase() === artifact.sha256.toLowerCase();
+    records.push({
+      partition: artifact.partition,
+      filename: artifact.filename,
+      path: artifactPath,
+      status: sizeMatches && sha256Matches ? "verified" : "mismatch",
+      sizeBytes: stats.size,
+      sha256,
+      manifestSizeBytes: artifact.sizeBytes,
+      manifestSha256: artifact.sha256,
+      sizeMatches,
+      sha256Matches,
+    });
+  }
+  return records;
+}
+
+function validateArtifacts(manifest, artifactDir, manifestPath = "MANIFEST.json") {
+  const errors = [];
+  for (const artifact of inspectArtifacts(manifest, artifactDir)) {
+    if (artifact.status === "missing") {
+      errors.push(`${artifact.path}: artifact file not found`);
+      continue;
+    }
+    if (!artifact.sizeMatches) {
       errors.push(
-        `${path}: size ${stats.size} does not match manifest ${artifact.sizeBytes}`,
+        `${artifact.path}: size ${artifact.sizeBytes} does not match manifest ${artifact.manifestSizeBytes}`,
       );
     }
-    const hash = sha256File(path);
-    if (hash.toLowerCase() !== artifact.sha256.toLowerCase()) {
+    if (!artifact.sha256Matches) {
       errors.push(
-        `${path}: sha256 ${hash} does not match manifest ${artifact.sha256}`,
+        `${artifact.path}: sha256 ${artifact.sha256} does not match manifest ${artifact.manifestSha256}`,
       );
     }
+  }
+  if (errors.length > 0 && manifestHasRiscv64ChipTarget(manifest)) {
+    errors.push(
+      `riscv64 artifact staging instructions: ${instructionSummary(
+        releaseArtifactInstructions(manifest, artifactDir, manifestPath),
+      )}`,
+    );
   }
   return errors;
 }
 
-const { manifestPath, artifactDir, allowPlaceholders } = parseArgs(args);
+function writeEvidenceFile(path, payload) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+}
+
+const { manifestPath, artifactDir, allowPlaceholders, writeEvidence } =
+  parseArgs(args);
 const manifest = readJson(manifestPath);
 const errors = [
   ...validateManifest(manifest, { allowPlaceholders }),
-  ...validateArtifacts(manifest, artifactDir),
+  ...validateArtifacts(manifest, artifactDir, manifestPath),
 ];
+if (writeEvidence) {
+  writeEvidenceFile(writeEvidence, {
+    schema: "eliza.android_release_partition_artifacts_integrity.v1",
+    status: errors.length === 0 ? "pass" : "blocked",
+    claim_boundary:
+      "android_partition_artifact_size_sha256_static_integrity_only_not_flash_or_runtime_evidence",
+    manifest: manifestPath,
+    artifact_directory: artifactDir || null,
+    allow_placeholders: allowPlaceholders,
+    release_id: manifest.releaseId ?? null,
+    artifacts: inspectArtifacts(manifest, artifactDir),
+    release_artifact_instructions: releaseArtifactInstructions(
+      manifest,
+      artifactDir,
+      manifestPath,
+    ),
+    errors,
+  });
+}
 if (errors.length > 0) {
   errors.forEach((error) => console.error(`error: ${error}`));
   process.exit(1);

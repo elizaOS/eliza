@@ -10,9 +10,9 @@ chat prompt → plugin-ainex's AINEX_RUN_RL or programmatic action
                   │
                   ▼  (policy.start{task=text} over the unified bridge)
        TextConditionedPolicy
-       (checkpoint @ checkpoints/text_conditioned_v2/policy.zip,
-        sentence-transformers/all-MiniLM-L6-v2 text encoder,
-        429-D obs = 45-D proprio + 384-D text)
+       (current default checkpoint @ checkpoints/alberta_text_conditioned,
+        Alberta streaming continual controller,
+        PCA text-conditioned obs = proprio + reduced text embedding)
                   │
                   ▼  24-D joint targets at 8-10 Hz
             DualTargetBackend
@@ -39,17 +39,18 @@ chat prompt → plugin-ainex's AINEX_RUN_RL or programmatic action
   embedding cache (built once, ~22 s on first run, instant thereafter).
 
 ### 2. Trained policy
-- `checkpoints/text_conditioned_v2/policy.zip` — 8192 PPO steps,
-  4-task subset (stand_up, walk_forward, turn_left, turn_right),
-  ep_rew_mean climbed 366 → 829, manifest.json describes the
-  obs/action shape (429, 24).
-- Conditioning is verifiably real: same proprio, different text →
-  mean off-diagonal action L2 = 0.014, max 0.020 (`sim_validation_gate`
-  gate-2 PASS).
-- v3 (30k steps) currently training in the background. Plateauing at
-  the same ep_rew (~700) because the env's reward landscape — not
-  training time — is the bottleneck. The next improvement is migrating
-  the env to MJX-Brax for many parallel envs on the local 5080 GPU.
+- Current path: `checkpoints/alberta_text_conditioned/{alberta_policy.npz,manifest.json}`
+  or the profile-specific H200 output such as
+  `checkpoints/asimov_1_alberta_full`. These checkpoints use
+  `regime="alberta_streaming"` and are validated by
+  `scripts/validate_alberta_robot_checkpoint.py`.
+- Historical archived evidence used `checkpoints/text_conditioned_v2/policy.zip`
+  (8192 PPO steps, 4-task subset). Those reports are retained as legacy
+  plumbing evidence, not as the default ML path.
+- Conditioning is verified in the current validation gate by loading the
+  checkpoint through `TextConditionedPolicy`, checking finite full-body actions
+  for every active prompt, and confirming different text prompts produce
+  materially different actions.
 
 ### 3. Bridge — sim + real, unified protocol
 - `bridge/backends/ainex_remote.py` — `roslibpy` client to the AiNex's
@@ -88,10 +89,11 @@ chat prompt → plugin-ainex's AINEX_RUN_RL or programmatic action
   noisy-sim twin (gate-3 PASS).
 
 ### 5. End-to-end runs
-- `evidence/text_to_action_e2e_v1/` — v1 (1024-step) checkpoint
+- `evidence/text_to_action_e2e_v1/` — historical v1 (1024-step) checkpoint
   drove sim+real for 4 prompts × 24 servo.set commands each. Plumbing
   proven, motion small (policy under-trained).
-- `evidence/calibrated_e2e/` — v2 checkpoint through `CalibratedBackend`,
+- `evidence/calibrated_e2e/` — historical v2 PPO checkpoint through
+  `CalibratedBackend`,
   3 prompts:
     - "stand still" → matched stand_up, sim=0.71, 32 steps
     - "wave hello"  → matched wave_right, sim=0.71, 32 steps
@@ -132,9 +134,12 @@ collection just hasn't been done in this session.
 
 ```bash
 cd packages/robot
-PYTHONPATH=. JAX_PLATFORMS=cpu .venv/bin/python -m eliza_robot.rl.text_conditioned.train --smoke --steps 8192
+uv run eliza-robot-train --profile hiwonder-ainex --tasks stand_up walk_forward --steps 30000
+uv run eliza-robot-validate-alberta-checkpoint checkpoints/alberta_text_conditioned \
+  --profile hiwonder-ainex --tasks stand_up walk_forward --min-steps 30000 --require-inference
 PYTHONPATH=. .venv/bin/python scripts/evidence_real_robot_sysid.py --host 192.168.1.218
-PYTHONPATH=. .venv/bin/python scripts/evidence_text_to_action_calibrated_e2e.py
+PYTHONPATH=. .venv/bin/python scripts/evidence_text_to_action_calibrated_e2e.py \
+  --checkpoint checkpoints/alberta_text_conditioned
 PYTHONPATH=. .venv/bin/python scripts/sim_validation_gate.py
 ```
 

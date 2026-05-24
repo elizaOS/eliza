@@ -1,0 +1,54 @@
+{
+  "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+  "evidence": {
+    "boot_completed": false,
+    "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+    "cpus": 4,
+    "duration_s": 119,
+    "forbidden_markers_present": [
+      "unhandled signal 4"
+    ],
+    "iso_path": "out/elizaos-linux-riscv64-default-20260523T071039Z.iso",
+    "iso_sha256": "8d5e9677548f90902b01e88cab7629f1ba4daec5c205dffa0312625ee1e48523",
+    "markers_found": [
+      "Linux version",
+      "elizaos-firstboot-ready"
+    ],
+    "markers_missing": [
+      "elizaos-curl-health-ready",
+      "elizaos-agent-ready",
+      "elizaos-tui-ready"
+    ],
+    "memory_mb": 4096,
+    "provenance": "qemu_virt",
+    "qemu_exit_code": 1,
+    "schema": "eliza.os.linux.qemu_virt_boot.v1",
+    "start_utc": "2026-05-23T08:01:32Z",
+    "timeout_s": 300,
+    "transcript_path": "evidence/qemu_virt_boot_20260523T071039Z_repoqemu_sigill.transcript.log",
+    "transcript_sha256": "3a636648275c2584096e8f9667aa3090a09a8d15382544d6272642f4940784b6",
+    "u_boot_path": null
+  },
+  "evidence_path": "evidence/qemu_virt_boot_20260523T071039Z_repoqemu_sigill.json",
+  "findings": [
+    {
+      "code": "os_rv64_qemu_virt_boot_incomplete",
+      "evidence": "evidence/qemu_virt_boot_20260523T071039Z_repoqemu_sigill.json",
+      "message": "qemu_virt_smoke: FAIL: boot_completed=false; markers_missing=['elizaos-curl-health-ready', 'elizaos-agent-ready', 'elizaos-tui-ready'] forbidden_markers_present=['unhandled signal 4']",
+      "next_step": "Debug the QEMU transcript until all required boot and Eliza readiness markers appear.",
+      "severity": "fail"
+    }
+  ],
+  "generated_utc": "2026-05-23T08:03:31.948146+00:00",
+  "iso_path": "out/elizaos-linux-riscv64-default-20260523T071039Z.iso",
+  "message": "qemu_virt_smoke: FAIL: boot_completed=false; markers_missing=['elizaos-curl-health-ready', 'elizaos-agent-ready', 'elizaos-tui-ready'] forbidden_markers_present=['unhandled signal 4']",
+  "required_markers": [
+    "Linux version",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "schema": "eliza.os_rv64_qemu_virt_smoke.v1",
+  "status": "fail"
+}

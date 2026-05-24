@@ -16,7 +16,10 @@ if str(ROOT) not in sys.path:
 
 from eliza_robot.asimov_1.cad import sha256_file  # noqa: E402
 from eliza_robot.asimov_1.cad_edit import WORKSPACE_META  # noqa: E402
-from eliza_robot.asimov_1.constants import ASIMOV1_FULL_ACTION_DIM  # noqa: E402
+from eliza_robot.asimov_1.constants import (  # noqa: E402
+    ASIMOV1_FULL_ACTION_DIM,
+    ASIMOV1_PROFILE_ASSET_ROOT,
+)
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -43,6 +46,93 @@ def _urdf_ok(path: Path) -> bool:
         root.get("name") == "asimov-1"
         and len(root.findall("link")) == 28
         and len(root.findall(".//mesh")) == 28
+    )
+
+
+def _cad_inventory_hashes_ok(cad: dict[str, Any]) -> bool:
+    required = (
+        ("main_step", "main_step_sha256"),
+        ("source_xml", "source_xml_sha256"),
+        ("fabrication_manifest", "fabrication_manifest_sha256"),
+    )
+    if cad.get("ok") is not True:
+        return False
+    for path_key, hash_key in required:
+        path = Path(str(cad.get(path_key, "")))
+        if not path.is_file() or cad.get(hash_key) != sha256_file(path):
+            return False
+    return True
+
+
+def _cad_inventory_paths_match_meta(meta: dict[str, Any], cad: dict[str, Any]) -> bool:
+    fields = (
+        ("source_xml", "source_xml"),
+        ("mesh_dir", "mesh_dir"),
+        ("main_step", "main_step"),
+        ("fabrication_manifest", "fabrication_manifest"),
+    )
+    for meta_key, cad_key in fields:
+        expected = meta.get(meta_key)
+        if expected is None or Path(str(expected)).resolve() != Path(str(cad.get(cad_key, ""))).resolve():
+            return False
+    return True
+
+
+def _promotion_generated_hashes_ok(promotion: dict[str, Any], regen: dict[str, Any]) -> bool:
+    fields = (
+        ("generated_mjcf", "generated_mjcf_sha256"),
+        ("generated_urdf", "generated_urdf_sha256"),
+        ("generated_manifest", "generated_manifest_sha256"),
+    )
+    for path_key, hash_key in fields:
+        path = Path(str(promotion.get(path_key, "")))
+        if not path.is_file() or promotion.get(hash_key) != sha256_file(path):
+            return False
+        if regen.get(path_key) != promotion.get(path_key):
+            return False
+        if regen.get(hash_key) != promotion.get(hash_key):
+            return False
+    return True
+
+
+def _source_edit_chain_ok(meta: dict[str, Any], patch: dict[str, Any], regen: dict[str, Any], promotion: dict[str, Any]) -> bool:
+    source = Path(str(meta.get("source_xml", "")))
+    if not source.is_file():
+        return False
+    source_hash = sha256_file(source)
+    if patch.get("source_xml") != str(source):
+        return False
+    if patch.get("after_sha256") != source_hash:
+        return False
+    if regen.get("source_xml") != str(source) or regen.get("source_xml_sha256") != source_hash:
+        return False
+    return (
+        promotion.get("source_xml") == str(source)
+        and promotion.get("source_xml_sha256") == source_hash
+    )
+
+
+def _promotion_destinations_ok(copies: list[Any]) -> bool:
+    dests = [Path(str(item.get("dest", ""))).resolve() for item in copies if isinstance(item, dict)]
+    if len(dests) != len(copies) or len(set(dests)) != len(dests):
+        return False
+    root = ASIMOV1_PROFILE_ASSET_ROOT.resolve()
+    return all(dest == root or root in dest.parents for dest in dests)
+
+
+def _generated_mjcf_compiles(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        import mujoco
+
+        model = mujoco.MjModel.from_xml_path(str(path))
+    except Exception:
+        return False
+    return (
+        int(model.nu) == ASIMOV1_FULL_ACTION_DIM
+        and int(model.nv) > 0
+        and int(model.nq) > 0
     )
 
 
@@ -73,17 +163,42 @@ def validate_workspace_promotion(workspace: Path, *, require_applied: bool = Fal
     checks = {
         "workspace_meta": bool(meta) and Path(str(meta.get("source_xml", ""))).is_file(),
         "patch_report": bool(patch)
+        and patch.get("source_xml") == meta.get("source_xml")
         and patch.get("before_sha256") != patch.get("after_sha256")
         and bool(patch.get("changes")),
+        "source_edit_chain": bool(meta)
+        and bool(patch)
+        and bool(regen)
+        and bool(promotion)
+        and _source_edit_chain_ok(meta, patch, regen, promotion),
         "regeneration_report": bool(regen)
         and Path(str(regen.get("generated_mjcf", ""))).is_file()
         and Path(str(regen.get("generated_urdf", ""))).is_file()
         and manifest_path.is_file(),
+        "generated_mjcf_compiles": _generated_mjcf_compiles(
+            Path(str(regen.get("generated_mjcf", "")))
+        ),
         "manifest_profile": manifest.get("profile_id") == "asimov-1",
         "manifest_model": manifest.get("model", {}).get("nu") == ASIMOV1_FULL_ACTION_DIM,
         "manifest_hashes": _manifest_hashes_ok(manifest),
+        "manifest_cad_inventory_hashes": _cad_inventory_hashes_ok(
+            dict(manifest.get("cad", {}))
+        )
+        and _cad_inventory_paths_match_meta(meta, dict(manifest.get("cad", {}))),
         "urdf": _urdf_ok(Path(str(manifest.get("generated_urdf", "")))),
-        "promotion_report": bool(promotion) and isinstance(copies, list) and len(copies) == 31,
+        "promotion_report": bool(promotion)
+        and promotion.get("schema") == "asimov-1-workspace-promotion-v1"
+        and isinstance(copies, list)
+        and len(copies) == 31,
+        "promotion_vendor_commit": bool(promotion)
+        and promotion.get("vendor_commit") == meta.get("vendor_commit"),
+        "promotion_cad_inventory_hashes": _cad_inventory_hashes_ok(
+            dict(promotion.get("cad_inventory", {}))
+        )
+        and _cad_inventory_paths_match_meta(meta, dict(promotion.get("cad_inventory", {}))),
+        "promotion_generated_hashes": bool(promotion)
+        and _promotion_generated_hashes_ok(promotion, regen),
+        "promotion_destinations": isinstance(copies, list) and _promotion_destinations_ok(copies),
         "promotion_targets": {
             "asimov_eliza.xml",
             "asimov.urdf",

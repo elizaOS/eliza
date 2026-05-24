@@ -23,6 +23,9 @@ DEFAULT_REPORT = (
     ROOT / "board/kicad/e1-phone/production/readiness/"
     "production-factory-required-output-presence-inventory-2026-05-22.yaml"
 )
+DEFAULT_CANDIDATE_MANIFEST = (
+    ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml"
+)
 REPORT_DATE = "2026-05-22"
 PATH_FIELD_NAMES = {
     "required_outputs",
@@ -60,6 +63,46 @@ def resolve_repo_path(path_text: str) -> Path:
     if path_text.startswith("board/"):
         return ROOT / path
     return ROOT / path
+
+
+def load_candidate_manifest(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    return read_yaml(path)
+
+
+def candidate_artifacts(candidate_manifest: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    artifacts: dict[str, dict[str, Any]] = {}
+    for item in candidate_manifest.get("artifacts", []):
+        if not isinstance(item, dict):
+            continue
+        path = item.get("path")
+        if isinstance(path, str) and path:
+            artifacts[path] = item
+    return artifacts
+
+
+def annotate_candidate_rows(
+    rows: list[dict[str, Any]],
+    candidate_manifest: dict[str, Any],
+    candidate_manifest_path: Path,
+) -> list[dict[str, Any]]:
+    artifacts = candidate_artifacts(candidate_manifest)
+    release_credit = bool(candidate_manifest.get("release_credit") is True)
+    manifest_rel = display_rel(candidate_manifest_path) if artifacts else ""
+    annotated: list[dict[str, Any]] = []
+    for row in rows:
+        candidate = artifacts.get(row["path"])
+        candidate_present_blocked = bool(candidate and row.get("present") and not release_credit)
+        annotated.append(
+            {
+                **row,
+                "candidate_present_blocked": candidate_present_blocked,
+                "candidate_manifest": manifest_rel if candidate else "",
+                "candidate_release_credit": release_credit if candidate else None,
+            }
+        )
+    return annotated
 
 
 def is_path_like(value: str) -> bool:
@@ -133,12 +176,26 @@ def presence_rows(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return rows
 
 
-def build_report(burndown_path: Path, report_path: Path) -> dict[str, Any]:
+def build_report(
+    burndown_path: Path,
+    report_path: Path,
+    candidate_manifest_path: Path = DEFAULT_CANDIDATE_MANIFEST,
+) -> dict[str, Any]:
     burndown = read_yaml(burndown_path)
+    candidate_manifest = load_candidate_manifest(candidate_manifest_path)
     raw_records = list(walk_required_output_paths(burndown))
-    required_outputs = presence_rows(dedupe_records(raw_records))
+    required_outputs = annotate_candidate_rows(
+        presence_rows(dedupe_records(raw_records)),
+        candidate_manifest,
+        candidate_manifest_path,
+    )
     missing = [row for row in required_outputs if not row["present"]]
     present = [row for row in required_outputs if row["present"]]
+    candidate_present_blocked = [
+        row for row in required_outputs if row.get("candidate_present_blocked") is True
+    ]
+    truly_missing = [row for row in missing if row.get("candidate_present_blocked") is not True]
+    cad_connection_coverage = candidate_manifest.get("cad_connection_coverage", {})
 
     return {
         "schema": "eliza.e1_phone_production_factory_required_output_presence_inventory.v1",
@@ -157,6 +214,7 @@ def build_report(burndown_path: Path, report_path: Path) -> dict[str, Any]:
         "inputs": {
             "production_factory_output_burndown": display_rel(burndown_path),
             "report_path": display_rel(report_path),
+            "factory_output_candidate_manifest": display_rel(candidate_manifest_path),
             "source_schema": burndown.get("schema"),
             "source_status": burndown.get("status"),
             "source_date": burndown.get("date"),
@@ -165,6 +223,24 @@ def build_report(burndown_path: Path, report_path: Path) -> dict[str, Any]:
             "required_output_path_count": len(required_outputs),
             "present_required_output_path_count": len(present),
             "missing_required_output_path_count": len(missing),
+            "candidate_present_blocked_required_output_path_count": len(
+                candidate_present_blocked
+            ),
+            "truly_missing_required_output_path_count": len(truly_missing),
+            "candidate_manifest_cad_connection_assembly_manifest_part_count": (
+                cad_connection_coverage.get("assembly_manifest_part_count")
+            ),
+            "candidate_manifest_cad_connection_assembly_manifest_terminal_marker_count": (
+                cad_connection_coverage.get("assembly_manifest_connection_terminal_marker_count")
+            ),
+            "candidate_manifest_cad_connection_assembly_manifest_solid_step_part_count": (
+                cad_connection_coverage.get("assembly_manifest_connection_solid_step_part_count")
+            ),
+            "candidate_manifest_cad_connection_assembly_manifest_missing_solid_step_part_count": (
+                cad_connection_coverage.get(
+                    "assembly_manifest_missing_connection_solid_step_part_count"
+                )
+            ),
             "all_required_output_paths_present": not missing,
             "release_state": "blocked_fail_closed",
         },
@@ -182,6 +258,8 @@ def build_report(burndown_path: Path, report_path: Path) -> dict[str, Any]:
         },
         "required_output_presence": required_outputs,
         "missing_required_outputs": missing,
+        "candidate_present_blocked_required_outputs": candidate_present_blocked,
+        "truly_missing_required_outputs": truly_missing,
         "present_required_outputs": present,
         "forbidden_claims": burndown.get(
             "forbidden_claims",
@@ -203,6 +281,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--burndown", type=Path, default=DEFAULT_BURNDOWN)
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    parser.add_argument("--candidate-manifest", type=Path, default=DEFAULT_CANDIDATE_MANIFEST)
     parser.add_argument(
         "--write-report",
         action="store_true",
@@ -213,7 +292,7 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    report = build_report(args.burndown, args.report)
+    report = build_report(args.burndown, args.report, args.candidate_manifest)
     text = yaml.dump(report, Dumper=NoAliasDumper, sort_keys=False, width=100)
     if args.write_report:
         args.report.parent.mkdir(parents=True, exist_ok=True)

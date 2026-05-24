@@ -44,6 +44,14 @@ case "$*" in
   *"getprop ro.build.fingerprint"*) echo 'elizaos/caiman/caiman:16/example:userdebug/test-keys' ;;
   *"getprop ro.boot.slot_suffix"*) echo '_a' ;;
   *"getprop sys.boot_completed"*) echo 1 ;;
+  *"pm path ai.elizaos.app"*) echo 'package:/system/priv-app/Eliza/Eliza.apk' ;;
+  *"cmd role holders android.app.role.HOME"*) echo 'ai.elizaos.app' ;;
+  *"cmd package resolve-activity"*) echo 'ai.elizaos.app/.MainActivity' ;;
+  *"dumpsys package ai.elizaos.app"*) echo 'Package [ai.elizaos.app]' ;;
+  *"dumpsys activity activities"*) echo 'mResumedActivity: ai.elizaos.app/.MainActivity' ;;
+  *"pidof ai.elizaos.app"*) echo 31337 ;;
+  *"curl -fsS http://127.0.0.1:31337/api/health"*) echo '{"status":"ready","agentId":"fixture"}' ;;
+  *"logcat -d"*) echo 'logcat clean' ;;
   *"settings get global adb_enabled"*) echo 1 ;;
   *) echo "fake adb $*" ;;
 esac

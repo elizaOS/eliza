@@ -10,21 +10,28 @@ from __future__ import annotations
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge
+from cocotb.triggers import ReadOnly, RisingEdge
 
 
 async def reset_dut(dut) -> None:
     dut.rst_n.value = 0
     dut.ifu_req_valid.value = 0
     dut.ifu_req_paddr.value = 0
+    dut.ifu_req_valid_lane1.value = 0
+    dut.ifu_req_paddr_lane1.value = 0
     dut.ifu_flush.value = 0
     dut.ftq_req_valid.value = 0
     dut.ftq_req.value = 0
     dut.miss_ready.value = 1
+    dut.miss_ready_lane1.value = 1
     dut.refill_valid.value = 0
     dut.refill_data.value = 0
     dut.refill_beat_idx.value = 0
     dut.refill_last.value = 0
+    dut.refill_valid_lane1.value = 0
+    dut.refill_data_lane1.value = 0
+    dut.refill_beat_idx_lane1.value = 0
+    dut.refill_last_lane1.value = 0
     dut.probe_valid.value = 0
     dut.probe_paddr_line.value = 0
     for _ in range(5):
@@ -128,3 +135,46 @@ async def test_l1i_probe_invalidate(dut):
     await RisingEdge(dut.clk)
     dut.ifu_req_valid.value = 0
     await wait_for(dut, "miss_valid", max_cycles=16)
+
+
+@cocotb.test()
+async def test_l1i_secondary_hit_lane_returns_non_contiguous_fetch(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset_dut(dut)
+
+    paddr0 = 0x0000_8001_0000
+    paddr1 = 0x0000_8001_4000
+
+    for paddr in (paddr0, paddr1):
+        dut.ifu_req_valid.value = 1
+        dut.ifu_req_paddr.value = paddr
+        await RisingEdge(dut.clk)
+        dut.ifu_req_valid.value = 0
+        await serve_refill(dut)
+        await wait_for(dut, "ifu_resp_valid")
+        for _ in range(2):
+            await RisingEdge(dut.clk)
+
+    dut.ifu_req_valid.value = 1
+    dut.ifu_req_paddr.value = paddr0
+    dut.ifu_req_valid_lane1.value = 1
+    dut.ifu_req_paddr_lane1.value = paddr1
+    await ReadOnly()
+    assert int(dut.ifu_req_ready.value) == 1
+    assert int(dut.ifu_req_ready_lane1.value) == 1
+    await RisingEdge(dut.clk)
+    dut.ifu_req_valid.value = 0
+    dut.ifu_req_valid_lane1.value = 0
+
+    saw_lane0 = False
+    saw_lane1 = False
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        saw_lane0 |= int(dut.ifu_resp_valid.value) == 1
+        saw_lane1 |= int(dut.ifu_resp_valid_lane1.value) == 1
+        if saw_lane0 and saw_lane1:
+            return
+    raise AssertionError(
+        f"wide non-contiguous hit did not return both lanes "
+        f"(lane0={saw_lane0}, lane1={saw_lane1})"
+    )

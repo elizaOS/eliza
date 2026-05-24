@@ -1,8 +1,8 @@
-# Shared ElizaOS product layer.
+# Shared elizaOS product layer.
 #
 # Per-target product makefiles (Cuttlefish, Pixel codenames) inherit from
 # the matching device makefile first, then `inherit-product` this file.
-# Anything that should hold for *every* ElizaOS image lands here.
+# Anything that should hold for *every* elizaOS image lands here.
 #
 # Invariants:
 #   1. The Eliza APK is installed as a privileged system app.
@@ -24,6 +24,7 @@ PRODUCT_MANUFACTURER := Eliza
 PRODUCT_PACKAGES += \
     Eliza \
     ElizaSystemBridge \
+    eliza_pvm_mgr \
     default-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.app.xml \
     privapp-permissions-ai.elizaos.system.bridge.xml
@@ -58,10 +59,13 @@ PRODUCT_PACKAGE_OVERLAYS += \
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/priv-app/Eliza/% \
     system/priv-app/ElizaSystemBridge/% \
+    system/bin/eliza_pvm_mgr \
     system/etc/default-permissions/default-permissions-ai.elizaos.app.xml \
     system/etc/permissions/privapp-permissions-ai.elizaos.app.xml \
     system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml \
     product/etc/eliza/aosp-assistant-full-control.json \
+    product/etc/eliza/tee-policy.json \
+    product/etc/eliza/tee-measurements.json \
     product/etc/init/init.eliza.rc \
     product/media/bootanimation.zip
 
@@ -71,12 +75,22 @@ PRODUCT_PRODUCT_PROPERTIES += \
     ro.setupwizard.mode=DISABLED \
     persist.sys.fflag.override.settings_provider_model=false
 
-# Boot-time init: starts services, sets ElizaOS-specific properties,
+# Boot-time init: starts services, sets elizaOS-specific properties,
 # and runs once-per-boot grants for appops the privapp manifest can't
 # express (SYSTEM_ALERT_WINDOW, GET_USAGE_STATS user-visible default).
 PRODUCT_COPY_FILES += \
     vendor/eliza/init/init.eliza.rc:$(TARGET_COPY_OUT_PRODUCT)/etc/init/init.eliza.rc \
     vendor/eliza/manifests/aosp-assistant-full-control.json:$(TARGET_COPY_OUT_PRODUCT)/etc/eliza/aosp-assistant-full-control.json
+
+# TEE protected-agent profile (plan §5 / measured-boot contract "AOSP Path").
+# The signed golden TEE policy + release measurements ship at
+# /product/etc/eliza/ in the same schema as the Linux path. On the bring-up
+# track these are placeholders with confidentialityBlocked=true; a real
+# release replaces tee-measurements.json with generate-tee-measurements.mjs
+# output. eliza_pvm_mgr (vendor/eliza/sepolicy/eliza_pvm_mgr.te) reads them.
+PRODUCT_COPY_FILES += \
+    vendor/eliza/tee/tee-policy.json:$(TARGET_COPY_OUT_PRODUCT)/etc/eliza/tee-policy.json \
+    vendor/eliza/tee/tee-measurements.json:$(TARGET_COPY_OUT_PRODUCT)/etc/eliza/tee-measurements.json
 
 # Boot animation. Override with a brand-specific zip; falls through to
 # AOSP defaults if the zip is absent (the file is gitignored locally

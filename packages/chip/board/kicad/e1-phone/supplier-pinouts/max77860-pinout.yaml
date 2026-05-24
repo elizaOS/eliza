@@ -5,6 +5,7 @@ package: WLP-81 (9 x 9 array, 0.4 mm pitch, 3.9 x 4.0 mm), USB Type-C switch-mod
 source_doc: https://www.analog.com/en/products/max77860.html
 source_doc_alt:
   - https://www.analog.com/en/products/online-datasheet/MAX77860.html
+  - https://www.analog.com/MAX77860/datasheet
   - https://www.digikey.com/en/product-highlight/m/maxim-integrated/max77860-usb-type-c-switch-mode-buck-charger
   - https://il.farnell.com/maxim-integrated-products/max77860ewg/battery-charger-li-ion-pol-wlp/dp/3014905RL
 source_doc_revision: MAX77860 datasheet rev. as of 2024
@@ -14,10 +15,11 @@ evidence_class: public_supplier_datasheet
 notes: |
   MAX77860 is a Li-ion/Li-Po USB Type-C switch-mode buck charger with
   integrated CC detection, reverse boost (5V OTG), SafeOut LDO, and ADC. The
-  81-bump WLP grid is A1..J9 (rows A-J, columns 1-9). Per-bump assignment
-  table is published in the datasheet PDF (pp. 5-7, not extractable via
-  WebFetch). Verified-public facts and interface group set captured below;
-  per-bump entries marked fetch_required against the ADI datasheet portal.
+  81-bump WLP grid is A1..J9 (rows A-J, columns 1-9). The per-bump assignment
+  table below is captured from the public ADI/Maxim datasheet pin configuration
+  and pin description sections. Production release still requires package
+  outline, land-pattern, stencil, and DFM signoff against the selected assembler
+  process.
 mechanical:
   package: WLP
   bump_count: 81
@@ -62,13 +64,327 @@ interface_pin_groups:
     - PGND (power ground, multiple bumps)
     - AGND (analog ground)
 pins:
-  - pin: ALL
-    name: fetch_required
-    function: full_81bump_table
-    direction: unknown
-    voltage_v: null
-    notes: |
-      Pull per-bump pinout table from MAX77860 datasheet pp. 5-7 at
-      https://www.analog.com/en/products/max77860.html (free public download).
-      Interface groups above are verified from datasheet abstract, ADI product
-      page, and DigiKey/Farnell distributor specifications.
+  - pin: A1
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: A2
+    name: THM
+    function: battery_thermistor_input
+    direction: input
+  - pin: A3
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: A4
+    name: CC2
+    function: usb_type_c_cc2
+    direction: bidirectional
+  - pin: A5
+    name: VCONNIN
+    function: vconn_input
+    direction: power
+  - pin: A6
+    name: CC1
+    function: usb_type_c_cc1
+    direction: bidirectional
+  - pin: A7
+    name: DN
+    function: usb_dminus_bc12
+    direction: bidirectional
+  - pin: A8
+    name: DP
+    function: usb_dplus_bc12
+    direction: bidirectional
+  - pin: A9
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: B1
+    name: THMB
+    function: thermistor_bias
+    direction: output
+  - pin: B2
+    name: ONKEY
+    function: active_low_onkey_input
+    direction: input
+  - pin: B3
+    name: CSP
+    function: external_current_sense_positive
+    direction: input
+  - pin: B4
+    name: VCONNBTEN_SYS
+    function: vconn_battery_enable_system
+    direction: bidirectional
+  - pin: B5
+    name: SLAVE
+    function: master_slave_charger_control
+    direction: bidirectional
+  - pin: B6
+    name: TEST4
+    function: factory_test_ground_in_application
+    direction: input
+  - pin: B7
+    name: TEST3
+    function: factory_test_ground_in_application
+    direction: input
+  - pin: B8
+    name: TEST2
+    function: factory_test_ground_in_application
+    direction: input
+  - pin: B9
+    name: VCCTEST
+    function: factory_test_ground_in_application
+    direction: input
+  - pin: C1
+    name: BATT
+    function: battery_power_connection
+    direction: power
+  - pin: C2
+    name: BATT
+    function: battery_power_connection
+    direction: power
+  - pin: C3
+    name: CSN
+    function: external_current_sense_negative
+    direction: input
+  - pin: C4
+    name: GND_D
+    function: digital_ground
+    direction: ground
+  - pin: C5
+    name: SWI1
+    function: slave_wire_1
+    direction: bidirectional
+  - pin: C6
+    name: SWI2
+    function: slave_wire_2
+    direction: bidirectional
+  - pin: C7
+    name: CHGIND
+    function: charge_status_indicator
+    direction: output
+  - pin: C8
+    name: GND_Q
+    function: quiet_ground
+    direction: ground
+  - pin: C9
+    name: TEST1
+    function: factory_test_ground_in_application
+    direction: input
+  - pin: D1
+    name: BATT
+    function: battery_power_connection
+    direction: power
+  - pin: D2
+    name: BATT
+    function: battery_power_connection
+    direction: power
+  - pin: D3
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: D4
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: D5
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: D6
+    name: SYS_Q
+    function: quiet_system_input_power
+    direction: power
+  - pin: D7
+    name: VBUSDET
+    function: vbus_detection
+    direction: input
+  - pin: D8
+    name: INTB
+    function: active_low_interrupt
+    direction: output
+  - pin: D9
+    name: SYS_A
+    function: analog_system_input_power
+    direction: power
+  - pin: E1
+    name: SYS
+    function: system_power_connection
+    direction: power
+  - pin: E2
+    name: SYS
+    function: system_power_connection
+    direction: power
+  - pin: E3
+    name: SYS
+    function: system_power_connection
+    direction: power
+  - pin: E4
+    name: BAT_SP
+    function: battery_positive_sense
+    direction: input
+  - pin: E5
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: E6
+    name: INOKB
+    function: active_low_input_valid
+    direction: output
+  - pin: E7
+    name: DETBATB
+    function: active_low_battery_detect
+    direction: input
+  - pin: E8
+    name: VIO
+    function: host_io_supply_reference
+    direction: power
+  - pin: E9
+    name: SCL
+    function: i2c_clock
+    direction: bidirectional
+  - pin: F1
+    name: SYS
+    function: system_power_connection
+    direction: power
+  - pin: F2
+    name: SYS
+    function: system_power_connection
+    direction: power
+  - pin: F3
+    name: BAT_SN
+    function: battery_negative_sense
+    direction: input
+  - pin: F4
+    name: GND_A
+    function: analog_ground
+    direction: ground
+  - pin: F5
+    name: AVL
+    function: analog_voltage_level_bypass
+    direction: power_output
+  - pin: F6
+    name: OVPENB
+    function: active_low_external_ovp_enable
+    direction: output
+  - pin: F7
+    name: NC1
+    function: no_connect
+    direction: no_connect
+  - pin: F8
+    name: NC2
+    function: no_connect
+    direction: no_connect
+  - pin: F9
+    name: SDA
+    function: i2c_data
+    direction: bidirectional
+  - pin: G1
+    name: CHGPG
+    function: charger_power_ground
+    direction: ground
+  - pin: G2
+    name: CHGRGSUB
+    function: substrate_charger_ground
+    direction: ground
+  - pin: G3
+    name: BST
+    function: high_side_fet_driver_supply
+    direction: power
+  - pin: G4
+    name: PVL
+    function: internal_bias_regulator_bypass
+    direction: power_output
+  - pin: G5
+    name: BYP
+    function: chgin_bypass_boost_output_node
+    direction: power
+  - pin: G6
+    name: BYP
+    function: chgin_bypass_boost_output_node
+    direction: power
+  - pin: G7
+    name: NC3
+    function: no_connect
+    direction: no_connect
+  - pin: G8
+    name: NC4
+    function: no_connect
+    direction: no_connect
+  - pin: G9
+    name: NC5
+    function: no_connect
+    direction: no_connect
+  - pin: H1
+    name: CHGPG
+    function: charger_power_ground
+    direction: ground
+  - pin: H2
+    name: CHGLX
+    function: charger_switching_node
+    direction: power
+  - pin: H3
+    name: CHGLX
+    function: charger_switching_node
+    direction: power
+  - pin: H4
+    name: BYP
+    function: chgin_bypass_boost_output_node
+    direction: power
+  - pin: H5
+    name: CHGIN
+    function: high_current_charger_input
+    direction: power
+  - pin: H6
+    name: CHGIN
+    function: high_current_charger_input
+    direction: power
+  - pin: H7
+    name: NC6
+    function: no_connect
+    direction: no_connect
+  - pin: H8
+    name: NC7
+    function: no_connect
+    direction: no_connect
+  - pin: H9
+    name: NC8
+    function: no_connect
+    direction: no_connect
+  - pin: J1
+    name: CHGPG
+    function: charger_power_ground
+    direction: ground
+  - pin: J2
+    name: CHGLX
+    function: charger_switching_node
+    direction: power
+  - pin: J3
+    name: CHGLX
+    function: charger_switching_node
+    direction: power
+  - pin: J4
+    name: BYP
+    function: chgin_bypass_boost_output_node
+    direction: power
+  - pin: J5
+    name: CHGIN
+    function: high_current_charger_input
+    direction: power
+  - pin: J6
+    name: CHGIN
+    function: high_current_charger_input
+    direction: power
+  - pin: J7
+    name: SAFEOUT
+    function: safeout_ldo_output
+    direction: power_output
+  - pin: J8
+    name: GND_D2
+    function: digital_ground
+    direction: ground
+  - pin: J9
+    name: GND_A
+    function: analog_ground
+    direction: ground

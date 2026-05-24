@@ -19,7 +19,12 @@ def test_asimov_cad_edit_workspace_patch_regenerate_promote_contract(tmp_path: P
 
     assert Path(meta["source_xml"]).is_file()
     assert Path(meta["mesh_dir"]).is_dir()
+    assert Path(meta["main_step"]).is_file()
+    assert Path(meta["fabrication_manifest"]).is_file()
     assert meta["cad_inventory"]["cad_entries"] == 170
+    assert meta["cad_inventory"]["source_xml"] == meta["source_xml"]
+    assert meta["cad_inventory"]["main_step"] == meta["main_step"]
+    assert meta["cad_inventory"]["main_step_sha256"]
 
     patch_report = apply_asimov1_mjcf_patch(
         workspace,
@@ -54,6 +59,10 @@ def test_asimov_cad_edit_workspace_patch_regenerate_promote_contract(tmp_path: P
     assert manifest["model"]["nu"] == ASIMOV1_FULL_ACTION_DIM
     assert Path(manifest["generated_urdf"]).is_file()
     assert manifest["cad"]["mesh_count"] == 28
+    assert manifest["cad"]["source_xml"] == meta["source_xml"]
+    assert manifest["cad"]["main_step"] == meta["main_step"]
+    assert manifest["cad"]["fabrication_manifest"] == meta["fabrication_manifest"]
+    assert manifest["cad"]["main_step_sha256"] == meta["cad_inventory"]["main_step_sha256"]
 
     generated_tree = ET.parse(generated_mjcf)
     actuator = generated_tree.getroot().find(".//actuator/position[@joint='left_ankle_roll_joint']")
@@ -62,6 +71,7 @@ def test_asimov_cad_edit_workspace_patch_regenerate_promote_contract(tmp_path: P
 
     promotion = promote_asimov1_workspace(workspace, dry_run=True)
     assert promotion["dry_run"] is True
+    assert promotion["cad_inventory"]["main_step"] == meta["main_step"]
     assert len(promotion["copies"]) == 31
     assert all(item["source_sha256"] for item in promotion["copies"])
     assert Path(workspace / "asimov_promotion_plan.json").is_file()

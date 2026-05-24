@@ -17,18 +17,25 @@ RESULTS_DIR="${ROOT}/benchmarks/results/cpu/coremark"
 RESULT_JSON="${RESULTS_DIR}/result.json"
 mkdir -p "${RESULTS_DIR}"
 
+json_quote() {
+    python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))'
+}
+
 write_blocked() {
     reason=$1
     missing_dep=$2
     next_command=$3
+    reason_json=$(printf '%s' "${reason}" | json_quote)
+    missing_dep_json=$(printf '%s' "${missing_dep}" | json_quote)
+    next_command_json=$(printf '%s' "${next_command}" | json_quote)
     cat > "${RESULT_JSON}" <<EOF
 {
   "schema": "eliza.cpu_benchmark_result.v1",
   "benchmark": "coremark",
   "status": "blocked",
-  "reason": "${reason}",
-  "missing_dependency": "${missing_dep}",
-  "next_command": "${next_command}",
+  "reason": ${reason_json},
+  "missing_dependency": ${missing_dep_json},
+  "next_command": ${next_command_json},
   "result_recorded_at": "$(date -u +%FT%TZ)",
   "manifest": "benchmarks/cpu/coremark/manifest.json"
 }

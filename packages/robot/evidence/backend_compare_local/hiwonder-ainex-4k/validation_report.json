@@ -1,0 +1,63 @@
+{
+  "ok": false,
+  "comparison_dir": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/hiwonder-ainex-4k",
+  "expected_profile": "hiwonder-ainex",
+  "min_steps": 4000,
+  "min_eval_mean_steps": 20.0,
+  "checks": {
+    "comparison_dir": true,
+    "json": true,
+    "markdown": true,
+    "profile": true,
+    "tasks": true,
+    "steps": true,
+    "eval_config": true,
+    "baseline_eval": true,
+    "alberta_present": true,
+    "alberta_validation": true,
+    "alberta_eval": true,
+    "alberta_delta_vs_untrained": true,
+    "ppo_present": true,
+    "ppo_eval": true,
+    "ppo_delta_vs_untrained": true,
+    "mean_rewards": true,
+    "alberta_vs_ppo_delta": true,
+    "winner": true,
+    "winner_consistent": true,
+    "eval_rollout_depth": false
+  },
+  "profile_id": "hiwonder-ainex",
+  "tasks": [
+    "stand_up",
+    "walk_forward",
+    "turn_left",
+    "turn_right"
+  ],
+  "steps": 4000,
+  "eval_config": {
+    "seed": 7,
+    "pca_dim": 32,
+    "episode_steps": 120,
+    "eval_episodes": 4,
+    "max_steps": 120,
+    "domain_rand": true
+  },
+  "winner_by_mean_reward": "alberta",
+  "deltas": {
+    "baseline_mean_reward": -6.837111905563581,
+    "alberta_mean_reward": -6.837242534767329,
+    "ppo_mean_reward": -6.837420882611028,
+    "alberta_minus_ppo_mean_reward": 0.00017834784369874512,
+    "alberta_minus_untrained_mean_reward": -0.0001306292037481782,
+    "ppo_minus_untrained_mean_reward": -0.00030897704744692334,
+    "expected_winner_by_mean_reward": "alberta"
+  },
+  "survival": {
+    "baseline_min_mean_steps_survived": 1.0,
+    "alberta_min_mean_steps_survived": 1.0,
+    "ppo_min_mean_steps_survived": 1.0,
+    "min_mean_steps_survived": 1.0,
+    "mean_mean_steps_survived": 1.0,
+    "survival_values_present": true
+  }
+}

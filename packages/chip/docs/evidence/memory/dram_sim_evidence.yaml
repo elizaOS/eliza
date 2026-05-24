@@ -1,7 +1,7 @@
 schema: eliza.memory.dram_sim_evidence.v1
 status: dramsim3_behavioral_simulation
 evidence_class: dramsim3_behavioral_simulation
-captured_utc: "2026-05-19T21:54:21Z"
+captured_utc: "2026-05-23T07:43:00Z"
 
 scope:
   - compiler/runtime/dramsim_wrap/runner.py
@@ -33,7 +33,7 @@ simulator_limitations:
     bank-group reorg, link ECC, on-die ECC, sub-channel splitting,
     and refresh-management commands are not modeled.
   - TraceBasedCPU is single-threaded; the maximum issue rate is one
-    transaction per command cycle across all channels, so measured
+    transaction per command cycle across all channels, so simulated
     sustained bandwidth tracks DRAMSim3's queue depth (cmd_queue_size,
     trans_queue_size) rather than the PHY's peak. The built-in
     `-s stream` StreamCPU mode produces similar utilisation in this
@@ -42,7 +42,7 @@ simulator_limitations:
     per DRAMSim3 LPDDR4 capacity math). The LPDDR6 AI SKU's 24 GiB
     density is documented in lpddr6_14400.ini but cannot be modeled
     without changing protocol geometry.
-  - LPDDR6 .ini widens the device bus from 24 to 32 bits to satisfy
+  - LPDDR6 .ini widens the system bus from 24 to 32 bits to satisfy
     DRAMSim3's LPDDR4 lane legality check; per-pin data rate is
     preserved via tCK.
   - All numbers are controller-side; no PHY training, vref, ZQ, or
@@ -76,6 +76,20 @@ sweep:
   stream_elements_per_kernel: 200000
   pointer_chase_transactions: 60000
   bytes_per_dramsim3_access: 32
+
+report_artifacts:
+  build/reports/memory/dramsim3_lpddr5x_10667_microbench.json: 51c204076117e8bd5bf4127f50b6efa512bc73741ae879f55226419e0a6384de
+  build/reports/memory/dramsim3_lpddr5x_10667_pointer_chase.json: f65375b490b6679fe41310b2556179fe1849e92aa469ab1b2a577937ada45970
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_add.json: 2fa458d659ae7e362af6b65acb9f80b1284fb52b306f0328fec230c35c562822
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_copy.json: f9ba8256e8781b793c4c2d94965f6379fe97e6d7f9f10f71bd5a43527d95486e
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_scale.json: 885d895e281abe8989052317453d88427becc18cd8a7012ed3919e1bfc45cd41
+  build/reports/memory/dramsim3_lpddr5x_10667_stream_triad.json: 043f92ca1228cded572838119817b932e17cc9cb5b52433991b9c5d6627922b3
+  build/reports/memory/dramsim3_lpddr6_14400_microbench.json: c9deff70ffeb2897b07627bba3eabcc509186756907418adfd4a8cb73ef774b6
+  build/reports/memory/dramsim3_lpddr6_14400_pointer_chase.json: 8a320b4cf21ff0f6a16283a3d5761e442b160371f868d6ed3de0b9dde4d069ac
+  build/reports/memory/dramsim3_lpddr6_14400_stream_add.json: afcc1fe6d8d50fe08da51e4d7e25ab463ef4841eb38f9c3e01276c3caa03aceb
+  build/reports/memory/dramsim3_lpddr6_14400_stream_copy.json: 3dda221d1cf909d8287b81975e89e81c5c7c48682c3a8acf28c142f4f9221557
+  build/reports/memory/dramsim3_lpddr6_14400_stream_scale.json: f18a35eeef4ff9c0a9cfbb8b8e010a1c4f1eeb5490caed624359449017de09aa
+  build/reports/memory/dramsim3_lpddr6_14400_stream_triad.json: d4d196cb8ba758f64973703eb412b7abbd0e233c518b35ab38024024d2a7d1c7
 
 skus:
   - id: lpddr5x_10667
@@ -142,9 +156,10 @@ skus:
 
 jedec_sanity_check:
   description: >
-    Measured sustained bandwidth must stay strictly below the JEDEC
-    peak for each SKU. Sustained / peak utilisation is documented for
-    context; high utilisation would indicate an unrealistic model.
+    Simulated sustained bandwidth must stay strictly below the JEDEC
+    peak for each SKU. Simulated sustained / peak utilisation is
+    documented for context; high utilisation would indicate an
+    unrealistic model.
   results:
     - sku: lpddr5x_10667
       peak_gbps: 85.336

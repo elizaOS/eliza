@@ -56,6 +56,17 @@ module e1_l1i_cache
     output logic [FETCH_W-1:0]    ifu_resp_data,
     output logic                  ifu_resp_paddr_eq_req,
 
+    // Optional secondary IFU demand lane for non-contiguous fetch. Hits return
+    // in parallel with lane 0. A cold lane-1 target is accepted into a small
+    // ordered pending slot and can drain through the lane-1 miss/refill channel
+    // independently of the scalar IFU/prefetch miss pipe.
+    input  logic                  ifu_req_valid_lane1,
+    output logic                  ifu_req_ready_lane1,
+    input  logic [PADDR_W-1:0]    ifu_req_paddr_lane1,
+    output logic                  ifu_resp_valid_lane1,
+    output logic [FETCH_W-1:0]    ifu_resp_data_lane1,
+    output logic                  ifu_resp_paddr_eq_req_lane1,
+
     // -----------------------------------------------------------------
     // FDIP / FTQ prefetch request port
     // -----------------------------------------------------------------
@@ -64,7 +75,7 @@ module e1_l1i_cache
     input  ftq_prefetch_req_t     ftq_req,
 
     // -----------------------------------------------------------------
-    // L1I -> L2 miss request channel (one outstanding line fill)
+    // L1I -> L2 miss request channel (one scalar outstanding line fill)
     //
     // miss_valid       : assert when L1I needs a line
     // miss_paddr_line  : 64 B-aligned line address
@@ -81,6 +92,19 @@ module e1_l1i_cache
     input  logic [127:0]          refill_data,
     input  logic [1:0]            refill_beat_idx, // 0..3
     input  logic                  refill_last,
+
+    // Secondary lane-1 demand miss/refill channel. This port is lane-1 demand
+    // only; FTQ prefetches continue to use the scalar miss pipe.
+    output logic                  miss_valid_lane1,
+    input  logic                  miss_ready_lane1,
+    output logic [PADDR_W-1:0]    miss_paddr_line_lane1,
+    output logic                  miss_is_prefetch_lane1,
+
+    input  logic                  refill_valid_lane1,
+    output logic                  refill_ready_lane1,
+    input  logic [127:0]          refill_data_lane1,
+    input  logic [1:0]            refill_beat_idx_lane1,
+    input  logic                  refill_last_lane1,
 
     // -----------------------------------------------------------------
     // Probe (back-invalidate) from L2 / coherence engine
@@ -141,10 +165,12 @@ module e1_l1i_cache
     logic                  s0_valid_q;
     logic [PADDR_W-1:0]    s0_paddr_q;
     logic                  s0_is_prefetch_q;
+    logic                  s0_resp_lane1_q;
 
     logic                  s1_valid_q;
     logic [PADDR_W-1:0]    s1_paddr_q;
     logic                  s1_is_prefetch_q;
+    logic                  s1_resp_lane1_q;
     logic                  s1_hit_q;
     logic [$clog2(WAYS)-1:0] s1_hit_way_q;
     logic [LINE_BITS-1:0]  s1_line_q;
@@ -162,9 +188,16 @@ module e1_l1i_cache
     miss_state_e               miss_state_q;
     logic [PADDR_W-1:0]        miss_paddr_q;
     logic                      miss_is_pf_q;
+    logic                      miss_resp_lane1_q;
     logic [LINE_BITS-1:0]      miss_line_buf_q;
     logic [BEATS_PER_LINE-1:0] miss_beat_seen_q;
     logic [$clog2(WAYS)-1:0]   miss_victim_way_q;
+
+    miss_state_e               lane1_miss_state_q;
+    logic [PADDR_W-1:0]        lane1_miss_active_paddr_q;
+    logic [LINE_BITS-1:0]      lane1_miss_line_buf_q;
+    logic [BEATS_PER_LINE-1:0] lane1_miss_beat_seen_q;
+    logic [$clog2(WAYS)-1:0]   lane1_miss_victim_way_q;
 
     // -----------------------------------------------------------------
     // s0 stage: pick a request source and read tag array
@@ -173,14 +206,20 @@ module e1_l1i_cache
     // prefetch when an MSHR slot is free.
     // -----------------------------------------------------------------
     logic        s0_can_accept;
+    logic        s0_select_lane1_pending;
     logic        s0_select_demand;
     logic        s0_select_pf;
+    logic        lane1_miss_pending_q;
+    logic [PADDR_W-1:0] lane1_miss_paddr_q;
 
     assign s0_can_accept   = (miss_state_q == MS_IDLE) && !s0_valid_q;
-    assign s0_select_demand = s0_can_accept && ifu_req_valid;
-    assign s0_select_pf     = s0_can_accept && !ifu_req_valid && ftq_req_valid;
-    assign ifu_req_ready    = s0_can_accept;
-    assign ftq_req_ready    = s0_can_accept && !ifu_req_valid;
+    assign s0_select_lane1_pending = 1'b0;
+    assign s0_select_demand = s0_can_accept && !lane1_miss_pending_q && ifu_req_valid;
+    assign s0_select_pf     = s0_can_accept && !lane1_miss_pending_q &&
+                              !ifu_req_valid && ftq_req_valid;
+    assign ifu_req_ready    = s0_can_accept && !lane1_miss_pending_q;
+    assign ftq_req_ready    = s0_can_accept && !lane1_miss_pending_q &&
+                              !ifu_req_valid;
 
     // -----------------------------------------------------------------
     // s1 stage: tag compare and way select
@@ -224,6 +263,68 @@ module e1_l1i_cache
     assign s1_parity_bad_c = hit_any_c && (s1_parity_expected_c != sel_parity_c);
 
     // -----------------------------------------------------------------
+    // Secondary demand lane: parallel hit-only lookup.
+    // -----------------------------------------------------------------
+    logic [WAYS-1:0]            lane1_hit_vec_c;
+    logic                       lane1_hit_any_c;
+    logic [$clog2(WAYS)-1:0]    lane1_hit_way_c;
+    logic [LINE_BITS-1:0]       lane1_line_c;
+    logic                       lane1_parity_c;
+    logic                       lane1_parity_expected_c;
+    logic                       lane1_parity_bad_c;
+    logic [OFFSET_W-1:0]        lane1_off_c;
+    logic [FETCH_W-1:0]         lane1_word_c;
+    logic                       lane1_accept_c;
+    logic                       lane1_accept_hit_c;
+    logic                       lane1_accept_miss_c;
+
+    always_comb begin
+        lane1_hit_vec_c = '0;
+        lane1_hit_way_c = '0;
+        lane1_line_c = '0;
+        lane1_parity_c = 1'b0;
+        for (int w = 0; w < WAYS; w++) begin
+            if (vld_array[w][addr_index(ifu_req_paddr_lane1)] &&
+                tag_array[w][addr_index(ifu_req_paddr_lane1)] ==
+                    addr_tag(ifu_req_paddr_lane1)) begin
+                lane1_hit_vec_c[w] = 1'b1;
+            end
+        end
+        lane1_hit_any_c = |lane1_hit_vec_c;
+        for (int w = 0; w < WAYS; w++) begin
+            if (lane1_hit_vec_c[w]) begin
+                lane1_hit_way_c = w[$clog2(WAYS)-1:0];
+                lane1_line_c = data_array[w][addr_index(ifu_req_paddr_lane1)];
+                lane1_parity_c = par_array[w][addr_index(ifu_req_paddr_lane1)];
+            end
+        end
+    end
+
+    assign lane1_parity_expected_c = compute_parity(
+        lane1_line_c, addr_tag(ifu_req_paddr_lane1));
+    assign lane1_parity_bad_c =
+        lane1_hit_any_c && (lane1_parity_expected_c != lane1_parity_c);
+    assign lane1_accept_hit_c =
+        s0_select_demand && ifu_req_valid_lane1 &&
+        lane1_hit_any_c && !lane1_parity_bad_c && !ifu_flush;
+    assign lane1_accept_miss_c =
+        s0_select_demand && ifu_req_valid_lane1 &&
+        (!lane1_hit_any_c || lane1_parity_bad_c) &&
+        !lane1_miss_pending_q && (lane1_miss_state_q == MS_IDLE) && !ifu_flush;
+    assign lane1_accept_c = lane1_accept_hit_c || lane1_accept_miss_c;
+    assign ifu_req_ready_lane1 = lane1_accept_c;
+
+    assign lane1_off_c = addr_offset(ifu_req_paddr_lane1);
+    always_comb begin
+        lane1_word_c = '0;
+        for (int b = 0; b < FETCH_W; b++) begin
+            automatic int unsigned bit_idx = (32'(lane1_off_c) * 8) + b;
+            if (bit_idx < LINE_BITS)
+                lane1_word_c[b] = lane1_line_c[bit_idx];
+        end
+    end
+
+    // -----------------------------------------------------------------
     // Victim selection (tree-PLRU). On 8 ways, 7-bit tree; we use a small
     // synthesizable reduction.
     // -----------------------------------------------------------------
@@ -263,7 +364,8 @@ module e1_l1i_cache
     logic [TAG_W-1:0]   probe_tag_c;
     assign probe_idx_c = addr_index(probe_paddr_line);
     assign probe_tag_c = addr_tag(probe_paddr_line);
-    assign probe_ready = (miss_state_q != MS_FILL);
+    assign probe_ready = (miss_state_q != MS_FILL) &&
+                         (lane1_miss_state_q != MS_FILL);
     // probe_ack is asserted in the always_ff below
 
     // -----------------------------------------------------------------
@@ -297,10 +399,12 @@ module e1_l1i_cache
             s0_valid_q <= 1'b0;
             s0_paddr_q <= '0;
             s0_is_prefetch_q <= 1'b0;
+            s0_resp_lane1_q <= 1'b0;
 
             s1_valid_q <= 1'b0;
             s1_paddr_q <= '0;
             s1_is_prefetch_q <= 1'b0;
+            s1_resp_lane1_q <= 1'b0;
             s1_hit_q <= 1'b0;
             s1_hit_way_q <= '0;
             s1_line_q <= '0;
@@ -309,18 +413,33 @@ module e1_l1i_cache
             miss_state_q     <= MS_IDLE;
             miss_paddr_q     <= '0;
             miss_is_pf_q     <= 1'b0;
+            miss_resp_lane1_q <= 1'b0;
             miss_line_buf_q  <= '0;
             miss_beat_seen_q <= '0;
             miss_victim_way_q <= '0;
+            lane1_miss_state_q <= MS_IDLE;
+            lane1_miss_active_paddr_q <= '0;
+            lane1_miss_line_buf_q <= '0;
+            lane1_miss_beat_seen_q <= '0;
+            lane1_miss_victim_way_q <= '0;
+            lane1_miss_pending_q <= 1'b0;
+            lane1_miss_paddr_q <= '0;
 
             ifu_resp_valid    <= 1'b0;
             ifu_resp_data     <= '0;
             ifu_resp_paddr_eq_req <= 1'b0;
+            ifu_resp_valid_lane1 <= 1'b0;
+            ifu_resp_data_lane1 <= '0;
+            ifu_resp_paddr_eq_req_lane1 <= 1'b0;
 
             miss_valid       <= 1'b0;
             miss_paddr_line  <= '0;
             miss_is_prefetch <= 1'b0;
             refill_ready     <= 1'b1;
+            miss_valid_lane1 <= 1'b0;
+            miss_paddr_line_lane1 <= '0;
+            miss_is_prefetch_lane1 <= 1'b0;
+            refill_ready_lane1 <= 1'b1;
 
             probe_ack        <= 1'b0;
 
@@ -334,11 +453,15 @@ module e1_l1i_cache
             hpm_l1i_prefetch <= 1'b0;
             probe_ack        <= 1'b0;
             ifu_resp_valid   <= 1'b0;
+            ifu_resp_valid_lane1 <= 1'b0;
 
             // ------ Flush handling ------
             if (ifu_flush) begin
                 s0_valid_q       <= 1'b0;
                 s1_valid_q       <= 1'b0;
+                s0_resp_lane1_q  <= 1'b0;
+                s1_resp_lane1_q  <= 1'b0;
+                lane1_miss_pending_q <= 1'b0;
                 // Cancel any in-progress prefetch miss, but allow in-progress
                 // demand miss to complete (its target may still be needed,
                 // and tearing down mid-FILL leaves the line in an
@@ -347,23 +470,55 @@ module e1_l1i_cache
                     miss_valid   <= 1'b0;
                     miss_state_q <= MS_IDLE;
                 end
+                if (lane1_miss_state_q == MS_REQ) begin
+                    miss_valid_lane1 <= 1'b0;
+                    lane1_miss_state_q <= MS_IDLE;
+                end
+            end
+
+            // ------ Secondary IFU hit lane ------
+            if (lane1_accept_hit_c) begin
+                ifu_resp_valid_lane1 <= 1'b1;
+                ifu_resp_data_lane1 <= lane1_word_c;
+                ifu_resp_paddr_eq_req_lane1 <= 1'b1;
+                if (pfb_array[lane1_hit_way_c][addr_index(ifu_req_paddr_lane1)]) begin
+                    pfb_array[lane1_hit_way_c][addr_index(ifu_req_paddr_lane1)] <= 1'b0;
+                    hpm_l1i_prefetch <= 1'b1;
+                end
+                plru[addr_index(ifu_req_paddr_lane1)] <=
+                    plru_update(plru[addr_index(ifu_req_paddr_lane1)],
+                                lane1_hit_way_c);
+            end else if (lane1_accept_miss_c) begin
+                lane1_miss_pending_q <= 1'b1;
+                lane1_miss_paddr_q <= {ifu_req_paddr_lane1[PADDR_W-1:OFFSET_W],
+                                       {OFFSET_W{1'b0}}};
+                hpm_l1i_access <= 1'b1;
             end
 
             // ------ s0 enqueue ------
-            if (s0_select_demand && !ifu_flush) begin
+            if (s0_select_lane1_pending && !ifu_flush) begin
+                s0_valid_q       <= 1'b1;
+                s0_paddr_q       <= lane1_miss_paddr_q;
+                s0_is_prefetch_q <= 1'b0;
+                s0_resp_lane1_q  <= 1'b1;
+                lane1_miss_pending_q <= 1'b0;
+            end else if (s0_select_demand && !ifu_flush) begin
                 s0_valid_q       <= 1'b1;
                 s0_paddr_q       <= ifu_req_paddr;
                 s0_is_prefetch_q <= 1'b0;
+                s0_resp_lane1_q  <= 1'b0;
                 hpm_l1i_access   <= 1'b1;
             end else if (s0_select_pf && !ifu_flush) begin
                 s0_valid_q       <= 1'b1;
                 s0_paddr_q       <= {ftq_req.paddr_line[PADDR_W-1:OFFSET_W],
                                      {OFFSET_W{1'b0}}};
                 s0_is_prefetch_q <= 1'b1;
+                s0_resp_lane1_q  <= 1'b0;
             end else if (s1_valid_q || miss_state_q != MS_IDLE) begin
                 // Wait
             end else begin
                 s0_valid_q <= 1'b0;
+                s0_resp_lane1_q <= 1'b0;
             end
 
             // ------ s0 -> s1 advance (tag compare done) ------
@@ -371,11 +526,13 @@ module e1_l1i_cache
                 s1_valid_q       <= 1'b1;
                 s1_paddr_q       <= s0_paddr_q;
                 s1_is_prefetch_q <= s0_is_prefetch_q;
+                s1_resp_lane1_q  <= s0_resp_lane1_q;
                 s1_hit_q         <= hit_any_c && !s1_parity_bad_c;
                 s1_hit_way_q     <= hit_way_c;
                 s1_line_q        <= sel_line_c;
                 s1_parity_bad_q  <= s1_parity_bad_c;
                 s0_valid_q       <= 1'b0;
+                s0_resp_lane1_q  <= 1'b0;
 
                 // On hit, mark prefetched-bit-touched (FTQ prefetch became
                 // "useful").
@@ -393,9 +550,15 @@ module e1_l1i_cache
             // ------ s1: deliver hit, or kick off miss ------
             if (s1_valid_q && !ifu_flush) begin
                 if (s1_hit_q && !s1_is_prefetch_q) begin
-                    ifu_resp_valid        <= 1'b1;
-                    ifu_resp_data         <= s1_word_c;
-                    ifu_resp_paddr_eq_req <= 1'b1;
+                    if (s1_resp_lane1_q) begin
+                        ifu_resp_valid_lane1 <= 1'b1;
+                        ifu_resp_data_lane1 <= s1_word_c;
+                        ifu_resp_paddr_eq_req_lane1 <= 1'b1;
+                    end else begin
+                        ifu_resp_valid        <= 1'b1;
+                        ifu_resp_data         <= s1_word_c;
+                        ifu_resp_paddr_eq_req <= 1'b1;
+                    end
                     s1_valid_q            <= 1'b0;
                 end else if (s1_hit_q && s1_is_prefetch_q) begin
                     // Prefetch hit: nothing to do, drop request silently
@@ -405,6 +568,7 @@ module e1_l1i_cache
                     miss_paddr_q     <= {s1_paddr_q[PADDR_W-1:OFFSET_W],
                                          {OFFSET_W{1'b0}}};
                     miss_is_pf_q     <= s1_is_prefetch_q;
+                    miss_resp_lane1_q <= s1_resp_lane1_q;
                     miss_victim_way_q <= plru_victim(plru[addr_index(s1_paddr_q)]);
                     hpm_l1i_miss     <= !s1_is_prefetch_q;
                     s1_valid_q       <= 1'b0;
@@ -415,11 +579,89 @@ module e1_l1i_cache
                     miss_paddr_q     <= {s1_paddr_q[PADDR_W-1:OFFSET_W],
                                          {OFFSET_W{1'b0}}};
                     miss_is_pf_q     <= 1'b0;
+                    miss_resp_lane1_q <= s1_resp_lane1_q;
                     miss_victim_way_q <= s1_hit_way_q;
                     hpm_l1i_miss     <= 1'b1;
                     s1_valid_q       <= 1'b0;
                 end
             end
+
+            // ------ Secondary lane-1 miss state machine ------
+            if (lane1_miss_pending_q && lane1_miss_state_q == MS_IDLE && !ifu_flush) begin
+                lane1_miss_state_q <= MS_REQ;
+                lane1_miss_active_paddr_q <= lane1_miss_paddr_q;
+                lane1_miss_victim_way_q <=
+                    plru_victim(plru[addr_index(lane1_miss_paddr_q)]);
+                lane1_miss_pending_q <= 1'b0;
+            end
+
+            case (lane1_miss_state_q)
+                MS_IDLE: begin
+                    miss_valid_lane1 <= 1'b0;
+                    miss_paddr_line_lane1 <= '0;
+                    miss_is_prefetch_lane1 <= 1'b0;
+                end
+                MS_REQ: begin
+                    if (!miss_valid_lane1) begin
+                        miss_valid_lane1 <= 1'b1;
+                        miss_paddr_line_lane1 <= lane1_miss_active_paddr_q;
+                        miss_is_prefetch_lane1 <= 1'b0;
+                    end else if (miss_ready_lane1) begin
+                        miss_valid_lane1 <= 1'b0;
+                        lane1_miss_state_q <= MS_FILL;
+                        lane1_miss_beat_seen_q <= '0;
+                        lane1_miss_line_buf_q <= '0;
+                    end
+                end
+                MS_FILL: begin
+                    if (refill_valid_lane1 && refill_ready_lane1) begin
+                        lane1_miss_line_buf_q[
+                            refill_beat_idx_lane1*BEAT_BITS +: BEAT_BITS
+                        ] <= refill_data_lane1;
+                        lane1_miss_beat_seen_q[refill_beat_idx_lane1] <= 1'b1;
+                        if (refill_last_lane1) begin
+                            lane1_miss_state_q <= MS_RESP;
+                        end
+                    end
+                end
+                MS_RESP: begin
+                    tag_array[lane1_miss_victim_way_q]
+                        [addr_index(lane1_miss_active_paddr_q)]
+                        <= addr_tag(lane1_miss_active_paddr_q);
+                    vld_array[lane1_miss_victim_way_q]
+                        [addr_index(lane1_miss_active_paddr_q)]
+                        <= 1'b1;
+                    data_array[lane1_miss_victim_way_q]
+                        [addr_index(lane1_miss_active_paddr_q)]
+                        <= lane1_miss_line_buf_q;
+                    par_array[lane1_miss_victim_way_q]
+                        [addr_index(lane1_miss_active_paddr_q)]
+                        <= compute_parity(
+                            lane1_miss_line_buf_q,
+                            addr_tag(lane1_miss_active_paddr_q)
+                        );
+                    pfb_array[lane1_miss_victim_way_q]
+                        [addr_index(lane1_miss_active_paddr_q)]
+                        <= 1'b0;
+                    plru[addr_index(lane1_miss_active_paddr_q)] <=
+                        plru_update(
+                            plru[addr_index(lane1_miss_active_paddr_q)],
+                            lane1_miss_victim_way_q
+                        );
+
+                    ifu_resp_valid_lane1 <= 1'b1;
+                    ifu_resp_paddr_eq_req_lane1 <= 1'b1;
+                    for (int b = 0; b < FETCH_W; b++) begin
+                        automatic int unsigned bit_idx =
+                            (32'(addr_offset(lane1_miss_active_paddr_q)) * 8) + b;
+                        if (bit_idx < LINE_BITS)
+                            ifu_resp_data_lane1[b] <=
+                                lane1_miss_line_buf_q[bit_idx];
+                    end
+                    lane1_miss_state_q <= MS_IDLE;
+                end
+                default: lane1_miss_state_q <= MS_IDLE;
+            endcase
 
             // ------ Miss state machine ------
             case (miss_state_q)
@@ -470,16 +712,28 @@ module e1_l1i_cache
                     if (!miss_is_pf_q) begin
                         // Critical-word-first delivery: synthesize a hit
                         // response from the just-filled line.
-                        ifu_resp_valid <= 1'b1;
-                        ifu_resp_paddr_eq_req <= 1'b1;
-                        for (int b = 0; b < FETCH_W; b++) begin
-                            automatic int unsigned bit_idx =
-                                (32'(addr_offset(miss_paddr_q)) * 8) + b;
-                            if (bit_idx < LINE_BITS)
-                                ifu_resp_data[b] <= miss_line_buf_q[bit_idx];
+                        if (miss_resp_lane1_q) begin
+                            ifu_resp_valid_lane1 <= 1'b1;
+                            ifu_resp_paddr_eq_req_lane1 <= 1'b1;
+                            for (int b = 0; b < FETCH_W; b++) begin
+                                automatic int unsigned bit_idx =
+                                    (32'(addr_offset(miss_paddr_q)) * 8) + b;
+                                if (bit_idx < LINE_BITS)
+                                    ifu_resp_data_lane1[b] <= miss_line_buf_q[bit_idx];
+                            end
+                        end else begin
+                            ifu_resp_valid <= 1'b1;
+                            ifu_resp_paddr_eq_req <= 1'b1;
+                            for (int b = 0; b < FETCH_W; b++) begin
+                                automatic int unsigned bit_idx =
+                                    (32'(addr_offset(miss_paddr_q)) * 8) + b;
+                                if (bit_idx < LINE_BITS)
+                                    ifu_resp_data[b] <= miss_line_buf_q[bit_idx];
+                            end
                         end
                     end
                     miss_state_q <= MS_IDLE;
+                    miss_resp_lane1_q <= 1'b0;
                 end
                 default: miss_state_q <= MS_IDLE;
             endcase

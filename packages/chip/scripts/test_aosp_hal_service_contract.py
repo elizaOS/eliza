@@ -39,6 +39,10 @@ class AospHalServiceContractTests(unittest.TestCase):
         device = tmp / "sw/aosp-device/device/eliza/eliza_ai_soc"
         hal_dir = device / "hal/e1_npu"
         sepolicy = device / "sepolicy"
+        product_mk = write(
+            device / "eliza_ai_soc.mk",
+            "$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)\n",
+        )
         device_mk = write(device / "device.mk", "PRODUCT_PACKAGES += Eliza\n")
         board = write(
             device / "BoardConfig.mk",
@@ -70,6 +74,10 @@ class AospHalServiceContractTests(unittest.TestCase):
         hal_impl_cc = write(
             hal_dir / "E1Npu.cpp",
             "// missing real /dev/e1-npu open/read path\n",
+        )
+        hal_uapi = write(
+            hal_dir / "E1NpuUapi.h",
+            "// missing ioctl ABI\n",
         )
         hal_interface = write(
             hal_dir / "1.0/IE1Npu.hal",
@@ -109,9 +117,21 @@ class AospHalServiceContractTests(unittest.TestCase):
             tmp / "sw/linux/drivers/e1/e1_platform_contract.h",
             "#define E1_NPU_RESULT_OFFSET 0x08u\n",
         )
+        linux_uapi = write(
+            tmp / "sw/linux/drivers/e1/e1-npu-uapi.h",
+            "struct e1_npu_contract {};\n"
+            "struct e1_npu_cmd {};\n"
+            "struct e1_npu_gemm_s8 {};\n"
+            "#define E1_NPU_IOC_RUN_CMD x\n"
+            "#define E1_NPU_IOC_RUN_GEMM_S8 x\n"
+            "#define E1_NPU_IOC_GET_CONTRACT x\n"
+            "#define E1_NPU_OP_RELU4_S8 10u\n"
+            "#define E1_NPU_SCRATCH_BYTES 64u\n",
+        )
         patches = [
             mock.patch.object(gate, "ROOT", tmp),
             mock.patch.object(gate, "DEVICE", device),
+            mock.patch.object(gate, "ELIZA_PRODUCT_MK", product_mk),
             mock.patch.object(gate, "DEVICE_MK", device_mk),
             mock.patch.object(gate, "BOARD_CONFIG", board),
             mock.patch.object(gate, "INIT_RC", init_rc),
@@ -122,6 +142,7 @@ class AospHalServiceContractTests(unittest.TestCase):
             mock.patch.object(gate, "HAL_RC", hal_rc),
             mock.patch.object(gate, "HAL_IMPL", hal_impl),
             mock.patch.object(gate, "HAL_IMPL_CC", hal_impl_cc),
+            mock.patch.object(gate, "HAL_UAPI", hal_uapi),
             mock.patch.object(gate, "HAL_INTERFACE", hal_interface),
             mock.patch.object(gate, "HAL_INTERFACE_BP", hal_interface_bp),
             mock.patch.object(gate, "HWC_DIR", hwc_dir),
@@ -133,6 +154,7 @@ class AospHalServiceContractTests(unittest.TestCase):
             mock.patch.object(gate, "FILE_CONTEXTS", file_contexts),
             mock.patch.object(gate, "E1_NPU_TE", e1_te),
             mock.patch.object(gate, "LINUX_CONTRACT_HEADER", contract),
+            mock.patch.object(gate, "LINUX_NPU_UAPI_HEADER", linux_uapi),
             mock.patch.object(gate, "REPORT", tmp / "build/reports/aosp_hal_service_contract.json"),
         ]
         return patches
@@ -145,7 +167,6 @@ class AospHalServiceContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("aosp_e1_npu_vintf_declared_but_service_not_packaged", codes)
-        self.assertIn("aosp_hwcomposer_service_not_packaged", codes)
         self.assertIn("aosp_board_includes_e1_vintf_without_package", codes)
         self.assertIn("aosp_init_never_enables_e1_npu_hal", codes)
         self.assertIn("aosp_e1_npu_service_disabled_by_default", codes)
@@ -156,7 +177,6 @@ class AospHalServiceContractTests(unittest.TestCase):
         self.assertIn("aosp_e1_npu_hal_result_offset_mismatch", codes)
         self.assertIn("aosp_e1_npu_hidl_interface_not_packaged", codes)
         self.assertIn("aosp_e1_npu_hal_not_fail_closed_to_kernel_node", codes)
-        self.assertIn("aosp_hwcomposer_fbdev_probe_missing", codes)
         self.assertIn("aosp_cuttlefish_sim_hal_not_separated_from_real_product", codes)
 
     def test_packaged_startable_hal_contract_passes_static_checks(self) -> None:
@@ -165,8 +185,7 @@ class AospHalServiceContractTests(unittest.TestCase):
             with PatchStack(patches):
                 gate.DEVICE_MK.write_text(
                     "PRODUCT_PACKAGES += \\\n"
-                    "    vendor.eliza.e1_npu@1.0-service \\\n"
-                    "    android.hardware.graphics.composer@2.4-service.eliza_ai_soc\n",
+                    "    vendor.eliza.e1_npu@1.0-service\n",
                     encoding="utf-8",
                 )
                 gate.INIT_RC.write_text(
@@ -190,7 +209,25 @@ class AospHalServiceContractTests(unittest.TestCase):
                 gate.HAL_IMPL_CC.write_text(
                     "Status::NOT_SUPPORTED;\n"
                     "int flags = O_RDWR | O_CLOEXEC;\n"
-                    "::read(fd.get(), &identity, sizeof(identity));\n",
+                    "E1_NPU_IOC_GET_CONTRACT;\n"
+                    "E1_NPU_IOC_RUN_CMD;\n"
+                    "E1_NPU_IOC_RUN_GEMM_S8;\n"
+                    "E1_NPU_OP_RELU4_S8;\n"
+                    "0x800700fcu;\n"
+                    "0x00070000u;\n"
+                    "kExpectedGemm[4] = {-44, 8, 139, -54};\n"
+                    "contract.npu_base;\n",
+                    encoding="utf-8",
+                )
+                gate.HAL_UAPI.write_text(
+                    "struct e1_npu_contract {};\n"
+                    "struct e1_npu_cmd {};\n"
+                    "struct e1_npu_gemm_s8 {};\n"
+                    "#define E1_NPU_IOC_RUN_CMD _IOWR(E1_NPU_IOC_MAGIC, 0x01, struct e1_npu_cmd)\n"
+                    "#define E1_NPU_SCRATCH_BYTES 64u\n"
+                    "#define E1_NPU_IOC_GET_CONTRACT _IOR(E1_NPU_IOC_MAGIC, 0x06, struct e1_npu_contract)\n"
+                    "#define E1_NPU_IOC_RUN_GEMM_S8 _IOWR(E1_NPU_IOC_MAGIC, 0x02, struct e1_npu_gemm_s8)\n"
+                    "#define E1_NPU_OP_RELU4_S8 10u\n",
                     encoding="utf-8",
                 )
                 gate.HAL_INTERFACE.write_text(
@@ -245,6 +282,23 @@ class AospHalServiceContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+        self.assertTrue(report["evidence"]["inherits_cuttlefish_phone"])
+
+    def test_deprecated_hidl_hwcomposer_package_blocks_current_fcm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                gate.DEVICE_MK.write_text(
+                    "PRODUCT_PACKAGES += \\\n"
+                    "    vendor.eliza.e1_npu@1.0-service \\\n"
+                    "    android.hardware.graphics.composer@2.4-service.eliza_ai_soc \\\n"
+                    "    hwcomposer.eliza_ai_soc\n",
+                    encoding="utf-8",
+                )
+                report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("aosp_hwcomposer_deprecated_hidl_service_packaged", codes)
 
 
 class PatchStack:

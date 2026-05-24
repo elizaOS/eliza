@@ -1,11 +1,11 @@
-// e1_npu HAL v0 - fail-closed stub for vendor.eliza.e1_npu@1.0.
+// e1_npu HAL v0 - fail-closed fixed-vector smoke for vendor.eliza.e1_npu@1.0.
 //
 // Backing contract: sw/platform/e1_platform_contract.json
 // Backing kernel node: /dev/e1-npu.
 //
-// Status: stub. Service binary opens /dev/e1-npu read/write and exposes
-// a single fixed-vector smoke RPC. Returns UNSUPPORTED when the device
-// node is absent. No model loading, no DMA, no scheduler, no power.
+// Service binary opens /dev/e1-npu read/write and exposes a single
+// fixed-vector smoke RPC backed by the kernel ioctl ABI. Returns NOT_SUPPORTED
+// when the device node is absent. No model loading, no scheduler, no power.
 
 package {
     default_applicable_licenses: ["Android-Apache-2.0"],

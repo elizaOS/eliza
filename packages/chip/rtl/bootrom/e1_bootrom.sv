@@ -40,23 +40,10 @@ module e1_bootrom #(
         for (int i = 0; i < WORDS; i++) begin
             mem[i] = 32'h0000_0000;
         end
-        // The image path is the ROM_HEX parameter by default; a testbench may
-        // override it with the BOOT_ROM_HEX plusarg (resolved relative to the
-        // simulator cwd) to point at an alternate build-staged image. The
-        // plusarg/string-typed path is simulation-only; synthesis (Yosys
-        // defines the YOSYS macro, and its Verilog-2005 frontend rejects the
-        // `string` type) loads the ROM_HEX image directly.
-`ifndef YOSYS
-        begin
-            string rom_path;
-            if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
-                rom_path = ROM_HEX;
-            end
-            $readmemh(rom_path, mem);
-        end
-`else
+        // Keep ROM initialization frontend-portable for OpenLane/Yosys. Test
+        // benches can override ROM_HEX as a parameter when they need an
+        // alternate build-staged image.
         $readmemh(ROM_HEX, mem);
-`endif
         // Debug-visible identity/version header (published ROM contract):
         // magic "OSO", "CHIP", format version, and the 32'h0000_1000 handoff
         // word. Overlaid after the image load so external bring-up tooling can

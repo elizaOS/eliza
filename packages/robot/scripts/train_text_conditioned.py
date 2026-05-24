@@ -1,18 +1,19 @@
-"""Unified text-conditioned PPO trainer. One CLI, every supported robot.
+"""Unified text-conditioned trainer. One CLI, every supported robot.
 
-Replaces the per-profile dispatch in
-`eliza_robot/rl/text_conditioned/train.py` with a single entrypoint that
-loads the robot via the profile registry, instantiates the profile-driven
-env, and runs stable-baselines3 PPO on CPU.
+Loads the robot via the profile registry, instantiates the profile-driven
+MuJoCo env, and trains a text-conditioned policy. The default backend is the
+Alberta streaming continual-learning controller; PPO remains available as an
+explicit CPU smoke baseline.
 
 Run::
     uv run python scripts/train_text_conditioned.py --profile unitree-g1 --steps 30000
+    uv run python scripts/train_text_conditioned.py --profile unitree-g1 --backend ppo --steps 30000
     uv run python scripts/train_text_conditioned.py --profile hiwonder-ainex --dry-run
 
 The full Brax-MJX recipe still lives in
 `eliza_robot/sim/mujoco/asimov_mjx_training.py` for the asimov-1 +
-Nebius GPU path; this CLI is the CPU smoke entrypoint that proves the
-unified pipeline before committing GPU spend.
+Nebius GPU path. This CLI is the default continual-learning path for profile
+driven robot policies and the CPU smoke entrypoint before committing GPU spend.
 """
 
 from __future__ import annotations
@@ -47,7 +48,7 @@ _DEFAULT_TASKS = (
 )
 
 
-def _train(
+def _train_alberta(
     profile_id: str,
     out_dir: Path,
     *,
@@ -55,6 +56,40 @@ def _train(
     seed: int,
     include_tasks: tuple[str, ...],
     pca_dim: int,
+    episode_steps: int,
+    eval_episodes: int,
+    domain_rand: bool,
+) -> dict:
+    from eliza_robot.rl.alberta.train_robot import (
+        steps_per_task_from_total,
+        train_robot,
+    )
+
+    steps_per_task = steps_per_task_from_total(total_steps, len(include_tasks))
+
+    return train_robot(
+        profile_id,
+        list(include_tasks),
+        steps_per_task,
+        out_dir,
+        pca_dim=pca_dim,
+        episode_steps=episode_steps,
+        eval_episodes=eval_episodes,
+        seed=seed,
+        requested_total_steps=total_steps,
+        domain_rand=domain_rand,
+    )
+
+
+def _train_ppo(
+    profile_id: str,
+    out_dir: Path,
+    *,
+    total_steps: int,
+    seed: int,
+    include_tasks: tuple[str, ...],
+    pca_dim: int,
+    domain_rand: bool,
 ) -> dict:
     from stable_baselines3 import PPO
     from stable_baselines3.common.monitor import Monitor
@@ -74,6 +109,7 @@ def _train(
                 exclude_tasks=(),
                 pca_dim=pca_dim,
                 episode_steps=200,
+                domain_rand=domain_rand,
             ),
         )
         return Monitor(env)
@@ -97,7 +133,7 @@ def _train(
         verbose=1,
     )
     print(
-        f"[unified-train] {profile_id}: tasks={len(include_tasks)} "
+        f"[unified-train:ppo] {profile_id}: tasks={len(include_tasks)} "
         f"obs={vec_env.observation_space.shape} act={vec_env.action_space.shape} "
         f"target={total_steps} steps",
         file=sys.stderr,
@@ -105,6 +141,7 @@ def _train(
     t0 = time.time()
     model.learn(total_timesteps=total_steps, progress_bar=False)
     wall_s = time.time() - t0
+    actual_steps = int(model.num_timesteps)
     ckpt_path = out_dir / "policy.zip"
     model.save(str(ckpt_path))
     obs_dim = int(vec_env.observation_space.shape[0])
@@ -118,11 +155,13 @@ def _train(
         "active_tasks": list(include_tasks),
         "obs_dim": obs_dim,
         "action_dim": action_dim,
-        "output_dim": action_dim,
+        "output_dim": len(profile.kinematics.joints),
         "proprio_dim": proprio_dim,
         "text_dim": pca_dim,
         "pca_dim": pca_dim,
-        "total_steps": int(total_steps),
+        "requested_total_steps": int(total_steps),
+        "total_steps": actual_steps,
+        "domain_rand": bool(domain_rand),
         "wall_clock_s": round(wall_s, 2),
         "seed": int(seed),
         "ckpt": ckpt_path.name,
@@ -130,7 +169,7 @@ def _train(
     }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     print(
-        f"[unified-train] saved {ckpt_path.name} + manifest.json in {wall_s:.1f}s",
+        f"[unified-train:ppo] saved {ckpt_path.name} + manifest.json in {wall_s:.1f}s",
         file=sys.stderr,
     )
     return manifest
@@ -153,6 +192,8 @@ def _dry_run(profile_id: str, out_dir: Path, *, seed: int) -> dict:
         "profile_id": profile_id,
         "obs_dim": int(env.observation_space.shape[0]),
         "action_dim": int(env.action_space.shape[0]),
+        "output_dim": len(env.profile.kinematics.joints),
+        "default_backend": "alberta",
         "reset_obs_shape": list(obs.shape),
         "step_reward": float(out[1]),
         "step_terminated": bool(out[2]),
@@ -175,11 +216,28 @@ def main(argv: list[str] | None = None) -> int:
         "--out",
         type=Path,
         default=None,
-        help="Output directory. Default: checkpoints/text_conditioned_<profile>_smoke/",
+        help="Output directory. Default: checkpoints/text_conditioned_<profile>_<backend>/",
     )
-    parser.add_argument("--steps", type=int, default=30_000)
+    parser.add_argument(
+        "--steps",
+        type=int,
+        default=30_000,
+        help=(
+            "Total env-step budget. For Alberta continual learning this is "
+            "split evenly across tasks; use eliza-robot-train-alberta "
+            "--steps-per-task for explicit per-phase budgets."
+        ),
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--pca-dim", type=int, default=32)
+    parser.add_argument("--episode-steps", type=int, default=200)
+    parser.add_argument("--eval-episodes", type=int, default=3)
+    parser.add_argument(
+        "--backend",
+        choices=("alberta", "ppo"),
+        default="alberta",
+        help="Training backend. Alberta streaming continual learning is the default; PPO is a smoke baseline.",
+    )
     parser.add_argument(
         "--tasks",
         nargs="+",
@@ -187,23 +245,41 @@ def main(argv: list[str] | None = None) -> int:
         help="Curriculum tasks to train on.",
     )
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument(
+        "--no-domain-rand",
+        action="store_true",
+        help="disable MuJoCo domain randomization for training envs",
+    )
     args = parser.parse_args(argv)
 
     out_dir = args.out or (
-        PKG_ROOT / "checkpoints" / f"text_conditioned_{args.profile}_smoke"
+        PKG_ROOT / "checkpoints" / f"text_conditioned_{args.profile}_{args.backend}"
     )
     tasks = tuple(args.tasks)
 
     if args.dry_run:
         manifest = _dry_run(args.profile, out_dir, seed=args.seed)
-    else:
-        manifest = _train(
+    elif args.backend == "alberta":
+        manifest = _train_alberta(
             args.profile,
             out_dir,
             total_steps=args.steps,
             seed=args.seed,
             include_tasks=tasks,
             pca_dim=args.pca_dim,
+            episode_steps=args.episode_steps,
+            eval_episodes=args.eval_episodes,
+            domain_rand=not args.no_domain_rand,
+        )
+    else:
+        manifest = _train_ppo(
+            args.profile,
+            out_dir,
+            total_steps=args.steps,
+            seed=args.seed,
+            include_tasks=tasks,
+            pca_dim=args.pca_dim,
+            domain_rand=not args.no_domain_rand,
         )
     print(json.dumps({"out_dir": str(out_dir), "manifest": manifest}, indent=2))
     return 0

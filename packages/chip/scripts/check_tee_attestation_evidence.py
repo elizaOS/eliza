@@ -9,7 +9,15 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_EVIDENCE = REPO_ROOT / "packages/chip/docs/spec-db/tee-attestation-evidence.example.json"
+SPEC_DB = REPO_ROOT / "packages/chip/docs/spec-db"
+DEFAULT_EVIDENCE = SPEC_DB / "tee-attestation-evidence.example.json"
+# Every committed attestation-evidence fixture must validate. The .e1-rot
+# fixture is the pre-silicon E1 RoT DICE-alias evidence and was previously
+# validated by hand with no gate pointing at it.
+GATED_FIXTURES = (
+    DEFAULT_EVIDENCE,
+    SPEC_DB / "tee-attestation-evidence.e1-rot.json",
+)
 SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 REQUIRED_MEASUREMENTS = {"boot", "os", "agent", "policy", "device"}
 NPU_PROTECTED_MEASUREMENTS = {"monitor", "npuFirmware"}
@@ -85,16 +93,23 @@ def validate(evidence: dict[str, object]) -> list[str]:
     return errors
 
 
-def main(argv: list[str]) -> int:
-    evidence_path = Path(argv[1]) if len(argv) > 1 else DEFAULT_EVIDENCE
+def validate_path(evidence_path: Path) -> int:
     evidence = json.loads(evidence_path.read_text())
     errors = validate(evidence)
     if errors:
         for error in errors:
-            print(f"error: {error}", file=sys.stderr)
+            print(f"error: {evidence_path.name}: {error}", file=sys.stderr)
         return 1
     print(f"TEE attestation evidence valid: {evidence_path}")
     return 0
+
+
+def main(argv: list[str]) -> int:
+    # An explicit path validates that one fixture; otherwise every committed
+    # fixture must validate (fail-closed on the first invalid one).
+    paths = [Path(argv[1])] if len(argv) > 1 else list(GATED_FIXTURES)
+    results = [validate_path(path) for path in paths]
+    return 0 if all(code == 0 for code in results) else 1
 
 
 if __name__ == "__main__":

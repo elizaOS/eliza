@@ -1,7 +1,35 @@
 {
   "schema": "eliza.cache.champsim_external_prefetchers.v1",
-  "status": "ported_and_measured",
+  "status": "ported_and_champsim_scoped",
   "evidence_class": "champsim_dpc3_traces_only",
+  "captured_utc": "2026-05-20T02:54:54.816863+00:00",
+  "claim_boundary": "ChampSim external-prefetcher porting evidence only; not synthesizable RTL productization, phone-class IPC, silicon, DRAM, Android, or release evidence.",
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "provenance": {
+    "source_artifacts": [
+      {
+        "path": "external/ChampSim/prefetcher/berti/berti.cc",
+        "sha256": "5fc2a4886c5164ab238272e6b39629ce10f28f1f20575f3e4a6010fccd103cc3"
+      },
+      {
+        "path": "external/ChampSim/prefetcher/ipcp/ipcp.cc",
+        "sha256": "a23f6070c2771c3b3efe598b8a363531bb2423f2342b3bd194089177ab4ee470"
+      },
+      {
+        "path": "external/ChampSim/prefetcher/bingo/bingo.cc",
+        "sha256": "289848c7e757a6ddd9428f4e8eb2b63fe186fb1ff84843c7a747fa278b8df1fd"
+      },
+      {
+        "path": "external/ChampSim/prefetcher/bop/bop.cc",
+        "sha256": "665fb2190acc43f443c8cc18d920a4eab31e89a8952478c84c2e362297f5cb2f"
+      },
+      {
+        "path": "external/ChampSim/prefetcher/pythia/pythia.cc",
+        "sha256": "00b43ce53fd9e13d13012d30faeead7d2592fee84fd7ee43b903c114aab86cf9"
+      }
+    ]
+  },
   "champsim_commit": "24cc41bb",
   "champsim_module_api": "2024-12 (champsim::modules::prefetcher / champsim::address)",
   "source_repos_examined": {

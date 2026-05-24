@@ -1,0 +1,85 @@
+{
+  "profile": "unitree-g1",
+  "label": "combined_actions",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+  "preserve_state_between_commands": false,
+  "commands": [
+    {
+      "profile": "unitree-g1",
+      "label": "stand up",
+      "task_id": "stand_up",
+      "policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "steps_requested": 30,
+      "steps_executed": 30,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 30,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905461340431471,
+        "max": 0.7915913842695833,
+        "final": 0.7914656163005802,
+        "mean": 0.791481936712575
+      },
+      "upright_proj": {
+        "min": 0.9994732204816377,
+        "max": 0.9999994034551831,
+        "final": 0.9994732204816377,
+        "mean": 0.9997726998928702
+      },
+      "reward": {
+        "min": 3.429332196145331,
+        "max": 3.4996864709107345,
+        "final": 3.4996864709107345,
+        "mean": 3.4958723079136527
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    },
+    {
+      "profile": "unitree-g1",
+      "label": "walk forward",
+      "task_id": "walk_forward",
+      "policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+      "steps_requested": 30,
+      "steps_executed": 30,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 30,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905462275948902,
+        "max": 0.7915913698633134,
+        "final": 0.7914653146575328,
+        "mean": 0.7914818109507241
+      },
+      "upright_proj": {
+        "min": 0.9994722728502468,
+        "max": 0.9999994021325519,
+        "final": 0.9994722728502468,
+        "mean": 0.9997723050389306
+      },
+      "reward": {
+        "min": 3.4228412901430882,
+        "max": 3.4972002911330975,
+        "final": 3.4937466448762953,
+        "mean": 3.492426829033875
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    }
+  ],
+  "steps_requested": 60,
+  "steps_executed": 60,
+  "rollout_ok": true
+}

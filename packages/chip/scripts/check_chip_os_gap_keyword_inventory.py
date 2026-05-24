@@ -35,9 +35,18 @@ DEFAULT_SCAN_ROOTS = (
     "packages/os/linux/elizaos/manifest.json",
     "packages/os/linux/elizaos/config",
     "packages/os/linux/elizaos/scripts",
+    "packages/os/linux/agent",
+    "packages/os/linux/crates/elizad",
     "packages/os/android/vendor/eliza",
+    "packages/os/android/scripts",
+    "packages/os/android/installer/manifests",
+    "packages/os/android/installer/scripts",
+    "packages/os/android/system-ui/native",
+    "packages/os/android/system-ui/src",
     "packages/app/android/app/build.gradle",
     "packages/app/android/app/src/main",
+    "packages/app/src",
+    "packages/app/scripts",
 )
 
 EXCLUDED_DIRS = {
@@ -148,6 +157,45 @@ def source_paths(roots: list[str]) -> list[Path]:
     return sorted(set(paths), key=lambda p: rel(p))
 
 
+def scan_root_for_path(path: Path, roots: list[str]) -> str:
+    matches: list[tuple[int, str]] = []
+    for item in roots:
+        root = Path(item)
+        if not root.is_absolute():
+            root = REPO / root
+        try:
+            if root.is_file() and path.resolve() == root.resolve():
+                matches.append((len(root.parts), item))
+            elif root.is_dir():
+                path.resolve().relative_to(root.resolve())
+                matches.append((len(root.parts), item))
+        except (OSError, ValueError):
+            continue
+    if not matches:
+        return "unknown"
+    return sorted(matches, reverse=True)[0][1]
+
+
+def scan_root_summary(findings: list[dict[str, Any]], roots: list[str]) -> list[dict[str, Any]]:
+    by_root: dict[str, list[dict[str, Any]]] = {}
+    for item in findings:
+        path = REPO / str(item["path"])
+        by_root.setdefault(scan_root_for_path(path, roots), []).append(item)
+    rows: list[dict[str, Any]] = []
+    for root, items in by_root.items():
+        categories = Counter(str(item["category"]) for item in items)
+        paths = {str(item["path"]) for item in items}
+        rows.append(
+            {
+                "root": root,
+                "findings": len(items),
+                "paths_with_findings": len(paths),
+                "categories": dict(sorted(categories.items())),
+            }
+        )
+    return sorted(rows, key=lambda row: (-int(row["findings"]), str(row["root"])))
+
+
 def is_excluded(path: Path) -> bool:
     relative = rel(path)
     if path.name in EXCLUDED_FILENAMES:
@@ -163,9 +211,18 @@ def is_text_candidate(path: Path) -> bool:
     if path.suffix.lower() not in TEXT_SUFFIXES:
         return False
     try:
-        return path.stat().st_size <= MAX_FILE_BYTES
+        if path.stat().st_size > MAX_FILE_BYTES:
+            return False
+        sample = path.read_bytes()[:4096]
     except OSError:
         return False
+    if b"\0" in sample:
+        return False
+    try:
+        sample.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
 
 
 def line_findings(path: Path, line_number: int, line: str) -> list[dict[str, Any]]:
@@ -214,6 +271,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         findings.extend(scan_file(path))
     by_category = Counter(str(item["category"]) for item in findings)
     by_path = Counter(str(item["path"]) for item in findings)
+    by_root = scan_root_summary(findings, roots)
     status = "blocked" if findings else "pass"
     return {
         "schema": SCHEMA,
@@ -227,6 +285,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
             "paths_with_findings": len(by_path),
         },
         "scan_roots": roots,
+        "scan_root_summary": by_root,
         "top_paths": [{"path": path, "findings": count} for path, count in by_path.most_common(25)],
         "findings": findings,
     }
@@ -242,6 +301,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="repo-relative or absolute source path to scan; may be repeated",
     )
     parser.add_argument("--report", default=str(REPORT))
+    parser.add_argument("--json-only", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -252,6 +312,9 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.report)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.json_only:
+        print(json.dumps(report, indent=2, sort_keys=True))
+        return 0
     summary = report["summary"]
     print(
         f"STATUS: {str(report['status']).upper()} chip_os_gap_keyword_inventory "

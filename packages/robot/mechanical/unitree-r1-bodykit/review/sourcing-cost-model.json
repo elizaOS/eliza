@@ -1,0 +1,205 @@
+{
+  "date": "2026-05-23",
+  "project": "unitree-r1-orange-android-bodykit",
+  "scope": "bodykit only; Unitree R1 base robot, freight, duties, and operator labor are excluded unless explicitly listed",
+  "current_bodykit_evidence": {
+    "bodykit_parts": 37,
+    "step_exported_parts": 22,
+    "step_blocked_parts": 15,
+    "simulator_verdict": "pass",
+    "panel_gap_verdict": "pass",
+    "production_clearance_verdict": "needs-work",
+    "part_review_verdict": "needs-work",
+    "prototype_solid_volume_cm3": 34731.34,
+    "volume_note": "The current mesh volume is a solid proxy from EVT shells. Production shells must be hollowed and rebuilt with wall thickness, ribs, bosses, and split lines before RFQ."
+  },
+  "source_references": [
+    {
+      "name": "Unitree R1 official shop",
+      "url": "https://shop.unitree.com/products/unitree-r1",
+      "used_for": "base robot price and shipping assumptions"
+    },
+    {
+      "name": "Unitree R1 official product page",
+      "url": "https://www.unitree.com/mobile/R1/",
+      "used_for": "platform dimensions and R1 positioning"
+    },
+    {
+      "name": "Unitree R1 developer documentation",
+      "url": "https://support.unitree.com/home/en/R1_developer",
+      "used_for": "reference imagery and platform documentation"
+    },
+    {
+      "name": "Shapeways PA12",
+      "url": "https://www.shapeways.com/materials/pa12",
+      "used_for": "SLS PA12 bounding boxes, wall guidance, and prototype print process"
+    },
+    {
+      "name": "Protolabs injection molding cost/design guidance",
+      "url": "https://www.protolabs.com/resources/design-tips/11-tips-to-reduce-injection-molding-costs/",
+      "used_for": "mold cost drivers, part-size constraints, and DFM planning"
+    },
+    {
+      "name": "Xometry injection molding service",
+      "url": "https://www.xometry.com/injection-molding/",
+      "used_for": "aluminum versus steel tooling and production service path"
+    },
+    {
+      "name": "Xometry injection molding cost guide",
+      "url": "https://www.xometry.com/resources/injection-molding/injection-molding-cost/",
+      "used_for": "tooling and per-part cost structure"
+    },
+    {
+      "name": "Hubs injection molding guide",
+      "url": "https://www.hubs.com/guides/injection-molding/",
+      "used_for": "family molds, cost drivers, and injection molding DFM guidance"
+    },
+    {
+      "name": "Fictiv injection molding services",
+      "url": "https://www.fictiv.com/injection-molding-service",
+      "used_for": "bridge production, aluminum and steel mold sourcing path"
+    },
+    {
+      "name": "Engineered Arts Mesmer",
+      "url": "https://engineeredarts.com/robots/mesmer",
+      "used_for": "realistic humanoid face/head supplier benchmark"
+    },
+    {
+      "name": "Hanson Robotics",
+      "url": "https://www.hansonrobotics.com/",
+      "used_for": "custom humanoid head/face supplier benchmark"
+    },
+    {
+      "name": "NeuroFace",
+      "url": "https://neuroface.tech/en/",
+      "used_for": "standalone robotic head/face supplier benchmark"
+    },
+    {
+      "name": "FACEHEAD.CO",
+      "url": "https://www.facehead.co/",
+      "used_for": "custom animatronic face and sculpture supplier benchmark"
+    },
+    {
+      "name": "Silicone Mask Laboratory",
+      "url": "https://siliconemasklab.com/",
+      "used_for": "custom silicone mask and robot skin benchmark"
+    }
+  ],
+  "materials": {
+    "prototype": [
+      "FDM ASA or PETG for first physical fit",
+      "SLS or MJF PA12 for cleaner functional prototype panels",
+      "SLA or high-resolution resin only for face masters and small inserts"
+    ],
+    "production": [
+      "PC-ABS or ASA for glossy orange armor shells",
+      "Black PC-ABS or ABS for underbody, sole, and detail inserts",
+      "Painted hard plastic face shell for the current no-hair bodykit path"
+    ]
+  },
+  "volume_cost_matrix": [
+    {
+      "quantity": 1,
+      "recommended_process": "FDM ASA/PETG prototype plus filler, sanding, paint, and hand-fit hardware",
+      "bodykit_unit_cost_usd_low": 1800,
+      "bodykit_unit_cost_usd_high": 5200,
+      "upfront_nre_or_tooling_usd_low": 0,
+      "upfront_nre_or_tooling_usd_high": 6000,
+      "unitree_r1_base_robot_usd_low": 4900,
+      "unitree_r1_base_robot_usd_high": 5900,
+      "shipping_duties_robot_usd_low": 300,
+      "shipping_duties_robot_usd_high": 1800,
+      "bodykit_plus_robot_unit_total_usd_low": 7000,
+      "bodykit_plus_robot_unit_total_usd_high": 12900,
+      "notes": "Best path for one-off chassis fit and aesthetic review. Not production-grade surface finish without substantial labor."
+    },
+    {
+      "quantity": 100,
+      "recommended_process": "SLS/MJF PA12 pilot run or bridge tooling for selected repeat parts",
+      "bodykit_unit_cost_usd_low": 750,
+      "bodykit_unit_cost_usd_high": 2200,
+      "upfront_nre_or_tooling_usd_low": 12000,
+      "upfront_nre_or_tooling_usd_high": 85000,
+      "unitree_r1_base_robot_usd_low": 4900,
+      "unitree_r1_base_robot_usd_high": 5900,
+      "shipping_duties_robot_usd_low": 300,
+      "shipping_duties_robot_usd_high": 1800,
+      "bodykit_plus_robot_unit_total_usd_low": 5950,
+      "bodykit_plus_robot_unit_total_usd_high": 9900,
+      "notes": "Use for pilot builds after the bodykit passes production clearance. Paint and hand assembly still dominate."
+    },
+    {
+      "quantity": 1000,
+      "recommended_process": "aluminum or mixed aluminum/steel injection tooling with family tools where DFM allows",
+      "bodykit_unit_cost_usd_low": 190,
+      "bodykit_unit_cost_usd_high": 620,
+      "upfront_nre_or_tooling_usd_low": 180000,
+      "upfront_nre_or_tooling_usd_high": 520000,
+      "unitree_r1_base_robot_usd_low": 4900,
+      "unitree_r1_base_robot_usd_high": 5900,
+      "shipping_duties_robot_usd_low": 250,
+      "shipping_duties_robot_usd_high": 1400,
+      "bodykit_plus_robot_unit_total_usd_low": 5340,
+      "bodykit_plus_robot_unit_total_usd_high": 7920,
+      "notes": "Likely crossover range for molded shells if the design is frozen and common materials/colors are family-tooled."
+    },
+    {
+      "quantity": 10000,
+      "recommended_process": "production steel tooling, multi-cavity or family tools, molded color plus selective paint",
+      "bodykit_unit_cost_usd_low": 70,
+      "bodykit_unit_cost_usd_high": 240,
+      "upfront_nre_or_tooling_usd_low": 380000,
+      "upfront_nre_or_tooling_usd_high": 1200000,
+      "unitree_r1_base_robot_usd_low": 4900,
+      "unitree_r1_base_robot_usd_high": 5900,
+      "shipping_duties_robot_usd_low": 200,
+      "shipping_duties_robot_usd_high": 1100,
+      "bodykit_plus_robot_unit_total_usd_low": 5208,
+      "bodykit_plus_robot_unit_total_usd_high": 7360,
+      "notes": "Requires finished production CAD, steel-safe DFM, QA fixtures, packaging, and supplier-managed color/texture control."
+    }
+  ],
+  "face_head_sourcing_options": [
+    {
+      "path": "current hard-plastic no-hair face shell",
+      "estimated_nre_usd_low": 5000,
+      "estimated_nre_usd_high": 35000,
+      "estimated_unit_usd_low": 40,
+      "estimated_unit_usd_high": 450,
+      "fit": "best for open-source hard-plastic bodykit; requires production CAD rebuild of current donor surface"
+    },
+    {
+      "path": "custom silicone mask or robot skin supplier",
+      "estimated_nre_usd_low": 12000,
+      "estimated_nre_usd_high": 90000,
+      "estimated_unit_usd_low": 350,
+      "estimated_unit_usd_high": 2500,
+      "fit": "use only if the project shifts from hard-plastic mask to soft expressive skin"
+    },
+    {
+      "path": "full animatronic head supplier",
+      "estimated_nre_usd_low": 50000,
+      "estimated_nre_usd_high": 300000,
+      "estimated_unit_usd_low": 10000,
+      "estimated_unit_usd_high": 80000,
+      "fit": "benchmark or premium option; not aligned with current hard-plastic shell scope unless the head becomes a separate purchased module"
+    }
+  ],
+  "rfq_package_required_before_quotes": [
+    "production STEP for all 37 parts",
+    "per-part material and finish callouts",
+    "2D critical dimensions and tolerance drawings for mounting features",
+    "molded wall section analysis",
+    "parting-line and draft review",
+    "clearance report passing static and dynamic gates",
+    "assembly BOM with fasteners, inserts, magnets, adhesive, and paint masks",
+    "rendered appearance target and color/texture chips"
+  ],
+  "open_blockers": [
+    "production clearance verdict is still needs-work",
+    "no current bodykit parts are blocked from STEP export",
+    "part review verdict is still needs-work",
+    "current face shell is a donor-derived parametric grid loft requiring surface-class review and final production DFM",
+    "current cost numbers are planning ranges and require supplier RFQ"
+  ]
+}

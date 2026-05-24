@@ -26,10 +26,11 @@ class _Frame:
 
 
 class _Transport:
-    def __init__(self) -> None:
+    def __init__(self, *, telemetry_error: Exception | None = None) -> None:
         self.connected = False
         self.closed = False
         self.calls: list[tuple[str, object]] = []
+        self.telemetry_error = telemetry_error
 
     async def connect(self) -> None:
         self.connected = True
@@ -54,6 +55,8 @@ class _Transport:
         self.calls.append(("trajectory", {"positions": positions, "kp": kp, "kd": kd}))
 
     async def read_telemetry(self) -> _Frame:
+        if self.telemetry_error is not None:
+            raise self.telemetry_error
         return _Frame(
             joint_positions={f"joint-{idx}": float(idx) for idx in range(ASIMOV1_FULL_ACTION_DIM)},
             joint_velocities={f"joint-{idx}": 0.1 * idx for idx in range(ASIMOV1_FULL_ACTION_DIM)},
@@ -132,5 +135,27 @@ def test_asimov_remote_backend_rejects_bad_real_trajectory_before_publish() -> N
         assert response.ok is False
         assert "wrong width" in response.message
         assert transport.calls == []
+
+    asyncio.run(run())
+
+
+def test_asimov_remote_backend_damps_on_invalid_real_telemetry() -> None:
+    async def run() -> None:
+        transport = _Transport(telemetry_error=ValueError("bad telemetry width"))
+        backend = AsimovRemoteBackend(mock=False, transport=transport)
+        await backend.connect()
+        await backend.handle_command(
+            _cmd("asimov.velocity", {"vx_mps": 0.4, "vy_mps": 0.0, "yaw_rad_s": 0.0})
+        )
+
+        events = await backend.poll_events()
+        safety = events[-1]
+
+        assert safety.event == "safety.telemetry_invalid"
+        assert safety.backend == "asimov_remote"
+        assert safety.data["reason"] == "asimov_invalid_telemetry"
+        assert "bad telemetry width" in safety.data["error"]
+        assert safety.data["mode"] == "DAMP"
+        assert transport.calls[-1] == ("mode", "DAMP")
 
     asyncio.run(run())

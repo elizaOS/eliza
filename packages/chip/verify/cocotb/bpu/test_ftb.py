@@ -35,6 +35,9 @@ async def reset(dut):
     dut.upd_kind.value = 0
     dut.upd_br_valid.value = 0
     dut.upd_alloc.value = 0
+    dut.test_corrupt_parity_valid.value = 0
+    dut.test_corrupt_parity_idx.value = 0
+    dut.test_corrupt_parity_way.value = 0
     for _ in range(4):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -118,6 +121,63 @@ async def ftb_allocate_then_hit(dut):
     assert hit == 1
     assert got_target == target
     assert got_kind == BR_COND
+
+
+@cocotb.test()
+async def ftb_same_cycle_lookup_update_forwards_write(dut):
+    """Lookup/update collisions have defined write-forward semantics.
+
+    SRAM macros differ on read-during-write behavior, so the FTB wrapper must
+    forward the resolver write instead of depending on array implementation
+    details.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    cold_pc = 0x8000_2800
+    cold_target = 0x8000_2C00
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = cold_pc
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = cold_pc
+    dut.upd_target.value = cold_target
+    dut.upd_fall_through_pc.value = cold_pc + 4
+    dut.upd_kind.value = BR_CALL
+    dut.upd_br_valid.value = 0b11
+    dut.upd_alloc.value = 1
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_target.value) == cold_target
+    assert int(dut.lkp_kind.value) == BR_CALL
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 0
+    dut.upd_valid.value = 0
+    dut.upd_alloc.value = 0
+
+    pc = 0x8000_2A00
+    old_target = 0x8000_2E00
+    new_target = 0x8000_3000
+    await update(dut, pc, old_target, BR_COND, alloc=True)
+    await RisingEdge(dut.clk)
+
+    dut.lkp_valid.value = 1
+    dut.lkp_pc.value = pc
+    dut.upd_valid.value = 1
+    dut.upd_pc.value = pc
+    dut.upd_target.value = new_target
+    dut.upd_fall_through_pc.value = pc + 8
+    dut.upd_kind.value = BR_CALL
+    dut.upd_br_valid.value = 0b11
+    dut.upd_alloc.value = 1
+    await Timer(1, units="ps")
+    assert int(dut.lkp_hit.value) == 1
+    assert int(dut.lkp_target.value) == new_target
+    assert int(dut.lkp_fall_through_pc.value) == pc + 8
+    assert int(dut.lkp_kind.value) == BR_CALL
+    await RisingEdge(dut.clk)
+    dut.lkp_valid.value = 0
+    dut.upd_valid.value = 0
+    dut.upd_alloc.value = 0
 
 
 @cocotb.test()
@@ -215,3 +275,27 @@ async def ftb_replacement_preserves_recently_used_way(dut):
     hit, target, _kind = await lookup(dut, pcs[FTB_WAYS])
     assert hit == 1
     assert target == targets[FTB_WAYS]
+
+
+@cocotb.test()
+async def ftb_parity_error_invalidates_entry(dut):
+    """A corrupt FTB payload must miss and invalidate instead of redirecting."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_E000
+    target = 0x8000_F000
+    await update(dut, pc, target, BR_COND, alloc=True)
+    await RisingEdge(dut.clk)
+
+    idx = ftb_index(pc)
+    way = FTB_WAYS - 1
+    dut.test_corrupt_parity_idx.value = idx
+    dut.test_corrupt_parity_way.value = way
+    dut.test_corrupt_parity_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.test_corrupt_parity_valid.value = 0
+
+    hit, got_target, _kind = await lookup(dut, pc)
+    assert hit == 0
+    assert got_target == 0

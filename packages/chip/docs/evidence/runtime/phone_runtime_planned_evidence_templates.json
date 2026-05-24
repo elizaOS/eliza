@@ -1,0 +1,80 @@
+{
+  "schema": "eliza.phone_runtime_planned_evidence_templates.v1",
+  "release_credit": false,
+  "claim_boundary": "repo_side_capture_templates_only_not_runtime_evidence",
+  "planned_evidence_templates": [
+    {
+      "expected_path": "docs/evidence/android/security/verified_boot_acceptance.log",
+      "capture_status": "planned_incomplete",
+      "required_capture": "boot a production-key eliza_ai_soc Android target and record verified-boot state from the live target",
+      "capture_commands": [
+        "export CHIP_ANDROID_ADB_HOSTPORT=<chip-emulator-adb-host:port> && adb connect \"$CHIP_ANDROID_ADB_HOSTPORT\"",
+        "mkdir -p docs/evidence/android/security && adb -s \"$CHIP_ANDROID_ADB_HOSTPORT\" shell getprop ro.boot.verifiedbootstate | tee docs/evidence/android/security/verified_boot_acceptance.log"
+      ],
+      "success_criteria": [
+        "required verified-boot success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED or FAIL markers are present"
+      ]
+    },
+    {
+      "expected_path": "docs/evidence/android/security/tampered_boot_rejection.log",
+      "capture_status": "planned_incomplete",
+      "required_capture": "run the approved tampered boot image rejection flow against production verified-boot policy",
+      "capture_commands": [
+        "test -n \"$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND\"",
+        "mkdir -p docs/evidence/android/security && sh -c \"$ELIZA_TAMPERED_BOOT_REJECTION_COMMAND\" | tee docs/evidence/android/security/tampered_boot_rejection.log"
+      ],
+      "success_criteria": [
+        "required tamper-rejection success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, or image-acceptance markers are present"
+      ]
+    },
+    {
+      "expected_path": "docs/evidence/android/security/rollback_rejection.log",
+      "capture_status": "planned_incomplete",
+      "required_capture": "run the approved older rollback-index image rejection flow against rollback policy",
+      "capture_commands": [
+        "test -n \"$ELIZA_ROLLBACK_REJECTION_COMMAND\"",
+        "mkdir -p docs/evidence/android/security && sh -c \"$ELIZA_ROLLBACK_REJECTION_COMMAND\" | tee docs/evidence/android/security/rollback_rejection.log"
+      ],
+      "success_criteria": [
+        "required rollback-rejection success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, or image-acceptance markers are present"
+      ]
+    },
+    {
+      "expected_path": "docs/evidence/android/security/debug_lock_key_provisioning.log",
+      "capture_status": "planned_incomplete",
+      "required_capture": "record production debug-lock and key-provisioning state from the target provisioning flow",
+      "capture_commands": [
+        "test -n \"$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND\"",
+        "mkdir -p docs/evidence/android/security && sh -c \"$ELIZA_DEBUG_LOCK_KEY_PROVISIONING_COMMAND\" | tee docs/evidence/android/security/debug_lock_key_provisioning.log"
+      ],
+      "success_criteria": [
+        "required debug-lock and production-key success markers are present",
+        "RESULT is zero",
+        "no forbidden BLOCKED, FAIL, test-key, or development-key markers are present"
+      ]
+    },
+    {
+      "expected_path": "docs/evidence/android/power/sustained_npu_power_thermal_trace.json",
+      "capture_status": "planned_incomplete",
+      "required_capture": "calibrated sustained NPU workload power, thermal, frequency, and throttle trace from a booted riscv64 target",
+      "capture_commands": [
+        "test -n \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND\"",
+        "mkdir -p docs/evidence/android/power && sh -c \"$ELIZA_CALIBRATED_POWER_THERMAL_CAPTURE_COMMAND --output docs/evidence/android/power/sustained_npu_power_thermal_trace.json\""
+      ],
+      "success_criteria": [
+        "JSON status is PASS",
+        "result is zero",
+        "device CPU ABI is riscv64",
+        "NPU workload is sustained",
+        "instrumentation is calibrated",
+        "thermal throttling is not observed"
+      ]
+    }
+  ]
+}

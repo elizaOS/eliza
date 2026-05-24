@@ -21,6 +21,7 @@ async def reset(dut):
     dut.commit_push.value = 0
     dut.commit_push_addr.value = 0
     dut.commit_pop.value = 0
+    dut.flush.value = 0
     dut.restore_valid.value = 0
     dut.restore_top.value = 0
     dut.restore_entry_valid.value = 0
@@ -71,6 +72,35 @@ async def ras_underflow_pulses_pmu(dut):
     await RisingEdge(dut.clk)
     assert int(dut.pmu_underflow.value) == 1
     dut.spec_pop.value = 0
+
+
+@cocotb.test()
+async def ras_architectural_top_fallback_when_spec_empty(dut):
+    """A committed call can seed return prediction when speculation is empty."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    return_pc = 0x8000_0440
+    dut.commit_push.value = 1
+    dut.commit_push_addr.value = return_pc
+    await RisingEdge(dut.clk)
+    dut.commit_push.value = 0
+    await RisingEdge(dut.clk)
+
+    assert int(dut.spec_top_valid.value) == 1
+    assert int(dut.spec_top_addr.value) == return_pc
+
+    dut.spec_pop.value = 1
+    await RisingEdge(dut.clk)
+    dut.spec_pop.value = 0
+    await RisingEdge(dut.clk)
+    assert int(dut.pmu_underflow.value) == 0
+
+    dut.commit_pop.value = 1
+    await RisingEdge(dut.clk)
+    dut.commit_pop.value = 0
+    await RisingEdge(dut.clk)
+    assert int(dut.spec_top_valid.value) == 0
 
 
 @cocotb.test()
@@ -149,3 +179,52 @@ async def ras_restore_reinstates_popped_top_entry(dut):
 
     assert int(dut.spec_top_valid.value) == 1
     assert int(dut.spec_top_addr.value) == snapshot_addr
+
+
+@cocotb.test()
+async def ras_restore_with_committed_call_push_seeds_speculative_top(dut):
+    """A mispredicted call restore must also expose the resolved return."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    call_return = 0x8000_0124
+
+    dut.restore_valid.value = 1
+    dut.restore_top.value = 0
+    dut.commit_push.value = 1
+    dut.commit_push_addr.value = call_return
+    await RisingEdge(dut.clk)
+    dut.restore_valid.value = 0
+    dut.commit_push.value = 0
+    await RisingEdge(dut.clk)
+
+    assert int(dut.spec_top_valid.value) == 1
+    assert int(dut.spec_top_addr.value) == call_return
+
+
+@cocotb.test()
+async def ras_restore_with_committed_return_pop_removes_restored_top(dut):
+    """A mispredicted return restore must still retire the resolved pop."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    await push(dut, 0x8000_0100)
+    await push(dut, 0x8000_0200)
+    snapshot_idx = int(dut.spec_top_idx.value)
+    snapshot_addr = int(dut.spec_top_addr.value)
+
+    await pop(dut)
+
+    dut.restore_valid.value = 1
+    dut.restore_top.value = snapshot_idx
+    dut.restore_entry_valid.value = 1
+    dut.restore_entry_addr.value = snapshot_addr
+    dut.commit_pop.value = 1
+    await RisingEdge(dut.clk)
+    dut.restore_valid.value = 0
+    dut.restore_entry_valid.value = 0
+    dut.commit_pop.value = 0
+    await RisingEdge(dut.clk)
+
+    assert int(dut.spec_top_valid.value) == 1
+    assert int(dut.spec_top_addr.value) == 0x8000_0100

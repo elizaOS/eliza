@@ -14,7 +14,9 @@ without launching QEMU. See ``test_qemu_virt_smoke.py``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -26,7 +28,24 @@ from typing import Any
 HERE = Path(__file__).resolve().parent
 VARIANT_DIR = HERE.parent
 BASH_HARNESS = HERE / "qemu_virt_boot_riscv64.sh"
-DEFAULT_CHIP_REPORT = VARIANT_DIR.parents[2] / "chip/build/reports/qemu_virt_smoke.json"
+
+
+def _repo_root_from_variant(variant_dir: Path) -> Path:
+    """Return the repository root when the variant is inside packages/os.
+
+    The script is often run from a Docker bind mount such as /build, where
+    ``Path.parents[2]`` is not deep enough. Walk by structure instead.
+    """
+    for candidate in (variant_dir, *variant_dir.parents):
+        if (candidate / "packages" / "os" / "linux" / "elizaos").is_dir():
+            return candidate
+    return variant_dir
+
+
+DEFAULT_CHIP_REPORT = (
+    _repo_root_from_variant(VARIANT_DIR) / "packages/chip/build/reports/qemu_virt_smoke.json"
+)
+REPO_ROOT = _repo_root_from_variant(VARIANT_DIR)
 
 EVIDENCE_SCHEMA = "eliza.os.linux.qemu_virt_boot.v1"
 CLAIM_BOUNDARY = (
@@ -55,6 +74,7 @@ _REQUIRED_FIELDS: dict[str, tuple[type, ...]] = {
     "markers_found": (list,),
     "markers_missing": (list,),
     "forbidden_markers_present": (list,),
+    "iso_boot_artifacts": (dict,),
     "provenance": (str,),
 }
 
@@ -65,6 +85,46 @@ REQUIRED_MARKERS = (
     "elizaos-agent-ready",
     "elizaos-tui-ready",
 )
+REQUIRED_ISO_BOOT_ARTIFACTS = (
+    "riscv64_removable_uefi_loader",
+    "grub_config",
+    "riscv64_live_kernel",
+    "riscv64_live_initrd",
+)
+ISO_BOOT_ARTIFACT_PATTERNS = {
+    "riscv64_removable_uefi_loader": "*/efi/boot/bootriscv64.efi",
+    "grub_config": "*/boot/grub/grub.cfg",
+    "riscv64_live_kernel": "*/live/vmlinux-*riscv64",
+    "riscv64_live_initrd": "*/live/initrd.img-*riscv64",
+}
+
+
+def _prepend_path(path: Path) -> None:
+    current = os.environ.get("PATH", "")
+    text = str(path)
+    parts = current.split(os.pathsep) if current else []
+    if text not in parts:
+        os.environ["PATH"] = text if not current else os.pathsep.join([text, current])
+
+
+def _repo_qemu_candidates() -> tuple[Path, ...]:
+    return (
+        REPO_ROOT / "packages/chip/tools/bin/qemu-system-riscv64",
+        REPO_ROOT / "packages/chip/external/qemu-build/bin/qemu-system-riscv64",
+        REPO_ROOT
+        / "packages/chip/external/xpack-qemu-riscv-9.2.4-1/bin/qemu-system-riscv64",
+    )
+
+
+def _ensure_qemu_on_path() -> str | None:
+    for candidate in _repo_qemu_candidates():
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            _prepend_path(candidate.parent)
+            return str(candidate)
+    found = shutil.which("qemu-system-riscv64")
+    if found:
+        return found
+    return None
 
 
 class EvidenceValidationError(ValueError):
@@ -96,6 +156,80 @@ def _validate_string_list(field: str, value: Iterable[Any]) -> None:
             raise EvidenceValidationError(
                 f"field {field!r}[{idx}] is not a string: {item!r}"
             )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def inspect_iso_boot_artifacts(iso_path: Path) -> dict[str, Any]:
+    """List RISC-V UEFI/GRUB artifacts inside an ISO using local host tools."""
+    import fnmatch
+
+    commands: list[list[str]] = []
+    if shutil.which("isoinfo"):
+        commands.extend(
+            [
+                ["isoinfo", "-R", "-f", "-i", str(iso_path)],
+                ["isoinfo", "-f", "-i", str(iso_path)],
+            ]
+        )
+    if shutil.which("bsdtar"):
+        commands.append(["bsdtar", "-tf", str(iso_path)])
+    if not commands:
+        raise EvidenceValidationError(
+            "isoinfo or bsdtar is required to inspect riscv64 ISO boot artifacts"
+        )
+    errors: list[str] = []
+    paths: list[str] = []
+    for command in commands:
+        proc = subprocess.run(command, text=True, capture_output=True, check=False)
+        if proc.returncode == 0 and proc.stdout.strip():
+            paths = [
+                "/" + line.strip().lstrip("/")
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            ]
+            break
+        errors.append(proc.stderr.strip() or f"{command!r} returned {proc.returncode}")
+    if not paths:
+        raise EvidenceValidationError(
+            "could not list ISO contents while inspecting boot artifacts: "
+            + " | ".join(errors)
+        )
+    lower_paths = [path.lower() for path in paths]
+    found: dict[str, str] = {}
+    missing: list[str] = []
+    for key, pattern in ISO_BOOT_ARTIFACT_PATTERNS.items():
+        match = next(
+            (
+                paths[index]
+                for index, path in enumerate(lower_paths)
+                if fnmatch.fnmatch(path, pattern)
+            ),
+            None,
+        )
+        if match is None:
+            missing.append(key)
+        else:
+            found[key] = match
+    return {"found": found, "missing": missing}
+
+
+def _resolve_evidence_path(path_value: str, evidence_path: Path) -> Path:
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    bases = (evidence_path.parent, VARIANT_DIR)
+    for base in bases:
+        candidate = base / path
+        if candidate.exists():
+            return candidate
+    return VARIANT_DIR / path
 
 
 def validate_evidence(doc: dict[str, Any]) -> None:
@@ -147,17 +281,117 @@ def validate_evidence(doc: dict[str, Any]) -> None:
     _validate_string_list("markers_found", doc["markers_found"])
     _validate_string_list("markers_missing", doc["markers_missing"])
     _validate_string_list("forbidden_markers_present", doc["forbidden_markers_present"])
+    iso_boot_artifacts = doc["iso_boot_artifacts"]
+    found = iso_boot_artifacts.get("found")
+    missing_artifacts = iso_boot_artifacts.get("missing")
+    if not isinstance(found, dict):
+        raise EvidenceValidationError("iso_boot_artifacts.found must be an object")
+    if not isinstance(missing_artifacts, list):
+        raise EvidenceValidationError("iso_boot_artifacts.missing must be a list")
+    _validate_string_list("iso_boot_artifacts.missing", missing_artifacts)
+    for key in REQUIRED_ISO_BOOT_ARTIFACTS:
+        value = found.get(key)
+        if key not in missing_artifacts and not isinstance(value, str):
+            raise EvidenceValidationError(
+                f"iso_boot_artifacts.found missing required string key: {key}"
+            )
+
+
+def validate_completed_existing_evidence(doc: dict[str, Any], evidence_path: Path) -> None:
+    validate_evidence(doc)
+    if not doc["boot_completed"]:
+        raise EvidenceValidationError(
+            "existing evidence has boot_completed=false "
+            f"markers_missing={doc['markers_missing']} "
+            f"forbidden_markers_present={doc['forbidden_markers_present']}"
+        )
+    missing_markers = [marker for marker in REQUIRED_MARKERS if marker not in doc["markers_found"]]
+    if missing_markers:
+        raise EvidenceValidationError(f"existing evidence missing required markers: {missing_markers}")
+    if doc["markers_missing"]:
+        raise EvidenceValidationError(f"existing evidence markers_missing is nonempty: {doc['markers_missing']}")
+    if doc["forbidden_markers_present"]:
+        raise EvidenceValidationError(
+            f"existing evidence has forbidden markers: {doc['forbidden_markers_present']}"
+        )
+
+    iso_path = Path(doc["iso_path"])
+    if not iso_path.is_file():
+        raise EvidenceValidationError(f"existing evidence ISO path is missing: {iso_path}")
+    if _sha256_file(iso_path) != doc["iso_sha256"]:
+        raise EvidenceValidationError(f"existing evidence ISO sha256 mismatch: {iso_path}")
+
+    transcript_path = _resolve_evidence_path(doc["transcript_path"], evidence_path)
+    if not transcript_path.is_file():
+        raise EvidenceValidationError(
+            f"existing evidence transcript path is missing: {transcript_path}"
+        )
+    if _sha256_file(transcript_path) != doc["transcript_sha256"]:
+        raise EvidenceValidationError(
+            f"existing evidence transcript sha256 mismatch: {transcript_path}"
+        )
 
     if doc["boot_completed"]:
         if doc["forbidden_markers_present"]:
             raise EvidenceValidationError(
                 "boot_completed=true but forbidden_markers_present is non-empty"
             )
+        missing_artifacts = doc["iso_boot_artifacts"].get("missing", [])
+        if missing_artifacts:
+            raise EvidenceValidationError(
+                "boot_completed=true but ISO boot artifacts are missing: "
+                f"{missing_artifacts}"
+            )
         for marker in REQUIRED_MARKERS:
             if marker not in doc["markers_found"]:
                 raise EvidenceValidationError(
                     f"boot_completed=true but required marker missing: {marker!r}"
                 )
+
+
+def refresh_evidence_markers_from_transcript(doc: dict[str, Any], evidence_path: Path) -> dict[str, Any]:
+    """Recompute marker lists and transcript hash from the captured transcript."""
+    iso_path = Path(str(doc.get("iso_path", "")))
+    if not iso_path.is_file():
+        raise EvidenceValidationError(f"existing evidence ISO path is missing: {iso_path}")
+    try:
+        iso_boot_artifacts = inspect_iso_boot_artifacts(iso_path)
+    except EvidenceValidationError:
+        if not isinstance(doc.get("iso_boot_artifacts"), dict):
+            raise
+        iso_boot_artifacts = doc["iso_boot_artifacts"]
+    doc = {**doc, "iso_boot_artifacts": iso_boot_artifacts}
+    validate_evidence(doc)
+    transcript_path = _resolve_evidence_path(doc["transcript_path"], evidence_path)
+    if not transcript_path.is_file():
+        raise EvidenceValidationError(
+            f"existing evidence transcript path is missing: {transcript_path}"
+        )
+    transcript = transcript_path.read_text(encoding="utf-8", errors="replace")
+    refreshed = dict(doc)
+    markers_found = [marker for marker in REQUIRED_MARKERS if marker in transcript]
+    refreshed["markers_found"] = markers_found
+    refreshed["markers_missing"] = [
+        marker for marker in REQUIRED_MARKERS if marker not in markers_found
+    ]
+    forbidden = (
+        "Kernel panic",
+        "Oops",
+        "BUG",
+        "unhandled signal 4",
+        "Illegal instruction",
+    )
+    refreshed["forbidden_markers_present"] = [
+        marker for marker in forbidden if marker in transcript
+    ]
+    refreshed["transcript_sha256"] = _sha256_file(transcript_path)
+    refreshed["boot_completed"] = (
+        not refreshed["forbidden_markers_present"]
+        and not refreshed["iso_boot_artifacts"].get("missing", [])
+        and all(marker in markers_found for marker in REQUIRED_MARKERS)
+    )
+    validate_evidence(refreshed)
+    return refreshed
 
 
 def load_evidence(path: Path) -> dict[str, Any]:
@@ -293,6 +527,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=DEFAULT_CHIP_REPORT,
         help="structured report mirror for chip OS boot inventory",
     )
+    parser.add_argument(
+        "--validate-existing",
+        action="store_true",
+        help=(
+            "Validate --evidence and refresh --report without launching QEMU. "
+            "Fails unless the evidence proves a completed boot and artifact hashes match."
+        ),
+    )
+    parser.add_argument(
+        "--refresh-existing",
+        action="store_true",
+        help=(
+            "Recompute marker fields and transcript_sha256 from --transcript/recorded "
+            "transcript without launching QEMU, then refresh --evidence and --report."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -315,6 +565,103 @@ def _resolve_iso(explicit: Path | None) -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    if args.refresh_existing:
+        doc: dict[str, Any] | None = None
+        try:
+            doc = load_evidence(args.evidence)
+            if args.transcript != VARIANT_DIR / "evidence" / "qemu_virt_boot.transcript.log":
+                doc = {**doc, "transcript_path": str(args.transcript)}
+            doc = refresh_evidence_markers_from_transcript(doc, args.evidence)
+            args.evidence.write_text(
+                json.dumps(doc, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        except (FileNotFoundError, EvidenceValidationError) as exc:
+            message = f"qemu_virt_smoke: ERROR: {exc}"
+            write_report(
+                args.report,
+                status="blocked",
+                message=message,
+                evidence_path=args.evidence,
+                iso=None,
+                findings=[
+                    finding(
+                        "os_rv64_qemu_virt_existing_evidence_invalid",
+                        message,
+                        "Rerun qemu_virt_smoke.py without --refresh-existing to capture fresh boot evidence.",
+                    )
+                ],
+                evidence=doc if isinstance(doc, dict) else None,
+            )
+            print(message, file=sys.stderr)
+            return 2
+        status = "pass" if doc["boot_completed"] else "blocked"
+        message = (
+            "qemu_virt_smoke: PASS existing evidence refreshed"
+            if status == "pass"
+            else "qemu_virt_smoke: BLOCKED existing evidence refreshed; "
+            f"markers_missing={doc['markers_missing']} "
+            f"forbidden_markers_present={doc['forbidden_markers_present']}"
+        )
+        findings = None
+        if status == "blocked":
+            findings = [
+                finding(
+                    "os_rv64_qemu_virt_boot_incomplete",
+                    message,
+                    "Rebuild/recapture qemu-virt evidence after fixing the missing runtime markers.",
+                )
+            ]
+        write_report(
+            args.report,
+            status=status,
+            message=message,
+            evidence_path=args.evidence,
+            iso=Path(doc["iso_path"]),
+            evidence=doc,
+            findings=findings,
+        )
+        print(message)
+        return 0 if status == "pass" else 2
+
+    if args.validate_existing:
+        doc: dict[str, Any] | None = None
+        try:
+            doc = load_evidence(args.evidence)
+            validate_completed_existing_evidence(doc, args.evidence)
+        except (FileNotFoundError, EvidenceValidationError) as exc:
+            message = f"qemu_virt_smoke: ERROR: {exc}"
+            write_report(
+                args.report,
+                status="blocked",
+                message=message,
+                evidence_path=args.evidence,
+                iso=None,
+                findings=[
+                    finding(
+                        "os_rv64_qemu_virt_existing_evidence_invalid",
+                        message,
+                        "Rerun qemu_virt_smoke.py without --validate-existing to capture fresh boot evidence.",
+                    )
+                ],
+                evidence=doc if isinstance(doc, dict) else None,
+            )
+            print(message, file=sys.stderr)
+            return 2
+        write_report(
+            args.report,
+            status="pass",
+            message="qemu_virt_smoke: PASS existing evidence validated",
+            evidence_path=args.evidence,
+            iso=Path(doc["iso_path"]),
+            evidence=doc,
+        )
+        print(
+            f"qemu_virt_smoke: PASS existing evidence validated: "
+            f"evidence={args.evidence} duration_s={doc['duration_s']}"
+        )
+        return 0
 
     iso = _resolve_iso(args.iso)
     if iso is None:
@@ -361,10 +708,12 @@ def main(argv: list[str] | None = None) -> int:
         print(message, file=sys.stderr)
         return 2
 
-    if shutil.which("qemu-system-riscv64") is None:
+    qemu = _ensure_qemu_on_path()
+    if qemu is None:
         message = (
             "STATUS: BLOCKED os_rv64.qemu_virt_smoke - qemu-system-riscv64 not on PATH; "
-            "source packages/chip/tools/env.sh (native oss-cad-suite) then re-run."
+            "source packages/chip/tools/env.sh (native oss-cad-suite), install a riscv64 "
+            "QEMU system emulator, or stage one at packages/chip/tools/bin/qemu-system-riscv64."
         )
         write_report(
             args.report,
@@ -375,8 +724,8 @@ def main(argv: list[str] | None = None) -> int:
             findings=[
                 finding(
                     "os_rv64_qemu_system_riscv64_missing",
-                    "qemu-system-riscv64 is not on PATH",
-                    "Source packages/chip/tools/env.sh or install a riscv64 QEMU system emulator.",
+                    "qemu-system-riscv64 is not on PATH and no repo-local QEMU candidate is executable",
+                    "Source packages/chip/tools/env.sh, install a riscv64 QEMU system emulator, or stage one under packages/chip/tools/bin.",
                 )
             ],
         )

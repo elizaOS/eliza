@@ -10,9 +10,9 @@
     "contact_tolerance_mm": 0.02,
     "seat_tolerance_mm": 0.05
   },
-  "total_parts_in_manifest": 123,
-  "parts_loaded": 123,
-  "parts_placed_in_sequence": 94,
+  "total_parts_in_manifest": 222,
+  "parts_loaded": 222,
+  "parts_placed_in_sequence": 99,
   "steps": [
     {
       "step": 1,
@@ -86,6 +86,34 @@
         },
         {
           "part": "orange_screw_boss_6",
+          "insertion_axis": "+Z",
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 1.0,
+          "blocking_parts": []
+        },
+        {
+          "part": "orange_screw_boss_7",
+          "insertion_axis": "+Z",
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 1.0,
+          "blocking_parts": []
+        },
+        {
+          "part": "orange_screw_boss_8",
+          "insertion_axis": "+Z",
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 1.0,
+          "blocking_parts": []
+        },
+        {
+          "part": "orange_screw_boss_9",
+          "insertion_axis": "+Z",
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 1.0,
+          "blocking_parts": []
+        },
+        {
+          "part": "orange_screw_boss_10",
           "insertion_axis": "+Z",
           "path_clear": true,
           "min_clearance_during_insertion_mm": 1.0,
@@ -342,7 +370,7 @@
           "part": "rear_camera_cover_adhesive_right",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.795,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         }
       ]
@@ -381,13 +409,13 @@
     },
     {
       "step": 5,
-      "label": "Battery pouch placed between locating ribs, FPC routed",
+      "label": "Battery back-void foam pad bonded to inner back wall",
       "insertion_axis": "+Z",
-      "tool": "S3 battery jig, pneumatic 8 N press",
+      "tool": "S3 foam-pad placement nest + PSA roller",
       "pass": true,
       "parts": [
         {
-          "part": "battery_pouch",
+          "part": "battery_back_void_foam_pad",
           "insertion_axis": "+Z",
           "path_clear": true,
           "min_clearance_during_insertion_mm": 1.0,
@@ -397,19 +425,33 @@
     },
     {
       "step": 6,
+      "label": "Battery pouch placed between locating ribs, FPC routed",
+      "insertion_axis": "+Z",
+      "tool": "S3 battery jig, pneumatic 8 N press",
+      "pass": true,
+      "parts": [
+        {
+          "part": "battery_pouch",
+          "insertion_axis": "+Z",
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 0.42,
+          "blocking_parts": []
+        }
+      ]
+    },
+    {
+      "step": 7,
       "label": "Main PCB seated against boss 1/4 datum + EMI shield cans",
       "insertion_axis": "+Z",
       "tool": "S2 PCB datum nest, Wera 7440 torque driver",
-      "pass": false,
+      "pass": true,
       "parts": [
         {
           "part": "main_pcb",
           "insertion_axis": "+Z",
-          "path_clear": false,
-          "min_clearance_during_insertion_mm": -2.785,
-          "blocking_parts": [
-            "orange_usb_reinforcement_saddle"
-          ]
+          "path_clear": true,
+          "min_clearance_during_insertion_mm": 1.0,
+          "blocking_parts": []
         },
         {
           "part": "soc_shield_can",
@@ -435,7 +477,7 @@
       ]
     },
     {
-      "step": 7,
+      "step": 8,
       "label": "USB-C receptacle seated into reinforcement saddle",
       "insertion_axis": "+Z",
       "tool": "USB-C placement nest",
@@ -451,7 +493,7 @@
       ]
     },
     {
-      "step": 8,
+      "step": 9,
       "label": "USB-C perimeter gaskets applied around receptacle",
       "insertion_axis": "+Z",
       "tool": "gasket pick + seat",
@@ -488,7 +530,7 @@
       ]
     },
     {
-      "step": 9,
+      "step": 10,
       "label": "Haptic LRA + bottom speaker + acoustic meshes placed",
       "insertion_axis": "+Z",
       "tool": "component pick + PSA",
@@ -505,7 +547,7 @@
           "part": "bottom_speaker_module",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.9,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
@@ -546,7 +588,7 @@
       ]
     },
     {
-      "step": 10,
+      "step": 11,
       "label": "Bottom + top mics placed on board islands",
       "insertion_axis": "+Z",
       "tool": "fine-pitch pick",
@@ -569,7 +611,7 @@
       ]
     },
     {
-      "step": 11,
+      "step": 12,
       "label": "Split-board interconnect (connectors + flex tails + side loop)",
       "insertion_axis": "+Z",
       "tool": "FPC routing combs S4-FIX-004, locking probe",
@@ -613,7 +655,7 @@
       ]
     },
     {
-      "step": 12,
+      "step": 13,
       "label": "Display FPC connector + bend keepout routed",
       "insertion_axis": "+Z",
       "tool": "FPC routing combs, locking probe",
@@ -623,7 +665,7 @@
           "part": "display_fpc_connector",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 0.925,
+          "min_clearance_during_insertion_mm": 1.0,
           "blocking_parts": []
         },
         {
@@ -636,7 +678,7 @@
       ]
     },
     {
-      "step": 13,
+      "step": 14,
       "label": "Earpiece receiver + gasket placed (top island)",
       "insertion_axis": "+Z",
       "tool": "component pick + gasket",
@@ -659,7 +701,7 @@
       ]
     },
     {
-      "step": 14,
+      "step": 15,
       "label": "Front camera module placed under top island",
       "insertion_axis": "+Z",
       "tool": "vacuum pick, front_camera_alignment_pin",
@@ -675,7 +717,7 @@
       ]
     },
     {
-      "step": 15,
+      "step": 16,
       "label": "Display module + perimeter adhesive bonded",
       "insertion_axis": "+Z",
       "tool": "S1 screen_bond_clamp_frame, 90 s cure",
@@ -719,7 +761,7 @@
       ]
     },
     {
-      "step": 16,
+      "step": 17,
       "label": "Cover glass bonded over display",
       "insertion_axis": "+Z",
       "tool": "screen bond clamp, OCA roller",
@@ -735,17 +777,17 @@
       ]
     },
     {
-      "step": 17,
-      "label": "Side-frame closure: snap onto perimeter + drive 6 screws",
+      "step": 18,
+      "label": "Side-frame closure: snap onto perimeter + drive 10 screws",
       "insertion_axis": "+Z",
-      "tool": "S5 snap platen 25 N (8 snaps), Wera 7440 (6 screws)",
+      "tool": "S5 snap platen 25 N (8 snaps), Wera 7440 torque map (10 screws)",
       "pass": true,
       "parts": [
         {
           "part": "orange_side_frame",
           "insertion_axis": "+Z",
           "path_clear": true,
-          "min_clearance_during_insertion_mm": 2.15,
+          "min_clearance_during_insertion_mm": 0.75,
           "blocking_parts": []
         },
         {
@@ -800,7 +842,7 @@
       ]
     },
     {
-      "step": 18,
+      "step": 19,
       "label": "Power button cap + gasket inserted through side frame (-X)",
       "insertion_axis": "-X",
       "tool": "side-key insertion tool",
@@ -823,7 +865,7 @@
       ]
     },
     {
-      "step": 19,
+      "step": 20,
       "label": "Volume button cap + gasket inserted through side frame (+X)",
       "insertion_axis": "+X",
       "tool": "side-key insertion tool",
@@ -848,7 +890,7 @@
   ],
   "fastener_access": {
     "pass": true,
-    "count": 14,
+    "count": 18,
     "fasteners": [
       {
         "fastener": "orange_screw_boss_1",
@@ -877,6 +919,26 @@
       },
       {
         "fastener": "orange_screw_boss_6",
+        "accessible": true,
+        "obstructions": []
+      },
+      {
+        "fastener": "orange_screw_boss_7",
+        "accessible": true,
+        "obstructions": []
+      },
+      {
+        "fastener": "orange_screw_boss_8",
+        "accessible": true,
+        "obstructions": []
+      },
+      {
+        "fastener": "orange_screw_boss_9",
+        "accessible": true,
+        "obstructions": []
+      },
+      {
+        "fastener": "orange_screw_boss_10",
         "accessible": true,
         "obstructions": []
       },
@@ -931,7 +993,7 @@
         "keepout": "display_fpc_bend_keepout",
         "connector": "display_fpc_connector",
         "unpinched": true,
-        "min_clearance_mm": 1.226,
+        "min_clearance_mm": 0.11,
         "pinching_parts": []
       },
       {
@@ -960,9 +1022,7 @@
       }
     ]
   },
-  "trapped_parts": [
-    "main_pcb"
-  ],
-  "device_assemblable": false,
-  "runtime_s": 17.94
+  "trapped_parts": [],
+  "device_assemblable": true,
+  "runtime_s": 13.47
 }

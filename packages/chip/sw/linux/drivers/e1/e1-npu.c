@@ -3,7 +3,7 @@
  * Minimal Eliza e1 NPU Linux driver source.
  *
  * Import this file into an external Linux tree before building. The checked-in
- * repository only owns the platform contract and BSP source scaffold.
+ * repository owns the platform contract and BSP source package.
  */
 
 #include <linux/fs.h>

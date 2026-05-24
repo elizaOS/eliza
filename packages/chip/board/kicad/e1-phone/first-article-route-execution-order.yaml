@@ -295,9 +295,9 @@ alternate_display_first_article_gate:
       first_article_release_allowed: false
 
 release_output_inventory:
-  routed_release_required_output_count: 20
+  routed_release_required_output_count: 21
   routed_release_present_output_count: 0
-  production_factory_required_output_count: 20
+  production_factory_required_output_count: 21
   production_factory_present_output_count: 0
   routed_layout_ready_to_fabricate: false
   routed_layout_ready_for_enclosure: false

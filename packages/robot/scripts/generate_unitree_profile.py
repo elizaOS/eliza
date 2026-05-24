@@ -1,5 +1,5 @@
 """Generate `profiles/<unitree-*>/profile.yaml` + copy MJCF assets from
-mujoco_menagerie. Parses the MJCF for joint names, ranges, and torque
+mujoco_menagerie or Unitree's MuJoCo robot bundle. Parses the MJCF for joint names, ranges, and torque
 limits, infers a group split from joint name patterns, and writes a
 Pydantic-validated YAML to disk that matches the canonical
 `RobotProfile` schema in `eliza_robot/profiles/schema.py`.
@@ -7,6 +7,7 @@ Pydantic-validated YAML to disk that matches the canonical
 Run:
     uv run python scripts/generate_unitree_profile.py --robot g1
     uv run python scripts/generate_unitree_profile.py --robot h1
+    uv run python scripts/generate_unitree_profile.py --robot r1
 """
 
 from __future__ import annotations
@@ -22,11 +23,13 @@ import yaml
 
 PKG_ROOT = Path(__file__).resolve().parents[1]
 MENAGERIE_ROOT = PKG_ROOT / "vendor" / "mujoco_menagerie"
+UNITREE_MUJOCO_ROOT = PKG_ROOT / "vendor" / "unitree_mujoco"
 PROFILES_ROOT = PKG_ROOT / "profiles"
 ASSETS_ROOT = PKG_ROOT / "assets" / "profiles"
 
 ROBOTS: dict[str, dict] = {
     "g1": {
+        "source_root": MENAGERIE_ROOT,
         "menagerie_dir": "unitree_g1",
         "mjcf": "g1.xml",
         "scene": "scene.xml",
@@ -43,6 +46,7 @@ ROBOTS: dict[str, dict] = {
         "imu_site": "imu_in_torso",
     },
     "h1": {
+        "source_root": MENAGERIE_ROOT,
         "menagerie_dir": "unitree_h1",
         "mjcf": "h1.xml",
         "scene": "scene.xml",
@@ -56,6 +60,22 @@ ROBOTS: dict[str, dict] = {
         "stand_qpos_key": "home",
         "head_link": "torso_link",
         "imu_site": "imu_in_torso",
+    },
+    "r1": {
+        "source_root": UNITREE_MUJOCO_ROOT,
+        "menagerie_dir": "unitree_robots/r1",
+        "mjcf": "R1_C++.xml",
+        "scene": "scene.xml",
+        "profile_id": "unitree-r1",
+        "name": "Unitree R1",
+        "description": (
+            "29-actuator Unitree R1 humanoid. MJCF and STL assets sourced from "
+            "unitreerobotics/unitree_mujoco/unitree_robots/r1 at the vendored commit."
+        ),
+        "default_height_m": 0.74,
+        "stand_qpos_key": "home",
+        "head_link": "torso_link",
+        "imu_site": "imu",
     },
 }
 
@@ -91,6 +111,12 @@ def _parse_actuated_joints(mjcf_path: Path) -> list[dict]:
         rng = j.attrib.get("range", "0 0").split()
         lower = float(rng[0]) if len(rng) == 2 else -3.14
         upper = float(rng[1]) if len(rng) == 2 else 3.14
+        if upper <= lower:
+            # Unitree R1's public MuJoCo bundle includes placeholder motors
+            # for unmodeled waist/wrist axes on inertial-only bodies parked
+            # away from the robot. Keep the actuator inventory intact while
+            # giving the profile schema a narrow valid range.
+            lower, upper = -0.01, 0.01
         afrng = j.attrib.get("actuatorfrcrange", "")
         torque = 50.0
         if afrng:
@@ -105,6 +131,17 @@ def _parse_actuated_joints(mjcf_path: Path) -> list[dict]:
             "upper_rad": round(upper, 4),
             "torque_nm": torque,
         }
+    for parent in root.iter("actuator"):
+        for act in parent:
+            jname = act.attrib.get("joint")
+            if not jname or jname not in joints:
+                continue
+            ctrl = act.attrib.get("ctrlrange", "").split()
+            if len(ctrl) == 2:
+                try:
+                    joints[jname]["torque_nm"] = max(abs(float(ctrl[0])), abs(float(ctrl[1])))
+                except ValueError:
+                    pass
     ordered: list[dict] = []
     seen: set[str] = set()
     for jname in actuated:
@@ -263,11 +300,12 @@ def generate(robot_key: str, *, dry_run: bool = False) -> Path:
     if robot_key not in ROBOTS:
         raise SystemExit(f"unknown robot {robot_key}; choose from {list(ROBOTS)}")
     spec = ROBOTS[robot_key]
-    src_dir = MENAGERIE_ROOT / spec["menagerie_dir"]
+    source_root = Path(spec.get("source_root", MENAGERIE_ROOT))
+    src_dir = source_root / spec["menagerie_dir"]
     mjcf_src = src_dir / spec["mjcf"]
     if not mjcf_src.is_file():
         raise SystemExit(
-            f"menagerie MJCF missing at {mjcf_src}; "
+            f"Unitree MJCF missing at {mjcf_src}; "
             f"run sparse-clone first: see scripts/generate_unitree_profile.py docstring"
         )
 
@@ -300,6 +338,8 @@ def generate(robot_key: str, *, dry_run: bool = False) -> Path:
         if src.is_file():
             shutil.copy2(src, mjcf_dst_dir / fname)
     src_assets = src_dir / "assets"
+    if not src_assets.is_dir():
+        src_assets = src_dir / "meshes"
     if src_assets.is_dir():
         for child in src_assets.iterdir():
             if child.is_file():
@@ -310,6 +350,12 @@ def generate(robot_key: str, *, dry_run: bool = False) -> Path:
 
     # Inject the head_cam declared in profile.sensors.cameras so the
     # offscreen renderer + perception module can pull ego-pose frames.
+    for xml_path in (mjcf_dst_dir / spec["mjcf"], mjcf_dst_dir / spec["scene"]):
+        if xml_path.is_file():
+            text = xml_path.read_text()
+            text = text.replace('meshdir="meshes/"', 'meshdir="assets"')
+            text = text.replace('meshdir="meshes"', 'meshdir="assets"')
+            xml_path.write_text(text)
     _inject_head_camera(
         mjcf_dst_dir / spec["mjcf"], parent_body=spec["head_link"]
     )
@@ -320,7 +366,7 @@ def generate(robot_key: str, *, dry_run: bool = False) -> Path:
     profile_path = profile_dir / "profile.yaml"
     profile_path.write_text(
         "# Auto-generated by scripts/generate_unitree_profile.py from\n"
-        f"# vendor/mujoco_menagerie/{spec['menagerie_dir']}/.\n"
+        f"# {source_root.relative_to(PKG_ROOT)}/{spec['menagerie_dir']}/.\n"
         "# Do not hand-edit; re-run the generator.\n"
         + yaml.safe_dump(profile, sort_keys=False, width=120)
     )

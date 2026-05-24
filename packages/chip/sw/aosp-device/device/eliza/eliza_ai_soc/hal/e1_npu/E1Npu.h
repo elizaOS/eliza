@@ -1,4 +1,4 @@
-// E1Npu.h - v0 stub implementation for vendor.eliza.e1_npu@1.0.
+// E1Npu.h - fixed-vector smoke implementation for vendor.eliza.e1_npu@1.0.
 //
 // Backing contract: sw/platform/e1_platform_contract.json
 // Backing kernel node: /dev/e1-npu
@@ -6,9 +6,10 @@
 // Fail-closed semantics:
 //   - Constructor records whether /dev/e1-npu can be opened. It does
 //     NOT keep the fd long-term; the smoke RPC re-opens on demand so a
-//     hot-unplug or kernel module reload is handled without state.
+//     kernel module reload is handled without state.
 //   - All RPCs return Status::NOT_SUPPORTED when the device node is
-//     missing. Any partial read or ioctl failure returns IO_ERROR.
+//     missing. Any ioctl failure, contract mismatch, or math mismatch
+//     returns IO_ERROR.
 
 #pragma once
 
@@ -32,9 +33,8 @@ private:
     // Path to the backing char device. Never cached as an fd.
     static constexpr const char* kDevicePath = "/dev/e1-npu";
 
-    // Offset into the device that returns the driver identity word.
-    // Matches sw/linux/drivers/e1/e1_platform_contract.h
-    // (E1_NPU_RESULT_OFFSET).
+    // Legacy identity/result offset kept tied to the platform contract so the
+    // HAL cannot drift from the Linux driver ABI while smoke uses ioctls.
     static constexpr off_t kResultOffset = 0x08;
 };
 

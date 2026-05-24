@@ -21,7 +21,7 @@ allowed only when their CLI/export path is the repo-controlled interface.
 | STREAM | `make benchmarks-dry-run`, `make benchmarks` | CLI-only | `stream_c.exe` not installed by default. |
 | lmbench | `make benchmarks-dry-run`, `make benchmarks` | CLI-only | `bw_mem` and `lat_mem_rd` not installed by default. |
 | fio | `benchmarks/configs/*.fio` | CLI-only | `fio` not installed by default. |
-| TFLite benchmark | `benchmark_model` via benchmark harness | CLI-only | Binary and `mobile_smoke.tflite` artifact absent. |
+| TFLite benchmark | `benchmark_model` via benchmark harness | CLI-only | Smoke model is present and pinned; target `benchmark_model` binary/delegate evidence is absent. |
 | BSP scaffold audit | `make software-bsp-check`, `make bsp-scaffold-check` | CLI-only | Full Linux/Buildroot/AOSP builds still need external trees. |
 | MVP gap report | `make mvp-status`, `make mvp-status-strict` | CLI-only | Reports each subsystem as `PASS`, `BLOCK`, or `FAIL` with evidence and next command. |
 | Release pipeline check | `make pipeline-check` | CLI-only | Requires generated synth/sim/formal artifacts under `build/` and `verify/cocotb/results.xml`. |

@@ -64,10 +64,12 @@ def validate_asimov1_real_agent_readiness(
             "production_checkpoint",
             [
                 py,
-                "scripts/validate_asimov1_production_checkpoint.py",
+                "-m",
+                "scripts.validate_asimov1_production_checkpoint",
                 str(checkpoint_path),
                 "--min-steps",
                 str(production_min_steps),
+                "--require-inference-check",
             ],
         )
         steps.append(production_validation)

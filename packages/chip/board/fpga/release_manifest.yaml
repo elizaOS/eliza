@@ -6,11 +6,13 @@ next_commands:
   target_preflight: python3 scripts/check_fpga_target.py
   release_gate: python3 scripts/check_fpga_release.py
   product_release_gate: python3 scripts/product_check.py --release
-  local_synth: yosys -p "read_verilog -sv <rtl source list>; synth_ecp5 -top e1_chip_top -json board/fpga/build/e1_demo_fpga.json"
-  local_place_route: nextpnr-ecp5 --85k --package CABGA381 --freq 25 --json board/fpga/build/e1_demo_fpga.json --lpf board/fpga/constraints/e1_demo_ulx3s.lpf --textcfg board/fpga/build/e1_demo_fpga.config --report board/fpga/reports/e1_demo_nextpnr.json
-  local_pack: ecppack --svf board/fpga/build/e1_demo_fpga.svf board/fpga/build/e1_demo_fpga.config board/fpga/build/e1_demo_fpga.bit
-  local_program_sram: openFPGALoader -b ulx3s board/fpga/build/e1_demo_fpga.bit
-  hash_bitstream: shasum -a 256 <real-bitstream-file>
+  local_tool_versions: yosys -V && nextpnr-ecp5 --version && ecppack --version && openFPGALoader --version
+  local_synth: TOP=e1_chip_top make -C board/fpga synth
+  local_place_route: TOP=e1_chip_top make -C board/fpga pnr
+  local_pack: TOP=e1_chip_top make -C board/fpga pack
+  local_report: TOP=e1_chip_top make -C board/fpga report
+  local_program_sram: openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit
+  hash_bitstream: shasum -a 256 build/fpga/e1_demo/e1_chip_top.bit
 required_evidence:
   exact_board_revision:
     status: missing
@@ -32,6 +34,10 @@ required_evidence:
     status: missing
     source: board/fpga/e1_demo_fpga.yaml:release_evidence.archived_tool_versions
     required_action: Archive yosys, nextpnr-ecp5, and ecppack versions used for the released bitstream.
+  programming_transcript:
+    status: missing
+    source: board/fpga/e1_demo_fpga.yaml:release_evidence.programming_transcript
+    required_action: Archive the openFPGALoader SRAM programming transcript for the exact bitstream and board revision.
 known_local_tool_status:
   yosys: optional_for_release_preflight
   nextpnr-ecp5: required_for_real_timing

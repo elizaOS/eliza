@@ -15,7 +15,9 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
     def test_missing_tool_env_and_path_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = Path(tmp)
-            with mock.patch.object(preflight, "REPO", repo):
+            with mock.patch.object(preflight, "REPO", repo), mock.patch.object(
+                preflight, "ENV_DEFAULT_PATHS", {}
+            ), mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}):
                 report = preflight.build_report(env={}, which=lambda _name: None)
 
         self.assertEqual(report["status"], "blocked")

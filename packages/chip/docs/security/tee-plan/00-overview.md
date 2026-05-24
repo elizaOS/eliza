@@ -32,11 +32,13 @@ The docs were ahead of the RTL. The audited reality:
 - **No memory isolation primitive is wired.** The CVA6 wrapper is
   `cv64a6_imafdc_sv39` with **PMP disabled**; no ePMP/Smepmp/H-extension. The
   only repo-wide hint is one PMA comment in `e1_soc_integrated.sv`.
-- **The IOMMU is a verification front-stub, not a translating IOMMU.**
-  `e1_riscv_iommu.sv` does identity passthrough in BARE mode and checks a 6-entry
-  on-chip allowlist. No page-table walk, no IOPMP, no MSI translation, no command
-  queue. **The NPU and DMA bypass it entirely** (AXI-Lite MMIO, no source IDs,
-  world-readable perf counters).
+- **The IOMMU is a partial verification scaffold, not a complete phone/Linux
+  IOMMU.** `e1_riscv_iommu.sv` does identity passthrough in BARE mode, keeps a
+  6-entry on-chip allowlist fallback, and now covers a minimal DDT + Sv39
+  first-stage KAT under identity G-stage. Non-identity G-stage, full PDT/PASID,
+  IOPMP, MSI translation, and most command-queue behavior remain blocked. **The
+  NPU and DMA bypass it entirely** (AXI-Lite MMIO, no source IDs, world-readable
+  perf counters).
 - **The root of trust is placeholder.** `e1_lifecycle.sv` uses `challenge ^
   0xA5A5_5A5A` for debug auth; `fw/pmc/src/secure_boot.c` is `return 0;`
   (accept-all); `fw/boot-rom/reset.S` is an unconditional jump to `0x8000_0000`.

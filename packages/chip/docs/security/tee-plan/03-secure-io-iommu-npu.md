@@ -43,27 +43,32 @@ counters disabled in CC-On) as the accelerator-in-the-trust-domain comparator.
 
 ### 1.1 What `e1_riscv_iommu.sv` does today
 
-The current 693-line module is an honest **front-stub**, not a translating IOMMU.
-Reading the RTL:
+The current module is an honest **partial translation scaffold**, not a complete
+phone/Linux IOMMU. Reading the RTL:
 
 - **6 upstream AXI4 masters** front the fabric, each carrying out-of-band
   `aw_devid`/`ar_devid` (24-bit) and `aw_pasid`/`ar_pasid` (20-bit) side-channels.
-- **DDTP=OFF/BARE → identity forward.** `d_awaddr <= u_awaddr` verbatim; the comment
-  at line 359 is explicit that "G-stage IOVA→PA is a follow-on walker." There is
-  **no page-table walk at all** — neither first-stage (Sv39/Sv48) nor G-stage.
-- **Any translating DDTP mode** authorizes against a 6-entry **on-chip allowlist**
+- **DDTP=OFF/BARE → identity forward.** BARE mode still forwards addresses
+  verbatim and is not acceptable for domains holding private pages.
+- **A minimal DDT + Sv39 first-stage path exists.** The local KAT covers a real
+  DDT entry and Sv39 first-stage read walk under an identity G-stage context.
+  Non-identity G-stage table walking, Sv48/Sv57 coverage, full PDT/PASID, and a
+  production TLB remain missing.
+- **The fallback authorization path** still includes a 6-entry **on-chip allowlist**
   (`allowed_dev[]`/`allowed_vld[]`), programmed through a non-architectural MMIO
   window at `0x800`. Unknown DID → `CAUSE_DDT_ENTRY_NOT_VALID` fault record +
-  upstream behavior that *drops* the transaction (W data sunk, B/R never returned).
+  upstream behavior that returns a local fault response instead of completing DMA.
 - **Fault queue** stages records on-chip (`fq_stage[]`) in the correct 32-byte
   spec layout but **never DMAs them to the FQB ring** — `reg_fqt` mirrors the stage
   pointer; the downstream AXI4 master is never used for FQ writes.
 - **PRI / page-request queue** is MMIO-injection-only (`page_req_irq` is hardwired
   low in the `always_ff`; no upstream PRI request port).
-- **Command queue** (`CQB`/`CQH`/`CQT`) registers exist but no command is decoded
-  or executed — `IOTINVAL.*` / `IODIR.INVAL_*` are not implemented.
-- **`cmd_complete_irq` is tied to 0.** MSI translation, MRIF, and `MSI_CFG_TBL`
-  are advertised in `CAPABILITIES` (IGS=2) but not implemented.
+- **Command queue** (`CQB`/`CQH`/`CQT`) registers exist and the local IOFENCE.C
+  fetch/decode/completion path is covered, including fail-closed handling for
+  unsupported CQ opcodes. `IOTINVAL.*` / `IODIR.INVAL_*` side effects are not
+  implemented.
+- **MSI translation, MRIF, and `MSI_CFG_TBL`** are advertised in `CAPABILITIES`
+  (IGS=2) but not implemented.
 - **No IOPMP.** There is no second, region-based access-control layer; the only
   gate is the DID allowlist, which is permission-blind (no R/W/X, no address-range
   scoping, no per-region revoke).
@@ -73,20 +78,22 @@ Reading the RTL:
 | Requirement (I/O Rule + CoVE-IO/TDISP model) | Today | Gap |
 |---|---|---|
 | Per-master stable source IDs for **every** DMA master: USB, eMMC/UFS, display planes, ISP/CSI, NPU DMA, GPU, video codec, network/Wi-Fi, debug transport | DID side-channel exists for 6 generic masters; DID map in `dma-buf-v2.md` | Lite-path masters (`e1_dma.sv`, `e1_npu.sv`) are AXI-Lite single-master MMIO with **no DID tagging** and bypass the IOMMU entirely. USB/UFS/ISP/Wi-Fi/codec masters are not wired to the 6 ports. |
-| **Default-deny** translation (no transaction reaches DRAM without a valid, monitor-installed mapping) | BARE mode is identity-allow; translate mode allowlist is coarse | BARE must be **forbidden** for any domain that holds `private` pages; need a real PTW so default is "no mapping = fault." |
+| **Default-deny** translation (no transaction reaches DRAM without a valid, monitor-installed mapping) | BARE mode is identity-allow; local Sv39 first-stage KAT faults invalid leaves; allowlist path is coarse | BARE must be **forbidden** for any domain that holds `private` pages; need full S1+G-stage PTW/PDT coverage so default is "no mapping = fault." |
 | **Monitor-programmed** permissions (only the confidential-domain monitor, not the host kernel, can grant a master access to `private`/`device-assigned` pages) | Allowlist is writable by whoever owns the MMIO aperture | Need an M-mode/monitor-only programming path + IOPMP locking so the host OS cannot self-authorize. |
 | **Region-scoped R/W/X permissions** per source ID (IOPMP) | none | Need an IOPMP layer enforcing address-range + R/W/X per source ID, independent of and downstream-redundant to the IOMMU PTW. |
-| Real **two-stage PTW** (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) with TLB | none | Core deliverable of Phase 1. |
+| Real **two-stage PTW** (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) with TLB | partial S1 Sv39 KAT under identity G-stage | Complete S1/S2 walker and TLB remain Phase 1 deliverables. |
 | **Fault → revoke → scrub** on reset/error (a faulting or torn-down master loses access and its in-flight queue/scratch is zeroized) | fault recorded, transaction dropped; no revoke/scrub coupling | Need a hardware revoke port the monitor drives, plus a scrub engine handshake (ties to `scrub-pending` page state in `01-`). |
 | **Secure MSI/IRQ translation** (MRIF) so a device cannot inject an interrupt into monitor/private state | IGS=2 advertised, not implemented | Phase 5. |
 
 **Assessment.** The IOMMU is a verification scaffold that proves the register map,
-fault-record layout, and an allowlist authorization shape. It is correct as far as
-it goes and the evidence gate (`iommu-evidence-gate.yaml`) is honestly
-`blocked_until_evidence`. But it provides **zero confidential-I/O guarantees**:
-identity passthrough in BARE, no PTW, no IOPMP, no revoke/scrub, no MSI translation,
-and the two highest-value masters (NPU, DMA) do not even traverse it. Whole-OS TEE
-claims are fail-closed-blocked until Phases 1–5 land.
+fault-record layout, IOFENCE.C fetch/decode/completion, an allowlist authorization
+shape, and a minimal DDT + Sv39 first-stage walk. It is correct as far as it goes and the
+evidence gate (`iommu-evidence-gate.yaml`) is honestly `blocked_until_evidence`.
+But it still does not provide confidential-I/O guarantees: identity passthrough in
+BARE, no non-identity G-stage walk, no full PDT/PASID coverage, no IOPMP, no
+revoke/scrub, no MSI translation, and the two highest-value masters (NPU, DMA) do
+not even traverse it. Whole-OS TEE claims are fail-closed-blocked until Phases
+1–5 land.
 
 ---
 
@@ -279,10 +286,10 @@ wired by the integration owner once landed. Effort in person-months (PM).
 
 | ID | New file(s) | Work | PM | Risk | Gate |
 |---|---|---|---|---|---|
-| P1.1 | `rtl/iommu/e1_iommu_ptw.sv` | Two-stage page-table walker (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) over the downstream AXI4 master, with a small TLB; replaces identity passthrough. | 3.0 | High | extend `cocotb-iommu` (`two_stage_translation_via_3lvl_ddt`), `iommu-evidence-check` |
+| P1.1 | `rtl/iommu/e1_iommu_ptw.sv` | Complete two-stage page-table walker (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) over the downstream AXI4 master, with a small TLB; extends the local S1 Sv39 KAT path and replaces identity passthrough for protected domains. | 3.0 | High | extend `cocotb-iommu` (`two_stage_translation_via_3lvl_ddt`), `iommu-evidence-check` |
 | P1.2 | `rtl/iommu/e1_iommu_ddt_pdt_walker.sv` | Memory-resident DDT (1/2/3-level) + PDT walk replacing the on-chip allowlist; monitor-only DDTP programming. | 2.0 | High | `cocotb-iommu`, `iommu-evidence-check` |
 | P1.3 | `rtl/iommu/e1_iopmp.sv` + `e1_iopmp_pkg.sv` | RISC-V IOPMP: per-source-ID region table with R/W/X, lockable entries, default-deny; sits downstream of the IOMMU as redundant region enforcement. | 2.5 | High | new `cocotb-iopmp` + `iopmp-evidence-check` (model on iommu gate) |
-| P1.4 | `rtl/iommu/e1_iommu_cmd_engine.sv` | Command-queue execution: `IOTINVAL.VMA/GVMA`, `IODIR.INVAL_DDT/PDT`; drive `cmd_complete_irq` (today tied 0). | 1.0 | Med | `cocotb-iommu` |
+| P1.4 | `rtl/iommu/e1_iommu_cmd_engine.sv` | Command-queue execution beyond the local IOFENCE.C fetch/decode/completion path: `IOTINVAL.VMA/GVMA`, `IODIR.INVAL_DDT/PDT` side effects. | 1.0 | Med | `cocotb-iommu` |
 | P1.5 | `rtl/iommu/e1_iommu_fq_dma.sv` | DMA staged fault records to the FQB ring over the downstream master (today FQ never reaches DRAM). | 0.5 | Med | `cocotb-iommu` |
 
 ### Phase 2 — Source-ID coverage + revoke/scrub

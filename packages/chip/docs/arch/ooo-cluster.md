@@ -142,18 +142,19 @@ producer) named in the third column.
 | `rtl/cache/ftq_to_l1i_pkg.sv` | cache | Per-core FTQ → L1I prefetch request stream. The BPU agent populates the producer, but the cluster boundary aggregates per-core. |
 | `rtl/cache/lsu_to_l1d_pkg.sv` | cache | Per-core 2×128 b LSU → L1D request/response. Two read + two write ports per cycle, banked 8 ways. Bank conflicts surface as `replay`. |
 | `rtl/interconnect/axi4/e1_axi4_pkg.sv` | memory | AxBURST / AxSIZE / AxCACHE / AxPROT / AxQoS encodings on the per-core master ports. The cluster forwards `QOS_CPU_LATENCY = 11` unless overridden via `cluster_qos_class_i`. |
-| `rtl/cpu/bpu/bpu_pkg.sv` | BPU | `pmu_event_e` strobes (20 entries, 5-bit IDs starting at 0). Translated into the Zihpm event bus by `rtl/cpu/csr/bpu_to_zihpm_remap.sv`. |
-| `rtl/cpu/csr/zihpm.sv` | OoO (this) | `hpm_event_e` (8-bit IDs). Branch block 1..20 mirrors BPU enum after the +1 shift; cache 32..47, MMU 48..63, OoO 64..95 own the rest of the partition. |
+| `rtl/cpu/bpu/bpu_pkg.sv` | BPU | `pmu_event_e` strobes (21 entries, 5-bit IDs starting at 0). Translated into the Zihpm event bus by `rtl/cpu/csr/bpu_to_zihpm_remap.sv`. |
+| `rtl/cpu/csr/zihpm.sv` | OoO (this) | `hpm_event_e` (8-bit IDs). Branch block 1..21 mirrors BPU enum after the +1 shift; cache 32..47, MMU 48..63, OoO 64..95 own the rest of the partition. |
 | `rtl/cpu/csr/ztso_ctrl.sv` | OoO (this) | Ztso PTE-bit (Sv39 RSW bit 8) and CSR `0x7C0` global/per-core overrides. The LSU consumes `lsu_op_is_tso_o` and the coherent bus uses it to gate store-buffer drain and load-ordering enforcement. |
 | `rtl/cpu/fusion/fusion_pkg.sv` | OoO (this) | 19 macro-op fusion kinds. The dispatch stage walks the lead/follow pair, the cluster does not present them outside the core. |
 
 ### BPU → Zihpm PMU event remap
 
-The BPU PMU bundle uses raw 5-bit IDs 0..19. The Zihpm event bus places
-`EVT_NONE = 0` and runs the BPU events at IDs 1..20. Because the BPU enum
+The BPU PMU bundle uses raw 5-bit IDs 0..20. The Zihpm event bus places
+`EVT_NONE = 0` and runs the BPU events at IDs 1..21. Because the BPU enum
 ordering and the Zihpm enum ordering have historically drifted (notably:
-BPU id 1 is `PMU_BR_MISP`, Zihpm id 1 is `EVT_BR_PRED`), the BPU strobes
-*must not* be wired directly to `zihpm.event_bus_i`. Use the
+BPU id 1 is `PMU_BR_TAKEN`, BPU id 2 is `PMU_BR_MISP`, and Zihpm id 1 is
+`EVT_BR_PRED`), the BPU strobes *must not* be wired directly to
+`zihpm.event_bus_i`. Use the
 `bpu_to_zihpm_remap` adapter under `rtl/cpu/csr/`. The adapter is purely
 combinational and renames by *name*, not by raw ID. The mapping is
 audited by `scripts/check_pmu_event_alignment.py`, which emits

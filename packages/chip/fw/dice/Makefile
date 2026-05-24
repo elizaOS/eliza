@@ -23,26 +23,42 @@ HOST_CFLAGS   ?= -std=c11 -O2 $(WARN) -fstack-protector-strong
 TARGET_CFLAGS ?= -std=c11 -O2 $(WARN) -ffreestanding -fno-builtin \
                  -march=rv64imac_zicsr -mabi=lp64 -mcmodel=medany
 
-# Library sources (no main): the CDI ladder, Ed25519 signer, shared SHA-256.
-LIB_SRCS := $(DICE_DIR)/cdi.c $(DICE_DIR)/ed25519_sign.c $(SECURE_DIR)/sha256.c
+# Library sources (no main): the CDI ladder, Ed25519 signer, shared SHA-256, and
+# the CoVE attestation-quote producer.
+LIB_SRCS := $(DICE_DIR)/cdi.c $(DICE_DIR)/ed25519_sign.c $(SECURE_DIR)/sha256.c \
+            $(DICE_DIR)/cove_quote.c
 TEST_SRC := $(DICE_DIR)/tests/test_cdi_chain.c
+COVE_TEST_SRC := $(DICE_DIR)/tests/test_cove_quote.c
+HEADERS := $(DICE_DIR)/cdi.h $(DICE_DIR)/ed25519_sign.h $(DICE_DIR)/cove_quote.h
 
 HOST_BIN := $(BUILD_DIR)/test_cdi_chain
+COVE_BIN := $(BUILD_DIR)/test_cove_quote
 TARGET_OBJS := $(BUILD_DIR)/cdi.rv64.o $(BUILD_DIR)/ed25519_sign.rv64.o \
-               $(BUILD_DIR)/sha256.rv64.o
+               $(BUILD_DIR)/sha256.rv64.o $(BUILD_DIR)/cove_quote.rv64.o
 
-.PHONY: all host run target clean
-all: run
+.PHONY: all host run cove cove-run target clean
+all: run cove-run
 
-host: $(HOST_BIN)
+host: $(HOST_BIN) $(COVE_BIN)
 
-$(HOST_BIN): $(LIB_SRCS) $(TEST_SRC) $(DICE_DIR)/cdi.h $(DICE_DIR)/ed25519_sign.h
+cove: $(COVE_BIN)
+
+$(HOST_BIN): $(LIB_SRCS) $(TEST_SRC) $(HEADERS)
 	@mkdir -p $(BUILD_DIR)
 	$(HOST_CC) $(HOST_CFLAGS) -I$(DICE_DIR) -I$(SECURE_DIR) \
 	    $(LIB_SRCS) $(TEST_SRC) -o $@
 
+$(COVE_BIN): $(LIB_SRCS) $(COVE_TEST_SRC) $(HEADERS)
+	@mkdir -p $(BUILD_DIR)
+	$(HOST_CC) $(HOST_CFLAGS) -I$(DICE_DIR) -I$(SECURE_DIR) \
+	    $(LIB_SRCS) $(COVE_TEST_SRC) -o $@
+
 run: $(HOST_BIN)
 	$(HOST_BIN)
+
+# The CoVE KAT prints JSON on stdout, so route the test summary via stderr.
+cove-run: $(COVE_BIN)
+	$(COVE_BIN) >/dev/null
 
 # Prove the ladder compiles for the RoT target. The boot ROM links its own
 # crt/startup; here we only assert the translation units build freestanding.
@@ -57,4 +73,4 @@ $(BUILD_DIR)/sha256.rv64.o: $(SECURE_DIR)/sha256.c $(SECURE_DIR)/sha256.h
 	$(RISCV_CC) $(TARGET_CFLAGS) -I$(DICE_DIR) -I$(SECURE_DIR) -c $< -o $@
 
 clean:
-	rm -f $(HOST_BIN) $(TARGET_OBJS)
+	rm -f $(HOST_BIN) $(COVE_BIN) $(TARGET_OBJS)

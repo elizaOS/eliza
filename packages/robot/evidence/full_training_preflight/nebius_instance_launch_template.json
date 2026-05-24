@@ -1,0 +1,14 @@
+{
+  "metadata": {
+    "id": "computeinstance-template",
+    "name": "robot-full-training-template"
+  },
+  "spec": {
+    "service_account_id": "<service-account-id>",
+    "resources": {
+      "platform": "gpu-h200-sxm",
+      "preset": "1gpu-16vcpu-200gb"
+    },
+    "cloud_init_user_data": "#cloud-config\nusers:\n  - name: robot\n    groups: [sudo]\n    shell: /bin/bash\n    sudo: \"ALL=(ALL) NOPASSWD:ALL\"\n    ssh_authorized_keys:\n      - \"<ssh-public-key>\"\nwrite_files:\n  - path: /root/robot-full/run.sh\n    permissions: '0700'\n    content: |\n      #!/usr/bin/env bash\n      set -euo pipefail\n      mkdir -p /etc/robot-full\n      while [ ! -f /etc/robot-full/object-storage.env ]; do\n        echo \"waiting for /etc/robot-full/object-storage.env $(date -u +%FT%TZ)\"\n        sleep 10\n      done\n      if [ -f /etc/robot-full/object-storage.env ]; then\n        set -a\n        . /etc/robot-full/object-storage.env\n        set +a\n      fi\n      : \"${NEBIUS_TRAINING_S3_URI:?set NEBIUS_TRAINING_S3_URI to s3://bucket/run-id}\"\n      export NEBIUS_S3_ENDPOINT=\"${NEBIUS_S3_ENDPOINT:-https://storage.eu-north1.nebius.cloud}\"\n      export ELIZA_ROBOT_PACKAGE_ROOT=\"${ELIZA_ROBOT_PACKAGE_ROOT:-/root/eliza/packages/robot}\"\n      export MUJOCO_GL=\"${MUJOCO_GL:-egl}\"\n      export JAX_PLATFORMS=\"${JAX_PLATFORMS:-cuda,cpu}\"\n      export XLA_PYTHON_CLIENT_PREALLOCATE=\"${XLA_PYTHON_CLIENT_PREALLOCATE:-false}\"\n      export PATH=\"/root/.local/bin:/usr/local/cuda/bin:${PATH}\"\n      mkdir -p /root/robot-full/logs /root/robot-full/status\n      if ! command -v aws >/dev/null 2>&1; then\n        (curl -fsSL \"https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip\" -o /tmp/awscli.zip && cd /tmp && unzip -q awscli.zip && ./aws/install) || pip3 install awscli\n      fi\n      if ! command -v uv >/dev/null 2>&1; then\n        curl -LsSf https://astral.sh/uv/install.sh | sh\n        export PATH=\"/root/.local/bin:${PATH}\"\n      fi\n      aws --endpoint-url \"${NEBIUS_S3_ENDPOINT}\" s3 cp \"${NEBIUS_TRAINING_S3_URI%/}/payload.tar.gz\" /root/robot-full/payload.tar.gz --only-show-errors\n      tar -xzf /root/robot-full/payload.tar.gz -C /root\n      mkdir -p /home/shaw/milady\n      ln -sfn /root/eliza /home/shaw/milady/eliza\n      cd \"${ELIZA_ROBOT_PACKAGE_ROOT}\"\n      chmod +x evidence/full_training_preflight/scripts/*.sh evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh || true\n      uv sync --extra gpu || uv sync --all-extras || uv sync\n      # The bundle runner uploads logs plus status/runner_status.json heartbeats.\n      evidence/full_training_preflight/scripts/run_all_nebius_stages.sh\nruncmd:\n  - [ bash, -lc, \"nohup /root/robot-full/run.sh > /root/robot-full/cloud-init-run.log 2>&1 &\" ]\n  - [ bash, -lc, \"shutdown -h +720 'robot full training hard cost cap'\" ]\n"
+  }
+}

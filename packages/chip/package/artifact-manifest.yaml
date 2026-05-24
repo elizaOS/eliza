@@ -75,6 +75,15 @@ artifact_groups:
     owner: package_closure
     status: draft
     artifacts:
+      - name: package_vendor_padframe_cross_probe_action_inventory
+        status: draft
+        metadata:
+          review_date: 2026-05-23
+          release_use: prohibited
+          disposition: blocked_for_release
+          source_checker: scripts/check_package_cross_probe.py
+        globs:
+          - docs/manufacturing/evidence/package/package-vendor-padframe-action-inventory-2026-05-23.yaml
       - name: demo_qfn64_planning_pinout
         status: draft
         metadata:

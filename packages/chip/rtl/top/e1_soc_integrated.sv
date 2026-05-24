@@ -15,6 +15,15 @@
 //
 //   - BPU `bpu_top` produces `pmu_event_e` strobes that are remapped via
 //     `bpu_to_zihpm_remap` and consumed by `zihpm` as a 256-bit event bus.
+//     Prediction-time and delayed vector redirect lanes are exposed at the
+//     SoC boundary so widened fetch-control consumers can be wired without
+//     reopening this top.
+//     The ordered two-lane fetch-control stream is also exposed with a ready
+//     signal, so target-block lane-1 predictions can backpressure FTQ pop
+//     instead of being observation-only.
+//     An optional fetch-stream-to-L1I-demand bridge exposes lane-0/lane-1 IFU
+//     demand ports at the SoC boundary, including FTQ/segment/kind provenance,
+//     so downstream cache wrappers can wire the widened L1I miss path directly.
 //   - BPU FTQ entry pop is translated via `ftq_to_l1i_shim` to the L1I
 //     prefetch contract (`e1_ftq_to_l1i_pkg::ftq_prefetch_req_t`).  The
 //     prefetch port is exposed on the SoC boundary so downstream cache RTL
@@ -106,9 +115,41 @@ module e1_soc_integrated
     input  logic                lkp_valid_i,
     input  logic [VADDR_W-1:0]  lkp_pc_i,
     output logic                pred_valid_o,
+    output logic [MAX_BR_PER_BLOCK-1:0] pred_redirect_valid_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][VADDR_W-1:0] pred_redirect_pc_o,
     input  bpu_resolve_t        resolve_i,
     input  logic                fetch_pop_i,
     output logic                fetch_valid_o,
+    input  logic                fetch_stream_ready_i,
+    output logic [MAX_BR_PER_BLOCK-1:0] fetch_stream_valid_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][VADDR_W-1:0] fetch_stream_pc_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][VADDR_W-1:0] fetch_stream_target_pc_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][FTQ_IDX_W-1:0] fetch_stream_ftq_idx_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][$clog2(MAX_BR_PER_BLOCK)-1:0]
+        fetch_stream_segment_idx_o,
+    output logic [MAX_BR_PER_BLOCK-1:0] fetch_stream_taken_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][2:0] fetch_stream_kind_o,
+    input  logic                l1i_demand_enable_i,
+    output logic                l1i_demand_valid_o,
+    input  logic                l1i_demand_ready_i,
+    output logic [39:0]         l1i_demand_paddr_o,
+    output logic [FTQ_IDX_W-1:0] l1i_demand_ftq_idx_o,
+    output logic [$clog2(MAX_BR_PER_BLOCK)-1:0] l1i_demand_segment_idx_o,
+    output logic [2:0]          l1i_demand_kind_o,
+    output logic                l1i_demand_valid_lane1_o,
+    input  logic                l1i_demand_ready_lane1_i,
+    output logic [39:0]         l1i_demand_paddr_lane1_o,
+    output logic [FTQ_IDX_W-1:0] l1i_demand_ftq_idx_lane1_o,
+    output logic [$clog2(MAX_BR_PER_BLOCK)-1:0] l1i_demand_segment_idx_lane1_o,
+    output logic [2:0]          l1i_demand_kind_lane1_o,
+    output logic [2:0]          l1i_demand_occupancy_o,
+    output logic                l1i_demand_overflow_o,
+    output logic                late_redirect_valid_o,
+    output logic [VADDR_W-1:0]  late_redirect_pc_o,
+    output logic [FTQ_IDX_W-1:0] late_redirect_ftq_idx_o,
+    output logic [MAX_BR_PER_BLOCK-1:0] late_redirect_valid_lanes_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][VADDR_W-1:0] late_redirect_pc_lanes_o,
+    output logic [MAX_BR_PER_BLOCK-1:0][FTQ_IDX_W-1:0] late_redirect_ftq_idx_lanes_o,
 
     // L1I prefetch request emitted by the BPU FTQ shim — cocotb integration
     // test verifies these bits track the BPU's resolved targets.
@@ -418,7 +459,7 @@ module e1_soc_integrated
     //     bpu_top.pmu_strb  --(name+id remap)-->  bpu_to_zihpm_remap  -->
     //         zihpm.event_bus_i (slot ids match `zihpm_pkg::hpm_event_e`)
     //
-    //     bpu_top.fetch_entry --(combinational)--> ftq_to_l1i_shim -->
+    //     bpu_top.fetch_entry --(serialized)--> ftq_to_l1i_shim -->
     //         L1I prefetch port (out of this top, into cache RTL)
     //
     // Both shim and remap are owned by the BPU/CSR domain agents; this top
@@ -428,7 +469,17 @@ module e1_soc_integrated
     bpu_lookup_t  bpu_pred;
     ftq_entry_t   bpu_fetch_entry;
     logic [PMU_EVENTS-1:0] bpu_pmu_strb;
+    logic [MAX_BR_PER_BLOCK-1:0][2:0] bpu_pred_redirect_kind;
     logic [255:0]          bpu_remapped_evbus;
+    bpu_context_t          bpu_default_context_w;
+    bpu_flush_t            bpu_predictor_flush_w;
+    logic                  bpu_fetch_accept_w;
+    logic                  l1i_demand_fetch_stream_ready_w;
+
+    assign bpu_default_context_w = bpu_default_context();
+    assign bpu_predictor_flush_w = '0;
+    assign bpu_fetch_accept_w = fetch_pop_i && fetch_stream_ready_i &&
+                                l1i_demand_fetch_stream_ready_w;
 
     // BPU CSR read tap (unused at this top, but documented for the wave
     // viewer). Tied off; the integration test reads counters via the Zihpm
@@ -442,21 +493,85 @@ module e1_soc_integrated
         .rst_n       (rst_n),
         .lkp_valid   (lkp_valid_i),
         .lkp_pc      (lkp_pc_i),
+        .lkp_context (bpu_default_context_w),
         .pred_valid  (pred_valid_o),
         .pred        (bpu_pred),
-        .fetch_pop   (fetch_pop_i),
+        .pred_redirect_valid(pred_redirect_valid_o),
+        .pred_redirect_pc(pred_redirect_pc_o),
+        .pred_redirect_kind(bpu_pred_redirect_kind),
+        .fetch_pop   (bpu_fetch_accept_w),
         .fetch_valid (fetch_valid_o),
         .fetch_entry (bpu_fetch_entry),
+        .late_redirect_valid(late_redirect_valid_o),
+        .late_redirect_pc(late_redirect_pc_o),
+        .late_redirect_ftq_idx(late_redirect_ftq_idx_o),
+        .late_redirect_valid_lanes(late_redirect_valid_lanes_o),
+        .late_redirect_pc_lanes(late_redirect_pc_lanes_o),
+        .late_redirect_ftq_idx_lanes(late_redirect_ftq_idx_lanes_o),
         .resolve     (resolve_i),
+        .predictor_flush(bpu_predictor_flush_w),
         .csr_re      (1'b0),
         .csr_addr    (5'h0),
         .csr_rdata   (bpu_csr_rdata_unused),
         .pmu_strb    (bpu_pmu_strb)
     );
 
-    // bpu_pred fields are observable in waves but not consumed at this top
-    // because the integration test treats the BPU as a stand-alone domain
-    // driver. Avoid lint warnings.
+    ftq_to_fetch_stream u_ftq_fetch_stream (
+        .clk                     (clk),
+        .rst_n                   (rst_n),
+        .pred_valid              (pred_valid_o),
+        .pred                    (bpu_pred),
+        .pred_redirect_valid     (pred_redirect_valid_o),
+        .pred_redirect_pc        (pred_redirect_pc_o),
+        .pred_redirect_kind      (bpu_pred_redirect_kind),
+        .fetch_entry_valid       (fetch_valid_o),
+        .fetch_entry             (bpu_fetch_entry),
+        .fetch_accept            (bpu_fetch_accept_w),
+        .flush_valid             (resolve_i.valid && resolve_i.misprediction),
+        .fetch_stream_valid_o    (fetch_stream_valid_o),
+        .fetch_stream_pc_o       (fetch_stream_pc_o),
+        .fetch_stream_target_pc_o(fetch_stream_target_pc_o),
+        .fetch_stream_ftq_idx_o  (fetch_stream_ftq_idx_o),
+        .fetch_stream_segment_idx_o(fetch_stream_segment_idx_o),
+        .fetch_stream_taken_o    (fetch_stream_taken_o),
+        .fetch_stream_kind_o     (fetch_stream_kind_o)
+    );
+
+    fetch_stream_to_l1i_demand #(
+        .PADDR_W(40),
+        .QUEUE_DEPTH(4)
+    ) u_fetch_stream_l1i_demand (
+        .clk                   (clk),
+        .rst_n                 (rst_n),
+        .enable                (l1i_demand_enable_i),
+        .flush_valid           (resolve_i.valid && resolve_i.misprediction),
+        .fetch_stream_valid    (fetch_stream_valid_o),
+        .fetch_stream_target_pc(fetch_stream_target_pc_o),
+        .fetch_stream_ftq_idx  (fetch_stream_ftq_idx_o),
+        .fetch_stream_segment_idx(fetch_stream_segment_idx_o),
+        .fetch_stream_taken    (fetch_stream_taken_o),
+        .fetch_stream_kind     (fetch_stream_kind_o),
+        .fetch_stream_accept   (bpu_fetch_accept_w),
+        .fetch_stream_ready    (l1i_demand_fetch_stream_ready_w),
+        .ifu_req_valid         (l1i_demand_valid_o),
+        .ifu_req_ready         (l1i_demand_ready_i),
+        .ifu_req_paddr         (l1i_demand_paddr_o),
+        .ifu_req_ftq_idx       (l1i_demand_ftq_idx_o),
+        .ifu_req_segment_idx   (l1i_demand_segment_idx_o),
+        .ifu_req_kind          (l1i_demand_kind_o),
+        .ifu_req_valid_lane1   (l1i_demand_valid_lane1_o),
+        .ifu_req_ready_lane1   (l1i_demand_ready_lane1_i),
+        .ifu_req_paddr_lane1   (l1i_demand_paddr_lane1_o),
+        .ifu_req_ftq_idx_lane1 (l1i_demand_ftq_idx_lane1_o),
+        .ifu_req_segment_idx_lane1(l1i_demand_segment_idx_lane1_o),
+        .ifu_req_kind_lane1    (l1i_demand_kind_lane1_o),
+        .queue_occupancy       (l1i_demand_occupancy_o),
+        .queue_overflow        (l1i_demand_overflow_o)
+    );
+
+    // bpu_pred fields are observable in waves but not otherwise consumed at
+    // this top because the integration test treats the BPU as a stand-alone
+    // domain driver. Avoid lint warnings.
     /* verilator lint_off UNUSEDSIGNAL */
     bpu_lookup_t bpu_pred_unused;
     assign bpu_pred_unused = bpu_pred;
@@ -467,15 +582,20 @@ module e1_soc_integrated
         .zihpm_evbus_o (bpu_remapped_evbus)
     );
 
-    // FTQ → L1I shim. The shim is purely combinational; flush comes from the
-    // resolver's misprediction signal so a misprediction drops any in-flight
-    // L1I prefetch.
+    // FTQ → L1I shim. The shim serializes multi-segment FTQ entries; flush
+    // comes from the resolver's misprediction signal so a misprediction drops
+    // any in-flight L1I prefetch.
     ftq_to_l1i_shim u_ftq_l1i (
-        .fetch_entry_valid (fetch_valid_o),
+        .clk               (clk),
+        .rst_n             (rst_n),
+        .fetch_entry_valid (fetch_valid_o && bpu_fetch_accept_w),
         .fetch_entry       (bpu_fetch_entry),
         .flush_valid       (resolve_i.valid && resolve_i.misprediction),
+        .l1i_ready_i       (1'b1),
         .l1i_req_o         (l1i_prefetch_req_o),
         .l1i_valid_o       (l1i_prefetch_valid_o),
+        .l1i_ready_vec_i   ('0),
+        .l1i_bundle_o      (),
         .l1i_flush_o       (l1i_prefetch_flush_o)
     );
 
@@ -2120,7 +2240,8 @@ module e1_soc_integrated
     //   s[0] : DRAM (e1_dram_ctrl → e1_axi4_dram_model)
     //   s[1] : decode-error sentinel (UNMAP)
     // ----------------------------------------------------------------------
-    localparam logic [AXI_ADDR_W-1:0] DRAM_BASE   = {AXI_ADDR_W{1'b0}};
+    localparam logic [AXI_ADDR_W-1:0] DRAM_BASE   =
+        {{(AXI_ADDR_W-32){1'b0}}, 32'h8000_0000};
     localparam logic [AXI_ADDR_W-1:0] DRAM_MASK   = {{(AXI_ADDR_W-32){1'b0}}, 32'h0000_FFFF};
     localparam logic [AXI_ADDR_W-1:0] UNMAP_BASE  = {AXI_ADDR_W{1'b1}};
     localparam logic [AXI_ADDR_W-1:0] UNMAP_MASK  = {AXI_ADDR_W{1'b0}};
@@ -2439,6 +2560,8 @@ module e1_soc_integrated
     logic [31:0]              dram_linkecc_corrected_count;
     logic [31:0]              dram_linkecc_uncorrected_count;
     logic                     dram_ecc_uncorrected_irq;
+    logic [63:0]              dram_mem_base_addr;
+    logic [63:0]              dram_mem_capacity_bytes;
     /* verilator lint_on UNUSEDSIGNAL */
 
     e1_dram_ctrl #(
@@ -2525,7 +2648,9 @@ module e1_soc_integrated
         .odecc_uncorrected_count  (dram_odecc_uncorrected_count),
         .linkecc_corrected_count  (dram_linkecc_corrected_count),
         .linkecc_uncorrected_count(dram_linkecc_uncorrected_count),
-        .ecc_uncorrected_irq      (dram_ecc_uncorrected_irq)
+        .ecc_uncorrected_irq      (dram_ecc_uncorrected_irq),
+        .mem_base_addr            (dram_mem_base_addr),
+        .mem_capacity_bytes       (dram_mem_capacity_bytes)
     );
 
     /* verilator lint_off UNUSEDSIGNAL */
@@ -2540,7 +2665,8 @@ module e1_soc_integrated
         dram_refresh_active, dram_zqcs_active, dram_zqcl_active,
         dram_odecc_corrected_count, dram_odecc_uncorrected_count,
         dram_linkecc_corrected_count, dram_linkecc_uncorrected_count,
-        dram_ecc_uncorrected_irq
+        dram_ecc_uncorrected_irq,
+        dram_mem_base_addr, dram_mem_capacity_bytes
     };
     /* verilator lint_on UNUSEDSIGNAL */
 

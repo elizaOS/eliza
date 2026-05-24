@@ -1,0 +1,75 @@
+diff --git a/src/bun.js/modules/BunJSCModule.h b/src/bun.js/modules/BunJSCModule.h
+index 038fbe1..118d7db 100644
+--- a/src/bun.js/modules/BunJSCModule.h
++++ b/src/bun.js/modules/BunJSCModule.h
+@@ -437,6 +437,11 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame* callFrame))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++    return JSC::JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -469,6 +474,7 @@ JSC_DEFINE_HOST_FUNCTION(functionStartSamplingProfiler,
+     samplingProfiler.noticeCurrentThreadAsJSCExecutionThread();
+     samplingProfiler.start();
+     return JSC::JSValue::encode(jsUndefined());
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionSamplingProfilerStackTraces);
+@@ -476,6 +482,10 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     (JSC::JSGlobalObject * globalObject,
+         JSC::CallFrame*))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    return JSC::JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::DeferTermination deferScope(vm);
+     auto scope = DECLARE_THROW_SCOPE(vm);
+@@ -489,6 +499,7 @@ JSC_DEFINE_HOST_FUNCTION(functionSamplingProfilerStackTraces,
+     JSC::EncodedJSValue result = JSC::JSValue::encode(JSONParse(globalObject, jsonString));
+     scope.releaseAssertNoException();
+     return result;
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetRandomSeed);
+@@ -582,7 +593,11 @@ JSC_DECLARE_HOST_FUNCTION(functionTotalCompileTime);
+ JSC_DEFINE_HOST_FUNCTION(functionTotalCompileTime,
+     (JSGlobalObject*, CallFrame*))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    return JSValue::encode(jsNumber(0));
++#else
+     return JSValue::encode(jsNumber(JIT::totalCompileTime().milliseconds()));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGetProtectedObjects);
+@@ -660,6 +675,11 @@ JSC_DEFINE_HOST_FUNCTION(functionSetTimeZone, (JSGlobalObject * globalObject, Ca
+ 
+ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, CallFrame* callFrame))
+ {
++#if defined(__riscv) && __riscv_xlen == 64
++    UNUSED_PARAM(globalObject);
++    UNUSED_PARAM(callFrame);
++    return JSValue::encode(jsUndefined());
++#else
+     auto& vm = JSC::getVM(globalObject);
+     JSC::SamplingProfiler& samplingProfiler = vm.ensureSamplingProfiler(WTF::Stopwatch::create());
+ 
+@@ -772,6 +792,7 @@ JSC_DEFINE_HOST_FUNCTION(functionRunProfiler, (JSGlobalObject * globalObject, Ca
+ 
+     JSValue result = report(vm, globalObject);
+     RELEASE_AND_RETURN(throwScope, JSValue::encode(result));
++#endif
+ }
+ 
+ JSC_DECLARE_HOST_FUNCTION(functionGenerateHeapSnapshotForDebugging);

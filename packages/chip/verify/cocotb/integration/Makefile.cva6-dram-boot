@@ -1,11 +1,11 @@
-# Cocotb Makefile — CVA6 boots a bare-metal M-mode image from the REAL AXI4
-# DRAM controller through the REAL fabric, with the REAL CLINT/PLIC + RoT gate.
+# Cocotb Makefile — CVA6 boots a bare-metal M-mode image from the AXI4
+# DRAM-controller RTL model through the fabric RTL, with CLINT/PLIC + RoT RTL.
 #
 # Top: rtl/top/e1_cva6_dram_boot_top.sv  (TB = the top itself; cocotb drives
 # clk/rst_n + the RoT release inputs and reads the DRAM markers back).
 #
 # Reuses the CVA6 flist expansion + the tracked Verilator-lowering patches
-# from Makefile.cva6 so the real OpenHW CVA6 v5.3.0 sources compile.
+# from Makefile.cva6 so the OpenHW CVA6 v5.3.0 sources compile.
 
 TOPLEVEL_LANG ?= verilog
 SIM           ?= verilator

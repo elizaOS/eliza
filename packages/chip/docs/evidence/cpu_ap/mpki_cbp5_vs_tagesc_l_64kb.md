@@ -18,23 +18,24 @@ SPEC2017, AOSP, or JS-engine MPKI claims.
   framework. Reference per-trace MPKI is parsed from
   `reference_results_training_set.csv`.
 
-## Per-trace MPKI (model + RTL backends), R8 post-fix
+## Per-trace MPKI (model + RTL backends), current artifact snapshot
 
-The model geometry was rebased onto the R8 RTL geometry (FTB 4096
-entries × 4 ways, ITTAGE 5 × {512, 512, 1024, 1024, 1024}) so the
-two backends compare on the same area envelope.
+The model geometry is recorded in `docs/evidence/cpu_ap/mpki_results_cbp5.json`;
+the RTL snapshot is recorded in `docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json`.
+These CBP-5 sample traces are diagnostic train-trace evidence only and do not
+back release MPKI claims.
 
 | trace | branches | instructions | model MPKI | RTL MPKI | CBP-5 64KB TAGE-SC-L ref MPKI | model gap | RTL gap |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sample_fp_trace  | 148 723 |  997 741 | 3.078 | 4.186 | 0.5736 (fp_0_trace full) | +2.504 | +3.612 |
-| sample_int_trace | 181 877 |  997 301 | 2.074 | 3.729 | 5.1327 (int_0_trace full) | -3.059 | -1.404 |
+| sample_fp_trace  | 148 723 |  997 741 | 1.838 | 34.086 | 0.5736 (fp_0_trace full) | +1.265 | +33.512 |
+| sample_int_trace | 181 877 |  997 301 | 2.027 | 33.611 | 5.1327 (int_0_trace full) | -3.105 | +28.478 |
 
 Trajectory:
 - R6 baseline (pre-fix): RTL `sample_fp_trace = 52.554`, `sample_int_trace = 59.737`.
 - R7 post-fix: 4.221 / 9.666 — closed the catastrophic 17-27× gap to 1.4-4.4×.
-- R8 post-fix: 4.186 / 3.729 — RTL within **2×** of the model on every workload
-  and **below** the published CBP2016 64KB TAGE-SC-L reference (5.13 MPKI on
-  the full int_0_trace).
+- Current artifact snapshot: 34.086 / 33.611 — the CBP-5 RTL sample artifact is
+  not a current convergence claim. The active model/RTL convergence gate is the
+  synthetic shared-trace comparison in `bpu-vs-cva6-mpki-rtl.json`.
 
 Model values: `docs/evidence/cpu_ap/mpki_results_cbp5.json`
 (`schema=eliza.bpu_mpki.v1`, `harness=behavioural-bpu-model`).
@@ -111,10 +112,12 @@ gaps, all addressed in R7 and retained in R8:
 
 1. **`br_kind_e` widened to 3 bits.** Added `BR_IND = 4` so the RTL can
    express "indirect jump that does not push the RAS" (switch dispatch,
-   PLT, vtable). The cocotb harness no longer collapses `BR_IND ->
-   BR_CALL`; on `sample_int_trace` the RAS overflow counter dropped from
-   18 508 to 0 because spurious indirect pushes are gone. Consumers
-   updated: `rtl/cpu/bpu/bpu_top.sv` arbitration and PMU strobes,
+   PLT, vtable), and later `BR_DIRECT = 5` so unconditional direct jumps
+   use target-array state without training conditional direction predictors.
+   The cocotb harness no longer collapses `BR_IND -> BR_CALL`; on
+   `sample_int_trace` the RAS overflow counter dropped from 18 508 to 0
+   because spurious indirect pushes are gone. Consumers updated:
+   `rtl/cpu/bpu/bpu_top.sv` arbitration and PMU strobes,
    `rtl/cpu/bpu/ittage.sv` training gate (now `CALL || IND`, was
    `CALL || RET`), `verify/cocotb/bpu/*.sv` flat-port widths.
 2. **TAGE/SC global-history update filtered to `BR_COND`.** The
@@ -144,14 +147,14 @@ gaps, all addressed in R7 and retained in R8:
 The bimodal seed was also flipped from weakly-not-taken to weakly-taken
 to match the model and the canonical Seznec convention.
 
-## Residual gap (post-R8)
+## Residual gap (current checked RTL evidence)
 
-After the R8 fixes the RTL stays within **1.4 ×** of the model on
-`sample_fp_trace` (4.19 vs 3.08 MPKI) and **1.8 ×** on
-`sample_int_trace` (3.73 vs 2.07 MPKI). The int-trace RTL number
-(3.73 MPKI) is also **below** the CBP2016 64KB TAGE-SC-L reference
-of 5.13 MPKI on the full int_0_trace; the in-tree behavioural
-model is even lower (2.07 MPKI on the 1 M-instruction prefix).
+The older post-R8 residual-gap numbers above are historical. The current
+checked CBP-5 RTL artifact is `mpki_results_cbp5_rtl.json`: aggregate RTL MPKI
+is 33.848410 across `sample_fp_trace` and `sample_int_trace`, while
+`target_2028_mpki` remains 4.0. The artifact keeps `cbp5_claim=false`; it is
+valid scoped evidence that the harness runs real CBP-5 train traces, not a
+target-met CBP-5 performance claim.
 
 Per-class residual on `sample_int_trace` (the harder workload):
 
@@ -195,29 +198,33 @@ that re-ran the full evidence chain to confirm the R8 numbers
 reproduce and no regression slipped in:
 
 - `make bpu-lint` — PASS (Verilator 5.049 strict-lint clean across
-  all 13 BPU modules, including the renamed `e1_bpu_ras`).
-- `make cocotb-bpu` — 33/33 tests across 9 modules
+  all 14 BPU RTL modules, including the H2P corrector).
+- `make cocotb-bpu` — 103/103 target-module tests across 10 modules
   (`ras`, `ftq`, `ftb`, `uftb`, `loop_predictor`, `tage`, `ittage`,
-  `sc`, `bpu_top`). 0 fail, 0 skip.
-- `make mpki-eval-rtl` — re-measured CBP-5 RTL MPKI: aggregate
-  3.958, `sample_fp_trace` 4.186, `sample_int_trace` 3.729. Numbers
-  reproduce bit-exact (mispredict counts identical to R8 commit).
-- `make formal-bpu` — `ras` formal harness elaborates with the
-  renamed `e1_bpu_ras` module (no module-not-found error); the BMC
-  failure on `ras_formal.sv:89` is the pre-existing
-  yosys-async-reset-initial-state limitation documented in
-  `build/reports/bpu/formal-status.yaml` and is not a regression
-  introduced by R8.
+  `sc`, `l1i_frontend`, `bpu_top`). 0 fail, 0 skip.
+- `make mpki-eval-rtl` — current checked artifact records CBP-5 RTL MPKI:
+  aggregate 33.848, `sample_fp_trace` 34.086, `sample_int_trace` 33.611.
+- `python3 benchmarks/cpu/branch/run_mpki.py --backend model --synthetic
+  always_taken --trace external/cbp5-traces` — current checked model artifact
+  records CBP-5 rows only: aggregate 41.315, `sample_fp_trace` 35.429,
+  `sample_int_trace` 47.204.
+- `make formal-bpu` — `ftq` elaborates through yosys-slang and passes
+  its bounded queue properties. `ras` elaborates with the renamed
+  `e1_bpu_ras` module and FORMAL monitor ports, proving the
+  speculative-pointer range invariant; PMU underflow and restore
+  behavior are covered functionally by the cocotb RAS regressions.
 
-The R8 target (RTL within ~2× of the behavioural model on CBP-5
-sample traces) is met:
+The former R8 target (RTL within ~2× of the behavioural model on CBP-5 sample
+traces) is met by the current checked artifacts, but both E1 measurements are
+still far above the CBP2016 64 KB TAGE-SC-L reference on these samples:
 
 | trace | model MPKI | RTL MPKI | ratio |
 | --- | ---: | ---: | ---: |
-| sample_fp_trace  | 3.078 | 4.186 | 1.36× |
-| sample_int_trace | 2.074 | 3.729 | 1.80× |
+| sample_fp_trace  | 35.429 | 34.086 | 0.96× |
+| sample_int_trace | 47.204 | 33.611 | 0.71× |
 
-No further RTL tuning is queued for R8.1; the residual is structural
+Further CBP-5 RTL tuning remains separate from the current synthetic shared-trace
+convergence gate; the residual includes structural effects
 (set-associative SRAM vs flat-dict model FTB, area-cost-driven SC
 override threshold) and is not a correctness gap.
 
@@ -248,10 +255,10 @@ stem does not map to a named CSV row.
 - CBP-5 train traces are *not* SPEC2017, AOSP, or V8/JIT workloads.
   Policy flags in every CBP-5 evidence file are `spec2017_claim=false`,
   `android_claim=false`, `v8_claim=false`.
-- The `cbp5_claim` flag is `true` in
-  `mpki_results_cbp5.json` and `mpki_results_cbp5_rtl.json` to mark
-  that a real CBP-5 trace number is now on file, scoped to the
-  `evidence_class: cbp5_train_traces_only` field.
+- The `cbp5_claim` flag is `false` in
+  `mpki_results_cbp5.json` and `mpki_results_cbp5_rtl.json`: CBP-5
+  trace evidence is on file, but the current aggregate MPKI is above
+  the 2028 target and does not promote a target-met CBP-5 claim.
 
 ## Downloading the full train set (BLOCKED in this run)
 
@@ -300,7 +307,10 @@ network bandwidth + disk for the full ~78 GB pull.
 ## Schema fields and policy
 
 `mpki_results_cbp5.json` and `mpki_results_cbp5_rtl.json` share the
-existing `eliza.bpu_mpki.v1` schema. The CBP-5 envelopes add:
+existing `eliza.bpu_mpki.v1` schema. The model CBP-5 artifact now filters out
+QEMU-RV64 workload rows before writing this envelope, so every row in both
+files is scoped to `trace_class: cbp5_train_traces_only`. The CBP-5 envelopes
+add:
 
 - `evidence_class: cbp5_train_traces_only` (top-level + per-workload).
 - `cbp5_tage_sc_l_64kb_reference_mpki_by_class` (workload-class
@@ -309,5 +319,5 @@ existing `eliza.bpu_mpki.v1` schema. The CBP-5 envelopes add:
   parsed from the CSV).
 - Per-workload `branch_stats` with the true `instruction_count`,
   `branch_count`, and per-class breakdown from the CBP-5 reader.
-- `claim_policy.cbp5_claim = true`; `spec2017_claim`, `android_claim`,
+- `claim_policy.cbp5_claim = false`; `spec2017_claim`, `android_claim`,
   `v8_claim` remain `false`.

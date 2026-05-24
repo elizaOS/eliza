@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Gate: real OpenSBI boots on the real CVA6 from real DRAM, in Verilator.
+"""Gate: OpenSBI boots on the CVA6 RTL through the DRAM-controller RTL model.
 
 PASS only with executable evidence that ALL of the following hold:
 
-  1. The OpenSBI boot image builds from source — the REAL repo OpenSBI v1.8.1
+  1. The OpenSBI boot image builds from source — the repo OpenSBI v1.8.1
      fw_jump (FW_TEXT_START=0x80000000, next-stage S-mode), a compiled
      device-tree blob, the S-mode payload, and the entry shim — assembled into
      one dense DRAM preload image (fw/opensbi-cva6-boot/build_boot_image.py).
@@ -12,8 +12,8 @@ PASS only with executable evidence that ALL of the following hold:
      AXI4 atomics adapter wired onto the fabric) ELABORATES clean under
      Verilator.
 
-  3. Running the cocotb sim, the REAL CVA6 fetches + executes the REAL OpenSBI
-     from the REAL DRAM controller and OpenSBI prints its banner over the
+  3. Running the cocotb sim, the CVA6 RTL fetches + executes the OpenSBI image
+     from the DRAM-controller RTL model and OpenSBI prints its banner over the
      ns16550a UART (the milestone for this proof).
 
 The cocotb test (`test_opensbi_cva6_boot.py`) asserts the banner and writes the
@@ -66,7 +66,7 @@ def _write(
     extra: dict | None = None,
 ) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": GATE,
         "status": status,
@@ -110,6 +110,8 @@ def _parse_results() -> tuple[bool, str]:
         error = case.find("error")
         if failure is not None or error is not None:
             node = failure if failure is not None else error
+            if node is None:
+                continue
             msg = (node.get("message") or node.text or "assertion failed").strip()
             return False, f"{case.get('name')}: {msg[:600]}"
     if seen == 0:
@@ -229,6 +231,22 @@ def main() -> int:
         print(f"FAIL: {reason}")
         return 1
 
+    _write("PASS", None, None, evidence + [
+        "verify/cocotb/integration/Makefile.opensbi-cva6-boot",
+        "docs/evidence/cpu_ap/opensbi_cva6_boot.transcript",
+        "build/reports/opensbi_cva6_boot.sim.log",
+    ], extra={**extra,
+              "proof": "OpenSBI v1.8.1 booted in M-mode on the CVA6 RTL "
+                       "from the DRAM-controller RTL model (through the fabric "
+                       "RTL, CLINT/PLIC RTL + RoT gate) and printed its banner over "
+                       "the ns16550a UART.",
+              "next_step": "M->S handoff to S-mode + Linux kernel boot is proven "
+                           "by scripts/check_linux_boot_cva6.py: the vendored "
+                           "pulp axi_riscv_atomics filter resolves the post-banner "
+                           "write-ID FIFO ordering, so the boot proceeds to the "
+                           "S-mode payload (S-MODE-OK) and on to the Linux Image."})
+    print("PASS: OpenSBI v1.8.1 booted on the CVA6 RTL through the "
+          "DRAM-controller RTL model and printed its banner over the ns16550a UART.")
     _write(
         "PASS",
         None,

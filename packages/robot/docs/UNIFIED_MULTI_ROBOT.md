@@ -41,10 +41,16 @@ locomotion policy across four humanoids:
 uv run python scripts/generate_unitree_profile.py --robot g1
 uv run python scripts/generate_unitree_profile.py --robot h1
 
-# Smoke-train (CPU) any profile
+# Train any profile with the default Alberta continual-learning backend
+# --steps is a total budget split across selected tasks.
 uv run python scripts/train_text_conditioned.py --profile unitree-g1 --steps 30000
 
-# Drop into an interactive viewer and type commands
+# Optional PPO smoke baseline
+uv run python scripts/train_text_conditioned.py --profile unitree-g1 --backend ppo --steps 30000
+
+# Drop into an interactive viewer and type commands. By default this uses a
+# profile-matching Alberta checkpoint when present; pass --policy-checkpoint
+# to select a specific checkpoint.
 uv run python scripts/interactive_viewer.py --profile unitree-g1
   >> walk forward
   >> turn left
@@ -71,7 +77,8 @@ uv run python scripts/record_agent_videos.py \
 - `assets/profiles/<id>/{mjcf,meshes,LICENSE}/` — binary URDF/STL/MJCF.
 - `eliza_robot/rl/text_conditioned/profile_env.py` — single
   `TextConditionedProfileEnv` class; no AiNex-vs-Asimov fork.
-- `scripts/train_text_conditioned.py` — single CPU PPO entrypoint.
+- `scripts/train_text_conditioned.py` — single training entrypoint; Alberta is
+  the default backend, PPO is an explicit smoke baseline.
 - `scripts/interactive_viewer.py` — single viewer + mp4 recorder.
 - `scripts/record_agent_videos.py` — end-to-end Eliza-style harness.
 - `plugins/plugin-ainex/src/actions/runRl.ts` — `AINEX_RUN_RL` action;
@@ -82,9 +89,11 @@ uv run python scripts/record_agent_videos.py \
 
 ## What still requires GPU (Nebius)
 
-- Brax-MJX 100M+ step training (`eliza_robot/sim/mujoco/asimov_mjx_training.py`).
+- Brax-MJX 100M+ step PPO baseline/full-training
+  (`eliza_robot/sim/mujoco/asimov_mjx_training.py`).
 - Reference: `checkpoints/text_conditioned_brax_v2_sota_250m/` reached
   best_reward = 30.81 over 11 tasks at 250M env steps in ~1.9 h.
 
-CPU SB3 smokes (`scripts/train_text_conditioned.py`) are the local
-plumbing check; production-quality policies come from Nebius.
+Short Alberta runs through `scripts/train_text_conditioned.py` are the local
+continual-learning plumbing check. Full production policies and long
+comparative PPO/MJX runs come from Nebius.

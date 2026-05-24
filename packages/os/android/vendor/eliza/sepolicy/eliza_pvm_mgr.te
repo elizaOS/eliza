@@ -1,0 +1,75 @@
+###
+### Eliza protected-VM management gating (TEE-native AOSP path).
+###
+### Plan §5 ("AOSP / pKVM path") and the measured-boot contract "AOSP Path"
+### require that exactly one privileged on-device domain may reach the
+### protected-VM (pVM / AVF) management service and its vsock control
+### channel. That domain exports the pVM quote into the normalized
+### TeeEvidence document the agent consumes; no app, no untrusted vendor
+### domain, and no Play/cloud build component may reach it.
+###
+### `eliza_pvm_mgr` is that domain. It is a system_ext / product privileged
+### native service domain (NOT an app domain, to avoid the priv_app
+### data-label neverallow envelope that blocked a custom `eliza_agent`
+### app domain — see eliza_agent.te). It is started by init from
+### vendor/eliza/init/init.eliza.rc and is the sole writer of the runtime
+### evidence document at /run/elizaos/tee/evidence.json
+### (ELIZA_TEE_EVIDENCE_PATH).
+###
+### CONFIDENTIALITY BOUNDARY: this policy gates the *management/control*
+### surface so the bring-up contract is enforceable on Cuttlefish/qemu-virt
+### without a confidential boot. Real pKVM/AVF (ARM64) or riscv64 CoVE
+### confidentiality is BLOCKED until a CoVE-capable KVM/crosvm path exists
+### (plan §5 decisions; 06-os-on-tee-software.md §5). On the bring-up track
+### the management channel runs with confidentiality disabled.
+###
+### Validated by packages/chip/scripts/check_aosp_tee_contract.py.
+###
+
+type eliza_pvm_mgr, domain;
+type eliza_pvm_mgr_exec, exec_type, file_type, system_file_type;
+
+# The full pVM manager policy is not compiled on the current riscv64 bring-up
+# product. The service binary is packaged for contract/static integration, but
+# runtime pVM enforcement remains BLOCKED until the target moves this domain to
+# the correct product/system_ext sepolicy owner and exposes AVF/CoVE types.
+#
+# Build-gated rules for that target:
+#   init_daemon_domain(eliza_pvm_mgr)
+
+# The pVM / AVF management service binder. On AVF hosts this is the
+# virtualizationservice "IVirtualizationService"; on the current riscv64
+# bring-up tree those public sepolicy types are absent, so the AVF binder
+# policy is build-gated instead of compiled into vendor policy.
+#
+# ELIZA_AVF_SEPOLICY_BUILD_GATED=1
+#   binder_use(eliza_pvm_mgr)
+#   binder_call(eliza_pvm_mgr, virtualizationservice)
+#   allow eliza_pvm_mgr virtualizationservice_service:service_manager find;
+
+# The protected-VM control vsock channel. Platform policy currently labels
+# /dev/vhost-vsock as kvm_device; the Eliza-specific device type and access
+# envelope remain build-gated until this product owns the final AVF/CoVE
+# policy split without conflicting with platform file_contexts.
+type eliza_pvm_vsock_device, dev_type;
+#   allow eliza_pvm_mgr eliza_pvm_vsock_device:chr_file { open read write ioctl getattr };
+
+# Runtime evidence document export directory (ELIZA_TEE_EVIDENCE_PATH).
+# eliza_pvm_mgr is the sole writer; the agent reads it through its own
+# domain (read handled by that domain's policy, not granted here).
+type eliza_tee_runtime_file, file_type, data_file_type, core_data_file_type;
+#   allow eliza_pvm_mgr eliza_tee_runtime_file:dir { search write add_name remove_name create };
+#   allow eliza_pvm_mgr eliza_tee_runtime_file:file { create open read write getattr unlink rename };
+
+# Read the signed golden TEE policy + measurements placed at
+# /product/etc/eliza/ (labeled system_file / product file_type by default).
+#   allow eliza_pvm_mgr system_file:file { open read getattr };
+
+# Hard fail-closed envelope: the management domain must never become an
+# entrypoint for apps, never be reachable by app or untrusted vendor
+# domains, and never gain self execmem. These mirror the AOSP base
+# neverallow shapes and are asserted-present by the contract checker.
+#   neverallow { appdomain -eliza_pvm_mgr } eliza_pvm_vsock_device:chr_file *;
+#   neverallow { domain -eliza_pvm_mgr -init } eliza_pvm_vsock_device:chr_file { read write open ioctl };
+#   neverallow eliza_pvm_mgr self:process { execmem execstack };
+#   neverallow { domain -eliza_pvm_mgr } eliza_tee_runtime_file:file { write append };

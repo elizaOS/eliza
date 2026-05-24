@@ -56,7 +56,6 @@ jobs:
       contents: write
       id-token: write
       attestations: write
-
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
       VARIANT_DIR: packages/os/linux/elizaos
@@ -165,7 +164,6 @@ jobs:
         if: matrix.arch != 'amd64' || steps.kvm.outputs.have_kvm != 'true'
         run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
 
-
       - name: Attest SLSA build provenance for ISO
         # Mints a Sigstore-signed in-toto/SLSA provenance attestation
         # tied to this repo + workflow + commit, via GitHub OIDC.
@@ -238,6 +236,7 @@ jobs:
           fi
           # Best-effort cleanup; do not fail the job if the temp dir is gone.
           rm -rf "${{ steps.sbom-extract.outputs.root }}" || true
+
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v7

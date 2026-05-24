@@ -4,8 +4,8 @@ Companion to [`../spec-db/open-riscv-core-comparison.md`](../spec-db/open-riscv-
 and its checked dataset. This document is deliberately blunt about the axes
 where the best-tooled open in-order core, **CVA6/Ariane** (OpenHW Group),
 currently beats E1, and gives concrete, repo-anchored actions to close or flip
-each gap. Measured claims cite evidence files; external claims cite sources;
-targets are marked as targets.
+each gap. Pre-silicon evidence claims cite evidence files; external claims cite
+sources; targets are marked as targets.
 
 ## 0. Scorecard (E1 vs Ariane)
 
@@ -14,45 +14,43 @@ evidence produced; see `docs/evidence/cpu_ap/`.
 
 | Axis | Verdict (now) | One-line basis |
 |---|---|---|
-| Branch prediction (MPKI) | ✅ win (measured, L2) | ≥5× geomean fewer mispredicts (latest 6.07×) — [`bpu-vs-cva6-mpki.json`](../evidence/cpu_ap/bpu-vs-cva6-mpki.json). RTL-vs-RTL hardening fail-closed pending a concurrent BPU-RTL rewrite — [`bpu-vs-cva6-mpki-rtl.json`](../evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json) |
-| Scalar integer throughput | ➖ parity (measured) | e1-pro **is** CVA6, cycle-accurate: CoreMark/MHz **2.26**, DMIPS/MHz **1.17** — [`cva6-coremark-verilator.json`](../evidence/cpu_ap/cva6-coremark-verilator.json) |
-| Peak single-thread | ✅ win (measured, L2) | Kunminghu (=e1-premium) on XS-GEM5: **10.05 CoreMark/MHz, IPC 2.84 = 4.45× CVA6** — [`kunminghu-coremark.json`](../evidence/cpu_ap/kunminghu-coremark.json) |
-| Silicon-proven frequency | ❌ loss | CVA6 = 1.7 GHz GF22FDX silicon; E1 = zero silicon. Now has a measured **open-PDK ~222 MHz** point — [`e1-pro-synth-ppa.json`](../evidence/cpu_ap/e1-pro-synth-ppa.json) |
-| Verification maturity | ➖ parity (measured) | **224/224 riscv-tests** + **step-compare 0/16,880** + RVFI wired — [`e1-pro-isa-conformance.json`](../evidence/cpu_ap/e1-pro-isa-conformance.json), [`e1-step-compare.json`](../evidence/cpu_ap/e1-step-compare.json) |
+| Branch prediction (MPKI) | ⚠️ model win, E1 RTL corroborated | Model comparison remains favorable — [`bpu-vs-cva6-mpki.json`](../evidence/cpu_ap/bpu-vs-cva6-mpki.json). E1 RTL is corroborated on the shared trace set — [`bpu-vs-cva6-mpki-rtl.json`](../evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json); the CVA6 side remains model-only. |
+| Scalar integer throughput | ➖ parity (local Verilator cycle evidence) | e1-pro **is** CVA6, cycle-accurate: CoreMark/MHz **2.26**, DMIPS/MHz **1.17**. This is not phone-class L5/L6 evidence — [`cva6-coremark-verilator.json`](../evidence/cpu_ap/cva6-coremark-verilator.json) |
+| Peak single-thread | ✅ win (XS-GEM5 L2 evidence) | Kunminghu (=e1-premium) on XS-GEM5: **10.05 CoreMark/MHz, IPC 2.84 = 4.45× CVA6**. This is simulator evidence, not SPEC or phone L5/L6 evidence — [`kunminghu-coremark.json`](../evidence/cpu_ap/kunminghu-coremark.json) |
+| Silicon-proven frequency | ❌ loss | CVA6 = 1.7 GHz GF22FDX silicon; E1 = zero silicon. Now has a synthesized **open-PDK ~222 MHz** estimate — [`e1-pro-synth-ppa.json`](../evidence/cpu_ap/e1-pro-synth-ppa.json) |
+| Verification maturity | ➖ parity (pre-silicon test evidence) | **224/224 riscv-tests** + **step-compare 0/16,880** + RVFI wired — [`e1-pro-isa-conformance.json`](../evidence/cpu_ap/e1-pro-isa-conformance.json), [`e1-step-compare.json`](../evidence/cpu_ap/e1-step-compare.json) |
 | Linux-boot readiness | ➖ parity (functional) | Boots to userland (OpenSBI→Linux 6.12.90→/init) — [`e1-pro-linux-boot.json`](../evidence/cpu_ap/e1-pro-linux-boot.json) |
-| Area / energy efficiency | ➖ parity (measured) | e1-pro **0.0543 mm²** (ASAP7) + CVA6S+ knobs in-tree — [`e1-pro-synth-ppa.json`](../evidence/cpu_ap/e1-pro-synth-ppa.json) |
+| Area / energy efficiency | ➖ parity (synthesis/PPA evidence) | e1-pro **0.0543 mm²** (ASAP7) + CVA6S+ knobs in-tree — [`e1-pro-synth-ppa.json`](../evidence/cpu_ap/e1-pro-synth-ppa.json) |
 | Vector / AI | ✅ win (functional) | RVV 1.0 @ VLEN=256, **3.3× geomean** + real RTL ALU subset — [`e1-rvv-vector.json`](../evidence/cpu_ap/e1-rvv-vector.json) |
 
-E1 now **beats or matches Ariane on every axis with real evidence except
-silicon-proven frequency** (no silicon — honest, unavoidable until tapeout). The
+E1 now has repo-backed evidence for every row above, but the evidence level is
+not uniform and no row promotes a phone-class L5/L6 CPU benchmark claim. The
 sections below give the original analysis and the remaining work per axis; the
-"how to beat it" actions are now mostly **done** (cited above) — the residual
-items are full UVM coverage-closure, riscv-arch-test (toolchain-blocked),
-cycle-accurate Linux-to-userland (sim-speed), PnR/PDK signoff, and the
-RTL-vs-RTL branch hardening.
+residual items are full UVM coverage-closure, riscv-arch-test
+(toolchain-blocked), cycle-accurate Linux-to-userland (sim-speed), PnR/PDK
+signoff, and RTL branch convergence.
 
-## 1. The one place E1 already wins: branch prediction
+## 1. The clearest model-level E1 advantage: branch prediction
 
-Measured, both predictors as behavioural models over an identical 20-trace set
+Measured, both predictors as behavioural models over an identical 35-trace set
 ([`bpu-vs-cva6-mpki.json`](../evidence/cpu_ap/bpu-vs-cva6-mpki.json), claim level
 L2_ARCH_SIM, harness `benchmarks/cpu/branch/compare_mpki.py`):
 
-- **E1 BPU geomean MPKI ~3.1 vs CVA6 18.64 → ≥5× fewer mispredicts** (latest run
-  6.07× geomean / 5.84× pooled; the evidence file is the live source of truth and
-  the E1 figure keeps improving as the model is tuned).
+- **E1 BPU geomean MPKI 15.005509 vs CVA6 43.006539 → 2.866× fewer mispredicts**
+  on the current shared trace set; the evidence file is the live source of truth.
 - E1: TAGE-SC-L + ITTAGE + FTB(2048) + RAS + statistical corrector + loop
   predictor. CVA6: `BHT(128×2-bit) + BTB(32, indirect-only) + RAS(2)`
   (sized from `external/cva6/cva6/core/include/cv64a6_imafdc_sv39_config_pkg.sv`
   and `core/frontend/{bht,btb,ras}.sv`).
 
-This advantage is real and is the front-end E1 shares across the mid/big cores.
-It is also the reason the *unproven* OoO performance axis is credible: a 5×
-better predictor feeds a wide OoO back-end directly.
+This model-level advantage is corroborated by E1 RTL on the shared trace set,
+but it is not a SPEC/AOSP/JavaScript MPKI claim. It is also one reason the
+*unproven* OoO performance axis is credible: a substantially better predictor
+feeds a wide OoO back-end directly.
 
-**Hardening action (medium confidence):** the headline is currently
-model-vs-model. Bring CVA6 to RTL parity by running its frontend in the same
-cocotb MPKI harness that already produces E1's RTL evidence
-(`docs/evidence/cpu_ap/mpki_results_synthetic.json`), so the win is RTL-vs-RTL.
+**Hardening action (medium confidence):** E1 RTL is now corroborated against the
+behavioural model on the shared trace set. RTL-vs-RTL remains future work if a
+CVA6 frontend RTL replay path is added to the same cocotb MPKI harness.
 
 ## 2. Silicon-proven frequency — **loss**
 
@@ -164,7 +162,7 @@ the little core is a feature, not a failure. Distinguish:
 
 | # | Action | Beats axis | Evidence it produces | Ladder |
 |---|---|---|---|---|
-| 1 | Finish CVA6 cycle-accurate CoreMark. The Verilator testharness already **builds and runs** bare-metal ELFs producing real cycle counts (submodules, pinned spike, dtc, and DPI-header blockers all resolved via `make coremark-cva6-verilator`); the remaining step is clean CoreMark completion (align the `verif/tests/custom` UART/tohost BSP with the `corev_apu` peripheral map, or use the `veri-testharness` flow) | scalar throughput (→ measured parity, then SS) | `cva6-coremark-verilator.json` | L1 |
+| 1 | Keep CVA6 cycle-accurate scalar microbenchmarks reproducible. The Verilator testharness now **builds and runs** bare-metal CoreMark and Dhrystone ELFs with real cycle counts via `make coremark-cva6-verilator` and `make dhrystone-cva6-verilator`; the remaining scalar-performance gap is phone-class evidence from SPEC, JetStream, and lmbench on a real target or equivalent L5 runner. | scalar throughput (→ measured parity, then SS) | `cva6-coremark-verilator.json`, `cva6-dhrystone-verilator.json` | L1 |
 | 2 | Wire RVFI in `e1_cva6_wrapper.sv` + Spike step-and-compare lane | verification | step-and-compare transcript | L1 |
 | 3 | Run core-v-verif regression against the wrapped e1-pro | verification | core-v-verif pass report | L1 |
 | 4 | Generate Rocket/CVA6 bring-up; OpenSBI+Linux boot transcript | Linux-boot | `linux-smoke` boot log | L1/L3 |
@@ -174,6 +172,6 @@ the little core is a feature, not a failure. Distinguish:
 | 8 | Integrate RVV 1.0 datapath on mid core; Embench/vector kernels | vector/AI | vector benchmark report | L1/L2 |
 
 Items 1–6 are all **runnable on this host today** (no silicon, no license) and
-would convert four of the current losses/unprovens into measured parity-or-win.
+would convert four of the current losses/unprovens into pre-silicon parity-or-win evidence.
 Items 7–8 need core generation/integration but no silicon. Only the absolute
 silicon-frequency and big-core (Kunminghu 8-wide scale-up) claims remain hard-blocked.

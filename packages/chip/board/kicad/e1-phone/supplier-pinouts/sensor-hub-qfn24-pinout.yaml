@@ -1,0 +1,64 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: LSM6DSO-class always-on sensor hub development contract
+manufacturer: STMicroelectronics development function class
+package: 24-pin 0.5 mm pitch QFN development carrier pattern
+source_doc: https://www.st.com/en/product/lsm6dso
+source_doc_alt:
+  - https://www.st.com/resource/en/datasheet/lsm6dso.pdf
+source_doc_revision: public product page and datasheet observed 2026-05-22; exact selected sensor hub pinout still requires selected MPN lock
+captured_date: 2026-05-22
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: public_sensor_hub_signal_contract_pending_selected_sensor_pinout
+procurement_url: https://www.st.com/en/product/lsm6dso
+notes: |
+  Board-side development contract for SENSOR_HUB_QFN_DEV. It captures the
+  always-on rail, host I2C bus, and interrupt lines used by the current KiCad
+  board. It is a development carrier map, not a released LSM6DSO land pattern.
+mechanical:
+  package_family: qfn_development_carrier
+  pin_count: 24
+  pitch_mm: 0.5
+pin_signal_set:
+  power:
+    - AON_1V8
+    - IO_1V8
+    - GND
+  host_control:
+    - SENSOR_I2C_SCL
+    - SENSOR_I2C_SDA
+  interrupts:
+    - IMU_INT
+    - ALS_PROX_INT
+    - BARO_INT
+    - MAG_INT
+pins:
+  - {pin: '1', name: AON_1V8, function: always_on_power, direction: power_input, voltage_v: 1.8}
+  - {pin: '2', name: IO_1V8, function: host_io_power, direction: power_input, voltage_v: 1.8}
+  - {pin: '3', name: GND, function: return, direction: power_return}
+  - {pin: '4', name: SENSOR_I2C_SCL, function: i2c_clock, direction: input}
+  - {pin: '5', name: SENSOR_I2C_SDA, function: i2c_data, direction: bidirectional}
+  - {pin: '6', name: IMU_INT, function: imu_interrupt, direction: output}
+  - {pin: '7', name: ALS_PROX_INT, function: ambient_light_proximity_interrupt, direction: output}
+  - {pin: '8', name: BARO_INT, function: barometer_interrupt, direction: output}
+  - {pin: '9', name: MAG_INT, function: magnetometer_interrupt, direction: output}
+  - {pin: '10', name: RESERVED_10, function: development_spare, direction: passive}
+  - {pin: '11', name: RESERVED_11, function: development_spare, direction: passive}
+  - {pin: '12', name: RESERVED_12, function: development_spare, direction: passive}
+  - {pin: '13', name: RESERVED_13, function: development_spare, direction: passive}
+  - {pin: '14', name: RESERVED_14, function: development_spare, direction: passive}
+  - {pin: '15', name: RESERVED_15, function: development_spare, direction: passive}
+  - {pin: '16', name: RESERVED_16, function: development_spare, direction: passive}
+  - {pin: '17', name: RESERVED_17, function: development_spare, direction: passive}
+  - {pin: '18', name: RESERVED_18, function: development_spare, direction: passive}
+  - {pin: '19', name: RESERVED_19, function: development_spare, direction: passive}
+  - {pin: '20', name: RESERVED_20, function: development_spare, direction: passive}
+  - {pin: '21', name: RESERVED_21, function: development_spare, direction: passive}
+  - {pin: '22', name: RESERVED_22, function: development_spare, direction: passive}
+  - {pin: '23', name: RESERVED_23, function: development_spare, direction: passive}
+  - {pin: '24', name: RESERVED_24, function: development_spare, direction: passive}
+release_blockers:
+  - selected sensor/ALS/barometer/magnetometer package pin tables
+  - sensor placement/orientation review
+  - production land pattern and STEP review
+  - Android sensor HAL bring-up evidence

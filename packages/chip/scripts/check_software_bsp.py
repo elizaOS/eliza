@@ -156,6 +156,25 @@ TARGETS: dict[str, dict[str, Any]] = {
         ],
         "evidence_note": "external OpenSBI build and fw_dynamic handoff transcript",
     },
+    "u-boot": {
+        "readme": ROOT / "docs/sw/u-boot/README.md",
+        "required": [
+            "docs/sw/u-boot/README.md",
+            "docs/sw/u-boot/capture-u-boot-evidence.sh",
+        ],
+        "contract_terms": [
+            "sw/platform/e1_platform_contract.json",
+            "U-Boot",
+            "OpenSBI",
+            "ELIZA_UBOOT_CMD",
+            "ELIZA_UBOOT_BOOT_CMD",
+        ],
+        "evidence": [
+            "docs/evidence/linux/u_boot_eliza_build.log",
+            "docs/evidence/linux/u_boot_opensbi_boot_chain.log",
+        ],
+        "evidence_note": "external U-Boot build and OpenSBI-to-U-Boot boot-chain transcript",
+    },
     "aosp": {
         "readme": ROOT / "docs/sw/aosp-device/README.md",
         "required": [
@@ -355,7 +374,10 @@ def check_artifact_manifest(name: str, errors: list[str]) -> None:
         errors.append(
             f"{name} artifact manifest must list the source command for evidence production"
         )
-    if "boot" in target.get("minimum_claim_to_clear_block", "").lower() and name != "aosp":
+    if "boot" in target.get("minimum_claim_to_clear_block", "").lower() and name not in {
+        "aosp",
+        "u-boot",
+    }:
         errors.append(f"{name} manifest must not imply Android boot evidence")
 
 
@@ -491,9 +513,13 @@ def aosp_hal_source_available(device_root: Path, hal_name: str) -> bool:
 def check_aosp_product_glue(errors: list[str]) -> None:
     device_root = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc"
     product = device_root / "AndroidProducts.mk"
+    product_mk = device_root / "eliza_ai_soc.mk"
     board = device_root / "BoardConfig.mk"
     manifest = device_root / "manifest.xml"
+    e1_vintf_fragment = device_root / "hal/e1_npu/vendor.eliza.e1_npu@1.0-service.xml"
+    matrix = device_root / "device_framework_matrix.xml"
     text = product.read_text(errors="ignore") if product.is_file() else ""
+    product_mk_text = product_mk.read_text(errors="ignore") if product_mk.is_file() else ""
     lunch_choices = {
         "eliza_ai_soc-userdebug",
         "eliza_ai_soc-trunk_staging-userdebug",
@@ -511,11 +537,16 @@ def check_aosp_product_glue(errors: list[str]) -> None:
             errors.append(f"AOSP BoardConfig.mk missing {term}")
     if manifest.is_file():
         manifest_text = manifest.read_text(errors="ignore")
-        for term in ["<manifest", "e1_npu", "hwcomposer.eliza_ai_soc"]:
+        for term in ["<manifest"]:
             if term not in manifest_text:
                 errors.append(f"AOSP VINTF manifest missing XML marker {term}")
         if "</manifest>" not in manifest_text and "/>" not in manifest_text:
             errors.append("AOSP VINTF manifest is missing closing </manifest> marker")
+        if "android.hardware.graphics.composer" in active_aosp_hal_names(manifest_text):
+            errors.append(
+                "AOSP VINTF manifest must not declare the deprecated local composer@2.4 HAL; "
+                "graphics comes from inherited Cuttlefish composer3 packages"
+            )
         active_hals_without_sources = [
             name
             for name in active_aosp_hal_names(manifest_text)
@@ -526,17 +557,42 @@ def check_aosp_product_glue(errors: list[str]) -> None:
                 "AOSP VINTF manifest must not declare active HAL entries until source "
                 "or prebuilts exist: " + ", ".join(active_hals_without_sources)
             )
+    if "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk" not in product_mk_text:
+        errors.append(
+            "AOSP eliza_ai_soc.mk must inherit the Cuttlefish riscv64 phone product for modern composer3 graphics"
+        )
+    if e1_vintf_fragment.is_file():
+        e1_fragment_text = e1_vintf_fragment.read_text(errors="ignore")
+        if "vendor.eliza.e1_npu" not in e1_fragment_text or "IE1Npu" not in e1_fragment_text:
+            errors.append("AOSP e1 NPU VINTF fragment missing vendor.eliza.e1_npu IE1Npu declaration")
+    else:
+        errors.append("AOSP e1 NPU per-service VINTF fragment is missing")
+    if matrix.is_file():
+        matrix_text = matrix.read_text(errors="ignore")
+        if "vendor.eliza.e1_npu" not in matrix_text or "IE1Npu" not in matrix_text:
+            errors.append("AOSP device framework matrix missing optional vendor.eliza.e1_npu entry")
+    else:
+        errors.append("AOSP device framework compatibility matrix is missing")
     device = device_root / "device.mk"
     device_text = device.read_text(errors="ignore") if device.is_file() else ""
     active_device_text = aosp_make_text_without_comments(device_text)
     hal_package_sources = {
         "e1_npu.default": "vendor.eliza.e1_npu",
         "vendor.eliza.e1_npu@1.0-service": "vendor.eliza.e1_npu",
-        "android.hardware.graphics.composer@2.4-service.eliza_ai_soc": (
-            "android.hardware.graphics.composer"
-        ),
-        "hwcomposer.eliza_ai_soc": "android.hardware.graphics.composer",
     }
+    deprecated_hwc_packages = [
+        package
+        for package in (
+            "android.hardware.graphics.composer@2.4-service.eliza_ai_soc",
+            "hwcomposer.eliza_ai_soc",
+        )
+        if package in active_device_text
+    ]
+    if deprecated_hwc_packages:
+        errors.append(
+            "AOSP device.mk must not list deprecated local composer@2.4 packages: "
+            + ", ".join(deprecated_hwc_packages)
+        )
     hal_packages_without_sources = [
         package
         for package, hal_name in hal_package_sources.items()
@@ -785,6 +841,27 @@ def blocker_code(text: str, fallback: str) -> str:
     return "_".join(parts[:12]) or fallback
 
 
+def evidence_requirements_for_target(name: str) -> list[dict[str, Any]]:
+    requirements: list[dict[str, Any]] = []
+    for item in evidence_items_for_target(name):
+        requirements.append(
+            {
+                "path": item.get("path", ""),
+                "artifact": item.get("artifact", ""),
+                "capture_command": item.get("capture_command", ""),
+                "validation_command": item.get(
+                    "validation_command",
+                    f"python3 scripts/check_software_bsp.py {name} --require-evidence",
+                ),
+                "claim_boundary": item.get("claim_boundary", ""),
+                "required_strings": item.get("required_strings", []),
+                "at_least_one": item.get("at_least_one", []),
+                "min_bytes": item.get("min_bytes", 0),
+            }
+        )
+    return requirements
+
+
 def build_scaffold_report(
     *,
     target: str,
@@ -804,6 +881,7 @@ def build_scaffold_report(
                     "message": error,
                     "evidence": f"python3 scripts/check_software_bsp.py {name}",
                     "next_step": "Fix the missing or stale repo-local BSP scaffold artifact.",
+                    "next_command": f"python3 scripts/check_software_bsp.py {name} --scaffold-only",
                 }
             )
         for blocker in result["blockers"]:
@@ -816,7 +894,10 @@ def build_scaffold_report(
                     "target": name,
                     "message": blocker,
                     "evidence": f"python3 scripts/check_software_bsp.py {name} --require-evidence",
-                    "next_step": "Capture and validate the external BSP build or boot evidence named by the checker.",
+                    "next_step": "Render the exact capture plan and evidence contract for this target, then capture the listed external transcripts and rerun the require-evidence gate.",
+                    "next_command": f"python3 scripts/check_software_bsp.py capture-plan {name}",
+                    "evidence_requirements_command": f"python3 scripts/check_software_bsp.py {name} --evidence-plan",
+                    "evidence_requirements": evidence_requirements_for_target(name),
                 }
             )
     if any(finding["severity"] == "fail" for finding in findings):
@@ -885,6 +966,7 @@ def capture_plan_commands(
     buildroot: str | None,
     linux: str | None,
     opensbi: str | None,
+    u_boot: str | None,
     aosp: str | None,
     target_host: str | None,
     opensbi_handoff_cmd: str | None,
@@ -928,6 +1010,13 @@ def capture_plan_commands(
             f"ELIZA_OPENSBI_CMD='make PLATFORM=generic FW_DYNAMIC=y' docs/sw/opensbi/capture-opensbi-evidence.sh {tree} build",
             f"ELIZA_OPENSBI_HANDOFF_CMD={handoff!r} docs/sw/opensbi/capture-opensbi-evidence.sh {tree} handoff",
             "python3 scripts/check_software_bsp.py opensbi --require-evidence",
+        ]
+    if name == "u-boot":
+        tree = u_boot or "/path/to/u-boot"
+        return [
+            f"ELIZA_UBOOT_CMD='make eliza_defconfig && make' docs/sw/u-boot/capture-u-boot-evidence.sh {tree} build",
+            f"ELIZA_UBOOT_BOOT_CMD='/path/to/qemu-or-renode boot command' docs/sw/u-boot/capture-u-boot-evidence.sh {tree} boot-chain",
+            "python3 scripts/check_software_bsp.py u-boot --require-evidence",
         ]
     if name == "aosp":
         tree = aosp or "/path/to/aosp"
@@ -975,6 +1064,7 @@ def print_capture_plan(args: argparse.Namespace) -> None:
             buildroot=args.buildroot,
             linux=args.linux,
             opensbi=args.opensbi,
+            u_boot=args.u_boot,
             aosp=args.aosp,
             target_host=args.target_host,
             opensbi_handoff_cmd=args.opensbi_handoff_cmd,
@@ -1138,6 +1228,7 @@ def linux_preflight(tree: Path | None, target_host: str | None) -> dict[str, Any
             buildroot=None,
             linux=tree_text,
             opensbi=None,
+            u_boot=None,
             aosp=None,
             target_host=target_host,
             opensbi_handoff_cmd=None,
@@ -1217,6 +1308,7 @@ def buildroot_preflight(tree: Path | None, target_host: str | None) -> dict[str,
             buildroot=tree_text,
             linux=None,
             opensbi=None,
+            u_boot=None,
             aosp=None,
             target_host=target_host,
             opensbi_handoff_cmd=None,
@@ -1294,6 +1386,7 @@ def opensbi_preflight(tree: Path | None, handoff_cmd: str | None) -> dict[str, A
             buildroot=None,
             linux=None,
             opensbi=tree_text,
+            u_boot=None,
             aosp=None,
             target_host=None,
             opensbi_handoff_cmd=handoff_cmd,
@@ -1329,6 +1422,7 @@ def external_preflight_report(args: argparse.Namespace) -> dict[str, Any]:
                         buildroot=args.buildroot,
                         linux=args.linux,
                         opensbi=args.opensbi,
+                        u_boot=args.u_boot,
                         aosp=args.aosp,
                         target_host=args.target_host,
                         opensbi_handoff_cmd=args.opensbi_handoff_cmd,
@@ -1383,6 +1477,7 @@ def main() -> int:
         parser.add_argument("--buildroot")
         parser.add_argument("--linux")
         parser.add_argument("--opensbi")
+        parser.add_argument("--u-boot", dest="u_boot")
         parser.add_argument("--aosp")
         parser.add_argument("--target-host")
         parser.add_argument("--opensbi-handoff-cmd")
@@ -1425,6 +1520,7 @@ def main() -> int:
         parser.add_argument("--buildroot")
         parser.add_argument("--linux")
         parser.add_argument("--opensbi")
+        parser.add_argument("--u-boot", dest="u_boot")
         parser.add_argument("--aosp")
         parser.add_argument("--target-host")
         parser.add_argument("--opensbi-handoff-cmd")
@@ -1531,9 +1627,12 @@ def main() -> int:
             else:
                 print(f"{name} BSP scaffold and evidence checks passed.")
         if blockers:
-            print(f"{name} BSP external evidence blocked:")
-            for blocker in blockers:
-                print(f"  - {blocker}")
+            if args.scaffold_only:
+                print(f"{name} BSP external evidence pending")
+            else:
+                print(f"{name} BSP external evidence blocked:")
+                for blocker in blockers:
+                    print(f"  - {blocker}")
             for item in evidence_items_for_target(name):
                 if not (ROOT / item["path"]).is_file():
                     print(f"  - missing {item['path']}")

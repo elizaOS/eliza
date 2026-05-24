@@ -1,0 +1,25 @@
+diff --git a/src/sys.zig b/src/sys.zig
+index 90e88b1..1d3d166 100644
+--- a/src/sys.zig
++++ b/src/sys.zig
+@@ -93,8 +93,9 @@ pub const O = switch (Environment.os) {
+ 
+         pub const toPacked = toPackedO;
+     },
+-    .linux, .wasm => switch (Environment.isX86) {
+-        true => struct {
++    .linux, .wasm => switch (builtin.target.cpu.arch) {
++        // x86 and riscv64 both use asm-generic-compatible Linux open flags.
++        .x86, .x86_64, .riscv64 => struct {
+             pub const RDONLY = 0x0000;
+             pub const WRONLY = 0x0001;
+             pub const RDWR = 0x0002;
+@@ -122,7 +123,7 @@ pub const O = switch (Environment.os) {
+ 
+             pub const toPacked = toPackedO;
+         },
+-        false => struct {
++        else => struct {
+             pub const RDONLY = 0x0000;
+             pub const WRONLY = 0x0001;
+             pub const RDWR = 0x0002;

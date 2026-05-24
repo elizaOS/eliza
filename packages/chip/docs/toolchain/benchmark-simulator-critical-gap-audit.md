@@ -26,12 +26,12 @@ Machine-readable status sources now include:
 
 | Benchmark | Missing tools/assets | Current machine status | Required unblock |
 | --- | --- | --- | --- |
-| CoreMark | `coremark` executable; target compiler flags; target clock and affinity metadata. | `planned_missing_deps` when `coremark` is absent. | Add a pinned CoreMark build recipe, place executable on target `PATH`, and record compiler/version/clock evidence. |
+| CoreMark | Phone-class target compiler flags, target clock and affinity metadata, L5/L6 raw-output hash. | `passed` as CVA6 Verilator L1 RTL evidence; still blocked for phone-class claims. | Run on real prototype/phone target with pinned build recipe, target metadata, and archived raw output before using scores for L5/L6 claims. |
 | STREAM | `stream_c.exe`; array size policy; compiler flags; thread/affinity policy; memory clock evidence. | `planned_missing_deps` when `stream_c.exe` is absent. | Add fixed build flags and run metadata before using scores. |
-| lmbench bandwidth | `bw_mem` executable. | `planned_missing_deps` when `bw_mem` is absent. | Build lmbench for the target and archive raw stdout plus parsed metric. |
-| lmbench latency | `lat_mem_rd` executable. | `planned_missing_deps` when `lat_mem_rd` is absent. | Build lmbench for the target and archive stride sweep output. |
-| fio sequential read | `fio`; target filesystem/device identity; JSON parser is not required by config yet. | `planned_missing_deps` when `fio` is absent. | Install target fio, switch configs to JSON output, and record target storage topology. |
-| fio random read/write | `fio`; target filesystem/device identity; JSON parser is not required by config yet. | `planned_missing_deps` when `fio` is absent. | Same as sequential read; include random workload parameters in report metadata. |
+| lmbench bandwidth | Real target metadata, calibration assets, power/clock/memory/process evidence. | Tool binary can be found locally, but the phone report is `blocked` until L5/L6 metadata and calibration requirements are satisfied. | Run target-built `bw_mem` on real prototype/phone target and archive raw stdout plus parsed metric. |
+| lmbench latency | Real target metadata, calibration assets, power/clock/memory/process evidence. | Tool binary can be found locally, but the phone report is `blocked` until L5/L6 metadata and calibration requirements are satisfied. | Run target-built `lat_mem_rd` on real prototype/phone target and archive stride sweep output. |
+| fio sequential read | `fio`; target filesystem/device identity; JSON parser and config are present. | `planned_missing_deps` when `fio` is absent. | Install target fio, run the JSON-output config on the target, and record target storage topology. |
+| fio random read/write | `fio`; target filesystem/device identity; JSON parser and config are present. | `planned_missing_deps` when `fio` is absent. | Same as sequential read; include random workload parameters in report metadata. |
 | TFLite CPU | Real `benchmark_model`; `benchmarks/models/mobile_smoke.tflite`; pinned model SHA-256. | `planned` when the real binary and pinned model are present; `blocked` if either falls back to a host-smoke shim, missing binary, or missing/placeholder model. | Archive benchmark_model build provenance and target run metadata before using scores for release claims. |
 | TFLite e1 NPU | Real `benchmark_model` with NNAPI; `mobile_smoke.tflite`; real `e1-npu` NNAPI delegate/accelerator proof. | `blocked` until `benchmarks/capabilities/e1_npu_nnapi.proof.json` and its required transcripts are captured from hardware. | Add NNAPI delegate evidence, accelerator name validation, DMA transcript, and zero-fallback parser evidence. |
 | MLPerf Mobile | External checkout, APK/runner, datasets, Android target, device shell path. | Documentation only; not represented in `benchmark_plan.json`. | Add an external-run manifest before accepting MLPerf numbers. |
@@ -61,6 +61,7 @@ metadata.
 | `scripts/check_tools.sh --json` | Emits `eliza.tool_status.v1` with per-tool `status`, `tier`, `gate`, `required`, and `path_or_status`. | Combine with `--strict` to preserve the same exit policy. |
 | `benchmarks/run_benchmarks.py plan` / `--dry-run` | Writes a dry-run report with `planned`, `planned_missing_deps`, or `blocked`. | `--strict-missing` exits 2 when any dependency or release-blocking asset is absent. |
 | `benchmarks/run_benchmarks.py run` | Skips blocked/missing workloads by recording `blocked` or `missing_dependencies`; real command failures exit 1. | `--strict-missing` exits 2 for missing deps/assets and 1 for real failures. |
+| `make cpu-phone-l5-l6-benchmark-report` | Writes `build/reports/cpu_phone_l5_l6_benchmark_report.json`, a unified SPEC/CoreMark/Dhrystone/JetStream/lmbench L5/L6 evidence matrix. Blocked evidence exits 0 so reviewers can inspect the matrix. | `make cpu-phone-benchmark-claim-gate-strict` exits 2 while any required phone-class benchmark entry is blocked, below L5/L6, missing raw hashes, missing metrics, or not measured. |
 | `make benchmarks-local-host-evidence` | Runs locally installed CoreMark, STREAM, lmbench, fio, and TFLite CPU tools, archives raw logs, and parses metrics. | Writes non-release host evidence only; it is not target silicon, AOSP, PDK, power, or thermal evidence. |
 | `make qemu-check` | Semantic failures fail; missing compiler/QEMU is `BLOCKED` and exits 0. | `make qemu-check-strict` sets `REQUIRE_QEMU=1` and exits 2 on blocked executable smoke. |
 | `make renode-check` | Semantic failures fail; missing Renode/firmware/real transcript intake is `BLOCKED` and exits 0. | `make renode-check-strict` sets `REQUIRE_RENODE=1` and exits 2 on blocked executable smoke. |
@@ -79,7 +80,7 @@ metadata.
 | OSS CAD Suite | Local path discovery only; no archive URL/checksum. | Host fallback versions are not replayable. | Pin release URL and checksum if used as canonical host toolchain. |
 | QEMU firmware toolchain | `riscv64-unknown-elf-gcc`, `riscv64-elf-gcc`, or `riscv64-linux-gnu-gcc` is accepted. | Different compilers can produce different ELF behavior. | Record compiler path/version and archive built ELF hash. |
 | Renode | Local `renode` from `PATH`; no version pin. | Transcript behavior can vary across installs. | Record version and use a pinned install path for release. |
-| Benchmark models | `mobile_smoke.tflite` is absent and no SHA is pinned. | TFLite runs cannot be reproduced or compared. | Generate/commit a redistributable model or store it as an explicit release asset with SHA-256. |
+| Benchmark models | `mobile_smoke.tflite` is present with a pinned SHA-256 in `benchmark_plan.json`. | TFLite runs still need target-side `benchmark_model` provenance and hardware transcripts before release claims. | Keep the model hash pinned and archive target runner/build metadata with each report. |
 
 ## GUI and Non-CLI Risks
 

@@ -1,0 +1,477 @@
+{
+  "blockers": [],
+  "curriculum": {
+    "content_sha256": "cd524c5bf5fce957d4a1eb591db02290952e09a5a54953e6c7c3a53599d5debe",
+    "duplicate_ids": [],
+    "task_count": 22,
+    "text_variant_collisions": [],
+    "version": 2
+  },
+  "datasets": {
+    "data_dir": "/home/shaw/milady/eliza/packages/robot/data",
+    "datasets_dir": "/home/shaw/milady/eliza/packages/robot/datasets",
+    "imitation_training_ready": false,
+    "offline_dataset_files": [],
+    "offline_datasets_block_current_plan": false,
+    "offline_datasets_present": false,
+    "rl_from_sim_ready": true,
+    "training_source": "RL-from-simulation; trajectory_db tooling is not wired into the Alberta/PPO text-conditioned policy trainers.",
+    "trajectory_db_tooling_present": true
+  },
+  "launch_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "ok": true,
+  "profiles": [
+    {
+      "assets": {
+        "mesh_dir": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/meshes",
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+        "mjx_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+        "scene_xml": null,
+        "urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov.urdf"
+      },
+      "dof": 25,
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "expected_proprio_dim": 45,
+      "leg_action_dim": 12,
+      "missing_assets": [],
+      "mujoco_compile_error": null,
+      "mujoco_compile_ok": true,
+      "ok": true,
+      "output_dim": 25,
+      "profile_id": "asimov-1"
+    },
+    {
+      "assets": {
+        "mesh_dir": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/meshes",
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex.xml",
+        "mjx_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/mjcf/ainex_mjx.xml",
+        "scene_xml": null,
+        "urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/hiwonder-ainex/urdf/ainex.urdf.xacro"
+      },
+      "dof": 24,
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "expected_proprio_dim": 45,
+      "leg_action_dim": 12,
+      "missing_assets": [],
+      "mujoco_compile_error": null,
+      "mujoco_compile_ok": true,
+      "ok": true,
+      "output_dim": 24,
+      "profile_id": "hiwonder-ainex"
+    },
+    {
+      "assets": {
+        "mesh_dir": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/assets",
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
+        "mjx_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml",
+        "scene_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/scene.xml",
+        "urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-g1/mjcf/g1.xml"
+      },
+      "dof": 29,
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "expected_proprio_dim": 45,
+      "leg_action_dim": 12,
+      "missing_assets": [],
+      "mujoco_compile_error": null,
+      "mujoco_compile_ok": true,
+      "ok": true,
+      "output_dim": 29,
+      "profile_id": "unitree-g1"
+    },
+    {
+      "assets": {
+        "mesh_dir": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/assets",
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
+        "mjx_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml",
+        "scene_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/scene.xml",
+        "urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-h1/mjcf/h1.xml"
+      },
+      "dof": 19,
+      "env_action_dim": 10,
+      "env_obs_dim": 71,
+      "expected_proprio_dim": 39,
+      "leg_action_dim": 10,
+      "missing_assets": [],
+      "mujoco_compile_error": null,
+      "mujoco_compile_ok": true,
+      "ok": true,
+      "output_dim": 19,
+      "profile_id": "unitree-h1"
+    },
+    {
+      "assets": {
+        "mesh_dir": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/assets",
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
+        "mjx_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml",
+        "scene_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/scene.xml",
+        "urdf": "/home/shaw/milady/eliza/packages/robot/assets/profiles/unitree-r1/mjcf/R1_C++.xml"
+      },
+      "dof": 29,
+      "env_action_dim": 12,
+      "env_obs_dim": 77,
+      "expected_proprio_dim": 45,
+      "leg_action_dim": 12,
+      "missing_assets": [],
+      "mujoco_compile_error": null,
+      "mujoco_compile_ok": true,
+      "ok": true,
+      "output_dim": 29,
+      "profile_id": "unitree-r1"
+    }
+  ],
+  "tasks": [
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "stand_up",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "sit_down",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "walk_forward",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "walk_backward",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "sidestep_left",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "sidestep_right",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "turn_left",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": true,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "turn_right",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [],
+      "supported_by_profile_env": true,
+      "task_id": "turn_around",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['head_tilt_target_rad', 'head_track_weight']",
+        "unsupported_success_keys=['head_tilt_min_rad']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "look_up",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['head_tilt_target_rad', 'head_track_weight']",
+        "unsupported_success_keys=['head_tilt_max_rad']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "look_down",
+      "tier": 1
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['stillness_weight']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "lie_down",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['progress_weight']",
+        "unsupported_init_state='prone'"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "get_up",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['oscillation_track_weight', 'torso_oscillation_target_amplitude_m']",
+        "unsupported_success_keys=['pushup_count_min']",
+        "unsupported_init_state='prone'"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "pushup",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['left_arm_oscillation_weight']",
+        "unsupported_success_keys=['cycles_min', 'l_sho_pitch_oscillation']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "wave_left",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['right_arm_oscillation_weight']",
+        "unsupported_success_keys=['cycles_min', 'r_sho_pitch_oscillation']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "wave_right",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['oscillation_track_weight', 'squat_amplitude_m']",
+        "unsupported_success_keys=['squat_cycles_min']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "squat",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "unsupported_reward_keys=['gripper_separation_target_m', 'gripper_separation_weight']",
+        "unsupported_success_keys=['gripper_separation_max_m']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "touch_hands",
+      "tier": 2
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "requires_target_scene",
+        "unsupported_reward_keys=['distance_to_target_weight']",
+        "unsupported_success_keys=['distance_to_target_m_max']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "walk_to_target",
+      "tier": 3
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "requires_target_scene",
+        "unsupported_reward_keys=['grasp_contact_weight', 'gripper_to_box_distance_weight', 'lift_height_weight']",
+        "unsupported_success_keys=['box_in_grippers', 'box_z_min_m']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "pick_up_box",
+      "tier": 3
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "requires_target_scene",
+        "unsupported_reward_keys=['box_to_b_distance_weight', 'grasp_hold_weight']",
+        "unsupported_success_keys=['box_at_target_xy_m_max', 'box_released']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "move_box_a_to_b",
+      "tier": 3
+    },
+    {
+      "in_launch_tasks": false,
+      "reasons": [
+        "requires_target_scene",
+        "unsupported_reward_keys=['distance_to_target_weight', 'tracking_consistency_weight']",
+        "unsupported_success_keys=['mean_distance_m_max']"
+      ],
+      "supported_by_profile_env": false,
+      "task_id": "go_to_moving_target",
+      "tier": 3
+    }
+  ],
+  "warnings": [
+    {
+      "kind": "unsupported_future_curriculum_tasks",
+      "tasks": [
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['head_tilt_target_rad', 'head_track_weight']",
+            "unsupported_success_keys=['head_tilt_min_rad']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "look_up",
+          "tier": 1
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['head_tilt_target_rad', 'head_track_weight']",
+            "unsupported_success_keys=['head_tilt_max_rad']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "look_down",
+          "tier": 1
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['stillness_weight']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "lie_down",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['progress_weight']",
+            "unsupported_init_state='prone'"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "get_up",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['oscillation_track_weight', 'torso_oscillation_target_amplitude_m']",
+            "unsupported_success_keys=['pushup_count_min']",
+            "unsupported_init_state='prone'"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "pushup",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['left_arm_oscillation_weight']",
+            "unsupported_success_keys=['cycles_min', 'l_sho_pitch_oscillation']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "wave_left",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['right_arm_oscillation_weight']",
+            "unsupported_success_keys=['cycles_min', 'r_sho_pitch_oscillation']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "wave_right",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['oscillation_track_weight', 'squat_amplitude_m']",
+            "unsupported_success_keys=['squat_cycles_min']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "squat",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "unsupported_reward_keys=['gripper_separation_target_m', 'gripper_separation_weight']",
+            "unsupported_success_keys=['gripper_separation_max_m']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "touch_hands",
+          "tier": 2
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "requires_target_scene",
+            "unsupported_reward_keys=['distance_to_target_weight']",
+            "unsupported_success_keys=['distance_to_target_m_max']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "walk_to_target",
+          "tier": 3
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "requires_target_scene",
+            "unsupported_reward_keys=['grasp_contact_weight', 'gripper_to_box_distance_weight', 'lift_height_weight']",
+            "unsupported_success_keys=['box_in_grippers', 'box_z_min_m']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "pick_up_box",
+          "tier": 3
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "requires_target_scene",
+            "unsupported_reward_keys=['box_to_b_distance_weight', 'grasp_hold_weight']",
+            "unsupported_success_keys=['box_at_target_xy_m_max', 'box_released']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "move_box_a_to_b",
+          "tier": 3
+        },
+        {
+          "in_launch_tasks": false,
+          "reasons": [
+            "requires_target_scene",
+            "unsupported_reward_keys=['distance_to_target_weight', 'tracking_consistency_weight']",
+            "unsupported_success_keys=['mean_distance_m_max']"
+          ],
+          "supported_by_profile_env": false,
+          "task_id": "go_to_moving_target",
+          "tier": 3
+        }
+      ]
+    },
+    {
+      "detail": "No imitation/offline policy dataset files were found. This is acceptable for the current RL-from-sim plan, but not for a demonstration/imitation training run.",
+      "kind": "no_offline_policy_datasets"
+    }
+  ]
+}

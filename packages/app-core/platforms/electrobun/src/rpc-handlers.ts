@@ -58,6 +58,7 @@ import {
   getDynamicViewSessionManager,
   registerBuiltInDynamicViews,
 } from "./dynamic-views";
+import { KioskCanvas } from "./dynamic-views/kiosk-canvas";
 import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
@@ -75,6 +76,7 @@ import {
   readInboxMessagesViaHttp,
   readInboxSourcesViaHttp,
 } from "./inbox-rpc";
+import { isKioskShellMode } from "./kiosk-mode";
 import { LaunchOrchestrator } from "./launch";
 import { logger } from "./logger";
 import {
@@ -317,12 +319,27 @@ export function buildBunRpcHandlers({
   const remotePluginHost = getRemotePluginHost();
   registerBuiltInDynamicViews();
   const dynamicViewRegistry = getDynamicViewRegistry();
+  // In kiosk mode the OS runs a single fullscreen toplevel under a
+  // single-window compositor, so dynamic views must mount as in-window
+  // surfaces on the KioskShell canvas instead of opening native toplevels.
+  const kioskMode = isKioskShellMode();
   const dynamicViewSessions = getDynamicViewSessionManager({
     registry: dynamicViewRegistry,
-    canvas,
+    canvas: kioskMode ? new KioskCanvas(sendToWebview) : canvas,
     workerStatusProvider: {
       getWorkerStatus: (id) => remotePluginHost.getWorkerStatus(id),
     },
+    ...(kioskMode
+      ? {
+          supportedPlacements: [
+            "canvas",
+            "panel",
+            "chat-inline",
+            "floating",
+            "debug",
+          ] as const,
+        }
+      : {}),
   });
   remotePluginHost.setDynamicViewHost(
     createDynamicViewHostForRuntime(dynamicViewSessions),

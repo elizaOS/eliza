@@ -23,7 +23,7 @@
 # Output (under /artifact):
 #   bun-linux-riscv64-musl.zip      the artifact
 #   bun-linux-riscv64-musl.zip.sha256
-#   build-log.txt                   transcript + sha256s + qemu --version run
+#   build-log.txt                   transcript + sha256s + qemu smoke runs
 #
 # Failure model: every step is `set -euo pipefail`. The production artifact
 # defaults to ENABLE_C_LOOP=ON. Baseline-JIT attempts require the operator to
@@ -38,7 +38,7 @@ set -euo pipefail
 # toolchain dirs explicitly so rustup/cargo/clang stay reachable.
 export PATH="/opt/cross/bin:/usr/local/cargo/bin:${PATH}"
 export RUSTUP_HOME="${RUSTUP_HOME:-/usr/local/rustup}"
-export CARGO_HOME="${CARGO_HOME:-/home/builder/.cargo}"
+export CARGO_HOME="/home/builder/.cargo"
 
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
@@ -121,6 +121,7 @@ if [ ! -d "$SRC_ROOT/WebKit" ]; then
     git -C "$SRC_ROOT/WebKit" fetch --depth=1 --filter=blob:none origin "${WEBKIT_COMMIT}"
     git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"
 fi
+git -C "$SRC_ROOT/WebKit" reset --hard "${WEBKIT_COMMIT}" >/dev/null
 
 if compgen -G "/opt/webkit-patches/*.recipe" >/dev/null && [ "$FORCE_CLOOP" != "1" ]; then
     # Recipe files are placeholders for cherry-pick chains the operator
@@ -160,6 +161,10 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
                 ;;
         esac
         log "  -> $p"
+        if git apply --reverse --check "$p" >/dev/null 2>&1; then
+            log "     already applied; skipping"
+            continue
+        fi
         # 3-way merge is tolerant of context drift; on hard conflict, fail
         # rather than silently skipping.
         git apply --3way "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
@@ -181,6 +186,8 @@ if [ ! -d "$SRC_ROOT/bun" ]; then
         --recurse-submodules --shallow-submodules \
         https://github.com/oven-sh/bun.git "$SRC_ROOT/bun"
 fi
+git -C "$SRC_ROOT/bun" reset --hard "${BUN_TAG}" >/dev/null
+git -C "$SRC_ROOT/bun" submodule update --init --recursive --depth=1
 
 if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then
     log "Applying bun-patches/*.patch (in lexical order):"
@@ -189,6 +196,10 @@ if compgen -G "/opt/bun-patches/*.patch" >/dev/null; then
     git config user.name "bun-riscv64 build"
     for p in $(ls /opt/bun-patches/*.patch | sort); do
         log "  -> $p"
+        if git apply --reverse --check "$p" >/dev/null 2>&1; then
+            log "     already applied; skipping"
+            continue
+        fi
         git apply --3way "$p" || die "Bun patch failed: $p"
     done
     cd "$SRC_ROOT"
@@ -232,6 +243,11 @@ if [ "$FORCE_CLOOP" = "1" ]; then
         -DENABLE_JIT=OFF
         -DENABLE_DFG_JIT=OFF
         -DENABLE_FTL_JIT=OFF
+        # WebKit enforces ENABLE_WEBASSEMBLY conflicts with ENABLE_C_LOOP, so a
+        # JIT-less build cannot include WebAssembly. This is why wasm is off here.
+        -DENABLE_WEBASSEMBLY=OFF
+        -DENABLE_WEBASSEMBLY_BBQJIT=OFF
+        -DENABLE_WEBASSEMBLY_OMGJIT=OFF
     )
 else
     WK_JIT_FLAGS=(
@@ -257,18 +273,25 @@ cmake \
     -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_SYSTEM_NAME=Linux \
     -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
+    -DCMAKE_SYSROOT=/sysroot \
+    -DCMAKE_FIND_ROOT_PATH=/sysroot \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER \
+    -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY \
+    -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY \
     -DCMAKE_C_COMPILER=/opt/cross/bin/riscv64-linux-musl-clang \
     -DCMAKE_CXX_COMPILER=/opt/cross/bin/riscv64-linux-musl-clang++ \
     -DCMAKE_AR=/usr/local/bin/llvm-ar \
     -DCMAKE_RANLIB=/usr/local/bin/llvm-ranlib \
     -DCMAKE_LINKER=/usr/local/bin/ld.lld \
-    -DCMAKE_C_FLAGS="-march=rv64gc -mabi=lp64d -O3" \
-    -DCMAKE_CXX_FLAGS="-march=rv64gc -mabi=lp64d -O3" \
+    -DCMAKE_C_FLAGS="-march=rv64gc -mabi=lp64d -O3 -I$SRC_ROOT/WebKit/Source/bmalloc/mimalloc/mimalloc/include" \
+    -DCMAKE_CXX_FLAGS="-march=rv64gc -mabi=lp64d -O3 -I$SRC_ROOT/WebKit/Source/bmalloc/mimalloc/mimalloc/include" \
     -DCMAKE_EXE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
     -DCMAKE_SHARED_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
     -DCMAKE_MODULE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
     -DPORT=JSCOnly \
     -DENABLE_STATIC_JSC=ON \
+    -DUSE_BUN_JSC_ADDITIONS=ON \
     -DUSE_THIN_ARCHIVES=OFF \
     -DUSE_SYSTEM_MALLOC=OFF \
     "${WK_JIT_FLAGS[@]}" \
@@ -296,6 +319,7 @@ export BUN_CXX=/opt/cross/bin/riscv64-linux-musl-clang++
 export BUN_AR=/usr/local/bin/llvm-ar
 export BUN_RANLIB=/usr/local/bin/llvm-ranlib
 export BUN_LD=/usr/local/bin/ld.lld
+export BUN_STRIP=/usr/local/bin/llvm-strip
 export BUN_SYSROOT=/sysroot
 export BUN_DISABLE_TINYCC=1
 
@@ -354,6 +378,28 @@ log "Smoke test: qemu-riscv64-static bun --version"
 QEMU_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" --version 2>&1)" || \
     die "qemu-riscv64-static bun --version failed: $QEMU_OUT"
 log "  → bun reports: $QEMU_OUT"
+
+log "Smoke test: qemu-riscv64-static bun -e"
+QEMU_EVAL_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" -e 'console.log("bun-riscv64-eval-ok", process.arch)' 2>&1)" || \
+    die "qemu-riscv64-static bun -e failed: $QEMU_EVAL_OUT"
+case "$QEMU_EVAL_OUT" in
+    *"bun-riscv64-eval-ok riscv64"*) ;;
+    *) die "qemu-riscv64-static bun -e returned unexpected output: $QEMU_EVAL_OUT" ;;
+esac
+log "  → eval reports: $QEMU_EVAL_OUT"
+
+log "Smoke test: qemu-riscv64-static bun <script.js>"
+SMOKE_DIR="$(mktemp -d /tmp/bun-riscv64-smoke.XXXXXX)"
+trap 'rm -rf "$SMOKE_DIR"' EXIT
+SMOKE_JS="$SMOKE_DIR/entrypoint.js"
+printf '%s\n' 'console.log("bun-riscv64-script-ok", process.arch);' > "$SMOKE_JS"
+QEMU_SCRIPT_OUT="$(qemu-riscv64-static -L /sysroot "$BUN_BIN" "$SMOKE_JS" 2>&1)" || \
+    die "qemu-riscv64-static bun script entrypoint failed: $QEMU_SCRIPT_OUT"
+case "$QEMU_SCRIPT_OUT" in
+    *"bun-riscv64-script-ok riscv64"*) ;;
+    *) die "qemu-riscv64-static bun script entrypoint returned unexpected output: $QEMU_SCRIPT_OUT" ;;
+esac
+log "  → script reports: $QEMU_SCRIPT_OUT"
 
 # Layout matches upstream's bun-linux-x64-musl.zip:
 #   bun-linux-riscv64-musl/

@@ -133,8 +133,32 @@ class AsimovRemoteBackend(BridgeBackend):
                 )
             )
         if self.transport is not None and hasattr(self.transport, "read_telemetry"):
-            frame = await self.transport.read_telemetry()
-            self._events.append(self._telemetry_frame_event(frame))
+            try:
+                frame = await self.transport.read_telemetry()
+                self._events.append(self._telemetry_frame_event(frame))
+            except Exception as exc:
+                damp_error = None
+                self.controller.set_mode("DAMP")
+                if self.transport:
+                    try:
+                        await self.transport.send_mode("DAMP")
+                    except Exception as damp_exc:
+                        damp_error = str(damp_exc)
+                data = {
+                    "reason": "asimov_invalid_telemetry",
+                    "error": str(exc),
+                    "mode": self.controller.mode.value,
+                }
+                if damp_error is not None:
+                    data["damp_command_error"] = damp_error
+                self._events.append(
+                    EventEnvelope(
+                        "safety.telemetry_invalid",
+                        utc_now_iso(),
+                        self.backend_name,
+                        data,
+                    )
+                )
         events, self._events = self._events, []
         return events
 

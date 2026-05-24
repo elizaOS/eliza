@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Clock3,
   Gamepad2,
+  Home,
   MessageSquare,
   Monitor,
   Phone,
@@ -185,6 +186,12 @@ export function getWindowNavigationPath(
 }
 
 export const ALL_TAB_GROUPS: TabGroup[] = [
+  {
+    label: "Home",
+    tabs: ["home"],
+    icon: Home,
+    description: "Your assistant's home — clouds backdrop and voice presence",
+  },
   {
     label: "Chat",
     tabs: ["chat"],

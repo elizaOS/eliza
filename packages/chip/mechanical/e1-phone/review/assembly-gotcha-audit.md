@@ -7,15 +7,16 @@ Reviewer: senior DFA engineer. Basis: `out/assembly-manifest.json` (123 solids),
 ## Checker re-run (current state)
 
 ```
-assemblable=True steps=19 trapped=0 fastener_pass=True fpc_pass=True runtime=14.57s
+assemblable=True steps=20 trapped=0 fastener_pass=True fpc_pass=True
 ```
 
-The checker returns PASS, but its scope is narrower than the as-designed BOM. Two structural scope gaps drive the top blockers below:
+The checker returns PASS and now covers the previously identified local CAD/process blockers:
 
-- **Boss-count mismatch.** Wave-2 raised `screw_boss_count` 6 -> 10 (`orange_screw_boss_1..10` all present in the manifest), but the checker's `check_fastener_access` and the `BACK_SHELL_MOLDED` set still enumerate only `orange_screw_boss_1..6`. Bosses 7,8,9,10 are never torque-access-checked and the line-flow doc still drives only "6 M1.4 fasteners" (S2 4 + S5 2). Four real fasteners have no verified driver column and no station that installs them.
-- **28 manifest solids are never placed** in any of the 19 steps: `battery_back_void_foam_pad`, `glass_perimeter_cushion_{top,bottom,left,right}`, `orange_corner_rib_{1..4}(+_leg)` (8), `antenna_aperture_tuner`, `rear_flash_camera_septum`, `orange_rear_camera_bezel_*` (4), `orange_rear_flash_bezel_*` (4), `rear_camera_shell_aperture`, `rear_flash_shell_aperture`, `orange_screw_boss_{7,8,9,10}`. Co-molded ribs/bezels/apertures are acceptable as molded-in (arrive with the shell), but the **swell-void foam pad, glass perimeter cushions, and antenna tuner are discrete installed parts with no station, no insertion check, and no operator instruction** — i.e. broken pipelines per Commandment 10.
+- **Boss-count coverage fixed.** `check_fastener_access` now enumerates `orange_screw_boss_1..10` plus `orange_snap_hook_1..8`; the generated checker result has `fastener_pass=True`.
+- **Foam-pad insertion fixed.** `battery_back_void_foam_pad` is now its own assembly step before `battery_pouch`, and the swept insertion checker reports 0 trapped parts.
+- **Line-flow drift fixed locally.** The line-flow now calls out the 11.8 mm package, the back-void foam pad before battery placement, deferred battery/PMIC FPC mating until the PCB exists, and 10-boss torque-map coverage.
 
-The line-flow doc is also stale against the current CAD: header still reads `78 x 153.6 x 9.6 mm` and `185 g` (design is 11.8 mm), S3 still cites `LP446487` `4500 mAh`-class and `5.7 mm` placement vs the 5.6 mm / 5727 mAh cell, and S3 prose says battery seats *before* PCB while routing battery FPC to PMIC — but the PMIC connector lives on `main_pcb` which is not placed until S2->S6. These are documentation-vs-design drifts that will mis-instruct operators.
+Remaining open items below are process, yield, fixture, and physical-validation mitigations. They do not contradict the current CAD swept-insertion result.
 
 ## Gotcha register
 
@@ -23,13 +24,13 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 
 ### 1. Insertion order & trapped parts
 
-- **G01 / blocker** — `battery_back_void_foam_pad` (bounds z -4.75..-4.57, behind the cell) has no assembly step. The 0.6 mm swell-void compliant foam shelf must be placed on the back inner wall *before* the battery (S3) or it is trapped under a bonded cell forever. As sequenced it is omitted, so the drop-hardening DROP-2 / swell mitigation is physically absent on the line. *Mitigation:* insert a new step before current S5/Step5: bond foam pad to back inner wall on the S3 jig; add to checker `ASSEMBLY` ahead of `battery_pouch`.
+- **G01 / mitigated blocker** — `battery_back_void_foam_pad` must be placed on the back inner wall *before* the battery. *Mitigation complete locally:* the checker now has a dedicated foam-pad step ahead of `battery_pouch`, and Station 3 bonds the foam before pouch placement.
 - **G02 / major** — Two-sided build risk is avoided by the chosen single-side (back-up) order, but display+cover-glass bond (S15/16) happens *before* side-frame closure and screws (S17). A display reject at S6 functional test forces destroying the cover-glass bond to reach the PCB. *Mitigation:* keep test points accessible pre-close (see G24) so most rejects are caught before the irreversible bond; treat post-bond PCB rework as scrap-class.
 - **G03 / minor** — `antenna_aperture_tuner` (Qorvo QPC1252Q, on PCB at z -1.85..-1.35) arrives with `main_pcb` as a reflowed component, so it is not separately trapped — but it is not called out in S2 AOI. *Mitigation:* add tuner presence/orientation to S2 AOI shield/component check.
 
 ### 2. Tool & driver access
 
-- **G04 / blocker** — Bosses 7,8,9,10 (`orange_screw_boss_7..10`, the two mid and two extra corner-tie fasteners, x = ±27..31, y at ±18 and +36..40) are never driven or access-verified. The drop-hardening corner-stiffness claim (SF 0.78 -> 2.11) depends on 10 fastened bosses + corner gussets; building only 6 leaves the structure under-fastened. *Mitigation:* extend `check_fastener_access` to `range(1,11)`; assign all 10 to S2/S5 with a torque map; update line-flow "6 screws" -> "10 screws".
+- **G04 / mitigated blocker** — Bosses 1..10 must be driven and access-verified. *Mitigation complete locally:* `check_fastener_access` now checks all 10 bosses plus 8 snap hooks, and line-flow uses 10-boss torque-map coverage.
 - **G05 / major** — Bosses 5/6 (x ±27, y +18, z -5.3..-2.5) sit beside the battery (battery x ±32). The M1.4 driver column is verified clear in the checker, but at S5 the battery is already bonded; a slipped driver can puncture the LiPo pouch ~5 mm away. *Mitigation:* drive bosses 5/6 (and any boss within 8 mm of the cell) at S2 *before* battery placement, or use a shrouded bit + torque-limited driver (Wera 7440 already specified) with a battery guard plate on the S5 fixture.
 - **G06 / minor** — FPC ZIF/B2B seating at S4 is by "locking probe"; driver and probe share the open-back approach but at different islands. No reach conflict found (connectors at z -1.7..-0.4, well above PCB). *Mitigation:* none required; retain locking-probe AOI confirmation.
 
@@ -54,7 +55,7 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 
 ### 6. Battery
 
-- **G17 / blocker (shared root with G01)** — Swell-void foam shelf unplaced (G01). Without it the 0.6 mm void is empty air and the cell can migrate/swell into the back wall; the DROP-2 force-limiting assumption (0.6x coupling) is invalid. *Mitigation:* as G01.
+- **G17 / mitigated blocker (shared root with G01)** — Swell-void foam shelf must be present before battery placement. *Mitigation complete locally:* same foam-pad step as G01; swept insertion passes.
 - **G18 / major** — Battery insertion (S3, +Z drop between `orange_battery_left/right_rib`) with its FPC attached risks creasing the tail under the cell. *Mitigation:* place cell first, route FPC last into the S4 comb; never drop the cell onto its own folded tail. Confirms G07 sequencing.
 - **G19 / minor** — Pull-tab/FPC orientation not keyed in CAD (single rectangular pouch). *Mitigation:* mark a printed orientation fiducial + jig hard-stop on S3-FIX-003.
 
@@ -102,15 +103,10 @@ Severity: **blocker** = phone cannot be built / a real part has no install path;
 ## Tally
 
 - Total gotchas: **36** (G01–G36).
-- **Blocker: 3** (G01, G04, G17 — note G17 shares G01's root cause).
+- **Blocker: 0**. Former blockers G01, G04, and G17 are locally mitigated in the checker/line-flow.
 - **Major: 20** (G02, G05, G07, G08, G09, G11, G12, G14, G15, G18, G20, G21, G22, G24, G26, G27, G29, G31, G32, G35).
 - **Minor: 13** (G03, G06, G10, G13, G16, G19, G23, G25, G28, G30, G33, G34, G36).
 
 ## Verdict
 
-There are **BLOCKER-severity gotchas**, but they are *process/coverage* blockers, not geometric impossibilities. The CAD passes the swept-insertion checker (0 trapped, fastener+FPC pass) and the boolean-interference gate (0 clashes). The phone is **not yet assemblable as documented** because:
-
-1. **G01/G17** — the battery swell-void foam pad is a real BOM part with no assembly step and would be trapped behind the bonded cell. The line cannot install it as sequenced.
-2. **G04** — four of the ten structural screw bosses are unmodeled in the sequence and unverified for driver access; the line-flow installs only 6 screws, leaving the drop-hardened structure under-fastened.
-
-Both are closable without geometry change: add a foam-pad step ahead of the battery, and extend the fastener step + checker coverage to all 10 bosses (then re-run `check_e1_phone_assemblability.py`). With those two sequence fixes plus the 20 major mitigations (fixtures already exist for most: `screen_bond_clamp_frame`, `usb_c_insertion_gauge`, `button_force_probe`, `rear/front_camera_alignment_pin`, `bottom_acoustic_leak_mask`, `earpiece_leak_mask`), **the e1-phone is assemblable.**
+There are no remaining local CAD assembly blockers in this audit. The current CAD passes swept insertion with 20 steps, 0 trapped parts, all 10 screw bosses plus 8 snap hooks access-checked, and FPC routing unpinched. The remaining major gotchas require process controls, fixtures, or physical build evidence before release.

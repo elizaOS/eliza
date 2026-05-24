@@ -11,9 +11,10 @@ manifest.
 
 | Module                       | Owner agent | Role in `e1_soc_integrated` |
 |------------------------------|-------------|-----------------------------|
-| `bpu_top`                    | BPU         | Branch prediction; emits `pmu_strb[19:0]` + FTQ fetch entries |
+| `bpu_top`                    | BPU         | Branch prediction; emits `pmu_strb[20:0]` + FTQ fetch entries |
 | `bpu_to_zihpm_remap`         | CSR         | Remap BPU PMU IDs → Zihpm event-bus slots |
 | `ftq_to_l1i_shim`            | BPU         | FTQ entry → L1I prefetch request (`ftq_prefetch_req_t`) |
+| `fetch_stream_to_l1i_demand` | BPU / fetch | Ordered BPU fetch stream → lane-0/lane-1 L1I IFU demand ports |
 | `zihpm`                      | CSR         | mcycle, minstret, mhpmcounter3..15 |
 | `e1_cluster_top`             | OoO         | Lite tie-off mode; presents AXI4 master contract |
 | `e1_slc`                     | Cache       | One small SLC slice (64 KB / 4-way / 2-bank) driving CHI request traffic into the bridge |
@@ -38,7 +39,7 @@ the canonical location for the wiring.
 ### BPU → Zihpm (PMU events)
 
 ```text
-bpu_top.pmu_strb[19:0]  →  bpu_to_zihpm_remap.bpu_strobes_i
+bpu_top.pmu_strb[20:0]  →  bpu_to_zihpm_remap.bpu_strobes_i
                             │
                             └→  zihpm.event_bus_i[255:0]
                                  ↓
@@ -46,7 +47,7 @@ bpu_top.pmu_strb[19:0]  →  bpu_to_zihpm_remap.bpu_strobes_i
                                  mhpmevent selector
 ```
 
-Width contract: BPU emits 20 PMU strobes (`PMU_BR_PRED..PMU_SC_OVERRIDE`,
+Width contract: BPU emits 21 PMU strobes (`PMU_BR_PRED..PMU_H2P_OVERRIDE`,
 5-bit IDs); the remap shifts them by +1 (to leave `EVT_NONE=0`) and
 renames `PMU_FTB_MISS` → `EVT_BTB_MISS`.  See
 `scripts/check_pmu_event_alignment.py` for the strict harmonization
@@ -72,6 +73,27 @@ zero-extends to a 40-bit physical line address.  Confidence is
 `rtl/cache/ftq_to_l1i_pkg.sv` for the canonical packet shape.  Verified
 by `ftq_l1i_shim_emits_prefetch_on_taken_target` and
 `ftq_l1i_shim_flushes_on_misprediction`.
+
+### BPU → L1I (IFU demand)
+
+```text
+bpu_top.fetch_entry / vector redirects
+   →  ftq_to_fetch_stream
+      →  fetch_stream_to_l1i_demand
+         →  l1i_demand_*_o / l1i_demand_*_lane1_o
+```
+
+The SoC boundary exposes the ordered fetch-control stream and an optional
+L1I demand bridge.  `fetch_stream_ready_i` remains the external stream
+backpressure input; when `l1i_demand_enable_i` is set, the demand bridge also
+participates in FTQ-pop backpressure.  The demand ports carry 40-bit physical
+addresses plus FTQ index, segment index, and branch kind for lane 0 and lane 1.
+This lets a downstream fetch/cache wrapper connect the L1I's scalar and
+lane-1 IFU demand inputs, including the independent lane-1 miss/refill channel,
+without reconstructing target-block metadata from scalar next-PC state.
+Verified by `bpu_vector_redirect_lanes_are_soc_visible`,
+`bpu_fetch_stream_backpressures_soc_ftq_pop`, and
+`bpu_fetch_stream_drives_soc_l1i_demand_lanes`.
 
 ### CPU cluster → AXI4 fabric
 

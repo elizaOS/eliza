@@ -10,18 +10,27 @@ non-redistribution clause.
 | File | Purpose |
 |---|---|
 | `manifest.json` | Pinned SPEC version, suite scope, expected run commands. |
-| `../../../scripts/run_spec.sh` | Fail-closed harness; refuses to run unless `$SPEC_DIR` points at a licensed install. |
+| `../../../scripts/run_spec.sh` | Fail-closed harness for either a licensed local `$SPEC_DIR` run or archived target runcpu transcript intake. |
 
 ### Compliance
 
-The harness:
+The harness has two legal modes:
 
-1. Refuses to run unless `SPEC_DIR` is set and points at a directory that
+1. Archived target transcript intake: `E1_SPEC_RAW_OUTPUT`,
+   `E1_SPEC_TARGET_METADATA`, `E1_SPEC_TARGET_RUNNER`,
+   `E1_SPEC_RUN_MANIFEST`, and
+   `SPEC_LICENSE_SHA256`/`E1_SPEC_LICENSE_SHA256` must be set. The runner must
+   be `prototype`, `silicon`, or `phone`; the transcript, metadata, and run
+   manifest are hashed; and only numeric scores plus provenance enter the
+   result JSON. The run manifest must bind SPEC CPU2017 version, runcpu
+   command, config, reportable status, and the result-bundle hash.
+2. Licensed local execution: refuses to run unless `SPEC_DIR` points at a
+   directory that
    contains `bin/runcpu` and a `version.txt` matching the pinned version.
-2. Refuses to run unless `SPEC_LICENSE_SHA256` matches the SHA-256 of
+3. Refuses to run unless `SPEC_LICENSE_SHA256` matches the SHA-256 of
    the operator's license file, recorded out-of-band in the operator's
    procurement system (NOT in this repo).
-3. Refuses to redistribute any SPEC artifact. Result JSON only records
+4. Refuses to redistribute any SPEC artifact. Result JSON only records
    numeric scores, configuration metadata (compiler, flags, runtime), and
    the run timestamp. Raw SPEC binaries, sources, and license keys never
    enter the repo.
@@ -47,7 +56,7 @@ Contact SPEC: https://www.spec.org/spec/contact.html
 When the harness can run end-to-end:
 
 - Compiler: pinned LLVM with RVV 1.0 vectorization enabled.
-- `runcpu --config eliza-rv64gc.cfg --action validate`.
+- `runcpu --config eliza-rva23u64.cfg --action validate`.
 - `runcpu --action runspeed` and `--action runrate`.
 - Three iterations, median reported, full set of `intspeed`, `intrate`,
   `fpspeed`, `fprate` subscores.

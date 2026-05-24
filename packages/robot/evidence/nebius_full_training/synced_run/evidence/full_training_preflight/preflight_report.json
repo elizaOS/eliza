@@ -1,0 +1,70 @@
+{
+  "schema": "robot-end-to-end-full-training-preflight-v1",
+  "created_at": "2026-05-23T00:20:22Z",
+  "ok": true,
+  "package_root": "/home/shaw/milady/eliza/packages/robot",
+  "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
+  "profile_id": "asimov-1",
+  "tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "budgets": {
+    "alberta_steps": 150000000,
+    "alberta_episode_steps": 200,
+    "alberta_eval_episodes": 3,
+    "backend_compare_steps": 30000,
+    "brax_steps": 150000000,
+    "brax_num_envs": 8192,
+    "brax_num_evals": 10,
+    "benchmark_steps_per_task": 16000,
+    "benchmark_seeds": 3
+  },
+  "checks": {
+    "profile_loads": true,
+    "tasks_declared": true,
+    "training_inputs_valid": true,
+    "brax_job_valid": true,
+    "multi_robot_readiness": true,
+    "scripts_executable": true
+  },
+  "scripts": {
+    "local_preflight": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/00_local_preflight.sh",
+    "train_alberta": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
+    "compare_backends": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh",
+    "continual_benchmarks": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh",
+    "brax_baseline": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
+    "post_training_validation": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/50_post_train_validation.sh"
+  },
+  "brax_job_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
+  "brax_validation": {
+    "ok": true,
+    "failed_checks": []
+  },
+  "training_inputs": {
+    "ok": true,
+    "curriculum": {
+      "version": 2,
+      "task_count": 22,
+      "content_sha256": "cd524c5bf5fce957d4a1eb591db02290952e09a5a54953e6c7c3a53599d5debe",
+      "duplicate_ids": [],
+      "text_variant_collisions": []
+    },
+    "dataset_warning_count": 1,
+    "unsupported_future_task_count": 13
+  },
+  "multi_robot_readiness": null,
+  "launch_order": [
+    "scripts/00_local_preflight.sh",
+    "scripts/10_nebius_train_alberta.sh",
+    "scripts/20_nebius_compare_backends.sh",
+    "scripts/30_nebius_continual_benchmarks.sh",
+    "scripts/40_nebius_brax_baseline.sh",
+    "scripts/50_post_train_validation.sh"
+  ]
+}

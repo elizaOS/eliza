@@ -1,11 +1,14 @@
 {
   "brand": "eliza",
   "appName": "Eliza",
-  "distroName": "ElizaOS",
+  "distroName": "elizaOS",
   "packageName": "ai.elizaos.app",
   "classPrefix": "Eliza",
   "productName": "eliza_cf_riscv64_phone",
   "lunchTarget": "eliza_cf_riscv64_phone-trunk_staging-userdebug",
+  "aospDeviceTreePaths": [
+    "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk"
+  ],
   "envPrefix": "ELIZA",
   "propertyPrefix": "elizaos",
   "vendorDir": "packages/os/android/vendor/eliza",

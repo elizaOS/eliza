@@ -1,0 +1,26 @@
+{
+  "boot_completed": false,
+  "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+  "cpus": 1,
+  "duration_s": 241,
+  "forbidden_markers_present": [],
+  "iso_path": "out/elizaos-linux-riscv64-default-20260523T045958Z.iso",
+  "iso_sha256": "c079bdbae379904d8a676714a05e29e71d4dbd8e890c007b224c14e34124b9ef",
+  "markers_found": [],
+  "markers_missing": [
+    "Linux version",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "memory_mb": 4096,
+  "provenance": "qemu_virt",
+  "qemu_exit_code": 124,
+  "schema": "eliza.os.linux.qemu_virt_boot.v1",
+  "start_utc": "2026-05-23T06:18:04Z",
+  "timeout_s": 240,
+  "transcript_path": "evidence/qemu_virt_boot_20260523T045958Z_smp1.transcript.log",
+  "transcript_sha256": "76926e54b9bee4d50f00f6751f410f1bc2388ac853e6f58273038f36dd15cdad",
+  "u_boot_path": null
+}

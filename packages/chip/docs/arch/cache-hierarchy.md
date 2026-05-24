@@ -7,11 +7,12 @@ benchmarking and BLOCKED-claim contract for this work lives at
 `docs/evidence/cache/cache-evidence-gate.yaml` and is enforced by
 `scripts/check_cache_hierarchy.py`.
 
-The cache hierarchy is the on-die SRAM that hides DRAM latency. Without
-this RTL the SoC has one tiny SRAM behind AXI-Lite; with this RTL the SoC
-has a four-level hierarchy (L1I, L1D, private L2, shared L3) plus a
-multi-bank SLC and a BDI compression path, all sized to the 2028
-phone-class minimums.
+The repository contains synthesizable RTL for the on-die SRAM hierarchy
+that hides DRAM latency. This RTL provides a four-level hierarchy (L1I,
+L1D, private L2, shared L3) plus a multi-bank SLC and a BDI compression
+path, all sized to the 2028 phone-class minimums. SoC-top phone
+integration, Linux/Android execution, LPDDR PHY/training, and real target
+bandwidth evidence remain outside this local cache RTL contract.
 
 ## Geometry
 
@@ -126,10 +127,11 @@ of that bridge.
 ## QoS at SLC
 
 `e1_cache_pkg::qos_class_e` defines eight classes; lower numeric value
-wins. The SLC arbiter guarantees that under saturation it services at
-least one `QOS_DISPLAY_RT` request every `display_window_cycles`. Way
-allocation per QoS class is programmable via `way_alloc_mask`. Way
-shutoff for DVFS is programmable per bank via `way_enable_mask`.
+wins. The SLC contains QoS-class plumbing and programmable window fields,
+but saturation service guarantees are not claimed until a dedicated SLC
+QoS test and contended SoC-level or target evidence are on file. Way
+allocation per QoS class is programmable via `way_alloc_mask`. Way shutoff
+for DVFS is programmable per bank via `way_enable_mask`.
 
 | Class | Numeric | Allowed clients |
 | ---: | ---: | --- |
@@ -160,9 +162,9 @@ L1 and L2 do not compress (latency tax). Only SLC.
 
 DRRIP is the default for L3 and SLC. The L3 module parameter
 `REPLACEMENT_POLICY` selects DRRIP/Hawkeye/Mockingjay/LRU. Mockingjay is
-the primary academic-quality port, validated functionally against a tiny
-Belady oracle in the cocotb harness, but its productized form requires
-follow-on work; see `docs/evidence/cache/cache-evidence-gate.yaml`.
+the primary academic-quality port, validated functionally against the LRU
+reference path in the cocotb harness. Its productized DPC-3/IPC evidence
+requires follow-on work; see `docs/evidence/cache/cache-evidence-gate.yaml`.
 
 ## HPM events
 
@@ -200,10 +202,10 @@ Zihpm-class boundary.
 | --- | --- |
 | `make rtl-check`               | Verilator lint of every cache module |
 | `make cocotb-cache-coherence`  | MESI transitions, single-writer-multi-reader |
-| `make champsim-prefetch-sweep` | DPC-3 sweep of upstream ChampSim prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite) plus in-tree 2024-12 module-API ports of the CRC-style drop-ins (Berti/IPCP/Bingo/BOP/Pythia) under `scripts/champsim_prefetcher_ports/`. evidence_class=champsim_dpc3_traces_only; do NOT promote to phone-class without silicon or full-system-simulator evidence. |
-| `make mockingjay-vs-lru-sweep` | DPC-3 LRU baseline + bundled replacement deltas (drrip/ship/srrip). Hawkeye/Mockingjay-prod remain BLOCKED until ported. evidence_class=champsim_dpc3_traces_only |
-| `make cocotb-cache-mockingjay-accuracy` | Mockingjay-prod RTL hit-rate vs LRU on synthetic scan+reuse stream (currently below +10% threshold; see mockingjay_cocotb_synthetic_report.json) |
-| `make lmbench-cache-curve`     | lat_mem_rd canonical L1/L2/L3/SLC/DRAM curve (functional in sim; real-target evidence BLOCKED) |
+| `make champsim-prefetch-sweep` | DPC-3 sweep of upstream ChampSim prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite) plus in-tree 2024-12 module-API ports of the CRC-style drop-ins (Berti/IPCP/Bingo/BOP/Pythia) under `external/ChampSim/prefetcher/<name>/`. evidence_class=champsim_dpc3_traces_only; do NOT promote to phone-class without silicon or full-system-simulator evidence. |
+| `make mockingjay-vs-lru-sweep` | DPC-3 LRU baseline + bundled replacement deltas (drrip/ship/srrip). Productized Hawkeye/Mockingjay IPC evidence remains BLOCKED until current ports and traces are complete. evidence_class=champsim_dpc3_traces_only |
+| `make cocotb-cache-mockingjay-accuracy` | Mockingjay-prod RTL hit-rate vs LRU on synthetic scan+reuse stream (current local cocotb evidence is +8.76 percentage points / +17.50% relative, above the +10% relative threshold; this is RTL synthetic evidence, not DPC-3/product phone evidence; see mockingjay_cocotb_synthetic_report.json) |
+| `make lmbench-cache-curve`     | lat_mem_rd canonical L1/L2/L3/SLC/DRAM curve (currently BLOCKED pending RV64 lmbench source/toolchain and target metadata; real-target evidence remains BLOCKED) |
 | `make cache-hierarchy-claim-gate` | Static gate enforcing 2028 minimums and blocked-claim discipline |
 
 ## Claim boundary

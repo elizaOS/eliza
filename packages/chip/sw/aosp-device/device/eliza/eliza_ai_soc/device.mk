@@ -17,13 +17,12 @@ PRODUCT_COPY_FILES += \
     device/eliza/eliza_ai_soc/init.eliza.rc:$(TARGET_COPY_OUT_VENDOR)/etc/init/init.eliza.rc \
     device/eliza/eliza_ai_soc/fstab.eliza:$(TARGET_COPY_OUT_VENDOR)/etc/fstab.eliza
 
-# HAL service binaries. These are fail-closed bring-up services:
-# the NPU service returns NOT_SUPPORTED until /dev/e1-npu is present, and
-# hwcomposer is framebuffer-only with client composition.
+# HAL service binaries. The NPU service returns NOT_SUPPORTED until
+# /dev/e1-npu is present. Graphics composition is inherited from the upstream
+# Cuttlefish riscv64 phone product's modern composer3 APEX packages; do not
+# package the local deprecated HIDL composer@2.4 compatibility module for this FCM level.
 PRODUCT_PACKAGES += \
-    vendor.eliza.e1_npu@1.0-service \
-    android.hardware.graphics.composer@2.4-service.eliza_ai_soc \
-    hwcomposer.eliza_ai_soc
+    vendor.eliza.e1_npu@1.0-service
 #
 # WiFi/Bluetooth packages, permissions, overlays, supplicant/hostapd configs,
 # and Android feature XML are intentionally absent until the external module
@@ -32,6 +31,4 @@ PRODUCT_PACKAGES += \
 PRODUCT_VENDOR_PROPERTIES += \
     vendor.eliza.soc.manufacturer=Eliza \
     vendor.eliza.soc.model=eliza_ai_soc \
-    vendor.e1_npu.ready=0 \
-    ro.hardware.hwcomposer=eliza \
-    ro.hardware.gralloc=eliza
+    vendor.e1_npu.ready=0

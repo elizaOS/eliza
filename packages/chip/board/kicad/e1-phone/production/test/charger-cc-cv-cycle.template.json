@@ -114,5 +114,28 @@
       "real CC/CV cycle missing",
       "battery supplier pack rating and thermal evidence missing"
     ]
-  }
+  },
+  "artifact_id": "charger_cc_cv_cycle",
+  "source_requirement_id": "charger_cc_cv_cycle",
+  "owner": "first_article_validation",
+  "created_at": "blocked_not_executed",
+  "tool_or_supplier_revision": "blocked_not_executed",
+  "input_artifact_hashes": [
+    "blocked_not_executed"
+  ],
+  "reviewer": "blocked_not_reviewed",
+  "reviewed_at": "blocked_not_reviewed",
+  "disposition": "blocked_not_executed",
+  "board_serial": "blocked_not_executed",
+  "supplier_lot_ids": [
+    "blocked_not_executed"
+  ],
+  "fixture_id": "blocked_not_executed",
+  "fixture_calibration_id": "blocked_not_executed",
+  "test_software_revision": "blocked_not_executed",
+  "operator": "blocked_not_executed",
+  "limits_file": "blocked_not_executed",
+  "measured_results": [],
+  "pass_fail_disposition": "blocked_not_executed",
+  "waivers": []
 }

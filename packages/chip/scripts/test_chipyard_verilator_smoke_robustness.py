@@ -265,6 +265,12 @@ def test_local_smoke_defaults_to_uart_diagnostics() -> None:
     )
     if expected not in text:
         raise AssertionError("expected local smoke wrapper to default to UART diagnostic plusargs")
+    if 'trace_verbose="${CHIPYARD_LINUX_SMOKE_TRACE_VERBOSE:-1}"' not in text:
+        raise AssertionError("expected local smoke wrapper to default to instruction tracing")
+    if 'extra_sim_flags="$extra_sim_flags +verbose"' not in text:
+        raise AssertionError("expected local smoke wrapper to add +verbose unless already supplied")
+    if "eliza-evidence: trace_verbose=%s" not in text:
+        raise AssertionError("expected local smoke wrapper to record trace verbosity in evidence")
 
 
 def main() -> int:

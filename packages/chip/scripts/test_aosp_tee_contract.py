@@ -34,6 +34,20 @@ GOOD_FILE_CONTEXTS = """
 /dev/vhost-vsock            u:object_r:eliza_pvm_vsock_device:s0
 """
 
+BUILD_GATED_SEPOLICY = """
+type eliza_pvm_mgr, domain;
+type eliza_pvm_mgr_exec, exec_type, file_type;
+# ELIZA_AVF_SEPOLICY_BUILD_GATED=1
+type eliza_pvm_vsock_device, dev_type;
+# allow eliza_pvm_mgr eliza_pvm_vsock_device:chr_file { open read write ioctl getattr };
+# neverallow { appdomain -eliza_pvm_mgr } eliza_pvm_vsock_device:chr_file *;
+"""
+
+BUILD_GATED_FILE_CONTEXTS = """
+/system/bin/eliza_pvm_mgr   u:object_r:eliza_pvm_mgr_exec:s0
+/run/elizaos/tee(/.*)?      u:object_r:eliza_tee_runtime_file:s0
+"""
+
 GOOD_INIT_RC = """
 service eliza_pvm_mgr /system/bin/eliza_pvm_mgr
     seclabel u:r:eliza_pvm_mgr:s0
@@ -213,6 +227,32 @@ class AospTeeContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         self.assertIn("pvm_sepolicy_vsock_not_exclusive", codes)
         self.assertIn("pvm_sepolicy_virtmgr_not_exclusive", codes)
+
+    def test_build_gated_policy_allows_platform_vsock_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir), complete=True)
+            with PatchStack(patches):
+                gate.SEPOLICY_PVM.write_text(BUILD_GATED_SEPOLICY, encoding="utf-8")
+                gate.SEPOLICY_FILE_CONTEXTS.write_text(
+                    BUILD_GATED_FILE_CONTEXTS, encoding="utf-8"
+                )
+                report = gate.run_check(Namespace())
+        self.assertEqual(report["status"], "pass", report["findings"])
+
+    def test_build_gated_policy_blocks_vendor_vsock_label(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches = self._patch_tree(Path(tmpdir), complete=True)
+            with PatchStack(patches):
+                gate.SEPOLICY_PVM.write_text(BUILD_GATED_SEPOLICY, encoding="utf-8")
+                gate.SEPOLICY_FILE_CONTEXTS.write_text(
+                    BUILD_GATED_FILE_CONTEXTS
+                    + "/dev/vhost-vsock u:object_r:eliza_pvm_vsock_device:s0\n",
+                    encoding="utf-8",
+                )
+                report = gate.run_check(Namespace())
+        codes = {f["code"] for f in report["findings"]}
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("pvm_file_contexts_build_gated_vsock_conflict", codes)
 
 
 if __name__ == "__main__":

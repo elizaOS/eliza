@@ -194,11 +194,23 @@ After a CVD is booted and `cuttlefish-boot-gate.sh` has promoted
 remaining interactive phone-surface evidence from the same boot:
 
 ```sh
+python3 "$REPO/scripts/android/capture_launcher_runtime_evidence.py" \
+  --adb-serial "${AOSP_ADB_SERIAL:-}"
+
 python3 "$REPO/scripts/android/capture_system_bridge_runtime_evidence.py" \
   --adb-serial "${AOSP_ADB_SERIAL:-}"
 
 python3 "$REPO/scripts/android/capture_simulated_peripheral_evidence.py"
 ```
+
+The launcher capture writes
+`docs/evidence/android/eliza_launcher_runtime_evidence.json`, plus referenced
+logcat and transcript artifacts. It blocks unless ADB proves riscv64 boot
+completion, PackageManager install, HOME role/resolve, foreground Eliza
+activity, a running app service process, `/api/health` HTTP 200 with
+`ready=true`, and clean fatal/SELinux log scans. If a Cuttlefish ADB connector
+is running but not listed in `adb devices`, pass `--adb-connect HOST:PORT`
+before the serial probe.
 
 The system-bridge capture writes
 `docs/evidence/android/system_bridge_runtime_evidence.json` and blocks unless
@@ -206,7 +218,8 @@ ADB proves boot completion, the privileged bridge package is installed, the
 bridge service is registered, required privapp permissions are granted, the
 launcher binds the JS bridge, live system state reaches the launcher, mock
 fallback markers are absent, and logcat has no fatal crash or SELinux denial
-markers.
+markers. It also accepts `--adb-connect HOST:PORT` for the same Cuttlefish
+connector recovery path as the launcher capture.
 
 The peripheral capture writes one log per phone surface under
 `docs/evidence/android/peripherals/`. Each probe must come from ADB-backed
@@ -214,7 +227,13 @@ runtime commands after `sys.boot_completed=1` and preserve command provenance,
 `RESULT=0`, and `eliza-evidence: status=PASS`; blocked or failed probe logs
 remain visible to the gate until a real passing run replaces them. A device
 that is merely visible in `adb devices` is not enough for phone peripheral
-evidence.
+evidence. For a Cuttlefish ADB connector that exists before `adb devices`
+lists it, run:
+
+```sh
+python3 "$REPO/scripts/android/capture_simulated_peripheral_evidence.py" \
+  --adb-connect "${AOSP_ADB_CONNECT:-127.0.0.1:6520}"
+```
 
 ## References
 

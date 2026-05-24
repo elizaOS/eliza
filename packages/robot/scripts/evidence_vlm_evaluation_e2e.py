@@ -28,7 +28,7 @@ import numpy as np
 from PIL import Image
 
 # Reach into the existing evidence harness instead of duplicating it.
-_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+_SCRIPTS_DIR = Path(__file__).resolve().parent
 if str(_SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS_DIR))
 
@@ -43,13 +43,36 @@ from eliza_robot.bridge.backends.noise_injector import (  # noqa: E402
 from eliza_robot.bridge.backends.state_mirror import StateMirrorBackend  # noqa: E402
 from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso  # noqa: E402
 from eliza_robot.curriculum.loader import load_curriculum  # noqa: E402
+from eliza_robot.perception.vlm_evaluator import EvalResult, VLMEvaluator  # noqa: E402
 from eliza_robot.rl.text_conditioned.inference_loop import (  # noqa: E402
     InferenceLoopConfig,
     run_inference,
 )
 from eliza_robot.sim.mujoco.demo_env import DemoEnv  # noqa: E402
 
-from eliza_robot.perception.vlm_evaluator import EvalResult, VLMEvaluator  # noqa: E402
+PKG_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ALBERTA_CHECKPOINT = PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
+SUPPORTED_PROFILE_ID = "hiwonder-ainex"
+
+
+def _load_checkpoint_manifest(checkpoint: Path) -> dict:
+    manifest = checkpoint / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def _validate_checkpoint_profile(checkpoint: Path) -> dict:
+    manifest = _load_checkpoint_manifest(checkpoint)
+    profile_id = manifest.get("profile_id")
+    if not profile_id:
+        raise ValueError(f"checkpoint manifest has no profile_id: {checkpoint}")
+    if profile_id != SUPPORTED_PROFILE_ID:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"checkpoint={profile_id!r} script_profile={SUPPORTED_PROFILE_ID!r}"
+        )
+    return manifest
 
 
 def _wrap_text(text: str, width: int) -> list[str]:
@@ -128,15 +151,16 @@ def _panel_with_critique(
 async def _run(args: argparse.Namespace) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = _validate_checkpoint_profile(Path(args.checkpoint))
 
     curriculum = load_curriculum()
 
     sim_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-    sim = MuJocoBackend(sim_env, profile_id="hiwonder-ainex")
+    sim = MuJocoBackend(sim_env, profile_id=SUPPORTED_PROFILE_ID)
 
     if args.sim_only:
         twin_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-        twin_inner = MuJocoBackend(twin_env, profile_id="hiwonder-ainex")
+        twin_inner = MuJocoBackend(twin_env, profile_id=SUPPORTED_PROFILE_ID)
         real = NoiseInjectorBackend(
             twin_inner,
             profile=NoiseProfile(deterministic_only=True, rng_seed=42),
@@ -253,6 +277,9 @@ async def _run(args: argparse.Namespace) -> int:
 
     error_count = sum(1 for p in per_prompt if p["error"])
     summary = {
+        "checkpoint": str(args.checkpoint),
+        "checkpoint_regime": manifest.get("regime"),
+        "profile_id": SUPPORTED_PROFILE_ID,
         "n_prompts": len(per_prompt), "n_judged": len(judged),
         "pass_count": pass_count, "fail_count": len(judged) - pass_count,
         "error_count": error_count, "vlm_pass_rate": vlm_pass_rate,
@@ -275,7 +302,7 @@ def main() -> int:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "checkpoints" / "text_conditioned_v2",
+        default=DEFAULT_ALBERTA_CHECKPOINT,
     )
     parser.add_argument("--host", default="192.168.1.218")
     parser.add_argument("--port", type=int, default=9090)

@@ -4,14 +4,14 @@
  * The cuttlefish/AOSP toolchain (build-aosp, sync-to-aosp, validate,
  * boot-validate, e2e-validate, …) was originally written assuming a
  * single brand: "eliza" / "Eliza" / "com.elizaai.eliza". To support
- * whitelabeling (e.g. ElizaOS as the default, ElizaOS as a downstream
- * brand), every brand-coupled string is centralised here.
+ * whitelabeling (e.g. elizaOS as the default, another brand as a
+ * downstream brand), every brand-coupled string is centralised here.
  *
  * Brand config schema:
  *   {
  *     "brand":               "eliza",                  // lowercase token; vendor/<X> dir, init.<X>.rc, eliza_*.mk filename prefix
  *     "appName":             "Eliza",                  // PascalCase; APK module name, vendor/<X>/apps/<APP_NAME>/<APP_NAME>.apk
- *     "distroName":          "ElizaOS",                // brand display name for log messages
+ *     "distroName":          "elizaOS",                // brand display name for log messages
  *     "packageName":         "com.elizaai.eliza",     // APK Java package id
  *     "classPrefix":         "Eliza",                  // Java class name prefix (ElizaDialActivity, ElizaSmsReceiver, …)
  *     "productName":         "eliza_cf_x86_64_phone",  // Cuttlefish product name (used for lunch target + product makefile filename)
@@ -122,9 +122,9 @@ export function loadBrandConfig(configPath) {
   parsed.cuttlefishMakefile =
     parsed.cuttlefishMakefile ?? `${parsed.productName}.mk`;
   // System property prefix used by init.<brand>.rc and the boot
-  // validator. Defaults to distroName lowercased (e.g. ElizaOS →
-  // "elizaos", ElizaOS → "elizaos") so `ro.<propertyPrefix>.product`
-  // matches what the AOSP build sets via PRODUCT_PROPERTY_OVERRIDES.
+  // validator. Defaults to distroName lowercased (e.g. elizaOS →
+  // "elizaos") so `ro.<propertyPrefix>.product` matches what the AOSP
+  // build sets via PRODUCT_PROPERTY_OVERRIDES.
   parsed.propertyPrefix =
     parsed.propertyPrefix ?? parsed.distroName.toLowerCase();
   parsed.brandConfigPath = resolved;

@@ -152,6 +152,19 @@ ALLOWLIST = (
         "AXI4 interconnect currently preserves the existing AXI-Lite scaffold boundary.",
     ),
     AllowedFinding(
+        "rtl/iommu/e1_riscv_iommu.sv",
+        "RTL stub treats DDTP=BARE",
+        "RISC-V IOMMU page-table walking is evidence-gated by "
+        "docs/evidence/memory/iommu-evidence-gate.yaml; the current RTL forwards BARE "
+        "transactions and faults translating modes until that gate is closed.",
+    ),
+    AllowedFinding(
+        "rtl/iommu/e1_riscv_iommu.sv",
+        "the stub keeps a small on-chip allowlist",
+        "The current allowlist is a bounded verification model covered by cocotb IOMMU "
+        "tests and the IOMMU evidence gate, not a production page-table-walker claim.",
+    ),
+    AllowedFinding(
         "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
         "earlier scaffold",
         "Header notes the real AXI4 controller replaced the SRAM scaffold; LPDDR5X PHY "

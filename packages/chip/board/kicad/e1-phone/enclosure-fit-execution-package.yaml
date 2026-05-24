@@ -25,6 +25,7 @@ source_artifacts:
   - board/kicad/e1-phone/radio-module-selection-wiring-decision.yaml
   - mechanical/e1-phone/review/board-step-readiness.json
   - mechanical/e1-phone/review/routed-board-clearance.json
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
 upstream_status:
   artifact_manifest_status: blocked_not_fabrication_ready
   enclosure_tolerance_status: blocked_requires_supplier_geometry_routed_step_and_physical_tolerance_evidence
@@ -49,12 +50,21 @@ enclosure_fit_policy:
   complete_clearance_result_count: 0
 current_blockers:
   production_step_files: []
+  candidate_production_step_files_present_but_blocked:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  development_step_files:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+  development_step_envelope_count: 89
+  development_step_pad_contact_visual_count: 1452
+  development_step_route_segment_visual_count: 306
+  development_step_via_visual_count: 24
+  development_step_is_release_evidence: false
   missing_or_incomplete_clearance_cases:
+    - battery_to_pcb_islands
     - haptic_to_battery
     - split_interconnect_connectors_on_pcb_islands
     - usb_shell_to_external_aperture
     - battery_back_void_foam_to_pouch
-    - battery_to_pcb_islands
     - bottom_mic_to_usb
     - front_camera_to_earpiece
     - haptic_to_pcb_islands
@@ -75,9 +85,11 @@ current_blockers:
     - soc_shield_can
     - pmic_shield_can
     - radio_shield_can
-  placeholder_marker_count: 116
-  has_tracks: false
-  has_filled_zones: false
+  production_concept_placeholder_marker_count: 116
+  production_concept_has_tracks: false
+  production_concept_has_filled_zones: false
+  development_real_footprint_has_tracks: true
+  development_real_footprint_remaining_placeholder_marker_count: 0
   has_production_step: false
 execution_domains:
   - id: display_touch_stack
@@ -401,7 +413,7 @@ release_blockers:
   - routed KiCad PCB and DRC report are missing
   - selected supplier response packs with enclosure datums and STEP/B-rep geometry for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - supplier STEP or B-rep models for height-critical parts are missing
-  - routed board STEP has not been exported or imported into enclosure CAD
+  - local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance
   - routed-board clearance, boolean interference, and physical fit results are missing
   - selected display, camera, USB-C/power/side-key, cellular, and Wi-Fi/Bluetooth supplier geometry has not passed routed enclosure clearance
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter enclosure clearance until supplier geometry, connector, touch/power, sample, promotion review, routed STEP, and physical fit evidence exist

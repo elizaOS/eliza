@@ -9,6 +9,7 @@ import {
   defaultManifestPath,
   parseChecksumFile,
   readJson,
+  sha256CanonicalJson,
   validateManifest,
   validateTeeMeasurements,
 } from "../os-release-lib.mjs";
@@ -252,7 +253,13 @@ test("TEE measurement generation hashes required release inputs", async () => {
     container: path.join(tmp, "compose.json"),
   };
   for (const [name, filePath] of Object.entries(inputs)) {
-    await writeFile(filePath, `fixture for ${name}\n`);
+    // `policy` is hashed as canonicalized JSON (it is the source of
+    // measurements.policy), so it must be valid JSON; the rest hash raw bytes.
+    const contents =
+      name === "policy"
+        ? JSON.stringify({ z: 1, a: { b: 2 } })
+        : `fixture for ${name}\n`;
+    await writeFile(filePath, contents);
   }
   const output = path.join(tmp, "tee-measurements.json");
 
@@ -282,6 +289,12 @@ test("TEE measurement generation hashes required release inputs", async () => {
     assert.match(generated.measurements[name], /^sha256:[a-f0-9]{64}$/);
   }
   assert.equal(validateTeeMeasurements(generated).ok, true);
+  // The policy measurement is the canonical-JSON digest, independent of key
+  // order in the source file.
+  assert.equal(
+    generated.measurements.policy,
+    sha256CanonicalJson({ z: 1, a: { b: 2 } }),
+  );
 });
 
 test("TEE measurement validator rejects missing required digests", () => {
@@ -409,7 +422,12 @@ test("new measurement names round-trip through generate -> validate", async () =
   ];
   for (const name of names) {
     const filePath = path.join(tmp, `${name}.bin`);
-    await writeFile(filePath, `fixture for ${name}\n`);
+    // `policy` is canonicalized JSON (source of measurements.policy); the rest
+    // hash raw component bytes.
+    await writeFile(
+      filePath,
+      name === "policy" ? JSON.stringify({ k: name }) : `fixture for ${name}\n`,
+    );
     cliArgs.push(`--${name}`, filePath);
   }
 

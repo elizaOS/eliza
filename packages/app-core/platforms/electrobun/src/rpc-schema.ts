@@ -25,6 +25,7 @@ import type {
   DatabaseResetResult,
   DatabaseSnapshot,
 } from "./database";
+import type { KioskViewEvent } from "./dynamic-views/kiosk-canvas";
 import type {
   DynamicViewCloseParams,
   DynamicViewManifest,
@@ -2300,6 +2301,11 @@ export type ElizaDesktopRPCSchema = {
         data?: unknown;
       };
 
+      // Kiosk: in-window dynamic-view surface events. In kiosk shell mode the
+      // dynamic-view session manager pushes these instead of opening native
+      // canvas windows; the KioskShell mounts/unmounts each surface in-canvas.
+      kioskViewEvent: KioskViewEvent;
+
       // TalkMode: Audio/state push events
       talkmodeAudioChunkPush: { data: string };
       talkmodeStateChanged: { state: TalkModeState };
@@ -2751,6 +2757,7 @@ export const PUSH_CHANNEL_TO_RPC_MESSAGE: Record<string, string> = {
   "remote-plugin:storeChanged": "remotePluginStoreChanged",
   "remote-plugin:workerChanged": "remotePluginWorkerChanged",
   "canvas:windowEvent": "canvasWindowEvent",
+  "kiosk:viewEvent": "kioskViewEvent",
   "talkmode:audioChunkPush": "talkmodeAudioChunkPush",
   "talkmode:stateChanged": "talkmodeStateChanged",
   "talkmode:speakComplete": "talkmodeSpeakComplete",

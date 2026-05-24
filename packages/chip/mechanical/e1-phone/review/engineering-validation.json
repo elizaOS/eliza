@@ -25,7 +25,7 @@
     },
     {
       "id": "battery_to_pcb",
-      "actual_mm": 1.0,
+      "actual_mm": 0.5,
       "required_mm": 0.5,
       "pass": true,
       "note": "Minimum gap from pouch battery to rigid PCB islands."
@@ -143,14 +143,14 @@
       -5.9
     ],
     "high": [
-      40.55,
+      40.782,
       76.8,
-      5.9
+      6.21
     ],
     "span": [
-      81.1,
+      81.332,
       153.6,
-      11.8
+      12.11
     ],
     "nominal_envelope": [
       78.0,
@@ -175,5 +175,5 @@
     "rear_camera",
     "front_camera"
   ],
-  "estimated_mass_g": 183.15
+  "estimated_mass_g": 182.18
 }

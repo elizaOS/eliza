@@ -34,9 +34,12 @@ hal_server_domain(hal_e1_npu_default, hal_e1_npu)
 # Allow the HAL to open and ioctl the kernel device. Read/write only; no
 # create/unlink/relabel.
 allow hal_e1_npu_default e1_npu_device:chr_file { open read write ioctl getattr };
-set_prop(init, vendor_e1_npu_prop)
+set_prop(vendor_init, vendor_e1_npu_prop)
 get_prop(hal_e1_npu_default, vendor_e1_npu_prop)
 add_hwservice(hal_e1_npu_default, hal_e1_npu_hwservice)
 
-# Property gating: init owns vendor.e1_npu.ready and the HAL may read it for
-# diagnostics. The concrete label lives in property_contexts.
+# Property gating: vendor_init owns vendor.e1_npu.ready and the HAL may read it
+# for diagnostics. The property is a vendor_internal_prop seeded by
+# PRODUCT_VENDOR_PROPERTIES and toggled by /vendor/etc/init/init.eliza.rc, both
+# of which run in the vendor_init domain. The concrete label lives in
+# property_contexts.

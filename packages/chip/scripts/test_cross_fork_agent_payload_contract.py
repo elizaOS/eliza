@@ -37,6 +37,56 @@ def bun_version_json(webkit_status: str = "") -> str:
     )
 
 
+def good_bun_riscv64_dockerfile() -> str:
+    return r"""RUN set -eux; \
+    install -d /opt/cross/bin; \
+    cat > /opt/cross/bin/riscv64-linux-musl-clang <<'WRAPPER_EOF'
+#!/bin/sh
+exec /usr/local/bin/clang \
+    --target=riscv64-unknown-linux-musl \
+    --sysroot=/sysroot \
+    --gcc-toolchain=/sysroot/usr \
+    -Qunused-arguments \
+    -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib \
+    -fuse-ld=lld \
+    -march=rv64gc \
+    -mabi=lp64d \
+    "$@"
+WRAPPER_EOF
+RUN cat > /opt/cross/bin/riscv64-linux-musl-clang++ <<'WRAPPER_EOF'
+#!/bin/sh
+exec /usr/local/bin/clang++ \
+    --target=riscv64-unknown-linux-musl \
+    --sysroot=/sysroot \
+    --gcc-toolchain=/sysroot/usr \
+    -Qunused-arguments \
+    -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib \
+    -fuse-ld=lld \
+    -stdlib=libstdc++ \
+    -march=rv64gc \
+    -mabi=lp64d \
+    "$@"
+WRAPPER_EOF
+RUN ln -s /usr/local/bin/ld.lld /opt/cross/bin/riscv64-linux-musl-ld
+ENV CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=/opt/cross/bin/riscv64-linux-musl-clang
+"""
+
+
+def good_bun_riscv64_build_sh() -> str:
+    return r"""WK_LINKER_FLAGS="-fuse-ld=lld"
+cmake \
+    -DCMAKE_LINKER=/usr/local/bin/ld.lld \
+    -DCMAKE_EXE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
+    -DCMAKE_MODULE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}"
+export BUN_LD=/usr/local/bin/ld.lld
+"""
+
+
 class CrossForkAgentPayloadContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         workspace = tmp
@@ -48,6 +98,14 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
                 "Recipe files document the chain that an operator must realize into actual `*.patch` files before the Baseline-JIT build path is testable."
             ),
         )
+        bun_riscv64_dockerfile = write(
+            app_core / "scripts/bun-riscv64/Dockerfile",
+            good_bun_riscv64_dockerfile(),
+        )
+        bun_riscv64_build = write(
+            app_core / "scripts/bun-riscv64/build.sh",
+            good_bun_riscv64_build_sh(),
+        )
         android_stage = write(
             app_core / "scripts/lib/stage-android-agent.mjs",
             'const BUN_VERSION = "1.3.13";\n'
@@ -56,7 +114,7 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             "const url = process.env.ELIZA_BUN_RISCV64_URL;\n",
         )
         android_service = write(
-            app_core / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+            app_core / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java",
             'private static final String HEALTH_URL = "http://127.0.0.1:31337/api/health";\n',
         )
         linux_agent_hook = write(
@@ -90,8 +148,19 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
             mock.patch.object(gate, "APP_CORE", app_core),
             mock.patch.object(gate, "OS_RV64", os_rv64),
             mock.patch.object(gate, "BUN_VERSION_JSON", bun_version),
+            mock.patch.object(gate, "BUN_RISCV64_DOCKERFILE", bun_riscv64_dockerfile),
+            mock.patch.object(gate, "BUN_RISCV64_BUILD", bun_riscv64_build),
             mock.patch.object(gate, "ANDROID_STAGE", android_stage),
             mock.patch.object(gate, "ANDROID_AGENT_SERVICE", android_service),
+            mock.patch.object(
+                gate,
+                "ANDROID_AGENT_SERVICE_CANDIDATES",
+                (
+                    android_service,
+                    app_core
+                    / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+                ),
+            ),
             mock.patch.object(gate, "LINUX_AGENT_HOOK", linux_agent_hook),
             mock.patch.object(gate, "LINUX_AGENT_UNIT", linux_unit),
             mock.patch.object(gate, "LINUX_HEALTH_HELPER", linux_health_helper),
@@ -172,6 +241,27 @@ class CrossForkAgentPayloadContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+    def test_bun_riscv64_toolchain_blocks_host_ld_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, _ = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                gate.BUN_VERSION_JSON.write_text(
+                    bun_version_json("realized patch files validated"), encoding="utf-8"
+                )
+                gate.BUN_RISCV64_DOCKERFILE.write_text(
+                    good_bun_riscv64_dockerfile().replace("    -fuse-ld=lld \\\n", ""),
+                    encoding="utf-8",
+                )
+                gate.BUN_RISCV64_BUILD.write_text(
+                    good_bun_riscv64_build_sh().replace(
+                        'WK_LINKER_FLAGS="-fuse-ld=lld"\n', ""
+                    ),
+                    encoding="utf-8",
+                )
+                report = gate.run_check(Namespace())
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("bun_riscv64_toolchain_can_use_host_ld", codes)
 
 
 class PatchStack:

@@ -1,0 +1,293 @@
+"""Validate Alberta-vs-baseline continual benchmark artifacts."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+from pathlib import Path
+from typing import Any
+
+REQUIRED_METRICS = ("acc", "bwt", "forgetting", "fwt")
+REQUIRED_LEARNERS = ("alberta", "ppo")
+
+
+def _load(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _finite_number(value: Any) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, int | float)
+        and math.isfinite(float(value))
+    )
+
+
+def _positive_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if not isinstance(value, int):
+        return None
+    return value if value > 0 else None
+
+
+def _metric_block_ok(summary: dict[str, Any], learner: str) -> bool:
+    block = summary.get(learner)
+    if not isinstance(block, dict):
+        return False
+    for metric in REQUIRED_METRICS:
+        item = block.get(metric)
+        if not isinstance(item, dict):
+            return False
+        if not _finite_number(item.get("mean")):
+            return False
+        if not _finite_number(item.get("std")) or float(item.get("std")) < 0.0:
+            return False
+    return True
+
+
+def _mean(summary: dict[str, Any], learner: str, metric: str) -> float | None:
+    block = summary.get(learner)
+    if not isinstance(block, dict):
+        return None
+    item = block.get(metric)
+    if not isinstance(item, dict):
+        return None
+    value = item.get("mean")
+    return float(value) if _finite_number(value) else None
+
+
+def _matrix_shape_ok(result: dict[str, Any], n_tasks: int) -> bool:
+    matrix = result.get("matrix")
+    baseline = result.get("baseline")
+    if not isinstance(matrix, list) or not isinstance(baseline, list):
+        return False
+    if len(matrix) != n_tasks or len(baseline) != n_tasks:
+        return False
+    for row in matrix:
+        if not isinstance(row, list) or len(row) != n_tasks:
+            return False
+        if not all(_finite_number(value) for value in row):
+            return False
+    return all(_finite_number(value) for value in baseline)
+
+
+def _learner_seed_coverage(results: list[Any], learners: tuple[str, ...]) -> dict[str, list[int]]:
+    coverage: dict[str, set[int]] = {name: set() for name in learners}
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        name = result.get("name")
+        seed = result.get("seed")
+        if name in coverage and isinstance(seed, int):
+            coverage[name].add(seed)
+    return {name: sorted(seeds) for name, seeds in coverage.items()}
+
+
+def _learner_seed_pairs_ok(
+    results: list[Any], expected_seeds: int, learners: tuple[str, ...]
+) -> bool:
+    expected = {
+        (learner, 1000 + seed_index)
+        for learner in learners
+        for seed_index in range(expected_seeds)
+    }
+    observed: list[tuple[str, int]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            return False
+        name = result.get("name")
+        seed = result.get("seed")
+        if name not in learners or isinstance(seed, bool) or not isinstance(seed, int):
+            return False
+        observed.append((name, seed))
+    return len(observed) == len(expected) and set(observed) == expected
+
+
+def validate_alberta_benchmark_artifacts(
+    benchmark_dir: Path,
+    *,
+    expected_env: str | None = None,
+    min_seeds: int = 1,
+    min_steps_per_task: int = 1,
+    min_tasks: int = 1,
+    require_plot: bool = True,
+    require_demo_video: bool = False,
+    require_alberta_acc_gte_ppo: bool = False,
+    require_alberta_forgetting_lte_ppo: bool = False,
+) -> dict[str, Any]:
+    benchmark_dir = benchmark_dir.resolve()
+    json_path = benchmark_dir / "continual_benchmark.json"
+    md_path = benchmark_dir / "continual_benchmark.md"
+    png_path = benchmark_dir / "continual_benchmark.png"
+    demo_json_path = benchmark_dir / "obstacle_course_demo.json"
+    demo_video_path = benchmark_dir / "obstacle_course_demo.mp4"
+    bundle = _load(json_path)
+    demo = _load(demo_json_path)
+    config = bundle.get("config") if isinstance(bundle.get("config"), dict) else {}
+    summary = bundle.get("summary") if isinstance(bundle.get("summary"), dict) else {}
+    results = bundle.get("results") if isinstance(bundle.get("results"), list) else []
+    learner_names = {
+        result.get("name")
+        for result in results
+        if isinstance(result, dict) and isinstance(result.get("name"), str)
+    }
+    configured_learners_raw = config.get("learners")
+    configured_learners = tuple(
+        name
+        for name in configured_learners_raw
+        if isinstance(name, str)
+    ) if isinstance(configured_learners_raw, list) else REQUIRED_LEARNERS
+    required_learners_present = all(name in configured_learners for name in REQUIRED_LEARNERS)
+    config_seeds = _positive_int(config.get("seeds")) or 0
+    config_steps_per_task = _positive_int(config.get("steps_per_task")) or 0
+    n_tasks = _positive_int(config.get("n_tasks")) or 0
+    expected_result_count = config_seeds * len(configured_learners)
+    seed_coverage = _learner_seed_coverage(results, configured_learners)
+    alberta_acc = _mean(summary, "alberta", "acc")
+    ppo_acc = _mean(summary, "ppo", "acc")
+    alberta_forgetting = _mean(summary, "alberta", "forgetting")
+    ppo_forgetting = _mean(summary, "ppo", "forgetting")
+    acc_delta = (
+        alberta_acc - ppo_acc
+        if alberta_acc is not None and ppo_acc is not None
+        else None
+    )
+    forgetting_delta = (
+        alberta_forgetting - ppo_forgetting
+        if alberta_forgetting is not None and ppo_forgetting is not None
+        else None
+    )
+    checks = {
+        "benchmark_dir": benchmark_dir.is_dir(),
+        "json": json_path.is_file(),
+        "markdown": md_path.is_file(),
+        "plot": (png_path.is_file() and png_path.stat().st_size > 0) if require_plot else True,
+        "demo_json": (
+            demo_json_path.is_file()
+            and demo.get("schema") == "robot-alberta-obstacle-demo-v1"
+            and demo.get("ok") is True
+        )
+        if require_demo_video
+        else True,
+        "demo_video": (
+            demo_video_path.is_file()
+            and demo_video_path.stat().st_size > 0
+            and _positive_int(demo.get("frames")) is not None
+            and _positive_int(demo.get("video_bytes")) is not None
+        )
+        if require_demo_video
+        else True,
+        "schema": isinstance(config, dict)
+        and isinstance(summary, dict)
+        and isinstance(results, list),
+        "expected_env": True
+        if expected_env is None
+        else config.get("env_kind") == expected_env,
+        "seeds": config_seeds >= min_seeds,
+        "steps_per_task": config_steps_per_task >= min_steps_per_task,
+        "tasks": n_tasks >= min_tasks,
+        "result_count": len(results) == expected_result_count
+        and expected_result_count >= min_seeds * len(REQUIRED_LEARNERS),
+        "learner_seed_pairs": _learner_seed_pairs_ok(
+            results, config_seeds, configured_learners
+        )
+        if config_seeds > 0
+        else False,
+        "learner_seed_coverage": required_learners_present
+        and all(
+            len(seed_coverage[name]) >= min_seeds for name in REQUIRED_LEARNERS
+        )
+        and all(
+            len(seed_coverage[name]) >= config_seeds
+            for name in REQUIRED_LEARNERS
+        ),
+        "summary_learners": required_learners_present
+        and all(name in summary for name in configured_learners),
+        "result_learners": required_learners_present
+        and all(name in learner_names for name in configured_learners),
+        "matrix_shapes": all(
+            isinstance(result, dict)
+            and isinstance(result.get("name"), str)
+            and result.get("name") in configured_learners
+            and _matrix_shape_ok(result, n_tasks)
+            for result in results
+        )
+        if results and n_tasks > 0
+        else False,
+        "metrics": required_learners_present
+        and all(_metric_block_ok(summary, name) for name in configured_learners),
+        "alberta_acc_gte_ppo": True
+        if not require_alberta_acc_gte_ppo
+        else acc_delta is not None and acc_delta >= 0.0,
+        "alberta_forgetting_lte_ppo": True
+        if not require_alberta_forgetting_lte_ppo
+        else forgetting_delta is not None and forgetting_delta <= 0.0,
+    }
+    return {
+        "ok": all(checks.values()),
+        "benchmark_dir": str(benchmark_dir),
+        "expected_env": expected_env,
+        "min_seeds": int(min_seeds),
+        "min_steps_per_task": int(min_steps_per_task),
+        "min_tasks": int(min_tasks),
+        "checks": checks,
+        "deltas": {
+            "alberta_acc_minus_ppo": acc_delta,
+            "alberta_forgetting_minus_ppo": forgetting_delta,
+        },
+        "required_deltas": {
+            "require_alberta_acc_gte_ppo": bool(require_alberta_acc_gte_ppo),
+            "require_alberta_forgetting_lte_ppo": bool(
+                require_alberta_forgetting_lte_ppo
+            ),
+        },
+        "required_artifacts": {
+            "require_plot": bool(require_plot),
+            "require_demo_video": bool(require_demo_video),
+        },
+        "demo": demo,
+        "config": config,
+        "summary": summary,
+        "seed_coverage": seed_coverage,
+        "configured_learners": list(configured_learners),
+        "required_learners": list(REQUIRED_LEARNERS),
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("benchmark_dir", type=Path)
+    parser.add_argument("--expected-env", choices=("joint_reach", "obstacle_course"))
+    parser.add_argument("--min-seeds", type=int, default=1)
+    parser.add_argument("--min-steps-per-task", type=int, default=1)
+    parser.add_argument("--min-tasks", type=int, default=1)
+    parser.add_argument("--no-require-plot", action="store_true")
+    parser.add_argument("--require-demo-video", action="store_true")
+    parser.add_argument("--require-alberta-acc-gte-ppo", action="store_true")
+    parser.add_argument("--require-alberta-forgetting-lte-ppo", action="store_true")
+    args = parser.parse_args(argv)
+    report = validate_alberta_benchmark_artifacts(
+        args.benchmark_dir,
+        expected_env=args.expected_env,
+        min_seeds=args.min_seeds,
+        min_steps_per_task=args.min_steps_per_task,
+        min_tasks=args.min_tasks,
+        require_plot=not args.no_require_plot,
+        require_demo_video=args.require_demo_video,
+        require_alberta_acc_gte_ppo=args.require_alberta_acc_gte_ppo,
+        require_alberta_forgetting_lte_ppo=args.require_alberta_forgetting_lte_ppo,
+    )
+    print(json.dumps(report, indent=2))
+    return 0 if report["ok"] else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

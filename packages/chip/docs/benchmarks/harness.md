@@ -16,6 +16,8 @@ artifacts without executing anything.
 
 ## CLI Commands
 
+Run these commands from `packages/chip`:
+
 List configured benchmarks and installation hints:
 
 ```sh
@@ -42,6 +44,17 @@ Validate an existing report:
 
 ```sh
 python3 benchmarks/run_benchmarks.py validate-report benchmarks/results/dry-run/report.json
+```
+
+## Phone L5/L6 Claim Gate
+
+The phone CPU claim gate is fail-closed until real target transcripts and
+metadata are archived:
+
+```sh
+make cpu-phone-l5-l6-benchmark-report
+make cpu-phone-benchmark-claim-gate-strict
+python3 scripts/check_cpu_phone_benchmark_claim_gate.py --no-write --strict
 ```
 
 Check whether the TFLite CPU benchmark is ready to run with a real
@@ -234,6 +247,18 @@ supplied real binaries and refuses inputs containing the repo host-smoke marker.
 Generated reports include executable SHA-256, size, provenance, and any rejected
 host-smoke candidates in each executable dependency record.
 
+`scripts/check_bandwidth_sustained.py` is a parser and threshold checker, not a
+release-evidence promoter. A parser-only output can set
+`target_thresholds_status: pass`, but `release_claim_allowed` remains `false`
+and `pass_fail_against_phone_2028_target_profile.overall` remains `downgraded`
+until real target identity, raw artifacts, process-contract hashes, and
+contention/QoS traces satisfy the real-report validator
+(`scripts/check_memory_evidence_templates.py --report`). Real memory reports
+must archive every `raw_artifacts[].path` under `packages/chip` with file
+contents matching `raw_artifacts[].sha256`; when `contended_trace_present` is
+`pass`, `contention_workload.raw_trace_path` must be one of those hash-bound raw
+artifacts.
+
 For e1-npu NNAPI evidence, the harness validates the proof JSON schema,
 accelerator name, transcript presence, and required transcript markers before
 the benchmark can move out of `blocked`. A strict release report that only has
@@ -258,4 +283,13 @@ UTC calibration instant and immutable evidence digests. The runner rejects
 local timestamps such as `2026-05-19 12:00:00`, non-UTC offsets, and placeholder
 hashes such as `host-smoke`; use ISO-8601 UTC (`Z` or `+00:00`) for
 `calibration.last_calibrated_utc` and 64-character lowercase SHA-256 hex for
-each required calibration asset `sha256`.
+each required calibration asset `sha256`. For phone L5/L6 claim gates,
+`calibration.assets.<name>.evidence` must be an archived artifact path under
+`packages/chip`, and the file hash must match the asset `sha256`. Imported
+L5/L6 target metadata must also bind `process.process_effects_contract.path` to
+`docs/spec-db/process-14a-effects.yaml`; when checked with `--artifact-root`, the
+metadata `process.process_effects_contract.sha256` must match that archived
+contract file. CPU side-result runners add benchmark-specific required assets:
+CoreMark requires `coremark_binary`, Dhrystone requires `dhrystone_binary`, and
+JetStream requires `jetstream_engine`, in addition to `clock_source` and
+`power_meter`.

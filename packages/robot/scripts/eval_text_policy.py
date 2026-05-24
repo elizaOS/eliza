@@ -25,7 +25,7 @@ PKG_ROOT = Path(__file__).resolve().parents[1]
 if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
-from eliza_robot.profiles.schema import list_profiles  # noqa: E402
+from eliza_robot.profiles.schema import list_profiles, load_profile  # noqa: E402
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy  # noqa: E402
 from eliza_robot.rl.text_conditioned.profile_env import (  # noqa: E402
     ProfileEnvConfig,
@@ -44,13 +44,31 @@ DEFAULT_TASKS = (
 
 
 def _default_checkpoint(profile_id: str) -> Path:
-    return PKG_ROOT / "checkpoints" / f"text_conditioned_{profile_id}_smoke"
+    return PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
 
 
-def _load_policy(ckpt: Path):
-    if not (ckpt / "manifest.json").is_file():
-        return None
+def _load_policy(ckpt: Path) -> TextConditionedPolicy:
+    manifest = ckpt / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
     return TextConditionedPolicy(ckpt)
+
+
+def _validate_policy_contract(policy: TextConditionedPolicy, profile_id: str) -> None:
+    profile = load_profile(profile_id)
+    if policy.manifest.profile_id != profile_id:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"manifest profile_id={policy.manifest.profile_id!r}, "
+            f"evaluation profile_id={profile_id!r}"
+        )
+    output_dim = int(policy.manifest.output_dim)
+    expected = len(profile.kinematics.joints)
+    if output_dim != expected:
+        raise ValueError(
+            "checkpoint output_dim mismatch: "
+            f"manifest output_dim={output_dim}, profile {profile_id!r} has {expected} joints"
+        )
 
 
 def _fit_action(action: np.ndarray, dim: int) -> np.ndarray:
@@ -95,7 +113,7 @@ def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int
     info["task_idx"] = jp.asarray(task_idx, dtype=jp.int32)
     info["command"] = env._task_commands[task_idx]  # noqa: SLF001
     info["text_embed"] = env._task_embeddings[task_idx]  # noqa: SLF001
-    obs = jp.concatenate([env._get_proprio(state.data, info), info["text_embed"]])  # noqa: SLF001
+    obs = env._get_obs(state.data, info)  # noqa: SLF001
     state = state.replace(obs=obs, info=info)
 
     total = 0.0
@@ -108,7 +126,8 @@ def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int
                 policy.manifest.proprio_dim
                 or (policy.manifest.obs_dim - policy.manifest.pca_dim)
             )
-            proprio = np.asarray(jax.device_get(state.obs[:proprio_dim]), dtype=np.float32)
+            actor_obs = state.obs["state"] if isinstance(state.obs, dict) else state.obs
+            proprio = np.asarray(jax.device_get(actor_obs[:proprio_dim]), dtype=np.float32)
             action, _ = policy.act(task_id, proprio, deterministic=True)
             action = _fit_action(action, int(env.action_size))
         state = env.step(state, jp.asarray(action, dtype=jp.float32))
@@ -134,6 +153,8 @@ def _evaluate_asimov_mjx(
 
     ckpt = ckpt or _default_checkpoint("asimov-1")
     policy = None if untrained else _load_policy(ckpt)
+    if policy is not None:
+        _validate_policy_contract(policy, "asimov-1")
     pca_dim = 32 if policy is None else int(policy.manifest.text_dim or policy.manifest.pca_dim)
     unknown = sorted(set(tasks) - set(DEFAULT_ACTIVE_TASKS))
     if unknown:
@@ -172,9 +193,11 @@ def _evaluate_asimov_mjx(
         "profile_id": "asimov-1",
         "env": "asimov_mjx",
         "checkpoint": str(ckpt),
-        "policy": "untrained_zero" if untrained else ("missing_checkpoint_zero" if policy is None else policy.manifest.regime),
+        "policy": "untrained_zero" if untrained else policy.manifest.regime,
         "env_action_dim": int(env.action_size),
-        "env_observation_dim": int(env.observation_size),
+        "env_observation_dim": int(env.actor_observation_size),
+        "env_critic_observation_dim": int(env.privileged_observation_size),
+        "env_observation_keys": sorted(env.observation_size),
         "env_proprio_dim": int(env.proprio_dim),
         "env_text_dim": int(env.text_dim),
         "mujoco_actuators": int(env.mj_model.nu),
@@ -212,14 +235,20 @@ def evaluate(
     if backend != "profile":
         raise ValueError(f"unsupported evaluator backend: {backend!r}")
 
+    ckpt = ckpt or _default_checkpoint(profile_id)
+    policy = None if untrained else _load_policy(ckpt)
+    if policy is not None:
+        _validate_policy_contract(policy, profile_id)
+    pca_dim = 32 if policy is None else int(policy.manifest.text_dim or policy.manifest.pca_dim)
     env = make_text_conditioned_env(
         profile_id,
         config=ProfileEnvConfig(
-            include_tasks=tasks, exclude_tasks=(), episode_steps=max_steps
+            include_tasks=tasks,
+            exclude_tasks=(),
+            episode_steps=max_steps,
+            pca_dim=pca_dim,
         ),
     )
-    ckpt = ckpt or _default_checkpoint(profile_id)
-    policy = None if untrained else _load_policy(ckpt)
     per_task: dict[str, dict] = {}
     for task_id in tasks:
         rewards = []
@@ -240,7 +269,7 @@ def evaluate(
         "profile_id": profile_id,
         "env": "profile_mujoco",
         "checkpoint": str(ckpt),
-        "policy": "untrained_zero" if untrained else ("missing_checkpoint_zero" if policy is None else policy.manifest.regime),
+        "policy": "untrained_zero" if untrained else policy.manifest.regime,
         "env_action_dim": int(env.action_space.shape[0]),
         "policy_action_dim": 0 if policy is None else int(policy.manifest.action_dim),
         "policy_output_dim": 0 if policy is None else int(policy.manifest.output_dim),
@@ -258,7 +287,11 @@ def main(argv: list[str] | None = None) -> int:
         "--ckpt",
         type=Path,
         default=None,
-        help="Checkpoint directory with manifest.json. Defaults to checkpoints/text_conditioned_<profile>_smoke.",
+        help=(
+            "Checkpoint directory with manifest.json. Defaults to "
+            "checkpoints/alberta_text_conditioned. Unless --untrained "
+            "is set, the manifest is required and must match --profile."
+        ),
     )
     parser.add_argument("--tasks", nargs="+", default=list(DEFAULT_TASKS))
     parser.add_argument("--episodes", type=int, default=5)

@@ -123,6 +123,10 @@ class RuntimeConfig:
     rosbridge_port: int = 9090
     asimov_livekit_url: str = ""
     asimov_livekit_token: str = ""
+    # Optional server-side text-conditioned policy checkpoint. When set,
+    # policy.start runs the checkpoint in-process and dispatches servo targets;
+    # when unset, the bridge preserves the external policy.tick protocol.
+    policy_checkpoint: str = ""
 
 
 def _load_config_file(path: str) -> JsonDict:
@@ -165,6 +169,14 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
     asimov_livekit_token = getattr(args, "asimov_livekit_token", "") or os.environ.get(
         "ASIMOV_LIVEKIT_TOKEN", ""
     )
+    policy_checkpoint = getattr(args, "policy_checkpoint", "") or os.environ.get(
+        "ELIZA_ROBOT_POLICY_CHECKPOINT", ""
+    )
+    policy_value = config_obj.get("policy")
+    if isinstance(policy_value, dict):
+        ckpt_value = policy_value.get("checkpoint")
+        if isinstance(ckpt_value, str) and ckpt_value:
+            policy_checkpoint = ckpt_value
 
     return RuntimeConfig(
         queue_size=queue_size,
@@ -184,6 +196,7 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         rosbridge_port=getattr(args, "rosbridge_port", 9090),
         asimov_livekit_url=asimov_livekit_url,
         asimov_livekit_token=asimov_livekit_token,
+        policy_checkpoint=policy_checkpoint,
     )
 
 
@@ -348,6 +361,7 @@ async def _handle_policy_command(
     command: CommandEnvelope,
     policy_state: PolicyLoopState,
     trace_logger: TraceLogger | None,
+    config: RuntimeConfig,
 ) -> ResponseEnvelope:
     """Handle policy lifecycle commands (policy.start/stop/tick/status)."""
 
@@ -371,17 +385,101 @@ async def _handle_policy_command(
         policy_state.hz = float(command.payload.get("hz", 10.0))
         policy_state.max_steps = int(command.payload.get("max_steps", 10000))
         policy_state.step = 0
-        policy_state.heartbeat = PolicyHeartbeatMonitor(timeout_sec=2.0)
-        policy_state.heartbeat.record_tick()
+        policy_state.heartbeat = None
 
-        # Ensure walking is started for policy mode
-        start_cmd = CommandEnvelope(
-            request_id=f"{command.request_id}-walk-start",
-            timestamp=utc_now_iso(),
-            command="walk.command",
-            payload={"action": "start"},
-        )
-        await backend.handle_command(start_cmd)
+        if config.policy_checkpoint:
+            async def _run_server_side_policy() -> None:
+                try:
+                    from eliza_robot.rl.text_conditioned.inference_loop import (
+                        InferenceLoopConfig,
+                        run_inference,
+                    )
+
+                    result = await run_inference(
+                        backend,
+                        config.policy_checkpoint,
+                        policy_state.task,
+                        config=InferenceLoopConfig(
+                            hz=policy_state.hz,
+                            max_steps=policy_state.max_steps,
+                            profile_id=config.profile_id,
+                        ),
+                    )
+                    policy_state.step = int(result.get("steps_completed", policy_state.step))
+                    policy_state.active = False
+                    await _safe_send(
+                        ws,
+                        EventEnvelope(
+                            event="policy.status",
+                            timestamp=utc_now_iso(),
+                            backend=backend.backend_name,
+                            data={
+                                "state": "idle",
+                                "reason": "completed",
+                                "steps_completed": policy_state.step,
+                                "trace_id": policy_state.trace_id,
+                                "planner_step_id": policy_state.planner_step_id,
+                                "canonical_action": policy_state.canonical_action,
+                                "target_entity_id": policy_state.target_entity_id,
+                                "target_label": policy_state.target_label,
+                                "checkpoint": config.policy_checkpoint,
+                                "result": result,
+                            },
+                        ).to_json(),
+                    )
+                    if trace_logger is not None:
+                        trace_logger.write({
+                            "kind": "policy_autonomous_complete",
+                            "timestamp": utc_now_iso(),
+                            "trace_id": policy_state.trace_id,
+                            "steps_completed": policy_state.step,
+                            "checkpoint": config.policy_checkpoint,
+                        })
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    policy_state.active = False
+                    await _safe_send(
+                        ws,
+                        EventEnvelope(
+                            event="policy.status",
+                            timestamp=utc_now_iso(),
+                            backend=backend.backend_name,
+                            data={
+                                "state": "idle",
+                                "reason": "error",
+                                "error": str(exc),
+                                "steps_completed": policy_state.step,
+                                "trace_id": policy_state.trace_id,
+                                "planner_step_id": policy_state.planner_step_id,
+                                "canonical_action": policy_state.canonical_action,
+                                "target_entity_id": policy_state.target_entity_id,
+                                "target_label": policy_state.target_label,
+                                "checkpoint": config.policy_checkpoint,
+                            },
+                        ).to_json(),
+                    )
+                    if trace_logger is not None:
+                        trace_logger.write({
+                            "kind": "policy_autonomous_error",
+                            "timestamp": utc_now_iso(),
+                            "trace_id": policy_state.trace_id,
+                            "error": str(exc),
+                            "checkpoint": config.policy_checkpoint,
+                        })
+
+            policy_state._loop_task = asyncio.create_task(_run_server_side_policy())
+        else:
+            policy_state.heartbeat = PolicyHeartbeatMonitor(timeout_sec=2.0)
+            policy_state.heartbeat.record_tick()
+            # Ensure walking is started for externally ticked policy mode.
+            start_cmd = CommandEnvelope(
+                request_id=f"{command.request_id}-walk-start",
+                timestamp=utc_now_iso(),
+                command="walk.command",
+                payload={"action": "start"},
+            )
+            await backend.handle_command(start_cmd)
 
         await _safe_send(
             ws,
@@ -414,6 +512,8 @@ async def _handle_policy_command(
                 "target_label": policy_state.target_label,
                 "hz": policy_state.hz,
                 "max_steps": policy_state.max_steps,
+                "checkpoint": config.policy_checkpoint,
+                "server_side_policy": bool(config.policy_checkpoint),
             })
 
         return ResponseEnvelope(
@@ -430,6 +530,8 @@ async def _handle_policy_command(
                 "target_entity_id": policy_state.target_entity_id,
                 "target_label": policy_state.target_label,
                 "hz": policy_state.hz,
+                "checkpoint": config.policy_checkpoint,
+                "server_side_policy": bool(config.policy_checkpoint),
             },
         )
 
@@ -437,6 +539,13 @@ async def _handle_policy_command(
         reason = str(command.payload.get("reason", "explicit_stop"))
         was_active = policy_state.active
         policy_state.active = False
+        if policy_state._loop_task is not None and not policy_state._loop_task.done():
+            policy_state._loop_task.cancel()
+            try:
+                await policy_state._loop_task
+            except asyncio.CancelledError:
+                pass
+            policy_state._loop_task = None
 
         # Stop walking
         stop_cmd = CommandEnvelope(
@@ -463,6 +572,7 @@ async def _handle_policy_command(
                     "canonical_action": policy_state.canonical_action,
                     "target_entity_id": policy_state.target_entity_id,
                     "target_label": policy_state.target_label,
+                    "checkpoint": config.policy_checkpoint,
                 },
             ).to_json(),
         )
@@ -494,6 +604,7 @@ async def _handle_policy_command(
                 "canonical_action": policy_state.canonical_action,
                 "target_entity_id": policy_state.target_entity_id,
                 "target_label": policy_state.target_label,
+                "checkpoint": config.policy_checkpoint,
             },
         )
 
@@ -729,6 +840,8 @@ async def _handle_policy_command(
                 "target_label": policy_state.target_label,
                 "step": policy_state.step,
                 "hz": policy_state.hz,
+                "checkpoint": config.policy_checkpoint,
+                "server_side_policy": bool(config.policy_checkpoint),
             },
         )
 
@@ -1001,7 +1114,7 @@ async def _handler(
                             command_queue.task_done()
 
                     response = await _handle_policy_command(
-                        ws, backend, command, policy_state, trace_logger
+                        ws, backend, command, policy_state, trace_logger, config
                     )
                     await _safe_send(ws, response.to_json())
                     continue
@@ -1068,6 +1181,12 @@ async def _handler(
         # Ensure policy is stopped on disconnect
         if policy_state.active:
             policy_state.active = False
+            if policy_state._loop_task is not None and not policy_state._loop_task.done():
+                policy_state._loop_task.cancel()
+                try:
+                    await policy_state._loop_task
+                except asyncio.CancelledError:
+                    pass
             stop_cmd = CommandEnvelope(
                 request_id="disconnect-policy-stop",
                 timestamp=utc_now_iso(),
@@ -1175,6 +1294,16 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="",
         help="optional JSONL path for command/response trace logging",
+    )
+    parser.add_argument(
+        "--policy-checkpoint",
+        type=str,
+        default="",
+        help=(
+            "optional text-conditioned checkpoint directory. When set, "
+            "policy.start runs the checkpoint server-side; otherwise clients "
+            "must send policy.tick actions."
+        ),
     )
     parser.add_argument(
         "--mujoco-target-x",

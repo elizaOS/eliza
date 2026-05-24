@@ -1,9 +1,20 @@
 {
   "schema": "eliza.cache.mockingjay_vs_lru.v1",
-  "status": "ok",
+  "status": "scoped_mockingjay_vs_lru",
   "mode": "mockingjay-vs-lru",
   "evidence_class": "champsim_dpc3_traces_only",
   "captured_utc": "2026-05-19T23:05:03.312194+00:00",
+  "claim_boundary": "ChampSim DPC-3 replacement-policy sweep only; not productized Mockingjay/Hawkeye, phone-class IPC, silicon, DRAM, Android, or release evidence.",
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "provenance": {
+    "source_artifacts": [
+      {
+        "path": "scripts/champsim_sweep.py",
+        "sha256": "3024b705210ec9bf6b3a956b20fad81da01c86a0380197a45a00b9e65a72212b"
+      }
+    ]
+  },
   "champsim_bin_dir": "external/ChampSim/bin",
   "trace_count": 2,
   "trace_files": [

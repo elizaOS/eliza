@@ -6,9 +6,86 @@
   "layout_utilization": "board/kicad/e1-phone/layout-utilization.yaml",
   "production_step_dir": "board/kicad/e1-phone/production/step",
   "production_step_files": [],
-  "demo_step_files_ignored": [
-    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step"
+  "approved_production_step_files": [],
+  "blocked_candidate_step_files": [
+    "board/kicad/e1-phone/production/step/routed-board-with-components.step"
   ],
+  "demo_step_files_ignored": [
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-demo.step",
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
+    "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step"
+  ],
+  "development_board_local_review_state": {
+    "board": "board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb",
+    "exists": true,
+    "footprint_refs": 89,
+    "development_footprint_refs": 89,
+    "e1phone_footprint_refs": 0,
+    "segment_count": 306,
+    "via_count": 24,
+    "routed_development_route_count": 153,
+    "routed_development_segment_count": 306,
+    "routed_development_missing_required_shared_net_count": 0,
+    "routed_development_missing_route_domain_net_count": 0,
+    "placeholder_marker_count": 0,
+    "non_release_marker_count": 89,
+    "step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+    "step_intake_status": "development_step_generated_not_release",
+    "step_output": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
+    "step_exists": true,
+    "step_size_bytes": 32959460,
+    "step_footprint_envelope_count": 89,
+    "release_credit": false
+  },
+  "development_step_local_review_ready": true,
+  "development_step_release_credit": false,
+  "development_step_candidates": [
+    {
+      "path": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step",
+      "kind": "real_footprint_development_step",
+      "present": true,
+      "size_bytes": 32959460,
+      "sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+      "release_credit": false
+    },
+    {
+      "path": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step",
+      "kind": "routed_development_step",
+      "present": true,
+      "size_bytes": 32959460,
+      "sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+      "release_credit": false
+    },
+    {
+      "path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+      "kind": "blocked_routed_output_candidate_step",
+      "present": true,
+      "size_bytes": 32959460,
+      "sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+      "release_credit": false
+    }
+  ],
+  "detailed_routed_step_candidate": {
+    "path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+    "present": true,
+    "blocked_metadata": true,
+    "release_credit": false,
+    "reason_not_release": "local routed-output candidate copied from non-release development STEP; lacks physical routed-board release intake, DRC/ERC signoff, approved supplier component 3D models, and measured enclosure clearance",
+    "size_bytes": 32959460,
+    "sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+    "source_step": "board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step",
+    "source_step_sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+    "source_step_size_bytes": 32959460,
+    "route_count": 153,
+    "segment_count": 306,
+    "footprint_envelope_count": 89,
+    "pad_contact_visual_count": 1452,
+    "route_segment_visual_count": 306,
+    "candidate_matches_routed_output_manifest": true,
+    "candidate_matches_development_source": true,
+    "routed_development_intake": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml",
+    "routed_output_manifest": "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+  },
   "routed_board_step_intake_template": "mechanical/e1-phone/review/routed-board-step-intake-template.csv",
   "required_routed_board_evidence_class": "physical_routed_board_release",
   "routed_board_intake_template_evidence_class": "",
@@ -22,22 +99,33 @@
   ],
   "routed_board_intake_cases": [
     {
-      "release_id": "",
-      "evidence_class": "",
+      "release_id": "LOCAL-ROUTED-CANDIDATE-2026-05-22",
+      "evidence_class": "blocked_local_candidate_outputs_not_release",
       "evidence_class_allowed": false,
-      "required_fields_present": false,
-      "artifact_paths_exist": false,
+      "required_fields_present": true,
+      "missing_required_fields": [],
+      "artifact_paths_exist": true,
       "artifact_path_checks": {
-        "kicad_pcb_path": false,
-        "routed_step_artifact": false,
-        "drc_report_artifact": false,
-        "erc_report_artifact": false,
-        "gerber_job_artifact": false,
-        "pick_place_artifact": false,
-        "bom_artifact": false,
-        "component_3d_model_manifest": false,
+        "kicad_pcb_path": true,
+        "routed_step_artifact": true,
+        "source_step_artifact": true,
+        "drc_report_artifact": true,
+        "erc_report_artifact": true,
+        "gerber_job_artifact": true,
+        "pick_place_artifact": true,
+        "bom_artifact": true,
+        "component_3d_model_manifest": true,
+        "kicad_cad_traceability_matrix": true,
         "enclosure_clearance_rerun_artifact": true
       },
+      "routed_step_sha256_matches": true,
+      "drc_status_clean": false,
+      "erc_status_clean": false,
+      "component_3d_model_manifest_approved": false,
+      "local_traceability_complete": true,
+      "local_traceability_release_credit": false,
+      "enclosure_clearance_passed": false,
+      "approval_signature_present": true,
       "pass": false
     }
   ],
@@ -47,6 +135,9 @@
     "has_filled_zones": true,
     "has_production_step": false,
     "has_demo_step": true,
+    "has_detailed_blocked_routed_step_candidate": true,
+    "has_development_routed_tracks_for_local_review": true,
+    "has_development_footprints_replaced_for_local_review": true,
     "has_complete_routed_board_release_intake": false,
     "has_concept_pcb_step": true,
     "placeholder_marker_count": 116,
@@ -56,17 +147,17 @@
     "cad_projected_islands": [
       {
         "x": 0.0,
-        "y": -7.25,
+        "y": 0.0,
         "width": 64.0,
-        "height": 35.5,
-        "area_mm2": 2272.0
+        "height": 29.0,
+        "area_mm2": 1856.0
       },
       {
         "x": 0.0,
-        "y": 117.5,
+        "y": 117.0,
         "width": 64.0,
-        "height": 22.0,
-        "area_mm2": 1408.0
+        "height": 15.0,
+        "area_mm2": 960.0
       }
     ],
     "kicad_edge_cut_islands": [
@@ -85,7 +176,7 @@
         "area_mm2": 960.0
       }
     ],
-    "matches": false
+    "matches": true
   },
   "cases": [
     {
@@ -95,7 +186,7 @@
     },
     {
       "id": "solid_envelope_step_available",
-      "pass": true,
+      "pass": false,
       "evidence": "mechanical/e1-phone/out/e1-phone-solid-assembly.step"
     },
     {
@@ -105,13 +196,18 @@
     },
     {
       "id": "concept_split_island_geometry_matches_kicad",
-      "pass": false,
+      "pass": true,
       "evidence": "board/kicad/e1-phone/layout-utilization.yaml"
     },
     {
       "id": "routed_tracks_present",
       "pass": false,
       "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    },
+    {
+      "id": "development_routed_tracks_present_for_local_review",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
     },
     {
       "id": "filled_zones_present",
@@ -129,6 +225,16 @@
       "evidence": "board/kicad/e1-phone/pcb/fab-demo"
     },
     {
+      "id": "real_footprint_development_step_available_for_local_review",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+    },
+    {
+      "id": "detailed_routed_step_candidate_available_for_local_review",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/production/routed-output-candidate-manifest-2026-05-22.yaml"
+    },
+    {
       "id": "routed_board_release_intake_complete",
       "pass": false,
       "evidence": "mechanical/e1-phone/review/routed-board-step-intake-template.csv"
@@ -137,6 +243,11 @@
       "id": "placeholder_footprints_replaced",
       "pass": false,
       "evidence": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    },
+    {
+      "id": "development_footprints_replaced_for_local_review",
+      "pass": true,
+      "evidence": "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
     }
   ],
   "required_next_actions": [

@@ -1874,17 +1874,39 @@ function resolveDefaultPgliteDataDir(config: ElizaConfig): string {
   return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 
+/**
+ * The effective database provider. An explicit `config.database.provider` wins;
+ * otherwise a POSTGRES_URL/DATABASE_URL present in the environment means
+ * Postgres. Without this, the provider defaulted to "pglite" whenever the
+ * loaded config lacked an explicit provider — even when Postgres was wired via
+ * env — so the WebAssembly PGlite build was attempted and aborted on runtimes
+ * that have no WASM (e.g. the riscv64 image, which provisions native Postgres).
+ * Keeping env authoritative makes the env-only Postgres path consistent across
+ * applyDatabaseConfigToEnv, resolveActivePgliteDataDir, and the provider log.
+ */
+function resolveEffectiveDbProvider(
+  config: ElizaConfig,
+): "postgres" | "pglite" {
+  if (config.database?.provider) {
+    return config.database.provider === "postgres" ? "postgres" : "pglite";
+  }
+  if (process.env.POSTGRES_URL?.trim() || process.env.DATABASE_URL?.trim()) {
+    return "postgres";
+  }
+  return "pglite";
+}
+
 /** @internal Exported for testing. */
 export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
   const db = config.database;
-  const provider = db?.provider ?? "pglite";
+  const provider = resolveEffectiveDbProvider(config);
   const databaseUrl = process.env.DATABASE_URL?.trim();
   const postgresUrl = process.env.POSTGRES_URL?.trim();
 
-  if (provider === "postgres" && db?.postgres) {
-    const pg = db.postgres;
-    let url = pg.connectionString;
-    if (!url) {
+  if (provider === "postgres") {
+    const pg = db?.postgres;
+    let url = pg?.connectionString ?? postgresUrl ?? databaseUrl;
+    if (!url && pg) {
       const host = pg.host ?? "localhost";
       const port = pg.port ?? 5432;
       const user = encodeURIComponent(pg.user ?? "postgres");
@@ -1897,14 +1919,13 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
     process.env.POSTGRES_URL = url;
     // Clear PGLite dir so plugin-sql does not fall back to PGLite
     delete process.env.PGLITE_DATA_DIR;
-  } else if (
-    !db?.provider &&
-    databaseUrl &&
-    (!postgresUrl || postgresUrl === databaseUrl)
-  ) {
-    process.env.POSTGRES_URL = postgresUrl || databaseUrl;
-    delete process.env.PGLITE_DATA_DIR;
-    logger.info("[eliza] DATABASE_URL detected: using Postgres database");
+    if (
+      !db?.provider &&
+      databaseUrl &&
+      (!postgresUrl || postgresUrl === databaseUrl)
+    ) {
+      logger.info("[eliza] DATABASE_URL detected: using Postgres database");
+    }
   } else {
     // PGLite mode (default): ensure no leftover POSTGRES_URL and pin
     // PGLite to the workspace path unless overridden by config/env.
@@ -2197,7 +2218,7 @@ export function isFatalPgliteStartupError(err: unknown): boolean {
 }
 
 function resolveActivePgliteDataDir(config: ElizaConfig): string | null {
-  const provider = config.database?.provider ?? "pglite";
+  const provider = resolveEffectiveDbProvider(config);
   if (provider === "postgres") return null;
 
   const configured = process.env.PGLITE_DATA_DIR?.trim();
@@ -2525,6 +2546,12 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
     "KIMI_API_KEY",
     "OPENAI_BASE_URL",
     "OPENROUTER_API_KEY",
+    // Database adapter settings. plugin-sql reads these through
+    // runtime.getSetting(), while appliance images may provide them only as
+    // systemd environment variables.
+    "POSTGRES_URL",
+    "DATABASE_URL",
+    "PGLITE_DATA_DIR",
     // Google model defaults
     "GOOGLE_SMALL_MODEL",
     "GOOGLE_LARGE_MODEL",
@@ -3124,7 +3151,7 @@ export async function startEliza(
 
   // Log active database configuration for debugging persistence issues
   {
-    const dbProvider = config.database?.provider ?? "pglite";
+    const dbProvider = resolveEffectiveDbProvider(config);
     const pgliteDir = process.env.PGLITE_DATA_DIR;
     const postgresUrl = process.env.POSTGRES_URL;
     logger.info(
@@ -4008,6 +4035,7 @@ export async function startEliza(
   // gate fails closed and high-value capabilities (remote plugin sync; future
   // model-key/signing consumers) are withheld. Boot still proceeds in a
   // degraded, secret-less mode — it never silently continues with secrets.
+  let teeBootGateResult: TeeBootGate | undefined;
   const runTeeBootGate = async (): Promise<void> => {
     let teeBootGate: TeeBootGate;
     try {
@@ -4033,6 +4061,63 @@ export async function startEliza(
     // reveal/bridge, remote plugin sync) can consult it via the shared
     // singleton. Inert when no TEE: the gate's `required` is false.
     setTeeBootGateState(teeBootGate);
+    teeBootGateResult = teeBootGate;
+  };
+
+  // TEE-gated remote signing (plan §4.3). Inert unless explicitly enabled:
+  // the host↔guest bridge can request a signature, but the key stays in the
+  // vault and every sign re-attests when the boot-gate policy requires TEE
+  // evidence. Fail-closed: when the boot gate blocks secrets, the service is
+  // not constructed at all.
+  const registerRemoteSigningIfEnabled = async (): Promise<void> => {
+    if (process.env.ELIZA_REMOTE_SIGNING_ENABLED !== "true") return;
+    if (teeBootGateBlocksSecrets()) {
+      logger.warn(
+        "[RemoteSigning] Skipping remote signing activation: TEE evidence is not trusted.",
+      );
+      return;
+    }
+    try {
+      const { sharedVault } = await importAppCoreRuntime();
+      const { VaultSignerBackend } = await import(
+        "../services/vault-signer-backend.ts"
+      );
+      const {
+        createTeeGatedRemoteSigningService,
+        RemoteSigningRuntimeService,
+      } = await import("../services/remote-signing-service.ts");
+
+      const signer = new VaultSignerBackend({
+        vault: sharedVault(),
+        agentId,
+        caller: "remote-signing:boot",
+      });
+      const teePolicy = teeBootGateResult?.policy;
+      const signing = createTeeGatedRemoteSigningService({
+        signer,
+        ...(teePolicy ? { teePolicy } : {}),
+        ...(teePolicy?.required
+          ? { evidenceProvider: createDstackTeeProvider({ env: process.env }) }
+          : {}),
+      });
+
+      await runtime.registerService(RemoteSigningRuntimeService);
+      const svc = runtime.getService(
+        RemoteSigningRuntimeService.serviceType,
+      ) as InstanceType<typeof RemoteSigningRuntimeService> | null;
+      if (!svc) {
+        throw new Error("RemoteSigningRuntimeService did not register");
+      }
+      svc.attach(signing);
+      logger.info(
+        { attesting: teePolicy?.required === true },
+        "[RemoteSigning] TEE-gated remote signing service registered.",
+      );
+    } catch (err) {
+      logger.warn(
+        `[RemoteSigning] Remote signing activation failed: ${formatError(err)}`,
+      );
+    }
   };
 
   const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
@@ -4183,6 +4268,7 @@ export async function startEliza(
     await registerRemoteCodingRunner();
     await initializeCoreRuntime();
     await runTeeBootGate();
+    await registerRemoteSigningIfEnabled();
     await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();

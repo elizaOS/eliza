@@ -295,6 +295,52 @@ This keeps the silicon emitting a format off-the-shelf verifiers accept while
 preserving the RoT-anchored, anti-rollback, channel-bound guarantees this lane
 specifies.
 
+### 5.2 Signed canonical-JSON CoVE quote: implemented + TS-verifier-proven
+
+The freestanding canonical-JSON path is no longer a model placeholder. The
+M-mode TSM quote producer is implemented in C at `fw/dice/cove_quote.c`
+(`cove_quote_build`):
+
+- It derives the DeviceID and per-boot Alias Ed25519 keypairs from
+  `CDI_monitor` via the existing DICE ladder (`fw/dice/cdi.c` →
+  `dice_walk_boot_chain` → `dice_derive_device_id` / `dice_derive_alias`).
+- It folds the measured-launch chain into the `boot/monitor/os/policy/device/
+  agent` (and optional `npuFirmware/modelWeights`) measurements exactly as the
+  reference model `scripts/tee/teeevidence_quote.py`, computes
+  `reportData = sha256(nonce ‖ ephemeral_pubkey)`, and derives the claim
+  booleans from launch conditions.
+- It assembles a `chain = [DeviceID-cert, Alias-cert]` — the DeviceID cert is
+  self-issued and self-signed (the on-device runtime trust anchor, anchored by
+  the verifier as `trustedRotPublicKey`); the Alias cert is signed by the
+  DeviceID key — and signs the `CoveQuoteBody` with the **real** Alias Ed25519
+  key (`fw/dice/ed25519_sign.c`, RFC 8032).
+- It emits the full quote as byte-exact canonical JSON (fixed key order, sorted
+  measurement/claim keys, unpadded base64url keys/signatures, `sha256:`-hex
+  measurements) into a caller buffer. Freestanding, no malloc; fail-closed
+  (zeroed outputs and `-1` on any NULL/length error).
+
+The byte-exactness is **proven cross-language**: the host KAT
+`fw/dice/tests/test_cove_quote.c` builds a quote from fixed inputs, and
+`scripts/tee/verify_cove_quote_roundtrip.mjs` feeds that real C output to the
+agent verifier `packages/agent/src/services/cove-quote.ts` (`verifyCoveQuote`)
+with `trustedRotPublicKey` set to the DeviceID public key the firmware emitted.
+The verifier returns `verified:true` on the genuine quote and rejects both a
+single flipped measurement byte (`alias-signature-invalid`) and a wrong trust
+anchor (`root-anchor-mismatch`). The fail-closed gate
+`scripts/check_cove_quote.py` builds the firmware and runs this proof; it FAILs
+if the quote does not verify (run after `source packages/chip/tools/env.sh`;
+requires `gcc`, `make`, and `bun`).
+
+**What stays BLOCKED.** The cryptography and serialization are real and proven,
+but the *provenance of the secrets* is still a physical dependency: the silicon
+UDS (SRAM-PUF / OTP device secret through the key manager, §5) and the
+provisioning-time creator/HSM key ceremony that signs above DeviceID
+(`key-ceremony.md`) require fused silicon and an HSM, so they remain
+`BLOCKED`. On-device, DeviceID-as-anchor is the correct runtime structure and
+is exactly what the verifier checks; a real device substitutes its
+key-manager-derived UDS for the KAT's fixed UDS without any change to the
+producer.
+
 ---
 
 ## 6. `TeeEvidence` population contract

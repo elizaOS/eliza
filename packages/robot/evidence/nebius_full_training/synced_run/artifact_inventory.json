@@ -1,0 +1,811 @@
+{
+  "schema": "robot-nebius-training-artifact-inventory-v1",
+  "ok": false,
+  "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "generated_at": "2026-05-23T17:59:28.132150Z",
+  "present_count": 55,
+  "required_count": 90,
+  "categories": {
+    "stage_status": {
+      "present_count": 0,
+      "required_count": 13,
+      "missing": [
+        "status_success",
+        "runner_status",
+        "status_00_local_preflight",
+        "status_10_nebius_train_alberta",
+        "status_20_nebius_compare_backends",
+        "status_30_nebius_continual_benchmarks",
+        "status_40_nebius_brax_baseline",
+        "status_50_post_train_validation",
+        "log_train_alberta",
+        "log_compare_backends",
+        "log_continual_benchmarks",
+        "log_brax_baseline",
+        "log_post_train_validation"
+      ]
+    },
+    "training_inputs": {
+      "present_count": 1,
+      "required_count": 1,
+      "missing": []
+    },
+    "checkpoints": {
+      "present_count": 0,
+      "required_count": 4,
+      "missing": [
+        "alberta_manifest",
+        "alberta_policy",
+        "brax_manifest",
+        "brax_policy"
+      ]
+    },
+    "backend_comparison": {
+      "present_count": 0,
+      "required_count": 2,
+      "missing": [
+        "backend_comparison_json",
+        "backend_comparison_md"
+      ]
+    },
+    "continual_benchmarks": {
+      "present_count": 0,
+      "required_count": 6,
+      "missing": [
+        "joint_reach_benchmark_json",
+        "joint_reach_benchmark_md",
+        "joint_reach_benchmark_plot",
+        "obstacle_course_benchmark_json",
+        "obstacle_course_benchmark_md",
+        "obstacle_course_benchmark_plot"
+      ]
+    },
+    "video_evidence": {
+      "present_count": 42,
+      "required_count": 52,
+      "missing": [
+        "multi_robot_video_unitree_r1_stand_up",
+        "multi_robot_video_unitree_r1_walk_forward",
+        "multi_robot_video_unitree_r1_turn_left",
+        "multi_robot_video_unitree_r1_turn_right",
+        "multi_robot_video_unitree_r1_combined",
+        "multi_robot_contact_unitree_r1_stand_up",
+        "multi_robot_contact_unitree_r1_walk_forward",
+        "multi_robot_contact_unitree_r1_turn_left",
+        "multi_robot_contact_unitree_r1_turn_right",
+        "multi_robot_contact_unitree_r1_combined"
+      ]
+    },
+    "review_reports": {
+      "present_count": 12,
+      "required_count": 12,
+      "missing": []
+    }
+  },
+  "present": [
+    "training_inputs_report",
+    "agent_video_manifest",
+    "production_video_asimov_stand_up",
+    "production_video_asimov_walk_forward",
+    "production_video_asimov_turn_left",
+    "production_video_asimov_turn_right",
+    "production_video_asimov_combined",
+    "multi_robot_video_hiwonder_stand_up",
+    "multi_robot_video_hiwonder_walk_forward",
+    "multi_robot_video_hiwonder_turn_left",
+    "multi_robot_video_hiwonder_turn_right",
+    "multi_robot_video_hiwonder_combined",
+    "multi_robot_video_unitree_g1_stand_up",
+    "multi_robot_video_unitree_g1_walk_forward",
+    "multi_robot_video_unitree_g1_turn_left",
+    "multi_robot_video_unitree_g1_turn_right",
+    "multi_robot_video_unitree_g1_combined",
+    "multi_robot_video_unitree_h1_stand_up",
+    "multi_robot_video_unitree_h1_walk_forward",
+    "multi_robot_video_unitree_h1_turn_left",
+    "multi_robot_video_unitree_h1_turn_right",
+    "multi_robot_video_unitree_h1_combined",
+    "production_video_review",
+    "production_video_contact_asimov_stand_up",
+    "production_video_contact_asimov_walk_forward",
+    "production_video_contact_asimov_turn_left",
+    "production_video_contact_asimov_turn_right",
+    "production_video_contact_asimov_combined",
+    "multi_robot_contact_hiwonder_stand_up",
+    "multi_robot_contact_hiwonder_walk_forward",
+    "multi_robot_contact_hiwonder_turn_left",
+    "multi_robot_contact_hiwonder_turn_right",
+    "multi_robot_contact_hiwonder_combined",
+    "multi_robot_contact_unitree_g1_stand_up",
+    "multi_robot_contact_unitree_g1_walk_forward",
+    "multi_robot_contact_unitree_g1_turn_left",
+    "multi_robot_contact_unitree_g1_turn_right",
+    "multi_robot_contact_unitree_g1_combined",
+    "multi_robot_contact_unitree_h1_stand_up",
+    "multi_robot_contact_unitree_h1_walk_forward",
+    "multi_robot_contact_unitree_h1_turn_left",
+    "multi_robot_contact_unitree_h1_turn_right",
+    "multi_robot_contact_unitree_h1_combined",
+    "monitor_status",
+    "monitor_summary",
+    "validation_report",
+    "validation_summary",
+    "finalization_report",
+    "finalization_summary",
+    "training_comparison_report",
+    "training_comparison_summary",
+    "alberta_end_to_end_report_json",
+    "alberta_end_to_end_report_md",
+    "runtime_watch_history",
+    "instance_launch_hygiene"
+  ],
+  "missing": [
+    "status_success",
+    "runner_status",
+    "status_00_local_preflight",
+    "status_10_nebius_train_alberta",
+    "status_20_nebius_compare_backends",
+    "status_30_nebius_continual_benchmarks",
+    "status_40_nebius_brax_baseline",
+    "status_50_post_train_validation",
+    "log_train_alberta",
+    "log_compare_backends",
+    "log_continual_benchmarks",
+    "log_brax_baseline",
+    "log_post_train_validation",
+    "alberta_manifest",
+    "alberta_policy",
+    "backend_comparison_json",
+    "backend_comparison_md",
+    "joint_reach_benchmark_json",
+    "joint_reach_benchmark_md",
+    "joint_reach_benchmark_plot",
+    "obstacle_course_benchmark_json",
+    "obstacle_course_benchmark_md",
+    "obstacle_course_benchmark_plot",
+    "brax_manifest",
+    "brax_policy",
+    "multi_robot_video_unitree_r1_stand_up",
+    "multi_robot_video_unitree_r1_walk_forward",
+    "multi_robot_video_unitree_r1_turn_left",
+    "multi_robot_video_unitree_r1_turn_right",
+    "multi_robot_video_unitree_r1_combined",
+    "multi_robot_contact_unitree_r1_stand_up",
+    "multi_robot_contact_unitree_r1_walk_forward",
+    "multi_robot_contact_unitree_r1_turn_left",
+    "multi_robot_contact_unitree_r1_turn_right",
+    "multi_robot_contact_unitree_r1_combined"
+  ],
+  "artifacts": [
+    {
+      "name": "status_success",
+      "category": "stage_status",
+      "path": "status/success.txt",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "runner_status",
+      "category": "stage_status",
+      "path": "status/runner_status.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_00_local_preflight",
+      "category": "stage_status",
+      "path": "status/00_local_preflight.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_10_nebius_train_alberta",
+      "category": "stage_status",
+      "path": "status/10_nebius_train_alberta.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_20_nebius_compare_backends",
+      "category": "stage_status",
+      "path": "status/20_nebius_compare_backends.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_30_nebius_continual_benchmarks",
+      "category": "stage_status",
+      "path": "status/30_nebius_continual_benchmarks.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_40_nebius_brax_baseline",
+      "category": "stage_status",
+      "path": "status/40_nebius_brax_baseline.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "status_50_post_train_validation",
+      "category": "stage_status",
+      "path": "status/50_post_train_validation.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "log_train_alberta",
+      "category": "stage_status",
+      "path": "logs/10_nebius_train_alberta.log",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "log_compare_backends",
+      "category": "stage_status",
+      "path": "logs/20_nebius_compare_backends.log",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "log_continual_benchmarks",
+      "category": "stage_status",
+      "path": "logs/30_nebius_continual_benchmarks.log",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "log_brax_baseline",
+      "category": "stage_status",
+      "path": "logs/40_nebius_brax_baseline.log",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "log_post_train_validation",
+      "category": "stage_status",
+      "path": "logs/50_post_train_validation.log",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "training_inputs_report",
+      "category": "training_inputs",
+      "path": "evidence/full_training_preflight/training_inputs_report.json",
+      "present": true,
+      "bytes": 15091
+    },
+    {
+      "name": "alberta_manifest",
+      "category": "checkpoints",
+      "path": "checkpoints/asimov_1_alberta_full/manifest.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "alberta_policy",
+      "category": "checkpoints",
+      "path": "checkpoints/asimov_1_alberta_full/alberta_policy.npz",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "backend_comparison_json",
+      "category": "backend_comparison",
+      "path": "evidence/backend_compare/asimov-1/comparison.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "backend_comparison_md",
+      "category": "backend_comparison",
+      "path": "evidence/backend_compare/asimov-1/comparison.md",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "joint_reach_benchmark_json",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_joint_reach/continual_benchmark.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "joint_reach_benchmark_md",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_joint_reach/continual_benchmark.md",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "joint_reach_benchmark_plot",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_joint_reach/continual_benchmark.png",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "obstacle_course_benchmark_json",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_obstacle_course/continual_benchmark.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "obstacle_course_benchmark_md",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_obstacle_course/continual_benchmark.md",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "obstacle_course_benchmark_plot",
+      "category": "continual_benchmarks",
+      "path": "evidence/alberta_obstacle_course/continual_benchmark.png",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "brax_manifest",
+      "category": "checkpoints",
+      "path": "evidence/full_training_preflight/asimov_1_brax_mjx_baseline/manifest.json",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "brax_policy",
+      "category": "checkpoints",
+      "path": "evidence/full_training_preflight/asimov_1_brax_mjx_baseline/policy_brax.pkl",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "agent_video_manifest",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/manifest.json",
+      "present": true,
+      "bytes": 5338
+    },
+    {
+      "name": "production_video_asimov_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_stand_up.mp4",
+      "present": true,
+      "bytes": 94772
+    },
+    {
+      "name": "production_video_asimov_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_walk_forward.mp4",
+      "present": true,
+      "bytes": 113237
+    },
+    {
+      "name": "production_video_asimov_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_turn_left.mp4",
+      "present": true,
+      "bytes": 45524
+    },
+    {
+      "name": "production_video_asimov_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_turn_right.mp4",
+      "present": true,
+      "bytes": 34826
+    },
+    {
+      "name": "production_video_asimov_combined",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/asimov-1/asimov-1_combined_actions.mp4",
+      "present": true,
+      "bytes": 211794
+    },
+    {
+      "name": "multi_robot_video_hiwonder_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
+      "present": true,
+      "bytes": 78058
+    },
+    {
+      "name": "multi_robot_video_hiwonder_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
+      "present": true,
+      "bytes": 51239
+    },
+    {
+      "name": "multi_robot_video_hiwonder_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
+      "present": true,
+      "bytes": 39420
+    },
+    {
+      "name": "multi_robot_video_hiwonder_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
+      "present": true,
+      "bytes": 34666
+    },
+    {
+      "name": "multi_robot_video_hiwonder_combined",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+      "present": true,
+      "bytes": 148177
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-g1/unitree-g1_stand_up.mp4",
+      "present": true,
+      "bytes": 78170
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-g1/unitree-g1_walk_forward.mp4",
+      "present": true,
+      "bytes": 73066
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_left.mp4",
+      "present": true,
+      "bytes": 64537
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-g1/unitree-g1_turn_right.mp4",
+      "present": true,
+      "bytes": 69347
+    },
+    {
+      "name": "multi_robot_video_unitree_g1_combined",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-g1/unitree-g1_combined_actions.mp4",
+      "present": true,
+      "bytes": 221028
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-h1/unitree-h1_stand_up.mp4",
+      "present": true,
+      "bytes": 174683
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-h1/unitree-h1_walk_forward.mp4",
+      "present": true,
+      "bytes": 74573
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_left.mp4",
+      "present": true,
+      "bytes": 46164
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-h1/unitree-h1_turn_right.mp4",
+      "present": true,
+      "bytes": 45803
+    },
+    {
+      "name": "multi_robot_video_unitree_h1_combined",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-h1/unitree-h1_combined_actions.mp4",
+      "present": true,
+      "bytes": 288273
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-r1/unitree-r1_stand_up.mp4",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-r1/unitree-r1_walk_forward.mp4",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_left.mp4",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-r1/unitree-r1_turn_right.mp4",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_video_unitree_r1_combined",
+      "category": "video_evidence",
+      "path": "evidence/agent_videos/unitree-r1/unitree-r1_combined_actions.mp4",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "production_video_review",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/video_review.json",
+      "present": true,
+      "bytes": 21564
+    },
+    {
+      "name": "production_video_contact_asimov_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_stand_up_contact.jpg",
+      "present": true,
+      "bytes": 80976
+    },
+    {
+      "name": "production_video_contact_asimov_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_walk_forward_contact.jpg",
+      "present": true,
+      "bytes": 80739
+    },
+    {
+      "name": "production_video_contact_asimov_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_turn_left_contact.jpg",
+      "present": true,
+      "bytes": 77346
+    },
+    {
+      "name": "production_video_contact_asimov_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_turn_right_contact.jpg",
+      "present": true,
+      "bytes": 77231
+    },
+    {
+      "name": "production_video_contact_asimov_combined",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/asimov-1_asimov-1_combined_actions_contact.jpg",
+      "present": true,
+      "bytes": 78895
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
+      "present": true,
+      "bytes": 41802
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
+      "present": true,
+      "bytes": 41813
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
+      "present": true,
+      "bytes": 41744
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
+      "present": true,
+      "bytes": 41748
+    },
+    {
+      "name": "multi_robot_contact_hiwonder_combined",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
+      "present": true,
+      "bytes": 41897
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-g1_unitree-g1_stand_up_contact.jpg",
+      "present": true,
+      "bytes": 65100
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-g1_unitree-g1_walk_forward_contact.jpg",
+      "present": true,
+      "bytes": 65040
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-g1_unitree-g1_turn_left_contact.jpg",
+      "present": true,
+      "bytes": 65154
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-g1_unitree-g1_turn_right_contact.jpg",
+      "present": true,
+      "bytes": 65049
+    },
+    {
+      "name": "multi_robot_contact_unitree_g1_combined",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-g1_unitree-g1_combined_actions_contact.jpg",
+      "present": true,
+      "bytes": 64991
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-h1_unitree-h1_stand_up_contact.jpg",
+      "present": true,
+      "bytes": 69040
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-h1_unitree-h1_walk_forward_contact.jpg",
+      "present": true,
+      "bytes": 65903
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-h1_unitree-h1_turn_left_contact.jpg",
+      "present": true,
+      "bytes": 65756
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-h1_unitree-h1_turn_right_contact.jpg",
+      "present": true,
+      "bytes": 65615
+    },
+    {
+      "name": "multi_robot_contact_unitree_h1_combined",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-h1_unitree-h1_combined_actions_contact.jpg",
+      "present": true,
+      "bytes": 66983
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_stand_up",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-r1_unitree-r1_stand_up_contact.jpg",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_walk_forward",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-r1_unitree-r1_walk_forward_contact.jpg",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_turn_left",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-r1_unitree-r1_turn_left_contact.jpg",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_turn_right",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-r1_unitree-r1_turn_right_contact.jpg",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "multi_robot_contact_unitree_r1_combined",
+      "category": "video_evidence",
+      "path": "evidence/video_review_production/unitree-r1_unitree-r1_combined_actions_contact.jpg",
+      "present": false,
+      "bytes": 0
+    },
+    {
+      "name": "monitor_status",
+      "category": "review_reports",
+      "path": "monitor_status.json",
+      "present": true,
+      "bytes": 6851
+    },
+    {
+      "name": "monitor_summary",
+      "category": "review_reports",
+      "path": "monitor_summary.md",
+      "present": true,
+      "bytes": 915
+    },
+    {
+      "name": "validation_report",
+      "category": "review_reports",
+      "path": "validation_report.json",
+      "present": true,
+      "bytes": 49639
+    },
+    {
+      "name": "validation_summary",
+      "category": "review_reports",
+      "path": "validation_summary.md",
+      "present": true,
+      "bytes": 2292
+    },
+    {
+      "name": "finalization_report",
+      "category": "review_reports",
+      "path": "finalization_report.json",
+      "present": true,
+      "bytes": 3397
+    },
+    {
+      "name": "finalization_summary",
+      "category": "review_reports",
+      "path": "finalization_summary.md",
+      "present": true,
+      "bytes": 2251
+    },
+    {
+      "name": "training_comparison_report",
+      "category": "review_reports",
+      "path": "training_comparison_report.json",
+      "present": true,
+      "bytes": 23140
+    },
+    {
+      "name": "training_comparison_summary",
+      "category": "review_reports",
+      "path": "training_comparison_report.md",
+      "present": true,
+      "bytes": 8463
+    },
+    {
+      "name": "alberta_end_to_end_report_json",
+      "category": "review_reports",
+      "path": "evidence/ALBERTA_END_TO_END_REPORT.json",
+      "present": true,
+      "bytes": 2859
+    },
+    {
+      "name": "alberta_end_to_end_report_md",
+      "category": "review_reports",
+      "path": "evidence/ALBERTA_END_TO_END_REPORT.md",
+      "present": true,
+      "bytes": 1132
+    },
+    {
+      "name": "runtime_watch_history",
+      "category": "review_reports",
+      "path": "runtime_watch_history.jsonl",
+      "present": true,
+      "bytes": 10414
+    },
+    {
+      "name": "instance_launch_hygiene",
+      "category": "review_reports",
+      "path": "instance_launch_hygiene.json",
+      "present": true,
+      "bytes": 1207
+    }
+  ]
+}

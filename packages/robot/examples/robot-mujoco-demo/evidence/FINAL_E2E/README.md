@@ -10,7 +10,7 @@ stays parked.
 chat prompt (5 tier-1 curriculum tasks)
     │
     ▼
-TextConditionedPolicy (checkpoints/text_conditioned_v2)
+TextConditionedPolicy (current default: checkpoints/alberta_text_conditioned)
     │
     ▼  24-D joint targets at 8 Hz
 DualTargetBackend
@@ -21,6 +21,12 @@ DualTargetBackend
     StateMirrorBackend (reads noisy.read_joint_positions(),
                         writes into sim.qpos + mj_forward)
 ```
+
+Historical note: the archived run below used the old PPO
+`checkpoints/text_conditioned_v2` checkpoint. The current default
+text-conditioned policy path is Alberta streaming continual learning at
+`checkpoints/alberta_text_conditioned`; the reproduce command below now uses
+that default unless `--checkpoint` is provided explicitly.
 
 `NoiseInjectorBackend` wraps a second MuJoCo with deterministic per-joint
 perturbations (motor strength + offset) sampled from a known seed.
@@ -64,10 +70,10 @@ hold a hobby biped to.
   robot stays parked while we run this loop. The same script works
   against the real robot with `--use-real`, but we don't exercise
   that path here.
-- A meaningfully larger trained policy — v2 (8192 PPO steps) is
-  still small. The MJX-Brax training agent is producing a v3
-  checkpoint in parallel; once it lands, swap `--checkpoint
-  checkpoints/text_conditioned_brax_v1` and re-run.
+- A production-budget Alberta checkpoint — the archived v2 PPO policy was
+  small and is no longer the default. The H200 run should produce
+  `checkpoints/asimov_1_alberta_full` or a profile-specific Alberta checkpoint,
+  then re-run this evidence path with `--checkpoint <that-dir>`.
 - ArUco free-joint anchor — committed at
   `eliza_robot/sim2real/aruco_anchor.py::FusedSim2RealAnchor` but not
   exercised in this sim-only run (no Obsbot is plugged in right now).

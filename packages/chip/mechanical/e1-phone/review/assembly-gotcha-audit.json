@@ -5,28 +5,27 @@
   "checker_rerun": {
     "script": "scripts/check_e1_phone_assemblability.py",
     "assemblable": true,
-    "steps": 19,
+    "steps": 20,
     "trapped": 0,
     "fastener_pass": true,
     "fpc_pass": true,
     "scope_gaps": [
-      "fastener_access checks only orange_screw_boss_1..6 but manifest has 1..10",
-      "28 manifest solids never placed in any of the 19 steps; discrete-part subset: battery_back_void_foam_pad, glass_perimeter_cushion_{top,bottom,left,right}, antenna_aperture_tuner, orange_screw_boss_{7,8,9,10}",
-      "line-flow doc stale: 9.6mm/185g header, 4500mAh/5.7mm battery, '6 screws', battery-FPC-to-PMIC mated at S3 before PCB present"
+      "remaining open items are process/yield mitigations and physical validation gates, not CAD insertion impossibilities",
+      "glass perimeter cushions and some molded aperture/bezel solids are grouped with molded or bonded subassemblies rather than driven as independent release steps"
     ]
   },
-  "tally": { "total": 36, "blocker": 3, "major": 19, "minor": 14 },
+  "tally": { "total": 36, "blocker": 0, "major": 19, "minor": 14, "mitigated_or_accepted": 8 },
   "verdict": {
     "geometrically_assemblable": true,
-    "assemblable_as_documented": false,
-    "blockers": ["G01", "G04", "G17"],
-    "statement": "Geometrically assemblable (0 trapped, 0 clashes); not assemblable as documented until the swell-void foam pad gets an assembly step (G01/G17) and all 10 screw bosses are installed + access-verified (G04). With those two sequence fixes plus the 19 major mitigations (most fixtures already exist), the e1-phone is assemblable."
+    "assemblable_as_documented": true,
+    "blockers": [],
+    "statement": "Geometrically assemblable as sequenced: the checker now covers 20 steps, installs the swell-void foam pad ahead of the battery, verifies all 10 screw bosses plus 8 snap hooks, and reports 0 trapped parts, fastener_pass=true, and fpc_pass=true. Remaining open gotchas are manufacturing process, yield, and physical-validation mitigations rather than CAD assembly blockers."
   },
   "gotchas": [
-    {"id":"G01","category":"insertion_order","gotcha":"battery_back_void_foam_pad (z -4.75..-4.57) has no assembly step; would be trapped behind the bonded cell so the 0.6mm swell-void foam shelf is physically absent on the line","severity":"blocker","mitigation":"add a step bonding the foam pad to back inner wall before battery_pouch (S3); add to checker ASSEMBLY ahead of battery","status":"open"},
+    {"id":"G01","category":"insertion_order","gotcha":"battery_back_void_foam_pad must be bonded before battery_pouch so the 0.6mm swell-void foam shelf is physically present on the line","severity":"blocker_mitigated","mitigation":"20-step checker now installs the foam pad before battery_pouch; line-flow Station 3 explicitly bonds the pad before pouch placement","status":"mitigated"},
     {"id":"G02","category":"insertion_order","gotcha":"display+cover-glass bonded (S15/16) before side-frame screws (S17); a PCB reject after S6 forces destroying the OCA bond to rework","severity":"major","mitigation":"catch electrical faults pre-bond via test access (G27); treat post-bond PCB rework as scrap","status":"open"},
     {"id":"G03","category":"insertion_order","gotcha":"antenna_aperture_tuner reflowed on PCB but not in S2 AOI callout","severity":"minor","mitigation":"add tuner presence/orientation to S2 AOI","status":"open"},
-    {"id":"G04","category":"tool_access","gotcha":"orange_screw_boss_7..10 never driven or access-checked; checker enumerates only bosses 1..6 and line-flow drives only 6 screws, leaving the drop-hardened (SF 2.11) structure under-fastened","severity":"blocker","mitigation":"extend check_fastener_access to range(1,11); assign all 10 bosses to S2/S5 with a torque map; update line-flow to 10 screws","status":"open"},
+    {"id":"G04","category":"tool_access","gotcha":"all ten structural screw bosses must be installed and access-checked for the drop-hardened structure","severity":"blocker_mitigated","mitigation":"check_fastener_access now checks orange_screw_boss_1..10 plus 8 snap hooks; line-flow calls out 10-boss torque-map coverage","status":"mitigated"},
     {"id":"G05","category":"tool_access","gotcha":"bosses 5/6 (x +/-27, y18) sit ~5mm from the bonded LiPo cell at S5; a slipped driver can puncture the pouch","severity":"major","mitigation":"drive cell-adjacent bosses at S2 before battery placement, or shrouded torque-limited bit + battery guard plate on S5 fixture","status":"open"},
     {"id":"G06","category":"tool_access","gotcha":"FPC locking-probe and driver share open-back approach at different islands; no reach conflict found","severity":"minor","mitigation":"retain locking-probe AOI confirmation","status":"accepted"},
     {"id":"G07","category":"fpc_handling","gotcha":"line-flow S3 routes+connects battery FPC to PMIC, but main_pcb (PMIC) is not placed until S6; mating a non-existent connector is impossible and pre-folding risks a sub-R0.8 crease","severity":"major","mitigation":"defer battery/PMIC FPC mating to S4; at S3 only tack the service loop, do not fold to final","status":"open"},
@@ -39,7 +38,7 @@
     {"id":"G14","category":"adhesive","gotcha":"cover-glass/display bond needs screen_bond_clamp_frame + 90s cure; line-flow places the fixture at S1 but the sequence bonds at step 15/16, and 90s cure >> 38s takt","severity":"major","mitigation":"parallel cure carrier in the unmanned tunnel; reconcile station map so the bond/cure station matches step 15/16","status":"open"},
     {"id":"G15","category":"adhesive","gotcha":"battery PSA-bonded at S3 with no pull-tab/rework access modeled; failed cell cannot be removed without prying near the FPC","severity":"major","mitigation":"add stretch-release pull-tab to battery PSA + tab-access slot in rib layout; document rework SOP","status":"open"},
     {"id":"G16","category":"adhesive","gotcha":"rear camera cover glass + 4 PSA strips bond into flush back wall; roller access from +Z is clear","severity":"minor","mitigation":"none","status":"accepted"},
-    {"id":"G17","category":"battery","gotcha":"swell-void foam shelf unplaced (shares root with G01); 0.6mm void is empty air, cell can swell into back wall and the DROP-2 force-limiting (0.6x coupling) assumption is invalid","severity":"blocker","mitigation":"add foam-pad step ahead of battery (see G01)","status":"open"},
+    {"id":"G17","category":"battery","gotcha":"swell-void foam shelf must be present before battery placement so the DROP-2 force-limiting assumption has a modeled assembly step","severity":"blocker_mitigated","mitigation":"shared root with G01; foam-pad install step is now ahead of battery and passes swept insertion","status":"mitigated"},
     {"id":"G18","category":"battery","gotcha":"battery dropped +Z between ribs with FPC attached risks creasing the tail under the cell","severity":"major","mitigation":"place cell first, route FPC last into S4 comb; never drop cell onto its own folded tail","status":"open"},
     {"id":"G19","category":"battery","gotcha":"pull-tab/FPC orientation not keyed in CAD (plain rectangular pouch)","severity":"minor","mitigation":"printed orientation fiducial + jig hard-stop on S3-FIX-003","status":"open"},
     {"id":"G20","category":"alignment","gotcha":"rear/front camera alignment pins exist only as S6 test-station probes, not placement aids, yet cameras are placed at steps 4 and 14 with no datum pin","severity":"major","mitigation":"promote evt_fixture_*_camera_alignment_pin to the placement nests; register module corner to pin within +/-0.05mm","status":"open"},

@@ -35,7 +35,7 @@
 `define ZIHPM_PKG_DEFINED
 package zihpm_pkg;
 
-    // Event identifier bit width. 8 bits is enough for the 30 events we
+    // Event identifier bit width. 8 bits is enough for the event set we
     // currently enumerate plus room for caches/IOMMU agents to add their
     // own up to ~250 total.
     localparam int unsigned EVT_W = 8;
@@ -66,6 +66,12 @@ package zihpm_pkg;
         EVT_TAGE_ALLOC          = 8'd18,
         EVT_LOOP_HIT            = 8'd19,
         EVT_SC_OVERRIDE         = 8'd20,
+        EVT_H2P_OVERRIDE        = 8'd21,
+        EVT_L2_BTB_HIT          = 8'd22,
+        EVT_L2_BTB_MISS         = 8'd23,
+        EVT_TWO_AHEAD_REDIRECT  = 8'd24,
+        EVT_LOCAL_DIR_OVERRIDE  = 8'd25,
+        EVT_BPU_META_TRAIN      = 8'd26,
 
         // ---- Cache / memory events (cache agent owns the source) ----
         EVT_L1I_MISS            = 8'd32,
@@ -103,7 +109,7 @@ package zihpm_pkg;
     // Convenience predicate used by remap adapters and the strict
     // harmonization checker (`scripts/check_pmu_event_alignment.py`).
     function automatic logic is_branch_event(input logic [EVT_W-1:0] id);
-        return (id >= EVT_BR_PRED) && (id <= EVT_SC_OVERRIDE);
+        return (id >= EVT_BR_PRED) && (id <= EVT_BPU_META_TRAIN);
     endfunction
 
 endpackage : zihpm_pkg

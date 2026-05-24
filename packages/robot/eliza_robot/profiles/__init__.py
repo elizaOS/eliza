@@ -19,8 +19,10 @@ from eliza_robot.profiles.schema import (
     RobotProfile,
     SafetyLimits,
     SensorSpecs,
+    assets_root,
     list_profiles,
     load_profile,
+    profiles_root,
 )
 
 DEFAULT_PROFILE_ID: str = "hiwonder-ainex"
@@ -39,6 +41,8 @@ __all__ = [
     "RobotProfile",
     "SafetyLimits",
     "SensorSpecs",
+    "assets_root",
     "list_profiles",
     "load_profile",
+    "profiles_root",
 ]

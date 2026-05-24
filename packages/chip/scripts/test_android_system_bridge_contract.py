@@ -27,12 +27,13 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
     def _patch_tree(self, tmp: Path):
         system_ui = tmp / "os/android/system-ui"
         native = system_ui / "native"
-        vendor = tmp / "os/android/vendor/eliza"
+        vendor = tmp / "os/android/vendor/milady"
         chip = tmp / "chip"
         bridge_kt = write(
             native / "src/main/java/ai/elizaos/system/bridge/SystemBridge.kt",
             'class SystemBridge { fun subscribeWifi() { throw NotImplementedError("stub") } }\n',
         )
+        bridge_service = native / "src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
         bridge_manifest = write(
             native / "src/main/AndroidManifest.xml",
             """<manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -78,8 +79,13 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
             ),
         )
         os_common = write(
-            vendor / "eliza_common.mk",
+            vendor / f"{gate.VENDOR_DIR_NAME}_common.mk",
             "PRODUCT_PACKAGES += Eliza\n",
+        )
+        launcher_main = write(
+            tmp
+            / "app-core/platforms/android/app/src/main/java/ai/milady/milady/MainActivity.java",
+            "class MainActivity { void onCreate(){ webView.addJavascriptInterface(new ElizaNativeBridge(), \"ElizaNative\"); } }\n",
         )
         local_manifest = write(
             chip / "sw/aosp-device/local_manifests/eliza.xml",
@@ -87,14 +93,40 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         )
         patches = [
             mock.patch.object(gate, "WORKSPACE", tmp),
+            mock.patch.object(gate, "APP_PACKAGE", "ai.milady.milady"),
+            mock.patch.object(gate, "APP_NAME", "Milady"),
+            mock.patch.object(gate, "VENDOR_DIR_NAME", "milady"),
+            mock.patch.object(
+                gate,
+                "REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS",
+                {
+                    "vendor/milady/apps/Milady/Milady.apk",
+                    "vendor/milady/bootanimation/bootanimation.zip",
+                    "vendor/milady/init/init.milady.rc",
+                    "vendor/milady/permissions/default-permissions-ai.milady.milady.xml",
+                    "vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml",
+                    "vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
+                },
+            ),
+            mock.patch.object(
+                gate,
+                "EXPECTED_RUNTIME_PERMISSION_XMLS",
+                {
+                    "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml",
+                    "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml",
+                    "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
+                },
+            ),
             mock.patch.object(gate, "SYSTEM_UI", system_ui),
             mock.patch.object(gate, "NATIVE", native),
             mock.patch.object(gate, "BRIDGE_KT", bridge_kt),
+            mock.patch.object(gate, "BRIDGE_SERVICE_KT", bridge_service),
             mock.patch.object(gate, "BRIDGE_MANIFEST", bridge_manifest),
             mock.patch.object(gate, "BRIDGE_GRADLE", bridge_gradle),
             mock.patch.object(gate, "ANDROID_PROVIDER", android_provider),
             mock.patch.object(gate, "MOCK_PROVIDER", mock_provider),
             mock.patch.object(gate, "BRIDGE_CONTRACT", bridge_contract),
+            mock.patch.object(gate, "LAUNCHER_MAIN_ACTIVITY", launcher_main),
             mock.patch.object(gate, "OS_COMMON", os_common),
             mock.patch.object(gate, "OS_PERMISSION_DIR", vendor / "permissions"),
             mock.patch.object(gate, "LOCAL_MANIFEST", local_manifest),
@@ -122,6 +154,8 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("system_bridge_native_methods_stubbed", codes)
+        self.assertIn("system_bridge_service_class_missing_or_unbound", codes)
+        self.assertIn("launcher_webview_does_not_bind_system_bridge", codes)
         self.assertIn("system_bridge_not_packaged_as_app", codes)
         self.assertIn("android_provider_falls_back_to_mock", codes)
         self.assertIn("mock_system_provider_has_realistic_fake_state", codes)
@@ -129,6 +163,7 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_privapp_allowlist_missing", codes)
         self.assertIn("system_bridge_privapp_permissions_not_granted", codes)
         self.assertIn("chip_local_manifest_does_not_project_system_ui", codes)
+        self.assertIn("chip_local_manifest_missing_system_bridge_service", codes)
         self.assertIn("system_bridge_runtime_evidence_missing", codes)
 
     def test_implemented_packaged_bridge_contract_passes_static_checks(self) -> None:
@@ -140,6 +175,17 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     "class SystemBridge { fun subscribeWifi(): Subscription = LiveSubscription() }\n"
                     "interface Subscription { fun cancel() }\n"
                     "class LiveSubscription: Subscription { override fun cancel() {} }\n",
+                    encoding="utf-8",
+                )
+                gate.BRIDGE_SERVICE_KT.write_text(
+                    "class SystemBridgeService: android.app.Service() {\n"
+                    "  override fun onBind(intent: android.content.Intent?) = null\n"
+                    "  fun marker() = \"ElizaSystemBridge: bound\"\n"
+                    "}\n",
+                    encoding="utf-8",
+                )
+                gate.LAUNCHER_MAIN_ACTIVITY.write_text(
+                    "class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, \"__elizaAndroidBridge\"); } }\n",
                     encoding="utf-8",
                 )
                 gate.BRIDGE_GRADLE.write_text(
@@ -171,7 +217,14 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
 """,
                 )
                 gate.LOCAL_MANIFEST.write_text(
-                    '<manifest><project><linkfile dest="vendor/eliza/system-ui/native/build.gradle.kts" /></project></manifest>\n',
+                    '<manifest><project>'
+                    f'<linkfile dest="vendor/{gate.VENDOR_DIR_NAME}/system-ui/native/build.gradle.kts" />'
+                    f'<linkfile dest="vendor/{gate.VENDOR_DIR_NAME}/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
+                    + ''.join(
+                        f'<copyfile dest="{dest}" />'
+                        for dest in sorted(gate.REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS)
+                    )
+                    + '</project></manifest>\n',
                     encoding="utf-8",
                 )
                 write(
@@ -182,12 +235,27 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
   "status": "PASS",
   "result": 0,
   "sys_boot_completed": true,
+  "system_privapp_apk_present": true,
   "package_installed": true,
   "service_registered": true,
   "privapp_permissions_granted": true,
   "js_bridge_bound": true,
   "launcher_consumed_live_state": true,
   "production_mock_fallback_absent": true,
+  "permission_xml_host_symlink_absent": true,
+  "launcher_package": "ai.milady.milady",
+  "observations": {
+    "permission_file_probes": {
+      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": "-rw-r--r-- default-permissions-ai.milady.milady.xml",
+      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": "-rw-r--r-- privapp-permissions-ai.milady.milady.xml",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "-rw-r--r-- privapp-permissions-ai.elizaos.system.bridge.xml"
+    },
+    "permission_file_symlink_targets": {
+      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
+      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"},
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": {"readlink": "", "readlink_f": "", "readlink_ok": "false", "readlink_f_ok": "false"}
+    }
+  },
   "logcat_crash_count": 0,
   "selinux_denial_count": 0
 }
@@ -209,6 +277,17 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
                     "class LiveSubscription: Subscription { override fun cancel() {} }\n",
                     encoding="utf-8",
                 )
+                gate.BRIDGE_SERVICE_KT.write_text(
+                    "class SystemBridgeService: android.app.Service() {\n"
+                    "  override fun onBind(intent: android.content.Intent?) = null\n"
+                    "  fun marker() = \"ElizaSystemBridge: bound\"\n"
+                    "}\n",
+                    encoding="utf-8",
+                )
+                gate.LAUNCHER_MAIN_ACTIVITY.write_text(
+                    "class MainActivity { void onCreate(){ webView.addJavascriptInterface(systemBridge, \"__elizaAndroidBridge\"); } }\n",
+                    encoding="utf-8",
+                )
                 gate.BRIDGE_GRADLE.write_text(
                     'plugins { id("com.android.application"); kotlin("android") }\n',
                     encoding="utf-8",
@@ -238,7 +317,16 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
 """,
                 )
                 gate.LOCAL_MANIFEST.write_text(
-                    '<manifest><project><linkfile dest="vendor/eliza/system-ui/native/build.gradle.kts" /></project></manifest>\n',
+                    '<manifest><project>'
+                    '<linkfile dest="vendor/milady/system-ui/native/build.gradle.kts" />'
+                    '<linkfile dest="vendor/milady/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />'
+                    '<copyfile dest="vendor/milady/apps/Milady/Milady.apk" />'
+                    '<copyfile dest="vendor/milady/bootanimation/bootanimation.zip" />'
+                    '<copyfile dest="vendor/milady/init/init.milady.rc" />'
+                    '<copyfile dest="vendor/milady/permissions/default-permissions-ai.milady.milady.xml" />'
+                    '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml" />'
+                    '<copyfile dest="vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />'
+                    '</project></manifest>\n',
                     encoding="utf-8",
                 )
                 write(
@@ -267,6 +355,71 @@ class AndroidSystemBridgeContractTests(unittest.TestCase):
         self.assertIn("system_bridge_runtime_claim_boundary_mismatch", codes)
         self.assertIn("system_bridge_runtime_status_not_pass", codes)
         self.assertIn("system_bridge_runtime_result_not_zero", codes)
+
+    def test_local_manifest_permission_xmls_must_be_copyfiles(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest = write(
+                Path(tmpdir) / "eliza.xml",
+                """<manifest><project>
+  <linkfile dest="vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml" />
+  <copyfile dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml" />
+</project></manifest>
+""",
+            )
+            projections = gate.local_manifest_file_projection_kinds(manifest)
+        self.assertEqual(
+            projections["vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml"],
+            "linkfile",
+        )
+        self.assertEqual(
+            projections["vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml"],
+            "copyfile",
+        )
+
+    def test_permission_xml_symlink_detection_blocks_non_android_targets(self) -> None:
+        self.assertTrue(
+            gate.contains_host_local_symlink(
+                {
+                    "/system/etc/permissions/foo.xml": (
+                        "lrwxrwxrwx root root foo.xml -> "
+                        "/private/tmp/aosp/packages/os/android/vendor/eliza/permissions/foo.xml"
+                    )
+                }
+            )
+        )
+        self.assertFalse(
+            gate.contains_host_local_symlink(
+                {"/system/etc/permissions/foo.xml": "foo.xml -> /vendor/etc/permissions/foo.xml"}
+            )
+        )
+
+    def test_runtime_permission_paths_block_stale_launcher_identity(self) -> None:
+        stale = gate.stale_runtime_permission_paths(
+            [
+                "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+                "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
+                "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
+            ]
+        )
+        self.assertEqual(
+            stale,
+            [
+                "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+                "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
+            ],
+        )
+
+    def test_android_gradle_identity_uses_application_id(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            gradle = write(
+                Path(tmpdir) / "build.gradle",
+                'android { namespace "ai.old.namespace"; defaultConfig { applicationId "ai.milady.milady" } }\n',
+            )
+            with mock.patch.object(gate, "ANDROID_APP_GRADLE", gradle):
+                self.assertEqual(
+                    gate.read_android_gradle_identity(),
+                    {"appId": "ai.milady.milady"},
+                )
 
 
 class PatchStack:

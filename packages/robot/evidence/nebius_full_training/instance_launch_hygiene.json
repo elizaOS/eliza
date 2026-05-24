@@ -1,0 +1,28 @@
+{
+  "schema": "robot-nebius-instance-launch-hygiene-v1",
+  "ok": false,
+  "instance_id": "computeinstance-e00x4sqmx07qwehxrc",
+  "instance_name": "robot-full-1779504720-h200",
+  "checks": {
+    "instance_loaded": true,
+    "cloud_init_present": true,
+    "no_inline_object_storage_credentials": false,
+    "uses_repo_owned_stage_runner": false,
+    "uses_nebius_s3_endpoint": true,
+    "uses_training_s3_uri": false,
+    "has_status_heartbeat_upload_contract": false,
+    "has_hard_cap_shutdown": true
+  },
+  "secret_fields_embedded": [
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "nebius_secret_access_key"
+  ],
+  "cloud_init_bytes": 4008,
+  "recommendations": [
+    "Do not embed object-storage access keys in cloud-init; inject them through a short-lived runtime secret channel or service-account capability outside VM metadata.",
+    "Launch with evidence/full_training_preflight/scripts/run_all_nebius_stages.sh or eliza-robot-run-full-training-bundle so stage logs and status are owned by the repo.",
+    "Require periodic status/log heartbeat uploads during long training stages.",
+    "Set NEBIUS_TRAINING_S3_URI to the run prefix instead of reconstructing upload paths ad hoc."
+  ]
+}

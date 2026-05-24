@@ -16,6 +16,7 @@ CAPTURE_AOSP = ROOT / "sw/aosp-device/capture-aosp-evidence.sh"
 IMPORT_AOSP = ROOT / "sw/aosp-device/import-aosp-device.sh"
 BOARD_CONFIG = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk"
 FRAMEWORK_MATRIX = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc/device_framework_matrix.xml"
+BUILD_AOSP_RISCV64 = ROOT / "sw/aosp-device/build-aosp-riscv64.sh"
 TEST_REPORT_DIR = tempfile.TemporaryDirectory()
 REPORT = Path(TEST_REPORT_DIR.name) / "android_sim_boot.json"
 PREFLIGHT_REPORT = Path(TEST_REPORT_DIR.name) / "aosp_linux_preflight.json"
@@ -110,6 +111,18 @@ def test_boot_script_blocks_without_aosp_dir() -> None:
     ):
         if path not in required:
             raise AssertionError(f"android sim report missing required evidence category {path}")
+
+
+def test_riscv64_aosp_overlay_materializes_files_not_host_symlinks() -> None:
+    text = BUILD_AOSP_RISCV64.read_text(encoding="utf-8")
+    if "rsync -aL --delete \"$ELIZA_VENDOR_SRC/\" \"$vendor_dst/\"" not in text:
+        raise AssertionError("AOSP riscv64 overlay must dereference vendor/eliza files")
+    if "rsync -aL --delete \"$DEVICE_OVERLAY_SRC/\" \"$dst/\"" not in text:
+        raise AssertionError("AOSP riscv64 overlay must dereference device overlay files")
+    if "assert_no_overlay_symlinks" not in text or "materialize_overlay_symlinks" not in text:
+        raise AssertionError("AOSP riscv64 overlay must fail closed on remaining symlinks")
+    if "ln -sfn \"$ELIZA_VENDOR_SRC" in text or "ln -sfn \"$DEVICE_OVERLAY_SRC" in text:
+        raise AssertionError("AOSP riscv64 overlay must not install host-local symlinks")
 
 
 def test_checker_reports_blocked_report() -> None:
@@ -318,6 +331,7 @@ def main() -> int:
             test_aosp_linux_preflight_blocks_without_aosp_dir,
             test_aosp_linux_preflight_reports_uninstalled_repo_launcher,
             test_aosp_linux_preflight_allows_existing_checkout_without_repo,
+            test_riscv64_aosp_overlay_materializes_files_not_host_symlinks,
             test_android_handoff_uses_shared_build_evidence_helpers,
             test_aosp_vintf_evidence_maps_all_output_partitions,
             test_eliza_device_framework_matrix_is_imported,

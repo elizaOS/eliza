@@ -1,0 +1,220 @@
+"""Validate an end-to-end full-training launch bundle.
+
+This checks the generated bundle from ``prepare_end_to_end_full_training.py``
+without launching long training. It is intended to run locally and again on the
+Nebius host before executing the numbered training scripts.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+PKG_ROOT = Path(__file__).resolve().parents[1]
+if str(PKG_ROOT) not in sys.path:
+    sys.path.insert(0, str(PKG_ROOT))
+
+validate_full_training_job = importlib.import_module(
+    "scripts.validate_asimov1_full_training_job"
+).validate_full_training_job
+validate_instance_launch_hygiene = importlib.import_module(
+    "scripts.validate_nebius_instance_launch_hygiene"
+).validate_instance_launch_hygiene
+DEFAULT_PROFILES = tuple(
+    importlib.import_module("scripts.prepare_end_to_end_full_training").DEFAULT_PROFILES
+)
+
+REQUIRED_SCRIPTS = (
+    "local_preflight",
+    "train_alberta",
+    "compare_backends",
+    "continual_benchmarks",
+    "brax_baseline",
+    "post_training_validation",
+    "run_all_stages",
+)
+REQUIRED_LAUNCH_ORDER = (
+    "scripts/00_local_preflight.sh",
+    "scripts/10_nebius_train_alberta.sh",
+    "scripts/20_nebius_compare_backends.sh",
+    "scripts/30_nebius_continual_benchmarks.sh",
+    "scripts/40_nebius_brax_baseline.sh",
+    "scripts/50_post_train_validation.sh",
+)
+
+
+def _load(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {}
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+    return loaded if isinstance(loaded, dict) else {}
+
+
+def _resolve_from_bundle(bundle_dir: Path, value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    candidate = (bundle_dir / value).resolve()
+    if candidate.exists():
+        return candidate
+    return (PKG_ROOT.parent.parent / value).resolve()
+
+
+def _script_contains(path: Path, needles: tuple[str, ...]) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    return all(needle in text for needle in needles)
+
+
+def _local_preflight_profiles_ok(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    text = path.read_text(encoding="utf-8")
+    expected = "--profiles " + " ".join(DEFAULT_PROFILES)
+    return expected in text
+
+
+def validate_bundle(bundle_dir: Path) -> dict[str, Any]:
+    bundle_dir = bundle_dir.resolve()
+    report_path = bundle_dir / "preflight_report.json"
+    report = _load(report_path)
+    scripts = report.get("scripts") if isinstance(report.get("scripts"), dict) else {}
+    script_paths = {
+        name: _resolve_from_bundle(bundle_dir, str(scripts.get(name, "")))
+        for name in REQUIRED_SCRIPTS
+    }
+    brax_job_dir = _resolve_from_bundle(bundle_dir, str(report.get("brax_job_dir", "")))
+    brax_validation = validate_full_training_job(brax_job_dir) if brax_job_dir.is_dir() else {"ok": False}
+    launch_template_path = _resolve_from_bundle(
+        bundle_dir,
+        str(
+            (report.get("launch_template") or {}).get("path", "")
+            if isinstance(report.get("launch_template"), dict)
+            else ""
+        ),
+    )
+    launch_hygiene = (
+        validate_instance_launch_hygiene(launch_template_path)
+        if launch_template_path.is_file()
+        else {"ok": False, "checks": {}}
+    )
+
+    checks = {
+        "report_exists": report_path.is_file(),
+        "schema": report.get("schema") == "robot-end-to-end-full-training-preflight-v1",
+        "report_ok": report.get("ok") is True,
+        "default_profiles": tuple(report.get("default_profiles", [])) == DEFAULT_PROFILES,
+        "launch_order": tuple(report.get("launch_order", [])) == REQUIRED_LAUNCH_ORDER,
+        "required_scripts_declared": set(REQUIRED_SCRIPTS).issubset(scripts),
+        "scripts_exist": all(path.is_file() for path in script_paths.values()),
+        "scripts_executable": all(os.access(path, os.X_OK) for path in script_paths.values()),
+        "local_preflight_script": _script_contains(
+            script_paths["local_preflight"],
+            (
+                "validate_multi_robot_training_readiness.py",
+                "validate_asimov1_full_training_job.py",
+                "run_asimov1_full_training.py",
+                "--check-only --require-ready",
+                "eliza-robot-validate-full-training-preflight",
+            ),
+        ),
+        "local_preflight_profiles": _local_preflight_profiles_ok(
+            script_paths["local_preflight"]
+        ),
+        "alberta_training_script": _script_contains(
+            script_paths["train_alberta"],
+            (
+                "eliza-robot-train",
+                "--profile",
+                "--steps",
+                "--episode-steps",
+                "--eval-episodes",
+            ),
+        ),
+        "backend_compare_script": _script_contains(
+            script_paths["compare_backends"],
+            ("eliza-robot-compare-backends", "--eval-episodes", "--out-root"),
+        ),
+        "continual_benchmark_script": _script_contains(
+            script_paths["continual_benchmarks"],
+            (
+                "--env joint_reach",
+                "--env obstacle_course",
+                "eliza-robot-validate-alberta-benchmark",
+                "--expected-env joint_reach",
+                "--expected-env obstacle_course",
+            ),
+        ),
+        "brax_baseline_script": _script_contains(
+            script_paths["brax_baseline"],
+            ("run_full_training.sh --train",),
+        ),
+        "post_training_script": _script_contains(
+            script_paths["post_training_validation"],
+            (
+                "eliza-robot-validate-alberta-checkpoint",
+                "eliza-robot-validate-asimov1-production-checkpoint",
+                "--require-inference-check",
+                "validate_asimov1_real_agent_readiness.py",
+                "--require-production",
+                "eval_text_policy.py",
+                "evidence_text_to_action_e2e.py",
+                "--profile",
+                "record_agent_videos.py",
+                "--policy-checkpoint",
+            ),
+        ),
+        "run_all_stages_script": _script_contains(
+            script_paths["run_all_stages"],
+            (
+                "eliza-robot-run-full-training-bundle",
+                "--bundle-dir evidence/full_training_preflight",
+                "NEBIUS_S3_ENDPOINT",
+                "NEBIUS_TRAINING_S3_URI",
+            ),
+        ),
+        "launch_template_exists": launch_template_path.is_file(),
+        "launch_template_hygiene": bool(launch_hygiene.get("ok")),
+        "brax_job_dir_exists": brax_job_dir.is_dir(),
+        "brax_job_valid": bool(brax_validation.get("ok")),
+    }
+    return {
+        "ok": all(checks.values()),
+        "bundle_dir": str(bundle_dir),
+        "report": str(report_path),
+        "checks": checks,
+        "scripts": {name: str(path) for name, path in script_paths.items()},
+        "launch_template": str(launch_template_path),
+        "launch_hygiene": launch_hygiene,
+        "brax_job_dir": str(brax_job_dir),
+        "brax_validation": {
+            "ok": bool(brax_validation.get("ok")),
+            "failed_checks": [
+                name
+                for name, ok in (brax_validation.get("checks") or {}).items()
+                if not ok
+            ],
+        },
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("bundle_dir", type=Path)
+    args = parser.parse_args(argv)
+    report = validate_bundle(args.bundle_dir)
+    print(json.dumps(report, indent=2))
+    return 0 if report["ok"] else 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

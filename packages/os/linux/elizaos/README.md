@@ -10,18 +10,42 @@ selected at build time.
 There is one `auto/config`, one set of hooks, and one branding overlay.
 Architecture is chosen with `ELIZAOS_ARCH` (`amd64` | `arm64` | `riscv64`,
 default `amd64`) and drives `lb config --architecture/--linux-flavours`.
-Per-arch package differences live in live-build's native
-architecture-suffixed package lists:
+Per-arch package differences are expressed with live-build's in-file
+`#if ARCHITECTURES` conditional. live-build only reads package lists whose
+names match `*.list`, `*.list.chroot`, or `*.list.chroot_<install|live>`;
+an arch suffix like `.amd64` matches none of those globs and is silently
+skipped (this previously dropped the entire desktop). So every list uses a
+plain `.list.chroot` name and gates its arch-specific body instead:
 
 ```
 config/package-lists/
-  elizaos-common.list.chroot         # installed on every arch
-  elizaos-amd64.list.chroot.amd64    # amd64 only
-  elizaos-arm64.list.chroot.arm64    # arm64 only
-  elizaos-riscv64.list.chroot.riscv64# riscv64 only
+  elizaos-common.list.chroot     # installed on every arch (no guard)
+  elizaos-amd64.list.chroot      # body wrapped in #if ARCHITECTURES amd64
+  elizaos-arm64.list.chroot      # body wrapped in #if ARCHITECTURES arm64
+  elizaos-riscv64.list.chroot    # body wrapped in #if ARCHITECTURES riscv64
 ```
 
+How the guard works (live-build's `Expand_packagelist`): a line
+`#if ARCHITECTURES <arch>` enables the following lines only when
+`LB_ARCHITECTURES` (set from `lb config --architecture <arch>`) contains
+`<arch>`; a matching `#endif` re-enables emission. On a non-matching arch
+the whole block is skipped. Conditionals must not be nested.
+
 All three arches boot via GRUB EFI; amd64 also gets BIOS via `grub-pc`.
+riscv64 uses Debian's `grub-efi-riscv64` package plus
+`grub-efi-riscv64-bin` modules, and the builder patches live-build's
+`binary_grub-efi` helper until the upstream live-build script has native
+riscv64 EFI image generation. On QEMU `virt`, the tested chain is
+EDK2/OpenSBI firmware -> `EFI/boot/bootriscv64.efi` -> GRUB -> Linux live
+kernel/initrd. Board-specific firmware can sit below that chain, but the
+Debian live ISO contract stays UEFI/GRUB rather than a separate ad hoc
+bootloader path.
+
+The RISC-V port contract follows Debian's riscv64 port metadata: GNU triplet
+`riscv64-unknown-linux-gnu`, multiarch tuple `riscv64-linux-gnu`, and the
+UEFI removable-media loader path `EFI/boot/bootriscv64.efi`. The checked
+evidence matrix records the Debian package/wiki references that establish
+that contract.
 
 `make qemu-boot ARCH=<arch>` opens an interactive GNOME desktop window for
 every arch via `scripts/boot-qemu.sh`. riscv64 reaches GUI parity with
@@ -54,11 +78,41 @@ make build ARCH=amd64                       # x86_64 ISO
 make build ARCH=arm64                        # arm64 ISO
 make build ARCH=riscv64                       # riscv64 ISO
 make build ARCH=amd64 PROFILE=secure          # hardened build
+make riscv64-agent-runtime-smoke               # preflight staged riscv64 runtime + agent bundle
 make qemu-boot ARCH=riscv64                    # boot newest ISO in QEMU
 make brand-assets                              # regenerate PNG branding from SVG
 make lint                                      # static smoke checks
 make clean                                     # remove out/ + live-build state
 ```
+
+Real agent images require per-arch artifacts under
+`artifacts/<arch>/`. For riscv64, consume the shared
+`bun-linux-riscv64-musl.zip` produced by
+`packages/app-core/scripts/bun-riscv64/run-build.sh` and stage it with the
+Debian wrapper plus the matching musl runtime:
+
+```sh
+make -C packages/os/linux/elizaos stage-agent-artifacts ARCH=riscv64
+make -C packages/os/linux/elizaos riscv64-agent-runtime-smoke
+```
+
+Until the native riscv64 Bun port is current and provenance-clean, the Debian
+image can be staged in Node mode. This installs no Bun artifact; the live image
+must install Debian `nodejs` and run the Node-shebang `agent-bundle.js`:
+
+```sh
+make -C packages/os/linux/elizaos stage-agent-artifacts ARCH=riscv64 RISCV64_RUNTIME=node
+make -C packages/os/linux/elizaos riscv64-agent-runtime-smoke
+```
+
+The runtime smoke is a pre-ISO qemu-user/static artifact check. It must pass
+before a riscv64 image can be promoted; `bun --version` alone is not sufficient
+because the current Bun artifact can print a version while failing on the
+staged agent entrypoint. The archived failing Bun evidence is
+`evidence/riscv64_agent_runtime_smoke_20260523_script_entrypoint.json`: Bun can
+run `--version` and `-e`, but fails script-file entrypoints before it can load
+`agent-bundle.js`. The current `evidence/riscv64_agent_runtime_smoke.json`
+records the Node-mode staged artifact check; it is not full ISO boot evidence.
 
 `make build` runs `lb config` → `lb build` → verify → checksum → manifest
 inside the builder container (`Dockerfile`). A clean build pulls multi-GB
@@ -84,6 +138,34 @@ against the schema at `packages/os/release/schema/`. It is fail-closed:
 informational by default, `release-check-strict` for the release pipeline.
 No promoted artifact exists yet — the manifest template carries
 `provenance: scaffolding` until a real build replaces it.
+
+## Chip/AP evidence
+
+`chip-boot-manifest.json` is the chip-objective manifest for generated Eliza
+AP or chip-emulator boot evidence. It deliberately does not reuse qemu-virt
+evidence. The runnable capture skeleton is:
+
+```sh
+scripts/capture-generated-ap-chip-evidence.sh plan
+ELIZA_GENERATED_AP_CHIP_BOOT_CMD='<real generated-AP boot command>' \
+  scripts/capture-generated-ap-chip-evidence.sh run
+```
+
+When generated-AP runtime is usable, the boot command must print the real
+serial transcript. If agent/API/TUI probes are collected by a separate command,
+set `ELIZA_GENERATED_AP_CHIP_AGENT_CMD`; otherwise the boot transcript must
+contain those markers too. To validate pre-captured real transcripts directly:
+
+```sh
+scripts/capture-chip-boot-evidence.py \
+  --boot-transcript /path/to/generated-ap-serial.log \
+  --agent-transcript /path/to/generated-ap-agent-health.log
+```
+
+The helper writes `evidence/generated_eliza_ap_boot.json` and
+`evidence/generated_eliza_ap_agent_live.json` only when the transcript contains
+the required generated-AP SBI handoff, Linux, elizaOS first-boot,
+agent-health, and terminal TUI markers.
 
 ## Status
 

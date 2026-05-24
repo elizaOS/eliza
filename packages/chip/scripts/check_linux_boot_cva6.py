@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Gate: OpenSBI hands off (M->S) and a real Linux kernel boots on the real
-CVA6 from real DRAM, in Verilator — recorded to the furthest honest marker.
+"""Gate: OpenSBI hands off (M->S) and Linux boots on CVA6 RTL in Verilator.
 
 This is the OS-bring-up step above scripts/check_opensbi_cva6_boot.py (which
 proves the OpenSBI M-mode banner).  The bespoke read-modify-write atomics
@@ -317,8 +316,8 @@ def main() -> int:
             "# CLAIM BOUNDARY: functional boot proof, NOT a timing/perf claim.\n"
             "# Sim-only levers: +E1_DRAM_FAST zero-wait DRAM model, 32 MiB\n"
             "#   advertised RAM, Verilator -O2/threaded/x-fast, lpj=10000.\n"
-            "# Proves: real CVA6 RTL + OpenSBI v1.8.1 + real Linux 6.12.90 +\n"
-            "#   real freestanding /init reach userland (ELIZA-USERLAND-OK).\n"
+            "# Proves: CVA6 RTL + OpenSBI v1.8.1 + Linux 6.12.90 +\n"
+            "#   freestanding /init reach userland (ELIZA-USERLAND-OK).\n"
             "# The realistic-latency config (no +E1_DRAM_FAST) is the fidelity\n"
             "#   reference; cycle counts here are NOT representative of silicon.\n"
             "# ---------------------------------------------------------------\n"
@@ -347,7 +346,7 @@ def main() -> int:
             "FUNCTIONAL BOOT PROOF, NOT A TIMING/PERF CLAIM.  This run uses a "
             "sim-only zero-wait DRAM model and a tiny advertised memory to make "
             "the OpenSBI -> Linux -> userland boot fit a bounded Verilator "
-            "wall-time.  It proves the CVA6 RTL + OpenSBI + real Linux + real "
+            "wall-time.  It proves the CVA6 RTL + OpenSBI + Linux + "
             "/init reach userland; it makes NO statement about cycle counts, "
             "memory latency, or wall-clock performance on silicon.  The "
             "realistic-latency config (no --fast / no +E1_DRAM_FAST) remains "
@@ -383,6 +382,12 @@ def main() -> int:
         print(f"BLOCKED: furthest marker = {furthest}; required {require!r} not reached")
         return 1
 
+    proof = ("OpenSBI completed M-mode init and handed off to the S-mode payload "
+             "(S-MODE-OK printed over the ns16550a UART) on the CVA6 RTL through "
+             "the DRAM-controller RTL model and vendored axi_riscv_atomics filter — the M->S "
+             "transition Linux requires."
+             if stage == "smode" else
+             f"Linux boot reached marker {furthest!r} (required {require!r}).")
     proof = (
         "OpenSBI completed M-mode init and handed off to the S-mode payload "
         "(S-MODE-OK printed over the ns16550a UART) on the real CVA6 from "

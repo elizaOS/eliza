@@ -1,6 +1,6 @@
 // Composer 2.4 service entry for eliza_ai_soc.
 //
-// Status: stub wrapper. Uses the AOSP-provided default passthrough
+// Status: compatibility wrapper. Uses the AOSP-provided default passthrough
 // service that loads hwcomposer.eliza_ai_soc.so via hw_get_module().
 // No GLES claim, no Vulkan claim.
 

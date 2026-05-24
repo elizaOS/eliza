@@ -68,7 +68,7 @@ RUN set -eux; \
 
 # QEMU 9.2 minimum (cuttlefish vsock + riscv64 virt machine maturity). Ubuntu
 # 24.04 ships QEMU 8.x; pull a newer build from the noble-backports pocket and
-# fall back to the source-built tarball if backports does not yet have it.
+# fall back to the source-built tarball if backports lacks that package.
 RUN set -eux; \
     apt-get update; \
     if apt-get -y -t noble-backports install qemu-system-misc qemu-system-riscv qemu-utils; then \

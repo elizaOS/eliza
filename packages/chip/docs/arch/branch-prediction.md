@@ -50,39 +50,100 @@ rationale.
 | Component | Selected | 2028 minimum threshold | Rationale |
 | --- | --- | --- | --- |
 | FETCH_BLOCK_BYTES | 32 | 32 | 16 RVC inst/predict, matches Zen 5 / X925 / Lion Cove. |
-| MAX_BR_PER_BLOCK | 2 | 1 | FTB/FTQ carry two in-block branch slots; a later conditional slot can redirect when the earlier conditional falls through. |
+| MAX_BR_PER_BLOCK | 2 | 1 | FTB/FTQ carry two in-block branch slots; same-block fall-through plus later taken conditionals emit two fetch segments. |
 | FTQ_ENTRIES | 64 | 32 | Decouple BPU from fetch, FDIP-compatible. |
 | UFTB_ENTRIES | 512 | 256 | Zero-bubble next-line predictor, above KMH 256. |
 | UFTB_STEER_CONF_MIN | 2 | optional | uFTB-only steering requires repeated matching target/kind updates. |
 | FTB_ENTRIES | 4096 | 2048 | BTB replacement, above KMH v2 floor; doubled after CBP/E1 working-set sweep. |
 | FTB_WAYS | 4 | 4 | Match KMH/X925 set-associative footprint with invalid-first age-based replacement. |
+| BPU_WORKLOAD_CLASS_W | 2 | optional | Runtime predictor phase class folded into the predictor context for GPU/ML/general partitioning. |
+| L2_FTB_ENTRIES | 8192 | 4096 | Delayed target refill tier for L1 FTB conflict/capacity misses. |
+| L2_FTB_WAYS | 8 | 8 | Deeper associativity keeps GPU driver/runtime dispatch targets resident after L1 churn. |
 | TAGE_TABLES | 5 | 4 | TAGE-SC-L stack on top of bimodal. |
 | TAGE_ENTRIES_TABLE | 8192 | 4096 | CBP-5 floor plus R9 capacity sweep win. |
 | TAGE_HIST_LEN | {8, 16, 44, 90, 195} | reach >= 100 | Geometric history, extended to 195 after mixed workload sweep. |
-| TAGE_USE_ALT_ON_NA | 0 | optional | Alternate-provider path is implemented and swept; default awaits evidence. |
+| TAGE_USE_ALT_ON_NA | 0 | optional | Static global alternate-provider mode regresses; adaptive chooser below is used instead. |
+| TAGE_ALT_ON_NA_ENTRIES | 1024 | optional | Adaptive per-PC/provider use-alt chooser; capped 61-config sweep improved weighted MPKI by 0.1036. |
 | BIM_ENTRIES | 16384 | 8192 | Base bimodal table. |
-| SC_TABLES | 4 | 4 | Statistical corrector for low-confidence TAGE. |
-| SC_ENTRIES_TABLE | 512 | 512 | Seznec CBP-5 baseline. |
+| SC_TABLES | 6 | 4 | Wider statistical corrector promoted by full-trace finalist sweep. |
+| SC_ENTRIES_TABLE | 1024 | 512 | Doubled SC capacity for low-confidence TAGE corrections. |
+| SC_THRESH_INIT | 6 | optional | Lower SC threshold from the `sc_wide_thresh6` finalist. |
 | SC_LOCAL_HISTORY_BITS | 8 | optional | Local-history fold in the SC index; full-trace check improved weighted MPKI by 0.0163 versus disabled. |
+| H2P_ENABLE | 1 | optional | Perceptron/H2P-style sidecar is enabled after the capped GPU-weighted sweep; disabling it regresses weighted MPKI by 1.1403. |
+| H2P_ENTRIES | 512 | optional | PC-indexed signed-weight rows for the H2P sidecar. |
+| H2P_HIST_LEN | 64 | optional | Global-history dot-product length for the H2P sidecar. |
+| H2P_TARGET_HIST_LEN | 0 | optional | Sweepable target-history feature slice for multi-perspective H2P; default-off after the expanded GPU/general workload sweep. |
+| H2P_PATH_HIST_LEN | 0 | optional | Sweepable path-history feature slice for multi-perspective H2P; default-off after the expanded GPU/general workload sweep. |
+| H2P_THRESHOLD | 36 | optional | H2P override/training margin. |
+| H2P_META_ENABLE | 0 | optional | RTL/model per-PC chooser for H2P overrides; default-off because the latest smoke sweep was not GPU/control neutral. |
+| H2P_META_ENTRIES | 1024 | optional | H2P chooser entries. |
+| H2P_META_CTR_W | 3 | optional | Signed H2P chooser counter width. |
+| LOCAL_DIR_ENABLE | 1 | optional | Short local-direction sidecar is enabled behind a learned chooser. |
+| LOCAL_DIR_META_ENABLE | 1 | optional | Learned chooser for the local-direction sidecar is enabled; disabling it regresses weighted MPKI by 0.5788, including GPU nested reconvergence. |
 | LOOP_ENTRIES | 64 | 32 | Loop-trip predictor. |
+| LOOP_PATH_SIG_W | 8 | 8 | Target-context loop signature separates same-PC loop entries reached through different indirect/call paths without changing during ordinary loop iterations. |
+| LOOP_IMLI_ENABLE | 0 | optional | IMLI-style loop-iteration-history signature is implemented but default-off because the current best variant regresses GPU reconvergence. |
+| LOOP_IMLI_HIST_W | 16 | optional | Loop-exit iteration-history storage width for IMLI experiments. |
+| LOOP_IMLI_TOKEN_W | 4 | optional | Per-loop-exit token width used to fold loop PC and observed trip count. |
 | ITTAGE_TABLES | 5 | 5 | Indirect target predictor. |
-| ITTAGE_ENTRIES | {512, 512, 1024, 1024, 1024} | >= 1024 total | Indirect target capacity for JS/GPU dispatch. |
+| ITTAGE_ENTRIES | {1024, 1024, 2048, 2048, 2048} | >= 1024 total | Indirect target capacity; expanded 50K sweep ranked the larger tier first. |
+| ITTAGE_WAYS | 2 | optional | Set-associative indirect-target storage reduces alias pressure from hot dispatch tables. |
 | ITTAGE_HIST_LEN | {4, 10, 20, 40, 80} | optional | Full-trace sweep improved weighted MPKI by 0.0502 with no reported regressions. |
+| ITTAGE_TAG_W | 11 | optional | Wider indirect-target tags reduce false hits/alias pressure; 50K exhaustive sweep found no per-trace regressions. |
 | ITTAGE_USEFUL_RESET_PERIOD | 100000 | optional | ITTAGE useful-bit aging for stale indirect-target replacement. |
+| ITTAGE_TARGET_HISTORY_TOKEN_BITS | 5 | 5 | Five-bit folded target tokens were promoted after the expanded capped sweep improved weighted MPKI without reported GPU regressions. |
 | ITTAGE_TARGET_HISTORY_SHIFT | 8 | optional | Target-history token starts at target bit 8; full-trace sweep improved weighted MPKI by 0.0822. |
-| ITTAGE_PATH_HISTORY_BITS | 0 | optional | RTL/model support path-history mixing; capped sweeps currently regress, so default stays disabled. |
+| ITTAGE_PATH_HISTORY_BITS | 64 | optional | Path-history mixing is enabled with 8-bit folded path tokens after the post-associativity capped sweep found no per-trace regressions. |
 | RAS_ARCH_ENTRIES | 32 | 16 | Architectural depth. |
 | RAS_SPEC_ENTRIES | 64 | 32 | Speculative depth with overflow counter. |
 
 The uFTB stores the fast next-PC prediction plus the resolved branch kind,
 call fall-through PC, and a small target confidence counter. FTB hits still
 win the full arbitration path, but a confident uFTB-only hit can classify the
-prediction as call/return/indirect; calls push the mirrored fall-through PC
+prediction as call/return/indirect/direct; calls push the mirrored fall-through PC
 into the speculative RAS and returns pop/use the RAS top when it is valid
 instead of blindly using the stored target. Raw uFTB hits still count for PMU
 visibility, but they do not steer fetch until matching target/kind updates
-raise confidence to `UFTB_STEER_CONF_MIN`. uFTB replacement is invalid-first
-and age-based so recent zero-bubble targets survive set churn.
+raise confidence to `UFTB_STEER_CONF_MIN`. uFTB lookup and update are both
+fetch-block-keyed, so nonzero-offset branches train the same fast entry the
+next block lookup will consult. FTB/uFTB replacement is invalid-first and
+age-based so recent zero-bubble targets survive set churn; age maintenance is
+touched-set only rather than a global all-set sweep.
+
+Every BPU lookup and resolve carries `bpu_context_t` `{asid, vmid, priv,
+secure, workload_class}`. The workload class is a software/runtime-visible
+phase hook for partitioning broad predictor behavior across general CPU, GPU
+driver/launch, and ML-runtime control streams without changing virtual PCs.
+FTB, uFTB, and L2 FTB entries store the context and fold a compact context
+hash into their index/tag functions, while `bpu_top` presents a context-mixed
+PC to TAGE, SC, bimodal, loop, and ITTAGE so direction and local history state
+are not shared solely by virtual PC. FTQ entries retain the lookup context and
+commit-time replay is context-checked before using the
+saved provider/history metadata. `bpu_flush_t` is the explicit software or
+integration invalidation hook; it blocks same-cycle predictor updates,
+invalidates target-array entries, drops FTQ contents and pending L2 requests,
+and clears speculative/architectural histories plus RAS state.
+
+The L1 FTB is backed by an 8-way L2 FTB. Resolver updates train both tiers;
+an L1 FTB miss issues a one-cycle-delayed L2 lookup, and a matching non-stale
+L2 response refills/promotes the complete branch-block entry back into L1.
+Redirects carry a BPU epoch, so delayed responses from flushed lookups are
+dropped instead of repopulating wrong-path targets. L2 hits for always-taken
+call/indirect classes, strongly-taken conditionals, and request-snapshot
+returns patch the live FTQ entry and emit `late_redirect_valid/pc/ftq_idx`,
+discarding younger FTQ entries from that patched point. Conditional patches are
+gated by a delayed bimodal strong-taken check; weak conditionals remain
+refill-only. Return patches use the RAS top captured with the L2 miss request
+and are suppressed when the uFTB already popped the return, avoiding a delayed
+double-pop.
+
+The behavioural MPKI model includes the same delayed target tier as a separate
+`L2_FTB_ENTRIES` store with `l2_ftb_off/small/big` sweep knobs. The expanded
+50K capped workload objective includes `synthetic:l2_ftb_target_pressure`, a
+6144-site taken-target trace that exceeds L1 FTB capacity but fits the default
+L2. Baseline scores `36.7571` weighted MPKI; disabling L2 scores `38.9826`,
+driven by a `+100.0000` MPKI regression on the target-pressure trace. A
+16384-entry L2 ties the default.
 
 ## PMU events (Zihpm)
 
@@ -90,9 +151,10 @@ and age-based so recent zero-bubble targets survive set churn.
 BPU exports `pmu_strb` and `csr_rdata` for SoC-level Zihpm integration; CSR
 counter indices are the enum value of the event.
 
-The BPU enum is ordered so the mapping into `zihpm_pkg::hpm_event_e` is a
-pure +1 offset (zihpm reserves id 0 for the "no event" sentinel). The
-translation is `bpu_pkg::bpu_pmu_to_hpm(pmu_id) = pmu_id + 1`.
+The BPU enum currently lands in the branch Zihpm block at a +1 offset because
+Zihpm reserves id 0 for the "no event" sentinel. Integration still uses the
+explicit `rtl/cpu/csr/bpu_to_zihpm_remap.sv` adapter, which rewires by event
+name and binds BPU-side FTB naming to the published BTB Zihpm names.
 
 | BPU id | Event | zihpm id | zihpm enum | Description |
 | --- | --- | --- | --- | --- |
@@ -116,6 +178,12 @@ translation is `bpu_pkg::bpu_pmu_to_hpm(pmu_id) = pmu_id + 1`.
 | 17 | `PMU_TAGE_ALLOC` | 18 | `EVT_TAGE_ALLOC` | TAGE allocated a new entry. |
 | 18 | `PMU_LOOP_HIT` | 19 | `EVT_LOOP_HIT` | Loop predictor produced a high-confidence prediction. |
 | 19 | `PMU_SC_OVERRIDE` | 20 | `EVT_SC_OVERRIDE` | SC overrode TAGE on a low-confidence prediction. |
+| 20 | `PMU_H2P_OVERRIDE` | 21 | `EVT_H2P_OVERRIDE` | H2P produced the effective direction override after SC arbitration. |
+| 21 | `PMU_L2_FTB_HIT` | 22 | `EVT_L2_BTB_HIT` | Delayed L2 FTB lookup hit and was eligible to refill L1. |
+| 22 | `PMU_L2_FTB_MISS` | 23 | `EVT_L2_BTB_MISS` | Delayed L2 FTB lookup missed after an L1 FTB miss. |
+| 23 | `PMU_TWO_AHEAD_REDIRECT` | 24 | `EVT_TWO_AHEAD_REDIRECT` | Bounded two-ahead target-block lookup emitted redirect lane 1. |
+| 24 | `PMU_LOCAL_DIR_OVERRIDE` | 25 | `EVT_LOCAL_DIR_OVERRIDE` | Local direction sidecar supplied the effective conditional direction. |
+| 25 | `PMU_META_TRAIN` | 26 | `EVT_BPU_META_TRAIN` | H2P/local-direction meta chooser trained because sidecar and base differed. |
 
 These are visible to Linux `perf` via `Zihpm` event selectors documented in
 `docs/evidence/cpu_ap/branch-prediction-params.json`. The OoO cluster wires
@@ -127,9 +195,9 @@ event firing, with no further translation logic in the integration top.
 
 | Workload | MPKI ceiling | Status |
 | --- | --- | --- |
-| TAGE-SC-L on CBP-5 synthetic trace | <= 4.5 | local cocotb harness in `benchmarks/cpu/branch/`. |
-| **E1 agent duty cycle (real RV64 trace)** | <= 1.0 | **MET**: 0.259 MPKI. Native `qemu-riscv64`+execlog trace of the llama.cpp agent loop (`benchmarks/cpu/branch/workloads/agent_loop.c`); see Workload trace pipeline below. |
-| **E1 decode-heavy path (real RV64 trace)** | <= 1.0 | **MET**: 0.349 MPKI. Hard-branch (tokenizer/sampler/stream) variant of the same workload. |
+| TAGE-SC-L on CBP-5 synthetic trace | <= 4.0 | RTL evidence present, target not met: aggregate RTL MPKI is above the 2028 target in `docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json`. |
+| **E1 agent duty cycle (real RV64 trace)** | <= 1.0 | `PREFIX-ONLY`: RTL replay evidence exists in `docs/evidence/cpu_ap/mpki_results_workload_rtl.json`, but `branch_replay_cap` is non-null, so this is coverage evidence rather than a full-trace MPKI claim. |
+| **E1 decode-heavy path (real RV64 trace)** | <= 1.0 | `PREFIX-ONLY`: same capped workload replay boundary; full-trace target-met status remains blocked until `branch_replay_cap` is null and thresholds pass. |
 | SPECint2017 intrate, geomean | <= 4.0 | `BLOCKED`: requires SPEC license + cycle-accurate gem5-XiangShan. |
 | Geekbench 6 navigation | <= 6 | `BLOCKED`: closed benchmark. |
 | Android UI (AOSP, ART/JIT) | <= 5 | `BLOCKED`: requires AsmDB/simpleperf trace ingestion. |
@@ -139,8 +207,9 @@ event firing, with no further translation logic in the integration top.
 
 The local cocotb MPKI harness (`benchmarks/cpu/branch/run_mpki.py`) measures
 the BPU against synthetic and trace-replay workloads. The closed third-party
-suites (SPEC/AOSP/JS) remain BLOCKED, but the E1's *own* duty cycle is no
-longer blocked — see the workload trace pipeline below.
+suites (SPEC/AOSP/JS) remain BLOCKED. The E1 duty-cycle replay currently uses
+a deterministic branch prefix cap for turnaround, so it is useful regression
+coverage but not a full-trace target-met claim.
 
 ## Workload trace pipeline (native RV64)
 
@@ -161,12 +230,31 @@ privileges and no Docker:
    and writes a `.btrace.json` to the gitignored `external/workload-traces/`.
 
 Capture with `make bpu-workload-trace` (`MODE=1` for the decode-heavy variant).
+The checked workload inventory currently contains fifteen QEMU-RV64 traces:
+`agent_loop`, `agent_decode`, `http_parser`, `text_log`, `file_tlv`,
+`video_blocks`, `audio_frames`, `build_compiler_proxy`, `compression_proxy`,
+`crypto_packet_proxy`, `database_btree_proxy`, `gpu_control_proxy`,
+`browser_layout_proxy`, `kernel_syscall_proxy`, and `gc_runtime_proxy`. The RTL
+workload evidence file `mpki_results_workload_rtl.json` replays all fifteen as
+deterministic prefixes with `branch_replay_cap=5000`; this is coverage evidence
+for the real-trace ingestion path, not a full-trace MPKI claim.
 
-The headline result: **the E1 duty cycle is easy for branch prediction**
-(0.26 MPKI balanced, 0.35 MPKI decode-heavy). LLM inference is dominated by
-highly-regular loop control flow, so the predictor runs near its accuracy
-floor — consistent with the workload's "throughput between calls is not the
-bottleneck" character.
+The `.btrace.json` row schema now preserves BPU context fields alongside every
+branch (`asid`, `vmid`, `priv`, `secure`, and `workload_class`). The capture
+CLI can stamp those fields, and the planning model folds them through the same
+context-PC hash shape as RTL. Existing five-column traces remain readable with
+zero context.
+The evidence gate is fail-closed for positive workload claims: a future
+workload MPKI promotion must include `class_bucket_promotion` with non-regressing
+`general` and `gpu_control` buckets, so GPU/control phases cannot be hidden by
+an aggregate MPKI win.
+
+Current RTL workload replay is **capped-prefix coverage evidence**, not a
+full-trace target-met result. The checked `mpki_results_workload_rtl.json`
+aggregate is 89.806403 MPKI across fifteen deterministic 5,000-branch prefixes
+(`branch_replay_cap=5000`); `agent_decode` is 76.494079 MPKI and `agent_loop`
+is 58.575982 MPKI. Full-trace, low-MPKI workload claims remain disabled until
+uncapped RTL replay evidence is generated and passes the branch-prediction gate.
 
 ## Geometry tuning sweep
 
@@ -177,26 +265,45 @@ shapes, and the CBP-5 references) and ranks them by workload-weighted MPKI, writ
 `docs/evidence/cpu_ap/bpu_sweep_results.json` and `…_leaderboard.md`. Each knob
 maps one-to-one to a `bpu_pkg.sv` parameter, so a winning config is a direct
 RTL proposal.
+For capped turnaround runs, `WINDOW_MODE=windows`, `stratified`, or `all` makes
+the harness evaluate middle/late/stratified slices instead of only a prefix,
+which gives GPU/control and phase-change traces a better anti-overfit signal.
 
-Full-trace validation of the current expanded workload set (weighted MPKI,
-lower is better):
+The synthetic set is deliberately broad enough to catch overfitting: regular
+GPU tile loops, SIMT divergence/reconvergence, GPU command processing and
+command-buffer validation, interpreter/JIT dispatch, vtable/path-correlated
+indirects, hash-probe/inline-cache chains, work-stealing queues, allocator/GC
+barriers, alias thrash, phase changes, workload-class phase aliasing, dual
+in-block branches, and RAS exception/tail-call mismatches.
+
+The current checked behavioural sweep is a capped optimisation aid, not a
+full-trace claim. It uses `max_branches_per_trace=500` in
+`docs/evidence/cpu_ap/bpu_sweep_results.json`; lower weighted MPKI is better:
 
 | Config | Weighted MPKI | Δ vs baseline | bpu_pkg.sv change |
 | --- | --- | --- | --- |
-| `baseline` | 10.9421 | — | current `bpu_pkg.sv` geometry |
-| `pre_ittage_hist_long` | 11.0751 | +0.1329 | old ITTAGE history schedule |
-| `tage_use_alt_on_na` | 11.7862 | +0.8440 | alternate-provider mode enabled |
+| `h2p_long_t44` | 47.5332 | -0.3033 | study candidate: raise `H2P_THRESHOLD` from 36 to 44 |
+| `h2p_long_t60` | 47.5427 | -0.2937 | study candidate: raise `H2P_THRESHOLD` from 36 to 60 |
+| `baseline` | 47.8365 | — | promoted SC, ITTAGE, loop, and L2 steering geometry |
 
-**Decision: promote `ITTAGE_TARGET_HISTORY_SHIFT=8` and longer ITTAGE
-histories.** Shift 8 first improved the full-trace weighted mix by 0.0822 MPKI
-over the prior geometry; with shift 8 as baseline, the longer
-`{4,10,20,40,80}` ITTAGE history schedule improved another 0.0502 MPKI. After
-adding nested-loop, XOR-correlation, vtable-path, and interpreter-dispatch
-synthetics plus phase-change, alias-thrash, GPU-occupancy, and RAS-exception
-stressors, the old schedule is 0.1329 MPKI worse than current baseline.
-Path-history variants remain disabled: the 50k capped sweep regressed the
-weighted mix, so the shipped TAGE-SC-L+ITTAGE geometry now keeps target history
-but leaves ITTAGE path history off.
+**Decision: keep the promoted `ITTAGE_TARGET_HISTORY_SHIFT=8`, longer ITTAGE
+histories, and SC-wide/threshold-6 geometry as the current RTL baseline.** The
+historical tuning deltas are no longer cited as target-met evidence here because
+the checked sweep artifact is capped and the RTL workload replay is prefix-only.
+The current capped sweep also found H2P-threshold candidates that improve the
+weighted objective, but they still regress GPU/control stressors such as
+`synthetic:gpu_nested_reconvergence`, `gpu_warp_divergence`, and
+`gpu_command_processor`; they remain sweep candidates rather than defaults.
+The post-associativity 50K capped sweep promoted `ITTAGE_TAG_W=11` plus
+`ITTAGE_PATH_HISTORY_BITS=64`/`ITTAGE_PATH_HISTORY_TOKEN_BITS=8`: the combined
+candidate improved weighted MPKI from `18.9488` to `18.7346` with no per-trace
+regressions across the real, CBP-5, synthetic, and GPU-weighted mix.
+The expanded 50k capped sweep promoted larger ITTAGE capacity from 4K to 8K
+entries and keeps seven TAGE tables as the highest-ranked remaining study
+candidate. Seven TAGE tables improved the capped weighted score, but it regresses
+GPU/control overfitting detectors such as `gpu_warp_divergence`,
+`control_indirect_pair`, and `work_stealing_queues`, so it remains a study
+knob rather than the general default.
 
 The behavioural model now implements the statistical corrector (`sc.sv`) and
 the ITTAGE target-history token parameters it sweeps, so the planning model is
@@ -205,16 +312,57 @@ is available in the model as a tuning lever (`SC_ADAPTIVE`) and measured
 neutral on this trace set; the RTL also implements bounded adaptive threshold
 control.
 
-SC local history stays enabled after a full-trace baseline-vs-disabled check
-with the promoted shift-8 target history (`baseline` 5.5196 MPKI vs
-`sc_no_local_hist` 5.5359). The win is concentrated in GPU/divergence and
-dual-branch-block traces, which matches the E1 tuning objective while still
-leaving the knob visible in the sweep for future general-workload retuning.
+SC local history stays enabled after a full-trace baseline-vs-disabled check.
+The promoted SC geometry is six 1024-entry tables with histories
+`{0,4,10,16,27,44}` and `SC_THRESH_INIT=6`. Local history advances on every
+resolved conditional so the corrector's per-PC stream remains current even when
+the TAGE provider was high confidence; SC counter and threshold training remain
+low-confidence gated. The geometry is still visible in the sweep for future
+general-workload retuning.
 
-The alternate-provider TAGE path (`TAGE_USE_ALT_ON_NA`) is implemented and
-swept but disabled by default. On the expanded full-trace set it regressed
-weighted MPKI by 0.8440, mainly on alias-thrash, GPU divergence, and
-interpreter-dispatch synthetics.
+A separate short local direction corrector exists as package-visible
+`LOCAL_DIR_*` RTL and model geometry, with a `LOCAL_DIR_META_*` per-PC chooser.
+The chooser trains signed counters when saturated local direction disagrees
+with base TAGE and only allows the sidecar after it earns trust. With the H2P
+sidecar enabled, disabling local-direction meta regresses the corrected capped
+sweep from `36.7571` to `37.3359` weighted MPKI, including
+`synthetic:gpu_nested_reconvergence +4.4271`.
+
+An H2P/perceptron-style direction sidecar is implemented in RTL and model as
+`h2p_corrector.sv` plus `H2P_*` geometry. It is threshold-gated behind TAGE/SC:
+the dot-product may override only when its signed margin reaches
+`H2P_THRESHOLD`, and weights train on wrong or low-margin predictions.
+Target-history and path-history feature slices are implemented as
+`H2P_TARGET_HIST_LEN`/`H2P_PATH_HIST_LEN`, but remain zero in the production
+default: the expanded sweep found the multi-perspective variants regressed GPU
+reconvergence/control traces. The corrected capped sweep keeps base H2P
+enabled; `h2p_off` regresses from `36.7571` to `37.8974` weighted MPKI, mainly
+on correlated/control traces and GPU nested reconvergence. An RTL/model
+`H2P_META_*` chooser can gate H2P until it earns per-PC trust. The current
+500-branch smoke sweep with the broader QEMU-RV64 proxy set gives
+`h2p_meta_t1` a small weighted win (`47.6807` versus baseline `47.8365`), but
+it regresses GPU/control stressors (`epoll_rpc_dispatch`, `work_stealing_queues`,
+and `gpu_nested_reconvergence`), so it stays default-off in the production
+package geometry. Raising the base H2P threshold to 44 or 60 is currently the
+better weighted study candidate, but it is also not GPU-neutral.
+
+IMLI-style loop-iteration history is also implemented as package-visible
+`LOOP_IMLI_*` RTL/model geometry. The best current capped candidate,
+`loop_imli_hist4_token3`, improves weighted MPKI from `36.7571` to `36.7510`,
+but it regresses `synthetic:gpu_nested_reconvergence` by `+1.3021` MPKI. The
+production default therefore keeps IMLI disabled while preserving the sweep
+knobs for future GPU-neutral variants.
+
+The static alternate-provider TAGE path (`TAGE_USE_ALT_ON_NA`) remains disabled:
+on the expanded full-trace set it regressed weighted MPKI by 0.8440, mainly on
+alias-thrash, GPU divergence, and interpreter-dispatch synthetics. The adaptive
+use-alt-on-NA chooser is now implemented in RTL and model, snapshots
+provider/alternate direction through the FTQ, and is enabled as the default
+with `TAGE_ALT_ON_NA_ENTRIES=1024`. In the expanded 50K-branch-cap sweep,
+disabling that chooser regressed weighted MPKI from `18.9779` to `19.1681`;
+the old static global alternate-provider path regressed to `20.0834`.
+The current full-trace sweep keeps the adaptive chooser in baseline and ranks
+the promoted baseline first at `16.4290` weighted MPKI.
 
 ## Cross-domain contracts
 
@@ -224,15 +372,15 @@ Two interfaces leave the BPU domain.
 
 The BPU emits one strobe per cycle into `pmu_strb[PMU_EVENTS-1:0]`. The OoO
 domain consumes it through `rtl/cpu/csr/bpu_to_zihpm_remap.sv`, which lands
-each strobe into its Zihpm-event-bus slot. The BPU enum is locked so the
-mapping is a pure `+1` offset, with the helper `bpu_pkg::bpu_pmu_to_hpm()`
-encoding the rule.
+each strobe into its Zihpm-event-bus slot through explicit name-based wiring.
+The current IDs are equivalent to `bpu_pkg::bpu_pmu_to_hpm(pmu_id) = pmu_id + 1`
+except for the documented FTB/BTB and meta-training naming aliases.
 
 | BPU side | OoO side |
 | --- | --- |
 | `rtl/cpu/bpu/bpu_pkg.sv` (`pmu_event_e`, `bpu_pmu_to_hpm()`) | `rtl/cpu/csr/zihpm.sv` (`hpm_event_e`) |
-| 20-bit `pmu_strb` from `bpu_top.pmu_strb` | 256-bit zihpm event bus driven by `bpu_to_zihpm_remap` |
-| Counter readout: `csr_addr` 0..19 → 64-bit counter | OS-visible Zihpm CSRs `mhpmcounter3..15` |
+| 26-bit `pmu_strb` from `bpu_top.pmu_strb` | 256-bit zihpm event bus driven by `bpu_to_zihpm_remap` |
+| Counter readout: `csr_addr` 0..25 → 64-bit counter | OS-visible Zihpm CSRs `mhpmcounter3..15` |
 
 Coordination evidence is produced by
 `scripts/check_pmu_event_alignment.py` (writes
@@ -244,18 +392,60 @@ The BPU writes predicted fetch blocks into the FTQ and emits a downstream
 prefetch request via `rtl/cpu/bpu/ftq_to_l1i_shim.sv`. The cache domain
 consumes `e1_ftq_to_l1i_pkg::ftq_prefetch_req_t` (40-bit physical line +
 3-bit confidence + branch-target hint) on a single-cycle valid/ready
-handshake with a separate flush strobe for misprediction recovery.
+handshake with a separate flush strobe for misprediction recovery. The same
+package also defines `ftq_prefetch_bundle_t`, a two-lane request bundle used by
+widened consumers that can accept both predicted non-contiguous fragments in
+one cycle.
 
 The shim performs three translations:
 
-1. 39-bit Sv39 virtual `target_pc` → 40-bit physical line address (assumes
-   identity V→P at this stage; real translation lives on the cache side).
+1. Each valid `fetch_segments[]` target, falling back to scalar
+   `target_pc` when no segment is valid, maps from 39-bit Sv39 virtual PC to
+   a 40-bit physical line address (assumes identity V→P at this stage; real
+   translation lives on the cache side).
 2. `br_kind_e` → 3-bit confidence (`BR_NONE=0`, `BR_COND=4`, `BR_CALL=5`,
    `BR_RET=6`).
 3. `branch_target` = `fetch_entry.taken`.
 
-The cluster top (`rtl/cpu/cluster/e1_cluster_top.sv`) wires the shim
-between `bpu_top.fetch_entry` and the cache domain.
+The cluster top (`rtl/cpu/cluster/e1_cluster_top.sv`) wires the shim between
+`bpu_top.fetch_entry` and the cache domain. The shim is clocked and exposes
+both interfaces: existing scalar consumers see the first pending segment and
+drain later segments in order through an eight-entry ordered FIFO, while
+widened consumers can use the bundle valid/ready lanes to accept multiple
+non-contiguous segment requests together. The FIFO absorbs younger FTQ pops
+while an older FDIP/L1I prefetch is backpressured; flush still drops every
+queued request from the stale prediction stream.
+
+`bpu_top` also exposes explicit vector redirect lanes:
+`pred_redirect_valid[]`/`pred_redirect_pc[]` for prediction-time segment
+redirects and `late_redirect_valid_lanes[]`/`late_redirect_pc_lanes[]`/
+`late_redirect_ftq_idx_lanes[]` for delayed L2 patches. The scalar
+`target_pc` and `late_redirect_valid/pc/ftq_idx` ports remain for compatibility,
+but widened fetch-control integrations can now consume the same non-contiguous
+segment stream directly instead of reconstructing redirects from the scalar
+next-PC path.
+
+`rtl/cache/prefetch/e1_fdip_l1i_prefetcher.sv` consumes the two-lane bundle
+directly into a small ordered receiver queue and then drains requests onto the
+existing scalar L1I prefetch port. This closes the BPU-to-FDIP bundle-consumer
+contract without changing the L1I miss-pipe width.
+
+`rtl/cpu/bpu/ftq_to_fetch_stream.sv` exposes the same ordered fetch-control
+lanes, including target-block lane-1 sideband redirects, and
+`rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv` drives taken stream targets into
+the L1I demand interface while preserving each lane's FTQ index, segment index,
+and branch kind. The L1I accepts a hot lane 1 in parallel and can now also
+accept a cold lane 1 into an ordered pending miss slot that launches on an
+independent lane-1 miss/refill channel. This proves target-block lane 1 can
+become real demand traffic, can be flushed before escape, and no longer needs
+to serialize through the scalar IFU/prefetch fill pipe.
+
+`rtl/top/e1_soc_integrated.sv` exposes the widened prediction redirect vectors,
+delayed late-redirect vectors, ordered `fetch_stream_*_o` fetch-control stream,
+and optional `l1i_demand_*_o` / `l1i_demand_*_lane1_o` IFU-demand ports at the
+SoC boundary. `fetch_stream_ready_i` and the demand bridge ready inputs
+backpressure FTQ pop, so target-block lane 1 remains ordered and visible until
+downstream fetch logic can accept both lanes.
 
 ## Blockers
 
@@ -265,34 +455,63 @@ between `bpu_top.fetch_entry` and the cache domain.
    (whole-core selection, owned by the OoO domain).
 2. **Full two-taken/non-contiguous fetch** — current geometry parameterises
    `MAX_BR_PER_BLOCK = 2`, stores both FTB slots, carries both through the
-   FTQ, and can redirect to a later conditional when the earlier conditional
-   falls through. The remaining blocker is a true two-taken/non-contiguous
-   fetch contract; the redirect bus still emits one next-PC per cycle.
-3. **Commit-time predictor replay cleanup** — top-level TAGE/SC/ITTAGE
+   FTQ, and emits two `fetch_segments` for the bounded same-block case where
+   an earlier conditional falls through and a later conditional redirects.
+   The BPU-to-L1I shim exposes a two-lane prefetch bundle for those segments
+   while preserving scalar compatibility, and `bpu_top` now exposes vector
+   redirect lanes for prediction-time and delayed L2 redirect events. The
+   BPU now performs a bounded second FTB read into a predicted taken target
+   block and can emit lane 1 for direction-unambiguous direct/call/indirect
+   target-block hits, strongly-taken conditional target-block hits, and
+   conservative target-block returns. Return lookahead uses the call
+   fall-through when the first branch is a call, or the current RAS top when
+   the first branch does not mutate the RAS; it does not predict a return after
+   a first return because the next RAS top is not available combinationally.
+   `ftq_to_fetch_stream` and `fetch_stream_to_l1i_demand` now prove lane 1 can
+  be consumed as ordered L1I demand traffic with redirect-flush purge
+  and retained FTQ/segment/kind provenance. `e1_soc_integrated` also surfaces
+  the widened redirect vectors, ordered fetch-control stream, and lane-0/lane-1
+  L1I demand ports at the structural SoC boundary; the stream and demand ready
+  inputs backpressure FTQ pop rather than dropping lane 1. L1I now accepts a
+  cold lane-1 demand into an ordered
+  pending miss slot and services it through an independent lane-1 miss/refill
+  channel, so lane 1 is no longer hit-only and no longer waits for the scalar
+  fill pipe. Remaining work is connecting the SoC-exposed demand lanes to the
+  production downstream fetch/cache hierarchy.
+3. **Commit-time predictor replay closure** — top-level TAGE/SC/ITTAGE
    updates replay FTQ histories, providers, and SC/TAGE confidence metadata by
-   `resolve.ftq_idx`. The remaining cleanup is removing legacy directed-test
-   provider mirrors from `bpu_resolve_t` once non-FTQ resolve injection paths
-   are retired.
-4. **Speculative history recovery precision** — on a redirect, current
-   speculative direction and target histories rebuild from architectural
-   history plus the resolved outcome. FTQ entries preserve prediction-time
-   history snapshots, but top-level recovery does not yet restore from those
-   snapshots and replay younger surviving predictions.
+   `resolve.ftq_idx`; the resolver bus no longer carries legacy provider
+   mirrors. Non-FTQ directed resolve injection falls back to architectural
+   history and base-provider update semantics.
+4. **Speculative history recovery survivor replay** — on a redirect, current
+   speculative direction and target histories restore from the resolved FTQ
+   prediction-time snapshot and then apply the resolved outcome. The remaining
+   precision gap is only for a future selective-redirect policy that preserves
+   younger FTQ entries; those surviving predictions would need a replay walk.
 5. **L1I translation boundary** — `ftq_to_l1i_shim` lands the prefetch request
-   on the cache agent's interface and the FDIP/L1I ready path has cocotb
-   coverage. Real iTLB-on-receive translation remains in the cache domain.
+   on the cache agent's interface, the FDIP/L1I ready path has cocotb
+   coverage, the shim queues younger FTQ prefetches behind a blocked older
+   prefetch, and FDIP can consume both bundle lanes in one cycle. Real
+   iTLB-on-receive translation remains in the cache domain.
 6. **Real-trace MPKI evidence** — see Accuracy targets.
 7. **Verilator/Yosys/SBY hosting** — the chip package has historically relied
    on Docker/Nix shells for these tools; the local oss-cad-suite checkout
    under `external/oss-cad-suite/` resolves them. `make bpu-lint`,
    `make cocotb-bpu`, and `make formal-bpu` fail closed with `STATUS: BLOCKED`
    when the suite is missing.
-8. **Formal coverage for the FTQ and RAS** — yosys 0.64 (oss-cad-suite) does
-   not accept struct typedefs in module port lists, and its async-reset
-   handling lets the BMC pick arbitrary initial values for reset-driven
-   flops. Both formal harnesses fail closed with named yosys limitations and
-   the cocotb regression (33/33 across 9 modules) carries functional
-   coverage in the interim.
+8. **Bounded formal smoke for the FTQ and RAS** — FTQ bounded queue properties
+   pass through the yosys-slang SystemVerilog frontend. RAS elaborates with
+   FORMAL monitor ports and proves the speculative-pointer range invariant;
+   cocotb covers the RAS underflow pulse, restore behavior, and full BPU
+   regression (104/104 across 10 modules, including the L1I frontend path, TAGE
+   allocation-pressure useful aging, SC all-resolves local-history maintenance,
+   uFTB block-keying, widened L1I prefetch-bundle exposure and downstream
+   FDIP bundle consumption plus duplicate/pollution suppression,
+   set-associative ITTAGE collision retention, expanded ITTAGE upper-table
+   storage, ITTAGE useful-zero victim replacement, optional SC bias-bank,
+   H2P and multi-perspective H2P gating, local-direction gating,
+   IMLI loop-history gating, return-target fallback, SRAM collision forwarding, and same-VA
+   cross-context predictor isolation/flush).
 
 ## Verification surface
 
@@ -301,10 +520,13 @@ between `bpu_top.fetch_entry` and the cache domain.
 | Parameter geometry | `make branch-prediction-check` | `docs/evidence/cpu_ap/branch-prediction-params.json` |
 | Cross-domain PMU IDs | `make pmu-event-alignment-check` | `docs/evidence/cpu_ap/pmu-event-alignment.json` |
 | Verilator strict lint | `make bpu-lint` | `build/reports/bpu/lint-status.yaml` |
-| Cocotb regression | `make cocotb-bpu` | `verify/cocotb/bpu/results/*.xml` |
+| Cocotb regression | `make cocotb-bpu` | `build/reports/bpu/cocotb-aggregate.json` (target-module aggregate); raw XMLs live under `verify/cocotb/bpu/results/*.xml` and may include auxiliary debug/MPKI runs. |
 | SymbiYosys formal | `make formal-bpu` | `build/reports/bpu/formal-status.yaml` |
 | MPKI eval (RTL, cocotb) | `make mpki-eval-rtl` | `docs/evidence/cpu_ap/mpki_results_synthetic.json` |
+| QEMU-RV64 workload prefix replay (RTL, cocotb) | `ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=5000 ... TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh` | `docs/evidence/cpu_ap/mpki_results_workload_rtl.json` |
 | MPKI eval (model only) | `make mpki-eval-model` | `benchmarks/results/branch-prediction-mpki-model.json` |
+| Full MPKI evidence refresh | `make branch-prediction-refresh` | Regenerates model/RTL MPKI evidence, then runs `make branch-prediction-check` |
+| E1 RTL vs CVA6 model MPKI | `make bpu-vs-cva6-mpki-rtl` | `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` |
 | MPKI vs CBP-5 table | — | `docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md` |
 | Behavioural model unit tests | `make bpu-model-test` | pytest (TAGE-SC-L+ITTAGE model) |
 | Real RV64 workload trace | `make bpu-workload-trace` | `external/workload-traces/<name>.btrace.json` |
@@ -324,11 +546,15 @@ between `bpu_top.fetch_entry` and the cache domain.
 - `rtl/cpu/bpu/bpu_top.sv` — integration top.
 - `rtl/cpu/bpu/ftq_to_l1i_shim.sv` — translation to the cache domain's
   L1I-prefetch interface.
+- `rtl/cpu/bpu/ftq_to_fetch_stream.sv` — observational two-lane fetch-control
+  stream adapter for FTQ segments plus target-block lane-1 sideband redirects.
+- `rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv` — scalar IFU-demand consumer for
+  ordered taken fetch-stream targets with FTQ/segment/kind provenance.
 - `verify/cocotb/bpu/` — cocotb unit and integration tests
-  (9 wrappers / 33 tests).
+  (10 wrappers / 103 target tests).
 - `verify/formal/bpu/` — SymbiYosys formal harnesses.
 - `benchmarks/cpu/branch/` — MPKI harness and synthetic traces
-  (8 synthetic generators).
+  (35 synthetic generators).
 - `benchmarks/cpu/branch/bpu_model.py` — behavioural TAGE-SC-L+ITTAGE model
   (includes the statistical corrector, faithful to `sc.sv`).
 - `benchmarks/cpu/branch/workloads/agent_loop.c` — RV64 llama.cpp agent-loop

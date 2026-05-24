@@ -1,0 +1,6 @@
+**/build/
+**/.vscode/
+**/__pycache__/
+**/log/
+**/install/
+simulate/mujoco

@@ -50,7 +50,7 @@ The current project is best described as an evidence-driven scaffold:
 | --- | --- | --- |
 | RTL e1 chip | Verilator/cocotb/formal-oriented e1-chip modules exist. | It is not an Android-capable application processor. |
 | CPU/AP | Docs and generated Chipyard/Rocket artifacts exist in places; local RTL has a tiny CPU scaffold. | No verified RV64GC/OpenSBI/Linux/userspace transcript from the selected AP simulator. |
-| Memory | AXI-lite SRAM/DRAM models and memory contract docs exist. | No real DRAM controller, LPDDR PHY, coherency, cache hierarchy, or IOMMU evidence. |
+| Memory | AXI-lite SRAM/DRAM models, DRAM-controller RTL/sim evidence, and memory contract docs exist. | No phone-class LPDDR PHY/training/capacity/timing evidence, coherency, cache hierarchy, full IOMMU/Linux integration, or QoS evidence. |
 | NPU | Tiny MMIO/GEMM/scratchpad prototype and 2028 NPU target docs exist. | No DMA-fed tensor engine, descriptor ABI, compiler backend, Android delegate, or benchmark proof. |
 | Display | Display scanout/timing scaffold and Android HWC scaffold exist. | No framebuffer-fetch proof tied to Linux/Android SurfaceFlinger/HWC transcript. |
 | Wi-Fi | External module contracts exist. | No SDIO/PCIe enumeration, firmware load, traffic, Android framework, or regulatory evidence. |

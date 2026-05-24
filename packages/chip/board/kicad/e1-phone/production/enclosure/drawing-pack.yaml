@@ -1,0 +1,20 @@
+schema: eliza.e1_phone_production_enclosure_handoff_packet.v1
+packet_id: enclosure_drawing_pack
+status: blocked_missing_supplier_drawing_pack
+release_credit: false
+source_burndown: board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+expected_evidence_type: signed_supplier_drawing_pack
+required_fields_unpopulated:
+  - supplier
+  - drawing_revision
+  - datum_scheme
+  - gd_t_callouts
+  - material_spec
+  - finish_spec
+  - color_texture_spec
+  - inspection_plan
+  - approval_signature
+blockers:
+  - Supplier or toolmaker production enclosure drawing pack has not been returned.
+  - Datums, GD&T, material, finish, color, texture, inspection plan, and approval signature are missing.
+validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py

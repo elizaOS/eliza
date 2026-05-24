@@ -1,0 +1,159 @@
+{
+  "profile": "unitree-g1",
+  "label": "combined_actions",
+  "policy_source": "sb3_smoke",
+  "preserve_state_between_commands": false,
+  "commands": [
+    {
+      "profile": "unitree-g1",
+      "label": "stand up",
+      "task_id": "stand_up",
+      "policy_source": "sb3_smoke",
+      "steps_requested": 40,
+      "steps_executed": 40,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 40,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905239121632436,
+        "max": 0.7916096096819312,
+        "final": 0.7915386488904997,
+        "mean": 0.7915082254183294
+      },
+      "upright_proj": {
+        "min": 0.9999109437981999,
+        "max": 0.999999999673554,
+        "final": 0.999936947611773,
+        "mean": 0.9999572771921688
+      },
+      "reward": {
+        "min": 3.4994123159961465,
+        "max": 3.4999432089318896,
+        "final": 3.4998451211492174,
+        "mean": 3.499711427914849
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    },
+    {
+      "profile": "unitree-g1",
+      "label": "walk forward",
+      "task_id": "walk_forward",
+      "policy_source": "sb3_smoke",
+      "steps_requested": 40,
+      "steps_executed": 40,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 40,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905228819924062,
+        "max": 0.791609882833807,
+        "final": 0.791568424139695,
+        "mean": 0.7915308574765972
+      },
+      "upright_proj": {
+        "min": 0.9999523207852687,
+        "max": 0.9999999770300082,
+        "final": 0.9999642265808317,
+        "mean": 0.9999771911598316
+      },
+      "reward": {
+        "min": 3.4905069913126225,
+        "max": 3.494446211428924,
+        "final": 3.494446211428924,
+        "mean": 3.4920541655676716
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    },
+    {
+      "profile": "unitree-g1",
+      "label": "turn left",
+      "task_id": "turn_left",
+      "policy_source": "sb3_smoke",
+      "steps_requested": 40,
+      "steps_executed": 40,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 40,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905235170388669,
+        "max": 0.7916054239077854,
+        "final": 0.7915300096781357,
+        "mean": 0.7915005272916622
+      },
+      "upright_proj": {
+        "min": 0.9999124709725061,
+        "max": 0.9999999944055004,
+        "final": 0.9999379897969715,
+        "mean": 0.9999583151976339
+      },
+      "reward": {
+        "min": 3.3266474272362014,
+        "max": 3.3400130239793135,
+        "final": 3.3295856734142784,
+        "mean": 3.330468082952005
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    },
+    {
+      "profile": "unitree-g1",
+      "label": "turn right",
+      "task_id": "turn_right",
+      "policy_source": "sb3_smoke",
+      "steps_requested": 40,
+      "steps_executed": 40,
+      "terminated": false,
+      "truncated": true,
+      "first_done_step": 40,
+      "done_reason": "truncated",
+      "fall_threshold": 0.474,
+      "torso_z": {
+        "min": 0.7905222816048529,
+        "max": 0.791603922284875,
+        "final": 0.7915993542574827,
+        "mean": 0.7915477642578048
+      },
+      "upright_proj": {
+        "min": 0.9999849841579058,
+        "max": 0.9999996615081301,
+        "final": 0.9999954653155145,
+        "mean": 0.9999963796846971
+      },
+      "reward": {
+        "min": 3.320095376294566,
+        "max": 3.3325419627170194,
+        "final": 3.328341244331252,
+        "mean": 3.3276349934294998
+      },
+      "rollout_ok": true,
+      "checks": {
+        "no_termination": true,
+        "torso_above_fall_threshold": true,
+        "upright_positive": true
+      }
+    }
+  ],
+  "steps_requested": 160,
+  "steps_executed": 160,
+  "rollout_ok": true
+}

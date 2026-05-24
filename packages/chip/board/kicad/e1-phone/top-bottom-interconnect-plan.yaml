@@ -119,7 +119,7 @@ release_blockers:
   - flex stackup, bend radius, stiffener, and strain relief not drawn
   - USB2 and audio SI across the flex not simulated or measured
   - power contact current rise and return allocation not reviewed
-  - bottom island decoupling, ESD, and test fixture edge not implemented in KiCad
+  - bottom island decoupling, ESD, and test fixture edge pending KiCad capture
   - assembly sequence for battery insertion and split-board connection not validated
 
 forbidden_claims:

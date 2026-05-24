@@ -16,12 +16,15 @@ contract:
     - iommu_fault_count_initially_zero
     - pmc_mailbox_roundtrips_telemetry
     - ftq_l1i_shim_emits_prefetch_on_taken_target
+    - bpu_vector_redirect_lanes_are_soc_visible
+    - bpu_fetch_stream_backpressures_soc_ftq_pop
+    - bpu_fetch_stream_drives_soc_l1i_demand_lanes
     - ftq_l1i_shim_flushes_on_misprediction
     - test_iommu_programmed_fault
     - test_slc_passthrough
     - test_dram_ctrl_dfi_traffic
     - test_cva6_executes_from_bootrom
-  expected_pass_count: 11
+  expected_pass_count: 14
   expected_fail_count: 0
 
 edges:
@@ -39,6 +42,17 @@ edges:
     tested_by:
       - ftq_l1i_shim_emits_prefetch_on_taken_target
       - ftq_l1i_shim_flushes_on_misprediction
+    status: WIRED
+
+  - name: bpu_to_l1i_demand
+    description: >
+      BPU ordered fetch stream → fetch_stream_to_l1i_demand → SoC lane-0/lane-1
+      L1I IFU demand ports with FTQ, segment, and branch-kind provenance
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - bpu_vector_redirect_lanes_are_soc_visible
+      - bpu_fetch_stream_backpressures_soc_ftq_pop
+      - bpu_fetch_stream_drives_soc_l1i_demand_lanes
     status: WIRED
 
   - name: cluster_to_fabric
@@ -284,8 +298,9 @@ edges:
       The cluster-driven path (see `cluster_to_fabric`) is now WIRED
       with all four `e1_cva6_unit_tb` cocotb tests passing — CVA6
       issues AR/AW/W/B handshakes through the wrapper-to-AXI4 adapter
-      end-to-end.  The SLC path here proves the DRAM north port is
-      functional for any master that reaches `fab_s[0]`.
+      end-to-end.  The evidence here proves the DRAM north port for the
+      exercised SLC fixture and CVA6 adapter paths that reach `fab_s[0]`;
+      it is not a universal SoC-top or phone integration proof.
 
   - name: dfi_phy_south
     description: DRAM controller DFI 5.0 → licensed PHY

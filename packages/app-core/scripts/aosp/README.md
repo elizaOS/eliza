@@ -1,8 +1,21 @@
-# AOSP system-app build toolkit
+# AOSP agent-payload toolkit
 
-Generic build, validate, and test scripts for AOSP product images that
-ship the elizaOS privileged Android app. Forks declare their variant
-once in `app.config.ts > aosp:`; every script reads from there.
+Scripts that build and stage the **agent payload** into the elizaOS
+privileged Android app: the per-ABI `libllama.so`, the seccomp/loader
+shim, and the bundled GGUF models, plus the on-device agent smoke test
+and the Pixel deploy helper. Forks declare their variant once in
+`app.config.ts > aosp:`; these scripts read from there.
+
+> **Image build + emulator orchestration lives elsewhere.** The
+> brand-aware, CI-wired orchestrator (`build-aosp.mjs`, `sim.mjs`,
+> `boot-validate.mjs`, `e2e-validate.mjs`, `validate.mjs`,
+> `sync-to-aosp.mjs`, `capture-screens.mjs`, `avd-test.mjs`,
+> `build-bootanimation.mjs`, `lint-init-rc.mjs`) is canonical in
+> `packages/scripts/distro-android/`, driven per-arch through
+> `packages/os/android/Makefile` (`make build|sim ARCH=x86_64|arm64|riscv64`).
+> Those scripts used to be duplicated here; the copies were removed in
+> favor of the single distro-android core. This toolkit keeps only the
+> agent-payload concerns that belong with the app-core runtime.
 
 ## Variant config
 
@@ -39,21 +52,12 @@ toolkit is inert.
 
 | Script | What it does |
 |---|---|
-| `build-aosp.mjs` | End-to-end orchestrator: compile-libllama → stage models → validate → `m -j<N>` → optionally `cvd start --daemon` → boot-validate. |
-| `validate.mjs` | Validate the `os/android/vendor/<vendorDir>/` tree: product makefile, permission XMLs, sepolicy, init.rc syntax, staged APK manifest. |
-| `sync-to-aosp.mjs` | Copy `os/android/vendor/<vendorDir>/` into `<aospRoot>/vendor/<vendorDir>/`. |
-| `boot-validate.mjs` | Validate a booted device or cuttlefish: roles, granted permissions, replacement intent resolvers, `/system/priv-app/<appName>/` install path. |
-| `e2e-validate.mjs` | Wraps boot-validate + capture-screens into a single command that emits `report.json` + a PNG gallery. |
-| `capture-screens.mjs` | Drive `adb shell screencap -p` over a sequenced step list (home, dialer, sms, assist, recents, launcher). |
-| `avd-test.mjs` | Boot a stock Android AVD, debug-sign + install the variant APK, optionally capture screens. |
-| `sim.mjs` | One-shot Cuttlefish runner: wait for `system.img`, `cvd start --daemon`, run e2e-validate, optionally `cvd stop --clean`. |
-| `smoke-cuttlefish.mjs` | End-to-end agent smoke: APK installed, service starts, `/api/health` 200, bearer-token chat round-trip. |
 | `compile-libllama.mjs` | Cross-compile llama.cpp into a musl-linked `libllama.so` per ABI for the on-device bun:ffi runtime. |
 | `compile-shim.mjs` | Cross-compile the SIGSYS-handler shim + musl loader-wrapper for the x86_64 cuttlefish path. |
-| `lint-init-rc.mjs` | Generic AOSP `init.rc` syntax linter. |
-| `build-bootanimation.mjs` | Pack `desc.txt` + `partN/` PNG dirs into the uncompressed `bootanimation.zip` AOSP's bootanimation daemon expects. |
 | `stage-default-models.mjs` | Download bundled chat + embedding GGUFs into APK assets so first-boot chat works offline. |
 | `stage-models-dfm.mjs` | Restructure the regenerated `apps/app/android/` tree into a `:models` dynamic feature module for Play Store AABs. |
+| `smoke-cuttlefish.mjs` | End-to-end agent smoke: APK installed, service starts, `/api/health` 200, bearer-token chat round-trip. |
+| `deploy-pixel.mjs` | Build the agent payload for a real device ABI and install onto a connected Pixel/dev board. |
 
 Each script accepts `--app-config <PATH>` to override
 `apps/app/app.config.ts` for tests.

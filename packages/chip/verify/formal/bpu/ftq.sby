@@ -7,7 +7,8 @@ smtbmc z3
 smtbmc bitwuzla
 
 [script]
-read -formal bpu_pkg.sv ftq.sv ftq_tb.sv ftq_formal.sv
+plugin -i slang
+read_slang --std 1800-2017 --top ftq_formal bpu_pkg.sv ftq.sv ftq_tb.sv ftq_formal.sv
 prep -top ftq_formal
 
 [files]

@@ -1,0 +1,37 @@
+{
+  "profile": "asimov-1",
+  "label": "stand up",
+  "task_id": "stand_up",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/asimov-1/alberta",
+  "steps_requested": 30,
+  "steps_executed": 30,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 30,
+  "done_reason": "truncated",
+  "fall_threshold": 0.378,
+  "torso_z": {
+    "min": 0.6276437755395957,
+    "max": 0.6308487103760387,
+    "final": 0.6308487103760387,
+    "mean": 0.6290594787061324
+  },
+  "upright_proj": {
+    "min": 0.9980495027595052,
+    "max": 0.9999999748164027,
+    "final": 0.9980495027595052,
+    "mean": 0.9996304528753439
+  },
+  "reward": {
+    "min": 3.4747471349856216,
+    "max": 3.49938830992797,
+    "final": 3.4918782854915063,
+    "mean": 3.495294153262177
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

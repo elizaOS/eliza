@@ -1,10 +1,13 @@
 # RISC-V IOMMU v1.0.1 contract
 
-The Eliza phone-class SoC implements the [ratified RISC-V IOMMU v1.0.1
-specification][spec] for per-device DMA isolation across the NPU command
-queue, GPU contexts, DMA channels, display planes, and camera ISP
-pipelines. The implementation lives in `rtl/iommu/` and is verified by
-cocotb tests under `verify/cocotb/iommu/`.
+The Eliza phone-class SoC carries a partial [ratified RISC-V IOMMU v1.0.1
+specification][spec] implementation. The current RTL covers the register and
+fault surface, BARE/identity behavior, IOFENCE.C fetch/decode, an allowlist
+fallback, and a local DDT + Sv39 first-stage read walk under an identity
+G-stage context. It is not yet complete per-device DMA isolation for the NPU
+command queue, GPU contexts, DMA channels, display planes, camera ISP pipelines,
+Linux, or phone-class claims. The implementation lives in `rtl/iommu/` and is
+verified by cocotb tests under `verify/cocotb/iommu/`.
 
 [spec]: https://docs.riscv.org/reference/hardware/iommu/v20240911/_attachments/riscv-iommu.pdf
 
@@ -15,35 +18,35 @@ The IOMMU sits between bus masters and the AXI4 system fabric (see
 
 | Concern | Owner |
 |---|---|
-| Per-device translation (DDT walk) | IOMMU |
-| Per-process translation (PDT walk, PASID) | IOMMU |
-| Two-stage translation (Sv39 + G-stage / Sv48 + G-stage) | IOMMU |
-| Fault recording into a memory-resident ring | IOMMU |
-| Page-request interface for SVA | IOMMU |
-| ATS request/response with PCIe-style devices | IOMMU |
+| Per-device translation (DDT walk) | IOMMU; local minimal DDT KAT only |
+| Per-process translation (PDT walk, PASID) | IOMMU; still blocked for full PDT/PASID evidence |
+| Two-stage translation (Sv39 + G-stage / Sv48 + G-stage) | IOMMU; only S1 Sv39 under identity G-stage is locally covered |
+| Fault recording into a memory-resident ring | IOMMU; staged fault records exist, FQ DMA remains blocked |
+| Page-request interface for SVA | IOMMU; still blocked |
+| ATS request/response with PCIe-style devices | IOMMU; still blocked |
 | Snoop coherency | Cache agent (separate domain) |
 | QoS arbitration | AXI4 interconnect + DRAM controller |
 | Boot-time enable / Linux device-tree binding | Software |
 
 ## Feature subset
 
-The 2028 SoC implements the v1.0.1 mandatory feature set plus the
-optional features required by the upstream Linux RISC-V IOMMU driver
-(merged for v6.10+):
+The 2028 target requires the v1.0.1 mandatory feature set plus the optional
+features required by the upstream Linux RISC-V IOMMU driver (merged for v6.10+).
+Current local RTL evidence is narrower:
 
 | Feature | Status | Notes |
 |---|---|---|
-| Sv39 first-stage | required | matches MMU Sv39 mode |
-| Sv48 first-stage | required | matches MMU Sv48 mode |
-| Sv57 first-stage | optional | advertised in CAPABILITIES |
-| Sv39x4 G-stage | required | virtualization (H-extension hosts) |
-| Sv48x4 G-stage | required | virtualization |
-| PASID (PD20, 20-bit) | required | NPU command-queue contexts |
-| ATS | required | PCIe-style devices using `disco`/peripheral RC |
-| PRI / page-request interface | required | enables shared virtual memory |
-| MSI translation (IGS=2) | required | matches Linux v6.x driver |
-| T2GPA | optional | translates GPA into HPA on ATS |
-| DDT 1-level / 2-level / 3-level walk | required | scales to 24-bit DID |
+| Sv39 first-stage | partial local evidence | DDT + Sv39 read walk KAT under identity G-stage |
+| Sv48 first-stage | required target | not yet locally covered |
+| Sv57 first-stage | optional target | advertised in CAPABILITIES, not locally covered |
+| Sv39x4 G-stage | required target | not yet locally covered beyond identity G-stage context |
+| Sv48x4 G-stage | required target | not yet locally covered |
+| PASID (PD20, 20-bit) | required target | fields exist; full PDT/PASID behavior remains blocked |
+| ATS | required target | PCIe-style devices using `disco`/peripheral RC; blocked |
+| PRI / page-request interface | required target | enables shared virtual memory; blocked |
+| MSI translation (IGS=2) | required target | matches Linux v6.x driver; blocked |
+| T2GPA | optional target | translates GPA into HPA on ATS; blocked |
+| DDT 1-level / 2-level / 3-level walk | required target | local KAT covers a minimal DDT path only |
 
 ## Register map
 
@@ -130,22 +133,20 @@ TTYP encodings used in verification:
 
 ## ATS support
 
-The implementation advertises `CAPABILITIES.ATS = 1`. PCIe-style devices
-issue ATS translation requests through the upstream AXI4 master with
-`AxUSER` bit 7 asserted; the IOMMU replies with an ATS completion that
-carries the translated address plus the global/exec/privilege bits.
-ATS is required for the Android NN HAL on RISC-V because the kernel
-RISC-V IOMMU driver expects ATS-capable devices to opt into pre-resolved
-translation.
+`CAPABILITIES.ATS` is currently part of the advertised target surface, but
+end-to-end ATS request/completion behavior is still blocked. The local RTL
+evidence does not yet prove PCIe-style devices can issue ATS translation
+requests, receive completions, cache translations, or revoke those translations
+on teardown/reset. Those claims remain gated by
+`docs/evidence/memory/iommu-evidence-gate.yaml`.
 
 ## Page-request interface (PRI)
 
-When a device issues a transaction whose translation faults but the
-underlying page may be made present by the OS (shared virtual memory),
-the IOMMU emits a page-request record into `PQB`/`PQT`. The Linux driver
-responds by populating the page tables and issuing a `IOTINVAL.VMA`
-command to flush the IOMMU's TLB. This loop matches the upstream PCIe
-PRI protocol implemented by the kernel.
+PRI is a target requirement, not a completed local behavior. The register
+surface and MMIO plumbing exist, but the current evidence does not prove that a
+device fault emits a page-request record into `PQB`/`PQT` or that Linux can
+resolve the fault and invalidate the IOMMU TLB. The verified subset keeps these
+claims blocked until transaction-level PRI tests and Linux transcripts exist.
 
 ## Kernel-driver expectations
 
@@ -175,12 +176,11 @@ fail closed against unauthorized-IOVA tests.
 | `test_riscv_iommu.py::translate_mode_allows_known_devid` | `verify/cocotb/iommu/` | authorized devid completes |
 | `test_riscv_iommu.py::pasid_isolation_via_allowlist_revoke` | `verify/cocotb/iommu/` | revoking a DID re-faults |
 
-Authoritative behavioural reference: the RTL is cross-checked against
-the [`riscv-non-isa/riscv-iommu`][refmodel] upstream model whose pinned
+Reference-model tracking: the pinned [`riscv-non-isa/riscv-iommu`][refmodel]
 revision is recorded in
-`verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml`. The cloned
-tree itself lives under `verify/external/` (gitignored); the manifest
-survives in tracked storage so the pin is never lost.
+`verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml`. The current gate checks
+that manifest pin and the local cocotb evidence; it does not yet run a live
+cross-check against the upstream reference model.
 
 [refmodel]: https://github.com/riscv-non-isa/riscv-iommu
 
@@ -190,13 +190,12 @@ The fail-closed evidence gate for this block is
 `docs/evidence/memory/iommu-evidence-gate.yaml`. Promoting any phone-class
 IOMMU claim requires:
 
-1. Passing every cocotb test listed above.
-2. A pinned reference-model revision under
-   `verify/external/riscv-iommu/manifest.yaml`.
-3. A fault-injection report at
-   `docs/evidence/memory/iommu_fault_injection_report.json` produced by
-   `scripts/check_iommu_evidence.py`.
-4. ATS round-trip evidence (TR_REQ_IOVA → TR_RESPONSE) with a Linux
+1. Passing every required cocotb test enforced by `scripts/check_iommu_evidence.py`.
+2. The tracked reference-model manifest at
+   `verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml`.
+3. No stale blocked or contradiction artifacts under
+   `docs/evidence/memory/` for the IOMMU subset.
+4. ATS round-trip evidence with a Linux
    v6.10+ kernel boot transcript.
 5. PASID-context-switch evidence proving that two simultaneously
    active masters with different PASIDs see isolated translations.

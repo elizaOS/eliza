@@ -31,6 +31,7 @@ REQUIRED_ARTIFACTS = {
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/pd_signoff.json"
+MANIFEST_REPORT = ROOT / "build/reports/pd_signoff_manifest.json"
 SCHEMA = "eliza.pd_signoff.v1"
 CLAIM_BOUNDARY = "pd_signoff_artifact_validation_only_not_tapeout_release_evidence"
 
@@ -52,6 +53,26 @@ ARTIFACT_LABELS = {
     "congestion_report": "congestion report",
     "density_fill_report": "density/fill report",
     "tool_versions": "tool-version report",
+}
+
+ARTIFACT_BLOCKER_CLASSES = {
+    "run_manifest": "release_manifest",
+    "gds": "layout_database",
+    "def": "layout_database",
+    "gate_netlist": "netlist",
+    "corner_manifest": "timing_corners",
+    "sdc": "timing_constraints",
+    "spef": "timing_parasitics",
+    "sdf": "timing_backannotation",
+    "drc_report": "drc",
+    "klayout_drc_report": "drc",
+    "lvs_report": "lvs",
+    "antenna_report": "antenna",
+    "sta_report": "timing",
+    "utilization_report": "physical_metrics",
+    "congestion_report": "routing_drv",
+    "density_fill_report": "density_fill",
+    "tool_versions": "reproducibility",
 }
 
 RUN_OUTPUT_SPECS = {
@@ -169,7 +190,17 @@ RELEASE_FAIL_CLOSED_KEYS = {
 }
 
 
-def write_report(status: str, mode: str, manifest: Path, findings: list[str]) -> None:
+def write_report(
+    status: str,
+    mode: str,
+    manifest: Path,
+    findings: list[str],
+    report_path: Path | None = None,
+    diagnostics: dict | None = None,
+) -> None:
+    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
+    closest_run = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
     try:
         evidence = manifest.relative_to(ROOT).as_posix()
     except ValueError:
@@ -182,8 +213,19 @@ def write_report(status: str, mode: str, manifest: Path, findings: list[str]) ->
         "manifest": evidence,
         "summary": {
             "release_ready": status == "pass" and mode == "artifacts",
+            "release_credit": False,
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
+            "selected_run": blocker_classes.get("selected_run"),
+            "closest_run": closest_run.get("run") if isinstance(closest_run, dict) else None,
+            "closest_run_missing_artifact_count": (
+                closest_run.get("missing_count") if isinstance(closest_run, dict) else None
+            ),
+            "blocked_release_gate_count": (
+                len(blocker_classes.get("blocked_release_gates", []))
+                if isinstance(blocker_classes, dict)
+                else 0
+            ),
         },
         "findings": [
             {
@@ -199,8 +241,13 @@ def write_report(status: str, mode: str, manifest: Path, findings: list[str]) ->
             for index, finding in enumerate(findings, start=1)
         ],
     }
-    REPORT.parent.mkdir(parents=True, exist_ok=True)
-    REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if diagnostics is not None:
+        payload["diagnostics"] = diagnostics
+        payload["release_unblock_plan"] = release_unblock_plan(diagnostics)
+        payload["repo_artifact_generation_plan"] = repo_artifact_generation_plan(diagnostics)
+    destination = report_path or (MANIFEST_REPORT if mode == "manifest" else REPORT)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def as_list(value: object) -> list[str]:
@@ -214,6 +261,127 @@ def artifact_label(name: str) -> str:
 
 def artifact_list(names: list[str]) -> str:
     return ", ".join(artifact_label(name) for name in names)
+
+
+def artifact_gap_rows(manifest: dict, names: list[str]) -> list[dict]:
+    required = manifest.get("required_artifacts", {})
+    rows = []
+    for name in sorted(names):
+        spec = required.get(name, {}) if isinstance(required, dict) else {}
+        rows.append(
+            {
+                "artifact": name,
+                "label": ARTIFACT_LABELS.get(name, name),
+                "blocker_class": ARTIFACT_BLOCKER_CLASSES.get(name, "artifact"),
+                "expected_globs": as_list(spec.get("globs")) if isinstance(spec, dict) else [],
+                "producer_command": "scripts/run_openlane.sh --release",
+                "validation_command": "python3 scripts/check_pd_signoff.py",
+                "accepted_exit_code": 0,
+                "expected_output": "PD signoff gate accepts the artifact class from one complete e1_chip_top run.",
+                "release_credit": False,
+            }
+        )
+    return rows
+
+
+def release_unblock_plan(diagnostics: dict | None) -> dict:
+    artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
+    closest = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
+    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    missing_artifacts = (
+        closest.get("missing_artifact_classes", []) if isinstance(closest, dict) else []
+    )
+    blocked_gates = (
+        blocker_classes.get("blocked_release_gates", [])
+        if isinstance(blocker_classes, dict)
+        else []
+    )
+    return {
+        "release_credit": False,
+        "claim_boundary": (
+            "Unblock plan is diagnostic only; release credit requires a clean or formally "
+            "waived complete PD signoff run plus closed release gates."
+        ),
+        "closest_run": closest.get("run") if isinstance(closest, dict) else None,
+        "missing_artifact_count": len(missing_artifacts),
+        "blocked_release_gate_count": len(blocked_gates),
+        "missing_artifacts": missing_artifacts,
+        "blocked_release_gates": blocked_gates,
+        "next_commands": [
+            "scripts/run_openlane.sh --release",
+            "python3 scripts/check_pd_signoff.py",
+            "python3 scripts/check_pd_release_evidence.py",
+        ],
+    }
+
+
+def repo_artifact_generation_plan(diagnostics: dict | None) -> dict:
+    artifact_gap = diagnostics.get("artifact_gap", {}) if isinstance(diagnostics, dict) else {}
+    closest = artifact_gap.get("closest_run", {}) if isinstance(artifact_gap, dict) else {}
+    blocker_classes = diagnostics.get("blocker_classes", {}) if isinstance(diagnostics, dict) else {}
+    missing_artifacts = (
+        closest.get("missing_artifact_classes", []) if isinstance(closest, dict) else []
+    )
+    blocked_gates = (
+        blocker_classes.get("blocked_release_gates", [])
+        if isinstance(blocker_classes, dict)
+        else []
+    )
+    artifact_rows = [
+        {
+            "artifact": row.get("artifact"),
+            "label": row.get("label"),
+            "blocker_class": row.get("blocker_class"),
+            "expected_globs": row.get("expected_globs", []),
+            "producer_command": row.get("producer_command"),
+            "validation_command": row.get("validation_command"),
+            "repo_generatable_now": False,
+            "can_close_release_from_current_repo": False,
+            "blocked_by": [
+                "missing_clean_release_signoff_replay",
+                "blocked_release_gates",
+                "external_review_or_formal_waiver_evidence",
+            ],
+            "release_credit": False,
+        }
+        for row in missing_artifacts
+    ]
+    gate_rows = [
+        {
+            "gate": gate.get("gate"),
+            "reason": gate.get("reason"),
+            "evidence_manifest": gate.get("evidence_manifest"),
+            "unblock_requires": gate.get("unblock_requires", []),
+            "repo_generatable_now": False,
+            "can_close_release_from_current_repo": False,
+            "blocked_by": [
+                "external_release_evidence",
+                "clean_or_formally_waived_signoff",
+            ],
+            "release_credit": False,
+        }
+        for gate in blocked_gates
+    ]
+    return {
+        "release_credit": False,
+        "claim_boundary": (
+            "This plan classifies release-credit closure only. A repo command may "
+            "regenerate diagnostics, but it cannot close PD signoff until a complete "
+            "clean/formally waived release run and blocked release gates are resolved."
+        ),
+        "repo_generatable_now_count": 0,
+        "can_close_from_current_repo_count": 0,
+        "blocked_missing_artifact_count": len(artifact_rows),
+        "blocked_release_gate_count": len(gate_rows),
+        "blocked_generation_count": len(artifact_rows) + len(gate_rows),
+        "missing_artifacts": artifact_rows,
+        "blocked_release_gates": gate_rows,
+        "next_commands": [
+            "scripts/run_openlane.sh --release",
+            "python3 scripts/check_pd_signoff.py",
+            "python3 scripts/check_pd_release_evidence.py",
+        ],
+    }
 
 
 def is_placeholder(value: object) -> bool:
@@ -863,6 +1031,89 @@ def choose_complete_run(
     return None, best_artifacts, missing_by_run
 
 
+def closest_run_diagnostics(root: Path, manifest: dict, missing_by_run: dict[Path, list[str]]) -> dict:
+    required = manifest.get("required_artifacts", {})
+    required_count = len(required) if isinstance(required, dict) else 0
+    rows = []
+    for run_dir, missing in missing_by_run.items():
+        rows.append(
+            {
+                "run": run_dir.relative_to(root).as_posix(),
+                "present_count": required_count - len(missing),
+                "missing_count": len(missing),
+                "missing_artifact_classes": artifact_gap_rows(manifest, missing),
+                "next_command": (
+                    "scripts/run_openlane.sh --release && "
+                    "python3 scripts/check_pd_signoff.py"
+                ),
+                "release_credit": False,
+            }
+        )
+    rows.sort(key=lambda item: (-item["present_count"], item["missing_count"], item["run"]))
+    closest = rows[0] if rows else None
+    return {
+        "release_credit": False,
+        "claim_boundary": (
+            "Closest-run matching is an artifact-presence diagnostic only. It does not "
+            "waive dirty reports and does not prove DRC, LVS, antenna, timing, or DRV closure."
+        ),
+        "required_artifact_count": required_count,
+        "closest_run": closest,
+        "closest_runs": rows[:8],
+        "required_next_commands": [
+            "scripts/run_openlane.sh --release",
+            "python3 scripts/check_pd_signoff.py",
+            "python3 scripts/openlane_pd_blocker_summary.py --write-report",
+        ],
+    }
+
+
+def report_blocker_diagnostics(root: Path, manifest: dict, complete_run: Path | None) -> dict:
+    artifact_paths = {
+        "drc": ["drc_report", "klayout_drc_report"],
+        "lvs": ["lvs_report"],
+        "antenna": ["antenna_report"],
+        "timing": ["sta_report", "spef", "sdf", "corner_manifest", "sdc"],
+        "drv": ["congestion_report", "utilization_report"],
+    }
+    blocked_release_gates = []
+    gates = manifest.get("blocked_gates", {})
+    if isinstance(gates, dict):
+        for gate_name, gate in sorted(gates.items()):
+            if isinstance(gate, dict) and gate.get("blocked") is True:
+                blocked_release_gates.append(
+                    {
+                        "gate": gate_name,
+                        "reason": gate.get("reason"),
+                        "evidence_manifest": gate.get("evidence_manifest"),
+                        "unblock_requires": gate.get("unblock_requires", []),
+                        "release_credit": False,
+                    }
+                )
+    return {
+        "release_credit": False,
+        "claim_boundary": (
+            "These blocker classes are derived from manifest artifacts and parsed reports. "
+            "They are diagnostics only; release still requires clean or formally waived signoff."
+        ),
+        "selected_run": complete_run.relative_to(root).as_posix() if complete_run else None,
+        "blocked_release_gates": blocked_release_gates,
+        "blocked_release_gate_count": len(blocked_release_gates),
+        "blocker_classes": {
+            class_name: {
+                "artifact_classes": names,
+                "expected_artifact_paths": artifact_gap_rows(manifest, names),
+                "next_command": (
+                    "scripts/run_openlane.sh --release && "
+                    "python3 scripts/check_pd_signoff.py"
+                ),
+                "release_credit": False,
+            }
+            for class_name, names in artifact_paths.items()
+        },
+    }
+
+
 def validate_release_closure_metrics(run_dir: Path) -> list[str]:
     metrics, failures = check_pd_closure.load_metrics(run_dir)
     if metrics:
@@ -922,10 +1173,11 @@ def main() -> int:
         failures.append("no PD run directories found under run_roots: " + ", ".join(run_roots))
     elif complete_run is None:
         best_run = min(missing_by_run, key=lambda run: len(missing_by_run[run]))
-        failures.append("no single PD run contains all required signoff artifacts")
         failures.append(
-            f"closest run {best_run.relative_to(root)} missing: "
-            + ", ".join(missing_by_run[best_run])
+            "no single PD run contains all required signoff artifacts; "
+            f"closest run {best_run.relative_to(root)} is missing "
+            f"{len(missing_by_run[best_run])} required artifact class(es): "
+            + artifact_list(missing_by_run[best_run])
         )
     else:
         print(f"Checking PD signoff run: {complete_run.relative_to(root)}")
@@ -964,12 +1216,16 @@ def main() -> int:
             failures.append(f"signoff report missing required clean marker: {report_path}")
 
     if failures:
-        write_report("blocked", "artifacts", manifest_path, failures)
+        diagnostics = {
+            "artifact_gap": closest_run_diagnostics(root, manifest, missing_by_run),
+            "blocker_classes": report_blocker_diagnostics(root, manifest, complete_run),
+        }
+        write_report("blocked", "artifacts", manifest_path, failures, diagnostics=diagnostics)
         print("STATUS: BLOCKED PD signoff artifact check")
         print("PD signoff artifact check failed:")
         for failure in failures:
             print(f"  - {failure}")
-        return 1
+        return 2
 
     mode = "manifest" if args.manifest_only else "artifacts"
     write_report("pass", mode, manifest_path, [])

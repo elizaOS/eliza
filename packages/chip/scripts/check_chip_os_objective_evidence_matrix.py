@@ -61,7 +61,7 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         "chip",
         "CPU/AP completion scope allows a real Linux/AOSP-capable AP claim instead of a scaffold or incomplete transcript claim.",
         "cpu_ap_scope.json",
-        closure_evidence="CPU/AP scope report status=pass with release_claim_allowed=true, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark/power/process-corner evidence.",
+        closure_evidence="CPU/AP scope report must reach status=pass with release_claim_allowed=true, completion claimed, required generated AP transcripts present, and no missing Linux/RV64GC/AP benchmark/power/process-corner evidence.",
     ),
     Requirement(
         "cpu_ap_boot_readiness",
@@ -255,7 +255,6 @@ REQUIREMENTS: tuple[Requirement, ...] = (
         "Linux and Android consume a shared riscv64 agent payload contract.",
         "cross_fork_agent_payload_contract.json",
         proof_kind="static",
-        static_only=True,
         closure_evidence="Static cross-fork payload contract status=pass; runtime liveness still requires separate Linux and Android agent evidence.",
     ),
     Requirement(
@@ -411,6 +410,12 @@ def code_from_struct(kind: str, value: dict[str, Any]) -> str:
     return code_from_text(f"{kind}_{raw}", kind)
 
 
+def detail_kind_for_key(key: str) -> str:
+    if key == "entries":
+        return "entry"
+    return key[:-1] if key.endswith("s") else key
+
+
 def report_findings(data: dict[str, Any]) -> list[str]:
     codes: list[str] = []
     seen: set[str] = set()
@@ -419,13 +424,14 @@ def report_findings(data: dict[str, Any]) -> list[str]:
         "blockers",
         "errors",
         "failures",
+        "entries",
         "blockers_to_on_chip_os_boot",
         "blockers_to_minimum_linux_npu_target",
     ):
         values = data.get(key, [])
         if not isinstance(values, list):
             continue
-        kind = key[:-1] if key.endswith("s") else key
+        kind = detail_kind_for_key(key)
         for value in values:
             code: str | None = None
             if isinstance(value, dict):
@@ -524,6 +530,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--report-dir", default=str(REPORT_DIR))
     parser.add_argument("--report", default=str(REPORT))
+    parser.add_argument("--json-only", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -533,6 +540,9 @@ def main(argv: list[str] | None = None) -> int:
     output = Path(args.report)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(matrix, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.json_only:
+        print(json.dumps(matrix, indent=2, sort_keys=True))
+        return 0
     summary = matrix["summary"]
     print(
         f"STATUS: {str(matrix['status']).upper()} chip_os_objective_evidence_matrix "

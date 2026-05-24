@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from eliza_robot.asimov_1.livekit_dry_run import FakeAsimovEdgePb2, FakeLiveKitRoom
 from eliza_robot.asimov_1.livekit_transport import LiveKitAsimovTransport
 from eliza_robot.asimov_1.real_command_probe import probe_real_command_sequence
@@ -27,6 +29,27 @@ def test_staged_real_command_probe_defaults_to_telemetry_then_damp_only() -> Non
         assert report["commands_sent"] == ["mode:DAMP"]
         assert report["checks"]["telemetry_before_commands"] is True
         assert len(room.local_participant.published) == 1
+
+    asyncio.run(run())
+
+
+def test_staged_real_command_probe_rejects_velocity_without_stand_flag() -> None:
+    async def run() -> None:
+        room = FakeLiveKitRoom()
+        transport = LiveKitAsimovTransport(
+            url="wss://asimov.probe.invalid",
+            token="token",
+            room=room,
+            edge_pb2=FakeAsimovEdgePb2,
+        )
+
+        with pytest.raises(ValueError, match="requires --allow-stand"):
+            await probe_real_command_sequence(
+                transport,
+                timeout_s=0.1,
+                allow_zero_velocity=True,
+            )
+        assert room.local_participant.published == []
 
     asyncio.run(run())
 

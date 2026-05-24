@@ -99,7 +99,7 @@ Linux/Android readiness is blocked on the following explicit memory evidence. Th
 
 ## Claim boundary
 
-The current memory path is scaffold evidence only. It is SRAM-backed storage with AXI-Lite response behavior, not real DRAM capacity or timing evidence. It does not implement a DRAM controller, LPDDR/DDR PHY, training, refresh, ECC, cache hierarchy, UMA coherency protocol, coherent DMA, IOMMU/SMMU translation, page-fault reporting, memory QoS, bandwidth counters, or display/NPU contention guarantees.
+The current memory path is scaffold evidence only. It includes RTL DRAM-controller/fabric simulation evidence, but it is not real DRAM capacity or timing evidence and does not provide LPDDR/DDR PHY, training, refresh/ECC closure, cache hierarchy, UMA coherency protocol, coherent DMA, phone-class IOMMU/SMMU integration, IOMMU/SMMU translation, memory QoS, bandwidth counters, or display/NPU contention guarantees.
 
 `docs/evidence/memory/uma-dram-evidence-gate.yaml` is the local evidence gate for this boundary. Passing that gate means the repository distinguishes the SRAM-backed DMA containment scaffold from real DRAM/UMA/coherency/IOMMU work; it must not be used as release evidence for Android shared buffers, AI throughput, display smoothness, memory bandwidth, or tapeout readiness.
 
@@ -129,6 +129,6 @@ make benchmarks-dry-run
 ```
 
 The Chipyard commands inspect generated memory-map and payload preflight state only. They do not prove DRAM training, LPDDR timing, boot handoff, or Android shared-buffer correctness.
-Real DRAM, PHY timing, refresh, training, ECC, cache coherency, IOMMU/SMMU, and QoS are not implemented by the current scaffold. This is a real memory controller boundary only: the checked-in model is SRAM-backed, has no cache coherency, no IOMMU, and no QoS.
+Real DRAM, PHY timing, refresh, training, ECC, cache coherency, IOMMU/SMMU, and QoS are not implemented by the current scaffold. There is no cache coherency, no IOMMU phone/Linux integration, and no QoS evidence for a real memory hierarchy claim. The checked-in memory-controller path now includes a full-AXI4 DRAM-controller simulation model with parameterized 2 GiB geometry and DRAMsim-derived row timing; this is a real memory controller boundary for RTL simulation, not phone-class DRAM/UMA evidence. The separate e1-chip scaffold remains SRAM-backed, and the IOMMU has a local translation-subset gate only.
 
 Any software or product claim that depends on a real memory hierarchy must fail closed until controller, PHY, coherency, IOMMU, and QoS evidence is checked in.

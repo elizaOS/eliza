@@ -8,7 +8,7 @@
 
 # elizaOS custom plugins
 -keep class ai.elizaos.plugins.** { *; }
--keep class ai.elizaos.app.** { *; }
+-keep class app.eliza.** { *; }
 
 # WebView JavaScript interface
 -keepclassmembers class * {

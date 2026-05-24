@@ -39,7 +39,30 @@ case "${ARCH}" in
     amd64)
         QEMU_BIN=qemu-system-x86_64
         MACHINE=(-machine q35,accel=kvm:tcg -cpu max)
-        FIRMWARE=(-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd)
+        # OVMF file naming varies by distro: older builds ship a single
+        # OVMF_CODE.fd; current Debian/Ubuntu ship the split 4MB build
+        # OVMF_CODE_4M.fd + OVMF_VARS_4M.fd. The CODE pflash needs a matching
+        # writable VARS store, so copy the template like the riscv64 branch.
+        OVMF_CODE=""
+        OVMF_VARS=""
+        for c in /usr/share/OVMF/OVMF_CODE_4M.fd /usr/share/OVMF/OVMF_CODE.fd; do
+            [ -f "$c" ] && { OVMF_CODE="$c"; break; }
+        done
+        for v in /usr/share/OVMF/OVMF_VARS_4M.fd /usr/share/OVMF/OVMF_VARS.fd; do
+            [ -f "$v" ] && { OVMF_VARS="$v"; break; }
+        done
+        if [ -n "${OVMF_CODE}" ] && [ -n "${OVMF_VARS}" ]; then
+            OVMF_VARS_RUNTIME="$(mktemp)"
+            cp "${OVMF_VARS}" "${OVMF_VARS_RUNTIME}"
+            trap 'rm -f "${OVMF_VARS_RUNTIME}"' EXIT
+            FIRMWARE=(
+                -drive "if=pflash,format=raw,unit=0,readonly=on,file=${OVMF_CODE}"
+                -drive "if=pflash,format=raw,unit=1,file=${OVMF_VARS_RUNTIME}"
+            )
+        else
+            # The amd64 ISO is BIOS-bootable too; fall back to SeaBIOS default.
+            FIRMWARE=()
+        fi
         CDROM=(-cdrom "${ISO}")
         ;;
     arm64)
@@ -75,21 +98,32 @@ case "${ARCH}" in
         ;;
 esac
 
-# Graphical desktop window. amd64/arm64 get a usable framebuffer from their
-# machine. riscv64 virt has no default GPU, so add a virtio-gpu plus a USB
-# pointer/keyboard so the GNOME session is usable interactively.
-DISPLAY_ARGS=(-display gtk)
-if [ "${ARCH}" = "riscv64" ]; then
-    DISPLAY_ARGS=(
-        -device virtio-gpu-pci
-        -device qemu-xhci -device usb-tablet -device usb-kbd
-        "${DISPLAY_ARGS[@]}"
-    )
-fi
+# Graphical window. The elizaOS kiosk session is the cage (wlroots) compositor,
+# which requires a DRM/KMS device (/dev/dri/card0) — plain `-vga std` has none,
+# so cage cannot start and the boot falls back to the text console. Give every
+# arch a virtio GPU (KMS-capable) plus USB pointer/keyboard. amd64 uses `-vga
+# virtio` (keeps a VGA-compat path for early GRUB/firmware on q35); arm64 and
+# riscv64 `virt` machines have no default GPU so attach virtio-gpu-pci.
+case "${ARCH}" in
+    amd64)
+        DISPLAY_ARGS=(
+            -vga virtio
+            -device qemu-xhci -device usb-tablet -device usb-kbd
+            -display gtk
+        )
+        ;;
+    arm64|riscv64)
+        DISPLAY_ARGS=(
+            -device virtio-gpu-pci
+            -device qemu-xhci -device usb-tablet -device usb-kbd
+            -display gtk
+        )
+        ;;
+esac
 
 exec "${QEMU_BIN}" \
     "${MACHINE[@]}" \
-    -m 4096 -smp 2 \
+    -m 8192 -smp 4 \
     "${FIRMWARE[@]}" \
     "${CDROM[@]}" \
     -netdev user,id=n0 -device virtio-net-pci,netdev=n0 \

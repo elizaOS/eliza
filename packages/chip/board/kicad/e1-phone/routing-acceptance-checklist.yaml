@@ -93,7 +93,7 @@ acceptance_items:
         part
       - courtyard, height, keepout, and 3D model binding review
       - KiCad symbol-to-footprint association report
-    blocker: Current PCB still uses non-release placeholder footprints and supplier evidence is not accepted.
+    blocker: Production concept PCB still uses non-release placeholder footprints; local real-footprint development replacements are not supplier release evidence.
   - id: schematic_erc_and_netclass_capture
     owner: ee
     status: blocked_missing_supplier_footprint_route_drc_si_or_production_evidence
@@ -180,10 +180,10 @@ release_blockers:
     evidence
   - split-interconnect placeholder pad order now follows the allocation but still lacks real connector symbols,
     supplier footprints, ERC, and DRC
-  - current PCB has placeholder footprints, zero routed segments, and zero filled zones
+  - production concept PCB has placeholder footprints, zero routed segments, and zero filled zones; local routed real-footprint development board is non-release
   - current PCB keepout zones are present but do not replace routed copper, DRC, or enclosure clearance evidence
   - route feasibility has no supplier-footprint trial-route evidence
-  - post-route SI/PI/RF/power reports, DRC, production outputs, and routed STEP are missing
+  - post-route SI/PI/RF/power reports, DRC, production outputs, and supplier-approved routed STEP are missing
   - enclosure clearance has not been rerun from a routed board STEP
 forbidden_claims:
   - route_feasible

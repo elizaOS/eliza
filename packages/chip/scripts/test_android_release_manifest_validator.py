@@ -82,6 +82,19 @@ class AndroidReleaseManifestValidatorTests(unittest.TestCase):
             self.assertEqual(payload["status"], "blocked")
             self.assertEqual(payload["artifacts"][0]["status"], "missing")
             self.assertIn("artifact file not found", payload["errors"][0])
+            instructions = payload["release_artifact_instructions"]
+            self.assertIn(
+                "packages/chip/sw/aosp-device/build-aosp-riscv64.sh",
+                instructions["build_commands"][0],
+            )
+            self.assertIn("cp ", instructions["stage_commands"][1])
+            self.assertIn("sha256sum", instructions["manifest_update_commands"][1])
+            self.assertTrue(
+                any("result_code=0" in item for item in instructions["provenance_requirements"])
+            )
+            self.assertTrue(
+                any("riscv64 artifact staging instructions" in error for error in payload["errors"])
+            )
 
     def test_write_evidence_passes_when_artifact_matches_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

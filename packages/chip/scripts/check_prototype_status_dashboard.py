@@ -208,7 +208,8 @@ def main() -> int:
         print("dashboard missing parseable MVP Gate Snapshot table")
         return 1
 
-    for status in run_mvp_json():
+    mvp_statuses = run_mvp_json()
+    for status in mvp_statuses:
         subsystem = status["subsystem"]
         row = dashboard_rows.get(subsystem)
         if row is None:
@@ -252,7 +253,7 @@ def main() -> int:
                 )
                 return 1
 
-    extra_rows = sorted(set(dashboard_rows) - {status["subsystem"] for status in run_mvp_json()})
+    extra_rows = sorted(set(dashboard_rows) - {status["subsystem"] for status in mvp_statuses})
     if extra_rows:
         write_report(
             "fail",

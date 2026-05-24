@@ -1,4 +1,4 @@
-# Fused product: OpenAgent E1 RISC-V AI SoC + ElizaOS system-assistant overlay.
+# Fused product: OpenAgent E1 RISC-V AI SoC + elizaOS system-assistant overlay.
 #
 # The base device tree (board config, kernel cmdline, init.rc, sepolicy,
 # VINTF manifests, NPU HAL fragments) comes from the chip team's
@@ -18,7 +18,7 @@ $(call inherit-product, device/eliza/eliza_ai_soc/eliza_ai_soc.mk)
 
 PRODUCT_NAME := eliza_openagent_ai_soc_phone
 PRODUCT_DEVICE := eliza_ai_soc
-PRODUCT_MODEL := ElizaOS Phone (OpenAgent E1)
+PRODUCT_MODEL := elizaOS Phone (OpenAgent E1)
 
 # Pinned before inheriting eliza_common.mk so ro.elizaos.product reflects
 # this lunch target on the running image.

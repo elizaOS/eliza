@@ -15,10 +15,14 @@ OUT = ROOT / "board/kicad/e1-phone/routed-pcb-implementation-execution.yaml"
 ROUTING_ACCEPTANCE = ROOT / "board/kicad/e1-phone/routing-acceptance-checklist.yaml"
 EVT1_ROUTING = ROOT / "board/kicad/e1-phone/evt1-routing-work-package.yaml"
 ROUTE_FEASIBILITY = ROOT / "board/kicad/e1-phone/route-feasibility-density.yaml"
+EVT1_STACKUP_COUPON = ROOT / "board/kicad/e1-phone/evt1-stackup-impedance-coupon-plan.yaml"
 PCB_AUDIT = ROOT / "board/kicad/e1-phone/pcb-implementation-audit.yaml"
 MANUFACTURING = ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml"
 PRODUCTION = ROOT / "board/kicad/e1-phone/production-readiness.yaml"
 ROUTED_RELEASE = ROOT / "board/kicad/e1-phone/routed-release-plan.yaml"
+ROUTED_LAYOUT_READINESS = ROOT / "board/kicad/e1-phone/routed-layout-readiness-binding.yaml"
+FIRST_ARTICLE_ROUTE_ORDER = ROOT / "board/kicad/e1-phone/first-article-route-execution-order.yaml"
+TRIAL_ROUTE_INPUT = ROOT / "board/kicad/e1-phone/trial-route-input-matrix.yaml"
 SUPPLIER_TO_KICAD = ROOT / "board/kicad/e1-phone/supplier-to-kicad-evidence-map.yaml"
 EVT1_FOOTPRINT_CAPTURE = ROOT / "board/kicad/e1-phone/evt1-footprint-capture-work-package.yaml"
 DISPLAY_CAMERA_PINOUT = ROOT / "board/kicad/e1-phone/display-camera-connector-pinout-execution.yaml"
@@ -33,6 +37,20 @@ MODULE_RF = ROOT / "board/kicad/e1-phone/module-rf-pinout-execution.yaml"
 ENCLOSURE_FIT = ROOT / "board/kicad/e1-phone/enclosure-fit-execution-package.yaml"
 FACTORY_ACCEPTANCE = ROOT / "board/kicad/e1-phone/factory-production-acceptance-checklist.yaml"
 CONCEPT_PCB = ROOT / "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+ROUTE_INVENTORY = ROOT / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml"
+REAL_FOOTPRINT_BINDING = (
+    ROOT / "board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml"
+)
+REAL_FOOTPRINT_STEP_INTAKE = (
+    ROOT / "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml"
+)
+ROUTED_DEVELOPMENT_INTAKE = (
+    ROOT / "board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml"
+)
+ROUTED_RELEASE_ACCEPTANCE = (
+    ROOT
+    / "board/kicad/e1-phone/production/readiness/routed-board-release-acceptance-matrix-2026-05-22.yaml"
+)
 
 
 class IndentedSafeDumper(yaml.SafeDumper):
@@ -53,6 +71,7 @@ def phase_record(phase: dict[str, Any], release_outputs: dict[str, Any]) -> dict
     output_map = {
         "0_supplier_freeze": [
             "production_bom_avl",
+            "supplier_component_3d_model_manifest",
             "fab_assembler_quote",
             "stackup_impedance_report",
         ],
@@ -79,12 +98,14 @@ def phase_record(phase: dict[str, Any], release_outputs: dict[str, Any]) -> dict
             "assembly_drawing",
             "split_interconnect_assembly_drawing",
             "board_step_with_supplier_models",
+            "supplier_component_3d_model_manifest",
             "factory_test_limits",
             "first_article_traveler",
             "fab_assembler_quote",
         ],
         "5_enclosure_routed_step_rerun": [
             "board_step_with_supplier_models",
+            "supplier_component_3d_model_manifest",
             "enclosure_clearance_report_using_routed_step",
         ],
     }
@@ -111,10 +132,14 @@ def main() -> int:
     routing_acceptance = load_yaml(ROUTING_ACCEPTANCE)
     evt1 = load_yaml(EVT1_ROUTING)
     route_feasibility = load_yaml(ROUTE_FEASIBILITY)
+    evt1_stackup_coupon = load_yaml(EVT1_STACKUP_COUPON)
     pcb_audit = load_yaml(PCB_AUDIT)
     manufacturing = load_yaml(MANUFACTURING)
     production = load_yaml(PRODUCTION)
     routed_release = load_yaml(ROUTED_RELEASE)
+    routed_layout_readiness = load_yaml(ROUTED_LAYOUT_READINESS)
+    first_article_route_order = load_yaml(FIRST_ARTICLE_ROUTE_ORDER)
+    trial_route_input = load_yaml(TRIAL_ROUTE_INPUT)
     supplier_to_kicad = load_yaml(SUPPLIER_TO_KICAD)
     footprint_capture = load_yaml(EVT1_FOOTPRINT_CAPTURE)
     display_camera_pinout = load_yaml(DISPLAY_CAMERA_PINOUT)
@@ -128,6 +153,11 @@ def main() -> int:
     module_rf = load_yaml(MODULE_RF)
     enclosure_fit = load_yaml(ENCLOSURE_FIT)
     factory_acceptance = load_yaml(FACTORY_ACCEPTANCE)
+    route_inventory = load_yaml(ROUTE_INVENTORY)
+    real_footprint_binding = load_yaml(REAL_FOOTPRINT_BINDING)
+    real_footprint_step_intake = load_yaml(REAL_FOOTPRINT_STEP_INTAKE)
+    routed_development_intake = load_yaml(ROUTED_DEVELOPMENT_INTAKE)
+    routed_release_acceptance = load_yaml(ROUTED_RELEASE_ACCEPTANCE)
 
     release_outputs = routed_release["required_release_output_manifest"]
     live_counts = pcb_audit["live_pcb_counts"]
@@ -299,10 +329,14 @@ def main() -> int:
                 ROUTING_ACCEPTANCE,
                 EVT1_ROUTING,
                 ROUTE_FEASIBILITY,
+                EVT1_STACKUP_COUPON,
                 PCB_AUDIT,
                 MANUFACTURING,
                 PRODUCTION,
                 ROUTED_RELEASE,
+                ROUTED_LAYOUT_READINESS,
+                FIRST_ARTICLE_ROUTE_ORDER,
+                TRIAL_ROUTE_INPUT,
                 SUPPLIER_TO_KICAD,
                 EVT1_FOOTPRINT_CAPTURE,
                 DISPLAY_CAMERA_PINOUT,
@@ -317,16 +351,25 @@ def main() -> int:
                 ENCLOSURE_FIT,
                 FACTORY_ACCEPTANCE,
                 CONCEPT_PCB,
+                ROUTE_INVENTORY,
+                REAL_FOOTPRINT_BINDING,
+                REAL_FOOTPRINT_STEP_INTAKE,
+                ROUTED_DEVELOPMENT_INTAKE,
+                ROUTED_RELEASE_ACCEPTANCE,
             ]
         ],
         "upstream_status": {
             "routing_acceptance": routing_acceptance["status"],
             "evt1_routing_work_package": evt1["status"],
             "route_feasibility_density": route_feasibility["status"],
+            "evt1_stackup_impedance_coupon_plan": evt1_stackup_coupon["status"],
             "pcb_implementation_audit": pcb_audit["status"],
             "manufacturing_closure": manufacturing["status"],
             "production_readiness": production["status"],
             "routed_release_plan": routed_release["status"],
+            "routed_layout_readiness_binding": routed_layout_readiness["status"],
+            "first_article_route_execution_order": first_article_route_order["status"],
+            "trial_route_input_matrix": trial_route_input["status"],
             "supplier_to_kicad_evidence_map": supplier_to_kicad["status"],
             "evt1_footprint_capture_work_package": footprint_capture["status"],
             "display_camera_connector_pinout_execution": display_camera_pinout["status"],
@@ -357,6 +400,57 @@ def main() -> int:
             "kibot_outputs_are_skeleton_commented": manufacturing_state[
                 "kibot_outputs_are_skeleton_commented"
             ],
+        },
+        "local_development_routing_state": {
+            "evidence_class": "local_development_routing_and_step_not_release",
+            "route_inventory": rel(ROUTE_INVENTORY),
+            "routed_development_intake": rel(ROUTED_DEVELOPMENT_INTAKE),
+            "real_footprint_binding": rel(REAL_FOOTPRINT_BINDING),
+            "real_footprint_step_intake": rel(REAL_FOOTPRINT_STEP_INTAKE),
+            "routed_release_acceptance_matrix": rel(ROUTED_RELEASE_ACCEPTANCE),
+            "development_route_count": routed_development_intake["route_count"],
+            "development_segment_count": routed_development_intake["segment_count"],
+            "development_via_count": routed_development_intake["via_count"],
+            "development_missing_net_count": len(routed_development_intake["missing_nets"]),
+            "real_footprint_bound_count": real_footprint_binding["bound_footprint_count"],
+            "real_footprint_remaining_placeholder_marker_count": real_footprint_binding[
+                "remaining_placeholder_marker_count"
+            ],
+            "real_footprint_assigned_pad_net_count": real_footprint_binding[
+                "assigned_pad_net_count"
+            ],
+            "real_footprint_step_envelope_count": real_footprint_step_intake[
+                "footprint_envelope_count"
+            ],
+            "real_footprint_step_pad_contact_visual_count": real_footprint_step_intake[
+                "pad_contact_visual_count"
+            ],
+            "real_footprint_step_route_segment_visual_count": real_footprint_step_intake[
+                "route_segment_visual_count"
+            ],
+            "candidate_routed_step_path": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+            "candidate_routed_step_size_bytes": routed_release_acceptance["summary"][
+                "candidate_step_size_bytes"
+            ],
+            "candidate_present_blocked_required_output_path_count": routed_release_acceptance[
+                "summary"
+            ]["candidate_present_blocked_required_output_path_count"],
+            "candidate_release_credit": routed_release_acceptance["candidate_end_to_end_context"][
+                "release_credit"
+            ],
+            "route_inventory_development_placeholder_footprints_present": route_inventory[
+                "summary"
+            ]["development_placeholder_footprints_present"],
+            "route_inventory_production_concept_placeholder_footprints_present": route_inventory[
+                "summary"
+            ]["production_concept_placeholder_footprints_present"],
+            "reason_not_release": (
+                "Local routed-development copper, real-footprint development footprints, "
+                "and a candidate routed STEP exist for CAD review only; production release "
+                "still requires supplier-approved land patterns and STEP/B-rep models, "
+                "ERC/DRC/SI/PI/RF signoff, fabrication outputs, measured enclosure clearance, "
+                "and release approval."
+            ),
         },
         "routing_pressure_snapshot": {
             "board_bbox_mm": route_summary["board_bbox_mm"],
@@ -473,6 +567,23 @@ def main() -> int:
             "enclosure_fit_waits_for_routed_step": routed_release["enclosure_release_dependency"][
                 "requires_routed_board_step"
             ],
+            "local_development_route_snapshot_present": (
+                routed_development_intake["route_count"] > 0
+                and routed_development_intake["segment_count"] > 0
+                and not routed_development_intake["missing_nets"]
+            ),
+            "local_real_footprint_development_board_present": (
+                real_footprint_binding["bound_footprint_count"] > 0
+                and real_footprint_binding["remaining_placeholder_marker_count"] == 0
+            ),
+            "local_candidate_step_present_but_blocked": (
+                routed_release_acceptance["summary"][
+                    "candidate_present_blocked_required_output_path_count"
+                ]
+                > 0
+                and routed_release_acceptance["candidate_end_to_end_context"]["release_credit"]
+                is False
+            ),
             "current_pcb_has_no_tracks_or_zones": (
                 live_counts["segment_count"] == 0
                 and live_counts["zone_count"] == 0
@@ -490,13 +601,13 @@ def main() -> int:
             "supplier-to-KiCad evidence records and EVT1 footprint capture work items are all still blocked",
             "hierarchical schematic capture and ERC evidence are missing",
             "screen, camera, USB-C, and side-button connector pinouts remain blocked before routable schematic capture",
-            "current KiCad PCB has placeholder footprints, zero routed segments, and zero filled zones",
+            "production concept KiCad PCB still has placeholder footprints, zero routed segments, and zero filled zones; local routed real-footprint development board exists but is non-release",
             "supplier-footprint escape analysis and trial-route evidence are missing",
             "USB2 split-interconnect route topology is blocked until controlled-impedance flex or topology evidence exists",
             "cellular and Wi-Fi/Bluetooth module pinouts, reference layouts, firmware identity, and RF evidence are missing",
             "post-route DRC, length/skew, impedance, SI/PI, RF, power, thermal, and factory evidence are missing",
             "production Gerber or IPC-2581, drill, position, BOM/AVL, assembly, STEP, DFM/DFA, and quote outputs are missing",
-            "routed board STEP has not been generated or rerun through enclosure clearance",
+            "candidate routed board STEP exists for local review only; production routed-board STEP has not been supplier-approved or rerun through measured enclosure clearance",
         ],
         "forbidden_claims": [
             "routed_pcb_ready",

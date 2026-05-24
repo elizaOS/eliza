@@ -1,0 +1,34 @@
+diff --git a/src/bun.js/bindings/webcore/JSPerformance.cpp b/src/bun.js/bindings/webcore/JSPerformance.cpp
+index 7c0f987..806846a 100644
+--- a/src/bun.js/bindings/webcore/JSPerformance.cpp
++++ b/src/bun.js/bindings/webcore/JSPerformance.cpp
+@@ -267,11 +267,16 @@ size_t JSPerformance::estimatedSize(JSCell* cell, VM& vm)
+ void JSPerformance::finishCreation(VM& vm)
+ {
+     Base::finishCreation(vm);
++#if defined(__riscv) && __riscv_xlen == 64
++    const JSC::DOMJIT::Signature* DOMJITSignatureForPerformanceNow = nullptr;
++#else
+     static const JSC::DOMJIT::Signature DOMJITSignatureForPerformanceNow(
+         functionPerformanceNowWithoutTypeCheck,
+         JSPerformance::info(),
+         JSC::DOMJIT::Effect::forWriteKinds(DFG::AbstractHeapKind::SideState),
+         SpecDoubleReal);
++    const JSC::DOMJIT::Signature* DOMJITSignatureForPerformanceNowPtr = &DOMJITSignatureForPerformanceNow;
++#endif
+ 
+     JSFunction* now = JSFunction::create(
+         vm,
+@@ -279,7 +284,11 @@ void JSPerformance::finishCreation(VM& vm)
+         0,
+         String("now"_s),
+         functionPerformanceNow, ImplementationVisibility::Public, NoIntrinsic, functionPerformanceNow,
+-        &DOMJITSignatureForPerformanceNow);
++#if defined(__riscv) && __riscv_xlen == 64
++        DOMJITSignatureForPerformanceNow);
++#else
++        DOMJITSignatureForPerformanceNowPtr);
++#endif
+     this->putDirect(vm, JSC::Identifier::fromString(vm, "now"_s), now, 0);
+ 
+     this->putDirect(

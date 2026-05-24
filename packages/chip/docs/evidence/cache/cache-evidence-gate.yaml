@@ -36,8 +36,10 @@ current_scaffold_evidence:
     - rtl/cache/replacement/e1_drrip.sv
     - rtl/cache/replacement/e1_hawkeye.sv
     - rtl/cache/replacement/e1_mockingjay.sv
+    - rtl/cache/replacement/e1_mockingjay_prod.sv
     - rtl/cache/compression/e1_bdi_compress.sv
     - rtl/cache/compression/e1_bdi_decompress.sv
+    - rtl/cache/coherence/e1_coherence_dir.sv
     - rtl/cache/coherence/tl_c_to_chi_bridge.sv
   executable_checks:
     - name: cache_hierarchy_claim_gate
@@ -122,9 +124,11 @@ blocked_real_claims:
       (lru / drrip / srrip / ship), which gives an IPC range between
       LRU and DRRIP / SHiP-style policies but does not measure the
       Mockingjay productized RTL. The cocotb harness at
-      `verify/cocotb/cache/test_mockingjay_accuracy.py` measures the
-      Mockingjay-prod RTL directly on a synthetic stream and remains
-      below threshold (see mockingjay_cocotb_synthetic_report.json).
+      `verify/cocotb/cache/test_mockingjay_accuracy.py` now evaluates
+      the Mockingjay-prod RTL directly on a synthetic stream and is above
+      the local synthetic threshold (see
+      mockingjay_cocotb_synthetic_report.json), but that scoped RTL
+      stream does not replace DPC-3 Hawkeye/Mockingjay IPC evidence.
     unblock_requires:
       - port CRC Mockingjay / Hawkeye C++ replacement modules into
         external/ChampSim/replacement/
@@ -160,9 +164,9 @@ blocked_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/silicon_lab_report.json
 
-measured_real_claims:
+scoped_local_evidence_claims:
   - id: champsim_prefetcher_sweep
-    status: measured_champsim_dpc3_only
+    status: scoped_champsim_dpc3_only
     evidence_class: champsim_dpc3_traces_only
     reason: |
       ChampSim 2024-12 (commit 24cc41bb) built locally from
@@ -182,7 +186,7 @@ measured_real_claims:
       - docs/evidence/cache/champsim_external_prefetchers_report.json
       - docs/evidence/cache/pythia_dpc3_report.json
   - id: berti_ipcp_bingo_bop_dpc3
-    status: measured_champsim_dpc3_only
+    status: scoped_champsim_dpc3_only
     evidence_class: champsim_dpc3_traces_only
     reason: |
       Berti (MICRO'22), IPCP (ISCA'20), Bingo (HPCA'19), and BOP
@@ -193,7 +197,7 @@ measured_real_claims:
       ports of each algorithm to the ChampSim 2024-12 module API
       (champsim::modules::prefetcher, champsim::address) now live under
       external/ChampSim/prefetcher/{berti,ipcp,bingo,bop}/, and the
-      DPC-3 sweep produces measured rows for all four. Per-prefetcher
+      DPC-3 sweep produces ChampSim-scoped rows for all four. Per-prefetcher
       algorithmic scope and any documented deviations from the
       reference implementations (e.g. Berti's latency-table not being
       wired through 2024-12's prefetcher interface) are recorded in
@@ -203,7 +207,7 @@ measured_real_claims:
       - docs/evidence/cache/champsim_external_prefetchers_report.json
       - docs/evidence/cache/champsim_prefetch_sweep_report.json
   - id: pythia_rl_prefetcher_dpc3
-    status: measured_champsim_dpc3_only
+    status: scoped_champsim_dpc3_only
     evidence_class: champsim_dpc3_traces_only
     reason: |
       Pythia (Bera et al., MICRO'21) — a CPU C++ tabular-SARSA prefetcher
@@ -221,7 +225,7 @@ measured_real_claims:
       - docs/evidence/cache/champsim_external_prefetchers_report.json
       - docs/evidence/cache/champsim_prefetch_sweep_report.json
   - id: mockingjay_vs_lru_sweep
-    status: measured_champsim_dpc3_only
+    status: scoped_champsim_dpc3_only
     evidence_class: champsim_dpc3_traces_only
     reason: |
       ChampSim mockingjay-vs-lru sweep run against the same DPC-3
@@ -242,7 +246,7 @@ measured_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_vs_lru_report.json
   - id: mockingjay_cocotb_synthetic
-    status: measured_above_threshold
+    status: scoped_above_threshold
     evidence_class: cocotb_synthetic_stream
     reason: |
       The cocotb harness

@@ -29,8 +29,40 @@ wait_for_agent_health() {
         sleep 1
     done
 
+    emit_marker "elizaos-agent-health-failed url=${AGENT_HEALTH_URL}"
     echo "elizaOS agent health probe failed: ${AGENT_HEALTH_URL}" >&2
     return 1
+}
+
+dump_to_serial() {
+    "$@" 2>&1 | while IFS= read -r LINE; do
+        echo "${LINE}"
+        echo "${LINE}" >/dev/ttyS0 2>/dev/null || true
+    done
+}
+
+dump_file_to_serial() {
+    FILE="$1"
+    if [ ! -f "${FILE}" ]; then
+        echo "missing diagnostic file: ${FILE}"
+        echo "missing diagnostic file: ${FILE}" >/dev/ttyS0 2>/dev/null || true
+        return 0
+    fi
+    while IFS= read -r LINE; do
+        echo "${LINE}"
+        echo "${LINE}" >/dev/ttyS0 2>/dev/null || true
+    done < "${FILE}"
+}
+
+dump_agent_diagnostics() {
+    emit_marker "elizaos-agent-diagnostics-start"
+    emit_marker "elizaos-agent-runtime-log-start"
+    dump_file_to_serial /var/log/elizaos/agent-runtime.log || true
+    dump_file_to_serial /var/lib/elizaos/agent-runtime.log || true
+    emit_marker "elizaos-agent-runtime-log-end"
+    dump_to_serial systemctl --no-pager --full status elizaos-agent.service || true
+    dump_to_serial journalctl --no-pager -u elizaos-agent.service -n 120 || true
+    emit_marker "elizaos-agent-diagnostics-end"
 }
 
 if [ -e "${MARK}" ]; then
@@ -49,12 +81,18 @@ fi
 
 chown -R elizaos:elizaos "${STATE}"
 chmod 0750 "${STATE}"
+install -d -o elizaos -g elizaos -m 0750 /var/log/elizaos
 
 emit_marker "elizaos-firstboot-ready instance=$(cat "${ETC}/instance-id")"
 
-systemctl start elizaos-agent.service
-wait_for_agent_health
+emit_marker "elizaos-agent-starting service=elizaos-agent.service"
+systemctl start --no-block elizaos-agent.service
+if ! wait_for_agent_health; then
+    dump_agent_diagnostics
+    exit 1
+fi
 
+emit_marker "elizaos-tui-starting url=${AGENT_BASE_URL}"
 /usr/lib/elizaos/run-terminal-tui-smoke.sh "${AGENT_BASE_URL}"
 emit_marker "elizaos-tui-ready url=${AGENT_BASE_URL}"
 

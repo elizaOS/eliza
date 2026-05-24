@@ -69,6 +69,13 @@ class AospProductContractTests(unittest.TestCase):
             device / "manifest.xml",
             '<manifest version="1.0" type="device"></manifest>\n',
         )
+        chip_e1_vintf_fragment = write(
+            device / "hal/e1_npu/vendor.eliza.e1_npu@1.0-service.xml",
+            """<manifest version="1.0" type="device">
+  <hal format="hidl"><name>vendor.eliza.e1_npu</name></hal>
+</manifest>
+""",
+        )
         os_products = write(
             vendor / "AndroidProducts.mk",
             "COMMON_LUNCH_CHOICES := \\\n"
@@ -102,6 +109,7 @@ class AospProductContractTests(unittest.TestCase):
             mock.patch.object(gate, "CHIP_DEVICE_MK", chip_device_mk),
             mock.patch.object(gate, "CHIP_BOARD", chip_board),
             mock.patch.object(gate, "CHIP_MANIFEST", chip_manifest),
+            mock.patch.object(gate, "CHIP_E1_VINTF_FRAGMENT", chip_e1_vintf_fragment),
             mock.patch.object(gate, "OS_ANDROID_PRODUCTS", os_products),
             mock.patch.object(gate, "OS_COMMON", os_common),
             mock.patch.object(gate, "OS_OPENAGENT_PRODUCT", openagent),
@@ -125,7 +133,6 @@ class AospProductContractTests(unittest.TestCase):
         self.assertIn("local_manifest_does_not_project_os_vendor_layer", codes)
         self.assertIn("aosp_allow_missing_dependencies_enabled", codes)
         self.assertIn("chip_product_missing_active_hal_packages", codes)
-        self.assertIn("chip_vintf_manifest_has_no_active_hals", codes)
 
     def test_fused_product_contract_passes_static_checks(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -157,16 +164,12 @@ class AospProductContractTests(unittest.TestCase):
                     "    Eliza \\\n"
                     "    default-permissions-ai.elizaos.app.xml \\\n"
                     "    privapp-permissions-ai.elizaos.app.xml \\\n"
-                    "    vendor.eliza.e1_npu@1.0-service \\\n"
-                    "    android.hardware.graphics.composer@2.4-service.eliza_ai_soc\n",
+                    "    vendor.eliza.e1_npu@1.0-service\n",
                     encoding="utf-8",
                 )
                 gate.CHIP_BOARD.write_text("# no allow missing dependencies\n", encoding="utf-8")
                 gate.CHIP_MANIFEST.write_text(
-                    """<manifest version="1.0" type="device">
-  <hal format="hidl"><name>vendor.eliza.e1_npu</name></hal>
-</manifest>
-""",
+                    '<manifest version="1.0" type="device"></manifest>\n',
                     encoding="utf-8",
                 )
                 gate.LOCAL_MANIFEST.write_text(
@@ -181,6 +184,28 @@ class AospProductContractTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+    def test_deprecated_local_hwcomposer_blocks_current_fcm(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            patches = self._patch_tree(tmp)
+            with PatchStack(patches):
+                gate.CHIP_PRODUCT.write_text(
+                    "$(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)\n"
+                    "$(call inherit-product, device/eliza/eliza_ai_soc/device.mk)\n",
+                    encoding="utf-8",
+                )
+                gate.CHIP_DEVICE_MK.write_text(
+                    "PRODUCT_PACKAGES += \\\n"
+                    "    vendor.eliza.e1_npu@1.0-service \\\n"
+                    "    android.hardware.graphics.composer@2.4-service.eliza_ai_soc \\\n"
+                    "    hwcomposer.eliza_ai_soc\n",
+                    encoding="utf-8",
+                )
+                report = gate.run_check(Namespace())
+
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("chip_product_packages_deprecated_hidl_hwcomposer", codes)
 
 
 class PatchStack:

@@ -36,6 +36,8 @@ class AsimovController:
         self.updated_at = time.time()
 
     def set_velocity(self, vx_mps: float, vy_mps: float, yaw_rad_s: float) -> None:
+        if self.mode == AsimovMode.DAMP:
+            raise ValueError("ASIMOV velocity commands require STAND mode; firmware drops velocity in DAMP")
         values = {"vx_mps": vx_mps, "vy_mps": vy_mps, "yaw_rad_s": yaw_rad_s}
         for key, value in values.items():
             if not math.isfinite(float(value)):

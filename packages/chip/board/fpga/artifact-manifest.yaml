@@ -28,15 +28,18 @@ artifact_groups:
     owner: fpga_closure
     status: draft
     cli_commands:
-      synth: TOP=e1_fpga_smoke_top make -C board/fpga synth
-      place_route: TOP=e1_fpga_smoke_top make -C board/fpga pnr
-      pack: TOP=e1_fpga_smoke_top make -C board/fpga pack
+      synth: TOP=e1_chip_top make -C board/fpga synth
+      place_route: TOP=e1_chip_top make -C board/fpga pnr
+      pack: TOP=e1_chip_top make -C board/fpga pack
+      report: TOP=e1_chip_top make -C board/fpga report
       tool_versions: yosys -V && nextpnr-ecp5 --version && ecppack --version && openFPGALoader --version
-      program_sram: openFPGALoader -b ulx3s board/fpga/build/e1_demo_fpga.bit
+      hash_bitstream: shasum -a 256 build/fpga/e1_demo/e1_chip_top.bit
+      program_sram: openFPGALoader -b ulx3s build/fpga/e1_demo/e1_chip_top.bit
     artifacts:
       - name: bitstream
         status: draft
         globs:
+          - build/fpga/e1_demo/**/*.bit
           - board/fpga/build/e1_demo_smoke/**/*.bit
       - name: nextpnr_timing_report
         status: draft
@@ -62,6 +65,8 @@ artifact_groups:
           - board/fpga/reports/tool_versions.txt
       - name: full_chip_fpga_closure_blocker
         status: draft
-        reason: "e1_chip_top synthesis expanded past 100k LUT-equivalent logic and was stopped after local ABC9/Yosys exceeded a useful MacBook closure loop; partitioning or a smaller FPGA/emulation target is required before bitstream release."
+        reason: "Latest non-release e1_chip_top probes pass RTL elaboration but do not reach bitstream: the release-equivalent flow timed out after ABC9/AUTONAME, while the bounded -noabc9 diagnostic timed out in classic ABC mapping after the full cone expanded to roughly 650k cells with NPU/display multiplier pressure. Runtime/cone reduction is required before route, pack, or release evidence can exist."
         globs:
+          - build/fpga/e1_demo/archive/*/provenance.txt
+          - build/fpga/e1_demo/archive/*/yosys.log
           - board/fpga/reports/full_chip_blocker/e1_chip_top_synthesis_blocker.txt

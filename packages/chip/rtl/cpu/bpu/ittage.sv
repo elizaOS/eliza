@@ -7,14 +7,16 @@
 // entry whose useful counter is zero).
 //
 // Per-table entry counts and history lengths come from bpu_pkg::ittage_*.
-// To keep the synthesisable generate-loop simple, the maximum entry count
-// across tables (`ITTAGE_ENTRIES_MAX`) is used for every table's storage and
-// the table's index hash truncates to its actual size.
+// Storage is set-associative: the entry count is split across ITTAGE_WAYS,
+// and the table's index hash truncates to the per-table set count.
 
 `timescale 1ns/1ps
 
 module ittage
     import bpu_pkg::*;
+#(
+    parameter int unsigned USEFUL_RESET_PERIOD = ITTAGE_USEFUL_RESET_PERIOD
+)
 (
     input  logic                clk,
     input  logic                rst_n,
@@ -29,6 +31,7 @@ module ittage
     input  logic [TAGE_HIST_LEN_MAX-1:0] lkp_hist,
     output logic                lkp_hit,
     output logic [VADDR_W-1:0]  lkp_target,
+    output logic [ITTAGE_CTR_W-1:0] lkp_ctr,
     output logic [$clog2(ITTAGE_TABLES+1)-1:0] lkp_provider,
 
     input  logic                upd_valid,
@@ -38,8 +41,19 @@ module ittage
     input  logic                upd_misp,
     input  logic [$clog2(ITTAGE_TABLES+1)-1:0] upd_provider
 );
-    localparam int unsigned ITTAGE_ENTRIES_MAX = 1024;
-    localparam int unsigned ITT_IDX_W = $clog2(ITTAGE_ENTRIES_MAX);
+    localparam int unsigned ITTAGE_ENTRIES_MAX_01 =
+        (ITTAGE_ENTRIES_0 > ITTAGE_ENTRIES_1) ? ITTAGE_ENTRIES_0 : ITTAGE_ENTRIES_1;
+    localparam int unsigned ITTAGE_ENTRIES_MAX_23 =
+        (ITTAGE_ENTRIES_2 > ITTAGE_ENTRIES_3) ? ITTAGE_ENTRIES_2 : ITTAGE_ENTRIES_3;
+    localparam int unsigned ITTAGE_ENTRIES_MAX_0123 =
+        (ITTAGE_ENTRIES_MAX_01 > ITTAGE_ENTRIES_MAX_23) ?
+            ITTAGE_ENTRIES_MAX_01 : ITTAGE_ENTRIES_MAX_23;
+    localparam int unsigned ITTAGE_ENTRIES_MAX =
+        (ITTAGE_ENTRIES_MAX_0123 > ITTAGE_ENTRIES_4) ?
+            ITTAGE_ENTRIES_MAX_0123 : ITTAGE_ENTRIES_4;
+    localparam int unsigned ITTAGE_SETS_MAX = ITTAGE_ENTRIES_MAX / ITTAGE_WAYS;
+    localparam int unsigned ITT_IDX_W = $clog2(ITTAGE_SETS_MAX);
+    localparam int unsigned ITT_WAY_W = $clog2(ITTAGE_WAYS);
 
     typedef struct packed {
         logic                       valid;
@@ -49,7 +63,8 @@ module ittage
         logic [ITTAGE_USEFUL_W-1:0] useful;
     } ittage_entry_t;
 
-    ittage_entry_t storage_q [ITTAGE_TABLES][ITTAGE_ENTRIES_MAX];
+    ittage_entry_t storage_q [ITTAGE_TABLES][ITTAGE_SETS_MAX][ITTAGE_WAYS];
+    logic [$clog2(USEFUL_RESET_PERIOD+1)-1:0] useful_reset_ctr_q;
 
     function automatic logic [ITT_IDX_W-1:0] index_hash(
         input int unsigned tid,
@@ -69,7 +84,7 @@ module ittage
             folded_h[k % ITT_IDX_W] = folded_h[k % ITT_IDX_W] ^
                 hist[TAGE_HIST_LEN_MAX-1-k];
         index_hash = (folded_pc ^ folded_h ^ tid[ITT_IDX_W-1:0]) %
-                     ITT_IDX_W'(ittage_entries(tid));
+                     ITT_IDX_W'(ittage_sets(tid));
     endfunction
 
     function automatic logic [ITTAGE_TAG_W-1:0] tag_hash(
@@ -95,6 +110,7 @@ module ittage
 
     logic [ITTAGE_TABLES-1:0] tab_hit;
     logic [VADDR_W-1:0]       tab_target [ITTAGE_TABLES];
+    logic [ITTAGE_CTR_W-1:0]  tab_ctr [ITTAGE_TABLES];
     /* verilator lint_off UNUSEDSIGNAL */
     logic [ITTAGE_USEFUL_W-1:0] tab_useful [ITTAGE_TABLES];
     /* verilator lint_on UNUSEDSIGNAL */
@@ -103,9 +119,20 @@ module ittage
         for (int unsigned ti = 0; ti < ITTAGE_TABLES; ti++) begin
             automatic logic [ITT_IDX_W-1:0] idx = index_hash(ti, lkp_pc, lkp_hist);
             automatic logic [ITTAGE_TAG_W-1:0] tag = tag_hash(ti, lkp_pc, lkp_hist);
-            tab_hit[ti]    = storage_q[ti][idx].valid && (storage_q[ti][idx].tag == tag);
-            tab_target[ti] = storage_q[ti][idx].target;
-            tab_useful[ti] = storage_q[ti][idx].useful;
+            tab_hit[ti]    = 1'b0;
+            tab_target[ti] = '0;
+            tab_ctr[ti]    = '0;
+            tab_useful[ti] = '0;
+            for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+                if (!tab_hit[ti] &&
+                    storage_q[ti][idx][way].valid &&
+                    (storage_q[ti][idx][way].tag == tag)) begin
+                    tab_hit[ti]    = 1'b1;
+                    tab_target[ti] = storage_q[ti][idx][way].target;
+                    tab_ctr[ti]    = storage_q[ti][idx][way].ctr;
+                    tab_useful[ti] = storage_q[ti][idx][way].useful;
+                end
+            end
         end
     end
 
@@ -113,11 +140,13 @@ module ittage
     always_comb begin
         lkp_hit      = 1'b0;
         lkp_target   = '0;
+        lkp_ctr      = '0;
         lkp_provider = '0;
         for (int ti = ITTAGE_TABLES-1; ti >= 0; ti--) begin
             if (tab_hit[ti] && !lkp_hit) begin
                 lkp_hit      = 1'b1;
                 lkp_target   = tab_target[ti];
+                lkp_ctr      = tab_ctr[ti];
                 lkp_provider = ti[$clog2(ITTAGE_TABLES+1)-1:0] + 1;
             end
         end
@@ -130,8 +159,14 @@ module ittage
     // software branch-predictor model's first-empty-table policy.
     logic [ITT_IDX_W-1:0]     upd_idx_per_tab [ITTAGE_TABLES];
     logic [ITTAGE_TAG_W-1:0]  upd_tag_per_tab [ITTAGE_TABLES];
-    logic [ITTAGE_TABLES-1:0] alloc_candidate;
+    logic [ITTAGE_TABLES-1:0] alloc_invalid_candidate;
+    logic [ITTAGE_TABLES-1:0] alloc_useful0_candidate;
     logic [ITTAGE_TABLES-1:0] alloc_grant;
+    logic [ITT_WAY_W-1:0]     upd_match_way_per_tab [ITTAGE_TABLES];
+    logic [ITTAGE_TABLES-1:0] upd_match_per_tab;
+    logic [ITT_WAY_W-1:0]     alloc_invalid_way [ITTAGE_TABLES];
+    logic [ITT_WAY_W-1:0]     alloc_useful0_way [ITTAGE_TABLES];
+    logic [ITT_WAY_W-1:0]     alloc_way [ITTAGE_TABLES];
     int unsigned              upd_prov;
 
     always_comb begin
@@ -139,38 +174,89 @@ module ittage
         for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
             upd_idx_per_tab[t] = index_hash(t, upd_pc, upd_hist);
             upd_tag_per_tab[t] = tag_hash(t, upd_pc, upd_hist);
+            upd_match_per_tab[t] = 1'b0;
+            upd_match_way_per_tab[t] = '0;
+            alloc_invalid_way[t] = '0;
+            alloc_useful0_way[t] = '0;
+            alloc_way[t] = '0;
+            for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+                if (!upd_match_per_tab[t] &&
+                    storage_q[t][upd_idx_per_tab[t]][way].valid &&
+                    (storage_q[t][upd_idx_per_tab[t]][way].tag == upd_tag_per_tab[t])) begin
+                    upd_match_per_tab[t] = 1'b1;
+                    upd_match_way_per_tab[t] = way[ITT_WAY_W-1:0];
+                end
+            end
         end
-        // Build per-table allocation eligibility. Only an empty slot in a
-        // table whose rank is >= upd_prov qualifies; the model uses the
-        // same gate (`idx not in self.storage[higher]`).
-        alloc_candidate = '0;
+        // Build per-table allocation eligibility. Prefer invalid slots, then
+        // occupied slots whose useful counter has aged to zero; this matches
+        // the software model and prevents indirect-target allocation
+        // starvation under alias pressure.
+        alloc_invalid_candidate = '0;
+        alloc_useful0_candidate = '0;
         for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
-            if (t >= upd_prov &&
-                !storage_q[t][upd_idx_per_tab[t]].valid) begin
-                alloc_candidate[t] = 1'b1;
+            if (t >= upd_prov) begin
+                for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+                    if (!alloc_invalid_candidate[t] &&
+                        !storage_q[t][upd_idx_per_tab[t]][way].valid) begin
+                        alloc_invalid_candidate[t] = 1'b1;
+                        alloc_invalid_way[t] = way[ITT_WAY_W-1:0];
+                    end
+                    if (!alloc_useful0_candidate[t] &&
+                        (storage_q[t][upd_idx_per_tab[t]][way].useful == '0)) begin
+                        alloc_useful0_candidate[t] = 1'b1;
+                        alloc_useful0_way[t] = way[ITT_WAY_W-1:0];
+                    end
+                end
             end
         end
         // Priority encoder: grant the lowest-index candidate that is
-        // eligible. This matches the model's "first empty wins" policy
-        // and serializes allocation to a single table per misprediction.
+        // eligible and serialize allocation to a single table per
+        // misprediction.
         alloc_grant = '0;
         for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
-            if (alloc_candidate[t] && (alloc_grant == '0)) begin
+            if (alloc_invalid_candidate[t] && (alloc_grant == '0)) begin
                 alloc_grant[t] = 1'b1;
+                alloc_way[t] = alloc_invalid_way[t];
+            end
+        end
+        for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+            if (alloc_useful0_candidate[t] && (alloc_grant == '0)) begin
+                alloc_grant[t] = 1'b1;
+                alloc_way[t] = alloc_useful0_way[t];
             end
         end
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            storage_q <= '{default: '{default: '{
-                valid:  1'b0,
-                tag:    '0,
-                target: '0,
-                ctr:    '0,
-                useful: '0
-            }}};
+            for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+                for (int unsigned i = 0; i < ITTAGE_SETS_MAX; i++) begin
+                    for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+                        storage_q[t][i][way].valid  <= 1'b0;
+                        storage_q[t][i][way].tag    <= '0;
+                        storage_q[t][i][way].target <= '0;
+                        storage_q[t][i][way].ctr    <= '0;
+                        storage_q[t][i][way].useful <= '0;
+                    end
+                end
+            end
+            useful_reset_ctr_q <= '0;
         end else if (upd_valid) begin
+            if (useful_reset_ctr_q == $bits(useful_reset_ctr_q)'(USEFUL_RESET_PERIOD - 1)) begin
+                useful_reset_ctr_q <= '0;
+                for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+                    for (int unsigned i = 0; i < ITTAGE_SETS_MAX; i++) begin
+                        for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+                            if (storage_q[t][i][way].useful != '0)
+                                storage_q[t][i][way].useful <=
+                                    storage_q[t][i][way].useful - 1'b1;
+                        end
+                    end
+                end
+            end else begin
+                useful_reset_ctr_q <= useful_reset_ctr_q + 1'b1;
+            end
             // For the provider, refresh confidence and update target if the
             // observed target matches; if it disagrees the counter is
             // decremented and on saturation the table is invalidated so the
@@ -178,30 +264,41 @@ module ittage
             for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
                 automatic logic [ITT_IDX_W-1:0]    idx = upd_idx_per_tab[t];
                 automatic logic [ITTAGE_TAG_W-1:0] tag = upd_tag_per_tab[t];
+                automatic logic [ITT_WAY_W-1:0]    way = upd_match_way_per_tab[t];
                 if (upd_prov == t + 1) begin
-                    if (storage_q[t][idx].valid && storage_q[t][idx].tag == tag) begin
-                        if (storage_q[t][idx].target == upd_target) begin
-                            if (storage_q[t][idx].ctr != {ITTAGE_CTR_W{1'b1}})
-                                storage_q[t][idx].ctr <= storage_q[t][idx].ctr + 1'b1;
-                            if (storage_q[t][idx].useful != {ITTAGE_USEFUL_W{1'b1}})
-                                storage_q[t][idx].useful <= storage_q[t][idx].useful + 1'b1;
+                    if (upd_match_per_tab[t]) begin
+                        if (storage_q[t][idx][way].target == upd_target) begin
+                            if (storage_q[t][idx][way].ctr != {ITTAGE_CTR_W{1'b1}})
+                                storage_q[t][idx][way].ctr <=
+                                    storage_q[t][idx][way].ctr + 1'b1;
+                            if (storage_q[t][idx][way].useful != {ITTAGE_USEFUL_W{1'b1}})
+                                storage_q[t][idx][way].useful <=
+                                    storage_q[t][idx][way].useful + 1'b1;
+                        end else if ((upd_prov >= ITTAGE_REPLACE_MIN_PROVIDER) &&
+                                     (storage_q[t][idx][way].ctr <=
+                                      ITTAGE_CTR_W'(ITTAGE_REPLACE_WEAK_CTR))) begin
+                            storage_q[t][idx][way].target <= upd_target;
+                            storage_q[t][idx][way].ctr    <= {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
+                            storage_q[t][idx][way].useful <= '0;
                         end else begin
-                            if (storage_q[t][idx].ctr == '0)
-                                storage_q[t][idx].valid <= 1'b0;
-                            else
-                                storage_q[t][idx].ctr <= storage_q[t][idx].ctr - 1'b1;
+                            if (storage_q[t][idx][way].ctr == '0)
+                                storage_q[t][idx][way].valid <= 1'b0;
+                            else begin
+                                storage_q[t][idx][way].ctr <= storage_q[t][idx][way].ctr - 1'b1;
+                                if (storage_q[t][idx][way].useful != '0)
+                                    storage_q[t][idx][way].useful <=
+                                        storage_q[t][idx][way].useful - 1'b1;
+                            end
                         end
                     end
                 end
                 // Single-shot allocation on misprediction.
                 if (upd_misp && alloc_grant[t]) begin
-                    storage_q[t][idx] <= '{
-                        valid:  1'b1,
-                        tag:    tag,
-                        target: upd_target,
-                        ctr:    {1'b1, {(ITTAGE_CTR_W-1){1'b0}}},
-                        useful: '0
-                    };
+                    storage_q[t][idx][alloc_way[t]].valid  <= 1'b1;
+                    storage_q[t][idx][alloc_way[t]].tag    <= tag;
+                    storage_q[t][idx][alloc_way[t]].target <= upd_target;
+                    storage_q[t][idx][alloc_way[t]].ctr    <= {1'b1, {(ITTAGE_CTR_W-1){1'b0}}};
+                    storage_q[t][idx][alloc_way[t]].useful <= '0;
                 end
             end
         end

@@ -42,11 +42,12 @@ from eliza_robot.sim.mujoco.demo_env import DemoEnv  # noqa: E402
 from eliza_robot.sim2real.sysid import calibrate_via_sysid  # noqa: E402
 
 GATES_PASS_REPORT = "checkpoint loads, policy differentiates by text, sys-ID recovers offsets, bridge accepts commands"
+DEFAULT_ALBERTA_CHECKPOINT = ROOT / "checkpoints" / "alberta_text_conditioned"
 
 
 async def _gate_training(ckpt_dir: Path) -> dict:
     """Gate 1: checkpoint loads and emits 24-D actions."""
-    print(f"[gate-1] loading {ckpt_dir}/policy.zip ...")
+    print(f"[gate-1] loading {ckpt_dir}/manifest.json ...")
     p = TextConditionedPolicy(ckpt_dir)
     proprio = np.zeros(45, dtype=np.float32)
     proprio[5] = 1.0
@@ -217,28 +218,141 @@ async def _gate_asimov_mjx_env() -> dict:
     )
     state = env.reset(jax.random.PRNGKey(0))
     state = env.step(state, jp.zeros(env.action_size))
+    actor_obs = state.obs["state"]
+    critic_obs = state.obs["privileged_state"]
     passed = (
-        tuple(state.obs.shape) == (env.observation_size,)
+        tuple(actor_obs.shape) == (env.actor_observation_size,)
+        and tuple(critic_obs.shape) == (env.privileged_observation_size,)
         and env.proprio_dim == 45
         and env.text_dim == 8
         and env.action_size == 12
         and env.mj_model.nu == 25
-        and bool(jp.all(jp.isfinite(state.obs)))
+        and bool(jp.all(jp.isfinite(actor_obs)))
+        and bool(jp.all(jp.isfinite(critic_obs)))
         and bool(jp.isfinite(state.reward))
     )
     print(
         f"[gate-4] {'PASS' if passed else 'FAIL'} — "
-        f"obs={state.obs.shape}, action={env.action_size}, actuators={env.mj_model.nu}"
+        f"actor_obs={actor_obs.shape}, critic_obs={critic_obs.shape}, "
+        f"action={env.action_size}, actuators={env.mj_model.nu}"
     )
     return {
         "passed": passed,
-        "obs_shape": list(state.obs.shape),
-        "observation_size": int(env.observation_size),
+        "obs_keys": sorted(state.obs),
+        "actor_obs_shape": list(actor_obs.shape),
+        "critic_obs_shape": list(critic_obs.shape),
+        "observation_size": dict(env.observation_size),
         "proprio_dim": int(env.proprio_dim),
         "text_dim": int(env.text_dim),
         "action_size": int(env.action_size),
         "mujoco_actuators": int(env.mj_model.nu),
     }
+
+
+async def _gate_asimov_model_provenance(ckpt_dir: Path) -> dict:
+    print("[gate-0] ASIMOV model provenance...")
+    from eliza_robot.asimov_1.cad import sha256_file
+    from eliza_robot.asimov_1.constants import (
+        ASIMOV1_GENERATED_MANIFEST,
+        ASIMOV1_GENERATED_MJCF,
+    )
+
+    def load_dict(path: Path) -> tuple[dict, bool]:
+        if not path.is_file():
+            return {}, False
+        try:
+            loaded = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return {}, False
+        return loaded if isinstance(loaded, dict) else {}, isinstance(loaded, dict)
+
+    def source_ok(
+        *,
+        path_key: str,
+        hash_key: str,
+        expected_path: Path,
+        actual_path: Path,
+        actual_hash: str | None,
+    ) -> bool:
+        return (
+            actual_path.is_file()
+            and actual_path.resolve() == expected_path.resolve()
+            and actual_hash is not None
+            and job.get(path_key) == str(actual_path)
+            and job.get(hash_key) == actual_hash
+            and checkpoint_manifest.get(path_key) == str(actual_path)
+            and checkpoint_manifest.get(hash_key) == actual_hash
+            and config.get(path_key) == str(actual_path)
+            and config.get(hash_key) == actual_hash
+        )
+
+    job_path = ckpt_dir / "training_job.json"
+    checkpoint_manifest_path = ckpt_dir / "manifest.json"
+    config_path = ckpt_dir / "config.json"
+    checks: dict[str, bool] = {"training_job": job_path.is_file()}
+    details: dict[str, object] = {
+        "training_job": str(job_path),
+        "manifest": str(checkpoint_manifest_path),
+        "config": str(config_path),
+    }
+    job, job_json = load_dict(job_path)
+    checkpoint_manifest, manifest_json = load_dict(checkpoint_manifest_path)
+    config, config_json = load_dict(config_path)
+    checks["training_job_json"] = job_json
+    checks["manifest"] = checkpoint_manifest_path.is_file()
+    checks["manifest_json"] = manifest_json
+    checks["config"] = config_path.is_file()
+    checks["config_json"] = config_json
+
+    mjcf_raw = str(job.get("mjcf_xml", ""))
+    asset_manifest_raw = str(job.get("asset_manifest", ""))
+    mjcf_path = Path(mjcf_raw)
+    asset_manifest_path = Path(asset_manifest_raw)
+    mjcf_hash = sha256_file(mjcf_path) if mjcf_path.is_file() else None
+    asset_manifest_hash = (
+        sha256_file(asset_manifest_path) if asset_manifest_path.is_file() else None
+    )
+    checks.update(
+        {
+            "mjcf_current_asset": mjcf_path.resolve()
+            == ASIMOV1_GENERATED_MJCF.resolve()
+            if mjcf_raw
+            else False,
+            "mjcf_hash": mjcf_hash is not None
+            and job.get("mjcf_xml_sha256") == mjcf_hash,
+            "mjcf_manifest_config_provenance": source_ok(
+                path_key="mjcf_xml",
+                hash_key="mjcf_xml_sha256",
+                expected_path=ASIMOV1_GENERATED_MJCF,
+                actual_path=mjcf_path,
+                actual_hash=mjcf_hash,
+            ),
+            "asset_manifest_current": asset_manifest_path.resolve()
+            == ASIMOV1_GENERATED_MANIFEST.resolve()
+            if asset_manifest_raw
+            else False,
+            "asset_manifest_hash": asset_manifest_hash is not None
+            and job.get("asset_manifest_sha256") == asset_manifest_hash,
+            "asset_manifest_manifest_config_provenance": source_ok(
+                path_key="asset_manifest",
+                hash_key="asset_manifest_sha256",
+                expected_path=ASIMOV1_GENERATED_MANIFEST,
+                actual_path=asset_manifest_path,
+                actual_hash=asset_manifest_hash,
+            ),
+        }
+    )
+    details.update(
+        {
+            "mjcf_xml": mjcf_raw or None,
+            "mjcf_xml_sha256": job.get("mjcf_xml_sha256"),
+            "asset_manifest": asset_manifest_raw or None,
+            "asset_manifest_sha256": job.get("asset_manifest_sha256"),
+        }
+    )
+    passed = all(checks.values())
+    print(f"[gate-0] {'PASS' if passed else 'FAIL'} — ASIMOV generated model assets")
+    return {"passed": passed, "checks": checks, "details": details}
 
 
 async def main_async(args) -> int:
@@ -248,6 +362,10 @@ async def main_async(args) -> int:
     gates = {}
 
     if args.profile == "asimov-1":
+        if args.require_asimov_model_provenance:
+            gates["g0_asimov_model_provenance"] = await _gate_asimov_model_provenance(
+                ckpt_dir
+            )
         gates["g1_checkpoint_contract"] = await _gate_training_dim(ckpt_dir, 25)
         gates["g2_conditioning"] = await _gate_conditioning(ckpt_dir)
         gates["g3_asimov_bridge"] = await _gate_asimov_bridge()
@@ -281,7 +399,7 @@ def main() -> int:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "checkpoints" / "text_conditioned_v2",
+        default=DEFAULT_ALBERTA_CHECKPOINT,
     )
     parser.add_argument(
         "--out",
@@ -290,6 +408,14 @@ def main() -> int:
         / "robot-mujoco-demo" / "evidence" / "sim_validation_gate",
     )
     parser.add_argument("--profile", default="hiwonder-ainex")
+    parser.add_argument(
+        "--require-asimov-model-provenance",
+        action="store_true",
+        help=(
+            "for asimov-1, require training_job.json to reference the current "
+            "generated MJCF and asset manifest hashes"
+        ),
+    )
     args = parser.parse_args()
     return asyncio.run(main_async(args))
 

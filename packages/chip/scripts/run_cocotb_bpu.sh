@@ -113,7 +113,9 @@ cd "$REPO_ROOT/$COCOTB_DIR"
 make SIM="$SIM_NAME" \
     MODULE="$COCOTB_MOD" \
     TOPLEVEL="$COCOTB_TOP" \
+    TESTCASE="${TESTCASE:-}" \
     PYTHON="$PYTHON_BIN" \
+    COCOTB_RESULTS_FILE="$REPO_ROOT/$COCOTB_DIR/results.xml" \
     SIM_BUILD="$SIM_BUILD"
 
 if [ -f "$REPO_ROOT/$COCOTB_DIR/results.xml" ]; then
@@ -123,4 +125,5 @@ if [ -f "$REPO_ROOT/$COCOTB_DIR/results.xml" ]; then
         --result "$RAW_RESULT" \
         --module "$COCOTB_MOD" \
         --top "$COCOTB_TOP"
+    "$PYTHON_BIN" "$REPO_ROOT/scripts/write_bpu_cocotb_aggregate.py" || true
 fi

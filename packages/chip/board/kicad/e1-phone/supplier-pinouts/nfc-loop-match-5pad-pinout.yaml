@@ -1,0 +1,38 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: PN7160-class NFC antenna loop matching network development contract
+manufacturer: NXP development function class
+package: 5-pad NFC loop matching development pattern
+source_doc: https://www.nxp.com/products/PN7160
+source_doc_alt:
+  - https://www.nxp.com/docs/en/data-sheet/PN7160_PN7161.pdf
+source_doc_revision: public product page and datasheet observed 2026-05-22; exact NFC matching values/layout require antenna tuning
+captured_date: 2026-05-22
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: public_nfc_loop_match_contract_pending_antenna_tuning
+procurement_url: https://www.nxp.com/products/PN7160
+notes: |
+  Board-side development contract for NFC_LOOP_MATCH_DEV. It captures the
+  differential NFC loop feed and return pads used by the current KiCad board.
+  Component values, matching topology, and final layout remain blocked until
+  antenna supplier tuning and NFC validation.
+mechanical:
+  package_family: nfc_loop_match_development_pattern
+  pin_count: 5
+pin_signal_set:
+  antenna:
+    - NFC_RF_P
+    - NFC_RF_N
+  return:
+    - GND
+pins:
+  - {pin: '1', name: NFC_RF_P, function: antenna_positive_feed, direction: rf}
+  - {pin: '2', name: NFC_RF_P, function: antenna_positive_match_node, direction: rf}
+  - {pin: '3', name: NFC_RF_N, function: antenna_negative_feed, direction: rf}
+  - {pin: '4', name: GND, function: return_or_shield, direction: power_return}
+  - {pin: '5', name: GND, function: return_or_shield, direction: power_return}
+release_blockers:
+  - NFC loop geometry and antenna supplier drawing
+  - matching component values from VNA tuning
+  - final keepout/ferrite/shielding review
+  - NFC forum and payment-mode validation evidence

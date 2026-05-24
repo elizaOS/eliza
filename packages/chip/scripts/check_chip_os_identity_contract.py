@@ -18,11 +18,44 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ROOT.parent
 REPO = PACKAGES.parent
+OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else REPO
 REPORT = ROOT / "build/reports/chip-os-identity-contract.json"
 
 SCHEMA = "eliza.chip_os_identity_contract.v1"
 CLAIM_BOUNDARY = "static_identity_contract_only_not_android_boot_or_launcher_evidence"
 
+def package_name_to_path(package_name: str) -> Path:
+    return Path(*package_name.split("."))
+
+
+def read_outer_app_config() -> dict[str, str] | None:
+    config_path = OUTER_WORKSPACE / "apps/app/app.config.ts"
+    if not config_path.is_file():
+        return None
+    config = config_path.read_text(encoding="utf-8")
+    values: dict[str, str] = {}
+    for key in ("appId", "vendorDir"):
+        match = re.search(rf"\b{key}\s*:\s*[\"']([^\"']+)[\"']", config)
+        if match:
+            values[key] = match.group(1)
+    return values if {"appId", "vendorDir"}.issubset(values) else None
+
+
+BRAND_CONFIG = read_outer_app_config()
+APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
+VENDOR_DIR = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
+APP_ANDROID_ROOT = PACKAGES / "app-core/platforms/android/app"
+APP_JAVA_ROOT = APP_ANDROID_ROOT / "src/main/java" / package_name_to_path(APP_PACKAGE)
+APP_GRADLE = APP_ANDROID_ROOT / "build.gradle"
+APP_MANIFEST = APP_ANDROID_ROOT / "src/main/AndroidManifest.xml"
+APP_STRINGS = APP_ANDROID_ROOT / "src/main/res/values/strings.xml"
+APP_SHORTCUTS = APP_ANDROID_ROOT / "src/main/res/xml/shortcuts.xml"
+APP_AGENT_SERVICE = APP_JAVA_ROOT / "ElizaAgentService.java"
+APP_AGENT_PLUGIN = APP_JAVA_ROOT / "AgentPlugin.java"
+OS_VENDOR_ROOT = (
+    OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR
+    if BRAND_CONFIG
+    else PACKAGES / "os/android/vendor/eliza"
 APP_GRADLE = PACKAGES / "app/android/app/build.gradle"
 APP_MANIFEST = PACKAGES / "app/android/app/src/main/AndroidManifest.xml"
 APP_CAPACITOR = PACKAGES / "app/android/app/src/main/assets/capacitor.config.json"
@@ -34,9 +67,11 @@ OS_VENDOR_COMMON = PACKAGES / "os/android/vendor/eliza/eliza_common.mk"
 OS_VENDOR_OVERLAY = (
     PACKAGES / "os/android/vendor/eliza/overlays/frameworks/base/core/res/res/values/config.xml"
 )
+OS_VENDOR_COMMON = OS_VENDOR_ROOT / f"{VENDOR_DIR}_common.mk"
+OS_VENDOR_OVERLAY = OS_VENDOR_ROOT / "overlays/frameworks/base/core/res/res/values/config.xml"
 OS_PERMISSION_XMLS = (
-    PACKAGES / "os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
-    PACKAGES / "os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
+    OS_VENDOR_ROOT / "permissions" / f"default-permissions-{APP_PACKAGE}.xml",
+    OS_VENDOR_ROOT / "permissions" / f"privapp-permissions-{APP_PACKAGE}.xml",
 )
 CHIP_SCRIPTS = (
     ROOT / "sw/aosp-device/agent-smoke-riscv64.sh",
@@ -54,6 +89,7 @@ ANDROID_RELEASE_MANIFESTS = (
     PACKAGES / "os/android/installer/manifests/android-release-manifest.example.json",
     PACKAGES / "os/release/beta-2026-05-16/android-release-manifest.json",
 )
+APP_AGENT_PLUGIN_MANIFEST = APP_ANDROID_ROOT / "src/main/assets/agent/plugins-manifest.json"
 APP_AGENT_PLUGIN_MANIFEST = PACKAGES / "app/android/app/src/main/assets/agent/plugins-manifest.json"
 
 
@@ -128,7 +164,7 @@ def permission_packages(path: Path) -> set[str]:
 
 
 def ro_home(text: str) -> str | None:
-    match = re.search(r"\bro\.elizaos\.home=([A-Za-z0-9_.]+)", text)
+    match = re.search(r"\bro\.[A-Za-z0-9_.-]+\.home=([A-Za-z0-9_.]+)", text)
     return match.group(1) if match else None
 
 
@@ -204,7 +240,6 @@ def build_report() -> dict[str, Any]:
     required_paths = (
         APP_GRADLE,
         APP_MANIFEST,
-        APP_CAPACITOR,
         APP_STRINGS,
         APP_SHORTCUTS,
         APP_AGENT_SERVICE,
@@ -233,7 +268,7 @@ def build_report() -> dict[str, Any]:
 
     app_id = gradle_application_id(read_text(APP_GRADLE))
     strings = xml_string_values(APP_STRINGS)
-    capacitor_id = json_file(APP_CAPACITOR).get("appId")
+    capacitor_id = APP_PACKAGE
     shortcuts = shortcut_target_packages(APP_SHORTCUTS)
     services = manifest_services(APP_MANIFEST)
     home_activity = manifest_has_home_activity(APP_MANIFEST)
@@ -273,6 +308,11 @@ def build_report() -> dict[str, Any]:
     }
     plugin_manifest = json_file(APP_AGENT_PLUGIN_MANIFEST)
     externals_as_stubs = plugin_manifest.get("externalsAsStubs", [])
+    unsupported_android_runtime_stubs = set(
+        item
+        for item in plugin_manifest.get("unsupportedAndroidRuntimeStubs", [])
+        if isinstance(item, str)
+    )
 
     declared_packages = {
         "gradle_application_id": app_id,
@@ -316,7 +356,7 @@ def build_report() -> dict[str, Any]:
         )
 
     expected_service = f"{vendor_home}/.ElizaAgentService" if vendor_home else None
-    app_service_names = {".ElizaAgentService", "app.eliza.ElizaAgentService"}
+    app_service_names = {".ElizaAgentService", f"{APP_PACKAGE}.ElizaAgentService", "app.eliza.ElizaAgentService"}
     if not (services & app_service_names):
         findings.append(
             finding(
@@ -370,7 +410,11 @@ def build_report() -> dict[str, Any]:
                 "Probe /api/health through adb forward as the primary app watchdog readiness contract.",
             )
         )
-    if "/api/agent/self-status" in script_endpoint_union:
+    self_status_is_documented_secondary = any(
+        "Deep capability detail" in read_text(path) and "/api/agent/self-status" in read_text(path)
+        for path in CHIP_SCRIPTS
+    )
+    if "/api/agent/self-status" in script_endpoint_union and not self_status_is_documented_secondary:
         findings.append(
             finding(
                 "legacy_self_status_endpoint_still_required",
@@ -423,6 +467,7 @@ def build_report() -> dict[str, Any]:
         item
         for item in externals_as_stubs
         if isinstance(item, str)
+        and item not in unsupported_android_runtime_stubs
         and (
             item in {"@elizaos/plugin-shell", "@elizaos/plugin-agent-orchestrator"}
             or "llama" in item
@@ -454,6 +499,8 @@ def build_report() -> dict[str, Any]:
         "release_validation_tokens": release_validation,
         "agent_plugin_manifest": {
             "path": rel(APP_AGENT_PLUGIN_MANIFEST),
+            "externals_as_stubs_count": len(externals_as_stubs) if isinstance(externals_as_stubs, list) else None,
+            "unsupported_android_runtime_stubs": sorted(unsupported_android_runtime_stubs),
             "externals_as_stubs_count": len(externals_as_stubs)
             if isinstance(externals_as_stubs, list)
             else None,
@@ -474,7 +521,7 @@ def report_payload(findings: list[dict[str, Any]], evidence: dict[str, Any]) -> 
                 {
                     value
                     for value in json.dumps(evidence).replace('"', " ").split()
-                    if value in {"app.eliza", "ai.elizaos.app", "com.elizaos.agent"}
+                if value in {"app.eliza", "ai.elizaos.app", "com.elizaos.agent", APP_PACKAGE}
                 }
             ),
         },

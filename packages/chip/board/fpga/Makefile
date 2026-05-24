@@ -18,30 +18,39 @@ DEVICE         ?= 85k
 PACKAGE        ?= CABGA381
 SPEED          ?= 6
 FREQ_MHZ       ?= 25
+SYNTH_ECP5_FLAGS ?=
 
 REPO_ROOT      := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))/../..)
 RTL_DIR        := $(REPO_ROOT)/rtl
 LPF            := $(REPO_ROOT)/board/fpga/constraints/e1_demo_ulx3s.lpf
 
 BUILD_DIR      ?= $(REPO_ROOT)/build/fpga/e1_demo
+override BUILD_DIR := $(if $(filter /%,$(BUILD_DIR)),$(BUILD_DIR),$(REPO_ROOT)/$(BUILD_DIR))
 JSON           := $(BUILD_DIR)/$(TOP).json
 CONFIG         := $(BUILD_DIR)/$(TOP).config
 BITSTREAM      := $(BUILD_DIR)/$(TOP).bit
-SYNTH_LOG      := $(BUILD_DIR)/yosys.log
+SYNTH_LOG      ?= $(BUILD_DIR)/yosys.log
+PROFILE_LOG    ?= $(BUILD_DIR)/yosys_profile.log
 PNR_LOG        := $(BUILD_DIR)/nextpnr.log
 PACK_LOG       := $(BUILD_DIR)/ecppack.log
 REPORT         := $(BUILD_DIR)/report.txt
 
 # RTL file list. Keep narrow: only modules in the e1_chip_top cone.
 RTL_SOURCES := \
+  $(RTL_DIR)/top/e1_soc_pkg.sv \
   $(RTL_DIR)/top/e1_fpga_smoke_top.sv \
   $(RTL_DIR)/top/e1_chip_top.sv \
   $(RTL_DIR)/top/e1_soc_top.sv \
   $(RTL_DIR)/clock/e1_reset_sync.sv \
   $(RTL_DIR)/interconnect/e1_axi_lite_interconnect.sv \
   $(RTL_DIR)/interrupts/e1_interrupt_controller.sv \
+  $(RTL_DIR)/peripherals/e1_clint.sv \
   $(RTL_DIR)/peripherals/e1_peripherals.sv \
+  $(RTL_DIR)/peripherals/e1_mmio_decode.sv \
+  $(RTL_DIR)/security/rot/e1_rot_reset_seq.sv \
   $(RTL_DIR)/memory/e1_axi_lite_dram.sv \
+  $(RTL_DIR)/memory/e1_behavioral_dram.sv \
+  $(RTL_DIR)/memory/e1_weight_buffer_sram.sv \
   $(RTL_DIR)/cpu/e1_cva6_wrapper.sv \
   $(RTL_DIR)/cpu/e1_cpu_axi_bridge.sv \
   $(RTL_DIR)/npu/e1_npu.sv \
@@ -55,7 +64,7 @@ NEXTPNR        ?= nextpnr-ecp5
 ECPPACK        ?= ecppack
 OPENFPGALOADER ?= openFPGALoader
 
-.PHONY: all synth pnr pack prog report clean
+.PHONY: all synth synth-profile pnr pack prog report clean
 
 all: pack
 
@@ -66,10 +75,18 @@ synth: $(JSON)
 
 $(JSON): $(RTL_SOURCES) | $(BUILD_DIR)
 	@echo ">> yosys synth for $(TOP) (ECP5 $(DEVICE))"
-	$(YOSYS) -p "read_verilog -sv $(RTL_SOURCES); \
-	             hierarchy -top $(TOP); \
-	             synth_ecp5 -top $(TOP) -json $(JSON)" \
-	         -l $(SYNTH_LOG)
+	cd $(REPO_ROOT) && $(YOSYS) -p "read_verilog -sv $(RTL_SOURCES); \
+	                                hierarchy -top $(TOP); \
+	                                synth_ecp5 $(SYNTH_ECP5_FLAGS) -top $(TOP) -json $(JSON)" \
+	                            -l $(SYNTH_LOG)
+
+synth-profile: | $(BUILD_DIR)
+	@echo ">> yosys pre-map synthesis profile for $(TOP) (diagnostic only)"
+	cd $(REPO_ROOT) && $(YOSYS) -p "read_verilog -sv $(RTL_SOURCES); \
+	                                hierarchy -top $(TOP); \
+	                                proc; opt_clean; \
+	                                stat" \
+	                            -l $(PROFILE_LOG)
 
 pnr: $(CONFIG)
 

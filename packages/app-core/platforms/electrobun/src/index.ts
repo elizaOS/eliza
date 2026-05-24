@@ -36,6 +36,7 @@ import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { seedFirstPartyRemotePluginsForStartup } from "./first-party-remotes";
 import { getFloatingChatManager } from "./floating-chat-window";
+import { appendKioskShellModeParam, isKioskShellMode } from "./kiosk-mode";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
   markDesktopSessionStale,
@@ -861,7 +862,10 @@ async function resolveRendererUrl(): Promise<string> {
 }
 
 async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
-  const rendererUrl = await resolveRendererUrl();
+  const kiosk = isKioskShellMode();
+  const rendererUrl = kiosk
+    ? appendKioskShellModeParam(await resolveRendererUrl())
+    : await resolveRendererUrl();
   const buildInfo = await BuildConfig.get();
   const mainWindowPartition = resolveMainWindowPartition(process.env, {
     platform: process.platform,
@@ -890,9 +894,12 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
     x: state.x,
     y: state.y,
   };
-  const titleBarStyle =
-    process.platform === "darwin" ? "hiddenInset" : "default";
-  const transparent = process.platform === "darwin";
+  const titleBarStyle = kiosk
+    ? "hidden"
+    : process.platform === "darwin"
+      ? "hiddenInset"
+      : "default";
+  const transparent = !kiosk && process.platform === "darwin";
   const forceMainWindowCef = shouldForceMainWindowCef(
     process.env,
     process.platform,
@@ -961,6 +968,20 @@ async function createMainWindow(rpc: ElizaDesktopRpc): Promise<BrowserWindow> {
       rpc,
       ...(mainWindowPartition ? { partition: mainWindowPartition } : {}),
     });
+  }
+
+  // Kiosk mode: the app IS the GUI. Go fullscreen and skip the bounds
+  // persistence + maximize ergonomics — the window is fixed fullscreen and
+  // must never restore to a smaller frame.
+  if (kiosk) {
+    try {
+      win.setFullScreen(true);
+    } catch (err) {
+      logger.warn(
+        `[main-window] kiosk setFullScreen() failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+    return win;
   }
 
   applyMacOSWindowEffects(win);
@@ -1042,6 +1063,15 @@ function attachMainWindow(
   });
 
   win.on("close", (event: unknown) => {
+    // Kiosk mode: the app is the entire GUI under a single-window compositor.
+    // The window must never close — block every close request and keep it up.
+    if (isKioskShellMode() && !isQuitting) {
+      const closeEvent = event as { preventDefault?: () => void } | undefined;
+      closeEvent?.preventDefault?.();
+      logger.info("[Main] Kiosk window close blocked — staying fullscreen");
+      return;
+    }
+
     if (!isQuitting && process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY !== "0") {
       const closeEvent = event as { preventDefault?: () => void } | undefined;
       if (typeof closeEvent?.preventDefault === "function") {
@@ -2208,7 +2238,9 @@ async function main(): Promise<void> {
       /* non-fatal */
     }
     getFloatingChatManager().configure(url, preload);
-    if (shouldCreateDesktopPill()) {
+    // In kiosk mode the chat pill lives in-canvas on the KioskShell, so we
+    // never spawn the separate native pill toplevel.
+    if (!isKioskShellMode() && shouldCreateDesktopPill()) {
       // The pill loads the same renderer with `?shell=pill`, which routes to
       // a minimal <VoicePill> mount in apps/app/src/main.tsx.
       try {

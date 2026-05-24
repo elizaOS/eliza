@@ -139,12 +139,7 @@ BACK_SHELL_MOLDED = [
     "orange_battery_left_rib",
     "orange_battery_right_rib",
     "orange_usb_reinforcement_saddle",
-    "orange_screw_boss_1",
-    "orange_screw_boss_2",
-    "orange_screw_boss_3",
-    "orange_screw_boss_4",
-    "orange_screw_boss_5",
-    "orange_screw_boss_6",
+    *[f"orange_screw_boss_{i}" for i in range(1, 11)],
     "orange_snap_hook_1",
     "orange_snap_hook_2",
     "orange_snap_hook_3",
@@ -230,6 +225,18 @@ ASSEMBLY: list[AssemblyStep] = [
     ),
     AssemblyStep(
         5,
+        "Battery back-void foam pad bonded to inner back wall",
+        ["battery_back_void_foam_pad"],
+        "+Z",
+        "S3 foam-pad placement nest + PSA roller",
+        mates=(
+            "orange_back_shell",
+            "orange_battery_left_rib",
+            "orange_battery_right_rib",
+        ),
+    ),
+    AssemblyStep(
+        6,
         "Battery pouch placed between locating ribs, FPC routed",
         ["battery_pouch"],
         "+Z",
@@ -243,7 +250,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        6,
+        7,
         "Main PCB seated against boss 1/4 datum + EMI shield cans",
         ["main_pcb", "soc_shield_can", "pmic_shield_can", "radio_shield_can"],
         "+Z",
@@ -257,12 +264,17 @@ ASSEMBLY: list[AssemblyStep] = [
             "orange_screw_boss_4",
             "orange_screw_boss_5",
             "orange_screw_boss_6",
+            "orange_screw_boss_7",
+            "orange_screw_boss_8",
+            "orange_screw_boss_9",
+            "orange_screw_boss_10",
             "battery_pouch",
+            "battery_back_void_foam_pad",
             "rear_camera_module",
         ),
     ),
     AssemblyStep(
-        7,
+        8,
         "USB-C receptacle seated into reinforcement saddle",
         ["usb_c_receptacle"],
         "+Z",
@@ -275,7 +287,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        8,
+        9,
         "USB-C perimeter gaskets applied around receptacle",
         [
             "usb_c_perimeter_gasket_top",
@@ -288,7 +300,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("usb_c_receptacle", "usb_c_external_aperture", "orange_usb_reinforcement_saddle"),
     ),
     AssemblyStep(
-        9,
+        10,
         "Haptic LRA + bottom speaker + acoustic meshes placed",
         [
             "haptic_lra",
@@ -315,7 +327,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        10,
+        11,
         "Bottom + top mics placed on board islands",
         ["bottom_mic", "top_mic"],
         "+Z",
@@ -323,7 +335,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("main_pcb",),
     ),
     AssemblyStep(
-        11,
+        12,
         "Split-board interconnect (connectors + flex tails + side loop)",
         [
             "split_interconnect_top_connector",
@@ -337,7 +349,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("main_pcb", "battery_pouch"),
     ),
     AssemblyStep(
-        12,
+        13,
         "Display FPC connector + bend keepout routed",
         ["display_fpc_connector", "display_fpc_bend_keepout"],
         "+Z",
@@ -345,7 +357,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("main_pcb", "rear_camera_module", "pmic_shield_can"),
     ),
     AssemblyStep(
-        13,
+        14,
         "Earpiece receiver + gasket placed (top island)",
         ["earpiece_receiver", "earpiece_gasket"],
         "+Z",
@@ -353,7 +365,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("orange_side_frame", "handset_acoustic_slot", "handset_acoustic_mesh"),
     ),
     AssemblyStep(
-        14,
+        15,
         "Front camera module placed under top island",
         ["front_camera_module"],
         "+Z",
@@ -361,7 +373,7 @@ ASSEMBLY: list[AssemblyStep] = [
         mates=("orange_side_frame", "front_camera_under_glass", "front_camera_black_mask_window"),
     ),
     AssemblyStep(
-        15,
+        16,
         "Display module + perimeter adhesive bonded",
         [
             "display_lcm",
@@ -384,7 +396,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        16,
+        17,
         "Cover glass bonded over display",
         ["screen_cover_glass"],
         "+Z",
@@ -403,11 +415,11 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        17,
-        "Side-frame closure: snap onto perimeter + drive 6 screws",
+        18,
+        "Side-frame closure: snap onto perimeter + drive 10 screws",
         SIDE_FRAME_MOLDED,
         "+Z",
-        "S5 snap platen 25 N (8 snaps), Wera 7440 (6 screws)",
+        "S5 snap platen 25 N (8 snaps), Wera 7440 torque map (10 screws)",
         mates=(
             "orange_back_shell",
             "orange_snap_hook_1",
@@ -442,7 +454,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        18,
+        19,
         "Power button cap + gasket inserted through side frame (-X)",
         ["power_button_cap", "power_button_elastomer_gasket"],
         "-X",
@@ -455,7 +467,7 @@ ASSEMBLY: list[AssemblyStep] = [
         ),
     ),
     AssemblyStep(
-        19,
+        20,
         "Volume button cap + gasket inserted through side frame (+X)",
         ["volume_button_cap", "volume_button_elastomer_gasket"],
         "+X",
@@ -656,7 +668,7 @@ def check_insertion(part: Part, axis: str, placed: list[Part], mates: set) -> di
 # out the back of the shell).
 # ----------------------------------------------------------------------------
 def check_fastener_access(parts: dict[str, Part]) -> dict:
-    fasteners = [f"orange_screw_boss_{i}" for i in range(1, 7)] + [
+    fasteners = [f"orange_screw_boss_{i}" for i in range(1, 11)] + [
         f"orange_snap_hook_{i}" for i in range(1, 9)
     ]
     # parts present in the bay before the closure tool engages each fastener
@@ -914,7 +926,7 @@ def write_markdown(out: dict) -> None:
         f"{len(out['trapped_parts'])} {out['trapped_parts'] or ''}"
     )
     lines.append(
-        f"- Fastener access (6 bosses + 8 snaps): "
+        f"- Fastener access (10 bosses + 8 snaps): "
         f"{'PASS' if out['fastener_access']['pass'] else 'FAIL'}"
     )
     lines.append(f"- FPC routing (no pinch): {'PASS' if out['fpc_routing']['pass'] else 'FAIL'}")

@@ -8,7 +8,7 @@
 - Dimensions: 78.0 x 153.6 x 11.8 mm (fully flush flat back, no camera bump, no protruding lens ring)
 - Envelope volume: 141.37 cm^3
 - Corner radius: 7.5 mm
-- Mass: 191.68 g reconciled (183.28 g CAD geometry + 8.4 g assembly-stage items); ship target 168 +/-10 g (PASS). 185 g aspirational concept target; 168 +/-10 g EVT0 ship-target window (158-178 g); 200 g hard maximum weight. Flush-back rev (11.8 mm, 5727 mAh battery) reconciled CAD mass 191.68 g is PASS against the 200 g maximum; it is above the ship-target window but under the hard maximum with 8.32 g margin. The CAD mass is a nominal-density geometry estimate, not measured hardware. Aspirational concept target 185 g retained for reference.
+- Mass: 182.02 g generated CAD estimate; ship target 168 +/-10 g (FAIL, 4.02 g above the 158-178 g target window). 185 g aspirational concept target; 200 g hard maximum weight. Flush-back rev (11.8 mm, 5727 mAh battery) remains below the hard maximum with 17.98 g margin. The CAD mass is a nominal-density geometry estimate, not measured hardware.
 - Color / material: hard safety orange / PC+ABS injection molded
 
 ## Display

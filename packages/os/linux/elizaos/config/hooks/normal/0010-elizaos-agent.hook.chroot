@@ -2,15 +2,18 @@
 # Install the elizaOS agent + Bun runtime into the live chroot.
 #
 # Expects build evidence under /opt/elizaos-artifacts/:
-#   bun                          (statically-linked Bun for target arch)
-#   bun.sha256
+#   bun                          (statically-linked Bun for target arch;
+#                                optional on riscv64 node-only images)
+#   bun.sha256                   (present when bun is present)
 #   elizaos-app/                 (Electrobun-packaged elizaOS app)
 #   elizaos-app.sha256
+#   riscv64-bun-provenance.json (required when bun is a riscv64 musl wrapper)
 #   vector.tar.gz                (PGlite extension bundle, resolved via ../)
 #   fuzzystrmatch.tar.gz         (PGlite extension bundle, resolved via ../)
 #   elizaos-root-assets.sha256
 #
-# On riscv64, CI should derive bun from the same
+# On riscv64, CI may omit Bun and run the Node-shebang agent bundle through
+# the Debian nodejs package. When Bun is present, CI should derive it from the same
 # bun-linux-riscv64-musl.zip + SHA-256 contract consumed by the Android
 # AOSP staging path, then place the extracted binary and bun.sha256 in
 # /opt/elizaos-artifacts before lb build runs.
@@ -24,82 +27,33 @@ ART=/opt/elizaos-artifacts
 INSTALL=/opt/elizaos
 mkdir -p "${INSTALL}/bin" "${INSTALL}/app" /var/lib/elizaos /var/log/elizaos /etc/elizaos
 
-install_fallback_payload() {
-    cat > "${INSTALL}/app/fallback_agent.py" <<'PY'
-#!/usr/bin/env python3
-import argparse
-import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-
-class Handler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        if self.path in ("/api/health", "/health"):
-            body = json.dumps({"status": "ok", "agent": "elizaos-fallback"}).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        self.send_response(404)
-        self.end_headers()
-
-    def log_message(self, fmt, *args):
-        return
-
-
-def serve(argv):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--headless", action="store_true")
-    parser.add_argument("--port", type=int, default=31337)
-    args, _ = parser.parse_known_args(argv)
-    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
-    print(f"elizaos-agent-fallback-listening port={args.port}", flush=True)
-    server.serve_forever()
-
-
-def tui_smoke(argv):
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--api", default="http://127.0.0.1:31337")
-    parser.parse_known_args(argv)
-    print("elizaos-tui-smoke-ok", flush=True)
-
-
-def main():
-    import sys
-
-    args = sys.argv[1:]
-    if args and args[0].endswith("server.js"):
-        args = args[1:]
-    if args and args[0] == "tui-smoke":
-        tui_smoke(args[1:])
-        return
-    serve(args)
-
-
-if __name__ == "__main__":
-    main()
-PY
-    chmod 0755 "${INSTALL}/app/fallback_agent.py"
-    cat > "${INSTALL}/app/server.js" <<'EOF'
-// Placeholder entrypoint for the offline elizaOS live-image fallback.
-EOF
-    cat > "${INSTALL}/bin/bun" <<'EOF'
-#!/bin/sh
-exec /usr/bin/python3 /opt/elizaos/app/fallback_agent.py "$@"
-EOF
-    chmod 0755 "${INSTALL}/bin/bun"
-}
-
 if [ ! -d "${ART}" ]; then
-    if [ "${ELIZAOS_REQUIRE_AGENT_ARTIFACTS:-0}" = "1" ]; then
-        echo "ERROR: ${ART} missing and ELIZAOS_REQUIRE_AGENT_ARTIFACTS=1." >&2
+    echo "ERROR: ${ART} missing; objective images require real elizaOS agent artifacts." >&2
+    exit 1
+else
+    for required in elizaos-app; do
+        if [ ! -e "${ART}/${required}" ]; then
+            echo "ERROR: required elizaOS agent artifact missing: ${ART}/${required}" >&2
+            exit 1
+        fi
+    done
+    if [ ! -e "${ART}/bun" ] && [ "$(dpkg --print-architecture 2>/dev/null || true)" != "riscv64" ]; then
+        echo "ERROR: required elizaOS agent artifact missing: ${ART}/bun" >&2
         exit 1
     fi
-    echo "WARN: ${ART} missing — installing offline elizaOS fallback agent payload."
-    install_fallback_payload
-else
+    if [ ! -e "${ART}/bun" ] && [ ! -f "${ART}/elizaos-app/agent-bundle.js" ]; then
+        echo "ERROR: riscv64 Node fallback requires ${ART}/elizaos-app/agent-bundle.js when Bun is absent." >&2
+        exit 1
+    fi
+    if [ -e "${ART}/bun" ] && grep -q 'musl-runtime/bun' "${ART}/bun" && [ ! -x "${ART}/elizaos-app/musl-runtime/bun" ]; then
+        echo "ERROR: Bun wrapper requires ${ART}/elizaos-app/musl-runtime/bun." >&2
+        exit 1
+    fi
+    if [ -e "${ART}/bun" ] && grep -q 'musl-runtime/bun' "${ART}/bun" && [ ! -f "${ART}/riscv64-bun-provenance.json" ]; then
+        echo "ERROR: riscv64 Bun wrapper requires ${ART}/riscv64-bun-provenance.json." >&2
+        exit 1
+    fi
+
     # Bun runtime.
     if [ -f "${ART}/bun" ]; then
         install -m 0755 "${ART}/bun" "${INSTALL}/bin/bun"
@@ -125,6 +79,17 @@ else
     if [ -f "${ART}/elizaos-root-assets.sha256" ]; then
         ( cd "${INSTALL}" && sha256sum -c "${ART}/elizaos-root-assets.sha256" )
     fi
+fi
+
+if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "riscv64" ]; then
+    mkdir -p "${INSTALL}/app/node_modules"
+    for module in undici ws node-fetch; do
+        if [ ! -d "/usr/share/nodejs/${module}" ]; then
+            echo "ERROR: riscv64 Node fallback requires Debian ${module} at /usr/share/nodejs/${module}." >&2
+            exit 1
+        fi
+        ln -sfn "/usr/share/nodejs/${module}" "${INSTALL}/app/node_modules/${module}"
+    done
 fi
 
 # Service user.

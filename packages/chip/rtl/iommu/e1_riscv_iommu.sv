@@ -2,27 +2,31 @@
 
 // e1_riscv_iommu
 //
-// RISC-V IOMMU v1.0.1 implementation.  The IOMMU sits between bus
+// RISC-V IOMMU v1.0.1 local-subset implementation.  The IOMMU sits between bus
 // masters (NPU command queue, GPU contexts, DMA channels, display planes,
 // camera ISP pipelines) and the AXI4 fabric.  Each upstream master has a
 // device_id; an optional PASID (process_id) further partitions the
-// stream.  The IOMMU performs two-stage (S+G) address translation and
-// emits faults to a memory-resident fault queue.
+// stream.  The verified subset performs a minimal DDT + Sv39 first-stage read
+// walk under identity G-stage, plus BARE/allowlist behavior.  Full two-stage
+// translation, memory-resident FQ DMA, PRI, ATS, and MSI transaction behavior
+// remain blocked by docs/evidence/memory/iommu-evidence-gate.yaml.
 //
-// Implemented features (subset that matches the upstream Linux driver):
+// Verified RTL subset (phone/Linux promotion still requires the evidence
+// artifacts named in docs/evidence/memory/iommu-evidence-gate.yaml):
 //
-//   * DDT-walked device context lookup with 1/2/3-level support.
-//   * Two-stage translation: first-stage (Sv39/Sv48) + G-stage
-//     (Sv39x4/Sv48x4) using sequential page-table walkers.
-//   * Per-device PASID with process-context table (PDT) lookup.
-//   * Fault queue (FQ) with memory-resident ring buffer; FQH/FQT
-//     registers paced by the IOMMU and the kernel driver.
-//   * Page-request interface (PQ) for SVA: the IOMMU emits page-request
-//     entries when a device encounters a non-present PTE under PRI.
+//   * DDT-walked device context lookup for the one-level device-context KAT.
+//   * First-stage Sv39 read translation over the downstream AXI4 walk port.
+//   * BARE/identity G-stage behavior for the local two-stage KAT.
+//   * Per-device PASID isolation through the local allowlist fast path.
+//   * Fault staging and architectural FQ registers; memory-resident FQ DMA is
+//     still a follow-on milestone.
+//   * Page-request queue registers for SVA; PRI transaction behavior is still a
+//     follow-on milestone.
 //   * Translation request interface (TR_REQ_IOVA / TR_REQ_CTL / TR_RESPONSE)
 //     for debug-driven translation lookups.
-//   * Command queue (CQ) for invalidations: IOTINVAL.VMA / IOTINVAL.GVMA
-//     / IODIR.INVAL_DDT / IODIR.INVAL_PDT.
+//   * Command queue (CQ) fetch/decode for IOFENCE.C.  Invalidation commands
+//     (IOTINVAL.VMA / IOTINVAL.GVMA / IODIR.INVAL_DDT / IODIR.INVAL_PDT)
+//     remain a follow-on command-engine milestone.
 //
 // Hardware path:
 //
@@ -214,7 +218,8 @@ module e1_riscv_iommu
     logic [63:0] reg_tr_response;
 
     // Capabilities encoding per spec 4.1.  Bit 7:0 version=10 (1.0).
-    // Sv39 + Sv48 + Sv57 first-stage, Sv39x4 + Sv48x4 G-stage, ATS, PRI.
+    // Some advertised target bits (Sv48/Sv57, G-stage, ATS, PRI, MSI) remain
+    // blocked until the corresponding evidence-gate entries are implemented.
     localparam logic [63:0] CAPS_RESET_VALUE = {
         16'h0000,  // reserved
         1'b1,      // PD20 (20-bit PASID)
@@ -234,9 +239,9 @@ module e1_riscv_iommu
     };
 
     // ------------------------------------------------------------------
-    // Fault queue: memory-resident ring; this RTL writes via the
-    // downstream AXI4 master.  An on-chip shadow staging FIFO holds
-    // records until the AXI4 write completes.
+    // Fault queue subset: this RTL stages fault records locally and exposes the
+    // register/fault surface used by the subset gate.  DMA writes into a
+    // memory-resident FQ ring remain a phone/Linux integration blocker.
     // ------------------------------------------------------------------
     fault_record_t fq_stage [0:FAULT_Q_DEPTH-1];
     logic [$clog2(FAULT_Q_DEPTH+1)-1:0] fq_stage_head;
@@ -262,10 +267,7 @@ module e1_riscv_iommu
 
     // ------------------------------------------------------------------
     // Per-master pending state — used to fault on unauthorised IOVA when
-    // the device context is missing or the page-table walk fails.  This
-    // RTL stub treats DDTP=BARE as identity and otherwise faults; the
-    // full page-table walker is a follow-on (tracked under the IOMMU
-    // evidence gate).
+    // the device context is missing or the page-table walk fails.
     // ------------------------------------------------------------------
     logic                    ddt_mode_off_or_bare;
     logic                    ddt_mode_translate;
@@ -281,7 +283,7 @@ module e1_riscv_iommu
     // must have been programmed via the command queue; unknown device
     // IDs raise CAUSE_DDT_ENTRY_NOT_VALID and the transaction returns
     // SLVERR upstream.  Allowlist tracking is a memory-resident DDT in
-    // production; the stub keeps a small on-chip allowlist for verification.
+    // production; this implementation keeps a small on-chip allowlist for verification.
     // ------------------------------------------------------------------
     logic [DEVICE_ID_W-1:0] allowed_dev [0:NUM_MASTERS-1];
     logic                   allowed_vld [0:NUM_MASTERS-1];
@@ -292,6 +294,87 @@ module e1_riscv_iommu
         end
         return 1'b0;
     endfunction
+
+    typedef enum logic [3:0] {
+        WALK_IDLE,
+        WALK_DC0_REQ,
+        WALK_DC0_RSP,
+        WALK_DC1_REQ,
+        WALK_DC1_RSP,
+        WALK_DC3_REQ,
+        WALK_DC3_RSP,
+        WALK_PT_REQ,
+        WALK_PT_RSP,
+        WALK_DATA_REQ,
+        WALK_DATA_RSP,
+        WALK_RESP
+    } walk_state_e;
+
+    walk_state_e walk_state;
+    logic [$clog2(NUM_MASTERS+1)-1:0] walk_master;
+    logic [ID_WIDTH-1:0] walk_id;
+    logic [DEVICE_ID_W-1:0] walk_devid;
+    logic [PASID_W-1:0] walk_pasid;
+    logic [ADDR_WIDTH-1:0] walk_iova;
+    logic [ADDR_WIDTH-1:0] walk_req_addr;
+    logic [63:0] walk_dc0;
+    logic [63:0] walk_iohgatp;
+    logic [63:0] walk_iosatp;
+    logic [63:0] walk_pte;
+    logic [ADDR_WIDTH-1:0] walk_pa;
+    logic [1:0] walk_resp;
+    logic [DATA_WIDTH-1:0] walk_rdata;
+    logic walk_resp_valid;
+    logic [1:0] walk_level;
+
+    typedef enum logic [1:0] {
+        CMD_IDLE,
+        CMD_FETCH_REQ,
+        CMD_FETCH_RSP
+    } cmd_state_e;
+
+    localparam logic [6:0] CMD_OP_IOFENCE_C = 7'h02;
+
+    cmd_state_e cmd_state;
+    logic [ADDR_WIDTH-1:0] cmd_req_addr;
+    logic [63:0] cmd_word0;
+
+    function automatic logic pte_valid(input logic [63:0] pte);
+        return pte[0];
+    endfunction
+
+    function automatic logic pte_leaf(input logic [63:0] pte);
+        return pte[1] || pte[2] || pte[3];
+    endfunction
+
+    function automatic logic [43:0] pte_ppn(input logic [63:0] pte);
+        return pte[53:10];
+    endfunction
+
+    function automatic logic [8:0] sv39_index(
+        input logic [ADDR_WIDTH-1:0] va,
+        input logic [1:0] level
+    );
+        case (level)
+            2'd2: sv39_index = va[38:30];
+            2'd1: sv39_index = va[29:21];
+            default: sv39_index = va[20:12];
+        endcase
+    endfunction
+
+    function automatic logic [ADDR_WIDTH-1:0] ppn_addr(input logic [43:0] ppn);
+        return ADDR_WIDTH'({ppn, 12'b0});
+    endfunction
+
+    function automatic logic [63:0] read_dw_from_beat(
+        input logic [DATA_WIDTH-1:0] data,
+        input logic [ADDR_WIDTH-1:0] addr
+    );
+        return addr[3] ? data[127:64] : data[63:0];
+    endfunction
+
+    logic walk_can_start;
+    assign walk_can_start = (walk_state == WALK_IDLE) && !walk_resp_valid;
 
     // ------------------------------------------------------------------
     // Master arbitration (round-robin) for translated AXI4 traffic to
@@ -340,6 +423,20 @@ module e1_riscv_iommu
         end
     end
 
+    logic walk_d_arvalid;
+    logic [ID_WIDTH-1:0] walk_d_arid;
+    logic [ADDR_WIDTH-1:0] walk_d_araddr;
+    logic cq_d_arvalid;
+
+    assign walk_d_arvalid = (walk_state == WALK_DC0_REQ) ||
+                            (walk_state == WALK_DC1_REQ) ||
+                            (walk_state == WALK_DC3_REQ) ||
+                            (walk_state == WALK_PT_REQ)  ||
+                            (walk_state == WALK_DATA_REQ);
+    assign walk_d_arid    = walk_id;
+    assign walk_d_araddr  = walk_req_addr;
+    assign cq_d_arvalid   = (cmd_state == CMD_FETCH_REQ);
+
     // Drive downstream channels
     always_comb begin
         d_awvalid = 1'b0;
@@ -376,7 +473,29 @@ module e1_riscv_iommu
         d_arprot  = '0;
         d_arqos   = '0;
         d_aruser  = '0;
-        if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && ar_authorized) begin
+        if (walk_d_arvalid) begin
+            d_arvalid = 1'b1;
+            d_arid    = walk_d_arid;
+            d_araddr  = walk_d_araddr;
+            d_arlen   = '0;
+            d_arsize  = 3'd3;
+            d_arburst = BURST_INCR;
+            d_arcache = CACHE_DEVICE_NON_BUFFERABLE;
+            d_arprot  = '0;
+            d_arqos   = '0;
+            d_aruser  = '0;
+        end else if (cq_d_arvalid) begin
+            d_arvalid = 1'b1;
+            d_arid    = '1;
+            d_araddr  = cmd_req_addr;
+            d_arlen   = '0;
+            d_arsize  = 3'd3;
+            d_arburst = BURST_INCR;
+            d_arcache = CACHE_DEVICE_NON_BUFFERABLE;
+            d_arprot  = '0;
+            d_arqos   = '0;
+            d_aruser  = '0;
+        end else if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && ar_authorized) begin
             d_arvalid = u_arvalid[ar_grant_idx];
             d_arid    = u_arid[ar_grant_idx];
             d_araddr  = u_araddr[ar_grant_idx];
@@ -402,8 +521,15 @@ module e1_riscv_iommu
                                       (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
         end
         if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            u_arready[ar_grant_idx] = ar_authorized ? d_arready :
-                                      (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
+            if (ar_authorized) begin
+                u_arready[ar_grant_idx] = d_arready && !walk_d_arvalid && !cq_d_arvalid;
+            end else if (reg_ddtp[53:10] != '0 && ddt_mode_translate) begin
+                u_arready[ar_grant_idx] = walk_can_start;
+            end else begin
+                u_arready[ar_grant_idx] =
+                    (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH)) &&
+                    !walk_resp_valid;
+            end
         end
     end
 
@@ -452,8 +578,17 @@ module e1_riscv_iommu
             u_rresp[m]  = RESP_OKAY;
             u_rlast[m]  = 1'b0;
         end
-        d_rready = 1'b0;
-        if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
+        d_rready = walk_d_arvalid ||
+                   (walk_state != WALK_IDLE && walk_state != WALK_RESP) ||
+                   (cmd_state == CMD_FETCH_RSP);
+        if (walk_resp_valid) begin
+            u_rvalid[walk_master] = 1'b1;
+            u_rid[walk_master]    = walk_id;
+            u_rdata[walk_master]  = walk_rdata;
+            u_rresp[walk_master]  = walk_resp;
+            u_rlast[walk_master]  = 1'b1;
+        end else if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
+                     !walk_d_arvalid && !cq_d_arvalid && cmd_state == CMD_IDLE) begin
             if (ar_authorized) begin
                 u_rvalid[ar_grant_idx] = d_rvalid;
                 u_rid[ar_grant_idx]    = d_rid;
@@ -480,8 +615,141 @@ module e1_riscv_iommu
             fault_irq      <= 1'b0;
             aw_rr_ptr      <= '0;
             ar_rr_ptr      <= '0;
+            walk_state      <= WALK_IDLE;
+            walk_master     <= '0;
+            walk_id         <= '0;
+            walk_devid      <= '0;
+            walk_pasid      <= '0;
+            walk_iova       <= '0;
+            walk_req_addr   <= '0;
+            walk_dc0        <= '0;
+            walk_iohgatp    <= '0;
+            walk_iosatp     <= '0;
+            walk_pte        <= '0;
+            walk_pa         <= '0;
+            walk_resp       <= RESP_OKAY;
+            walk_rdata      <= '0;
+            walk_resp_valid <= 1'b0;
+            walk_level      <= '0;
         end else begin
             fault_irq <= 1'b0;
+            if (walk_resp_valid && u_rready[walk_master]) begin
+                walk_resp_valid <= 1'b0;
+                walk_state      <= WALK_IDLE;
+            end
+
+            if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
+                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx] &&
+                !ar_authorized && reg_ddtp[53:10] != '0 && ddt_mode_translate) begin
+                walk_master   <= ar_grant_idx;
+                walk_id       <= u_arid[ar_grant_idx];
+                walk_devid    <= u_ar_devid[ar_grant_idx];
+                walk_pasid    <= u_ar_pasid[ar_grant_idx];
+                walk_iova     <= u_araddr[ar_grant_idx];
+                walk_resp     <= RESP_OKAY;
+                walk_rdata    <= '0;
+                walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
+                                 ADDR_WIDTH'(({32'b0, u_ar_devid[ar_grant_idx][6:0]} << 5));
+                walk_state    <= WALK_DC0_REQ;
+            end else begin
+                unique case (walk_state)
+                    WALK_DC0_REQ: if (d_arready) walk_state <= WALK_DC0_RSP;
+                    WALK_DC0_RSP: if (d_rvalid) begin
+                        walk_dc0 <= read_dw_from_beat(d_rdata, walk_req_addr);
+                        if (!read_dw_from_beat(d_rdata, walk_req_addr)[0]) begin
+                            walk_resp       <= RESP_SLVERR;
+                            walk_resp_valid <= 1'b1;
+                            walk_state      <= WALK_RESP;
+                            fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
+                                cause:          CAUSE_DDT_ENTRY_NOT_VALID,
+                                ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
+                                priv:           1'b0,
+                                rsvd_pid:       1'b0,
+                                pid:            walk_pasid,
+                                did:            walk_devid,
+                                custom:         1'b0,
+                                iotval_present: 4'b0001,
+                                iotval:         64'(walk_iova),
+                                iotval2:        '0
+                            };
+                            fq_stage_tail   <= fq_stage_tail + 1'b1;
+                            fq_stage_count  <= fq_stage_count + 1'b1;
+                            fault_count_dbg <= fault_count_dbg + 1'b1;
+                            fault_irq       <= 1'b1;
+                        end else begin
+                            walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
+                                             ADDR_WIDTH'(({32'b0, walk_devid[6:0]} << 5)) +
+                                             ADDR_WIDTH'(8);
+                            walk_state <= WALK_DC1_REQ;
+                        end
+                    end
+                    WALK_DC1_REQ: if (d_arready) walk_state <= WALK_DC1_RSP;
+                    WALK_DC1_RSP: if (d_rvalid) begin
+                        walk_iohgatp  <= read_dw_from_beat(d_rdata, walk_req_addr);
+                        walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
+                                         ADDR_WIDTH'(({32'b0, walk_devid[6:0]} << 5)) +
+                                         ADDR_WIDTH'(24);
+                        walk_state <= WALK_DC3_REQ;
+                    end
+                    WALK_DC3_REQ: if (d_arready) walk_state <= WALK_DC3_RSP;
+                    WALK_DC3_RSP: if (d_rvalid) begin
+                        walk_iosatp   <= read_dw_from_beat(d_rdata, walk_req_addr);
+                        walk_level    <= 2'd2;
+                        walk_req_addr <= ppn_addr(read_dw_from_beat(d_rdata, walk_req_addr)[43:0]) +
+                                         ADDR_WIDTH'(({31'b0, sv39_index(walk_iova, 2'd2)} << 3));
+                        walk_state <= WALK_PT_REQ;
+                    end
+                    WALK_PT_REQ: if (d_arready) walk_state <= WALK_PT_RSP;
+                    WALK_PT_RSP: if (d_rvalid) begin
+                        walk_pte <= read_dw_from_beat(d_rdata, walk_req_addr);
+                        if (!pte_valid(read_dw_from_beat(d_rdata, walk_req_addr))) begin
+                            walk_resp       <= RESP_SLVERR;
+                            walk_resp_valid <= 1'b1;
+                            walk_state      <= WALK_RESP;
+                            fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
+                                cause:          12'd13,
+                                ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
+                                priv:           1'b0,
+                                rsvd_pid:       1'b0,
+                                pid:            walk_pasid,
+                                did:            walk_devid,
+                                custom:         1'b0,
+                                iotval_present: 4'b0001,
+                                iotval:         64'(walk_iova),
+                                iotval2:        '0
+                            };
+                            fq_stage_tail   <= fq_stage_tail + 1'b1;
+                            fq_stage_count  <= fq_stage_count + 1'b1;
+                            fault_count_dbg <= fault_count_dbg + 1'b1;
+                            fault_irq       <= 1'b1;
+                        end else if (pte_leaf(read_dw_from_beat(d_rdata, walk_req_addr))) begin
+                            walk_pa       <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) |
+                                             ADDR_WIDTH'(walk_iova[11:0]);
+                            walk_req_addr <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) |
+                                             ADDR_WIDTH'(walk_iova[11:0]);
+                            walk_state <= WALK_DATA_REQ;
+                        end else if (walk_level == 2'd0) begin
+                            walk_resp       <= RESP_SLVERR;
+                            walk_resp_valid <= 1'b1;
+                            walk_state      <= WALK_RESP;
+                        end else begin
+                            walk_level    <= walk_level - 1'b1;
+                            walk_req_addr <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) +
+                                             ADDR_WIDTH'(({31'b0, sv39_index(walk_iova, walk_level - 1'b1)} << 3));
+                            walk_state <= WALK_PT_REQ;
+                        end
+                    end
+                    WALK_DATA_REQ: if (d_arready) walk_state <= WALK_DATA_RSP;
+                    WALK_DATA_RSP: if (d_rvalid) begin
+                        walk_rdata      <= d_rdata;
+                        walk_resp       <= d_rresp;
+                        walk_resp_valid <= 1'b1;
+                        walk_state      <= WALK_RESP;
+                    end
+                    default: ;
+                endcase
+            end
+
             if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
                 u_awvalid[aw_grant_idx] && u_awready[aw_grant_idx] && !aw_authorized) begin
                 fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
@@ -502,7 +770,8 @@ module e1_riscv_iommu
                 fault_irq      <= 1'b1;
             end
             if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx] && !ar_authorized) begin
+                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx] && !ar_authorized &&
+                !(reg_ddtp[53:10] != '0 && ddt_mode_translate)) begin
                 fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
                     cause:          CAUSE_DDT_ENTRY_NOT_VALID,
                     ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
@@ -575,11 +844,16 @@ module e1_riscv_iommu
             mmio_rvalid      <= 1'b0;
             mmio_rdata       <= '0;
             mmio_rresp       <= '0;
+            cmd_complete_irq <= 1'b0;
+            cmd_state        <= CMD_IDLE;
+            cmd_req_addr     <= '0;
+            cmd_word0        <= '0;
             for (int unsigned i = 0; i < NUM_MASTERS; i++) begin
                 allowed_dev[i] <= '0;
                 allowed_vld[i] <= 1'b0;
             end
         end else begin
+            cmd_complete_irq <= 1'b0;
             // AW accept
             if (mmio_awvalid && mmio_awready) begin
                 mmio_aw_reg    <= 1'b1;
@@ -661,6 +935,36 @@ module e1_riscv_iommu
 
             // IPSR bit 1 mirrors FQ interrupt status
             if (fault_irq) reg_ipsr[1] <= 1'b1;
+
+            unique case (cmd_state)
+                CMD_IDLE: begin
+                    if (reg_cqcsr[0] && (reg_cqh != reg_cqt) &&
+                        walk_state == WALK_IDLE && !walk_resp_valid) begin
+                        cmd_req_addr <= ppn_addr(reg_cqb[53:10]) +
+                                        ADDR_WIDTH'(({32'b0, reg_cqh} << 4));
+                        cmd_state <= CMD_FETCH_REQ;
+                    end
+                end
+                CMD_FETCH_REQ: begin
+                    if (d_arready) cmd_state <= CMD_FETCH_RSP;
+                end
+                CMD_FETCH_RSP: begin
+                    if (d_rvalid) begin
+                        cmd_word0 <= read_dw_from_beat(d_rdata, cmd_req_addr);
+                        if (read_dw_from_beat(d_rdata, cmd_req_addr)[6:0] == CMD_OP_IOFENCE_C) begin
+                            reg_cqh          <= reg_cqh + 1'b1;
+                            cmd_complete_irq <= 1'b1;
+                        end else begin
+                            // Unsupported CQ entries fail closed: stop queue
+                            // processing and leave CQH on the unconsumed entry.
+                            reg_cqcsr[8] <= 1'b1;
+                            reg_cqcsr[0] <= 1'b0;
+                        end
+                        cmd_state <= CMD_IDLE;
+                    end
+                end
+                default: cmd_state <= CMD_IDLE;
+            endcase
         end
     end
 
@@ -680,7 +984,5 @@ module e1_riscv_iommu
             page_req_irq <= 1'b0;
         end
     end
-
-    assign cmd_complete_irq = 1'b0;
 
 endmodule

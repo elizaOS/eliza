@@ -118,16 +118,16 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 gate.CAPTURE_SCRIPT.write_text(
-                    "aosp_agent_package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}\n"
-                    "aosp_agent_service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}\n",
+                    f"aosp_agent_package=${{AOSP_AGENT_PACKAGE:-{gate.EXPECTED_AGENT_PACKAGE}}}\n"
+                    f"aosp_agent_service=${{AOSP_AGENT_SERVICE:-{gate.EXPECTED_AGENT_SERVICE}}}\n",
                     encoding="utf-8",
                 )
                 gate.BOOT_GATE.write_text(
-                    "adb shell pm path ai.elizaos.app\n"
+                    f"adb shell pm path {gate.EXPECTED_AGENT_PACKAGE}\n"
                     "adb shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME\n"
                     "adb shell cmd role holders android.app.role.ASSISTANT\n"
                     "adb shell dumpsys activity activities\n"
-                    "adb shell pidof ai.elizaos.app\n"
+                    f"adb shell pidof {gate.EXPECTED_AGENT_PACKAGE}\n"
                     "curl http://127.0.0.1:31337/api/health\n"
                     "adb shell logcat -d | grep -Ei 'fatal|avc'\n",
                     encoding="utf-8",
@@ -144,6 +144,14 @@ class AndroidEvidenceCaptureContractTests(unittest.TestCase):
                                 "cpu_abi": "riscv64",
                             },
                             "app": {
+                                "package_name": gate.EXPECTED_AGENT_PACKAGE,
+                                "pm_path": "package:/system/priv-app/Milady/Milady.apk",
+                                "role_holders": {
+                                    "android.app.role.HOME": [gate.EXPECTED_AGENT_PACKAGE]
+                                },
+                                "home_resolve_activity": f"{gate.EXPECTED_AGENT_PACKAGE}/.MainActivity",
+                                "foreground_activity": f"{gate.EXPECTED_AGENT_PACKAGE}/.MainActivity",
+                                "service_component": gate.EXPECTED_AGENT_SERVICE,
                                 "package_name": "ai.elizaos.app",
                                 "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
                                 "role_holders": {"android.app.role.HOME": ["ai.elizaos.app"]},

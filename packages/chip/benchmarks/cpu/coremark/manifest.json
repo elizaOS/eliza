@@ -29,7 +29,7 @@
       "blocked_until_built": "build/llvm-stage2/bin/clang must exist; compiler agent runs scripts/build_llvm_riscv.sh inside the canonical Linux container"
     },
     "secondary_compiler_for_baseline": {
-      "name": "riscv-none-elf-gcc 15.2.0 (xpack) — bare-metal baseline only, not RVA23",
+      "name": "riscv-none-elf-gcc 15.2.0 (xpack) \u2014 bare-metal baseline only, not RVA23",
       "host_path": "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc",
       "usage": "kept solely to A/B against the LLVM trunk pin; not the release-grade compiler"
     }
@@ -60,12 +60,15 @@
     }
   },
   "result_artifact": "benchmarks/results/cpu/coremark/result.json",
+  "phone_result_artifact": "benchmarks/results/cpu/coremark/l5_l6_result.json",
   "result_schema": "eliza.cpu_benchmark_result.v1",
   "run_command": "scripts/run_coremark.sh",
+  "phone_run_command": "E1_COREMARK_RAW_OUTPUT=<target-transcript> E1_COREMARK_TARGET_METADATA=<metadata.json> E1_COREMARK_TARGET_RUNNER=<prototype|silicon|phone> make coremark-l5-l6",
   "fail_closed_for_phone_claim_until": [
-    "external/coremark/ checkout at pinned tag",
-    "xpack riscv-none-elf-gcc available on host",
     "L5/L6 phone or prototype silicon DUT",
-    "benchmarks/results/cpu/coremark/result.json exists and matches schema"
+    "Target-side CoreMark runner/transcript captured on the phone or prototype",
+    "Calibrated CPU clock source and thermal/power metadata captured for the run",
+    "Raw target output archived with artifacts.raw_output_sha256",
+    "benchmarks/results/cpu/coremark/l5_l6_result.json exists and matches schema with L5/L6 claim metadata"
   ]
 }

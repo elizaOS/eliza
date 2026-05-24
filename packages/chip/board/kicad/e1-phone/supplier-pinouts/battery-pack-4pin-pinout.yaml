@@ -1,0 +1,75 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: LP566487-class 1S LiPo pack with 4-contact board connector
+manufacturer: LiPol Battery / custom pack supplier class
+package: 4-contact 1.0 mm pitch board connector or welded FPC tail
+source_doc: https://www.lithium-polymer-battery.net/high-voltage-lithium-polymer-battery-3-85v-lp446487-4500mah-17-33wh-with-pcm-and-ntc-and-jst-shr-03v-s-b/
+source_doc_alt:
+  - https://www.made-in-china.com/showroom/jasonlai1989/product-detailcmbRXrtjYVka/China-Lithium-Polymer-Battery-4500mAh.html
+  - https://www.alibaba.com/showroom/li-polymer-battery-3.7v-4500mah.html
+source_doc_revision: public pack-family listing observed 2026-05-20; exact 5727 mAh 5.6 mm pack still requires RFQ drawing
+captured_date: 2026-05-22
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: public_pack_connector_signal_contract_pending_supplier_connector_pin_order
+procurement_url: https://www.lithium-polymer-battery.net/contact-us/
+notes: |
+  The selected e1-phone pack class uses a single-cell high-voltage LiPo pouch
+  with PCM and NTC. Public pack-family pages establish the 64 x 87 mm class,
+  3.85 V chemistry, PCM/NTC presence, and connectorized phone-pack pattern.
+  The development connector fixes the board-side signal contract as VBAT,
+  BAT_NTC, BAT_ID, and GND. Production release still requires the supplier
+  pack drawing, exact connector or FPC tail drawing, NTC curve, ID policy, PCM
+  specification, and safety documentation.
+mechanical:
+  cell_count: 1
+  nominal_voltage_v: 3.85
+  target_capacity_mah: 5727
+  target_energy_wh: 22.05
+  public_reference_dimensions_mm: [64.0, 87.0, 5.6]
+  connector_contact_count: 4
+  connector_pitch_mm: 1.0
+electrical:
+  chemistry: high_voltage_lithium_polymer
+  board_contract:
+    - VBAT
+    - BAT_NTC
+    - BAT_ID
+    - GND
+pin_signal_set:
+  power:
+    - VBAT
+    - GND
+  sense:
+    - BAT_NTC
+    - BAT_ID
+pins:
+  - pin: '1'
+    name: VBAT
+    function: pack_positive
+    direction: input_power_to_board
+    voltage_v: 3.0_to_4.4
+    notes: Board-side development assignment; supplier connector orientation must be verified before release.
+  - pin: '2'
+    name: BAT_NTC
+    function: pack_thermistor
+    direction: analog_input_to_charger
+    voltage_v: null
+    notes: NTC resistance/beta curve is supplier-specific and still blocked.
+  - pin: '3'
+    name: BAT_ID
+    function: pack_identifier
+    direction: analog_input_to_host_or_charger
+    voltage_v: null
+    notes: ID resistor or 1-wire policy remains a release selection item.
+  - pin: '4'
+    name: GND
+    function: pack_negative_return
+    direction: power_return
+    voltage_v: 0
+    notes: Board-side development assignment; supplier connector orientation must be verified before release.
+release_blockers:
+  - supplier connector pin order and mating connector drawing
+  - NTC resistance-temperature table
+  - PCM protection specification
+  - UN38.3/MSDS/IEC62133 safety evidence
+  - incoming inspection and first-article pack samples

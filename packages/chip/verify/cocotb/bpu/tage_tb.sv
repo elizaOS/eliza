@@ -17,6 +17,7 @@ module tage_tb (
     output logic                lkp_taken_alt,
     output logic [TAGE_TABLES:0] lkp_hit_vec,
     output logic [$clog2(TAGE_TABLES+1)-1:0] lkp_provider,
+    output logic                lkp_provider_taken,
     output logic [TAGE_CTR_W-1:0] lkp_provider_ctr,
 
     input  logic                upd_valid,
@@ -25,6 +26,9 @@ module tage_tb (
     input  logic                upd_taken,
     input  logic                upd_misp,
     input  logic [$clog2(TAGE_TABLES+1)-1:0] upd_provider,
+    input  logic                upd_provider_taken,
+    input  logic                upd_alt_taken,
+    input  logic                upd_provider_weak,
 
     input  logic                useful_reset_lsb,
     input  logic                useful_reset_msb,

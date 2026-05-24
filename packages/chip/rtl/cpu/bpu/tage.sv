@@ -28,6 +28,7 @@ module tage
     output logic                lkp_taken_alt,
     output logic [TAGE_TABLES:0] lkp_hit_vec,
     output logic [$clog2(TAGE_TABLES+1)-1:0] lkp_provider,
+    output logic                lkp_provider_taken,
 
     input  logic                upd_valid,
     input  logic [VADDR_W-1:0]  upd_pc,
@@ -35,6 +36,9 @@ module tage
     input  logic                upd_taken,
     input  logic                upd_misp,
     input  logic [$clog2(TAGE_TABLES+1)-1:0] upd_provider,
+    input  logic                upd_provider_taken,
+    input  logic                upd_alt_taken,
+    input  logic                upd_provider_weak,
 
     input  logic                useful_reset_lsb,
     input  logic                useful_reset_msb,
@@ -51,8 +55,16 @@ module tage
     logic [TAGE_TABLES-1:0] tab_taken;
     logic [TAGE_TABLES-1:0] tab_alloc_req;
     logic [TAGE_TABLES-1:0] tab_useful_dec_req;
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [TAGE_USEFUL_W-1:0] tab_useful [TAGE_TABLES];
+    /* verilator lint_on UNUSEDSIGNAL */
     logic [TAGE_CTR_W-1:0] tab_ctr [TAGE_TABLES];
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [TAGE_TABLES-1:0] upd_tab_hit;
+    logic [TAGE_TABLES-1:0] upd_tab_taken;
+    logic [TAGE_CTR_W-1:0] upd_tab_ctr [TAGE_TABLES];
+    /* verilator lint_on UNUSEDSIGNAL */
+    logic [TAGE_USEFUL_W-1:0] upd_tab_useful [TAGE_TABLES];
     logic [TAGE_TABLES-1:0] tab_alloc_pmu;
 
     logic                   bim_taken;
@@ -61,6 +73,23 @@ module tage
     // by the TAGE arbitration today.
     logic [BIM_CTR_W-1:0]   bim_ctr;
     /* verilator lint_on UNUSEDSIGNAL */
+
+    localparam int unsigned TAGE_ALT_ON_NA_IDX_W = $clog2(TAGE_ALT_ON_NA_ENTRIES);
+    typedef logic signed [TAGE_ALT_ON_NA_CTR_W-1:0] alt_on_na_ctr_t;
+    alt_on_na_ctr_t alt_on_na_q [TAGE_ALT_ON_NA_ENTRIES];
+
+    function automatic logic [TAGE_ALT_ON_NA_IDX_W-1:0] alt_on_na_idx(
+        /* verilator lint_off UNUSEDSIGNAL */
+        input logic [VADDR_W-1:0] pc,
+        input logic [$clog2(TAGE_TABLES+1)-1:0] provider
+        /* verilator lint_on UNUSEDSIGNAL */
+    );
+        logic [TAGE_ALT_ON_NA_IDX_W-1:0] pc_idx;
+        logic [TAGE_ALT_ON_NA_IDX_W-1:0] provider_mix;
+        pc_idx = pc[2 +: TAGE_ALT_ON_NA_IDX_W];
+        provider_mix = TAGE_ALT_ON_NA_IDX_W'(int'(provider) * 131);
+        alt_on_na_idx = pc_idx ^ provider_mix;
+    endfunction
 
     bimodal u_bimodal (
         .clk        (clk),
@@ -88,8 +117,8 @@ module tage
                 (gi == 3) ? TAGE_HIST_LEN_3 : TAGE_HIST_LEN_4;
             logic [HL-1:0] lkp_h_slice;
             logic [HL-1:0] upd_h_slice;
-            assign lkp_h_slice = lkp_hist[TAGE_HIST_LEN_MAX-1 -: HL];
-            assign upd_h_slice = upd_hist[TAGE_HIST_LEN_MAX-1 -: HL];
+            assign lkp_h_slice = lkp_hist[0 +: HL];
+            assign upd_h_slice = upd_hist[0 +: HL];
 
             // Per-table update gate: the table fires its counter / useful
             // update when it is the provider, and fires the allocation
@@ -125,6 +154,10 @@ module tage
                 .upd_useful_inc  (upd_valid && !upd_misp &&
                                    (upd_provider == gi[$clog2(TAGE_TABLES+1)-1:0]+1)),
                 .upd_useful_dec  (tab_useful_dec_req[gi]),
+                .upd_hit_o       (upd_tab_hit[gi]),
+                .upd_taken_o     (upd_tab_taken[gi]),
+                .upd_ctr_o       (upd_tab_ctr[gi]),
+                .upd_useful_o    (upd_tab_useful[gi]),
                 .useful_reset_lsb(useful_reset_lsb),
                 .useful_reset_msb(useful_reset_msb),
                 .pmu_alloc       (tab_alloc_pmu[gi])
@@ -146,6 +179,8 @@ module tage
     logic                              alt_found;
     logic                              provider_weak;
     logic [TAGE_CTR_W-1:0]             provider_ctr;
+    logic [TAGE_ALT_ON_NA_IDX_W-1:0]   lkp_alt_on_na_idx;
+    logic                              lkp_use_alt_on_na;
 
     always_comb begin
         provider_pri   = '0;
@@ -156,6 +191,8 @@ module tage
         alt_found      = 1'b0;
         provider_weak  = 1'b0;
         provider_ctr   = '0;
+        lkp_alt_on_na_idx = alt_on_na_idx(lkp_pc, provider_pri);
+        lkp_use_alt_on_na = 1'b0;
         lkp_hit_vec    = {tab_hit, 1'b1};
         for (int ti = TAGE_TABLES-1; ti >= 0; ti--) begin
             if (tab_hit[ti]) begin
@@ -172,6 +209,7 @@ module tage
         end
         lkp_taken_alt = alt_found ? alt_taken : bim_taken;
         lkp_provider  = provider_pri;
+        lkp_provider_taken = provider_found ? provider_taken : bim_taken;
         // Provider counter readout for SC. Zero when the bimodal provided.
         if (provider_found) begin
             provider_ctr = tab_ctr[provider_pri - 1];
@@ -182,11 +220,25 @@ module tage
         end else begin
             lkp_provider_ctr = '0;
         end
-        if (provider_found && TAGE_USE_ALT_ON_NA != 0 && provider_weak) begin
+        lkp_alt_on_na_idx = alt_on_na_idx(lkp_pc, provider_pri);
+        lkp_use_alt_on_na =
+            provider_found && provider_weak &&
+            ((TAGE_USE_ALT_ON_NA != 0) ||
+             (alt_on_na_q[lkp_alt_on_na_idx] >=
+              alt_on_na_ctr_t'(TAGE_ALT_ON_NA_THRESHOLD)));
+        if (lkp_use_alt_on_na) begin
             lkp_taken = lkp_taken_alt;
         end else begin
             lkp_taken = provider_found ? provider_taken : bim_taken;
         end
+    end
+
+    logic [TAGE_ALT_ON_NA_IDX_W-1:0]   upd_alt_on_na_idx;
+    alt_on_na_ctr_t                    upd_alt_ctr;
+
+    always_comb begin
+        upd_alt_on_na_idx  = alt_on_na_idx(upd_pc, upd_provider);
+        upd_alt_ctr        = alt_on_na_q[upd_alt_on_na_idx];
     end
 
     // -----------------------------------------------------------------------
@@ -204,7 +256,7 @@ module tage
         if (upd_valid && upd_misp) begin
             for (int unsigned ta = 0; ta < TAGE_TABLES; ta++) begin
                 if (ta + 1 > upd_provider) begin
-                    if (tab_useful[ta] == '0) begin
+                    if (upd_tab_useful[ta] == '0) begin
                         alloc_candidates[ta] = 1'b1;
                     end else begin
                         // Seznec-style allocation pressure: if every longer
@@ -226,5 +278,22 @@ module tage
     end
 
     assign pmu_alloc = |tab_alloc_pmu;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            for (int unsigned ai = 0; ai < TAGE_ALT_ON_NA_ENTRIES; ai++) begin
+                alt_on_na_q[ai] <= '0;
+            end
+        end else if (upd_valid && (upd_provider != '0) && upd_provider_weak &&
+                     (upd_provider_taken != upd_alt_taken)) begin
+            if ((upd_alt_taken == upd_taken) &&
+                (upd_alt_ctr != {1'b0, {(TAGE_ALT_ON_NA_CTR_W-1){1'b1}}})) begin
+                alt_on_na_q[upd_alt_on_na_idx] <= upd_alt_ctr + alt_on_na_ctr_t'(1);
+            end else if ((upd_provider_taken == upd_taken) &&
+                         (upd_alt_ctr != {1'b1, {(TAGE_ALT_ON_NA_CTR_W-1){1'b0}}})) begin
+                alt_on_na_q[upd_alt_on_na_idx] <= upd_alt_ctr - alt_on_na_ctr_t'(1);
+            end
+        end
+    end
 
 endmodule : tage

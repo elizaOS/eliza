@@ -4,7 +4,7 @@ Status: PASS.
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`.
 Date: 2026-05-20. Reviewer: `automated_boolean_check`.
-Parts loaded: 142/142. Pair count: 10011 (BRep-evaluated: 586).
+Parts loaded: 222/222. Pair count: 24531 (BRep-evaluated: 763).
 Unintentional clash pairs: 0.
 
 ## Scope Cases

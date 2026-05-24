@@ -8,21 +8,31 @@ the toolmaker / FAI signoff captured under
 `board/kicad/e1-phone/production/reports/pinout-review/<function>.yaml` per
 `supplier-to-kicad-evidence-map.yaml`.
 
-## Captured pinouts (11)
+## Captured pinouts (21)
 
 | # | File | Part | Manufacturer | Status |
 |---|------|------|--------------|--------|
 | 0 | `compute-som-pinout.yaml` | Core-3566JD4 RK3566 compute SoM (260-pin SODIMM) | Firefly | full per-pin SODIMM signal map published in public datasheet |
 | 1 | `gct-usb4105-pinout.yaml` | USB4105-GF-A USB-C 2.0 receptacle, 24 positions | GCT | full pin table (USB-IF Type-C standard) |
-| 2 | `quectel-rg255c-pinout.yaml` | RG255C-EAB 5G RedCap LGA | Quectel | interfaces verified; per-pad table behind Quectel Partner Portal |
-| 3 | `murata-type-2ea-pinout.yaml` | LBEE5XV2EA-802 Wi-Fi 6E + BT 5.3 (Type 2EA) | Murata | interface pin groups verified; per-pad coords in binary datasheet PDF |
-| 4 | `panasonic-evq-p7-pinout.yaml` | EVQ-P7A01P side-push SMT tactile switch | Panasonic | full mechanical/electrical, 4-terminal layout |
-| 5 | `ov13855-pinout.yaml` | OV13855 13MP rear MIPI camera module (Sincere First SF-XR3855A class) | OmniVision / Sincere First | canonical 24-pin signal set; per-pin FPC order via signed drawing |
-| 6 | `gc5035-pinout.yaml` | GC5035 5MP front MIPI camera module (Sincere First SF-G5035S60FY class) | GalaxyCore / Sincere First | canonical 22-pin signal set; per-pin FPC order via signed drawing |
-| 7 | `chenghao-ch550fh01a-pinout.yaml` | CH550FH01A-CT 5.5" FHD MIPI DSI + PCAP display module | Shenzhen Chenghao | canonical 40-pin signal set; per-pin FPC order via signed spec |
-| 8 | `hirose-bm28-pinout.yaml` | DF40C-80DP-0.4V(51) 80-pos 0.4 mm B2B (BM28 family equivalent) | Hirose | full mechanical, dual-row A1-A40 / B1-B40, signal assignment carried by flex |
-| 9 | `tps65987-pinout.yaml` | TPS65987DDH USB-PD 3.1 controller, 96-pin QFN | Texas Instruments | interface groups verified; per-pin QFN table via TI datasheet PDF / .bsdl |
-| 10 | `max77860-pinout.yaml` | MAX77860EWG+ USB-C buck charger, 81-bump WLP | Analog Devices (Maxim) | interface groups verified; per-bump table via ADI datasheet PDF |
+| 2 | `quectel-rg255c-pinout.yaml` | RG255C-GL 5G RedCap LGA | Quectel | full public 1-204 pin table captured from RG255C-GL Hardware Design; final regional SKU pack still required |
+| 3 | `murata-type-2ea-pinout.yaml` | LBEE5XV2EA-802 Wi-Fi 6E + BT 5.3 (Type 2EA) | Murata | full public 1-199 terminal table captured from Rev. 14 datasheet; development footprint uses Murata public DXF land pattern |
+| 4 | `esim-mff2-pinout.yaml` | MFF2 eSIM/eUICC, 8-pad QFN/MFF2 | Multiple eUICC suppliers | full public MFF2 1-8 pin table and nominal package dimensions |
+| 5 | `panasonic-evq-p7-pinout.yaml` | EVQ-P7A01P side-push SMT tactile switch | Panasonic | full mechanical/electrical, 4-terminal layout |
+| 6 | `ov13855-pinout.yaml` | OV13855 13MP rear MIPI camera module (Sincere First SF-XR3855A class) | OmniVision / Sincere First | canonical 24-pin signal set; per-pin FPC order via signed drawing |
+| 7 | `gc5035-pinout.yaml` | GC5035 5MP front MIPI camera module (Sincere First SF-G5035S60FY class) | GalaxyCore / Sincere First | canonical 30-pin connector class signal set; per-pin FPC order via signed drawing |
+| 8 | `chenghao-ch550fh01a-pinout.yaml` | CH550FH01A-CT 5.5" FHD MIPI DSI + PCAP display module | Shenzhen Chenghao | canonical 40-pin signal set; per-pin FPC order via signed spec |
+| 9 | `battery-pack-4pin-pinout.yaml` | LP566487-class 1S LiPo pack connector | LiPol Battery / custom pack supplier class | board-side 4-signal pack contract captured; exact supplier connector orientation still requires RFQ drawing |
+| 10 | `audio-codec-qfn48-pinout.yaml` | ALC5688-class audio codec and companion smart-amp development contract | Realtek / Cirrus Logic development audio function class | board-side audio signal contract captured; selected codec package pin table still required |
+| 11 | `backlight-bias-qfn24-pinout.yaml` | LP8556-class display backlight/bias power development contract | Texas Instruments development function class | board-side display bias/backlight signal contract captured; selected driver pin table still required |
+| 12 | `fuel-gauge-wlcsp12-pinout.yaml` | BQ27421-class single-cell Li-ion fuel gauge development contract | Texas Instruments development function class | board-side fuel-gauge signal contract captured; selected gauge ball map still required |
+| 13 | `haptic-driver-wlcsp9-pinout.yaml` | DRV2605L-class LRA/ERM haptic driver development contract | Texas Instruments development function class | board-side haptic signal contract captured; selected driver ball map still required |
+| 14 | `usim-esd-levelshift-pinout.yaml` | TXS4555-class SIM interface supply/level-shift development contract | Texas Instruments development function class | board-side USIM signal contract captured; selected level-shift/ESD pin table still required |
+| 15 | `nfc-controller-qfn32-pinout.yaml` | PN7160-class NFC controller development contract | NXP development function class | board-side NFC signal contract captured; selected controller package reconciliation still required |
+| 16 | `nfc-loop-match-5pad-pinout.yaml` | PN7160-class NFC antenna loop matching network development contract | NXP development function class | board-side NFC loop match contract captured; antenna tuning and exact values still required |
+| 17 | `sensor-hub-qfn24-pinout.yaml` | LSM6DSO-class always-on sensor hub development contract | STMicroelectronics development function class | board-side sensor-hub signal contract captured; selected sensor package pin tables still required |
+| 18 | `hirose-bm28-pinout.yaml` | DF40C-80DP-0.4V(51) 80-pos 0.4 mm B2B (BM28 family equivalent) | Hirose | full mechanical, dual-row A1-A40 / B1-B40, signal assignment carried by flex |
+| 19 | `tps65987-pinout.yaml` | TPS65987DDH USB-PD 3.1 controller, 56-pin QFN | Texas Instruments | interface groups verified; per-pin QFN table via TI datasheet PDF / .bsdl |
+| 20 | `max77860-pinout.yaml` | MAX77860EWG+ USB-C buck charger, 81-bump WLP | Analog Devices (Maxim) | full public A1-J9 bump map captured from ADI datasheet |
 
 For files where `pins: [{pin: ALL, name: fetch_required, ...}]`, the **public
 vendor page confirms the package, pin count, and interface groups**, but the

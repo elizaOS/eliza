@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -22,6 +23,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             root = Path(tmp)
             aggregate = root / "aggregate.json"
             report_dir = root / "reports"
+            report_dir.mkdir()
             write_json(
                 aggregate,
                 {
@@ -76,14 +78,14 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
         self.assertEqual(report["summary"]["nonpassing_aggregate_gates"], 2)
         self.assertEqual(report["summary"]["blocked_aggregate_gates"], 1)
         self.assertEqual(report["summary"]["failed_aggregate_gates"], 1)
-        self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 1)
+        self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 0)
         self.assertIn("missing_chip_boot_evidence", report["detailed_blocker_codes"])
         covered = {
-            row["name"]: row["has_detailed_report"]
+            row["name"]: row["has_structured_blocker"]
             for row in report["aggregate_gate_detail_coverage"]
         }
         self.assertTrue(covered["linux-boot"])
-        self.assertFalse(covered["os-release"])
+        self.assertTrue(covered["os-release"])
         self.assertIn("aggregate_fail_os_release", report["detailed_blocker_codes"])
 
     def test_missing_inputs_return_blocked_exit_code(self) -> None:
@@ -107,6 +109,7 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             root = Path(tmp)
             aggregate = root / "aggregate.json"
             report_dir = root / "reports"
+            report_dir.mkdir()
             write_json(
                 aggregate,
                 {
@@ -122,10 +125,13 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
                 },
             )
             write_json(report_dir / "linux_bsp_contract.json", {"status": "pass", "findings": []})
+            os.utime(aggregate, (200, 200))
+            os.utime(report_dir / "linux_bsp_contract.json", (100, 100))
             args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
             report, _ = inv.build_inventory(args)
         coverage = report["aggregate_gate_detail_coverage"][0]
         self.assertFalse(coverage["has_detailed_report"])
+        self.assertFalse(coverage["has_structured_blocker"])
         self.assertEqual(
             coverage["mismatched_detail_reports"], [str(report_dir / "linux_bsp_contract.json")]
         )
@@ -134,6 +140,46 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             report["detailed_blocker_codes"],
         )
         self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 1)
+
+    def test_newer_pass_report_marks_nonpass_aggregate_gate_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(
+                aggregate,
+                {
+                    "gates": [
+                        {
+                            "name": "android-app-runtime-contract-check",
+                            "status": "BLOCKED",
+                            "subsystem": "bsp",
+                            "tier": "spec",
+                            "evidence": "STATUS: BLOCKED android_app.runtime_contract",
+                        }
+                    ]
+                },
+            )
+            write_json(
+                report_dir / "android_app_runtime_contract.json",
+                {"status": "pass", "findings": []},
+            )
+            os.utime(aggregate, (100, 100))
+            os.utime(report_dir / "android_app_runtime_contract.json", (200, 200))
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
+            report, _ = inv.build_inventory(args)
+        coverage = report["aggregate_gate_detail_coverage"][0]
+        self.assertTrue(coverage["has_detailed_report"])
+        self.assertTrue(coverage["has_structured_blocker"])
+        self.assertEqual(
+            coverage["matching_current_pass_reports"],
+            [str(report_dir / "android_app_runtime_contract.json")],
+        )
+        self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 0)
+        self.assertIn(
+            "stale_aggregate_gate_android_app_runtime_contract_check",
+            report["detailed_blocker_codes"],
+        )
 
     def test_string_blockers_and_nonpass_status_become_entries(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -242,6 +288,33 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
             "blockers_to_on_chip_os_boot_chipyard_payload_path",
             report["detailed_blocker_codes"],
         )
+
+    def test_entries_array_counts_as_structured_blocker_detail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            write_json(aggregate, {"gates": []})
+            write_json(
+                report_dir / "cpu_phone_l5_l6_benchmark_report.json",
+                {
+                    "status": "blocked",
+                    "entries": [
+                        {
+                            "name": "spec_cpu2017",
+                            "reason": "SPEC_DIR not set",
+                            "unblock": {"next_command": "SPEC_DIR=<licensed> make spec"},
+                        }
+                    ],
+                },
+            )
+            args = inv.parse_args(
+                ["--aggregate", str(aggregate), "--report-dir", str(report_dir)]
+            )
+            report, exit_code = inv.build_inventory(args)
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(report["summary"]["nonpassing_reports_without_structured_details"], 0)
+        self.assertIn("entry_spec_cpu2017", report["detailed_blocker_codes"])
 
     def test_survey_only_reports_are_not_collected_by_default(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -376,6 +449,38 @@ class ChipOsBootGapInventoryTests(unittest.TestCase):
         self.assertTrue(coverage["minimum-linux-target-check"]["has_detailed_report"])
         self.assertTrue(coverage["software-bsp-scaffold-check"]["has_detailed_report"])
         self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 0)
+
+    def test_aggregate_only_nonpass_gate_gets_structured_coverage(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aggregate = root / "aggregate.json"
+            report_dir = root / "reports"
+            report_dir.mkdir()
+            write_json(
+                aggregate,
+                {
+                    "gates": [
+                        {
+                            "name": "os-rv64-release-check",
+                            "status": "FAIL",
+                            "subsystem": "os_rv64",
+                            "tier": "spec",
+                            "evidence": "STATUS: FAIL release-manifest gate",
+                        }
+                    ]
+                },
+            )
+            args = inv.parse_args(["--aggregate", str(aggregate), "--report-dir", str(report_dir)])
+            report, _ = inv.build_inventory(args)
+        coverage = report["aggregate_gate_detail_coverage"][0]
+        self.assertFalse(coverage["has_detailed_report"])
+        self.assertTrue(coverage["has_structured_blocker"])
+        self.assertEqual(
+            coverage["matching_aggregate_blockers"],
+            ["aggregate_fail_os_rv64_release_check"],
+        )
+        self.assertEqual(report["summary"]["uncovered_nonpassing_gates"], 0)
+        self.assertIn("aggregate_fail_os_rv64_release_check", report["detailed_blocker_codes"])
 
     def test_gate_specs_add_script_and_expected_report_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -36,10 +36,11 @@ at the controller, the measured-launch chain shape, and the monitor TCB.
   is no production security boundary and the boot ROM does not authenticate
   firmware.
 - The RISC-V IOMMU v1.0.1 block (`rtl/iommu/`, [`docs/arch/iommu.md`](../arch/iommu.md))
-  already exists with two-stage translation (Sv39x4/Sv48x4 **G-stage**), PASID,
-  ATS, PRI, and a fail-closed evidence gate. **This is the single most important
-  existing asset for the TEE**: G-stage in the IOMMU means the SoC already
-  reasons in guest-physical space, which the CoVE decision below leans on.
+  already exists with the register/fault surface, PASID fields, IOFENCE.C
+  fetch/decode/completion, a local DDT + Sv39 first-stage KAT under identity G-stage, and a
+  fail-closed evidence gate. **This is an important existing asset for the TEE**,
+  but non-identity G-stage translation, full PDT/PASID behavior, ATS/PRI/MSI, and
+  Linux/phone evidence remain blocked.
 - DRAM is a 4 KiB AXI-Lite SRAM stand-in (`rtl/memory/e1_axi_lite_dram.sv`); the
   real LPDDR5X controller/PHY is BLOCKED under
   `docs/evidence/memory/lpddr-phy-procurement.yaml`. The memory

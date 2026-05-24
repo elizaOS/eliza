@@ -1,0 +1,21 @@
+schema: eliza.e1_phone_production_enclosure_handoff_packet.v1
+packet_id: enclosure_validation_results
+status: blocked_not_executed
+release_credit: false
+source_burndown: board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+expected_evidence_type: executed_validation_results
+required_fields_unpopulated:
+  - unit_serials
+  - drop_results
+  - side_key_cycle_results
+  - usb_c_insertion_cycle_results
+  - ingress_path_results
+  - thermal_results
+  - rf_sar_prescan_refs
+  - cosmetic_inspection
+  - pass_fail_disposition
+  - qa_signature
+blockers:
+  - Release validation has not been executed on serialized units.
+  - Drop, side-key cycle, USB-C insertion-cycle, ingress, thermal, RF/SAR pre-scan, cosmetic inspection, disposition, and QA evidence are missing.
+validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py

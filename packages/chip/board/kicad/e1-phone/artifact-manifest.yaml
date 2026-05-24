@@ -159,7 +159,7 @@ current_artifacts:
     - board/kicad/e1-phone/enclosure-physical-fit-first-article-execution.yaml
     - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
     - mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml
-    - ../../mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
+    - mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
     - board/kicad/e1-phone/routed-layout-readiness-binding.yaml
     - board/kicad/e1-phone/first-article-route-execution-order.yaml
     - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml

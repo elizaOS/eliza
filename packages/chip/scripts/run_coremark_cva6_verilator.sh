@@ -54,8 +54,15 @@ ITER="${E1_COREMARK_ITERATIONS:-1}"
 
 now() { date -u +%FT%TZ; }
 
+json_quote() {
+    python3 -c 'import json, sys; print(json.dumps(sys.stdin.read()))'
+}
+
 write_blocked() {
     reason=$1; missing=$2; next=$3
+    reason_json=$(printf '%s' "${reason}" | json_quote)
+    missing_json=$(printf '%s' "${missing}" | json_quote)
+    next_json=$(printf '%s' "${next}" | json_quote)
     mkdir -p "$(dirname "${EVIDENCE}")" "$(dirname "${RESULT_JSON}")"
     cat > "${EVIDENCE}" <<EOF
 {
@@ -71,9 +78,9 @@ write_blocked() {
   "provenance": "simulator",
   "flow": "cva6 veri-testharness (verif/regress/coremark.sh build flags)",
   "result_recorded_at": "$(now)",
-  "reason": "${reason}",
-  "missing_dependency": "${missing}",
-  "next_command": "${next}",
+  "reason": ${reason_json},
+  "missing_dependency": ${missing_json},
+  "next_command": ${next_json},
   "metrics": {"total_cycles": null, "retired_instructions": null, "cpi": null, "coremark_iterations": null, "coremark_per_mhz": null}
 }
 EOF
@@ -83,9 +90,9 @@ EOF
   "benchmark": "coremark",
   "status": "blocked",
   "dut": "cva6_verilator",
-  "reason": "${reason}",
-  "missing_dependency": "${missing}",
-  "next_command": "${next}",
+  "reason": ${reason_json},
+  "missing_dependency": ${missing_json},
+  "next_command": ${next_json},
   "result_recorded_at": "$(now)",
   "manifest": "benchmarks/cpu/coremark/manifest.json",
   "cycle_accurate_evidence": "docs/evidence/cpu_ap/cva6-coremark-verilator.json"

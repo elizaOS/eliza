@@ -3,7 +3,7 @@
 Evidence class: `cad_estimate_for_evt_planning, not_measured_hardware`.
 Single entry point to every reviewable artifact for the e1-phone CAD/board/BOM/mfg/animation package.
 
-## 0. Flush-back design rev (current, all residuals closed)
+## 0. Flush-back design rev (current fail-closed snapshot)
 
 Revision `evt0-mechanical-cad-bonded-display-thinned` (authoritative; matches `cad/e1_phone_params.yaml` and the regenerated proofs). The earlier `evt0-mechanical-cad-swell-camera-seal` rev (12.7 mm) was thinned to 11.8 mm in the bonded-display rev: the 2.8 mm front air band was a missing-detail modeling artifact (only the bare 1.7 mm TFT cell was placed instead of the full 3.39 mm bonded LCD+CTP module). Modeling the bonded module under the cover glass closed the false gap and the reclaimed depth was removed from the device while holding the flush back, the 0.6 mm battery-swell void, and the 0.4 mm rear-camera burial. See `design-change-flush-back.md` (Thickness-optimization + void rev).
 
@@ -15,15 +15,15 @@ Revision `evt0-mechanical-cad-bonded-display-thinned` (authoritative; matches `c
 - **Drop-hardened**: cover glass 0.3 mm rim inset + PORON perimeter cushion (SF 1.10→1.93); screw bosses 6→10 + corner gussets + compliant battery foam shelf (corner SF 0.78→2.11).
 - Buttons **standardized**: single SKU XKB TS-1187A-B-A-B (LCSC C318884), EVQ-P7A01P alt; travel 0.20 mm.
 - **Compute**: Firefly Core-3566JD4 RK3566 SoM (public 260-pin pinout) — buildable from public data; bare-SoC cost-down path retained. **Zero NDA-gated lines.**
-- Unit cost **$93.03 @100k (SoM) / $88.48 (bare-SoC)**; reconciled CAD mass **191.68 g** (183.28 g nominal-density geometry + 8.4 g assembly-stage). This is **over the 168±10 g ship target** (158–178 g window) by 13.68 g. The CAD figure is a nominal-density estimate, not measured hardware; the overage is an open EVT mass-reduction / measured-mass action, not a closed gate. See `e1-phone-spec-sheet.md` (mass verdict = FAIL).
+- Unit cost **$93.03 @100k (SoM) / $88.48 (bare-SoC)**; current generated CAD mass estimate **182.02 g**. This is **over the 168±10 g ship target** (158–178 g window) by 4.02 g. The CAD figure is a nominal-density estimate, not measured hardware; the overage is an open EVT mass-reduction / measured-mass action, not a closed gate. See `e1-phone-spec-sheet.md` and `mass-budget.md`.
 
 Residual sweep:
 | Residual | Result | Evidence |
 |---|---|---|
 | Parametric boolean clash | 0 unintentional, 11/11 envelope scopes PASS, flush-back 0.0 mm | `check_e1_phone_boolean_interference.py` |
-| Supplier-B-rep boolean release gate | fail-closed: 7 PASS + 3 BLOCKED scopes (await supplier B-rep + routed STEP) | `full-cad-boolean-interference.json` |
+| Supplier-B-rep boolean release gate | fail-closed: blocked scopes await supplier B-rep + routed STEP | `full-cad-boolean-interference.json` |
 | Button orientation | 15/15 features + 2/2 coaxiality PASS | `button-orientation-validation.json` |
-| Assembly | 19 steps; **1 trapped (`main_pcb` vs `orange_usb_reinforcement_saddle` on the +Z drop, −2.785 mm)** — open insertion-sequence/saddle-relief action | `assembly-verification.md` |
+| Assembly | 19 steps; trapped-part status is tracked by the current assembly verifier and remains non-release evidence | `assembly-verification.md` |
 | Button physics | 6/6 PASS (0.20 mm travel) | `button-physics-sim.md` |
 | Battery swell | 0.6 mm void, no display load | `design-change-flush-back.md` |
 | Camera fit | buried 0.40 mm | boolean burial check |
@@ -58,7 +58,7 @@ Keyframes reviewed: t=0 (assembled front), t=3 (peak explode, distinct layers), 
 | Supplier-B-rep boolean release gate | `review/full-cad-boolean-interference.json` | fail-closed: 7 PASS + 3 BLOCKED (await supplier B-rep + routed STEP) |
 | Min-gap matrix | `review/full-cad-min-gap-matrix.csv` | full assembly, no negative non-contact rows |
 | Button/aperture orientation | `review/button-orientation-validation.json` | 15/15 features + 2/2 coaxiality PASS |
-| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 132-part envelope assembly |
+| Solid assembly STEP | `out/e1-phone-solid-assembly.step` | 155-part concept assembly; current STEP validation is fail-closed when CadQuery/OCP is unavailable |
 | Generators | `scripts/check_e1_phone_boolean_interference.py`, `scripts/check_e1_phone_button_orientation.py` | reproducible (~11 s / <1 s) |
 
 Engine: `OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape`. USB-C plug-insertion sweep (0→8 mm) and button press sweep (0→0.20 mm) both clash-free.
@@ -87,8 +87,8 @@ Ex-factory unit cost (PATH A — SoM, buildable from public data): **$123.90 @ 1
 
 | Artifact | Path | Result |
 |---|---|---|
-| Spec sheet | `review/e1-phone-spec-sheet.md` | 78×153.6×11.8 mm, 191.68 g reconciled, IP54 design intent |
-| Mass budget | `review/mass-budget.md` | 183.28 g CAD + 8.4 g assembly = 191.68 g vs ship target 168±10 g (158–178 g) — **FAIL, over by 13.68 g** (nominal-density estimate; open EVT mass-reduction action) |
+| Spec sheet | `review/e1-phone-spec-sheet.md` | 78×153.6×11.8 mm, 182.02 g generated CAD estimate, IP54 design intent |
+| Mass budget | `review/mass-budget.md` | 182.02 g vs ship target 168±10 g (158–178 g) — **FAIL, over by 4.02 g** (nominal-density estimate; open EVT mass-reduction action) |
 | Tolerance stack | `review/tolerance-stack.md` | `cad_tolerance_stack_pass` (hard-tool Class 101 + alignment fixtures) |
 
 ## 6. Supplier pinouts
@@ -116,12 +116,11 @@ Resin SABIC C1200HF PC+ABS; 1+1 family tool; tooling NRE $132k; 26.4 s cycle; 8-
 
 `review/*.png` — front/back/side/top ISO, exploded ISO, component stack, manufacturing drawing, mold tooling, contact sheet.
 
-## Remaining gap to production (now only measurement-confirmation, not design unknowns)
+## Remaining gap to production
 
-Every design/sourcing residual is closed and verified in simulation. What remains is the normal EVT→PVT physical-confirmation work that, by definition, cannot be done in CAD:
+The current CAD package is useful EVT0 planning evidence, but production remains fail-closed. The remaining work includes both physical confirmation and unresolved release inputs:
 
 1. The analytical/sim results (RF efficiency, SI/PI, drop SF, acoustic SPL, button physics, tolerances) must be **confirmed by measurement** — anechoic chamber TRP/TIS, VNA S-params + TDR, scope eye, drop tower, B&K mic/Klippel, CMM first-article. The sims tell us *what to expect* and flag nothing failing; the lab confirms.
 2. STEP models are EVT0 parametric envelopes, not vendor B-rep — boolean PASS is at the envelope level; supplier 3D models replace them at DVT.
-3. `routed_pcb_ready` / `fabrication_ready` stay fail-closed in the repo contract until a routed production PCB + real supplier B-rep land — the demo board proves toolchain/topology, not tape-out. The SoM path means compute is buildable from public data today.
-
-No design unknowns, no NDA dependencies, no un-sourced parts, no unresolved collisions remain.
+3. `routed_pcb_ready` / `fabrication_ready` / `enclosure_ready` stay fail-closed in the repo contract until a routed production PCB, approved routed STEP, supplier B-rep, measured clearance, and release approvals land. The local candidate board/STEP proves workflow only, not tape-out readiness.
+4. Supplier response packs, first-article fit data, factory outputs, and signed approvals are still absent and must not be inferred from local generated artifacts.

@@ -20,7 +20,13 @@ source_artifacts:
   - board/kicad/e1-phone/preliminary-bom.yaml
   - board/kicad/e1-phone/footprint-3d-model-library-map.yaml
   - board/kicad/e1-phone/placement-interface-matrix.yaml
+  - board/kicad/e1-phone/development-footprint-library-manifest-2026-05-22.yaml
+  - board/kicad/e1-phone/development-pad-pin-coverage-audit-2026-05-22.yaml
+  - board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+  - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
 current_kicad_state:
+  source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   schematic_sheet_count: 14
   schematic_symbol_count: 23
   schematic_text_item_count: 157
@@ -33,6 +39,30 @@ current_kicad_state:
   footprint_library_release_present: false
   symbol_library_release_present: false
   supplier_3d_model_binding_present: false
+local_development_footprint_state:
+  source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+  binding_artifact: board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+  route_inventory: board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  evidence_class: local_development_footprints_and_step_not_release
+  development_footprint_library_count: 32
+  development_pad_pin_audit_record_count: 32
+  real_footprint_bound_count: 89
+  real_footprint_embedded_library_body_count: 89
+  real_footprint_remaining_placeholder_marker_count: 0
+  real_footprint_e1phone_reference_count: 0
+  real_footprint_assigned_pad_net_count: 847
+  real_footprint_unassigned_pad_count: 605
+  real_footprint_unassigned_pad_dispositions_documented: true
+  real_footprint_step_envelope_count: 89
+  real_footprint_step_pad_contact_visual_count: 1452
+  real_footprint_step_route_segment_visual_count: 306
+  release_credit: false
+  reason_not_release: >
+    Local development footprints and CadQuery STEP visuals are present for KiCad-to-CAD
+    review, but production release still requires supplier-approved symbols, exact
+    selected-part land patterns, signed 3D models, ERC/DRC/SI/PI evidence, and
+    release approval.
 major_symbol_footprint_closures:
   - domain: usb_c_charge_data_debug
     refdes_groups:
@@ -137,6 +167,11 @@ cross_checks:
   schematic_is_non_release_symbol_scaffold: true
   supplier_reviewed_schematic_symbols_missing: true
   placeholder_footprints_present: true
+  production_concept_placeholder_footprints_present: true
+  local_development_footprints_present: true
+  local_development_footprints_have_zero_placeholder_markers: true
+  local_development_step_visuals_present: true
+  local_development_footprints_do_not_grant_release_credit: true
   tracks_and_zones_missing: true
   erc_missing: true
   every_major_interface_has_symbol_footprint_closure_record: true
@@ -145,7 +180,7 @@ release_blockers:
   - KiCad schematic sheets contain non-release scaffold symbols that have not been supplier-reviewed or ERC-cleaned
   - exact supplier pinouts and mating connector drawings are not frozen
   - reviewed symbol library and footprint library are not present
-  - placeholder footprints have not been replaced with supplier land patterns, courtyards, paste, and STEP models
+  - production concept placeholders have local development-footprint replacements, but supplier-approved land patterns, courtyards, paste, and STEP models are still missing
   - footprint pad numbering has not been checked against supplier pinouts
   - ERC report and symbol electrical-type waivers are missing
   - PCB has no routed tracks or filled zones

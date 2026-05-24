@@ -1,0 +1,29 @@
+{
+  "present": true,
+  "path": "/home/shaw/milady/eliza/packages/robot/evidence/local_validation/alberta_robot_validation_summary.json",
+  "ok": true,
+  "tests": 123,
+  "passed": 123,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "time_seconds": 63.84,
+  "known_warnings": [
+    "JAXopt deprecation warning from Brax/MJX import path",
+    "JAX os.fork warning from obstacle demo renderer subprocess tests"
+  ],
+  "coverage_scope": [
+    "Alberta continual-learning agent, metrics, benchmark harness, checkpoint validator, policy adapter, vendoring validator",
+    "Alberta integration surfaces: package modules, public exports, pyproject dependency, editable vendored source, CLI entrypoints, and implementation files",
+    "Robot backend Alberta/PPO/untrained comparison artifacts and validation",
+    "Obstacle-course demo rendering with Alberta/PPO/SAC visual evidence and artifact file proof",
+    "Brax/MJX PPO artifact writer/config/manifest contract proof",
+    "Alberta objective audit with checkpoint-bound video and Brax/MJX contract evidence",
+    "Alberta end-to-end report generation, objective proof table, comparison interpretation, checkpoint-bound video provenance proof, review contact-sheet summaries, contact-sheet file-presence proof, task-signal telemetry proof, and explicit Alberta-vs-SAC deltas",
+    "Multi-robot training readiness and checkpoint-bound video manifest preservation",
+    "Training-input, text-conditioning, curriculum, profile, and dataset validation",
+    "Nebius launch/full-training validators, artifact inventory, and training report gates"
+  ],
+  "junit_xml": "evidence/local_validation/alberta_robot_validation.xml",
+  "updated_at": "2026-05-24T02:19:27Z"
+}

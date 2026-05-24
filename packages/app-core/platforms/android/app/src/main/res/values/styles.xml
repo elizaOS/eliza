@@ -19,6 +19,6 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@color/splash_background</item>
-        <item name="android:statusBarColor">@color/eliza_orange</item>
+        <item name="android:statusBarColor">@color/splash_background</item>
     </style>
 </resources>

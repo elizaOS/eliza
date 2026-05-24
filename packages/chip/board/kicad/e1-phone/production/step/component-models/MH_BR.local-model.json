@@ -1,0 +1,82 @@
+{
+  "at_mm": {
+    "rotation": 0.0,
+    "x": 56.0,
+    "y": 124.0
+  },
+  "claim_boundary": "Per-reference local model metadata only. This is not a discrete supplier-approved STEP/B-rep model and cannot satisfy routed-board release or enclosure clearance.",
+  "coverage": "explicit_local_1p2mm_npth_mechanical_land_pattern",
+  "discrete_supplier_step_file": "",
+  "discrete_supplier_step_status": "missing_supplier_approved_component_step",
+  "electrical_pad_count": 0,
+  "envelope_mm": {
+    "depth": 3.2,
+    "height": 0.02,
+    "width": 3.2
+  },
+  "footprint": "MOUNTING_HOLE_1P2_DEV",
+  "land_pattern_basis": "local 1.2 mm NPTH mechanical mounting-hole contract",
+  "layer": "F.Cu",
+  "local_geometry_status": "represented_as_development_envelope_inside_combined_routed_step_candidate",
+  "local_terminal_contract": [],
+  "local_terminal_contract_source": "generated_development_footprint_support_pattern_basis",
+  "mechanical_pad_count": 0,
+  "mechanical_pads": [],
+  "model_binding_status": "blocked_pending_supplier_step_or_verified_package_drawing",
+  "model_source": "local_development_envelope",
+  "non_signal_pad_contract": [],
+  "non_signal_pad_contract_matches_pad_visuals": true,
+  "non_signal_pad_contract_source": "",
+  "npth_mechanical_feature_contract": [
+    {
+      "courtyard_mm": 3.2,
+      "drill_mm": 1.2,
+      "electrical_terminal": false,
+      "feature": "unnamed_center_npth",
+      "hole_type": "np_thru_hole",
+      "plating": "non_plated"
+    }
+  ],
+  "npth_mechanical_feature_contract_matches_footprint": true,
+  "npth_mechanical_feature_contract_source": "generated_development_footprint_support_pattern_basis",
+  "npth_mechanical_feature_count": 1,
+  "npth_mechanical_features": [
+    {
+      "at_mm": [
+        0.0,
+        0.0
+      ],
+      "drill_mm": 1.2,
+      "electrical_terminal": false,
+      "hole_type": "np_thru_hole",
+      "name": "",
+      "plating": "non_plated",
+      "shape": "circle",
+      "size_mm": [
+        2.0,
+        2.0
+      ]
+    }
+  ],
+  "pad_count": 1,
+  "pad_names": [
+    ""
+  ],
+  "pad_visual_count": 1,
+  "pinout_file": "",
+  "reference": "MH_BR",
+  "release_allowed": false,
+  "release_credit": false,
+  "schema": "eliza.e1_phone_local_component_model_record.v1",
+  "source_assembly_item": "MH_BR",
+  "source_routed_step": "board/kicad/e1-phone/production/step/routed-board-with-components.step",
+  "source_routed_step_bytes": 32959460,
+  "source_routed_step_sha256": "ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92",
+  "source_step_intake": "board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml",
+  "status": "blocked_local_development_envelope_not_supplier_step",
+  "supplier_approved": false,
+  "support_pattern_has_explicit_provenance": true,
+  "terminal_contract_count": 0,
+  "terminal_contract_matches_pad_visuals": true,
+  "visual_package_class": "mechanical_land_pattern"
+}

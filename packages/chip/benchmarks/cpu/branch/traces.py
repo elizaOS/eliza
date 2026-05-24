@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, cast
 
-from .bpu_model import BR_CALL, BR_COND, BR_IND, BR_NONE, BR_RET, BranchEvent
+from .bpu_model import BR_CALL, BR_COND, BR_DIRECT, BR_IND, BR_NONE, BR_RET, BranchEvent
 
 # InstClass enum from lib/sim_common_structs.h in ramisheikh/cbp2025.
 CBP5_ALU = 0
@@ -50,7 +50,7 @@ CBP5_RETURN = 11
 # Map CBP-5 InstClass to bpu_model branch kind constants.
 _CBP5_KIND_MAP: dict[int, int] = {
     CBP5_COND_BR: BR_COND,
-    CBP5_UNCOND_DIR_BR: BR_COND,  # direct unconditional jump; FTB has target
+    CBP5_UNCOND_DIR_BR: BR_DIRECT,  # direct unconditional jump; FTB has target
     CBP5_UNCOND_IND_BR: BR_IND,  # indirect jump (switch/PLT); no RAS push
     CBP5_CALL_DIR: BR_CALL,
     CBP5_CALL_IND: BR_CALL,
@@ -913,6 +913,428 @@ def synthetic_btb_confidence_churn(
                 )
 
 
+def synthetic_command_buffer_validation(commands: int = 768) -> Iterator[BranchEvent]:
+    """GPU command-buffer validation with rare slow invalid paths.
+
+    Models Vulkan/Metal/D3D-style front-end control: opcode dispatch is
+    indirect, while descriptor/resource/barrier checks are mostly biased but
+    phase-dependent enough to catch overfitting to pure SIMT loops.
+    """
+    opcode_pc = 0x801D_0000
+    desc_pc = 0x801D_0040
+    barrier_pc = 0x801D_0080
+    resource_pc = 0x801D_00C0
+    invalid_pc = 0x801D_0100
+    handler_base = 0x801D_4000
+    for i in range(commands):
+        opcode = ((i * 13) ^ (i >> 3)) % 17
+        yield BranchEvent(
+            pc=opcode_pc,
+            target=handler_base + opcode * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+        valid_descriptor = (opcode % 5) != 0 or (i % 23) != 0
+        has_barrier = opcode in (3, 7, 11, 13) and (i % 4) != 0
+        resource_ready = ((i + opcode * 3) % 29) != 0
+        yield BranchEvent(pc=desc_pc, target=desc_pc + 0x200, taken=not valid_descriptor, kind=BR_COND)
+        yield BranchEvent(pc=barrier_pc, target=barrier_pc + 0x240, taken=has_barrier, kind=BR_COND)
+        yield BranchEvent(pc=resource_pc, target=resource_pc + 0x280, taken=not resource_ready, kind=BR_COND)
+        if not valid_descriptor or not resource_ready:
+            yield BranchEvent(
+                pc=invalid_pc,
+                target=handler_base + 0x3000 + (opcode % 4) * 0x100,
+                taken=True,
+                kind=BR_IND,
+            )
+
+
+def synthetic_work_stealing_queues(queues: int = 8, rounds: int = 192) -> Iterator[BranchEvent]:
+    """Persistent-kernel/runtime scheduler queues with phase imbalance."""
+    empty_base = 0x801E_0000
+    steal_base = 0x801E_1000
+    dispatch_base = 0x801E_2000
+    target_base = 0x801E_8000
+    for r in range(rounds):
+        phase = (r // 32) & 3
+        for q in range(queues):
+            occupancy = (r * (q + 3) + phase * 7 + q) % 19
+            empty = occupancy < (2 + phase)
+            yield BranchEvent(
+                pc=empty_base + q * 0x40,
+                target=empty_base + 0x600 + q * 0x40,
+                taken=empty,
+                kind=BR_COND,
+            )
+            if empty:
+                yield BranchEvent(
+                    pc=steal_base + q * 0x40,
+                    target=steal_base + 0x600 + ((q + phase) % queues) * 0x40,
+                    taken=((r + q) % 3) != 0,
+                    kind=BR_COND,
+                )
+            else:
+                task = (occupancy + q * 5 + phase) % 11
+                yield BranchEvent(
+                    pc=dispatch_base + q * 0x40,
+                    target=target_base + task * 0x100,
+                    taken=True,
+                    kind=BR_IND,
+                )
+
+
+def synthetic_hash_probe_inline_cache(lookups: int = 512) -> Iterator[BranchEvent]:
+    """Hash-table probe loop plus polymorphic inline-cache dispatch."""
+    probe_pc = 0x801F_0000
+    shape_pc = 0x801F_0040
+    miss_pc = 0x801F_0080
+    ic_pc = 0x801F_00C0
+    target_base = 0x801F_4000
+    for i in range(lookups):
+        probes = 1 + (((i * 7) ^ (i >> 2)) % 5)
+        hit = (i % 17) != 0
+        for p in range(probes):
+            yield BranchEvent(
+                pc=probe_pc,
+                target=probe_pc - 0x40,
+                taken=p < probes - 1,
+                kind=BR_COND,
+            )
+        shape = ((i >> 3) ^ i) % 6
+        yield BranchEvent(
+            pc=shape_pc,
+            target=shape_pc + 0x200,
+            taken=shape in (0, 2, 5),
+            kind=BR_COND,
+        )
+        yield BranchEvent(pc=miss_pc, target=miss_pc + 0x240, taken=not hit, kind=BR_COND)
+        if hit:
+            yield BranchEvent(
+                pc=ic_pc,
+                target=target_base + shape * 0x100,
+                taken=True,
+                kind=BR_IND,
+            )
+
+
+def synthetic_allocator_gc_barrier(ops: int = 768) -> Iterator[BranchEvent]:
+    """Fast allocation/refcount/write-barrier path with periodic slow calls."""
+    alloc_pc = 0x8020_0000
+    ref_pc = 0x8020_0040
+    barrier_pc = 0x8020_0080
+    finalizer_pc = 0x8020_00C0
+    target_base = 0x8020_4000
+    for i in range(ops):
+        refill = (i % 97) == 0
+        zero_ref = (i % 43) == 0
+        card_dirty = ((i * 5 + (i >> 4)) % 31) in (0, 3)
+        yield BranchEvent(pc=alloc_pc, target=alloc_pc + 0x200, taken=refill, kind=BR_COND)
+        yield BranchEvent(pc=ref_pc, target=ref_pc + 0x240, taken=zero_ref, kind=BR_COND)
+        yield BranchEvent(pc=barrier_pc, target=barrier_pc + 0x280, taken=card_dirty, kind=BR_COND)
+        if refill or zero_ref:
+            yield BranchEvent(
+                pc=finalizer_pc,
+                target=target_base + ((i >> 3) % 7) * 0x100,
+                taken=True,
+                kind=BR_IND,
+            )
+
+
+def synthetic_l2_ftb_target_pressure(sites: int = 6144, passes: int = 2) -> Iterator[BranchEvent]:
+    """Taken branch target working set that fits L2 FTB but exceeds L1 FTB.
+
+    GPU drivers and command processors often revisit broad validation/dispatch
+    regions after intervening runtime work. The direction of these branches is
+    easy; the hard part is retaining enough target metadata. The default site
+    count is above the 4096-entry L1 FTB and below the 8192-entry L2 tier, so
+    the second pass should expose whether delayed L2 refill/redirect is modeled.
+    """
+    pc_base = 0x8021_0000
+    target_base = 0x8028_0000
+    for _pass in range(passes):
+        for site in range(sites):
+            pc = pc_base + site * 0x20
+            yield BranchEvent(
+                pc=pc,
+                target=target_base + site * 0x20,
+                taken=True,
+                kind=BR_COND,
+            )
+
+
+def synthetic_gpu_wavefront_compaction(waves: int = 256) -> Iterator[BranchEvent]:
+    """GPU wavefront compaction and material dispatch.
+
+    Models shader code that filters inactive lanes, optionally runs a compacted
+    path, then dispatches through a small material/function table. Direction
+    outcomes are phase-correlated, while one indirect site remains polymorphic.
+    """
+    active_pc = 0x8022_0000
+    compact_pc = 0x8022_0040
+    spill_pc = 0x8022_0080
+    dispatch_pc = 0x8022_00C0
+    material_base = 0x8022_4000
+    for wave in range(waves):
+        phase = (wave // 32) & 3
+        active_lanes = ((wave * 11 + phase * 5) % 33)
+        sparse = active_lanes < 8
+        full = active_lanes > 28
+        yield BranchEvent(
+            pc=active_pc,
+            target=active_pc + 0x200,
+            taken=sparse,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=compact_pc,
+            target=compact_pc + 0x240,
+            taken=(not full) and ((wave + phase) % 5 != 0),
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=spill_pc,
+            target=spill_pc + 0x280,
+            taken=sparse and (wave % 7 == 0),
+            kind=BR_COND,
+        )
+        material = ((active_lanes >> 1) ^ wave ^ (phase * 3)) % 10
+        yield BranchEvent(
+            pc=dispatch_pc,
+            target=material_base + material * 0x100,
+            taken=True,
+            kind=BR_IND,
+        )
+
+
+def synthetic_epoll_rpc_dispatch(connections: int = 640) -> Iterator[BranchEvent]:
+    """General-purpose event-loop RPC dispatch with bursty readiness phases."""
+    ready_pc = 0x8023_0000
+    auth_pc = 0x8023_0040
+    parse_pc = 0x8023_0080
+    backpressure_pc = 0x8023_00C0
+    dispatch_pc = 0x8023_0100
+    handler_base = 0x8023_4000
+    for i in range(connections):
+        burst = (i // 80) & 3
+        ready = ((i * 5 + burst) % 13) not in (0, 1)
+        authenticated = ((i + burst * 7) % 31) != 0
+        parse_fast = ((i ^ (i >> 4)) % 9) not in (0, 4)
+        backpressure = burst == 3 and (i % 6) in (0, 1)
+        yield BranchEvent(pc=ready_pc, target=ready_pc + 0x200, taken=not ready, kind=BR_COND)
+        if not ready:
+            continue
+        yield BranchEvent(pc=auth_pc, target=auth_pc + 0x240, taken=not authenticated, kind=BR_COND)
+        yield BranchEvent(pc=parse_pc, target=parse_pc + 0x280, taken=not parse_fast, kind=BR_COND)
+        yield BranchEvent(
+            pc=backpressure_pc,
+            target=backpressure_pc + 0x2C0,
+            taken=backpressure,
+            kind=BR_COND,
+        )
+        if authenticated and not backpressure:
+            method = ((i * 17) ^ (burst << 2) ^ (0 if parse_fast else 5)) % 14
+            yield BranchEvent(
+                pc=dispatch_pc,
+                target=handler_base + method * 0x100,
+                taken=True,
+                kind=BR_IND,
+            )
+
+
+def synthetic_json_parser_state_machine(tokens: int = 768) -> Iterator[BranchEvent]:
+    """Parser/state-machine workload with nested depth and rare error exits."""
+    token_pc = 0x8024_0000
+    depth_pc = 0x8024_0040
+    escape_pc = 0x8024_0080
+    error_pc = 0x8024_00C0
+    state_pc = 0x8024_0100
+    state_base = 0x8024_4000
+    depth = 0
+    for i in range(tokens):
+        token = ((i * 19) ^ (i >> 2)) % 16
+        opens = token in (0, 3)
+        closes = token in (4, 7) and depth > 0
+        if opens:
+            depth += 1
+        elif closes:
+            depth -= 1
+        string_escape = token in (9, 10) and (i % 5) == 0
+        error = (i % 191) == 190 or depth > 12
+        yield BranchEvent(pc=token_pc, target=token_pc + 0x200, taken=opens, kind=BR_COND)
+        yield BranchEvent(pc=depth_pc, target=depth_pc + 0x240, taken=closes, kind=BR_COND)
+        yield BranchEvent(pc=escape_pc, target=escape_pc + 0x280, taken=string_escape, kind=BR_COND)
+        yield BranchEvent(pc=error_pc, target=error_pc + 0x2C0, taken=error, kind=BR_COND)
+        state = (token + min(depth, 7) * 3 + (1 if string_escape else 0)) % 12
+        yield BranchEvent(
+            pc=state_pc,
+            target=state_base + state * 0x80,
+            taken=True,
+            kind=BR_IND,
+        )
+
+
+def synthetic_android_runtime_inline_cache(objects: int = 640) -> Iterator[BranchEvent]:
+    """Android ART/Hermes-style inline-cache dispatch with tiering phases.
+
+    Models Java/Kotlin and React Native runtime hot paths: null/type guards,
+    quickened bytecode checks, polymorphic inline-cache calls, and occasional
+    deopt/megamorphic handlers. One indirect PC changes target family by tier.
+    """
+    null_pc = 0x8025_0000
+    quickened_pc = 0x8025_0040
+    shape_pc = 0x8025_0080
+    deopt_pc = 0x8025_00C0
+    dispatch_pc = 0x8025_0100
+    handler_base = 0x8025_4000
+    deopt_base = 0x8025_9000
+    for i in range(objects):
+        tier = (i // 160) & 3
+        shape = ((i * 11) ^ (i >> 3) ^ tier) % (3 + tier * 2)
+        nullish = (i % 97) == 0
+        quickened = tier >= 1 and ((i + shape) % 13) != 0
+        prototype_hit = shape in (0, 2, 5, 7) and (i % 17) != 0
+        deopt = nullish or (tier == 3 and (i % 29) == 0)
+        yield BranchEvent(pc=null_pc, target=null_pc + 0x200, taken=nullish, kind=BR_COND)
+        yield BranchEvent(
+            pc=quickened_pc,
+            target=quickened_pc + 0x240,
+            taken=quickened,
+            kind=BR_COND,
+        )
+        yield BranchEvent(
+            pc=shape_pc,
+            target=shape_pc + 0x280,
+            taken=prototype_hit,
+            kind=BR_COND,
+        )
+        yield BranchEvent(pc=deopt_pc, target=deopt_pc + 0x2C0, taken=deopt, kind=BR_COND)
+        if deopt:
+            target = deopt_base + (tier % 4) * 0x100
+        else:
+            target = handler_base + (tier * 8 + shape) * 0x80
+        yield BranchEvent(pc=dispatch_pc, target=target, taken=True, kind=BR_IND)
+
+
+def synthetic_signal_exception_unwind(frames: int = 9, rounds: int = 48) -> Iterator[BranchEvent]:
+    """OS signal/exception delivery and unwind with non-LIFO returns.
+
+    Normal call stacks are interrupted by signal trampolines, catch blocks, and
+    longjmp-like resumes. The trace keeps RAS-friendly call/return traffic but
+    injects bounded non-LIFO return targets at production-relevant frequencies.
+    """
+    call_base = 0x8026_0000
+    body_base = 0x8026_4000
+    ret_base = 0x8026_8000
+    signal_pc = 0x8026_C000
+    handler_pc = 0x8026_C040
+    resume_base = 0x8027_0000
+    for r in range(rounds):
+        depth = 3 + (r % frames)
+        signal_pending = (r % 10) == 7
+        exception_pending = (r % 13) == 12
+        for i in range(depth):
+            call_pc = call_base + i * 0x40
+            yield BranchEvent(
+                pc=call_pc,
+                target=body_base + i * 0x80,
+                taken=True,
+                kind=BR_CALL,
+                call_return_pc=call_pc + 0x20,
+            )
+        yield BranchEvent(
+            pc=signal_pc,
+            target=signal_pc + 0x200,
+            taken=signal_pending,
+            kind=BR_COND,
+        )
+        if signal_pending:
+            yield BranchEvent(
+                pc=handler_pc,
+                target=resume_base + (r % 5) * 0x100,
+                taken=True,
+                kind=BR_CALL,
+                call_return_pc=handler_pc + 0x20,
+            )
+            yield BranchEvent(
+                pc=handler_pc + 0x80,
+                target=call_base + ((r + 1) % depth) * 0x40 + 0x20,
+                taken=True,
+                kind=BR_RET,
+            )
+        unwind_cut = depth // 2 if exception_pending else -1
+        for i in range(depth - 1, -1, -1):
+            expected = call_base + i * 0x40 + 0x20
+            if exception_pending and i == unwind_cut:
+                target = resume_base + 0x800 + (r % 4) * 0x100
+            else:
+                target = expected
+            yield BranchEvent(pc=ret_base + i * 0x80, target=target, taken=True, kind=BR_RET)
+
+
+def synthetic_gpu_driver_submit_phases(submits: int = 384) -> Iterator[BranchEvent]:
+    """GPU driver command-submission phases across validate/map/submit/wait."""
+    batch_pc = 0x8028_0000
+    residency_pc = 0x8028_0040
+    fence_pc = 0x8028_0080
+    throttle_pc = 0x8028_00C0
+    ioctl_pc = 0x8028_0100
+    handler_base = 0x8028_4000
+    for i in range(submits):
+        phase = (i // 64) % 6
+        batch_full = ((i + phase * 3) % 16) in (0, 1, 2)
+        residency_miss = phase in (1, 4) and ((i * 5 + phase) % 23) == 0
+        fence_wait = phase in (2, 5) and (i % 7) in (0, 1)
+        throttled = phase == 5 and (i % 11) in (0, 3)
+        yield BranchEvent(pc=batch_pc, target=batch_pc + 0x200, taken=batch_full, kind=BR_COND)
+        yield BranchEvent(
+            pc=residency_pc,
+            target=residency_pc + 0x240,
+            taken=residency_miss,
+            kind=BR_COND,
+        )
+        yield BranchEvent(pc=fence_pc, target=fence_pc + 0x280, taken=fence_wait, kind=BR_COND)
+        yield BranchEvent(
+            pc=throttle_pc,
+            target=throttle_pc + 0x2C0,
+            taken=throttled,
+            kind=BR_COND,
+        )
+        if not throttled:
+            queue = ((i * 13) ^ (phase << 3) ^ (4 if fence_wait else 0)) % 16
+            yield BranchEvent(
+                pc=ioctl_pc,
+                target=handler_base + queue * 0x100,
+                taken=True,
+                kind=BR_IND,
+                workload_class=1,
+            )
+
+
+def synthetic_workload_class_phase_alias(rounds: int = 256) -> Iterator[BranchEvent]:
+    """Same virtual branch PCs reused by general and GPU runtime phases."""
+    guard_pc = 0x8029_0000
+    call_pc = 0x8029_0040
+    general_target = 0x8029_8000
+    gpu_target = 0x802A_0000
+    for i in range(rounds):
+        gpu_phase = (i // 8) & 1
+        target = gpu_target if gpu_phase else general_target
+        yield BranchEvent(
+            pc=guard_pc,
+            target=guard_pc + 0x200,
+            taken=(i % 5) == (2 if gpu_phase else 0),
+            kind=BR_COND,
+            workload_class=gpu_phase,
+        )
+        yield BranchEvent(
+            pc=call_pc,
+            target=target + ((i % 4) * 0x80),
+            taken=True,
+            kind=BR_IND,
+            workload_class=gpu_phase,
+        )
+
+
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "always_taken": synthetic_always_taken_loop,
     "always_not_taken": synthetic_always_not_taken,
@@ -937,6 +1359,18 @@ SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "gpu_nested_reconvergence": synthetic_gpu_nested_reconvergence,
     "control_indirect_pair": synthetic_control_indirect_pair,
     "btb_confidence_churn": synthetic_btb_confidence_churn,
+    "command_buffer_validation": synthetic_command_buffer_validation,
+    "work_stealing_queues": synthetic_work_stealing_queues,
+    "hash_probe_inline_cache": synthetic_hash_probe_inline_cache,
+    "allocator_gc_barrier": synthetic_allocator_gc_barrier,
+    "l2_ftb_target_pressure": synthetic_l2_ftb_target_pressure,
+    "gpu_wavefront_compaction": synthetic_gpu_wavefront_compaction,
+    "epoll_rpc_dispatch": synthetic_epoll_rpc_dispatch,
+    "json_parser_state_machine": synthetic_json_parser_state_machine,
+    "android_runtime_inline_cache": synthetic_android_runtime_inline_cache,
+    "signal_exception_unwind": synthetic_signal_exception_unwind,
+    "gpu_driver_submit_phases": synthetic_gpu_driver_submit_phases,
+    "workload_class_phase_alias": synthetic_workload_class_phase_alias,
 }
 
 # Stress test on RAS overflow — kept available for direct invocation by the

@@ -36,13 +36,13 @@ The dossier below converts those three weaknesses into a sequenced plan, then la
 | RTL — top integration | 2 parallel 2.5k-LoC tops | `rtl/top/e1_soc_top.sv`, `rtl/top/e1_soc_integrated.sv` | Duplicate CLINT/DRAM/MMIO scaffolding verbatim |
 | RTL — NPU | 1 file, scalar ALU | `rtl/npu/e1_npu.sv:1-1083` | 16/16 opcode slots used; 5-orders-of-mag gap to targets |
 | RTL — CPU cluster | CVA6 v5.3.0 in slot-0, big/mid cores in lite-tieoff | `rtl/cpu/cluster/e1_cluster_top.sv`, `rtl/cpu/e1_cva6_wrapper.sv` | Only one hart live |
-| RTL — BPU | R7 closure landed | `rtl/cpu/bpu/*.sv` | MPKI gap from 17-27× to 1.4-4.4× vs behavioural model |
+| RTL - BPU | RTL evidence present; model/RTL convergence corroborated | `rtl/cpu/bpu/*.sv`, `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` | Current comparison is `RTL_CORROBORATED`; E1 RTL geomean MPKI tracks the E1 model within the convergence band and is 2.7559x lower than the CVA6 model baseline on the shared trace set |
 | RTL — coherence | TL-C in name only | `rtl/cache/coherence/tl_c_to_chi_bridge.sv` | No probe/release/permission distinction |
-| RTL — interconnect | AXI4 production, AXI-Lite legacy still present | `rtl/interconnect/axi4/e1_axi4_interconnect.sv` (701 LoC) | MMR/W1C exists but MMIO slave is `future_work` |
+| RTL — interconnect | AXI4 implemented; release maturity blocked, AXI-Lite legacy still present | `rtl/interconnect/axi4/e1_axi4_interconnect.sv` (701 LoC) | MMR/W1C exists but MMIO slave is `future_work` |
 | RTL — debug | 4-bit MMIO bridge, no RVdebug | `rtl/debug/e1_dbg_mmio_bridge.sv` | `JTAG_TDO = 1'b0` at `rtl/top/e1_chip_top.sv:47` |
 | RTL — security | one lifecycle file; rest spec-only | `rtl/security/e1_lifecycle.sv` | OpenTitan IP set is spec-only |
 | Compiler/runtime | ~22 000 LoC Python + 600-LoC C++ MLIR skeleton | `compiler/runtime/`, `compiler/iree-eliza-npu/`, `compiler/executorch-eliza/` | Two parallel ExecuTorch backends; IREE `ConvertLinalgToElizaNpu` returns `failure()` |
-| Verification | 65 cocotb tests, 9 SBY blocks, 4 SVA packs | `verify/cocotb/`, `verify/formal/`, `verify/properties/` | Only 3 k-induction proofs; rest BMC depth 4-24 |
+| Verification | 103/103 BPU target cocotb tests plus additional subsystem tests, 9 SBY blocks, 4 SVA packs | `verify/cocotb/`, `verify/formal/`, `verify/properties/` | Only 3 k-induction proofs; rest BMC depth 4-24 |
 | PD / EDA | Sky130A end-to-end; 4 advanced-node lanes blocked | `pd/openlane/`, `pd/openroad/`, `pd/signoff/` | 40/0/8 tapeout-readiness aggregator |
 | Software / BSP | OpenSBI pinned, U-Boot/Linux/AOSP scaffolds | `sw/opensbi/`, `sw/u-boot/`, `sw/linux/`, `sw/aosp-device/` | Address-map split-brain (UART 0x10000000 vs 0x10001000) |
 | Firmware | identity boot ROM + Ibex AON PMC | `fw/bootrom/`, `fw/pmc/`, `fw/opensbi-payloads/` | No executable boot ROM, no boot SRAM |
@@ -61,7 +61,7 @@ The mental model below treats the design as nine sequenced stages. Each stage's 
 | 1. Architecture spec / contracts | Mature but drifting | No `chip-topology.yaml` single source of truth | §6.1 — author `docs/spec-db/chip-topology.yaml` |
 | 2. RTL — leaf blocks (NPU, BPU, DMA, display, cache prefetchers) | Mostly landed at smoke quality | NPU opcode-space full; prefetchers not bound to L1D/L2 | §7.A, §8.D |
 | 3. RTL — integration (cluster, fabric, IOMMU, debug, PMC) | Partial; cluster in lite-tieoff | TileLink-C bridge is AXI4-burst FSM; no RVdebug; PLIC is 4-source shim | §8.A.4, §8.A.5 |
-| 4. Verification — cocotb, formal, coverage | 65 tests, 3 k-induction proofs | BPU/cache/AXI4/CPU/integration/power have no cover-points; z3 disagreement silently absorbed | §9.B, §9.D |
+| 4. Verification — cocotb, formal, coverage | BPU target-module regression at 103/103 tests, 3 k-induction proofs | BPU/cache/AXI4/CPU/integration/power have no cover-points; z3 disagreement silently absorbed | §9.B, §9.D |
 | 5. Software — boot ROM, OpenSBI, U-Boot, Linux | Pinned + scaffolds | Address-map split-brain; no executable boot ROM; CLINT missing in RTL | §10.B |
 | 6. Software — Android RV BSP | AOSP skeleton + HAL smoke | Cuttlefish RV64 BLOCKED on virtio-gpu | §10.C |
 | 7. Physical design — open PDK (Sky130A) | Routes; 2 reports waived | Antenna + STA reports against fail-regex | §11.A |
@@ -267,7 +267,7 @@ Highest-leverage geometric next step on the BPU. `bpu_top.sv:82-87` already flag
 *Effort*: M.
 
 **5.3.2 Perceptron-SC override + BATAGE — beyond R7**
-The R7 commit `57067166f4` closed CBP-5 MPKI from 17-27× to 1.4-4.4× vs the behavioural model. The remaining gap is calibration-shaped. A perceptron-SC override (Jiménez) on hard-to-predict conditionals (kernel I/O, JS dynamic dispatch) plus BATAGE (Bayesian counters in place of 3-bit saturating) are the published next moves.
+Current BPU RTL evidence is model/RTL corroborated for the shared trace set: `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` reports `RTL_CORROBORATED`, with E1 RTL geomean MPKI 15.605351, E1 model geomean MPKI 15.005509, and CVA6 model geomean MPKI 43.006539. Remaining work is broader predictor quality and real SPEC/Android/JS trace ingestion; those workload claims remain fail-closed.
 *Effort*: M each.
 
 **5.3.3 Zicbom/Zicbop/Zicboz**
@@ -305,7 +305,7 @@ The current `tl_c_to_chi_bridge.sv` is **TL-C in name only** — a flat AXI4 lin
 *Effort*: bundled with §5.4.1.
 
 **5.4.3 LPDDR6 PHY + controller — D-2**
-Controller-side stub exists (`rtl/memory/dram_ctrl/e1_dram_ctrl.sv`, 437 LoC, DFI 5.0 north, 128-bit AXI4 south, reorder queue, refresh scheduler). LPDDR PHY is BLOCKED in procurement (closed third-party IP). Real timing not yet modelled (the model behind the controller is still SRAM-backed).
+Controller-side RTL simulation exists (`rtl/memory/dram_ctrl/e1_dram_ctrl.sv`, DFI 5.0 north, 128-bit AXI4 south, reorder queue, refresh scheduler) with a full-AXI4 DRAM model using 2 GiB geometry and DRAMsim-derived row timing. LPDDR PHY/training, silicon timing, Linux/Android memory-map proof, and phone-class evidence remain BLOCKED.
 *Research*: `research/downloads/memory_subsystem/{jedec_lpddr6_pre_pub, samsung_lpddr5x_brief, sk_hynix_lpddr5t}.pdf`.
 *Effort*: XL.
 

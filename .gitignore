@@ -766,6 +766,7 @@ packages/app-core/platforms/android/app/src/main/jniLibs/
 # Embedded third-party checkouts vendored under the tree (own git repos; must
 # not be committed as gitlinks without a .gitmodules entry).
 packages/robot/vendor/mujoco_menagerie/
+packages/robot/.tools/
 plugins/plugin-local-inference/native/stable-diffusion.cpp/
 
 # Generated chip mechanical render frames.
@@ -774,3 +775,4 @@ packages/chip/mechanical/e1-phone/out/e1-phone-exploded-frames/
 # Zig build cache + compiled output.
 **/.zig-cache/
 **/zig-out/
+packages/os/release/

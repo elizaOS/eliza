@@ -143,8 +143,6 @@ function shouldNotifyDesktopForAssistantEvent(
   return payload.source === "lifeops-reminder";
 }
 
-const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
-
 /**
  * Runs the hydrating phase.
  * Loads initial conversation state, wallet, avatar, plugins, and sets the tab.
@@ -248,7 +246,7 @@ export async function runHydrating(
       deps.onboardingCompletionCommittedRef.current = false;
       deps.setTab("character-select");
       void deps.loadCharacter();
-    } else if (isRoot) deps.setTab(DEFAULT_LANDING_TAB);
+    } else if (isRoot) deps.setTab(resolveDefaultLandingTab());
   }
   if (urlTab && urlTab !== "chat" && urlTab !== "companion") {
     deps.setTabRaw(urlTab);

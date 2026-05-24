@@ -29,6 +29,8 @@ from scripts.validate_asimov1_real_telemetry_probe import (  # noqa: E402
     probe_asimov_real_telemetry,
 )
 
+REPORT_SCHEMA = "asimov-1-real-hardware-evidence-v1"
+
 
 def _report_path(out: Path) -> Path:
     if out.suffix.lower() == ".json":
@@ -119,6 +121,7 @@ async def collect_asimov1_real_hardware_evidence(args: argparse.Namespace) -> di
         ),
     }
     report = {
+        "schema": REPORT_SCHEMA,
         "ok": all(checks.values()),
         "profile_id": "asimov-1",
         "evidence": "real_hardware_livekit_control",

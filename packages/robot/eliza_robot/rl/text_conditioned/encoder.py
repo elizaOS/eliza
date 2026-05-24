@@ -21,6 +21,7 @@ it the embeddings.
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,22 @@ class TaskEmbedding:
 
 def _hash_cache_key(model: str, pca_dim: int, curriculum_version: int) -> str:
     return f"{model.replace('/', '__')}__pca{pca_dim}__v{curriculum_version}"
+
+
+def curriculum_content_sha256(curriculum: Curriculum) -> str:
+    """Stable content hash used to reject stale text-embedding caches.
+
+    `tasks.yaml` historically only keyed caches by `version`. That allows a
+    stale cache whenever task text changes without a version bump, which is
+    exactly the kind of silent conditioning/data mismatch that is painful to
+    debug after a training run.
+    """
+
+    payload = curriculum.model_dump(mode="json")
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _synthetic_task_embeddings(
@@ -94,6 +111,7 @@ def build_task_embeddings(
     key = _hash_cache_key(model, pca_dim, curriculum.version)
     cache_path = cache_dir / f"{key}.npz"
     meta_path = cache_dir / f"{key}.json"
+    curriculum_sha256 = curriculum_content_sha256(curriculum)
 
     # Inference-time fallback: when the cache is missing AND
     # sentence_transformers / sklearn aren't installed, synthesize a
@@ -114,17 +132,22 @@ def build_task_embeddings(
         return _synthetic_task_embeddings(curriculum, pca_dim=pca_dim)
 
     if not force_rebuild and cache_path.exists() and meta_path.exists():
-        npz = np.load(cache_path)
         meta = json.loads(meta_path.read_text())
-        out: dict[str, TaskEmbedding] = {}
-        for task_id in meta["task_ids"]:
-            out[task_id] = TaskEmbedding(
-                task_id=task_id,
-                mean_embed=npz[f"{task_id}_mean"],
-                reduced_embed=npz[f"{task_id}_reduced"],
-                variants=meta["variants"][task_id],
-            )
-        return out
+        cache_sha256 = meta.get("curriculum_sha256")
+        cache_is_current = cache_sha256 == curriculum_sha256
+        if cache_is_current or (cache_sha256 is None and not sentence_libs_available):
+            npz = np.load(cache_path)
+            out: dict[str, TaskEmbedding] = {}
+            for task_id in meta["task_ids"]:
+                out[task_id] = TaskEmbedding(
+                    task_id=task_id,
+                    mean_embed=npz[f"{task_id}_mean"],
+                    reduced_embed=npz[f"{task_id}_reduced"],
+                    variants=meta["variants"][task_id],
+                )
+            return out
+        if not sentence_libs_available:
+            return _synthetic_task_embeddings(curriculum, pca_dim=pca_dim)
 
     # Lazy-import sentence_transformers + sklearn so the dependency only
     # matters when we actually rebuild the cache.
@@ -183,6 +206,7 @@ def build_task_embeddings(
         "model": model,
         "pca_dim": pca_dim,
         "curriculum_version": curriculum.version,
+        "curriculum_sha256": curriculum_sha256,
         "task_ids": task_ids,
         "variants": variants_by_task,
     }, indent=2))

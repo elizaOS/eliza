@@ -23,7 +23,21 @@ module ittage_tb (
     input  logic [TAGE_HIST_LEN_MAX-1:0] upd_hist,
     input  logic [VADDR_W-1:0]  upd_target,
     input  logic                upd_misp,
-    input  logic [$clog2(ITTAGE_TABLES+1)-1:0] upd_provider
+    input  logic [$clog2(ITTAGE_TABLES+1)-1:0] upd_provider,
+
+    input  logic [$clog2(ITTAGE_TABLES)-1:0] probe_table,
+    input  logic [$clog2(ITTAGE_ENTRIES_4 / ITTAGE_WAYS)-1:0] probe_idx,
+    output logic [ITTAGE_USEFUL_W-1:0]       probe_useful
 );
-    ittage u_ittage (.*);
+    ittage #(
+        .USEFUL_RESET_PERIOD(4)
+    ) u_ittage (.*);
+
+    always_comb begin
+        probe_useful = '0;
+        for (int unsigned way = 0; way < ITTAGE_WAYS; way++) begin
+            if (u_ittage.storage_q[probe_table][probe_idx][way].useful > probe_useful)
+                probe_useful = u_ittage.storage_q[probe_table][probe_idx][way].useful;
+        end
+    end
 endmodule

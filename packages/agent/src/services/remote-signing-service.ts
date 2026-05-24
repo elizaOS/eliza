@@ -3,6 +3,7 @@
  * sandboxed agents submit unsigned tx → policy check → sign → return.
  */
 
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import type { SandboxAuditLog } from "../security/audit-log.ts";
 import {
   type PolicyDecision,
@@ -10,6 +11,10 @@ import {
   SigningPolicyEvaluator,
   type SigningRequest,
 } from "./signing-policy.ts";
+import { teeBootGateBlocksSecrets } from "./tee-boot-gate-state.ts";
+import type { TeeEvidenceProvider } from "./tee-evidence.ts";
+import type { TeeEvidencePolicy } from "./tee-policy.ts";
+import { TeeSignerBackend } from "./tee-signer-backend.ts";
 
 export interface SignerBackend {
   getAddress(): Promise<string>;
@@ -257,5 +262,111 @@ export class RemoteSigningService {
         humanConfirmed,
       };
     }
+  }
+}
+
+export interface TeeGatedRemoteSigningConfig {
+  /** Inner signer that actually holds/uses the key (e.g. VaultSignerBackend). */
+  signer: SignerBackend;
+  /**
+   * TEE evidence policy resolved at boot (`TeeBootGate.policy`). When the
+   * policy requires trusted evidence, the signer is wrapped in
+   * `TeeSignerBackend` so every sign re-collects and re-evaluates evidence.
+   * When undefined or not required, no attestation is required — the inner
+   * signer is used directly (inert, normal behavior).
+   */
+  teePolicy?: TeeEvidencePolicy;
+  /** Evidence provider for per-sign re-attestation. Required when teePolicy.required. */
+  evidenceProvider?: TeeEvidenceProvider;
+  policy?: SigningPolicy;
+  auditLog?: SandboxAuditLog;
+  approvalTimeoutMs?: number;
+}
+
+/**
+ * Build a `RemoteSigningService` whose signer is gated on the TEE boot-gate
+ * state and (when a TEE policy requires it) re-attests on every sign.
+ *
+ * Fail-closed: if `teeBootGateBlocksSecrets()` is true (a required gate whose
+ * evidence was not trusted at boot), this refuses to construct the service so
+ * no signing path can come online. When the boot gate is inert (no TEE
+ * configured / not required), construction proceeds and signing behaves
+ * exactly as it did before TEE gating — no attestation requirement.
+ */
+export function createTeeGatedRemoteSigningService(
+  config: TeeGatedRemoteSigningConfig,
+): RemoteSigningService {
+  if (teeBootGateBlocksSecrets()) {
+    throw new Error(
+      "[RemoteSigning] Refusing to construct remote signing service: TEE boot gate blocks secrets (evidence not trusted).",
+    );
+  }
+
+  const requiresAttestation = config.teePolicy?.required === true;
+  let signer: SignerBackend = config.signer;
+  if (requiresAttestation) {
+    if (!config.evidenceProvider) {
+      throw new Error(
+        "[RemoteSigning] TEE policy requires evidence but no evidenceProvider was supplied.",
+      );
+    }
+    signer = new TeeSignerBackend({
+      signer: config.signer,
+      evidenceProvider: config.evidenceProvider,
+      policy: config.teePolicy as TeeEvidencePolicy,
+      onDecision: (decision) => {
+        if (!decision.trusted) {
+          logger.warn(
+            { reason: decision.reason, detail: decision.detail },
+            "[RemoteSigning] Per-sign TEE re-attestation rejected evidence.",
+          );
+        }
+      },
+    });
+  }
+
+  return new RemoteSigningService({
+    signer,
+    ...(config.policy ? { policy: config.policy } : {}),
+    ...(config.auditLog ? { auditLog: config.auditLog } : {}),
+    ...(config.approvalTimeoutMs !== undefined
+      ? { approvalTimeoutMs: config.approvalTimeoutMs }
+      : {}),
+  });
+}
+
+/**
+ * elizaOS runtime service wrapper exposing a TEE-gated `RemoteSigningService`
+ * to the host↔guest capability bridge (plan §4.3). The host can request a
+ * signature via `runtime.getService("remote-signing")`, but the key never
+ * leaves the domain and every sign re-attests when a TEE policy requires it.
+ *
+ * Activation is the caller's responsibility: the boot path constructs and
+ * registers this ONLY when remote signing is explicitly enabled. The service
+ * is never started by the runtime's plugin auto-discovery.
+ */
+export class RemoteSigningRuntimeService extends Service {
+  static serviceType = "remote-signing";
+  capabilityDescription =
+    "TEE-gated remote transaction signing for the host↔guest capability bridge";
+
+  private signing: RemoteSigningService | undefined;
+
+  static async start(runtime: IAgentRuntime): Promise<Service> {
+    return new RemoteSigningRuntimeService(runtime);
+  }
+
+  async stop(): Promise<void> {
+    this.signing = undefined;
+  }
+
+  /** Attach the built signing service. Called once by the boot path. */
+  attach(signing: RemoteSigningService): void {
+    this.signing = signing;
+  }
+
+  /** The active signing service, or undefined when not yet attached. */
+  get service(): RemoteSigningService | undefined {
+    return this.signing;
   }
 }

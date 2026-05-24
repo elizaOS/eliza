@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import os
 import subprocess
@@ -42,7 +43,7 @@ _MODEL_KEYWORDS = (
     "safetensors",
     "weights",
 )
-_GITHUB_REPOS = (
+_BASE_GITHUB_REPOS = (
     "asimovinc/asimov-1",
     "asimovinc/asimov-v1",
     "asimovinc/asimov-v0",
@@ -55,11 +56,55 @@ _SOURCES = [
     "https://github.com/asimovinc/asimov-v1/releases",
     "https://github.com/asimovinc/asimov-mjlab",
     "https://github.com/asimovinc/asimov-mjlab/releases",
+    "https://manual.asimov.inc/v0/locomotion",
+    "https://manual.asimov.inc/v0/locomotion/reinforcement-learning-for-locomotion",
+    "https://manual.asimov.inc/v0/locomotion/reinforcement-learning-simulation-training-environment",
+    "https://manual.asimov.inc/v0/locomotion/reinforcement-learning-reward-design",
+    "https://manual.asimov.inc/v1",
+    "https://manual.asimov.inc/v1/quickstart",
+    "https://news.asimov.inc/p/teaching-a-humanoid-to-walk",
+    "https://news.asimov.inc/p/noise-is-all-you-need",
     "https://menlo.ai/blog/teaching-a-humanoid-to-walk",
+    "https://menlo.ai/blog/noise-is-all-you-need",
+    "https://www.menlo.ai/products/asimov",
+    "https://docs.menlo.ai/asimov/v1/locomotion/reinforcement-learning-for-locomotion",
     "https://docs.menlo.ai/guides/locomotion-training",
     "https://docs.menlo.ai/asimov/1",
     "https://docs.menlo.ai/asimov/1/api/robot-control",
     "https://docs.menlo.ai/asimov/1/api/protocols",
+]
+
+_PUBLIC_POLICY_CLAIMS = [
+    {
+        "source": "https://github.com/asimovinc/asimov-v1",
+        "claim": "README roadmap lists locomotion policy as a future item",
+        "artifact_status": "repository contains CAD/electrical/simulation assets; no released policy weights identified",
+    },
+    {
+        "source": "https://manual.asimov.inc/v1",
+        "claim": "manual mentions pre-trained/base walking policy availability",
+        "artifact_status": "no downloadable checkpoint or model artifact found by this audit",
+    },
+    {
+        "source": "https://manual.asimov.inc/v1/quickstart",
+        "claim": "manual points readers to locomotion-control documentation for simulation and RL training/deployment workflow",
+        "artifact_status": "workflow documentation; no released weights identified",
+    },
+    {
+        "source": "https://manual.asimov.inc/v0/locomotion/reinforcement-learning-for-locomotion",
+        "claim": "manual documents ASIMOV locomotion policy design and asymmetric actor-critic observations",
+        "artifact_status": "documentation only; no released weights identified",
+    },
+    {
+        "source": "https://manual.asimov.inc/v0/locomotion/reinforcement-learning-reward-design",
+        "claim": "manual documents reward terms and sim-to-real tuning for deployable walking",
+        "artifact_status": "documentation only; no released weights identified",
+    },
+    {
+        "source": "https://news.asimov.inc/p/teaching-a-humanoid-to-walk",
+        "claim": "news post reports a trained walking locomotion policy",
+        "artifact_status": "article only; no released weights identified",
+    },
 ]
 
 
@@ -121,6 +166,43 @@ def _git_default_branch(repo: str) -> tuple[str | None, str | None]:
         if line.startswith("ref: refs/heads/") and line.endswith("\tHEAD"):
             return line.removeprefix("ref: refs/heads/").removesuffix("\tHEAD"), None
     return "main", None
+
+
+def _discover_asimov_org_repos() -> dict[str, Any]:
+    payload, error = _github_json("https://api.github.com/orgs/asimovinc/repos?per_page=100")
+    if error or not isinstance(payload, list):
+        return {
+            "checked": True,
+            "ok": False,
+            "source": "github_org_repos",
+            "error": error or "invalid org repository response",
+            "repos": [],
+        }
+    repos: list[str] = []
+    repo_rows: list[dict[str, Any]] = []
+    for row in payload:
+        if not isinstance(row, dict):
+            continue
+        full_name = str(row.get("full_name") or "")
+        name = str(row.get("name") or "").lower()
+        if not full_name or ("asimov" not in name and "mjlab" not in name):
+            continue
+        repos.append(full_name)
+        repo_rows.append(
+            {
+                "full_name": full_name,
+                "html_url": row.get("html_url"),
+                "default_branch": row.get("default_branch"),
+                "pushed_at": row.get("pushed_at"),
+            }
+        )
+    return {
+        "checked": True,
+        "ok": True,
+        "source": "github_org_repos",
+        "repos": sorted(set(repos)),
+        "repo_metadata": repo_rows,
+    }
 
 
 def _git_tags(repo: str) -> tuple[list[str], str | None]:
@@ -350,9 +432,9 @@ def _audit_repo_tree(repo: str) -> dict[str, Any]:
     }
 
 
-def _audit_github() -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
-    release_rows = [_audit_repo_releases(repo) for repo in _GITHUB_REPOS]
-    tree_rows = [_audit_repo_tree(repo) for repo in _GITHUB_REPOS]
+def _audit_github(repos: list[str]) -> tuple[dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    release_rows = [_audit_repo_releases(repo) for repo in repos]
+    tree_rows = [_audit_repo_tree(repo) for repo in repos]
     artifacts = []
     for row in [*release_rows, *tree_rows]:
         artifacts.extend(row.get("artifacts", []))
@@ -379,13 +461,27 @@ def _github_audit_warnings(*reports: dict[str, Any]) -> list[str]:
     return warnings
 
 
-def audit_released_models(*, check_github_releases: bool = False) -> dict:
+def audit_released_models(
+    *,
+    check_github_releases: bool = False,
+    checked_at: dt.datetime | None = None,
+) -> dict:
+    checked_at = checked_at or dt.datetime.now(dt.UTC)
+    if checked_at.tzinfo is None:
+        checked_at = checked_at.replace(tzinfo=dt.UTC)
     inv = collect_asimov1_source_inventory()
     release_report: dict[str, Any] = {"checked": False, "repos": []}
     tree_report: dict[str, Any] = {"checked": False, "repos": []}
+    discovery_report: dict[str, Any] = {"checked": False, "repos": []}
     github_artifacts: list[dict[str, Any]] = []
+    audited_repositories = list(_BASE_GITHUB_REPOS)
     if check_github_releases:
-        release_report, tree_report, github_artifacts = _audit_github()
+        discovery_report = _discover_asimov_org_repos()
+        if discovery_report.get("ok"):
+            audited_repositories = sorted(
+                set(audited_repositories).union(discovery_report.get("repos", []))
+            )
+        release_report, tree_report, github_artifacts = _audit_github(audited_repositories)
     local_artifacts = [
         {
             "repo": "pinned_checkout",
@@ -403,6 +499,8 @@ def audit_released_models(*, check_github_releases: bool = False) -> dict:
     audit_complete = not warnings
     return {
         "ok": not found,
+        "checked_at_utc": checked_at.astimezone(dt.UTC).isoformat(),
+        "check_github_releases": check_github_releases,
         "audit_complete": audit_complete,
         "warnings": warnings,
         "found_released_policy_or_model": found,
@@ -416,10 +514,13 @@ def audit_released_models(*, check_github_releases: bool = False) -> dict:
             )
         ),
         "expected_remote": "https://github.com/asimovinc/asimov-1.git",
+        "audited_repositories": audited_repositories,
         "pinned_checkout": inv,
+        "github_repository_discovery": discovery_report,
         "github_releases": release_report,
         "github_repository_trees": tree_report,
         "model_artifacts": found_artifacts,
+        "public_policy_claims": _PUBLIC_POLICY_CLAIMS,
         "public_training_code": {
             "repo": "asimovinc/asimov-mjlab",
             "url": "https://github.com/asimovinc/asimov-mjlab",

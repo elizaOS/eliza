@@ -1,1 +1,12 @@
+# ElizaOS vendor file_contexts.
+#
+# Labels for the protected-VM management domain (eliza_pvm_mgr.te). Only the
+# declared binary and the runtime evidence directory are labeled here;
+# everything else stays under default labels.
 
+# Protected-VM management service binary (started by init.eliza.rc).
+/system/bin/eliza_pvm_mgr                       u:object_r:eliza_pvm_mgr_exec:s0
+/product/bin/eliza_pvm_mgr                      u:object_r:eliza_pvm_mgr_exec:s0
+
+# Runtime TEE evidence export directory (ELIZA_TEE_EVIDENCE_PATH parent).
+/run/elizaos/tee(/.*)?                          u:object_r:eliza_tee_runtime_file:s0

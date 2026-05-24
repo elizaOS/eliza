@@ -131,21 +131,35 @@ module e1_l1d_cache
     mshr_t mshr [MSHR_DEPTH];
 
     // Outgoing acq channel single-shot driver
-    logic                          acq_pending_q;
-    logic [MSHR_IDX_W-1:0]         acq_mshr_q;
-    logic                          mshr_alloc_available_c;
-    logic [MSHR_IDX_W-1:0]         mshr_alloc_idx_c;
+	    logic                          acq_pending_q;
+	    logic [MSHR_IDX_W-1:0]         acq_mshr_q;
+	    logic                          mshr_alloc_available_c;
+	    logic [MSHR_IDX_W-1:0]         mshr_alloc_idx_c;
+	    logic                          grant_mshr_hit_c;
+	    logic [MSHR_IDX_W-1:0]         grant_mshr_idx_c;
 
-    always_comb begin
-        mshr_alloc_available_c = 1'b0;
-        mshr_alloc_idx_c       = '0;
-        for (int m = 0; m < MSHR_DEPTH; m++) begin
-            if (!mshr[m].valid && !mshr_alloc_available_c) begin
-                mshr_alloc_available_c = 1'b1;
-                mshr_alloc_idx_c       = m[MSHR_IDX_W-1:0];
-            end
-        end
-    end
+	    always_comb begin
+	        mshr_alloc_available_c = 1'b0;
+	        mshr_alloc_idx_c       = '0;
+	        for (int m = 0; m < MSHR_DEPTH; m++) begin
+	            if (!mshr[m].valid && !mshr_alloc_available_c) begin
+	                mshr_alloc_available_c = 1'b1;
+	                mshr_alloc_idx_c       = m[MSHR_IDX_W-1:0];
+	            end
+	        end
+	    end
+
+	    always_comb begin
+	        grant_mshr_hit_c = 1'b0;
+	        grant_mshr_idx_c = '0;
+	        for (int m = 0; m < MSHR_DEPTH; m++) begin
+	            if (mshr[m].valid && mshr[m].paddr_line == l2_grant_paddr_line &&
+	                !grant_mshr_hit_c) begin
+	                grant_mshr_hit_c = 1'b1;
+	                grant_mshr_idx_c = m[MSHR_IDX_W-1:0];
+	            end
+	        end
+	    end
 
     // -----------------------------------------------------------------
     // Per-port lookup helpers
@@ -211,9 +225,9 @@ module e1_l1d_cache
                               addr_bank(lsu_p1_req.paddr));
     assign p1_active_c     = lsu_p1_valid && !bank_conflict_c;
 
-    assign lsu_p0_ready    = !acq_pending_q || !p0_active_c;
-    assign lsu_p1_ready    = !bank_conflict_c &&
-                             (!acq_pending_q || !p1_active_c);
+	    assign lsu_p0_ready    = mshr_alloc_available_c || !p0_active_c;
+	    assign lsu_p1_ready    = !bank_conflict_c &&
+	                             (mshr_alloc_available_c || !p1_active_c);
 
     // -----------------------------------------------------------------
     // Per-port hit detection (combinational; ECC checked the same cycle
@@ -405,8 +419,8 @@ module e1_l1d_cache
                     lsu_p0_resp.tag   <= lsu_p0_req.tag;
                     lsu_p0_resp.ecc_uncorrectable <= r0.ecc_double;
                     if (r0.ecc_double) hpm_l1d_ecc_uncorr <= 1'b1;
-                    if (mshr_alloc_available_c && !acq_pending_q) begin
-                        mshr[mshr_alloc_idx_c] <= '{
+	                    if (mshr_alloc_available_c) begin
+	                        mshr[mshr_alloc_idx_c] <= '{
                             valid: 1'b1,
                             paddr_line: {lsu_p0_req.paddr[PADDR_W-1:OFFSET_W],
                                          {OFFSET_W{1'b0}}},
@@ -467,9 +481,13 @@ module e1_l1d_cache
             end
 
             // ------ Issue MSHR onto L2 channel ------
-            if (!acq_pending_q) begin
-                for (int m = 0; m < MSHR_DEPTH; m++) begin
-                    if (mshr[m].valid && !mshr[m].granted) begin
+	            if (acq_pending_q && l2_acq_valid && l2_acq_ready) begin
+	                mshr[acq_mshr_q].granted <= 1'b1;
+	                acq_pending_q <= 1'b0;
+	                l2_acq_valid  <= 1'b0;
+	            end else if (!acq_pending_q) begin
+	                for (int m = 0; m < MSHR_DEPTH; m++) begin
+	                    if (mshr[m].valid && !mshr[m].granted) begin
                         acq_pending_q         <= 1'b1;
                         acq_mshr_q            <= m[MSHR_IDX_W-1:0];
                         l2_acq_valid          <= 1'b1;
@@ -480,15 +498,13 @@ module e1_l1d_cache
                         break;
                     end
                 end
-            end else if (l2_acq_valid && l2_acq_ready) begin
-                l2_acq_valid <= 1'b0;
-            end
+	            end
 
-            // ------ Receive grant ------
-            if (l2_grant_valid && l2_grant_ready) begin
-                // Fill the MSHR's victim slot. Tag is the high TAG_W bits of
-                // the granted physical address (matching addr_tag()).
-                automatic mshr_t m = mshr[acq_mshr_q];
+	            // ------ Receive grant ------
+	            if (l2_grant_valid && l2_grant_ready && grant_mshr_hit_c) begin
+	                // Fill the MSHR's victim slot. Tag is the high TAG_W bits of
+	                // the granted physical address (matching addr_tag()).
+	                automatic mshr_t m = mshr[grant_mshr_idx_c];
                 tag_array[m.victim_way][m.set_idx] <=
                     addr_tag(l2_grant_paddr_line);
                 state_array[m.victim_way][m.set_idx] <= l2_grant_state;
@@ -500,9 +516,8 @@ module e1_l1d_cache
                 end
                 plru[m.set_idx] <=
                     plru_update(plru[m.set_idx], m.victim_way);
-                mshr[acq_mshr_q] <= '0;
-                acq_pending_q    <= 1'b0;
-            end
+	                mshr[grant_mshr_idx_c] <= '0;
+	            end
 
             // ------ Probe handling ------
             if (probe_valid && probe_ready) begin

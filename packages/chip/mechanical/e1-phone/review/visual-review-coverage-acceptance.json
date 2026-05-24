@@ -21,7 +21,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05591
+      "nonwhite_pixel_ratio": 0.05589
     },
     {
       "view": "full_back_iso.png",
@@ -36,7 +36,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.05907
+      "nonwhite_pixel_ratio": 0.05905
     },
     {
       "view": "rear_feature_detail.png",
@@ -51,7 +51,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11041
+      "nonwhite_pixel_ratio": 0.11031
     },
     {
       "view": "full_left_side.png",
@@ -66,7 +66,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.03282
+      "nonwhite_pixel_ratio": 0.03283
     },
     {
       "view": "full_bottom_port.png",
@@ -81,7 +81,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.02397
+      "nonwhite_pixel_ratio": 0.02409
     },
     {
       "view": "full_top_down.png",
@@ -96,7 +96,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.11013
+      "nonwhite_pixel_ratio": 0.11012
     },
     {
       "view": "exploded_iso.png",
@@ -111,7 +111,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.07826
+      "nonwhite_pixel_ratio": 0.07825
     },
     {
       "view": "component_stack.png",
@@ -126,7 +126,7 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.08634
+      "nonwhite_pixel_ratio": 0.08534
     },
     {
       "view": "component-review-audio.png",
@@ -186,11 +186,11 @@
         255,
         255
       ],
-      "nonwhite_pixel_ratio": 0.04156
+      "nonwhite_pixel_ratio": 0.04154
     }
   ],
   "part_review_case": {
-    "part_count": 142,
+    "part_count": 222,
     "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
     "contact_sheet_pass": true,
     "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
@@ -199,8 +199,8 @@
   },
   "part_visual_coverage_case": {
     "status": "part_visual_coverage_pass",
-    "expected_part_count": 142,
-    "covered_part_count": 142,
+    "expected_part_count": 222,
+    "covered_part_count": 222,
     "missing_or_incomplete_part_count": 0,
     "pass": true
   },

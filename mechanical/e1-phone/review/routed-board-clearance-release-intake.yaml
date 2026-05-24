@@ -1,0 +1,125 @@
+schema: eliza.e1_phone_routed_board_clearance_release_intake.v1
+status: empty_intake_blocked_waiting_routed_board_step_supplier_geometry_and_clearance_measurements
+date: 2026-05-22
+claim_boundary: >
+  Empty intake template for the routed-board mechanical clearance release.
+  This file is not a clearance report and contains no passed evidence.
+
+mapped_source_artifacts:
+  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/chip/board/kicad/e1-phone/routed-clearance-release-execution.yaml
+
+intake_metadata:
+  review_id: null
+  board_revision: EVT1-routed-first-article
+  routed_pcb_path: null
+  routed_board_step_path: null
+  enclosure_cad_revision: null
+  component_model_bundle_path: null
+  reviewer: null
+  review_date: null
+  unit_or_fixture_serials: []
+
+required_inputs:
+  routed_kicad_pcb: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+  routed_board_step: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  component_3d_binding_report: packages/chip/board/kicad/e1-phone/production/reports/component-3d-binding.yaml
+  drc_report: packages/chip/board/kicad/e1-phone/production/reports/drc.json
+  erc_report: packages/chip/board/kicad/e1-phone/production/reports/erc.json
+  assembly_drawing: packages/chip/board/kicad/e1-phone/production/pdf/assembly.pdf
+
+clearance_cases:
+  - case_id: haptic_to_battery
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: split_interconnect_connectors_on_pcb_islands
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: usb_shell_to_external_aperture
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: battery_back_void_foam_to_pouch
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: battery_to_pcb_islands
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: bottom_mic_to_usb
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: front_camera_to_earpiece
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: haptic_to_pcb_islands
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: rear_camera_to_battery
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: split_interconnect_flex_to_battery_edge
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: split_interconnect_flex_within_side_rail
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+  - case_id: usb_to_bottom_speaker
+    measured_min_clearance_mm: null
+    required_min_clearance_mm: null
+    measurement_source: null
+    result: not_reviewed
+    pass: false
+
+release_flags:
+  routed_board_step_present: false
+  supplier_geometry_complete: false
+  boolean_interference_passed: false
+  all_clearance_cases_measured: false
+  all_clearance_cases_passed: false
+  reviewer_signed: false
+  release_allowed: false
+
+open_items:
+  - routed board STEP with all supplier component models is missing
+  - per-case clearance measurements are not populated
+  - boolean interference report is not attached
+  - physical fit first-article evidence is not attached
+
+forbidden_claims:
+  - routed_clearance_passed
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

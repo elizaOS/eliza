@@ -13,7 +13,7 @@
 #   make build ARCH=arm64
 #   make build ARCH=riscv64
 #   make sim   ARCH=riscv64              # bring up + validate an already-built image
-#   make splash                          # render the elizaOS blue boot splash (needs ImageMagick)
+#   make splash                          # render the elizaOS blue boot splash (uses sharp)
 #   make bootanimation                   # pack the splash frames into bootanimation.zip
 #
 # ARCH selects the brand config + Cuttlefish device dir; the eliza vendor
@@ -57,10 +57,10 @@ help:
 	@echo "elizaOS Mobile (AOSP) targets:"
 	@echo "  make build ARCH=x86_64|arm64|riscv64   # build + launch + boot-validate"
 	@echo "  make sim   ARCH=<arch>                  # validate an already-built image"
-	@echo "  make splash                             # render elizaOS blue boot splash (needs ImageMagick)"
+	@echo "  make splash                             # render elizaOS blue boot splash (uses sharp)"
 	@echo "  make bootanimation                      # pack splash frames into bootanimation.zip"
 	@echo ""
-	@echo "Run 'make bootanimation' on a host with ImageMagick before 'make build'"
+	@echo "Run 'make bootanimation' before 'make build'"
 	@echo "to bake the elizaOS splash into the image; otherwise the build falls"
 	@echo "through to the stock AOSP boot animation (eliza_common.mk guards the copy)."
 
@@ -71,10 +71,10 @@ sim: check-arch
 	node $(DISTRO)/sim.mjs --brand-config $(BRAND_CONFIG) --device-dir $(DEVICE_DIR) --aosp-root $(AOSP_ROOT) $(ARGS)
 
 splash:
-	$(HERE)scripts/generate-eliza-bootanimation.sh
+	node $(HERE)scripts/generate-eliza-bootanimation.mjs
 
 bootanimation: splash
-	node $(DISTRO)/build-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
+	node $(HERE)scripts/build-eliza-bootanimation.mjs --frames $(VENDOR)/bootanimation --out $(VENDOR)/bootanimation/bootanimation.zip
 
 check-arch:
 	@case " $(SUPPORTED_ARCHES) " in \

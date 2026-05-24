@@ -1,0 +1,60 @@
+// eliza_pvm_mgr: AOSP protected-VM management + TeeEvidence export service
+// (plan §5 "AOSP / pKVM path"). This is the binary that the sepolicy domain
+// (vendor/eliza/sepolicy/eliza_pvm_mgr.te), file_contexts label
+// (eliza_pvm_mgr_exec), and init service entry (vendor/eliza/init/init.eliza.rc)
+// already reference. Without this module those references have no producer; with
+// it, /system/bin/eliza_pvm_mgr is a real binary.
+//
+// CONFIDENTIALITY IS BLOCKED on the riscv64/Cuttlefish bring-up track: the real
+// measured-launch quote source requires CoVE-capable KVM/crosvm and 16 KB-page
+// IOPMP/measurement validation. This service emits the contracted bring-up
+// TeeEvidence shape with the quote marked unavailable and no confidentiality
+// claims; the assembly logic is host-testable.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+// Pure evidence-assembly + serialization library. No Android/binder/vsock deps
+// so it host-compiles and host-tests; the contract checker validates the same
+// emitted shape.
+cc_library_static {
+    name: "libeliza_pvm_evidence",
+    host_supported: true,
+    srcs: ["eliza_pvm_evidence.cc"],
+    export_include_dirs: ["."],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+    ],
+}
+
+// The privileged native service binary. The init service entry + seclabel that
+// launch it live in vendor/eliza/init/init.eliza.rc (PRODUCT_COPY_FILES-installed
+// to /product/etc/init/), which the contract checker validates; this module
+// builds the binary that entry references and does not duplicate the service
+// definition with its own init_rc. Reads the signed golden measurements and
+// writes the normalized TeeEvidence document to ELIZA_TEE_EVIDENCE_PATH.
+cc_binary {
+    name: "eliza_pvm_mgr",
+    srcs: ["eliza_pvm_mgr_main.cc"],
+    static_libs: ["libeliza_pvm_evidence"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+    ],
+}
+
+// Host unit test for the evidence-assembly contract (fail-closed + shape).
+cc_test_host {
+    name: "eliza_pvm_mgr_evidence_test",
+    srcs: ["eliza_pvm_evidence_test.cc"],
+    static_libs: ["libeliza_pvm_evidence"],
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+    ],
+}

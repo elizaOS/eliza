@@ -78,7 +78,7 @@ async def reset(dut):
 # Honours arlen (INCR bursts), drives rlast on the final beat, returns OKAY.
 # ---------------------------------------------------------------------------
 async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=4):
-    pending = []  # list of [addr, beats_left, beat_idx, countdown, arid]
+    pending: list[list[int]] = []  # [addr, beats_left, beat_idx, countdown, arid]
     dut.m_arready.value = 1
     dut.m_rvalid.value = 0
     while True:
@@ -146,7 +146,7 @@ def rgb565_to_rgb888(half: int) -> int:
 
 async def capture_active_pixels(dut, count, *, timeout_cycles=20000):
     """Collect ``count`` consecutive active-DE pixels from the DPI stream."""
-    pixels = []
+    pixels: list[int] = []
     cycles = 0
     while len(pixels) < count and cycles < timeout_cycles:
         await RisingEdge(dut.clk)

@@ -21,17 +21,80 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
+ELIZA_ROOT = ROOT.parents[1]
+OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
+ANDROID_APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
+LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
+
+
+def read_android_gradle_identity() -> dict[str, str] | None:
+    if not ANDROID_APP_GRADLE.is_file():
+        return None
+    gradle = ANDROID_APP_GRADLE.read_text(encoding="utf-8", errors="replace")
+    for key in ("applicationId", "namespace"):
+        match = re.search(rf"\b{key}\s+[\"']([^\"']+)[\"']", gradle)
+        if match:
+            return {"appId": match.group(1)}
+    return None
+
+
+def infer_vendor_identity(package_name: str) -> dict[str, str]:
+    defaults = {
+        "appId": package_name,
+        "appName": "Milady" if package_name == "ai.milady.milady" else "Eliza",
+        "vendorDir": "milady" if package_name == "ai.milady.milady" else "eliza",
+    }
+    if not LOCAL_MANIFEST.is_file():
+        return defaults
+    text = LOCAL_MANIFEST.read_text(encoding="utf-8", errors="replace")
+    vendor_match = re.search(
+        rf'dest="vendor/([^/]+)/permissions/default-permissions-{re.escape(package_name)}\.xml"',
+        text,
+    )
+    if vendor_match:
+        defaults["vendorDir"] = vendor_match.group(1)
+    app_match = re.search(
+        rf'dest="vendor/{re.escape(defaults["vendorDir"])}/apps/([^/]+)/\1\.apk"',
+        text,
+    )
+    if app_match:
+        defaults["appName"] = app_match.group(1)
+    return defaults
+
+
+def package_name_to_path(package_name: str) -> Path:
+    return Path(*package_name.split("."))
+
+
+GRADLE_IDENTITY = read_android_gradle_identity()
+BRAND_CONFIG = infer_vendor_identity(GRADLE_IDENTITY["appId"] if GRADLE_IDENTITY else "ai.milady.milady")
+APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
+APP_NAME = BRAND_CONFIG["appName"] if BRAND_CONFIG else "Eliza"
+VENDOR_DIR_NAME = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
+VENDOR_ROOT = (
+    OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
+    if (OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME).is_dir()
+    else WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
+)
 SYSTEM_UI = WORKSPACE / "os/android/system-ui"
 NATIVE = SYSTEM_UI / "native"
 BRIDGE_KT = NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
+BRIDGE_SERVICE_KT = (
+    NATIVE / "src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
+)
 BRIDGE_MANIFEST = NATIVE / "src/main/AndroidManifest.xml"
 BRIDGE_GRADLE = NATIVE / "build.gradle.kts"
 ANDROID_PROVIDER = SYSTEM_UI / "src/providers/AndroidSystemProvider.tsx"
 MOCK_PROVIDER = SYSTEM_UI / "src/providers/MockSystemProvider.tsx"
 BRIDGE_CONTRACT = SYSTEM_UI / "src/bridge/bridge-contract.ts"
-OS_COMMON = WORKSPACE / "os/android/vendor/eliza/eliza_common.mk"
-OS_PERMISSION_DIR = WORKSPACE / "os/android/vendor/eliza/permissions"
-LOCAL_MANIFEST = ROOT / "sw/aosp-device/local_manifests/eliza.xml"
+LAUNCHER_MAIN_ACTIVITY = (
+    WORKSPACE
+    / "app-core/platforms/android/app/src/main/java"
+    / package_name_to_path(APP_PACKAGE)
+    / "MainActivity.java"
+)
+OS_COMMON = VENDOR_ROOT / f"{VENDOR_DIR_NAME}_common.mk"
+OS_PERMISSION_DIR = VENDOR_ROOT / "permissions"
 REPORT = ROOT / "build/reports/android_system_bridge_contract.json"
 RUNTIME_EVIDENCE = ROOT / "docs/evidence/android/system_bridge_runtime_evidence.json"
 RUNTIME_CAPTURE = ROOT / "scripts/android/capture_system_bridge_runtime_evidence.py"
@@ -44,10 +107,32 @@ EXPECTED_BRIDGE_MODULES = {
     "ElizaSystemBridge",
     "privapp-permissions-ai.elizaos.system.bridge.xml",
 }
+REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS = {
+    f"vendor/{VENDOR_DIR_NAME}/apps/{APP_NAME}/{APP_NAME}.apk",
+    f"vendor/{VENDOR_DIR_NAME}/bootanimation/bootanimation.zip",
+    f"vendor/{VENDOR_DIR_NAME}/init/init.{VENDOR_DIR_NAME}.rc",
+    f"vendor/{VENDOR_DIR_NAME}/permissions/default-permissions-{APP_PACKAGE}.xml",
+    f"vendor/{VENDOR_DIR_NAME}/permissions/privapp-permissions-{APP_PACKAGE}.xml",
+    f"vendor/{VENDOR_DIR_NAME}/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
+}
 REQUIRED_PRIV_PERMISSIONS = {
     "android.permission.REBOOT",
     "android.permission.DEVICE_POWER",
     "android.permission.WRITE_SECURE_SETTINGS",
+}
+ANDROID_TARGET_PREFIXES = (
+    "/system/",
+    "/vendor/",
+    "/product/",
+    "/system_ext/",
+    "/odm/",
+    "/apex/",
+    "/data/",
+)
+EXPECTED_RUNTIME_PERMISSION_XMLS = {
+    f"/system/etc/default-permissions/default-permissions-{APP_PACKAGE}.xml",
+    f"/system/etc/permissions/privapp-permissions-{APP_PACKAGE}.xml",
+    "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml",
 }
 
 
@@ -58,6 +143,7 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    blocker_dependency: str = "live_device_validation"
 
 
 def read_text(path: Path) -> str:
@@ -109,16 +195,45 @@ def product_packages(text: str) -> set[str]:
 
 
 def local_manifest_dests(path: Path) -> set[str]:
+    return set(local_manifest_file_projection_kinds(path))
+
+
+def local_manifest_file_projection_kinds(path: Path) -> dict[str, str]:
     root = ElementTree.fromstring(read_text(path))
-    return {
-        element.attrib["dest"]
-        for element in root.findall(".//linkfile")
-        if "dest" in element.attrib
-    }
+    projections: dict[str, str] = {}
+    for tag in ("linkfile", "copyfile"):
+        for element in root.findall(f".//{tag}"):
+            dest = element.attrib.get("dest")
+            if dest:
+                projections[dest] = tag
+    return projections
 
 
 def bridge_channels(text: str) -> set[str]:
     return set(re.findall(r'"(eliza\.android\.[^"]+)"', text))
+
+
+def contains_host_local_symlink(value: Any) -> bool:
+    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)
+    for target in re.findall(r"->\s+(/[^\s\"']+)", text):
+        if not target.startswith(ANDROID_TARGET_PREFIXES):
+            return True
+    return any(marker in text for marker in (" -> /home/", " -> /tmp/", " -> /Users/"))
+
+
+def stale_runtime_permission_paths(paths: Iterable[str]) -> list[str]:
+    expected_suffixes = {
+        f"default-permissions-{APP_PACKAGE}.xml",
+        f"privapp-permissions-{APP_PACKAGE}.xml",
+        "privapp-permissions-ai.elizaos.system.bridge.xml",
+    }
+    stale: list[str] = []
+    for raw in paths:
+        path = str(raw)
+        name = Path(path).name
+        if name.startswith(("default-permissions-", "privapp-permissions-")) and name not in expected_suffixes:
+            stale.append(path)
+    return sorted(stale)
 
 
 def declared_privapp_permission_files() -> list[Path]:
@@ -169,6 +284,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         ANDROID_PROVIDER,
         MOCK_PROVIDER,
         BRIDGE_CONTRACT,
+        LAUNCHER_MAIN_ACTIVITY,
         OS_COMMON,
         LOCAL_MANIFEST,
         RUNTIME_CAPTURE,
@@ -187,15 +303,20 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         return payload(findings, {})
 
     bridge_text = read_text(BRIDGE_KT)
+    bridge_service_text = read_text(BRIDGE_SERVICE_KT) if BRIDGE_SERVICE_KT.is_file() else ""
     provider_text = read_text(ANDROID_PROVIDER)
     mock_text = read_text(MOCK_PROVIDER)
     gradle_text = read_text(BRIDGE_GRADLE)
     contract_text = read_text(BRIDGE_CONTRACT)
+    launcher_text = read_text(LAUNCHER_MAIN_ACTIVITY)
+    app_bridge_path = LAUNCHER_MAIN_ACTIVITY.parent / "ElizaAndroidSystemBridge.java"
+    app_bridge_text = read_text(app_bridge_path) if app_bridge_path.is_file() else ""
     os_common_text = read_text(OS_COMMON)
     package = package_name_from_manifest(BRIDGE_MANIFEST)
     manifest_permissions = permissions_from_manifest(BRIDGE_MANIFEST)
     os_packages = product_packages(os_common_text)
-    local_dests = local_manifest_dests(LOCAL_MANIFEST)
+    local_projection_kinds = local_manifest_file_projection_kinds(LOCAL_MANIFEST)
+    local_dests = set(local_projection_kinds)
     channels = bridge_channels(contract_text)
     not_impl_count = bridge_text.count("NotImplementedError")
     throws_count = bridge_text.count("throw NotImplementedError")
@@ -223,6 +344,38 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "native SystemBridge methods still throw NotImplementedError",
         f"NotImplementedError={not_impl_count} throw_NotImplementedError={throws_count}",
         "Wire the bridge to Android managers/services and return live subscription/command results.",
+    )
+    add_if(
+        findings,
+        not BRIDGE_SERVICE_KT.is_file()
+        or "class SystemBridgeService" not in bridge_service_text
+        or (
+            "android.app.Service" not in bridge_service_text
+            and ": Service" not in bridge_service_text
+        )
+        or "ElizaSystemBridge: bound" not in bridge_service_text,
+        "system_bridge_service_class_missing_or_unbound",
+        "SystemBridge manifest declares a service but the privileged APK lacks a concrete bound-service implementation",
+        rel(BRIDGE_SERVICE_KT),
+        "Add SystemBridgeService as a real android.app.Service, emit the bound runtime marker, and expose the bridge transport the launcher binds.",
+    )
+    add_if(
+        findings,
+        not (
+            (
+                "__elizaAndroidBridge" in launcher_text
+                and "addJavascriptInterface" in launcher_text
+            )
+            or (
+                "ElizaAndroidSystemBridge.install" in launcher_text
+                and "__elizaAndroidBridge" in app_bridge_text
+                and "addJavascriptInterface" in app_bridge_text
+            )
+        ),
+        "launcher_webview_does_not_bind_system_bridge",
+        "launcher WebView does not bind the native system bridge as window.__elizaAndroidBridge",
+        rel(LAUNCHER_MAIN_ACTIVITY),
+        "Bind the real SystemBridge transport into the launcher WebView under __elizaAndroidBridge before AndroidSystemProvider mounts.",
     )
     add_if(
         findings,
@@ -284,7 +437,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     add_if(
         findings,
         not any(
-            dest.startswith("vendor/eliza/system-ui")
+            dest.startswith(f"vendor/{VENDOR_DIR_NAME}/system-ui")
             or dest.startswith("packages/os/android/system-ui")
             for dest in local_dests
         ),
@@ -295,6 +448,28 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        f"vendor/{VENDOR_DIR_NAME}/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
+        not in local_dests,
+        "chip_local_manifest_missing_system_bridge_service",
+        "chip local manifest does not project the concrete SystemBridgeService source into AOSP",
+        rel(LOCAL_MANIFEST),
+        "Project SystemBridgeService.kt with the rest of the native bridge sources so local-manifest builds package the same service as mirrored builds.",
+    )
+    non_materialized_dests = sorted(
+        dest
+        for dest in REQUIRED_MATERIALIZED_LOCAL_MANIFEST_DESTS
+        if local_projection_kinds.get(dest) != "copyfile"
+    )
+    add_if(
+        findings,
+        bool(non_materialized_dests),
+        "chip_local_manifest_image_prebuilts_not_materialized",
+        "chip local manifest projects image-installed prebuilts as symlinks or omits them",
+        f"non_copyfile_dests={non_materialized_dests}",
+        "Use copyfile, not linkfile, for image-installed APK/XML/JSON/ZIP/RC prebuilts so builds do not miss artifacts and runtime probes do not see host-local symlinks.",
+    )
+    add_if(
+        findings,
         len(channels) < 10,
         "system_bridge_contract_channels_incomplete",
         "JS bridge contract does not expose the expected system-control channel surface",
@@ -302,6 +477,12 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "Keep Wi-Fi, cell, audio, battery, time, connectivity, power, settings, and lockscreen channels in the contract.",
     )
     runtime_evidence = load_json(RUNTIME_EVIDENCE) if RUNTIME_EVIDENCE.is_file() else {}
+    runtime_host = runtime_evidence.get("observations", {}).get("host_runtime", {})
+    runtime_aosp_inventory = (
+        runtime_host.get("aosp_build_only", {}).get("artifact_inventory", {})
+        if isinstance(runtime_host, dict)
+        else {}
+    )
     add_if(
         findings,
         not RUNTIME_EVIDENCE.is_file(),
@@ -343,14 +524,24 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             f"result={runtime_evidence.get('result')!r}",
             "Regenerate runtime evidence from a successful capture; blocked or failed captures must not satisfy this contract.",
         )
+        add_if(
+            findings,
+            runtime_evidence.get("launcher_package") != APP_PACKAGE,
+            "system_bridge_runtime_launcher_package_mismatch",
+            "booted Android system bridge runtime evidence targets a different launcher package than the current Android build",
+            f"expected={APP_PACKAGE!r} actual={runtime_evidence.get('launcher_package')!r}",
+            f"Recapture with scripts/android/capture_system_bridge_runtime_evidence.py --launcher-package {APP_PACKAGE} after booting the current {APP_NAME}/{VENDOR_DIR_NAME} image.",
+        )
         required_true = {
             "sys_boot_completed",
+            "system_privapp_apk_present",
             "package_installed",
             "service_registered",
             "privapp_permissions_granted",
             "js_bridge_bound",
             "launcher_consumed_live_state",
             "production_mock_fallback_absent",
+            "permission_xml_host_symlink_absent",
         }
         missing_true = sorted(key for key in required_true if runtime_evidence.get(key) is not True)
         add_if(
@@ -360,6 +551,48 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             "booted Android system bridge runtime evidence does not prove every required live bridge marker",
             f"missing_or_false={missing_true}",
             "Regenerate system bridge runtime evidence with boot completion, package install path, service registration, permission grants, JS bridge binding, live-state UI consumption, and no production mock fallback.",
+        )
+        permission_evidence = {
+            "permission_file_probes": runtime_evidence.get("observations", {}).get(
+                "permission_file_probes", {}
+            ),
+            "permission_file_symlink_targets": runtime_evidence.get("observations", {}).get(
+                "permission_file_symlink_targets", {}
+            ),
+        }
+        permission_probe_text = json.dumps(permission_evidence, sort_keys=True)
+        observed_permission_paths = set(
+            runtime_evidence.get("observations", {}).get("permission_file_probes", {})
+        ) | set(
+            runtime_evidence.get("observations", {}).get("permission_file_symlink_targets", {})
+        )
+        missing_runtime_permission_paths = sorted(
+            EXPECTED_RUNTIME_PERMISSION_XMLS - observed_permission_paths
+        )
+        stale_permission_paths = stale_runtime_permission_paths(observed_permission_paths)
+        add_if(
+            findings,
+            bool(missing_runtime_permission_paths),
+            "system_bridge_runtime_permission_xml_probe_missing_current_identity",
+            "system bridge runtime evidence did not probe every permission XML for the current launcher package identity",
+            f"missing={missing_runtime_permission_paths} expected_launcher_package={APP_PACKAGE}",
+            f"Recapture with the current defaults or pass --launcher-package {APP_PACKAGE}; probes must include the {APP_PACKAGE} default and privapp XMLs plus the bridge privapp XML.",
+        )
+        add_if(
+            findings,
+            bool(stale_permission_paths),
+            "system_bridge_runtime_permission_xml_probe_stale_identity",
+            "system bridge runtime evidence includes permission XML probes for a stale launcher package identity",
+            f"stale_paths={stale_permission_paths} expected_launcher_package={APP_PACKAGE}",
+            "Delete stale evidence and recapture from the current image; do not reuse probes from an older Eliza/Milady package identity.",
+        )
+        add_if(
+            findings,
+            contains_host_local_symlink(permission_evidence),
+            "system_bridge_runtime_permission_xml_host_symlink",
+            "system bridge runtime evidence shows Android permission XMLs resolving to host-local symlinks",
+            permission_probe_text,
+            "Rebuild the AOSP product image after materializing vendor/eliza overlay files as regular files, not symlinks.",
         )
         add_if(
             findings,
@@ -381,6 +614,18 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     evidence: dict[str, object] = {
         "bridge_package": package,
         "native_not_implemented_count": not_impl_count,
+        "bridge_service": rel(BRIDGE_SERVICE_KT),
+        "bridge_service_present": BRIDGE_SERVICE_KT.is_file(),
+        "launcher_main_activity": rel(LAUNCHER_MAIN_ACTIVITY),
+        "launcher_binds_system_bridge": (
+            "__elizaAndroidBridge" in launcher_text
+            and "addJavascriptInterface" in launcher_text
+        )
+        or (
+            "ElizaAndroidSystemBridge.install" in launcher_text
+            and "__elizaAndroidBridge" in app_bridge_text
+            and "addJavascriptInterface" in app_bridge_text
+        ),
         "bridge_gradle": rel(BRIDGE_GRADLE),
         "channel_count": len(channels),
         "product_packages": sorted(os_packages),
@@ -390,6 +635,11 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "runtime_evidence": rel(RUNTIME_EVIDENCE),
         "runtime_evidence_present": RUNTIME_EVIDENCE.is_file(),
         "runtime_capture": rel(RUNTIME_CAPTURE),
+        "runtime_adb_blocker": (
+            runtime_host.get("adb_blocker") if isinstance(runtime_host, dict) else None
+        ),
+        "runtime_aosp_build_artifact_inventory": runtime_aosp_inventory,
+        "local_manifest_projection_kinds": local_projection_kinds,
     }
     return payload(findings, evidence)
 

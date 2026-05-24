@@ -6,10 +6,10 @@
   "reviewer": "automated_boolean_check",
   "aabb_prefilter_mm": 1.0,
   "min_target_gap_mm": 0.15,
-  "parts_loaded": 142,
+  "parts_loaded": 222,
   "parts_missing": [],
-  "pair_count_total": 10011,
-  "pair_count_brep_evaluated": 586,
+  "pair_count_total": 24531,
+  "pair_count_brep_evaluated": 763,
   "unintentional_clashes": [],
   "scope_results": [
     {
@@ -162,7 +162,7 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 2.1203,
+          "min_gap_mm": 5.85,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1352,7 +1352,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.0,
+          "min_gap_mm": 0.5,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1392,7 +1392,7 @@
             "haptic_lra"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.5811,
+          "min_gap_mm": 1.118,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -1669,7 +1669,7 @@
             "orange_screw_boss_2"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 53.8,
+          "min_gap_mm": 65.8,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1679,7 +1679,7 @@
             "orange_snap_hook_1"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 5.35,
+          "min_gap_mm": 1.4,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1719,7 +1719,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
+          "min_gap_mm": 0.9,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -1739,7 +1739,7 @@
             "orange_snap_hook_1"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 63.35,
+          "min_gap_mm": 69.35,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         }
@@ -1909,7 +1909,7 @@
             "orange_side_frame"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 2.1203,
+          "min_gap_mm": 5.85,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4123,7 +4123,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.0,
+          "min_gap_mm": 0.5,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4163,7 +4163,7 @@
             "haptic_lra"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.5811,
+          "min_gap_mm": 1.118,
           "interference_volume_mm3": 0.0,
           "intentional_contact": false
         },
@@ -4787,7 +4787,7 @@
             "orange_screw_boss_2"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 53.8,
+          "min_gap_mm": 65.8,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4797,7 +4797,7 @@
             "orange_snap_hook_1"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 5.35,
+          "min_gap_mm": 1.4,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4837,7 +4837,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
+          "min_gap_mm": 0.9,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4857,7 +4857,7 @@
             "orange_snap_hook_1"
           ],
           "engine": "aabb_prefilter",
-          "min_gap_mm": 63.35,
+          "min_gap_mm": 69.35,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -4897,7 +4897,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 0.0,
+          "min_gap_mm": 0.9,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -5017,7 +5017,7 @@
             "main_pcb"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 22.5,
+          "min_gap_mm": 22.0,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         },
@@ -5057,7 +5057,7 @@
             "battery_pouch"
           ],
           "engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
-          "min_gap_mm": 1.0,
+          "min_gap_mm": 0.5,
           "interference_volume_mm3": 0.0,
           "intentional_contact": true
         }
@@ -5500,5 +5500,10 @@
     ]
   },
   "overall_status": "pass",
-  "wall_seconds": 15.48
+  "release_credit": false,
+  "release_blocked": false,
+  "release_blocker_category": "none",
+  "release_blocker_count": 0,
+  "next_action": "Release-ready boolean evidence requires zero unintentional clashes against routed board STEP and supplier B-rep models.",
+  "wall_seconds": 8.9
 }

@@ -58,6 +58,7 @@ selected_supplier_response_release_gate:
     - routed_kicad_pcb
     - production_bom_avl
     - board_step_with_supplier_models
+    - supplier_component_3d_model_manifest
     - enclosure_clearance_report_using_routed_step
     - si_pi_reports
     - rf_reports
@@ -158,6 +159,13 @@ required_release_output_manifest:
     present: false
     release_required: true
     blocker: routed board STEP with supplier connector/module/shield models missing
+  supplier_component_3d_model_manifest:
+    owner: mechanical
+    source: selected supplier STEP/B-rep intake and KiCad 3D model binding review
+    expected_path: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
+    present: false
+    release_required: true
+    blocker: supplier-approved component 3D model manifest and model-to-footprint binding missing
   enclosure_clearance_report_using_routed_step:
     owner: mechanical
     source: enclosure CAD clearance run

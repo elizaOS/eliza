@@ -5,6 +5,9 @@ behaviour, but the E1's actual duty cycle is a looping multimodal agent:
 ``llama.cpp`` token loops, tokenizer/string processing, logit sampling, and
 streamed-output state machines. This module turns a *real* execution of that
 workload into the branch-event stream the :class:`BPUSimulator` consumes.
+Trace rows also carry the BPU context fields (`asid`, `vmid`, `priv`, `secure`,
+and `workload_class`) so captured real workloads can exercise the same context
+partitioning path as RTL instead of relying on synthetic aliases only.
 
 The capture path is privilege-free and ISA-faithful to the E1 target (RV64):
 
@@ -30,9 +33,10 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from .bpu_model import BR_CALL, BR_COND, BR_IND, BR_NONE, BR_RET, BranchEvent
+from .bpu_model import BR_CALL, BR_COND, BR_DIRECT, BR_IND, BR_NONE, BR_RET, BranchEvent
 
 WORKLOAD_TRACE_SCHEMA = "eliza.bpu_workload_trace.v1"
+WORKLOAD_TRACE_CONTEXT_FIELDS = ("asid", "vmid", "priv", "secure", "workload_class")
 
 # execlog line: `<cpu>, 0x<pc>, 0x<opcode>, "<disasm>"[, <memtype>, 0x<addr>]`
 _EXECLOG_RE = re.compile(r'^\s*\d+,\s*0x([0-9a-fA-F]+),\s*0x([0-9a-fA-F]+),\s*"([^"]*)"')
@@ -86,18 +90,18 @@ def _classify(mnemonic: str, operands: str) -> int | None:
     """Map an RV64 control-transfer mnemonic to a BPU branch kind.
 
     Returns ``None`` for non-control instructions. Direct unconditional jumps
-    map to :data:`BR_COND` (always-taken) to match the CBP-5 ingest mapping,
-    where ``UNCOND_DIR_BR`` is a taken conditional with an FTB target.
+    map to :data:`BR_DIRECT` so they train target arrays without polluting
+    conditional direction predictors.
     """
     if mnemonic in _COND_MNEMONICS:
         return BR_COND
     if mnemonic == "ret":
         return BR_RET
     if mnemonic == "j":
-        return BR_COND  # unconditional direct jump, always taken
+        return BR_DIRECT
     if mnemonic == "jal":
         # `jal ra, ...` is a direct call; `jal x0` disassembles as `j`.
-        return BR_CALL if operands.split(",", 1)[0].strip() == "ra" else BR_COND
+        return BR_CALL if operands.split(",", 1)[0].strip() == "ra" else BR_DIRECT
     if mnemonic == "call":
         return BR_CALL
     if mnemonic in ("jalr", "jr", "tail", "jalrx"):
@@ -130,11 +134,11 @@ def decode_execlog(path: Path) -> tuple[list[BranchEvent], WorkloadTraceStats]:
         if kind == BR_COND:
             taken = next_pc != fall_through
             target = pending.comment_target if pending.comment_target is not None else next_pc
-            if pending.mnemonic in ("j", "jal"):  # unconditional direct
-                taken = True
-                stats.direct_jump += 1
-            else:
-                stats.cond += 1
+            stats.cond += 1
+        elif kind == BR_DIRECT:
+            taken = True
+            target = pending.comment_target if pending.comment_target is not None else next_pc
+            stats.direct_jump += 1
         else:
             taken = True
             target = next_pc  # indirect/call/ret: real target is the next PC
@@ -199,7 +203,10 @@ def write_workload_trace(
         "instruction_count": stats.instruction_count,
         "branch_count": stats.branch_count,
         "class_counts": stats.as_dict(),
-        # Compact row form: [pc, target, taken(0/1), kind, call_return_pc(-1=None)]
+        "context_fields": list(WORKLOAD_TRACE_CONTEXT_FIELDS),
+        # Compact row form:
+        # [pc, target, taken(0/1), kind, call_return_pc(-1=None),
+        #  asid, vmid, priv, secure(0/1), workload_class]
         "branches": [
             [
                 b.pc,
@@ -207,6 +214,11 @@ def write_workload_trace(
                 int(b.taken),
                 b.kind,
                 -1 if b.call_return_pc is None else b.call_return_pc,
+                int(b.asid),
+                int(b.vmid),
+                int(b.priv),
+                int(b.secure),
+                int(b.workload_class),
             ]
             for b in branches
         ],
@@ -220,16 +232,27 @@ def read_workload_trace(path: Path) -> tuple[list[BranchEvent], int]:
     doc = json.loads(path.read_text(encoding="utf-8"))
     if doc.get("schema") != WORKLOAD_TRACE_SCHEMA:
         raise ValueError(f"{path} is not a {WORKLOAD_TRACE_SCHEMA} document")
-    branches = [
-        BranchEvent(
-            pc=row[0],
-            target=row[1],
-            taken=bool(row[2]),
-            kind=row[3],
-            call_return_pc=None if row[4] < 0 else row[4],
+    branches = []
+    for row in doc["branches"]:
+        call_return_pc = None if row[4] < 0 else row[4]
+        if len(row) >= 10:
+            asid, vmid, priv, secure, workload_class = row[5:10]
+        else:
+            asid, vmid, priv, secure, workload_class = 0, 0, 0, 0, 0
+        branches.append(
+            BranchEvent(
+                pc=row[0],
+                target=row[1],
+                taken=bool(row[2]),
+                kind=row[3],
+                call_return_pc=call_return_pc,
+                asid=int(asid),
+                vmid=int(vmid),
+                priv=int(priv),
+                secure=int(secure),
+                workload_class=int(workload_class),
+            )
         )
-        for row in doc["branches"]
-    ]
     return branches, int(doc["instruction_count"])
 
 

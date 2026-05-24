@@ -278,7 +278,7 @@ def check_memory_map_consistency(contract: dict, errors: list[str]) -> None:
     fail_unless(depth is not None, "DRAM model missing DEPTH_WORDS parameter", errors)
     if depth is not None:
         implemented_bytes = depth * EXPECTED_AXI_LITE_WORD_BYTES
-        actual = gate.get("current_actual_capability") if isinstance(gate, dict) else {}
+        actual = gate.get("linux_scaffold_current_capability") if isinstance(gate, dict) else {}
         fail_unless(
             implemented_bytes == EXPECTED_E1_CHIP_DRAM_BYTES,
             "DRAM model implemented bytes must remain 4 KiB until gate/docs change",

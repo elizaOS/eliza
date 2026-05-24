@@ -1,0 +1,4712 @@
+{
+  "verdict": "pass",
+  "reference_source": "eliza_front_reference.png visible-face proportions, excluding hair and glasses",
+  "face_shell_source": "cad/source-assets/human-donor/eliza_face_donor.stl",
+  "face_shell_bounds_mm": [
+    [
+      -52.012,
+      -45.161,
+      405.269
+    ],
+    [
+      -36.631,
+      45.161,
+      534.965
+    ]
+  ],
+  "face_shell_extents_mm": [
+    15.38,
+    90.322,
+    129.696
+  ],
+  "aesthetic_depth_verdict": "pass",
+  "face_shell_depth_check": {
+    "actual_mm": 15.38,
+    "minimum_mm": 12.0,
+    "within_tolerance": true,
+    "reason": "Prevents stress-driven over-flattening of the donor-derived parametric face while 2D face proportions still pass."
+  },
+  "insert_centers_mm": {
+    "left_eye_insert": [
+      -40.0,
+      22.6,
+      492.0
+    ],
+    "right_eye_insert": [
+      -40.0,
+      -22.6,
+      492.0
+    ],
+    "lip_insert": [
+      -60.0,
+      0.0,
+      436.0
+    ]
+  },
+  "metrics": {
+    "face_height_to_width_yz": 1.4359,
+    "eye_span_to_face_width": 0.5004,
+    "eye_center_down_from_face_top": 0.3313,
+    "eye_width_to_face_width": 0.2524,
+    "mouth_center_down_from_face_top": 0.7631,
+    "mouth_width_to_face_width": 0.3056
+  },
+  "targets": {
+    "face_height_to_width_yz": 1.44,
+    "eye_span_to_face_width": 0.5,
+    "eye_center_down_from_face_top": 0.41,
+    "eye_width_to_face_width": 0.27,
+    "mouth_center_down_from_face_top": 0.76,
+    "mouth_width_to_face_width": 0.34
+  },
+  "tolerance": 0.08,
+  "comparisons": {
+    "face_height_to_width_yz": {
+      "actual": 1.4359,
+      "target": 1.44,
+      "delta": -0.0041,
+      "within_tolerance": true
+    },
+    "eye_span_to_face_width": {
+      "actual": 0.5004,
+      "target": 0.5,
+      "delta": 0.0004,
+      "within_tolerance": true
+    },
+    "eye_center_down_from_face_top": {
+      "actual": 0.3313,
+      "target": 0.41,
+      "delta": -0.0787,
+      "within_tolerance": true
+    },
+    "eye_width_to_face_width": {
+      "actual": 0.2524,
+      "target": 0.27,
+      "delta": -0.0176,
+      "within_tolerance": true
+    },
+    "mouth_center_down_from_face_top": {
+      "actual": 0.7631,
+      "target": 0.76,
+      "delta": 0.0031,
+      "within_tolerance": true
+    },
+    "mouth_width_to_face_width": {
+      "actual": 0.3056,
+      "target": 0.34,
+      "delta": -0.0344,
+      "within_tolerance": true
+    }
+  },
+  "scoped_clearance_mm": {
+    "head_mount_neck_black": {
+      "bodykit_to_base_mm": 2.018,
+      "non_mounted_mm": 68.034,
+      "non_adjacent_mm": 297.955
+    },
+    "face_shell": {
+      "bodykit_to_base_mm": 6.79,
+      "non_mounted_mm": 190.486,
+      "non_adjacent_mm": 446.408
+    },
+    "left_eye_insert": {
+      "bodykit_to_base_mm": 76.791,
+      "non_mounted_mm": 262.15,
+      "non_adjacent_mm": 517.122
+    },
+    "right_eye_insert": {
+      "bodykit_to_base_mm": 72.452,
+      "non_mounted_mm": 263.076,
+      "non_adjacent_mm": 515.377
+    },
+    "lip_insert": {
+      "bodykit_to_base_mm": 26.232,
+      "non_mounted_mm": 218.505,
+      "non_adjacent_mm": 478.184
+    }
+  },
+  "minimum_neck_head_face_non_mounted_clearance_mm": 68.034,
+  "minimum_neck_head_face_non_adjacent_clearance_mm": 297.955,
+  "operating_sweep": {
+    "poses_checked": 69,
+    "label": "neck_head_face_operating",
+    "sweep_fraction": 0.25,
+    "samples_checked": 75900,
+    "minimum_non_mounted_clearance_mm": 67.626,
+    "worst_pose": "left_shoulder_pitch_joint_low",
+    "minimum_non_adjacent_clearance_mm": 204.095,
+    "worst_non_adjacent_pose": "right_shoulder_pitch_joint_low",
+    "articulated_body_distance": 3,
+    "pose_results": [
+      {
+        "pose": "home",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_yaw_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_yaw_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_ankle_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_ankle_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_ankle_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_ankle_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_yaw_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_yaw_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_ankle_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_ankle_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_ankle_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_ankle_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.06287,
+            1.05045
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.11821,
+            1.01091
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.05534,
+            -0.03953
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            55.34,
+            -39.535
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            0.02797,
+            1.05504
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.11141,
+            0.81357
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.13938,
+            -0.24148
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -139.378,
+            -241.477
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            -0.01962,
+            1.05614
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.04407,
+            1.03228
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06369,
+            -0.02386
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            63.687,
+            -23.864
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.05452,
+            1.05155
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12665,
+            0.78223
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.07213,
+            -0.26932
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -72.13,
+            -269.322
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.05323,
+            0.01159,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.08836,
+            0.06029,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            0.03513,
+            0.0487,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            35.133,
+            48.704,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.04547,
+            -0.02683,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.0639,
+            -0.17542,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.01842,
+            -0.14859,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            18.425,
+            -148.588,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.02667,
+            0.02302,
+            1.056
+          ],
+          "base_sample_point_m": [
+            -0.01128,
+            0.06956,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.03795,
+            0.04654,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -37.951,
+            46.541,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.06178,
+            0.00558,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.21007,
+            -0.01508,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.14829,
+            -0.02066,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            148.294,
+            -20.66,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.626,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.626,
+          "part_sample_point_m": [
+            0.03511,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.031,
+            0.08164,
+            1.02475
+          ],
+          "part_to_base_vector_m": [
+            -0.0041,
+            0.05983,
+            -0.03125
+          ],
+          "part_to_base_vector_mm": [
+            -4.102,
+            59.833,
+            -31.248
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 206.35,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 206.35,
+          "part_sample_point_m": [
+            0.06428,
+            0.00287,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.25886,
+            0.06726,
+            1.03207
+          ],
+          "part_to_base_vector_m": [
+            0.19458,
+            0.06439,
+            -0.02393
+          ],
+          "part_to_base_vector_mm": [
+            194.58,
+            64.391,
+            -23.935
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.839,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.839,
+          "part_sample_point_m": [
+            0.03511,
+            -0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.03632,
+            -0.08302,
+            1.02453
+          ],
+          "part_to_base_vector_m": [
+            0.00121,
+            -0.06121,
+            -0.03147
+          ],
+          "part_to_base_vector_mm": [
+            1.213,
+            -61.211,
+            -31.474
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_yaw_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 274.438,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 274.438,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.14333,
+            0.06985,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.08421,
+            0.05646,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            84.205,
+            56.46,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_yaw_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_wrist_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_wrist_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.13,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.13,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.12933,
+            0.80341
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11594,
+            -0.25259
+          ],
+          "part_to_base_vector_mm": [
+            105.074,
+            115.939,
+            -252.594
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.695,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.695,
+          "part_sample_point_m": [
+            0.03511,
+            -0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.02926,
+            -0.08162,
+            1.02484
+          ],
+          "part_to_base_vector_m": [
+            -0.00585,
+            -0.05981,
+            -0.03116
+          ],
+          "part_to_base_vector_mm": [
+            -5.85,
+            -59.81,
+            -31.163
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 204.095,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 204.095,
+          "part_sample_point_m": [
+            0.06428,
+            -0.00287,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.25897,
+            -0.0581,
+            1.02956
+          ],
+          "part_to_base_vector_m": [
+            0.19469,
+            -0.05523,
+            -0.02644
+          ],
+          "part_to_base_vector_mm": [
+            194.693,
+            -55.23,
+            -26.44
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_yaw_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_yaw_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 273.644,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 273.644,
+          "part_sample_point_m": [
+            0.06252,
+            -0.00842,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.14355,
+            -0.06063,
+            0.79989
+          ],
+          "part_to_base_vector_m": [
+            0.08103,
+            -0.05221,
+            -0.25611
+          ],
+          "part_to_base_vector_mm": [
+            81.028,
+            -52.207,
+            -256.105
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_wrist_roll_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 295.401,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 295.401,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12643,
+            0.80412
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.11304,
+            -0.25188
+          ],
+          "part_to_base_vector_mm": [
+            105.074,
+            -113.042,
+            -251.878
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_wrist_roll_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 298.93,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 298.93,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.13482,
+            0.80386
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.12143,
+            -0.25214
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -121.429,
+            -252.139
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_yaw_joint_low__left_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_yaw_joint_high__left_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_yaw_joint_low__right_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_yaw_joint_high__right_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_roll_joint_low__left_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_hip_roll_joint_high__left_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_roll_joint_low__right_knee_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_hip_roll_joint_high__right_knee_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_pitch_joint_low__left_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.626,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.626,
+          "part_sample_point_m": [
+            0.03511,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.031,
+            0.08164,
+            1.02475
+          ],
+          "part_to_base_vector_m": [
+            -0.0041,
+            0.05983,
+            -0.03125
+          ],
+          "part_to_base_vector_mm": [
+            -4.102,
+            59.833,
+            -31.248
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 227.541,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 227.541,
+          "part_sample_point_m": [
+            0.06428,
+            0.00287,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.28116,
+            0.06318,
+            1.02284
+          ],
+          "part_to_base_vector_m": [
+            0.21688,
+            0.06031,
+            -0.03316
+          ],
+          "part_to_base_vector_mm": [
+            216.883,
+            60.312,
+            -33.157
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_pitch_joint_high__left_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.839,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.839,
+          "part_sample_point_m": [
+            0.03511,
+            -0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.03632,
+            -0.08302,
+            1.02453
+          ],
+          "part_to_base_vector_m": [
+            0.00121,
+            -0.06121,
+            -0.03147
+          ],
+          "part_to_base_vector_mm": [
+            1.213,
+            -61.211,
+            -31.474
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.695,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.695,
+          "part_sample_point_m": [
+            0.03511,
+            -0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.02926,
+            -0.08162,
+            1.02484
+          ],
+          "part_to_base_vector_m": [
+            -0.00585,
+            -0.05981,
+            -0.03116
+          ],
+          "part_to_base_vector_mm": [
+            -5.85,
+            -59.81,
+            -31.163
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 225.635,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 225.635,
+          "part_sample_point_m": [
+            0.06428,
+            -0.00287,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.28102,
+            -0.05416,
+            1.01988
+          ],
+          "part_to_base_vector_m": [
+            0.21674,
+            -0.05129,
+            -0.03612
+          ],
+          "part_to_base_vector_mm": [
+            216.74,
+            -51.287,
+            -36.117
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_pitch_joint_high__right_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_roll_joint_low__left_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "left_shoulder_roll_joint_high__left_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.05913,
+            -0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            -0.12006,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            -0.10667,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            105.072,
+            -106.666,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_roll_joint_low__right_elbow_joint_low",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "right_shoulder_roll_joint_high__right_elbow_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.04189,
+            0.02181,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.04012,
+            0.08184,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.00178,
+            0.06003,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -1.776,
+            60.027,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.05913,
+            0.01339,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1642,
+            0.1292,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.10507,
+            0.11581,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            105.073,
+            115.808,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_low__left_shoulder_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.626,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.626,
+          "part_sample_point_m": [
+            0.04785,
+            0.01572,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.08102,
+            0.06568,
+            1.02475
+          ],
+          "part_to_base_vector_m": [
+            0.03317,
+            0.04997,
+            -0.03125
+          ],
+          "part_to_base_vector_mm": [
+            33.17,
+            49.966,
+            -31.248
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 206.35,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 206.35,
+          "part_sample_point_m": [
+            0.05946,
+            -0.01707,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.25303,
+            -0.08443,
+            1.03207
+          ],
+          "part_to_base_vector_m": [
+            0.19357,
+            -0.06737,
+            -0.02393
+          ],
+          "part_to_base_vector_mm": [
+            193.57,
+            -67.368,
+            -23.935
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_high__left_shoulder_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.839,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.839,
+          "part_sample_point_m": [
+            0.04785,
+            -0.01572,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.08607,
+            -0.06354,
+            1.02453
+          ],
+          "part_to_base_vector_m": [
+            0.03823,
+            -0.04782,
+            -0.03147
+          ],
+          "part_to_base_vector_mm": [
+            38.225,
+            -47.823,
+            -31.474
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 297.955,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 297.955,
+          "part_sample_point_m": [
+            0.06178,
+            0.00558,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.21007,
+            -0.01508,
+            0.7984
+          ],
+          "part_to_base_vector_m": [
+            0.14829,
+            -0.02066,
+            -0.2576
+          ],
+          "part_to_base_vector_mm": [
+            148.294,
+            -20.66,
+            -257.603
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_low__right_shoulder_pitch_joint_low",
+        "minimum_non_mounted_clearance_mm": 67.695,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_118",
+          "base_body": "right_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 67.695,
+          "part_sample_point_m": [
+            0.02129,
+            -0.01889,
+            1.056
+          ],
+          "base_sample_point_m": [
+            -0.01976,
+            -0.06278,
+            1.02484
+          ],
+          "part_to_base_vector_m": [
+            -0.04105,
+            -0.04389,
+            -0.03116
+          ],
+          "part_to_base_vector_mm": [
+            -41.051,
+            -43.889,
+            -31.163
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 204.095,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_132",
+          "base_body": "right_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 204.095,
+          "part_sample_point_m": [
+            0.05596,
+            -0.02162,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.1768,
+            -0.18396,
+            1.02956
+          ],
+          "part_to_base_vector_m": [
+            0.12084,
+            -0.16234,
+            -0.02644
+          ],
+          "part_to_base_vector_mm": [
+            120.839,
+            -162.339,
+            -26.44
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      },
+      {
+        "pose": "waist_yaw_joint_high__right_shoulder_pitch_joint_high",
+        "minimum_non_mounted_clearance_mm": 68.034,
+        "worst_part": "head_mount_neck_black",
+        "worst_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_102",
+          "base_body": "left_shoulder_pitch_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 1,
+          "clearance_mm": 68.034,
+          "part_sample_point_m": [
+            0.02667,
+            0.02302,
+            1.056
+          ],
+          "base_sample_point_m": [
+            -0.01128,
+            0.06956,
+            1.02403
+          ],
+          "part_to_base_vector_m": [
+            -0.03795,
+            0.04654,
+            -0.03197
+          ],
+          "part_to_base_vector_mm": [
+            -37.951,
+            46.541,
+            -31.973
+          ]
+        },
+        "minimum_non_adjacent_clearance_mm": 299.149,
+        "worst_non_adjacent_part": "head_mount_neck_black",
+        "worst_non_adjacent_clearance": {
+          "part": "head_mount_neck_black",
+          "part_body": "torso_link",
+          "base_geom": "geom_116",
+          "base_body": "left_wrist_roll_link",
+          "base_geom_type": "mesh",
+          "body_tree_distance": 5,
+          "clearance_mm": 299.149,
+          "part_sample_point_m": [
+            0.04547,
+            0.02683,
+            1.056
+          ],
+          "base_sample_point_m": [
+            0.05833,
+            0.18268,
+            0.80097
+          ],
+          "part_to_base_vector_m": [
+            0.01286,
+            0.15584,
+            -0.25503
+          ],
+          "part_to_base_vector_mm": [
+            12.86,
+            155.841,
+            -255.026
+          ]
+        },
+        "non_adjacent_samples_checked": 1100
+      }
+    ]
+  },
+  "face_production_surfacing": {
+    "verdict": "parametric-step-pass",
+    "preserves_fit_geometry": false,
+    "source_kind": "parametric_donor_face_grid",
+    "face_depth_mm": 15.38,
+    "surface_method": "fixed-yz-grid donor mesh sampling with closed x/y section lofts",
+    "visual_finish": {
+      "render_smooth_normals": true,
+      "satin_clearcoat": 0.18,
+      "roughness": 0.46,
+      "preserve_collision_mesh": true
+    },
+    "collision_mesh_changed": true
+  },
+  "note": "Face alignment uses the donor-derived parametric face shell plus separate eye/lip inserts. Hair and glasses in the concept references are reference-only and are not generated."
+}

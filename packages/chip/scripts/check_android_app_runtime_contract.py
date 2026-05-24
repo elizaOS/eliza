@@ -25,24 +25,56 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parent
+ELIZA_ROOT = ROOT.parents[1]
+OUTER_WORKSPACE = ROOT.parents[2] if len(ROOT.parents) > 2 else ELIZA_ROOT
 REPORT = ROOT / "build/reports/android_app_runtime_contract.json"
 SCHEMA = "eliza.android_app_runtime_contract.v1"
 CLAIM_BOUNDARY = "static_app_runtime_contract_only_not_android_boot_or_launcher_evidence"
 
+
+def package_name_to_path(package_name: str) -> Path:
+    return Path(*package_name.split("."))
+
+
+def read_outer_app_config() -> dict[str, str] | None:
+    config_path = OUTER_WORKSPACE / "apps/app/app.config.ts"
+    if not config_path.is_file():
+        return None
+    config = config_path.read_text(encoding="utf-8")
+    values: dict[str, str] = {}
+    for key in ("appId", "appName", "vendorDir"):
+        match = re.search(rf"\b{key}\s*:\s*[\"']([^\"']+)[\"']", config)
+        if match:
+            values[key] = match.group(1)
+    return values if {"appId", "appName", "vendorDir"}.issubset(values) else None
+
+
+BRAND_CONFIG = read_outer_app_config()
+APP_PACKAGE = BRAND_CONFIG["appId"] if BRAND_CONFIG else "ai.elizaos.app"
+APP_NAME = BRAND_CONFIG["appName"] if BRAND_CONFIG else "Eliza"
+VENDOR_DIR_NAME = BRAND_CONFIG["vendorDir"] if BRAND_CONFIG else "eliza"
+VENDOR_ROOT = (
+    OUTER_WORKSPACE / "os/android/vendor" / VENDOR_DIR_NAME
+    if BRAND_CONFIG
+    else WORKSPACE / "os/android/vendor/eliza"
+)
+
 APP_GRADLE = WORKSPACE / "app-core/platforms/android/app/build.gradle"
 APP_MANIFEST = WORKSPACE / "app-core/platforms/android/app/src/main/AndroidManifest.xml"
-APP_JAVA_DIR = WORKSPACE / "app-core/platforms/android/app/src/main/java/ai/elizaos/app"
+APP_JAVA_DIR = (
+    WORKSPACE
+    / "app-core/platforms/android/app/src/main/java"
+    / package_name_to_path(APP_PACKAGE)
+)
 AGENT_SERVICE_JAVA = APP_JAVA_DIR / "ElizaAgentService.java"
 NATIVE_BRIDGE_JAVA = APP_JAVA_DIR / "ElizaNativeBridge.java"
-PREBUILT_APK = WORKSPACE / "os/android/vendor/eliza/apps/Eliza/Eliza.apk"
+PREBUILT_APK = VENDOR_ROOT / "apps" / APP_NAME / f"{APP_NAME}.apk"
 VENDOR_PERMISSION_XMLS = (
-    WORKSPACE / "os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
-    WORKSPACE / "os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml",
+    VENDOR_ROOT / "permissions" / f"default-permissions-{APP_PACKAGE}.xml",
+    VENDOR_ROOT / "permissions" / f"privapp-permissions-{APP_PACKAGE}.xml",
 )
-VENDOR_OVERLAY = (
-    WORKSPACE / "os/android/vendor/eliza/overlays/frameworks/base/core/res/res/values/config.xml"
-)
-VENDOR_COMMON_MK = WORKSPACE / "os/android/vendor/eliza/eliza_common.mk"
+VENDOR_OVERLAY = VENDOR_ROOT / "overlays/frameworks/base/core/res/res/values/config.xml"
+VENDOR_COMMON_MK = VENDOR_ROOT / f"{VENDOR_DIR_NAME}_common.mk"
 CHIP_AOSP_SCRIPTS = (
     ROOT / "sw/aosp-device/start-eliza-agent-riscv64.sh",
     ROOT / "sw/aosp-device/agent-smoke-riscv64.sh",
@@ -52,6 +84,18 @@ CHIP_AOSP_SCRIPTS = (
 )
 
 KNOWN_ABIS = {"arm64-v8a", "armeabi-v7a", "x86", "x86_64", "riscv64"}
+REQUIRED_RISCV64_JNI_LIBS = (
+    "lib/riscv64/libeliza_bun.so",
+    "lib/riscv64/libeliza_ld_musl_riscv64.so",
+    "lib/riscv64/libeliza_stdcpp.so",
+    "lib/riscv64/libeliza_gcc_s.so",
+)
+REQUIRED_RISCV64_AGENT_ASSETS = (
+    "assets/agent/riscv64/bun",
+    "assets/agent/riscv64/ld-musl-riscv64.so.1",
+    "assets/agent/riscv64/libstdc++.so.6.0.33",
+    "assets/agent/riscv64/libgcc_s.so.1",
+)
 
 
 @dataclass(frozen=True)
@@ -133,7 +177,10 @@ def extract_overlay_defaults(path: Path) -> set[str]:
 
 
 def extract_makefile_home(path: Path) -> str | None:
-    match = re.search(r"\bro\.elizaos\.home=([A-Za-z0-9_.]+)", read_text(path))
+    text = read_text(path)
+    match = re.search(r"\bro\.elizaos\.home=([A-Za-z0-9_.]+)", text)
+    if not match:
+        match = re.search(r"\bro\.[A-Za-z0-9_.]+\.home=([A-Za-z0-9_.]+)", text)
     return match.group(1) if match else None
 
 
@@ -218,6 +265,11 @@ def apk_agent_abis(entries: Iterable[str]) -> set[str]:
         ):
             abis.add(parts[2])
     return abis
+
+
+def missing_entries(entries: Iterable[str], required: Iterable[str]) -> list[str]:
+    present = set(entries)
+    return [entry for entry in required if entry not in present]
 
 
 def java_endpoint_literals(text: str) -> set[str]:
@@ -329,6 +381,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     entries = apk_entries(apk_path)
     native_abis = apk_native_abis(entries)
     agent_abis = apk_agent_abis(entries)
+    missing_riscv64_jni = missing_entries(entries, REQUIRED_RISCV64_JNI_LIBS)
+    missing_riscv64_agent_assets = missing_entries(
+        entries, REQUIRED_RISCV64_AGENT_ASSETS
+    )
 
     identity_sources = {
         "gradle_application_id": gradle_id,
@@ -370,11 +426,27 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        bool(missing_riscv64_jni),
+        "apk_missing_riscv64_runtime_jni_payload",
+        "prebuilt APK does not contain the complete packaged riscv64 local-agent JNI runtime payload",
+        f"missing={missing_riscv64_jni} apk={rel(apk_path)}",
+        "Build/import the APK with a verified riscv64 Bun artifact so lib/riscv64 contains bun, musl loader, libstdc++, and libgcc runtime entries.",
+    )
+    add_if(
+        findings,
         "riscv64" not in agent_abis,
         "apk_missing_riscv64_agent_assets",
         "prebuilt APK does not contain assets/agent/riscv64",
         f"agent_asset_abis={sorted(agent_abis)} apk={rel(apk_path)}",
         "Package the riscv64 Bun/local-agent payload under assets/agent/riscv64 and prove ElizaAgentService can extract it.",
+    )
+    add_if(
+        findings,
+        bool(missing_riscv64_agent_assets),
+        "apk_missing_riscv64_runtime_agent_payload",
+        "prebuilt APK does not contain the complete extractable riscv64 local-agent runtime payload",
+        f"missing={missing_riscv64_agent_assets} apk={rel(apk_path)}",
+        "Build/import the APK with a verified riscv64 Bun artifact so assets/agent/riscv64 contains bun, musl loader, libstdc++, and libgcc runtime entries.",
     )
 
     expected_service = f"{gradle_id}.ElizaAgentService" if gradle_id else "ElizaAgentService"
@@ -455,6 +527,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "adb_foreground_service_starters": sorted(adb_service_starters),
         "apk_native_abis": sorted(native_abis),
         "apk_agent_asset_abis": sorted(agent_abis),
+        "missing_riscv64_jni_payload": missing_riscv64_jni,
+        "missing_riscv64_agent_payload": missing_riscv64_agent_assets,
+        "required_riscv64_jni_payload": list(REQUIRED_RISCV64_JNI_LIBS),
+        "required_riscv64_agent_payload": list(REQUIRED_RISCV64_AGENT_ASSETS),
         "app_endpoints": sorted(app_endpoints),
         "script_endpoints": {k: sorted(v) for k, v in script_endpoints.items()},
     }

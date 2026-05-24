@@ -17,6 +17,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cpu/bpu/bpu_csr.sv \
 	$(REPO)/rtl/cpu/bpu/ftb.sv \
 	$(REPO)/rtl/cpu/bpu/ftq.sv \
+	$(REPO)/rtl/cpu/bpu/h2p_corrector.sv \
 	$(REPO)/rtl/cpu/bpu/ittage.sv \
 	$(REPO)/rtl/cpu/bpu/loop_predictor.sv \
 	$(REPO)/rtl/cpu/bpu/ras.sv \
@@ -25,6 +26,8 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cpu/bpu/tage_table.sv \
 	$(REPO)/rtl/cpu/bpu/uftb.sv \
 	$(REPO)/rtl/cpu/bpu/bpu_top.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_fetch_stream.sv \
+	$(REPO)/rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv \
 	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
 	$(REPO)/rtl/cpu/csr/bpu_to_zihpm_remap.sv \
 	$(REPO)/rtl/cpu/cluster/e1_cluster_top.sv \

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 from eliza_robot.asimov_1.constants import (
     ASIMOV1_FIRMWARE_JOINT_ORDER,
@@ -10,6 +12,10 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_GENERATED_URDF,
 )
 from eliza_robot.asimov_1.urdf_assets import generate_asimov1_urdf
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def test_asimov_generated_urdf_is_real_kinematic_visual_asset() -> None:
@@ -41,3 +47,25 @@ def test_asimov_asset_manifest_tracks_generated_urdf() -> None:
     manifest = json.loads(ASIMOV1_GENERATED_MANIFEST.read_text(encoding="utf-8"))
     assert manifest["generated_urdf"] == str(ASIMOV1_GENERATED_URDF)
     assert manifest["generated_urdf_sha256"]
+
+
+def test_asimov_runtime_manifest_binds_cad_sources_to_hashes() -> None:
+    manifest = json.loads(ASIMOV1_GENERATED_MANIFEST.read_text(encoding="utf-8"))
+    cad = manifest["cad"]
+
+    assert cad["ok"] is True
+    for path_key, hash_key in (
+        ("main_step", "main_step_sha256"),
+        ("source_xml", "source_xml_sha256"),
+        ("fabrication_manifest", "fabrication_manifest_sha256"),
+    ):
+        path = Path(cad[path_key])
+        assert path.is_file()
+        assert cad[hash_key] == _sha256(path)
+
+    source_xml = Path(manifest["source_xml"])
+    generated_mjcf = Path(manifest["generated_mjcf"])
+    generated_urdf = Path(manifest["generated_urdf"])
+    assert manifest["source_xml_sha256"] == _sha256(source_xml)
+    assert manifest["generated_mjcf_sha256"] == _sha256(generated_mjcf)
+    assert manifest["generated_urdf_sha256"] == _sha256(generated_urdf)

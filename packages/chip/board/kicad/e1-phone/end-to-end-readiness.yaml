@@ -248,7 +248,7 @@ objective_requirements:
       - DRC, ERC, SI/PI, RF, fabrication, assembly, and routed enclosure clearance evidence are missing
       - supplier pinouts, footprints, mating connector data, and STEP models are not frozen
       - KiCad schematic remains scaffold text and has no ERC release report
-      - current PCB has placeholder footprints, no routed tracks, and no filled zones
+      - production concept PCB has placeholder footprints, no routed tracks, and no filled zones; local routed real-footprint development board is non-release
       - route feasibility and escape density are not proven with supplier footprints and a trial route
       - module host integration closure is blocked on supplier pinouts, real schematic capture, routed host interfaces, firmware,
         RF, and bring-up evidence
@@ -266,7 +266,7 @@ objective_requirements:
         carrier, and SAR evidence exist
       - fabricator stackup and impedance coupon geometry are not selected
       - production Gerber or IPC-2581, drill, position, BOM/AVL, assembly drawing, and STEP outputs are missing
-      - routed board STEP has not been imported into mechanical CAD for enclosure clearance rerun
+      - local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not been imported into mechanical CAD for enclosure clearance rerun
       - post-route SI/PI/RF/power/thermal and factory first-article evidence is missing
     required_release_outputs:
       - board/kicad/e1-phone/production/reports/pcb-implementation-audit.yaml
@@ -309,14 +309,14 @@ objective_requirements:
     blockers:
       - supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling are
         missing
-      - routed KiCad board STEP with component 3D models is missing
+      - local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing
       - routed-board clearance rerun has not passed
       - concept STEP envelopes are not supplier-approved geometry
       - full CAD boolean interference report using routed board and supplier models is missing
       - component height and courtyard data are not bound to production KiCad footprints
       - routed KiCad PCB and DRC report are missing
       - supplier STEP or B-rep models for height-critical parts are missing
-      - routed board STEP has not been exported or imported into enclosure CAD
+      - local routed real-footprint STEP exists for visual review only; supplier-approved routed board STEP has not passed enclosure CAD import or clearance
       - routed-board clearance, boolean interference, and physical fit results are missing
       - display, USB-C, side-key, camera, radio, battery, acoustic, and interconnect functional evidence is missing
     required_release_outputs:
@@ -425,6 +425,7 @@ selected_hardware_post_route_gate:
     - board/kicad/e1-phone/production/reports/si-pi
     - board/kicad/e1-phone/production/reports/rf
     - board/kicad/e1-phone/production/reports/power-thermal
+    - board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
     - board/kicad/e1-phone/production/step/routed-board-with-components.step
     - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
   all_selected_hardware_evidence_absent: true
@@ -454,6 +455,7 @@ selected_hardware_production_gate:
     - position_file
     - production_bom_avl
     - rf_reports
+    - supplier_component_3d_model_manifest
   all_selected_hardware_traceability_absent: true
   blocks_end_to_end_phone_ready: true
 alternate_display_final_readiness_gate:
@@ -508,6 +510,7 @@ required_release_outputs:
   - board/kicad/e1-phone/production/reports/drc.json
   - board/kicad/e1-phone/production/gerbers
   - board/kicad/e1-phone/production/bom
+  - board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   - board/kicad/e1-phone/production/step/routed-board-with-components.step
   - mechanical/e1-phone/review/routed-board-clearance.json
   - board/kicad/e1-phone/production/test/first-article-test-transcript.json

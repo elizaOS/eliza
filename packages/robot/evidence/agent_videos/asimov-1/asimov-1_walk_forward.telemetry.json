@@ -1,0 +1,37 @@
+{
+  "profile": "asimov-1",
+  "label": "walk forward",
+  "task_id": "walk_forward",
+  "policy_source": "sb3_smoke",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.378,
+  "torso_z": {
+    "min": 0.6276094971589496,
+    "max": 0.6321637362466933,
+    "final": 0.6321637362466933,
+    "mean": 0.6294995045612504
+  },
+  "upright_proj": {
+    "min": 0.9895458816812719,
+    "max": 0.999998911500484,
+    "final": 0.9895458816812719,
+    "mean": 0.9982295111040236
+  },
+  "reward": {
+    "min": 3.4400225836413805,
+    "max": 3.4882964080875483,
+    "final": 3.4400225836413805,
+    "mean": 3.475296700473212
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

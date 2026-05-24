@@ -28,9 +28,9 @@ HTTP 200.
 options:
   --serial=SERIAL          adb serial (default: AOSP_ADB_SERIAL or unset)
   --package=NAME           package whose pid is polled
-                           (default: ai.elizaos.app)
+                           (default: ai.milady.milady)
   --service=COMPONENT      expected private service component, recorded for
-                           evidence only (default: ai.elizaos.app/.ElizaAgentService)
+                           evidence only (default: ai.milady.milady/.ElizaAgentService)
   --host-port=N            host TCP port for adb forward (default: 31337)
   --device-port=N          device TCP port (default: 31337)
   --service-wait=SECONDS   max wait for pidof <package> (default: 60)
@@ -40,8 +40,8 @@ USAGE
 }
 
 serial=${AOSP_ADB_SERIAL:-}
-package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
-service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}
+package=${AOSP_AGENT_PACKAGE:-ai.milady.milady}
+service=${AOSP_AGENT_SERVICE:-ai.milady.milady/.ElizaAgentService}
 host_port=${AOSP_AGENT_HOST_PORT:-31337}
 device_port=${AOSP_AGENT_DEVICE_PORT:-31337}
 service_wait=${AOSP_AGENT_SERVICE_WAIT_SECONDS:-60}

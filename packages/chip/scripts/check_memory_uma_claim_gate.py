@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import yaml
@@ -33,6 +34,7 @@ GENERATED_SIMULATOR = ROOT / "build/chipyard/eliza_rocket/simulator/simulator"
 PERFORMANCE_TEMPLATE = (
     ROOT / "docs/evidence/memory/templates/bandwidth-latency-contended-access.template.json"
 )
+DRAM_CONTROLLER_REPORT = ROOT / "build/reports/dram_controller.json"
 
 REQUIRED_BLOCKED = {
     "reset_rom_boot_memory_handoff",
@@ -145,17 +147,27 @@ REQUIRED_ROADMAP_PHASES = {
 
 REQUIRED_BANDWIDTH_LATENCY_FIELDS = {
     "schema",
-    "target_id",
-    "capture_utc",
-    "process_effects_contract",
-    "process_corner_count",
-    "worst_process_corner",
-    "memory_type",
-    "capacity_gib",
-    "clock_state",
-    "thermal_state",
+    "evidence_class",
+    "target",
+    "target.target_id",
+    "target.target_kind",
+    "target.is_host",
+    "target.is_simulator",
+    "target.capture_utc",
+    "process_corners",
+    "process_corners.process_effects_contract",
+    "process_corners.process_effects_contract.path",
+    "process_corners.process_effects_contract.sha256",
+    "process_corners.process_corner_count",
+    "process_corners.worst_process_corner",
+    "process_corners.pdk_signoff_claim",
+    "memory_config",
+    "memory_config.memory_type",
+    "memory_config.capacity_gib",
+    "runtime_state",
     "benchmark_commands",
-    "raw_log_paths",
+    "raw_artifacts",
+    "contention_workload",
     "parsed_metrics",
     "pass_fail_against_phone_2028_target_profile",
 }
@@ -224,7 +236,7 @@ REQUIRED_DOC_TOKENS = {
         "cacheability",
         "non-coherent",
         "real integration",
-        "does not implement a DRAM controller",
+        "phone-class IOMMU/SMMU integration",
         "UMA coherency protocol",
         "IOMMU/SMMU translation",
         "memory QoS",
@@ -297,6 +309,21 @@ def valid_relative_path(value: object) -> bool:
         return False
     path = Path(value)
     return not path.is_absolute() and ".." not in path.parts
+
+
+def load_json_report(path: Path, errors: list[str]) -> dict | None:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        errors.append(f"missing report: {path.relative_to(ROOT)}")
+        return None
+    except json.JSONDecodeError as exc:
+        errors.append(f"{path.relative_to(ROOT)} is not valid JSON: {exc}")
+        return None
+    if not isinstance(data, dict):
+        errors.append(f"{path.relative_to(ROOT)} must be a JSON object")
+        return None
+    return data
 
 
 def duplicate_top_level_keys(path: Path) -> list[str]:
@@ -409,7 +436,7 @@ def check_gate(errors: list[str]) -> None:
 
     non_goals = "\n".join(data.get("non_goals") or [])
     for token in (
-        "Real DRAM controller",
+        "Phone-class DRAM controller integration",
         "Cache hierarchy",
         "UMA cache coherency",
         "IOMMU/SMMU translation",
@@ -519,8 +546,8 @@ def check_gate(errors: list[str]) -> None:
                     validation.get(key) is True, f"phone target validation missing {key}", errors
                 )
 
-    actual = data.get("current_actual_capability")
-    require(isinstance(actual, dict), "memory/UMA gate missing current_actual_capability", errors)
+    actual = data.get("linux_scaffold_current_capability")
+    require(isinstance(actual, dict), "memory/UMA gate missing linux_scaffold_current_capability", errors)
     if isinstance(actual, dict):
         for key in (
             "reset_rom",
@@ -533,7 +560,7 @@ def check_gate(errors: list[str]) -> None:
             require(
                 actual.get(key)
                 in {"none", "contract_identity_rom_and_separate_minimal_rv64_scaffold_only"},
-                f"current_actual_capability must explicitly block {key}",
+                f"linux_scaffold_current_capability must explicitly block {key}",
                 errors,
             )
         require(
@@ -552,14 +579,84 @@ def check_gate(errors: list[str]) -> None:
         ):
             require(
                 actual.get(key) == "none",
-                f"current_actual_capability must state {key}: none",
+                f"linux_scaffold_current_capability must state {key}: none",
                 errors,
             )
         require(
             actual.get("clint_plic_access_map") == "incomplete",
-            "current_actual_capability must state clint_plic_access_map: incomplete",
+            "linux_scaffold_current_capability must state clint_plic_access_map: incomplete",
             errors,
         )
+
+    local_rtl = data.get("separate_local_rtl_evidence")
+    require(isinstance(local_rtl, dict), "memory/UMA gate missing separate_local_rtl_evidence", errors)
+    if isinstance(local_rtl, dict):
+        dram = local_rtl.get("dram_controller_boundary")
+        require(isinstance(dram, dict), "separate_local_rtl_evidence missing dram_controller_boundary", errors)
+        if isinstance(dram, dict):
+            require(dram.get("gate") == "make dram-controller-check", "DRAM local RTL evidence gate drifted", errors)
+            require(
+                dram.get("report") == "build/reports/dram_controller.json",
+                "DRAM local RTL evidence report path drifted",
+                errors,
+            )
+            require(
+                "not LPDDR PHY/training" in str(dram.get("claim_boundary")),
+                "DRAM local RTL evidence must not claim LPDDR PHY/training",
+                errors,
+            )
+            report = load_json_report(DRAM_CONTROLLER_REPORT, errors)
+            if report is not None:
+                require(report.get("schema") == "eliza.gate_status.v1", "dram_controller.json schema drifted", errors)
+                require(report.get("gate") == "dram-controller-check", "dram_controller.json gate drifted", errors)
+                require(report.get("status") == "PASS", "dram_controller.json must be PASS", errors)
+                require(report.get("subsystem") == "memory", "dram_controller.json subsystem must be memory", errors)
+                require(report.get("phone_claim_allowed") is False, "dram_controller.json must not allow phone claims", errors)
+                require(report.get("release_claim_allowed") is False, "dram_controller.json must not allow release claims", errors)
+                require(
+                    "not phone" in str(report.get("claim_boundary", "")).lower()
+                    and "lpddr" in str(report.get("claim_boundary", "")).lower(),
+                    "dram_controller.json claim boundary must exclude phone/LPDDR evidence",
+                    errors,
+                )
+                evidence_paths = report.get("evidence_paths")
+                require(isinstance(evidence_paths, list), "dram_controller.json must list evidence_paths", errors)
+                if isinstance(evidence_paths, list):
+                    for rel_path in (
+                        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
+                        "verify/cocotb/memory/test_dram_memory.py",
+                    ):
+                        require(rel_path in evidence_paths, f"dram_controller.json missing evidence path {rel_path}", errors)
+                    for rel_path in evidence_paths:
+                        if isinstance(rel_path, str):
+                            require((ROOT / rel_path).exists(), f"dram_controller.json evidence path missing on disk: {rel_path}", errors)
+                detail = report.get("detail")
+                cocotb_result = detail.get("cocotb_result") if isinstance(detail, dict) else None
+                if isinstance(cocotb_result, str) and cocotb_result:
+                    result_path = ROOT / cocotb_result
+                    require(result_path.is_file(), f"dram controller cocotb result missing: {cocotb_result}", errors)
+                    if result_path.is_file():
+                        root = ET.parse(result_path).getroot()
+                        failures = int(root.attrib.get("failures", "0") or 0)
+                        errors_count = int(root.attrib.get("errors", "0") or 0)
+                        skipped = int(root.attrib.get("skipped", "0") or 0)
+                        tests = {tc.attrib.get("name") for tc in root.iter("testcase")}
+                        required_tests = report.get("required_tests")
+                        if isinstance(required_tests, list):
+                            missing = sorted(str(test) for test in required_tests if test not in tests)
+                            require(not missing, "dram controller cocotb result missing tests: " + ", ".join(missing), errors)
+                        require(failures == 0 and errors_count == 0 and skipped == 0, "dram controller cocotb result must have zero failures/errors/skips", errors)
+                else:
+                    errors.append("dram_controller.json detail.cocotb_result missing")
+        iommu = local_rtl.get("iommu_boundary")
+        require(isinstance(iommu, dict), "separate_local_rtl_evidence missing iommu_boundary", errors)
+        if isinstance(iommu, dict):
+            require(iommu.get("gate") == "make iommu-evidence-check", "IOMMU local RTL evidence gate drifted", errors)
+            require(
+                "not non-identity G-stage" in str(iommu.get("claim_boundary")),
+                "IOMMU local RTL evidence must not claim non-identity G-stage/PDT/Linux",
+                errors,
+            )
         require(
             actual.get("measured_bandwidth_gbps") is None
             and actual.get("measured_latency_ns") is None,
@@ -1046,6 +1143,14 @@ def check_generated_ap_memory_audit(data: dict, errors: list[str]) -> None:
         "No real DRAM/LPDDR/UMA evidence",
     ):
         require(token in blockers, f"generated AP memory blockers missing token: {token}", errors)
+
+    for path, label in (
+        (GENERATED_MEMMAP, "generated memmap"),
+        (GENERATED_DTS, "generated DTS"),
+        (GENERATED_VERILOG, "generated Verilog"),
+        (GENERATED_FIR, "generated FIRRTL"),
+    ):
+        require(path.is_file(), f"{label} source missing", errors)
 
     if GENERATED_MEMMAP.is_file():
         memmap = json.loads(GENERATED_MEMMAP.read_text())

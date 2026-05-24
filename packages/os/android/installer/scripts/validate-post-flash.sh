@@ -5,6 +5,9 @@ DRY_RUN=1
 DEVICE_SERIAL=""
 MANIFEST=""
 BOOT_TIMEOUT=""
+LAUNCHER_PACKAGE="ai.elizaos.app"
+LAUNCHER_ACTIVITY="ai.elizaos.app/.MainActivity"
+AGENT_HEALTH_URL="http://127.0.0.1:31337/api/health"
 declare -a EXPECTED_PROPS=()
 declare -a PLAN=()
 
@@ -22,6 +25,9 @@ Options:
                               an Android release manifest.
   --expect KEY=VALUE          Add or override an expected getprop value.
   --boot-timeout SECONDS      wait-for-device timeout used in the printed plan.
+  --launcher-package PACKAGE  Expected Eliza launcher package.
+  --launcher-activity CMP     Expected foreground HOME activity component.
+  --agent-health-url URL      Local agent health URL to probe on the device.
   --execute                   Run the read-only ADB validation commands.
   --dry-run                   Print the validation plan only. Default.
 EOF
@@ -89,6 +95,21 @@ parse_args() {
         BOOT_TIMEOUT="$2"
         shift 2
         ;;
+      --launcher-package)
+        [[ $# -ge 2 ]] || die "--launcher-package requires a package name"
+        LAUNCHER_PACKAGE="$2"
+        shift 2
+        ;;
+      --launcher-activity)
+        [[ $# -ge 2 ]] || die "--launcher-activity requires a component"
+        LAUNCHER_ACTIVITY="$2"
+        shift 2
+        ;;
+      --agent-health-url)
+        [[ $# -ge 2 ]] || die "--agent-health-url requires a URL"
+        AGENT_HEALTH_URL="$2"
+        shift 2
+        ;;
       --execute)
         DRY_RUN=0
         shift
@@ -126,6 +147,16 @@ for (const [key, value] of Object.entries(manifest.validation?.properties ?? {})
 if (manifest.validation?.expectedFingerprintPrefix) {
   console.log(`FINGERPRINT_PREFIX=${manifest.validation.expectedFingerprintPrefix}`);
 }
+const checks = manifest.validation?.launcherAgentChecks ?? {};
+if (checks.launcherPackage) {
+  console.log(`LAUNCHER_PACKAGE=${checks.launcherPackage}`);
+}
+if (checks.launcherActivity) {
+  console.log(`LAUNCHER_ACTIVITY=${checks.launcherActivity}`);
+}
+if (checks.agentHealthUrl) {
+  console.log(`AGENT_HEALTH_URL=${checks.agentHealthUrl}`);
+}
 NODE
 )"
 
@@ -140,6 +171,15 @@ NODE
         ;;
       FINGERPRINT_PREFIX=*)
         EXPECTED_PROPS+=("ro.build.fingerprint^=${line#FINGERPRINT_PREFIX=}")
+        ;;
+      LAUNCHER_PACKAGE=*)
+        LAUNCHER_PACKAGE="${line#LAUNCHER_PACKAGE=}"
+        ;;
+      LAUNCHER_ACTIVITY=*)
+        LAUNCHER_ACTIVITY="${line#LAUNCHER_ACTIVITY=}"
+        ;;
+      AGENT_HEALTH_URL=*)
+        AGENT_HEALTH_URL="${line#AGENT_HEALTH_URL=}"
         ;;
     esac
   done <<<"$manifest_output"
@@ -159,6 +199,15 @@ build_plan() {
   add_plan "${adb_cmd[@]}" shell getprop ro.build.fingerprint
   add_plan "${adb_cmd[@]}" shell getprop ro.boot.slot_suffix
   add_plan "${adb_cmd[@]}" shell getprop sys.boot_completed
+  add_plan "${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE"
+  add_plan "${adb_cmd[@]}" shell cmd role holders android.app.role.HOME
+  add_plan "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+  add_plan "${adb_cmd[@]}" shell dumpsys package "$LAUNCHER_PACKAGE"
+  add_plan "${adb_cmd[@]}" shell dumpsys activity activities
+  add_plan "${adb_cmd[@]}" shell pidof "$LAUNCHER_PACKAGE"
+  add_plan "${adb_cmd[@]}" shell curl -fsS "$AGENT_HEALTH_URL"
+  add_plan "${adb_cmd[@]}" logcat -d
+  add_plan "${adb_cmd[@]}" logcat -d
 }
 
 print_plan() {
@@ -208,6 +257,30 @@ validate_expectations() {
   done
 }
 
+validate_launcher_agent_liveness() {
+  [[ "$DRY_RUN" -eq 0 ]] || return 0
+  local adb_cmd
+  read -r -a adb_cmd <<<"$(adb_base)"
+
+  "${adb_cmd[@]}" shell pm path "$LAUNCHER_PACKAGE" | grep -F "package:" >/dev/null \
+    || die "launcher package is not installed: $LAUNCHER_PACKAGE"
+  "${adb_cmd[@]}" shell cmd role holders android.app.role.HOME | grep -F "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "launcher package is not a HOME role holder: $LAUNCHER_PACKAGE"
+  "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME \
+    | grep -F "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "HOME intent does not resolve to launcher package: $LAUNCHER_PACKAGE"
+  "${adb_cmd[@]}" shell dumpsys activity activities | grep -F "$LAUNCHER_ACTIVITY" >/dev/null \
+    || die "expected launcher foreground activity was not found: $LAUNCHER_ACTIVITY"
+  "${adb_cmd[@]}" shell pidof "$LAUNCHER_PACKAGE" >/dev/null \
+    || die "launcher/agent process is not running: $LAUNCHER_PACKAGE"
+  "${adb_cmd[@]}" shell curl -fsS "$AGENT_HEALTH_URL" | grep -Ei '"status"[[:space:]]*:[[:space:]]*"ready"|ok|healthy' >/dev/null \
+    || die "agent health probe did not return ready/ok/healthy: $AGENT_HEALTH_URL"
+  ! "${adb_cmd[@]}" logcat -d | grep -Ei 'FATAL EXCEPTION|AndroidRuntime|crash' >/dev/null \
+    || die "fatal Android runtime/crash log entries were found"
+  ! "${adb_cmd[@]}" logcat -d | grep -i 'avc: denied' >/dev/null \
+    || die "SELinux avc: denied log entries were found"
+}
+
 execute_plan() {
   [[ "$DRY_RUN" -eq 0 ]] || return 0
   command -v adb >/dev/null 2>&1 || die "required tool 'adb' was not found in PATH"
@@ -217,6 +290,7 @@ execute_plan() {
     eval "run_cmd $command"
   done
   validate_expectations
+  validate_launcher_agent_liveness
 }
 
 parse_args "$@"

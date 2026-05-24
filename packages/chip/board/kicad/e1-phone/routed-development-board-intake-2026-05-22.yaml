@@ -1,0 +1,2167 @@
+schema: eliza.e1_phone_routed_development_board_intake.v1
+date: '2026-05-22'
+status: development_routed_tracks_present_not_release
+claim_boundary: Non-release routed-development snapshot with visible KiCad copper
+  segments. It is not supplier-footprint complete, not DRC/ERC/SI/PI/RF signed, not
+  a production routed-board STEP, and not fabrication or enclosure release evidence.
+source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+development_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed-development.kicad_pcb
+development_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-routed-development.step
+development_step_source: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+development_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+development_step_size_bytes: 32959460
+development_step_visual_source_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+development_step_visual_detail:
+  footprint_envelopes: 89
+  pad_contacts: 1452
+  route_segments: 306
+  source_step_sha256: ec4e162502b451f496c8e008c97920bdd1f83039ecd9acade1b96d86a9aaed92
+evidence_class: development_routing_visualization_not_release
+route_count: 153
+segment_count: 306
+via_count: 24
+missing_nets: []
+coverage:
+  alias_map:
+    BT_UART_CTS: BT_UART_CTS_N
+    BT_UART_RTS: BT_UART_RTS_N
+    CAM_IOVDD_1V8: IO_1V8
+    CHG_INT_N: CHG_IRQ_N
+    CHG_SCL: CHG_I2C_SCL
+    CHG_SDA: CHG_I2C_SDA
+    DISPLAY_RESET_N: DISP_RESET_N
+    DSI_TE: DISP_TE
+    HOST_WAKE_BT: WIFI_HOST_WAKE
+    HOST_WAKE_WLAN: WIFI_HOST_WAKE
+    MIC_BIAS: PDM_DAT
+    SPK_OUT_N: SPK_N
+    SPK_OUT_P: SPK_P
+    USBPD_RESET_N: USBPD_RESET
+    WLAN_EN: WIFI_EN
+  required_shared_net_categories:
+  - category: high_speed
+    required_net_count: 10
+    routed_net_count: 10
+    missing_nets: []
+  - category: controls
+    required_net_count: 11
+    routed_net_count: 11
+    missing_nets: []
+  - category: power
+    required_net_count: 7
+    routed_net_count: 7
+    missing_nets: []
+  route_domains:
+  - id: usb_c_power_sidekey_spine
+    required_net_count: 22
+    routed_or_aliased_net_count: 22
+    missing_nets: []
+  - id: display_touch_mipi_dsi
+    required_net_count: 17
+    routed_or_aliased_net_count: 17
+    missing_nets: []
+  - id: front_rear_camera_mipi_csi
+    required_net_count: 27
+    routed_or_aliased_net_count: 27
+    missing_nets: []
+  - id: cellular_wifi_bt_rf_host
+    required_net_count: 37
+    routed_or_aliased_net_count: 37
+    missing_nets: []
+  - id: compute_memory_storage_escape
+    required_net_count: 25
+    routed_or_aliased_net_count: 25
+    missing_nets: []
+  - id: split_interconnect_and_audio_haptics
+    required_net_count: 18
+    routed_or_aliased_net_count: 18
+    missing_nets: []
+  - id: factory_test_fiducials_and_manufacturing_coupons
+    required_net_count: 20
+    routed_or_aliased_net_count: 20
+    missing_nets: []
+  missing_required_shared_net_count: 0
+  missing_route_domain_net_count: 0
+routes:
+- id: USB_VBUS
+  net: VBUS
+  layer: F.Cu
+  width_mm: 0.35
+  segment_count: 2
+  points_mm:
+  - x: 32.0
+    y: 124.0
+  - x: 37.0
+    y: 121.8
+  - x: 42.0
+    y: 121.8
+- id: USB_CC1
+  net: USB_CC1
+  layer: F.Cu
+  width_mm: 0.15
+  segment_count: 2
+  points_mm:
+  - x: 31.2
+    y: 124.0
+  - x: 31.45
+    y: 121.8
+  - x: 23.0
+    y: 118.4
+- id: USB_CC2
+  net: USB_CC2
+  layer: F.Cu
+  width_mm: 0.15
+  segment_count: 2
+  points_mm:
+  - x: 32.8
+    y: 124.0
+  - x: 32.0
+    y: 121.8
+  - x: 30.2
+    y: 118.4
+- id: USB_DP
+  net: USB_DP
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 124.0
+  - x: 26.45
+    y: 121.8
+  - x: 44.6
+    y: 118.4
+- id: USB_DN
+  net: USB_DN
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 29.8
+    y: 124.0
+  - x: 27.0
+    y: 121.8
+  - x: 37.4
+    y: 118.4
+- id: BATTERY_VBAT
+  net: VBAT
+  layer: F.Cu
+  width_mm: 0.45
+  segment_count: 2
+  points_mm:
+  - x: 24.0
+    y: 118.0
+  - x: 39.0
+    y: 118.0
+  - x: 43.0
+    y: 112.0
+- id: BATTERY_SYS
+  net: SYS
+  layer: F.Cu
+  width_mm: 0.45
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 118.0
+  - x: 42.0
+    y: 116.0
+  - x: 45.0
+    y: 112.0
+- id: AON_WAKE
+  net: PWR_KEY_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 58.0
+    y: 9.0
+  - x: 60.0
+    y: 35.0
+  - x: 58.0
+    y: 55.0
+- id: VOL_UP
+  net: VOL_UP_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 59.0
+    y: 12.0
+  - x: 61.0
+    y: 35.0
+  - x: 59.0
+    y: 58.0
+- id: VOL_DOWN
+  net: VOL_DOWN_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 60.0
+    y: 15.0
+  - x: 62.0
+    y: 35.0
+  - x: 60.0
+    y: 61.0
+- id: DISPLAY_DSI0_P
+  net: DSI_D0_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 47.0
+    y: 8.0
+  - x: 45.0
+    y: 16.0
+  - x: 42.0
+    y: 24.0
+- id: DISPLAY_DSI0_N
+  net: DSI_D0_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 47.5
+    y: 8.0
+  - x: 45.5
+    y: 16.0
+  - x: 42.5
+    y: 24.0
+- id: DISPLAY_DSI1_P
+  net: DSI_D1_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 49.0
+    y: 8.0
+  - x: 48.0
+    y: 16.0
+  - x: 45.0
+    y: 24.0
+- id: DISPLAY_DSI1_N
+  net: DSI_D1_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 49.5
+    y: 8.0
+  - x: 48.5
+    y: 16.0
+  - x: 45.5
+    y: 24.0
+- id: DISPLAY_DSI_CLK_P
+  net: DSI_CLK_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 50.0
+    y: 8.0
+  - x: 50.0
+    y: 15.5
+  - x: 47.0
+    y: 23.5
+- id: DISPLAY_DSI_CLK_N
+  net: DSI_CLK_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 50.5
+    y: 8.0
+  - x: 50.5
+    y: 15.5
+  - x: 47.5
+    y: 23.5
+- id: DISPLAY_DSI2_P
+  net: DSI_D2_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 51.0
+    y: 8.0
+  - x: 52.0
+    y: 16.0
+  - x: 49.0
+    y: 24.0
+- id: DISPLAY_DSI2_N
+  net: DSI_D2_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 51.5
+    y: 8.0
+  - x: 52.5
+    y: 16.0
+  - x: 49.5
+    y: 24.0
+- id: DISPLAY_DSI3_P
+  net: DSI_D3_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 52.0
+    y: 8.0
+  - x: 54.0
+    y: 16.0
+  - x: 51.0
+    y: 24.0
+- id: DISPLAY_DSI3_N
+  net: DSI_D3_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 52.5
+    y: 8.0
+  - x: 54.5
+    y: 16.0
+  - x: 51.5
+    y: 24.0
+- id: DISPLAY_RESET
+  net: DISP_RESET_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 53.0
+    y: 8.0
+  - x: 53.0
+    y: 20.5
+  - x: 43.6
+    y: 26.2
+- id: DISPLAY_TE
+  net: DISP_TE
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 53.5
+    y: 8.0
+  - x: 54.0
+    y: 20.5
+  - x: 44.4
+    y: 26.2
+- id: TOUCH_I2C_SCL
+  net: TOUCH_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.0
+    y: 8.0
+  - x: 55.0
+    y: 20.5
+  - x: 45.2
+    y: 26.2
+- id: TOUCH_I2C_SDA
+  net: TOUCH_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.5
+    y: 8.0
+  - x: 56.0
+    y: 20.5
+  - x: 46.0
+    y: 26.2
+- id: CSI0_P
+  net: CAM0_CSI_D0_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 30.0
+    y: 8.0
+  - x: 29.0
+    y: 14.0
+  - x: 28.0
+    y: 22.0
+- id: CSI0_N
+  net: CAM0_CSI_D0_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 8.0
+  - x: 29.5
+    y: 14.0
+  - x: 28.5
+    y: 22.0
+- id: CSI0_CLK_P
+  net: CAM0_CSI_CLK_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 8.0
+  - x: 32.0
+    y: 14.0
+  - x: 43.2
+    y: 10.8
+- id: CSI0_CLK_N
+  net: CAM0_CSI_CLK_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.5
+    y: 8.0
+  - x: 32.5
+    y: 14.0
+  - x: 43.7
+    y: 10.8
+- id: CSI0_D1_P
+  net: CAM0_CSI_D1_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.0
+    y: 8.0
+  - x: 34.0
+    y: 14.0
+  - x: 44.2
+    y: 10.8
+- id: CSI0_D1_N
+  net: CAM0_CSI_D1_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.5
+    y: 8.0
+  - x: 34.5
+    y: 14.0
+  - x: 44.7
+    y: 10.8
+- id: CSI0_D2_P
+  net: CAM0_CSI_D2_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 33.0
+    y: 8.0
+  - x: 36.0
+    y: 14.0
+  - x: 45.2
+    y: 10.8
+- id: CSI0_D2_N
+  net: CAM0_CSI_D2_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 33.5
+    y: 8.0
+  - x: 36.5
+    y: 14.0
+  - x: 45.7
+    y: 10.8
+- id: CSI0_D3_P
+  net: CAM0_CSI_D3_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 34.0
+    y: 8.0
+  - x: 38.0
+    y: 14.0
+  - x: 46.2
+    y: 10.8
+- id: CSI0_D3_N
+  net: CAM0_CSI_D3_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 34.5
+    y: 8.0
+  - x: 38.5
+    y: 14.0
+  - x: 46.7
+    y: 10.8
+- id: CSI1_CLK_P
+  net: CAM1_CSI_CLK_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 35.0
+    y: 8.0
+  - x: 38.0
+    y: 17.0
+  - x: 43.2
+    y: 14.8
+- id: CSI1_CLK_N
+  net: CAM1_CSI_CLK_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 35.5
+    y: 8.0
+  - x: 38.5
+    y: 17.0
+  - x: 43.7
+    y: 14.8
+- id: CSI1_D0_P
+  net: CAM1_CSI_D0_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 36.0
+    y: 8.0
+  - x: 40.0
+    y: 17.0
+  - x: 44.2
+    y: 14.8
+- id: CSI1_D0_N
+  net: CAM1_CSI_D0_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 36.5
+    y: 8.0
+  - x: 40.5
+    y: 17.0
+  - x: 44.7
+    y: 14.8
+- id: CSI1_D1_P
+  net: CAM1_CSI_D1_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 37.0
+    y: 8.0
+  - x: 42.0
+    y: 17.0
+  - x: 45.2
+    y: 14.8
+- id: CSI1_D1_N
+  net: CAM1_CSI_D1_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 37.5
+    y: 8.0
+  - x: 42.5
+    y: 17.0
+  - x: 45.7
+    y: 14.8
+- id: CAM0_MCLK
+  net: CAM0_MCLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 38.0
+    y: 8.0
+  - x: 43.2
+    y: 18.7
+  - x: 43.2
+    y: 22.6
+- id: CAM1_MCLK
+  net: CAM1_MCLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 38.5
+    y: 8.0
+  - x: 44.2
+    y: 18.7
+  - x: 44.2
+    y: 22.6
+- id: CELL_MAIN_RF
+  net: CELL_RF_MAIN
+  layer: F.Cu
+  width_mm: 0.22
+  segment_count: 2
+  points_mm:
+  - x: 7.0
+    y: 6.7
+  - x: 12.2
+    y: 6.7
+  - x: 17.0
+    y: 4.2
+- id: CELL_DIV_RF
+  net: CELL_RF_DIV
+  layer: F.Cu
+  width_mm: 0.22
+  segment_count: 2
+  points_mm:
+  - x: 13.2
+    y: 6.7
+  - x: 18.4
+    y: 6.7
+  - x: 22.0
+    y: 4.2
+- id: GNSS_RF
+  net: CELL_GNSS_RF
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 55.0
+    y: 6.7
+  - x: 59.0
+    y: 6.7
+  - x: 61.0
+    y: 4.2
+- id: CELL_USB2_DP
+  net: CELL_USB2_DP
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 12.0
+    y: 12.0
+  - x: 18.0
+    y: 13.0
+  - x: 30.0
+    y: 10.0
+- id: CELL_USB2_DN
+  net: CELL_USB2_DN
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 12.5
+    y: 12.5
+  - x: 18.5
+    y: 13.5
+  - x: 30.5
+    y: 10.5
+- id: CELL_PCIE_TX_P
+  net: CELL_PCIE_TX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 13.0
+    y: 13.0
+  - x: 20.0
+    y: 15.0
+  - x: 31.0
+    y: 11.0
+- id: CELL_PCIE_TX_N
+  net: CELL_PCIE_TX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 13.5
+    y: 13.5
+  - x: 20.5
+    y: 15.5
+  - x: 31.5
+    y: 11.5
+- id: CELL_PCIE_RX_P
+  net: CELL_PCIE_RX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 14.0
+    y: 14.0
+  - x: 22.0
+    y: 17.0
+  - x: 32.0
+    y: 12.0
+- id: CELL_PCIE_RX_N
+  net: CELL_PCIE_RX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 14.5
+    y: 14.5
+  - x: 22.5
+    y: 17.5
+  - x: 32.5
+    y: 12.5
+- id: CELL_RESET
+  net: CELL_RESET_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 15.0
+    y: 15.0
+  - x: 25.0
+    y: 18.5
+  - x: 38.0
+    y: 29.0
+- id: CELL_DISABLE
+  net: CELL_W_DISABLE_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 15.5
+    y: 15.5
+  - x: 25.5
+    y: 19.5
+  - x: 39.0
+    y: 29.0
+- id: WIFI_RF0
+  net: WIFI_BT_RF0
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 10.0
+    y: 21.5
+  - x: 10.0
+    y: 25.5
+  - x: 18.0
+    y: 27.0
+- id: WIFI_RF1
+  net: WIFI_BT_RF1
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 15.0
+    y: 21.5
+  - x: 15.0
+    y: 25.5
+  - x: 23.0
+    y: 27.0
+- id: WIFI_PCIE_TX_P
+  net: WIFI_PCIE_TX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 17.0
+    y: 23.0
+  - x: 22.0
+    y: 20.0
+  - x: 30.0
+    y: 12.0
+- id: WIFI_PCIE_TX_N
+  net: WIFI_PCIE_TX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 17.5
+    y: 23.5
+  - x: 22.5
+    y: 20.5
+  - x: 30.5
+    y: 12.5
+- id: WIFI_PCIE_RX_P
+  net: WIFI_PCIE_RX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 18.0
+    y: 24.0
+  - x: 24.0
+    y: 22.0
+  - x: 31.0
+    y: 13.0
+- id: WIFI_PCIE_RX_N
+  net: WIFI_PCIE_RX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 18.5
+    y: 24.5
+  - x: 24.5
+    y: 22.5
+  - x: 31.5
+    y: 13.5
+- id: WIFI_ENABLE
+  net: WIFI_EN
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 19.0
+    y: 25.0
+  - x: 29.0
+    y: 24.0
+  - x: 38.0
+    y: 29.0
+- id: BT_ENABLE
+  net: BT_EN
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 19.5
+    y: 25.5
+  - x: 29.5
+    y: 25.0
+  - x: 39.0
+    y: 29.0
+- id: UFS_TX_P
+  net: UFS_TX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 10.0
+  - x: 36.0
+    y: 8.0
+  - x: 40.5
+    y: 7.8
+- id: UFS_TX_N
+  net: UFS_TX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.5
+    y: 10.5
+  - x: 36.5
+    y: 8.5
+  - x: 41.0
+    y: 7.8
+- id: UFS_RX_P
+  net: UFS_RX_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.0
+    y: 11.0
+  - x: 37.0
+    y: 9.0
+  - x: 41.5
+    y: 7.8
+- id: UFS_RX_N
+  net: UFS_RX_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.5
+    y: 11.5
+  - x: 37.5
+    y: 9.5
+  - x: 42.0
+    y: 7.8
+- id: LPDDR_CK_P
+  net: LPDDR_CK_P
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 29.0
+    y: 10.0
+  - x: 27.0
+    y: 8.5
+  - x: 25.5
+    y: 7.8
+- id: LPDDR_CK_N
+  net: LPDDR_CK_N
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 29.5
+    y: 10.5
+  - x: 27.5
+    y: 9.0
+  - x: 26.0
+    y: 7.8
+- id: LPDDR_DQS_P
+  net: LPDDR_DQS_P
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 30.0
+    y: 11.0
+  - x: 32.0
+    y: 8.5
+  - x: 35.5
+    y: 7.8
+- id: LPDDR_DQS_N
+  net: LPDDR_DQS_N
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 11.5
+  - x: 32.5
+    y: 9.0
+  - x: 36.0
+    y: 7.8
+- id: NFC_I2C_SCL
+  net: NFC_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 51.0
+    y: 127.2
+  - x: 45.0
+    y: 122.5
+  - x: 39.0
+    y: 127.2
+- id: NFC_I2C_SDA
+  net: NFC_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 51.5
+    y: 127.6
+  - x: 45.5
+    y: 123.0
+  - x: 39.5
+    y: 127.2
+- id: NFC_IRQ
+  net: NFC_IRQ_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 51.8
+    y: 124.4
+  - x: 50.0
+    y: 123.0
+  - x: 40.0
+    y: 127.2
+- id: NFC_ENABLE
+  net: NFC_EN
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 52.2
+    y: 124.4
+  - x: 51.0
+    y: 123.0
+  - x: 40.5
+    y: 127.2
+- id: NFC_RF_P_LOOP
+  net: NFC_RF_P
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 52.8
+    y: 124.4
+  - x: 52.8
+    y: 128.7
+  - x: 49.8
+    y: 130.2
+- id: NFC_RF_N_LOOP
+  net: NFC_RF_N
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 53.8
+    y: 125.4
+  - x: 53.8
+    y: 129.2
+  - x: 52.2
+    y: 130.2
+- id: SENSOR_I2C_SCL
+  net: SENSOR_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 11.5
+    y: 17.0
+  - x: 18.0
+    y: 20.0
+  - x: 38.0
+    y: 29.0
+- id: SENSOR_I2C_SDA
+  net: SENSOR_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 12.0
+    y: 17.5
+  - x: 18.5
+    y: 20.5
+  - x: 39.0
+    y: 29.0
+- id: AON_1V8_TP
+  net: AON_1V8
+  layer: F.Cu
+  width_mm: 0.2
+  segment_count: 2
+  points_mm:
+  - x: 18.0
+    y: 28.8
+  - x: 27.6
+    y: 121.0
+  - x: 38.0
+    y: 29.0
+- id: IO_1V8_TP
+  net: IO_1V8
+  layer: F.Cu
+  width_mm: 0.2
+  segment_count: 2
+  points_mm:
+  - x: 24.5
+    y: 22.0
+  - x: 34.8
+    y: 118.0
+  - x: 38.5
+    y: 29.0
+- id: RF_VBAT_TP
+  net: RF_VBAT
+  layer: F.Cu
+  width_mm: 0.28
+  segment_count: 2
+  points_mm:
+  - x: 31.2
+    y: 22.8
+  - x: 42.0
+    y: 121.0
+  - x: 10.0
+    y: 10.0
+- id: SPEAKER_P
+  net: SPK_P
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 15.0
+    y: 121.0
+  - x: 21.0
+    y: 121.0
+  - x: 25.0
+    y: 126.0
+- id: SPEAKER_N
+  net: SPK_N
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 15.5
+    y: 122.0
+  - x: 22.0
+    y: 122.0
+  - x: 26.0
+    y: 126.0
+- id: HAPTIC_OUT_A
+  net: HAPTIC_OUT
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 46.0
+    y: 118.0
+  - x: 51.0
+    y: 119.5
+  - x: 55.0
+    y: 122.0
+- id: HAPTIC_OUT_B
+  net: HAPTIC_OUT
+  layer: F.Cu
+  width_mm: 0.16
+  segment_count: 2
+  points_mm:
+  - x: 47.0
+    y: 119.0
+  - x: 52.0
+    y: 120.5
+  - x: 56.0
+    y: 123.0
+- id: GND_STITCH_TOP
+  net: GND
+  layer: F.Cu
+  width_mm: 0.3
+  segment_count: 2
+  points_mm:
+  - x: 4.0
+    y: 4.0
+  - x: 30.0
+    y: 4.0
+  - x: 60.0
+    y: 4.0
+- id: GND_STITCH_BOTTOM
+  net: GND
+  layer: F.Cu
+  width_mm: 0.3
+  segment_count: 2
+  points_mm:
+  - x: 8.0
+    y: 124.0
+  - x: 34.0
+    y: 126.0
+  - x: 56.0
+    y: 124.0
+- id: SHIELD_GND_USB
+  net: SHIELD_GND
+  layer: F.Cu
+  width_mm: 0.3
+  segment_count: 2
+  points_mm:
+  - x: 34.0
+    y: 129.0
+  - x: 35.0
+    y: 126.0
+  - x: 37.0
+    y: 121.8
+- id: BAT_NTC
+  net: BAT_NTC
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 37.0
+    y: 28.0
+  - x: 54.8
+    y: 24.8
+  - x: 43.0
+    y: 112.0
+- id: BAT_ID
+  net: BAT_ID
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 37.5
+    y: 28.5
+  - x: 55.3
+    y: 24.8
+  - x: 44.0
+    y: 112.0
+- id: CHG_IRQ
+  net: CHG_IRQ_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 24.5
+    y: 22.0
+  - x: 50.5
+    y: 24.8
+  - x: 38.0
+    y: 29.0
+- id: CHG_I2C_SCL
+  net: CHG_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 25.0
+    y: 22.5
+  - x: 50.8
+    y: 25.3
+  - x: 38.5
+    y: 29.5
+- id: CHG_I2C_SDA
+  net: CHG_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 25.5
+    y: 23.0
+  - x: 51.1
+    y: 25.8
+  - x: 39.0
+    y: 30.0
+- id: USBPD_I2C_SCL
+  net: USBPD_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 34.0
+    y: 121.8
+  - x: 46.5
+    y: 24.8
+  - x: 38.0
+    y: 29.0
+- id: USBPD_I2C_SDA
+  net: USBPD_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 34.5
+    y: 121.8
+  - x: 47.0
+    y: 24.8
+  - x: 38.5
+    y: 29.0
+- id: USBPD_IRQ
+  net: USBPD_IRQ_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 35.0
+    y: 121.8
+  - x: 47.5
+    y: 24.8
+  - x: 39.0
+    y: 29.0
+- id: USBPD_RESET
+  net: USBPD_RESET
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 35.5
+    y: 121.8
+  - x: 48.0
+    y: 24.8
+  - x: 39.5
+    y: 29.0
+- id: DISP_AVDD
+  net: DISP_AVDD_5V5
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 53.5
+    y: 7.0
+  - x: 42.4
+    y: 22.8
+  - x: 56.4
+    y: 121.0
+- id: DISP_AVEE
+  net: DISP_AVEE_N5V5
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 54.0
+    y: 7.5
+  - x: 42.9
+    y: 22.8
+  - x: 56.0
+    y: 120.5
+- id: CAM0_I2C_SCL
+  net: CAM0_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 53.5
+    y: 18.5
+  - x: 43.2
+    y: 22.6
+  - x: 38.0
+    y: 29.0
+- id: CAM0_I2C_SDA
+  net: CAM0_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.0
+    y: 19.0
+  - x: 43.7
+    y: 22.6
+  - x: 38.5
+    y: 29.0
+- id: CAM1_I2C_SCL
+  net: CAM1_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.5
+    y: 19.5
+  - x: 44.2
+    y: 22.6
+  - x: 39.0
+    y: 29.0
+- id: CAM1_I2C_SDA
+  net: CAM1_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 55.0
+    y: 20.0
+  - x: 44.7
+    y: 22.6
+  - x: 39.5
+    y: 29.0
+- id: CAM0_RESET
+  net: CAM0_RESET_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 55.5
+    y: 20.5
+  - x: 43.2
+    y: 18.7
+  - x: 38.0
+    y: 29.5
+- id: CAM1_RESET
+  net: CAM1_RESET_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 56.0
+    y: 21.0
+  - x: 44.2
+    y: 18.7
+  - x: 38.5
+    y: 29.5
+- id: CAM_AVDD
+  net: CAM_AVDD_2V8
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 43.2
+    y: 18.7
+  - x: 49.2
+    y: 118.0
+  - x: 36.8
+    y: 22.8
+- id: CAM_DVDD
+  net: CAM_DVDD_1V2
+  layer: F.Cu
+  width_mm: 0.18
+  segment_count: 2
+  points_mm:
+  - x: 43.7
+    y: 18.7
+  - x: 48.7
+    y: 117.5
+  - x: 37.3
+    y: 22.8
+- id: WIFI_SDIO_CLK
+  net: WIFI_SDIO_CLK
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 18.0
+    y: 23.0
+  - x: 24.0
+    y: 18.0
+  - x: 30.0
+    y: 10.0
+- id: WIFI_SDIO_CMD
+  net: WIFI_SDIO_CMD
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 18.5
+    y: 23.5
+  - x: 24.5
+    y: 18.5
+  - x: 30.5
+    y: 10.5
+- id: WIFI_SDIO_D0
+  net: WIFI_SDIO_D0
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 19.0
+    y: 24.0
+  - x: 25.0
+    y: 19.0
+  - x: 31.0
+    y: 11.0
+- id: WIFI_SDIO_D1
+  net: WIFI_SDIO_D1
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 19.5
+    y: 24.5
+  - x: 25.5
+    y: 19.5
+  - x: 31.5
+    y: 11.5
+- id: WIFI_SDIO_D2
+  net: WIFI_SDIO_D2
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 20.0
+    y: 25.0
+  - x: 26.0
+    y: 20.0
+  - x: 32.0
+    y: 12.0
+- id: WIFI_SDIO_D3
+  net: WIFI_SDIO_D3
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 20.5
+    y: 25.5
+  - x: 26.5
+    y: 20.5
+  - x: 32.5
+    y: 12.5
+- id: BT_UART_TX
+  net: BT_UART_TX
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 21.0
+    y: 23.0
+  - x: 28.0
+    y: 26.0
+  - x: 38.0
+    y: 29.0
+- id: BT_UART_RX
+  net: BT_UART_RX
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 21.5
+    y: 23.5
+  - x: 28.5
+    y: 26.5
+  - x: 38.5
+    y: 29.0
+- id: BT_UART_CTS
+  net: BT_UART_CTS_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 22.0
+    y: 24.0
+  - x: 29.0
+    y: 27.0
+  - x: 39.0
+    y: 29.0
+- id: BT_UART_RTS
+  net: BT_UART_RTS_N
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 22.5
+    y: 24.5
+  - x: 29.5
+    y: 27.5
+  - x: 39.5
+    y: 29.0
+- id: WIFI_HOST_WAKE
+  net: WIFI_HOST_WAKE
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 23.0
+    y: 25.0
+  - x: 30.0
+    y: 28.0
+  - x: 40.0
+    y: 29.0
+- id: USIM_VCC
+  net: USIM_VCC
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 52.0
+    y: 28.7
+  - x: 15.0
+    y: 15.0
+  - x: 10.0
+    y: 10.0
+- id: USIM_CLK
+  net: USIM_CLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 52.5
+    y: 28.7
+  - x: 15.5
+    y: 15.5
+  - x: 10.5
+    y: 10.5
+- id: USIM_RST
+  net: USIM_RST
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 53.0
+    y: 28.7
+  - x: 16.0
+    y: 16.0
+  - x: 11.0
+    y: 11.0
+- id: USIM_IO
+  net: USIM_IO
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 53.5
+    y: 28.7
+  - x: 16.5
+    y: 16.5
+  - x: 11.5
+    y: 11.5
+- id: USIM_DET
+  net: USIM_DET
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.0
+    y: 28.7
+  - x: 17.0
+    y: 17.0
+  - x: 12.0
+    y: 12.0
+- id: ESIM_VCC
+  net: ESIM_VCC
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 59.0
+    y: 28.7
+  - x: 18.0
+    y: 17.0
+  - x: 12.5
+    y: 12.5
+- id: ESIM_CLK
+  net: ESIM_CLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 59.5
+    y: 28.7
+  - x: 18.5
+    y: 17.5
+  - x: 13.0
+    y: 13.0
+- id: ESIM_RST
+  net: ESIM_RST
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 60.0
+    y: 28.7
+  - x: 19.0
+    y: 18.0
+  - x: 13.5
+    y: 13.5
+- id: ESIM_IO
+  net: ESIM_IO
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 60.5
+    y: 28.7
+  - x: 19.5
+    y: 18.5
+  - x: 14.0
+    y: 14.0
+- id: UFS_REFCLK_P
+  net: UFS_REFCLK_P
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 10.0
+  - x: 35.0
+    y: 8.0
+  - x: 40.0
+    y: 7.8
+- id: UFS_REFCLK_N
+  net: UFS_REFCLK_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 10.5
+  - x: 35.5
+    y: 8.5
+  - x: 40.5
+    y: 7.8
+- id: LPDDR_CA0
+  net: LPDDR_CA0
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 10.0
+  - x: 30.5
+    y: 8.5
+  - x: 30.5
+    y: 7.8
+- id: LPDDR_CA1
+  net: LPDDR_CA1
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 10.5
+  - x: 31.0
+    y: 8.5
+  - x: 31.0
+    y: 7.8
+- id: LPDDR_CA2
+  net: LPDDR_CA2
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 31.5
+    y: 11.0
+  - x: 31.5
+    y: 8.5
+  - x: 31.5
+    y: 7.8
+- id: LPDDR_CA3
+  net: LPDDR_CA3
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 32.0
+    y: 11.5
+  - x: 32.0
+    y: 8.5
+  - x: 32.0
+    y: 7.8
+- id: LPDDR_RESET
+  net: LPDDR_RESET_N
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 32.5
+    y: 12.0
+  - x: 33.0
+    y: 8.5
+  - x: 33.5
+    y: 7.8
+- id: LPDDR_ZQ
+  net: LPDDR_ZQ
+  layer: F.Cu
+  width_mm: 0.09
+  segment_count: 2
+  points_mm:
+  - x: 33.0
+    y: 12.5
+  - x: 34.0
+    y: 8.5
+  - x: 34.5
+    y: 7.8
+- id: JTAG_TCK
+  net: JTAG_TCK
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 30.5
+    y: 10.0
+  - x: 39.0
+    y: 14.0
+  - x: 44.0
+    y: 16.2
+- id: JTAG_TMS
+  net: JTAG_TMS
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.0
+    y: 10.5
+  - x: 39.5
+    y: 14.5
+  - x: 44.5
+    y: 16.2
+- id: JTAG_TDI
+  net: JTAG_TDI
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 31.5
+    y: 11.0
+  - x: 40.0
+    y: 15.0
+  - x: 45.0
+    y: 16.2
+- id: JTAG_TDO
+  net: JTAG_TDO
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.0
+    y: 11.5
+  - x: 40.5
+    y: 15.5
+  - x: 45.5
+    y: 16.2
+- id: JTAG_TRST
+  net: JTAG_TRST_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 32.5
+    y: 12.0
+  - x: 41.0
+    y: 16.0
+  - x: 46.0
+    y: 16.2
+- id: BOOT_MODE0
+  net: BOOT_MODE0
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 33.0
+    y: 12.5
+  - x: 41.5
+    y: 16.5
+  - x: 46.5
+    y: 16.2
+- id: BOOT_MODE1
+  net: BOOT_MODE1
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 33.5
+    y: 13.0
+  - x: 42.0
+    y: 17.0
+  - x: 47.0
+    y: 16.2
+- id: BOOT_MODE2
+  net: BOOT_MODE2
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 34.0
+    y: 13.5
+  - x: 42.5
+    y: 17.5
+  - x: 47.5
+    y: 16.2
+- id: SOC_RESET
+  net: SOC_RESET_N
+  layer: F.Cu
+  width_mm: 0.1
+  segment_count: 2
+  points_mm:
+  - x: 34.5
+    y: 14.0
+  - x: 43.0
+    y: 18.0
+  - x: 48.0
+    y: 16.2
+- id: I2S_BCLK
+  net: I2S_BCLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.0
+    y: 27.5
+  - x: 28.0
+    y: 127.2
+  - x: 14.0
+    y: 124.0
+- id: I2S_LRCLK
+  net: I2S_LRCLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 54.5
+    y: 27.5
+  - x: 28.5
+    y: 127.2
+  - x: 14.5
+    y: 124.0
+- id: I2S_DOUT
+  net: I2S_DOUT
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 55.0
+    y: 27.5
+  - x: 29.0
+    y: 127.2
+  - x: 15.0
+    y: 124.0
+- id: I2S_DIN
+  net: I2S_DIN
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 55.5
+    y: 27.5
+  - x: 29.5
+    y: 127.2
+  - x: 15.5
+    y: 124.0
+- id: PDM_CLK
+  net: PDM_CLK
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 56.0
+    y: 27.5
+  - x: 13.0
+    y: 119.4
+  - x: 14.0
+    y: 124.0
+- id: PDM_DAT
+  net: PDM_DAT
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 56.5
+    y: 27.5
+  - x: 13.5
+    y: 119.4
+  - x: 14.5
+    y: 124.0
+- id: AUDIO_I2C_SCL
+  net: AUDIO_I2C_SCL
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 57.0
+    y: 27.5
+  - x: 39.0
+    y: 127.2
+  - x: 14.0
+    y: 124.0
+- id: AUDIO_I2C_SDA
+  net: AUDIO_I2C_SDA
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 57.5
+    y: 27.5
+  - x: 39.5
+    y: 127.2
+  - x: 14.5
+    y: 124.0
+- id: CODEC_INT
+  net: CODEC_INT
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 58.0
+    y: 27.5
+  - x: 40.0
+    y: 127.2
+  - x: 15.0
+    y: 124.0
+- id: AMP_INT
+  net: AMP_INT
+  layer: F.Cu
+  width_mm: 0.12
+  segment_count: 2
+  points_mm:
+  - x: 58.5
+    y: 27.5
+  - x: 40.5
+    y: 127.2
+  - x: 15.5
+    y: 124.0
+vias:
+- id: USB_DP_ESCAPE_VIA
+  net: USB_DP
+  at_mm:
+    x: 35.8
+    y: 121.8
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: USB_DN_ESCAPE_VIA
+  net: USB_DN
+  at_mm:
+    x: 36.3
+    y: 121.8
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: USB_CC1_ESCAPE_VIA
+  net: USB_CC1
+  at_mm:
+    x: 24.0
+    y: 118.4
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: USB_CC2_ESCAPE_VIA
+  net: USB_CC2
+  at_mm:
+    x: 31.0
+    y: 118.4
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: VBUS_POWER_VIA_A
+  net: VBUS
+  at_mm:
+    x: 38.0
+    y: 121.8
+  size_mm: 0.55
+  drill_mm: 0.25
+  layers:
+  - F.Cu
+  - B.Cu
+- id: VBUS_POWER_VIA_B
+  net: VBUS
+  at_mm:
+    x: 41.0
+    y: 121.8
+  size_mm: 0.55
+  drill_mm: 0.25
+  layers:
+  - F.Cu
+  - B.Cu
+- id: VBAT_POWER_VIA_A
+  net: VBAT
+  at_mm:
+    x: 39.0
+    y: 118.0
+  size_mm: 0.55
+  drill_mm: 0.25
+  layers:
+  - F.Cu
+  - B.Cu
+- id: SYS_POWER_VIA_A
+  net: SYS
+  at_mm:
+    x: 42.0
+    y: 116.0
+  size_mm: 0.55
+  drill_mm: 0.25
+  layers:
+  - F.Cu
+  - B.Cu
+- id: DISPLAY_DSI_BREAKOUT_VIA
+  net: DSI_CLK_P
+  at_mm:
+    x: 47.0
+    y: 23.5
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: DISPLAY_DSI_RETURN_VIA
+  net: GND
+  at_mm:
+    x: 47.8
+    y: 23.5
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: CAM0_CSI_BREAKOUT_VIA
+  net: CAM0_CSI_CLK_P
+  at_mm:
+    x: 43.2
+    y: 10.8
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: CAM1_CSI_BREAKOUT_VIA
+  net: CAM1_CSI_CLK_P
+  at_mm:
+    x: 43.2
+    y: 14.8
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: CELL_PCIE_BREAKOUT_VIA
+  net: CELL_PCIE_TX_P
+  at_mm:
+    x: 31.0
+    y: 11.0
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: WIFI_PCIE_BREAKOUT_VIA
+  net: WIFI_PCIE_TX_P
+  at_mm:
+    x: 30.0
+    y: 12.0
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: CELL_RF_GND_STITCH_A
+  net: GND
+  at_mm:
+    x: 10.0
+    y: 6.7
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: CELL_RF_GND_STITCH_B
+  net: GND
+  at_mm:
+    x: 20.0
+    y: 6.7
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: WIFI_RF_GND_STITCH_A
+  net: GND
+  at_mm:
+    x: 10.0
+    y: 25.5
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: WIFI_RF_GND_STITCH_B
+  net: GND
+  at_mm:
+    x: 15.0
+    y: 25.5
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: COMPUTE_MEMORY_ESCAPE_VIA_A
+  net: LPDDR_CK_P
+  at_mm:
+    x: 25.5
+    y: 7.8
+  size_mm: 0.35
+  drill_mm: 0.15
+  layers:
+  - F.Cu
+  - B.Cu
+- id: COMPUTE_MEMORY_ESCAPE_VIA_B
+  net: UFS_TX_P
+  at_mm:
+    x: 40.5
+    y: 7.8
+  size_mm: 0.35
+  drill_mm: 0.15
+  layers:
+  - F.Cu
+  - B.Cu
+- id: AUDIO_I2S_VIA
+  net: I2S_BCLK
+  at_mm:
+    x: 28.0
+    y: 127.2
+  size_mm: 0.4
+  drill_mm: 0.18
+  layers:
+  - F.Cu
+  - B.Cu
+- id: NFC_LOOP_RETURN_VIA
+  net: GND
+  at_mm:
+    x: 51.0
+    y: 130.0
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: BOTTOM_GND_STITCH_A
+  net: GND
+  at_mm:
+    x: 8.0
+    y: 124.0
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+- id: BOTTOM_GND_STITCH_B
+  net: GND
+  at_mm:
+    x: 56.0
+    y: 124.0
+  size_mm: 0.45
+  drill_mm: 0.2
+  layers:
+  - F.Cu
+  - B.Cu
+release_blockers_preserved:
+- development footprint IDs remain non-release review patterns
+- supplier-frozen land patterns and signed STEP models are not frozen
+- no production routed-board STEP is imported into mechanical release
+- no DRC/ERC/SI/PI/RF/factory evidence is attached

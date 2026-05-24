@@ -1,0 +1,13 @@
+diff --git a/src/bun.js/bindings/CPUFeatures.cpp b/src/bun.js/bindings/CPUFeatures.cpp
+index 6afec73..2f4927d 100644
+--- a/src/bun.js/bindings/CPUFeatures.cpp
++++ b/src/bun.js/bindings/CPUFeatures.cpp
+@@ -135,6 +135,8 @@ extern "C" uint8_t bun_cpu_features()
+     return x86_cpu_features();
+ #elif CPU(ARM64)
+     return aarch64_cpu_features();
++#elif CPU(RISCV64)
++    return 0;
+ #else
+ #error "Unknown architecture"
+ #endif

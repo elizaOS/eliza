@@ -1,8 +1,8 @@
-# SoC integration smoke: real CLINT + PLIC + AXI4 DRAM composed into
+# SoC integration smoke: CLINT + PLIC + AXI4 DRAM-controller RTL composed into
 # e1_soc_top behind +define+E1_SOC_REAL_IRQ +define+E1_SOC_REAL_DRAM.
 #
 # The bring-up CLINT (rtl/peripherals/e1_clint.sv) is intentionally NOT in the
-# source list: in the integrated config e1_soc_top instantiates the real
+# source list: in the integrated config e1_soc_top instantiates
 # rtl/interrupts/e1_clint.sv (same module name), so including both would be a
 # duplicate-module declaration.
 

@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { coveQuoteToTeeEvidence, verifyCoveQuote } from "./cove-quote.ts";
 import { normalizeTeeEvidence, type TeeEvidence } from "./tee-evidence.ts";
 
 const DEFAULT_DSTACK_EVIDENCE_PATHS = [
@@ -37,6 +38,32 @@ export type DstackTeeProviderOptions = {
    */
   expectedKmsPublicKey?: string;
   maxPayloadBytes?: number;
+  /**
+   * On-device CoVE path. When set, the raw CoVE quote JSON is verified against
+   * `coveRotPublicKey` (the self-rooted on-device RoT anchor) with real DICE
+   * Ed25519 crypto and mapped to `TeeEvidence` — instead of trusting an
+   * unverified provider blob. This is the only quote path the provider verifies
+   * with real cryptography (the TDX path stays BLOCKED on hardware).
+   */
+  coveQuoteJson?: string;
+  coveRotPublicKey?: string;
+  /**
+   * Anti-replay binding for the on-device CoVE path. When both `coveNonce` and
+   * `coveEphemeralPublicKey` are present, the quote's `body.reportData` must
+   * equal SHA256(nonce || epk) or verification fails closed
+   * (`report-data-mismatch`). This mirrors the binding the HTTP/KMS key-release
+   * path enforces (tee-key-release.ts): a captured quote carries a different
+   * nonce/epk digest and cannot be replayed. Sourced from `ELIZA_COVE_NONCE` /
+   * `ELIZA_COVE_EPHEMERAL_PUBLIC_KEY` (base64) when not supplied directly.
+   */
+  coveNonce?: string;
+  /** Ephemeral public key bytes (raw or SPKI DER) the verifier offered. */
+  coveEphemeralPublicKey?: Buffer;
+  /**
+   * CoVE rollback floor: reject quotes whose securityVersion is below this.
+   * Sourced from `ELIZA_COVE_MIN_SECURITY_VERSION` when not supplied directly.
+   */
+  coveMinSecurityVersion?: number;
 };
 
 export type DstackTeeProvider = {
@@ -59,6 +86,13 @@ export async function collectDstackTeeEvidence(
   const env = options.env ?? process.env;
   if (options.requireSecureTransport === true) {
     assertSecureTransportEnv(env);
+  }
+
+  const coveQuoteJson = options.coveQuoteJson ?? env.ELIZA_COVE_QUOTE_JSON;
+  const coveRotPublicKey =
+    options.coveRotPublicKey ?? env.ELIZA_COVE_ROT_PUBLIC_KEY;
+  if (coveQuoteJson?.trim()) {
+    return collectCoveEvidence(coveQuoteJson, coveRotPublicKey, options, env);
   }
 
   const inline = env.ELIZA_TEE_EVIDENCE_JSON;
@@ -93,6 +127,84 @@ export async function collectDstackTeeEvidence(
   throw new Error(
     "No dstack TEE evidence source configured. Set ELIZA_TEE_EVIDENCE_JSON, ELIZA_TEE_EVIDENCE_URL, or ELIZA_TEE_EVIDENCE_PATH.",
   );
+}
+
+function collectCoveEvidence(
+  coveQuoteJson: string,
+  coveRotPublicKey: string | undefined,
+  options: DstackTeeProviderOptions,
+  env: Record<string, string | undefined>,
+): TeeEvidence {
+  if (!coveRotPublicKey?.trim()) {
+    throw new Error(
+      "A CoVE quote requires coveRotPublicKey (the on-device RoT anchor) to verify against.",
+    );
+  }
+  const quote = parseEvidenceText(coveQuoteJson, maxBytes(options));
+  const binding = resolveCoveBinding(options, env);
+  const minSecurityVersion = resolveCoveMinSecurityVersion(options, env);
+  const result = verifyCoveQuote(quote, {
+    trustedRotPublicKey: coveRotPublicKey.trim(),
+    ...(binding === undefined
+      ? {}
+      : {
+          expectedNonce: binding.nonce,
+          ephemeralPublicKey: binding.ephemeralPublicKey,
+        }),
+    ...(minSecurityVersion === undefined ? {} : { minSecurityVersion }),
+  });
+  if (!result.verified) {
+    throw new Error(
+      `CoVE quote verification failed (${result.reason}): ${result.detail}`,
+    );
+  }
+  return coveQuoteToTeeEvidence(result);
+}
+
+/**
+ * Resolve the live-channel binding (nonce + ephemeral public key) for the CoVE
+ * path. Both must be present to enforce the report_data binding; one without
+ * the other is a misconfiguration and fails closed so a half-configured binding
+ * cannot be silently skipped.
+ */
+function resolveCoveBinding(
+  options: DstackTeeProviderOptions,
+  env: Record<string, string | undefined>,
+): { nonce: string; ephemeralPublicKey: Buffer } | undefined {
+  const nonce = options.coveNonce ?? env.ELIZA_COVE_NONCE?.trim();
+  const epk =
+    options.coveEphemeralPublicKey ??
+    decodeBase64(env.ELIZA_COVE_EPHEMERAL_PUBLIC_KEY?.trim());
+  if (nonce === undefined && epk === undefined) return undefined;
+  if (nonce === undefined || epk === undefined) {
+    throw new Error(
+      "A CoVE report_data binding requires both ELIZA_COVE_NONCE and ELIZA_COVE_EPHEMERAL_PUBLIC_KEY.",
+    );
+  }
+  return { nonce, ephemeralPublicKey: epk };
+}
+
+function decodeBase64(value: string | undefined): Buffer | undefined {
+  if (value === undefined || value === "") return undefined;
+  return Buffer.from(value, "base64");
+}
+
+function resolveCoveMinSecurityVersion(
+  options: DstackTeeProviderOptions,
+  env: Record<string, string | undefined>,
+): number | undefined {
+  if (options.coveMinSecurityVersion !== undefined) {
+    return options.coveMinSecurityVersion;
+  }
+  const raw = env.ELIZA_COVE_MIN_SECURITY_VERSION?.trim();
+  if (!raw) return undefined;
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new Error(
+      "ELIZA_COVE_MIN_SECURITY_VERSION must be a non-negative integer.",
+    );
+  }
+  return parsed;
 }
 
 async function collectDstackEvidenceFromHttp(

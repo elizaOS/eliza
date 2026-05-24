@@ -1784,6 +1784,17 @@ const manifest = {
     ],
   },
   externalsAsStubs: Object.keys(stubAliases),
+  unsupportedAndroidRuntimeStubs: [
+    "@elizaos/plugin-agent-orchestrator",
+    "@elizaos/plugin-shell",
+    "@node-llama-cpp",
+    "canvas",
+    "llama-cpp-capacitor",
+    "node-llama-cpp",
+    "onnxruntime-node",
+    "pty-manager",
+    "sharp",
+  ],
   notes: [
     "All listed plugins are bundled via static imports in",
     "  eliza/packages/agent/src/runtime/eliza.ts (STATIC_ELIZA_PLUGINS).",

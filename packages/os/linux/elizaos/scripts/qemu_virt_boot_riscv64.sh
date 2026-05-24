@@ -36,8 +36,45 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VARIANT_DIR="$(cd "${HERE}/.." && pwd)"
 EVIDENCE_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.json"
 TRANSCRIPT_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.transcript.log"
-UEFI_CODE_DEFAULT="${ELIZAOS_QEMU_EFI_CODE:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd}"
-UEFI_VARS_DEFAULT="${ELIZAOS_QEMU_EFI_VARS:-/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd}"
+# RISC-V EDK2 UEFI firmware. Resolution order, first existing wins:
+#   1. explicit ELIZAOS_QEMU_EFI_CODE / ELIZAOS_QEMU_EFI_VARS overrides
+#   2. the Debian qemu-efi-riscv64 system path
+#   3. firmware staged in the variant tree (evidence/firmware/...)
+#   4. the edk2-riscv-{code,vars}.fd shipped alongside the qemu binary
+# This lets the harness run unattended (e.g. from the chip aggregator) on hosts
+# that have a native QEMU but no system qemu-efi-riscv64 package.
+resolve_firmware() {
+    # $1 = explicit override (may be empty), $2... = candidate paths
+    local override="$1"; shift
+    if [ -n "${override}" ]; then
+        printf '%s' "${override}"
+        return 0
+    fi
+    local candidate
+    for candidate in "$@"; do
+        if [ -n "${candidate}" ] && [ -f "${candidate}" ]; then
+            printf '%s' "${candidate}"
+            return 0
+        fi
+    done
+    printf '%s' "$1"
+}
+
+QEMU_SHARE_DIR=""
+if command -v qemu-system-riscv64 >/dev/null 2>&1; then
+    _qemu_bin="$(command -v qemu-system-riscv64)"
+    _qemu_bin="$(readlink -f "${_qemu_bin}" 2>/dev/null || printf '%s' "${_qemu_bin}")"
+    QEMU_SHARE_DIR="$(cd "$(dirname "${_qemu_bin}")/../share/qemu" 2>/dev/null && pwd || true)"
+fi
+
+UEFI_CODE_DEFAULT="$(resolve_firmware "${ELIZAOS_QEMU_EFI_CODE:-}" \
+    /usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd \
+    "${VARIANT_DIR}/evidence/firmware/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd" \
+    "${QEMU_SHARE_DIR:+${QEMU_SHARE_DIR}/edk2-riscv-code.fd}")"
+UEFI_VARS_DEFAULT="$(resolve_firmware "${ELIZAOS_QEMU_EFI_VARS:-}" \
+    /usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd \
+    "${VARIANT_DIR}/evidence/firmware/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd" \
+    "${QEMU_SHARE_DIR:+${QEMU_SHARE_DIR}/edk2-riscv-vars.fd}")"
 
 ISO=""
 MEMORY_MB=4096
@@ -114,6 +151,9 @@ command -v python3 >/dev/null 2>&1 \
     || die "python3 not on PATH"
 command -v sha256sum >/dev/null 2>&1 \
     || die "sha256sum not on PATH"
+if ! command -v isoinfo >/dev/null 2>&1 && ! command -v bsdtar >/dev/null 2>&1; then
+    die "isoinfo or bsdtar not on PATH; cannot verify riscv64 GRUB EFI artifacts in ISO"
+fi
 
 if [ -n "${UBOOT_PATH}" ]; then
     die "--u-boot is not supported for the riscv64 UEFI live ISO path"
@@ -121,26 +161,91 @@ fi
 
 ISO_SHA256="$(sha256sum "${ISO}" | awk '{ print $1 }')"
 
+ISO_BOOT_ARTIFACTS_JSON="$(python3 - "${ISO}" <<'PYEOF'
+import fnmatch
+import json
+import shutil
+import subprocess
+import sys
+
+iso = sys.argv[1]
+required = {
+    "riscv64_removable_uefi_loader": "*/efi/boot/bootriscv64.efi",
+    "grub_config": "*/boot/grub/grub.cfg",
+    "riscv64_live_kernel": "*/live/vmlinux-*riscv64",
+    "riscv64_live_initrd": "*/live/initrd.img-*riscv64",
+}
+
+def list_iso() -> list[str]:
+    errors = []
+    commands = []
+    if shutil.which("isoinfo"):
+        commands.extend([
+            ["isoinfo", "-R", "-f", "-i", iso],
+            ["isoinfo", "-f", "-i", iso],
+        ])
+    if shutil.which("bsdtar"):
+        commands.append(["bsdtar", "-tf", iso])
+    for args in commands:
+        proc = subprocess.run(args, text=True, capture_output=True, check=False)
+        if proc.returncode == 0 and proc.stdout.strip():
+            return [
+                "/" + line.strip().lstrip("/")
+                for line in proc.stdout.splitlines()
+                if line.strip()
+            ]
+        errors.append(proc.stderr.strip() or f"{args!r} returned {proc.returncode}")
+    raise SystemExit("could not list ISO contents: " + " | ".join(errors))
+
+paths = list_iso()
+lower_paths = [path.lower() for path in paths]
+found = {}
+missing = []
+for key, pattern in required.items():
+    match = next(
+        (paths[idx] for idx, path in enumerate(lower_paths) if fnmatch.fnmatch(path, pattern)),
+        None,
+    )
+    if match is None:
+        missing.append(key)
+    else:
+        found[key] = match
+
+print(json.dumps({"found": found, "missing": missing}, sort_keys=True))
+PYEOF
+)"
+ISO_BOOT_ARTIFACTS_MISSING="$(ISO_BOOT_ARTIFACTS_JSON="${ISO_BOOT_ARTIFACTS_JSON}" python3 - <<'PYEOF'
+import json
+import os
+doc = json.loads(os.environ["ISO_BOOT_ARTIFACTS_JSON"])
+print(" ".join(doc.get("missing", [])))
+PYEOF
+)"
+[ -z "${ISO_BOOT_ARTIFACTS_MISSING}" ] \
+    || die "ISO missing required riscv64 GRUB EFI artifacts: ${ISO_BOOT_ARTIFACTS_MISSING}"
+
 UEFI_VARS_RUNTIME=""
 QEMU_FIRMWARE_DESC="opensbi-default"
 QEMU_CMD=(qemu-system-riscv64
     -machine virt
+    -cpu max
     -nographic
     -m "${MEMORY_MB}"
     -smp "${CPUS}"
 )
 
-if [ -f "${UEFI_CODE_DEFAULT}" ] && [ -f "${UEFI_VARS_DEFAULT}" ]; then
-    UEFI_VARS_RUNTIME="$(mktemp)"
-    cp "${UEFI_VARS_DEFAULT}" "${UEFI_VARS_RUNTIME}"
-    QEMU_FIRMWARE_DESC="${UEFI_CODE_DEFAULT}"
-    QEMU_CMD+=(
-        -drive "if=pflash,format=raw,unit=0,readonly=on,file=${UEFI_CODE_DEFAULT}"
-        -drive "if=pflash,format=raw,unit=1,file=${UEFI_VARS_RUNTIME}"
-    )
-else
-    QEMU_CMD+=( -bios default )
-fi
+[ -f "${UEFI_CODE_DEFAULT}" ] \
+    || die "RISC-V EDK2 code firmware not found: ${UEFI_CODE_DEFAULT}"
+[ -f "${UEFI_VARS_DEFAULT}" ] \
+    || die "RISC-V EDK2 vars firmware not found: ${UEFI_VARS_DEFAULT}"
+
+UEFI_VARS_RUNTIME="$(mktemp)"
+cp "${UEFI_VARS_DEFAULT}" "${UEFI_VARS_RUNTIME}"
+QEMU_FIRMWARE_DESC="${UEFI_CODE_DEFAULT}"
+QEMU_CMD+=(
+    -drive "if=pflash,format=raw,unit=0,readonly=on,file=${UEFI_CODE_DEFAULT}"
+    -drive "if=pflash,format=raw,unit=1,file=${UEFI_VARS_RUNTIME}"
+)
 
 QEMU_CMD+=(
     -drive "file=${ISO},if=virtio,format=raw,media=cdrom,readonly=on"
@@ -188,7 +293,9 @@ boot_markers_present() {
 forbidden_marker_present() {
     grep -F -q -- "Kernel panic" "${TRANSCRIPT_PATH}" \
         || grep -F -q -- "Oops" "${TRANSCRIPT_PATH}" \
-        || grep -F -q -- "BUG" "${TRANSCRIPT_PATH}"
+        || grep -F -q -- "BUG" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "unhandled signal 4" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "Illegal instruction" "${TRANSCRIPT_PATH}"
 }
 
 set +e
@@ -254,6 +361,8 @@ FORBIDDEN_MARKERS=(
     "Kernel panic"
     "Oops"
     "BUG"
+    "unhandled signal 4"
+    "Illegal instruction"
 )
 
 MARKERS_FOUND=()
@@ -353,6 +462,7 @@ export QVB_BOOT_COMPLETED="${BOOT_COMPLETED}"
 export QVB_MARKERS_FOUND_JSON="${MARKERS_FOUND_JSON}"
 export QVB_MARKERS_MISSING_JSON="${MARKERS_MISSING_JSON}"
 export QVB_FORBIDDEN_HIT_JSON="${FORBIDDEN_HIT_JSON}"
+export QVB_ISO_BOOT_ARTIFACTS_JSON="${ISO_BOOT_ARTIFACTS_JSON}"
 
 python3 - <<'PYEOF'
 import json
@@ -376,6 +486,7 @@ doc = {
     "markers_found": json.loads(os.environ["QVB_MARKERS_FOUND_JSON"]),
     "markers_missing": json.loads(os.environ["QVB_MARKERS_MISSING_JSON"]),
     "forbidden_markers_present": json.loads(os.environ["QVB_FORBIDDEN_HIT_JSON"]),
+    "iso_boot_artifacts": json.loads(os.environ["QVB_ISO_BOOT_ARTIFACTS_JSON"]),
     "provenance": "qemu_virt",
 }
 with open(os.environ["QVB_EVIDENCE_PATH"], "w", encoding="utf-8") as fh:

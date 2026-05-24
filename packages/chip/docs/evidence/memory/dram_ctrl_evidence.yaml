@@ -1,70 +1,84 @@
 schema: eliza.dram_ctrl_evidence_gate.v1
-status: blocked_until_evidence
+status: rtl_axi4_controller_sim_passed_phy_training_blocked
 scope:
   - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
-  - rtl/memory/dram_ctrl/e1_axi4_dram_model.sv
-  - verify/cocotb/axi4/e1_dram_ctrl_tb.sv
-  - verify/cocotb/axi4/test_dfi_traffic.py
+  - rtl/interconnect/axi4/e1_axi4_pkg.sv
+  - verify/cocotb/memory/e1_dram_ctrl_mem_tb.sv
+  - verify/cocotb/memory/test_dram_memory.py
 
 context: >
-  The production DRAM controller stub e1_dram_ctrl exposes the JEDEC DFI
-  5.0 north interface that a vendor LPDDR5X/6 PHY attaches to.  Until
-  the closed-IP PHY procurement gate
-  docs/evidence/memory/lpddr-phy-procurement.yaml is unblocked, the
-  controller drives DFI commands directly from the AXI4 handshakes and
-  the refresh scheduler so the in-repo verification can observe every
-  DFI line transitioning under representative traffic.
+  The in-repo DRAM controller evidence now proves the RTL full-AXI4 slave
+  front-end and large memory model boundary under Verilator + cocotb:
+  discoverable 2 GiB geometry at 0x8000_0000, burst read/write data integrity,
+  multiple outstanding B/AR queues, ready/valid backpressure, DRAMsim-derived
+  row-hit/row-miss timing, and fail-closed DECERR outside the memory aperture.
+  It does not prove the closed LPDDR5X/6 PHY, DFI 5.0 training, physical
+  silicon timing, Linux/Android memory-map integration, or phone-class memory
+  claims; those remain blocked under
+  docs/evidence/memory/lpddr-phy-procurement.yaml and the UMA/phone gates.
 
 required_capabilities:
-  dfi_init_handshake:
+  axi4_capacity_geometry:
     description: >
-      dfi_init_start asserts at boot and stays high through a minimum
-      window; dfi_cke comes high once dfi_init_complete is sampled.
-  dfi_command_shaping:
+      mem_base_addr and mem_capacity_bytes expose the configured 2 GiB memory
+      geometry.
+  axi4_burst_data_integrity:
     description: >
-      ACTIVATE, WRITE, READ, and REFRESH command shapes (cs_n, act_n,
-      ras_n, cas_n, we_n) follow the JEDEC LPDDR5/6 controller-side
-      mapping, with bank + address driven from AXI4 address bits.
-  dfi_data_path:
+      INCR/WRAP/FIXED burst addressing, AxSIZE byte addressing, WSTRB, and
+      readback across row boundaries preserve data.
+  outstanding_and_backpressure:
     description: >
-      dfi_wrdata + dfi_wrdata_mask + dfi_wrdata_en drive on every W
-      beat; dfi_rddata_en pulses on every R beat.  dfi_wrdata_mask is
-      the bitwise inverse of AXI s_wstrb (DFI mask is active-high
-      "do not write").
-  refresh_scheduler:
+      B-response and AR-command FIFOs support multiple outstanding requests
+      while honoring ready/valid stalls.
+  dram_timing_model:
     description: >
-      refresh_active rises at every TREFI interval, raises
-      dfi_ctrlupd_req, and emits a REFRESH-shaped DFI command for the
-      duration of tRFCpb.
-  zq_calibration:
+      Row-hit/row-miss/write/tCCD latency parameters are DRAMsim-derived and
+      are checked by the controller gate.
+  fail_closed_aperture:
     description: >
-      zqcs_active fires every ZQCS_INTERVAL cycles; zqcl_active fires
-      every ZQCL_INTERVAL cycles.  Counters are exposed as outputs so a
-      real PHY can correlate calibration windows with timing closure.
+      Out-of-range AXI4 reads and writes return DECERR instead of aliasing to
+      SRAM or silently wrapping.
 
 required_tests:
   - id: dfi_init_brings_cke_high
-    location: verify/cocotb/axi4/test_dfi_traffic.py
-    pass_criteria: dfi_init_start observed; dfi_cke high after init complete.
+    location: docs/evidence/memory/lpddr-phy-procurement.yaml
+    pass_criteria: blocked until a real LPDDR PHY/training flow is procured and integrated.
   - id: dfi_write_emits_activate_then_write_col
-    location: verify/cocotb/axi4/test_dfi_traffic.py
-    pass_criteria: >
-      AXI4 burst write emits an ACTIVATE-shaped DFI command followed by
-      a WRITE-shaped command with dfi_wrdata_en per beat; dfi_wrdata
-      reflects AXI s_wdata.
+    location: docs/evidence/memory/lpddr-phy-procurement.yaml
+    pass_criteria: blocked until PHY-facing DFI command capture exists.
   - id: dfi_read_emits_activate_then_read_col
-    location: verify/cocotb/axi4/test_dfi_traffic.py
-    pass_criteria: >
-      AXI4 burst read emits an ACTIVATE-shaped DFI command followed by
-      a READ-shaped command with dfi_rddata_en per beat.
+    location: docs/evidence/memory/lpddr-phy-procurement.yaml
+    pass_criteria: blocked until PHY-facing DFI command capture exists.
   - id: dfi_refresh_fires_within_window
-    location: verify/cocotb/axi4/test_dfi_traffic.py
-    pass_criteria: >
-      refresh_active asserted within a few TREFI windows and a
-      REFRESH-shaped DFI command observed for the duration.
+    location: docs/evidence/memory/lpddr-phy-procurement.yaml
+    pass_criteria: blocked until PHY-facing refresh/training capture exists.
+  - id: capacity_readback_matches_geometry
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: RTL geometry register readback matches configured base/capacity.
+  - id: burst_write_read_back_across_row_boundary
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: burst write/read data survives a row boundary.
+  - id: multiple_outstanding_writes
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: write-response FIFO handles multiple outstanding writes.
+  - id: multiple_outstanding_reads
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: AR command FIFO handles multiple outstanding reads.
+  - id: backpressure_honored
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: ready/valid stalls are honored.
+  - id: boot_memtest_walking_ones_and_addr_in_addr
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: boot-style memory sweep passes.
+  - id: out_of_range_read_returns_decerr
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: out-of-range read returns DECERR.
+  - id: out_of_range_write_returns_decerr
+    location: verify/cocotb/memory/test_dram_memory.py
+    pass_criteria: out-of-range write returns DECERR.
 
 required_artifacts:
-  - docs/evidence/memory/dram_ctrl_dfi_trace_record.json
+  - build/reports/dram_controller.json
   - docs/evidence/memory/dram_ctrl_post_silicon_training_record.json
 
 required_artifact_schemas:
@@ -72,7 +86,8 @@ required_artifact_schemas:
   docs/evidence/memory/dram_ctrl_post_silicon_training_record.json: eliza.memory.dram_ctrl_post_silicon_training.v1
 
 unblock_requires:
-  - "All four cocotb DFI tests pass under verilator (current status: cocotb_PASS)."
+  - AXI4 controller cocotb tests pass; PHY-facing DFI command capture and
+    training tests remain blocked until a real LPDDR PHY/training flow exists.
   - A real LPDDR5X/6 PHY is licensed (see lpddr-phy-procurement.yaml)
     and attached to the DFI 5.0 south interface.
   - First-silicon read leveling, gate training, vref, and ZQ

@@ -1,17 +1,17 @@
 {
   "claim_boundary": "Automated part-by-part CAD review index; thumbnails are top-view bounding-box and exploded-context projection proxies, not human industrial-design signoff.",
   "status": "pass",
-  "part_count": 142,
+  "part_count": 222,
   "contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
   "contact_sheet_check": {
     "size": [
-      1871,
-      6240
+      1560,
+      7804
     ],
     "mean_rgb": [
-      238.992,
-      233.28,
-      230.662
+      215.097,
+      202.357,
+      186.082
     ],
     "channel_spans": [
       255,
@@ -23,18 +23,18 @@
   "exploded_contact_sheet": "mechanical/e1-phone/review/part-explode-contact-sheet.png",
   "exploded_contact_sheet_check": {
     "size": [
-      1871,
-      6240
+      1560,
+      7804
     ],
     "mean_rgb": [
-      25.377,
-      27.315,
-      31.524
+      27.396,
+      29.661,
+      34.735
     ],
     "channel_spans": [
-      252,
-      253,
-      253
+      250,
+      250,
+      250
     ],
     "pass": true
   },
@@ -46,7 +46,7 @@
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
-      "material": "PC+ABS orange rounded back shell with real rear camera and flash holes",
+      "material": "PC+ABS orange rounded back shell",
       "bounds_mm": [
         [
           -39.0,
@@ -64,7 +64,7 @@
         153.6,
         1.2
       ],
-      "volume_mm3": 14178.292,
+      "volume_mm3": 14302.89,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/orange_back_shell.obj",
       "stl": "mechanical/e1-phone/out/orange_back_shell.stl"
@@ -154,21 +154,21 @@
       "bounds_mm": [
         [
           -32.0,
-          -73.5,
+          -66.0,
           -2.5
         ],
         [
           32.0,
-          73.25,
+          66.0,
           -1.7
         ]
       ],
       "span_mm": [
         64.0,
-        146.75,
+        132.0,
         0.8
       ],
-      "volume_mm3": 2944.0,
+      "volume_mm3": 2252.8,
       "mass_placeholder": false,
       "obj": "mechanical/e1-phone/out/main_pcb.obj",
       "stl": "mechanical/e1-phone/out/main_pcb.stl"
@@ -2207,12 +2207,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          -31.1,
+          -37.1,
           55.9,
           -5.3
         ],
         [
-          -26.9,
+          -32.9,
           60.1,
           -2.5
         ]
@@ -2233,12 +2233,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          26.9,
+          32.9,
           55.9,
           -5.3
         ],
         [
-          31.1,
+          37.1,
           60.1,
           -2.5
         ]
@@ -2259,12 +2259,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          -31.1,
+          -37.1,
           -60.1,
           -5.3
         ],
         [
-          -26.9,
+          -32.9,
           -55.9,
           -2.5
         ]
@@ -2285,12 +2285,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          26.9,
+          32.9,
           -60.1,
           -5.3
         ],
         [
-          31.1,
+          37.1,
           -55.9,
           -2.5
         ]
@@ -2311,12 +2311,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          -31.1,
+          -37.1,
           17.9,
           -5.3
         ],
         [
-          -26.9,
+          -32.9,
           22.1,
           -2.5
         ]
@@ -2337,12 +2337,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          26.9,
+          32.9,
           17.9,
           -5.3
         ],
         [
-          31.1,
+          37.1,
           22.1,
           -2.5
         ]
@@ -2363,12 +2363,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          -31.1,
+          -37.1,
           -22.1,
           -5.3
         ],
         [
-          -26.9,
+          -32.9,
           -17.9,
           -2.5
         ]
@@ -2389,12 +2389,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          26.9,
+          32.9,
           -22.1,
           -5.3
         ],
         [
-          31.1,
+          37.1,
           -17.9,
           -2.5
         ]
@@ -2415,12 +2415,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          -31.1,
+          -37.1,
           35.9,
           -5.3
         ],
         [
-          -26.9,
+          -32.9,
           40.1,
           -2.5
         ]
@@ -2441,12 +2441,12 @@
       "material": "PC+ABS screw boss, core pin required",
       "bounds_mm": [
         [
-          26.9,
+          32.9,
           35.9,
           -5.3
         ],
         [
-          31.1,
+          37.1,
           40.1,
           -2.5
         ]
@@ -2857,13 +2857,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          -36.0,
-          58.0,
+          -35.0,
+          57.1,
           -5.1
         ],
         [
-          -29.0,
-          58.9,
+          -28.0,
+          58.0,
           -2.7
         ]
       ],
@@ -2883,13 +2883,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          -29.9,
-          58.0,
+          -35.0,
+          51.0,
           -5.1
         ],
         [
-          -29.0,
-          65.0,
+          -34.1,
+          58.0,
           -2.7
         ]
       ],
@@ -2909,13 +2909,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          29.0,
-          58.0,
+          28.0,
+          57.1,
           -5.1
         ],
         [
-          36.0,
-          58.9,
+          35.0,
+          58.0,
           -2.7
         ]
       ],
@@ -2935,13 +2935,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          29.0,
-          58.0,
+          34.1,
+          51.0,
           -5.1
         ],
         [
-          29.9,
-          65.0,
+          35.0,
+          58.0,
           -2.7
         ]
       ],
@@ -2961,13 +2961,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          -36.0,
-          -58.9,
+          -35.0,
+          -58.0,
           -5.1
         ],
         [
-          -29.0,
-          -58.0,
+          -28.0,
+          -57.1,
           -2.7
         ]
       ],
@@ -2987,13 +2987,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          -29.9,
-          -65.0,
+          -35.0,
+          -58.0,
           -5.1
         ],
         [
-          -29.0,
-          -58.0,
+          -34.1,
+          -51.0,
           -2.7
         ]
       ],
@@ -3013,13 +3013,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          29.0,
-          -58.9,
+          28.0,
+          -58.0,
           -5.1
         ],
         [
-          36.0,
-          -58.0,
+          35.0,
+          -57.1,
           -2.7
         ]
       ],
@@ -3039,13 +3039,13 @@
       "material": "PC+ABS corner gusset tying corner boss to side frame",
       "bounds_mm": [
         [
-          29.0,
-          -65.0,
+          34.1,
+          -58.0,
           -5.1
         ],
         [
-          29.9,
-          -58.0,
+          35.0,
+          -51.0,
           -2.7
         ]
       ],
@@ -3398,6 +3398,58 @@
       "stl": "mechanical/e1-phone/out/wifi_bt_module_keepout.stl"
     },
     {
+      "name": "compute_som_sodimm_connector",
+      "role": "compute interconnect",
+      "material": "260-pin 0.5 mm SODIMM compute-SoM carrier connector envelope",
+      "bounds_mm": [
+        [
+          -32.5,
+          49.0,
+          -1.67
+        ],
+        [
+          32.5,
+          51.6,
+          -1.37
+        ]
+      ],
+      "span_mm": [
+        65.0,
+        2.6,
+        0.3
+      ],
+      "volume_mm3": 50.7,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/compute_som_sodimm_connector.obj",
+      "stl": "mechanical/e1-phone/out/compute_som_sodimm_connector.stl"
+    },
+    {
+      "name": "compute_som_daughterboard_keepout",
+      "role": "compute module keepout",
+      "material": "Firefly Core-3566JD4-class SoM daughterboard swept keepout; non-release fit envelope",
+      "bounds_mm": [
+        [
+          -34.0,
+          30.0,
+          -0.9
+        ],
+        [
+          34.0,
+          60.0,
+          0.3
+        ]
+      ],
+      "span_mm": [
+        68.0,
+        30.0,
+        1.2
+      ],
+      "volume_mm3": 2448.0,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/compute_som_daughterboard_keepout.obj",
+      "stl": "mechanical/e1-phone/out/compute_som_daughterboard_keepout.stl"
+    },
+    {
       "name": "soc_package_marker",
       "role": "PCB component marker",
       "material": "visual marker for application processor package under SoC shield",
@@ -3502,6 +3554,32 @@
       "stl": "mechanical/e1-phone/out/pmic_package_marker.stl"
     },
     {
+      "name": "audio_codec_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for 48-pin audio codec package in bottom audio region",
+      "bounds_mm": [
+        [
+          -22.0,
+          -57.5,
+          -0.18
+        ],
+        [
+          -15.0,
+          -50.5,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        7.0,
+        7.0,
+        0.22
+      ],
+      "volume_mm3": 10.78,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/audio_codec_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/audio_codec_package_marker.stl"
+    },
+    {
       "name": "rf_transceiver_package_marker",
       "role": "PCB component marker",
       "material": "visual marker for RF transceiver/front-end package under radio shield",
@@ -3554,9 +3632,503 @@
       "stl": "mechanical/e1-phone/out/gnss_lna_package_marker.stl"
     },
     {
-      "name": "wifi_bt_rf_feed_coax_stub",
+      "name": "backlight_bias_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for display backlight/bias power IC package",
+      "bounds_mm": [
+        [
+          22.0,
+          33.5,
+          -0.18
+        ],
+        [
+          26.0,
+          37.5,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        4.0,
+        4.0,
+        0.22
+      ],
+      "volume_mm3": 3.52,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/backlight_bias_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/backlight_bias_package_marker.stl"
+    },
+    {
+      "name": "fuel_gauge_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for battery fuel-gauge WLCSP package",
+      "bounds_mm": [
+        [
+          -12.95,
+          -50.75,
+          -0.17
+        ],
+        [
+          -11.05,
+          -49.25,
+          0.01
+        ]
+      ],
+      "span_mm": [
+        1.9,
+        1.5,
+        0.18
+      ],
+      "volume_mm3": 0.513,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/fuel_gauge_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/fuel_gauge_package_marker.stl"
+    },
+    {
+      "name": "haptic_driver_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for haptic driver WLCSP package",
+      "bounds_mm": [
+        [
+          19.3,
+          -54.7,
+          -0.17
+        ],
+        [
+          20.7,
+          -53.3,
+          0.01
+        ]
+      ],
+      "span_mm": [
+        1.4,
+        1.4,
+        0.18
+      ],
+      "volume_mm3": 0.353,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/haptic_driver_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/haptic_driver_package_marker.stl"
+    },
+    {
+      "name": "usim_levelshift_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for USIM level-shifter/ESD package",
+      "bounds_mm": [
+        [
+          24.7,
+          -57.05,
+          -0.17
+        ],
+        [
+          27.3,
+          -54.95,
+          0.01
+        ]
+      ],
+      "span_mm": [
+        2.6,
+        2.1,
+        0.18
+      ],
+      "volume_mm3": 0.983,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/usim_levelshift_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/usim_levelshift_package_marker.stl"
+    },
+    {
+      "name": "esim_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for MFF2 eSIM package",
+      "bounds_mm": [
+        [
+          27.0,
+          -53.0,
+          -0.17
+        ],
+        [
+          29.0,
+          -51.0,
+          0.01
+        ]
+      ],
+      "span_mm": [
+        2.0,
+        2.0,
+        0.18
+      ],
+      "volume_mm3": 0.72,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/esim_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/esim_package_marker.stl"
+    },
+    {
+      "name": "nfc_controller_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for NFC controller package",
+      "bounds_mm": [
+        [
+          -28.5,
+          27.5,
+          -0.18
+        ],
+        [
+          -23.5,
+          32.5,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        5.0,
+        5.0,
+        0.22
+      ],
+      "volume_mm3": 5.5,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/nfc_controller_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/nfc_controller_package_marker.stl"
+    },
+    {
+      "name": "nfc_loop_match_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for NFC loop matching network",
+      "bounds_mm": [
+        [
+          -32.0,
+          57.3,
+          -0.15
+        ],
+        [
+          -28.0,
+          58.7,
+          -0.03
+        ]
+      ],
+      "span_mm": [
+        4.0,
+        1.4,
+        0.12
+      ],
+      "volume_mm3": 0.672,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/nfc_loop_match_marker.obj",
+      "stl": "mechanical/e1-phone/out/nfc_loop_match_marker.stl"
+    },
+    {
+      "name": "sensor_hub_package_marker",
+      "role": "PCB component marker",
+      "material": "visual marker for always-on sensor hub package",
+      "bounds_mm": [
+        [
+          5.5,
+          33.5,
+          -0.18
+        ],
+        [
+          8.5,
+          36.5,
+          0.02
+        ]
+      ],
+      "span_mm": [
+        3.0,
+        3.0,
+        0.2
+      ],
+      "volume_mm3": 1.8,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/sensor_hub_package_marker.obj",
+      "stl": "mechanical/e1-phone/out/sensor_hub_package_marker.stl"
+    },
+    {
+      "name": "esd_array_6ch_marker",
+      "role": "PCB protection marker",
+      "material": "visual marker for six-channel ESD protection arrays",
+      "bounds_mm": [
+        [
+          -1.0,
+          -58.5,
+          -0.17
+        ],
+        [
+          1.0,
+          -57.5,
+          -0.01
+        ]
+      ],
+      "span_mm": [
+        2.0,
+        1.0,
+        0.16
+      ],
+      "volume_mm3": 0.32,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/esd_array_6ch_marker.obj",
+      "stl": "mechanical/e1-phone/out/esd_array_6ch_marker.stl"
+    },
+    {
+      "name": "tvs_diode_2p_marker",
+      "role": "PCB protection marker",
+      "material": "visual marker for two-terminal TVS diodes",
+      "bounds_mm": [
+        [
+          4.4,
+          -58.4,
+          -0.17
+        ],
+        [
+          5.6,
+          -57.6,
+          -0.01
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        0.8,
+        0.16
+      ],
+      "volume_mm3": 0.154,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/tvs_diode_2p_marker.obj",
+      "stl": "mechanical/e1-phone/out/tvs_diode_2p_marker.stl"
+    },
+    {
+      "name": "testpoint_1mm_marker",
+      "role": "PCB test marker",
+      "material": "visual marker for one-millimeter board test pads",
+      "bounds_mm": [
+        [
+          9.5,
+          -58.5,
+          -0.13
+        ],
+        [
+          10.5,
+          -57.5,
+          -0.09
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        1.0,
+        0.04
+      ],
+      "volume_mm3": 0.04,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/testpoint_1mm_marker.obj",
+      "stl": "mechanical/e1-phone/out/testpoint_1mm_marker.stl"
+    },
+    {
+      "name": "fiducial_1mm_marker",
+      "role": "PCB assembly marker",
+      "material": "visual marker for one-millimeter global fiducials",
+      "bounds_mm": [
+        [
+          12.5,
+          -58.5,
+          -0.13
+        ],
+        [
+          13.5,
+          -57.5,
+          -0.1
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        1.0,
+        0.03
+      ],
+      "volume_mm3": 0.03,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/fiducial_1mm_marker.obj",
+      "stl": "mechanical/e1-phone/out/fiducial_1mm_marker.stl"
+    },
+    {
+      "name": "mounting_hole_1p2_marker",
+      "role": "PCB mechanical marker",
+      "material": "visual marker for 1.2 mm mounting-hole annular keepouts",
+      "bounds_mm": [
+        [
+          15.4,
+          -58.6,
+          -0.13
+        ],
+        [
+          16.6,
+          -57.4,
+          -0.09
+        ]
+      ],
+      "span_mm": [
+        1.2,
+        1.2,
+        0.04
+      ],
+      "volume_mm3": 0.058,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/mounting_hole_1p2_marker.obj",
+      "stl": "mechanical/e1-phone/out/mounting_hole_1p2_marker.stl"
+    },
+    {
+      "name": "r0402_component_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for 0402 resistor packages",
+      "bounds_mm": [
+        [
+          -8.5,
+          -58.25,
+          -0.17
+        ],
+        [
+          -7.5,
+          -57.75,
+          -0.01
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        0.5,
+        0.16
+      ],
+      "volume_mm3": 0.08,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/r0402_component_marker.obj",
+      "stl": "mechanical/e1-phone/out/r0402_component_marker.stl"
+    },
+    {
+      "name": "c0402_component_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for 0402 capacitor packages",
+      "bounds_mm": [
+        [
+          -11.5,
+          -58.25,
+          -0.17
+        ],
+        [
+          -10.5,
+          -57.75,
+          -0.01
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        0.5,
+        0.16
+      ],
+      "volume_mm3": 0.08,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/c0402_component_marker.obj",
+      "stl": "mechanical/e1-phone/out/c0402_component_marker.stl"
+    },
+    {
+      "name": "l0402_component_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for 0402 inductor/ferrite packages",
+      "bounds_mm": [
+        [
+          -14.5,
+          -58.3,
+          -0.18
+        ],
+        [
+          -13.5,
+          -57.7,
+          0.02
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        0.6,
+        0.2
+      ],
+      "volume_mm3": 0.12,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/l0402_component_marker.obj",
+      "stl": "mechanical/e1-phone/out/l0402_component_marker.stl"
+    },
+    {
+      "name": "pi_match_0402_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for RF pi matching component triplets",
+      "bounds_mm": [
+        [
+          -20.2,
+          -58.55,
+          -0.175
+        ],
+        [
+          -17.8,
+          -57.45,
+          0.005
+        ]
+      ],
+      "span_mm": [
+        2.4,
+        1.1,
+        0.18
+      ],
+      "volume_mm3": 0.475,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/pi_match_0402_marker.obj",
+      "stl": "mechanical/e1-phone/out/pi_match_0402_marker.stl"
+    },
+    {
+      "name": "rc_array_4ch_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for four-channel RC conditioning arrays",
+      "bounds_mm": [
+        [
+          -24.0,
+          -58.5,
+          -0.175
+        ],
+        [
+          -22.0,
+          -57.5,
+          0.005
+        ]
+      ],
+      "span_mm": [
+        2.0,
+        1.0,
+        0.18
+      ],
+      "volume_mm3": 0.36,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rc_array_4ch_marker.obj",
+      "stl": "mechanical/e1-phone/out/rc_array_4ch_marker.stl"
+    },
+    {
+      "name": "shunt_1206_marker",
+      "role": "PCB passive marker",
+      "material": "visual marker for 1206 current-shunt packages",
+      "bounds_mm": [
+        [
+          -29.6,
+          -58.8,
+          -0.18
+        ],
+        [
+          -26.4,
+          -57.2,
+          0.04
+        ]
+      ],
+      "span_mm": [
+        3.2,
+        1.6,
+        0.22
+      ],
+      "volume_mm3": 1.126,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/shunt_1206_marker.obj",
+      "stl": "mechanical/e1-phone/out/shunt_1206_marker.stl"
+    },
+    {
+      "name": "wifi_bt_rf_feed_development_envelope",
       "role": "RF feed",
-      "material": "concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout",
+      "material": "development coax/feed envelope from Wi-Fi/Bluetooth module toward side antenna keepout",
       "bounds_mm": [
         [
           23.5,
@@ -3576,13 +4148,13 @@
       ],
       "volume_mm3": 1.575,
       "mass_placeholder": true,
-      "obj": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.obj",
-      "stl": "mechanical/e1-phone/out/wifi_bt_rf_feed_coax_stub.stl"
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf_feed_development_envelope.stl"
     },
     {
-      "name": "cellular_rf_feed_coax_stub",
+      "name": "cellular_rf_feed_development_envelope",
       "role": "RF feed",
-      "material": "concept coax/feed stub from cellular module toward top antenna keepout",
+      "material": "development coax/feed envelope from cellular module toward top antenna keepout",
       "bounds_mm": [
         [
           -30.225,
@@ -3602,8 +4174,424 @@
       ],
       "volume_mm3": 2.363,
       "mass_placeholder": true,
-      "obj": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.obj",
-      "stl": "mechanical/e1-phone/out/cellular_rf_feed_coax_stub.stl"
+      "obj": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.obj",
+      "stl": "mechanical/e1-phone/out/cellular_rf_feed_development_envelope.stl"
+    },
+    {
+      "name": "display_fpc_tail",
+      "role": "flex/cable",
+      "material": "display/touch FPC tail route marker from connector into the display stack",
+      "bounds_mm": [
+        [
+          19.0,
+          42.0,
+          -1.51
+        ],
+        [
+          29.0,
+          48.0,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        6.0,
+        0.12
+      ],
+      "volume_mm3": 7.2,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/display_fpc_tail.obj",
+      "stl": "mechanical/e1-phone/out/display_fpc_tail.stl"
+    },
+    {
+      "name": "rear_camera_fpc_tail",
+      "role": "flex/cable",
+      "material": "rear camera CSI FPC tail marker from top board connector to camera module",
+      "bounds_mm": [
+        [
+          2.0,
+          62.6,
+          -1.51
+        ],
+        [
+          14.0,
+          63.4,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        12.0,
+        0.8,
+        0.12
+      ],
+      "volume_mm3": 1.152,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/rear_camera_fpc_tail.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_fpc_tail.stl"
+    },
+    {
+      "name": "front_camera_fpc_tail",
+      "role": "flex/cable",
+      "material": "front camera CSI FPC tail marker under the cover-glass camera region",
+      "bounds_mm": [
+        [
+          -22.5,
+          62.6,
+          -1.51
+        ],
+        [
+          -13.5,
+          63.4,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        9.0,
+        0.8,
+        0.12
+      ],
+      "volume_mm3": 0.864,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/front_camera_fpc_tail.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_fpc_tail.stl"
+    },
+    {
+      "name": "side_key_flex_tail",
+      "role": "flex/cable",
+      "material": "power/volume side-key flex tail along the right side wall",
+      "bounds_mm": [
+        [
+          30.5,
+          37.0,
+          -1.51
+        ],
+        [
+          31.5,
+          65.0,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        28.0,
+        0.12
+      ],
+      "volume_mm3": 3.36,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/side_key_flex_tail.obj",
+      "stl": "mechanical/e1-phone/out/side_key_flex_tail.stl"
+    },
+    {
+      "name": "battery_connector_lead_flex",
+      "role": "flex/cable",
+      "material": "battery pack positive/negative/NTC/ID lead flex landing on bottom island",
+      "bounds_mm": [
+        [
+          -10.0,
+          -53.1,
+          -1.51
+        ],
+        [
+          -2.0,
+          -51.9,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        8.0,
+        1.2,
+        0.12
+      ],
+      "volume_mm3": 1.152,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/battery_connector_lead_flex.obj",
+      "stl": "mechanical/e1-phone/out/battery_connector_lead_flex.stl"
+    },
+    {
+      "name": "usb_c_power_data_escape_tail",
+      "role": "flex/cable",
+      "material": "USB-C VBUS/CC/USB2 escape tail marker on the bottom island",
+      "bounds_mm": [
+        [
+          -9.0,
+          -63.5,
+          -1.51
+        ],
+        [
+          9.0,
+          -62.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        18.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 2.16,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_power_data_escape_tail.stl"
+    },
+    {
+      "name": "bottom_speaker_lead_pair",
+      "role": "flex/cable",
+      "material": "bottom speaker differential lead pair marker",
+      "bounds_mm": [
+        [
+          -5.0,
+          -62.5,
+          -1.51
+        ],
+        [
+          5.0,
+          -61.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.2,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair.stl"
+    },
+    {
+      "name": "bottom_microphone_flex_leads",
+      "role": "flex/cable",
+      "material": "bottom microphone bias/data flex lead marker",
+      "bounds_mm": [
+        [
+          -22.0,
+          -62.5,
+          -1.51
+        ],
+        [
+          -14.0,
+          -61.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        8.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 0.96,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_flex_leads.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_flex_leads.stl"
+    },
+    {
+      "name": "top_microphone_flex_tail",
+      "role": "flex/cable",
+      "material": "top microphone PDM flex tail marker from top microphone port region to top PCB island",
+      "bounds_mm": [
+        [
+          -27.4,
+          46.0,
+          -1.51
+        ],
+        [
+          -26.6,
+          64.0,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        0.8,
+        18.0,
+        0.12
+      ],
+      "volume_mm3": 1.728,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/top_microphone_flex_tail.obj",
+      "stl": "mechanical/e1-phone/out/top_microphone_flex_tail.stl"
+    },
+    {
+      "name": "earpiece_receiver_lead_flex",
+      "role": "flex/cable",
+      "material": "earpiece receiver lead flex marker behind the handset acoustic slot",
+      "bounds_mm": [
+        [
+          -7.0,
+          60.6,
+          -1.51
+        ],
+        [
+          7.0,
+          61.4,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        14.0,
+        0.8,
+        0.12
+      ],
+      "volume_mm3": 1.344,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.obj",
+      "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex.stl"
+    },
+    {
+      "name": "haptic_flex_tail",
+      "role": "flex/cable",
+      "material": "LRA haptic drive flex tail marker",
+      "bounds_mm": [
+        [
+          18.0,
+          -53.5,
+          -1.51
+        ],
+        [
+          30.0,
+          -52.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        12.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 1.44,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/haptic_flex_tail.obj",
+      "stl": "mechanical/e1-phone/out/haptic_flex_tail.stl"
+    },
+    {
+      "name": "sim_esim_signal_flex_marker",
+      "role": "flex/cable",
+      "material": "SIM/eSIM signal route marker to the side tray region",
+      "bounds_mm": [
+        [
+          28.5,
+          -66.5,
+          -1.51
+        ],
+        [
+          29.5,
+          -57.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        1.0,
+        9.0,
+        0.12
+      ],
+      "volume_mm3": 1.08,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_marker.stl"
+    },
+    {
+      "name": "nfc_loop_antenna_flex_marker",
+      "role": "flex/cable",
+      "material": "NFC controller to loop-match antenna flex marker for NFC_RF_P/N",
+      "bounds_mm": [
+        [
+          15.0,
+          -62.5,
+          -1.51
+        ],
+        [
+          21.0,
+          -61.5,
+          -1.39
+        ]
+      ],
+      "span_mm": [
+        6.0,
+        1.0,
+        0.12
+      ],
+      "volume_mm3": 0.72,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.obj",
+      "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_marker.stl"
+    },
+    {
+      "name": "cellular_div_rf_feed_development_envelope",
+      "role": "RF feed",
+      "material": "development cellular diversity RF feed envelope",
+      "bounds_mm": [
+        [
+          -24.225,
+          54.0,
+          -1.49
+        ],
+        [
+          -23.775,
+          66.0,
+          -1.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        12.0,
+        0.28
+      ],
+      "volume_mm3": 1.512,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.obj",
+      "stl": "mechanical/e1-phone/out/cellular_div_rf_feed_development_envelope.stl"
+    },
+    {
+      "name": "cellular_gnss_rf_feed_development_envelope",
+      "role": "RF feed",
+      "material": "development GNSS RF feed envelope",
+      "bounds_mm": [
+        [
+          -28.225,
+          55.0,
+          -1.49
+        ],
+        [
+          -27.775,
+          65.0,
+          -1.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        10.0,
+        0.28
+      ],
+      "volume_mm3": 1.26,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.obj",
+      "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_development_envelope.stl"
+    },
+    {
+      "name": "wifi_bt_rf1_feed_development_envelope",
+      "role": "RF feed",
+      "material": "development second Wi-Fi/Bluetooth RF feed envelope",
+      "bounds_mm": [
+        [
+          22.0,
+          38.775,
+          -1.49
+        ],
+        [
+          32.0,
+          39.225,
+          -1.21
+        ]
+      ],
+      "span_mm": [
+        10.0,
+        0.45,
+        0.28
+      ],
+      "volume_mm3": 1.26,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_development_envelope.stl"
     },
     {
       "name": "haptic_lra",
@@ -3734,6 +4722,1098 @@
       "mass_placeholder": true,
       "obj": "mechanical/e1-phone/out/service_label_recess.obj",
       "stl": "mechanical/e1-phone/out/service_label_recess.stl"
+    },
+    {
+      "name": "display_touch_fpc_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for display_touch_fpc on display_fpc_connector; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          23.61,
+          55.462,
+          6.19
+        ],
+        [
+          24.06,
+          55.682,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/display_touch_fpc_from_terminal.stl"
+    },
+    {
+      "name": "display_touch_fpc_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for display_touch_fpc on display_lcm; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.775,
+          -6.46,
+          6.19
+        ],
+        [
+          -0.325,
+          -6.24,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/display_touch_fpc_to_terminal.stl"
+    },
+    {
+      "name": "rear_camera_csi_fpc_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for rear_camera_csi_fpc on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -29.225,
+          -64.11,
+          6.19
+        ],
+        [
+          -28.775,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_csi_fpc_from_terminal.stl"
+    },
+    {
+      "name": "rear_camera_csi_fpc_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for rear_camera_csi_fpc on rear_camera_module; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          21.582,
+          58.301,
+          6.19
+        ],
+        [
+          22.032,
+          58.521,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/rear_camera_csi_fpc_to_terminal.stl"
+    },
+    {
+      "name": "front_camera_csi_fpc_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for front_camera_csi_fpc on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -17.625,
+          -64.11,
+          6.19
+        ],
+        [
+          -17.175,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_csi_fpc_from_terminal.stl"
+    },
+    {
+      "name": "front_camera_csi_fpc_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for front_camera_csi_fpc on front_camera_module; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -18.925,
+          68.657,
+          6.19
+        ],
+        [
+          -18.475,
+          68.877,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/front_camera_csi_fpc_to_terminal.stl"
+    },
+    {
+      "name": "side_key_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for side_key_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -6.025,
+          -64.11,
+          6.19
+        ],
+        [
+          -5.575,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/side_key_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/side_key_flex_from_terminal.stl"
+    },
+    {
+      "name": "side_key_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for side_key_flex on power_button_cap; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          40.332,
+          19.783,
+          6.19
+        ],
+        [
+          40.782,
+          20.003,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/side_key_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/side_key_flex_to_terminal.stl"
+    },
+    {
+      "name": "battery_lead_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for battery_lead_flex on battery_pouch; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.775,
+          -7.96,
+          6.19
+        ],
+        [
+          -0.325,
+          -7.74,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/battery_lead_flex_from_terminal.stl"
+    },
+    {
+      "name": "battery_lead_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for battery_lead_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          5.575,
+          -64.11,
+          6.19
+        ],
+        [
+          6.025,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/battery_lead_flex_to_terminal.stl"
+    },
+    {
+      "name": "usb_c_escape_tail_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for usb_c_escape_tail on usb_c_receptacle; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.775,
+          -73.66,
+          6.19
+        ],
+        [
+          -0.325,
+          -73.44,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_escape_tail_from_terminal.stl"
+    },
+    {
+      "name": "usb_c_escape_tail_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for usb_c_escape_tail on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          17.175,
+          -64.11,
+          6.19
+        ],
+        [
+          17.625,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/usb_c_escape_tail_to_terminal.stl"
+    },
+    {
+      "name": "bottom_speaker_lead_pair_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          28.775,
+          -64.11,
+          6.19
+        ],
+        [
+          29.225,
+          -63.89,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair_from_terminal.stl"
+    },
+    {
+      "name": "bottom_speaker_lead_pair_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for bottom_speaker_lead_pair on bottom_speaker_module; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          17.983,
+          -64.88,
+          6.19
+        ],
+        [
+          18.433,
+          -64.66,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/bottom_speaker_lead_pair_to_terminal.stl"
+    },
+    {
+      "name": "bottom_microphone_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -29.225,
+          63.89,
+          6.19
+        ],
+        [
+          -28.775,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_flex_from_terminal.stl"
+    },
+    {
+      "name": "bottom_microphone_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for bottom_microphone_flex on bottom_mic; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -18.973,
+          -69.393,
+          6.19
+        ],
+        [
+          -18.523,
+          -69.173,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/bottom_microphone_flex_to_terminal.stl"
+    },
+    {
+      "name": "top_microphone_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for top_microphone_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -17.625,
+          63.89,
+          6.19
+        ],
+        [
+          -17.175,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/top_microphone_flex_from_terminal.stl"
+    },
+    {
+      "name": "top_microphone_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for top_microphone_flex on top_mic; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          18.523,
+          69.173,
+          6.19
+        ],
+        [
+          18.973,
+          69.393,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/top_microphone_flex_to_terminal.stl"
+    },
+    {
+      "name": "earpiece_receiver_lead_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for earpiece_receiver_lead_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -6.025,
+          63.89,
+          6.19
+        ],
+        [
+          -5.575,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_from_terminal.stl"
+    },
+    {
+      "name": "earpiece_receiver_lead_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for earpiece_receiver_lead_flex on earpiece_receiver; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          0.325,
+          69.54,
+          6.19
+        ],
+        [
+          0.775,
+          69.76,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/earpiece_receiver_lead_flex_to_terminal.stl"
+    },
+    {
+      "name": "haptic_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for haptic_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          5.575,
+          63.89,
+          6.19
+        ],
+        [
+          6.025,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/haptic_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/haptic_flex_from_terminal.stl"
+    },
+    {
+      "name": "haptic_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for haptic_flex on haptic_lra; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          35.381,
+          -45.117,
+          6.19
+        ],
+        [
+          35.831,
+          -44.897,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/haptic_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/haptic_flex_to_terminal.stl"
+    },
+    {
+      "name": "sim_esim_signal_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for sim_esim_signal_flex on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          17.175,
+          63.89,
+          6.19
+        ],
+        [
+          17.625,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_from_terminal.stl"
+    },
+    {
+      "name": "sim_esim_signal_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for sim_esim_signal_flex on sim_tray_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          32.044,
+          -19.007,
+          6.19
+        ],
+        [
+          32.494,
+          -18.787,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/sim_esim_signal_flex_to_terminal.stl"
+    },
+    {
+      "name": "nfc_loop_antenna_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for nfc_loop_antenna_flex on nfc_controller_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -26.366,
+          30.893,
+          6.19
+        ],
+        [
+          -25.916,
+          31.113,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_from_terminal.stl"
+    },
+    {
+      "name": "nfc_loop_antenna_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for nfc_loop_antenna_flex on nfc_loop_match_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -30.127,
+          58.898,
+          6.19
+        ],
+        [
+          -29.677,
+          59.118,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/nfc_loop_antenna_flex_to_terminal.stl"
+    },
+    {
+      "name": "compute_som_sodimm_carrier_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for compute_som_sodimm_carrier on main_pcb; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          28.775,
+          63.89,
+          6.19
+        ],
+        [
+          29.225,
+          64.11,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/compute_som_sodimm_carrier_from_terminal.stl"
+    },
+    {
+      "name": "compute_som_sodimm_carrier_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for compute_som_sodimm_carrier on compute_som_daughterboard_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          0.325,
+          45.74,
+          6.19
+        ],
+        [
+          0.775,
+          45.96,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/compute_som_sodimm_carrier_to_terminal.stl"
+    },
+    {
+      "name": "cellular_main_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_main_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -15.482,
+          45.873,
+          6.19
+        ],
+        [
+          -15.032,
+          46.093,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_main_rf_feed_from_terminal.stl"
+    },
+    {
+      "name": "cellular_main_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_main_rf_feed on cellular_top_antenna_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          0.325,
+          72.14,
+          6.19
+        ],
+        [
+          0.775,
+          72.36,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_main_rf_feed_to_terminal.stl"
+    },
+    {
+      "name": "cellular_diversity_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_diversity_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -16.002,
+          45.694,
+          6.19
+        ],
+        [
+          -15.552,
+          45.914,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_diversity_rf_feed_from_terminal.stl"
+    },
+    {
+      "name": "cellular_diversity_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_diversity_rf_feed on cellular_bottom_antenna_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.775,
+          -72.36,
+          6.19
+        ],
+        [
+          -0.325,
+          -72.14,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_diversity_rf_feed_to_terminal.stl"
+    },
+    {
+      "name": "cellular_antenna_aperture_tuner_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_antenna_aperture_tuner on cellular_lga_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -16.522,
+          45.515,
+          6.19
+        ],
+        [
+          -16.072,
+          45.735,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_from_terminal.stl"
+    },
+    {
+      "name": "cellular_antenna_aperture_tuner_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_antenna_aperture_tuner on cellular_bottom_antenna_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -0.225,
+          -72.36,
+          6.19
+        ],
+        [
+          0.225,
+          -72.14,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": true,
+      "obj": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_antenna_aperture_tuner_to_terminal.stl"
+    },
+    {
+      "name": "cellular_gnss_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for cellular_gnss_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -15.482,
+          45.873,
+          6.19
+        ],
+        [
+          -15.032,
+          46.093,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_from_terminal.stl"
+    },
+    {
+      "name": "cellular_gnss_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for cellular_gnss_rf_feed on gnss_lna_package_marker; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          -30.097,
+          63.394,
+          6.19
+        ],
+        [
+          -29.647,
+          63.614,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/cellular_gnss_rf_feed_to_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_rf0_feed_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for wifi_bt_rf0_feed on wifi_bt_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          20.637,
+          42.421,
+          6.19
+        ],
+        [
+          21.087,
+          42.641,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf0_feed_from_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_rf0_feed_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for wifi_bt_rf0_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          21.642,
+          43.412,
+          6.19
+        ],
+        [
+          22.092,
+          43.632,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf0_feed_to_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_rf1_feed_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for wifi_bt_rf1_feed on wifi_bt_module_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          20.14,
+          42.657,
+          6.19
+        ],
+        [
+          20.59,
+          42.877,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_from_terminal.stl"
+    },
+    {
+      "name": "wifi_bt_rf1_feed_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for wifi_bt_rf1_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          21.148,
+          43.654,
+          6.19
+        ],
+        [
+          21.598,
+          43.874,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/wifi_bt_rf1_feed_to_terminal.stl"
+    },
+    {
+      "name": "split_interconnect_side_flex_from_terminal",
+      "role": "connection terminal",
+      "material": "from terminal marker for split_interconnect_side_flex on split_interconnect_top_connector; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          22.68,
+          37.845,
+          6.19
+        ],
+        [
+          23.13,
+          38.065,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_side_flex_from_terminal.stl"
+    },
+    {
+      "name": "split_interconnect_side_flex_to_terminal",
+      "role": "connection terminal",
+      "material": "to terminal marker for split_interconnect_side_flex on split_interconnect_bottom_connector; local CAD connection evidence only",
+      "bounds_mm": [
+        [
+          21.596,
+          -53.607,
+          6.19
+        ],
+        [
+          22.046,
+          -53.387,
+          6.21
+        ]
+      ],
+      "span_mm": [
+        0.45,
+        0.22,
+        0.02
+      ],
+      "volume_mm3": 0.002,
+      "mass_placeholder": false,
+      "obj": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.obj",
+      "stl": "mechanical/e1-phone/out/split_interconnect_side_flex_to_terminal.stl"
     }
   ]
 }

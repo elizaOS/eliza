@@ -1,0 +1,187 @@
+{
+  "schema": "eliza.tee_evidence_policy_fixtures.v1",
+  "summary": "Golden + tampered TeeEvidence vectors that exercise the decisions the agent verifier evaluateTeeEvidencePolicy (packages/agent/src/services/tee-policy.ts) makes. This is the chip-side fixture set proving the cross-layer attestation contract: the chip emits evidence in the TeeEvidence shape, and the agent's policy must reach the expected decision. The evaluator in scripts/test_tee_evidence_policy.py is a faithful Python port of tee-policy.ts; these fixtures pin its behaviour for the E1 cove launch shape and mirror the agent's tee-evidence-policy.matrix.test.ts semantics.",
+  "claim_boundary": "Policy-decision contract fixtures only; not a signed quote, not secure boot, not silicon. The evidence vectors are synthetic; they prove the cross-layer decision contract, not a real attestation.",
+  "now_ms": 1779278405000,
+  "golden_evidence": {
+    "kind": "cove",
+    "provider": "eliza-riscv",
+    "hardwareVendor": "eliza",
+    "platformVersion": "e1-sim-v0",
+    "securityVersion": 7,
+    "measurements": {
+      "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "monitor": "sha256:9999999999999999999999999999999999999999999999999999999999999999",
+      "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "device": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "freshness": {
+      "nonce": "issued-nonce",
+      "timestamp": "2026-05-20T12:00:00.000Z",
+      "verifier": "eliza-local-verifier"
+    },
+    "claims": {
+      "debugDisabled": true,
+      "productionLifecycle": true,
+      "secureBoot": true,
+      "memoryEncrypted": true,
+      "ioProtected": true,
+      "npuProtected": true,
+      "monitorMeasured": true
+    },
+    "quote": "model-cove-quote-unsigned",
+    "reportData": "sha256:1234567890123456789012345678901234567890123456789012345678901234"
+  },
+  "golden_policy": {
+    "required": true,
+    "allowedKinds": ["cove"],
+    "allowedProviders": ["eliza-riscv"],
+    "minSecurityVersion": 7,
+    "expectedNonce": "issued-nonce",
+    "maxAgeMs": 60000,
+    "requiredMeasurements": {
+      "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "device": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "npuFirmware": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "requiredClaims": {
+      "debugDisabled": true,
+      "secureBoot": true,
+      "memoryEncrypted": true,
+      "ioProtected": true,
+      "npuProtected": true
+    }
+  },
+  "cases": [
+    {
+      "id": "allowed",
+      "expected_reason": "allowed",
+      "expected_trusted": true,
+      "note": "golden evidence against golden policy, fresh timestamp"
+    },
+    {
+      "id": "no-policy",
+      "expected_reason": "no-policy",
+      "expected_trusted": true,
+      "policy": null,
+      "note": "no policy supplied: trust by default (agent contract)"
+    },
+    {
+      "id": "not-required",
+      "expected_reason": "not-required",
+      "expected_trusted": true,
+      "evidence": null,
+      "policy": {"required": false},
+      "note": "evidence absent and policy not required"
+    },
+    {
+      "id": "missing-evidence",
+      "expected_reason": "missing-evidence",
+      "expected_trusted": false,
+      "evidence": null,
+      "policy": {"required": true}
+    },
+    {
+      "id": "kind-not-allowed",
+      "expected_reason": "kind-not-allowed",
+      "expected_trusted": false,
+      "evidence_overrides": {"kind": "sev-snp"}
+    },
+    {
+      "id": "provider-not-allowed",
+      "expected_reason": "provider-not-allowed",
+      "expected_trusted": false,
+      "evidence_overrides": {"provider": "rogue"}
+    },
+    {
+      "id": "measurement-mismatch",
+      "expected_reason": "measurement-mismatch",
+      "expected_trusted": false,
+      "evidence_measurement_overrides": {
+        "os": "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "note": "tampered OS image yields a different os digest (07 §7.2 data-unavailability path)"
+    },
+    {
+      "id": "measurement-revoked",
+      "expected_reason": "measurement-revoked",
+      "expected_trusted": false,
+      "policy_overrides": {
+        "revokedMeasurements": {
+          "agent": ["sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"]
+        }
+      }
+    },
+    {
+      "id": "security-version-too-low",
+      "expected_reason": "security-version-too-low",
+      "expected_trusted": false,
+      "evidence_overrides": {"securityVersion": 3}
+    },
+    {
+      "id": "security-version-revoked",
+      "expected_reason": "security-version-revoked",
+      "expected_trusted": false,
+      "policy_overrides": {"revokedSecurityVersions": [7]}
+    },
+    {
+      "id": "missing-nonce",
+      "expected_reason": "missing-nonce",
+      "expected_trusted": false,
+      "evidence_freshness_overrides": {"nonce": null}
+    },
+    {
+      "id": "nonce-mismatch",
+      "expected_reason": "nonce-mismatch",
+      "expected_trusted": false,
+      "evidence_freshness_overrides": {"nonce": "different-nonce"}
+    },
+    {
+      "id": "missing-timestamp",
+      "expected_reason": "missing-timestamp",
+      "expected_trusted": false,
+      "evidence_freshness_overrides": {"timestamp": null}
+    },
+    {
+      "id": "timestamp-invalid",
+      "expected_reason": "timestamp-invalid",
+      "expected_trusted": false,
+      "evidence_freshness_overrides": {"timestamp": "not-a-date"}
+    },
+    {
+      "id": "timestamp-stale",
+      "expected_reason": "timestamp-stale",
+      "expected_trusted": false,
+      "now_ms": 1779883200000,
+      "note": "now is ~7 days after the quote timestamp, beyond maxAgeMs"
+    },
+    {
+      "id": "claim-mismatch",
+      "expected_reason": "claim-mismatch",
+      "expected_trusted": false,
+      "evidence_claim_overrides": {"npuProtected": false},
+      "note": "npuProtected revoked: policy requiredClaims.npuProtected fails"
+    },
+    {
+      "id": "invalid-evidence",
+      "expected_reason": "invalid-evidence",
+      "expected_trusted": false,
+      "evidence_raw": {"provider": "eliza-riscv"},
+      "note": "evidence with no kind cannot normalize"
+    },
+    {
+      "id": "simulated-evidence-rejected",
+      "expected_reason": "simulated-evidence-rejected",
+      "expected_trusted": false,
+      "evidence_overrides": {"hardwareVendor": "mock-macos"},
+      "policy_overrides": {"rejectSimulatedEvidence": true},
+      "note": "production profile rejects self-declared non-prod markers (dstack #608 defense)"
+    }
+  ]
+}

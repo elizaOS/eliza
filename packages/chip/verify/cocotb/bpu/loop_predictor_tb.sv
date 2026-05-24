@@ -11,11 +11,13 @@ module loop_predictor_tb (
     input  logic               rst_n,
     input  logic               lkp_valid,
     input  logic [VADDR_W-1:0] lkp_pc,
+    input  logic [LOOP_PATH_SIG_W-1:0] lkp_path_sig,
     output logic               lkp_hit,
     output logic               lkp_taken,
     output logic               pmu_hit,
     input  logic               upd_valid,
     input  logic [VADDR_W-1:0] upd_pc,
+    input  logic [LOOP_PATH_SIG_W-1:0] upd_path_sig,
     input  logic [VADDR_W-1:0] upd_target,
     input  logic               upd_taken
 );

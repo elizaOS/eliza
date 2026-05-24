@@ -1,9 +1,9 @@
 {
   "aggregate": {
-    "cva6_model_geomean_mpki": 24.067304,
-    "e1_model_geomean_mpki": 2.641046,
-    "e1_rtl_geomean_mpki": 11.641707,
-    "rtl_corroborated_improvement_ratio_cva6_over_e1_rtl": 2.0673
+    "cva6_model_geomean_mpki": 43.006539,
+    "e1_model_geomean_mpki": 15.005509,
+    "e1_rtl_geomean_mpki": 15.605351,
+    "rtl_improvement_ratio_cva6_over_e1_rtl": 2.7559
   },
   "claim_policy": {
     "android_claim": false,
@@ -15,7 +15,7 @@
     "v8_claim": false
   },
   "comparison_claim_level": "L2_ARCH_SIM",
-  "comparison_status": "BLOCKED_RTL_NOT_CONVERGED",
+  "comparison_status": "RTL_CORROBORATED",
   "cva6_baseline": {
     "model": "benchmarks/cpu/branch/baseline_predictors.py:Cva6BaselinePredictor",
     "model_faithful_because": "CVA6/Ariane front-end is a simple in-order predictor: BHT(128) 2-bit counters PC-indexed, untagged BTB(32) for register-indirect jumps only, and a depth-2 RAS. There is no TAGE/SC/ITTAGE/loop predictor to model, so the behavioural model reproduces the RTL predictor exactly; running CVA6 RTL would add no fidelity.",
@@ -35,37 +35,57 @@
     }
   },
   "cva6_claim_level": "L2_ARCH_SIM",
-  "description": "RTL-corroborated MPKI comparison. The E1 side is measured on the synthesizable bpu_top.sv via the cocotb harness (L1_RTL_FULL_SOC); the CVA6 side is the behavioural BHT+BTB+RAS baseline model (L2_ARCH_SIM), sized directly from CVA6 RTL. The headline comparison is held at the lower of the two levels.",
+  "description": "Fail-closed RTL MPKI comparison. The E1 side is measured on the synthesizable bpu_top.sv via the cocotb harness (L1_RTL_FULL_SOC); the CVA6 side is the behavioural BHT+BTB+RAS baseline model (L2_ARCH_SIM), sized directly from CVA6 RTL. The headline comparison is held at the lower of the two levels.",
   "e1_claim_level": "L1_RTL_FULL_SOC",
-  "generated_at_utc": "2026-05-22T19:02:20.495042+00:00",
+  "generated_at_utc": "2026-05-23T09:57:18.233301+00:00",
   "harness": "benchmarks/cpu/branch/compare_mpki_rtl.py",
-  "headline_note": "E1 RTL does NOT currently track the E1 behavioural model on the shared traces (geomean relative gap exceeds the convergence band). The BPU RTL is mid-edit in the working tree (FTB multi-slot restructure, SC local history, ITTAGE token history), so the measured RTL MPKI regresses vs both the model and the last committed RTL evidence. This file records the measured RTL numbers honestly and FAILS CLOSED: it does not back an RTL-corroborated win until the RTL reconverges with the model. Re-run make mpki-eval-rtl + mpki-eval-workload-rtl after the RTL stabilises.",
+  "headline_note": "E1 RTL tracks the E1 behavioural model within the convergence band on the shared traces; the model-level head-to-head win is RTL-validated on the E1 side. Comparison is held at L2_ARCH_SIM because the CVA6 side remains a behavioural model. Traces listed in rtl_traces_without_model_pair are reported separately and do not contribute to this corroboration status.",
   "model_comparison_source": "docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json",
   "model_rtl_correlation": {
-    "converged": false,
+    "converged": true,
     "convergence_band_rel_gap": 0.5,
-    "e1_model_geomean_mpki": 2.641046,
-    "e1_rtl_geomean_mpki": 11.641707,
-    "geomean_relative_gap": 3.407991,
-    "pearson_r": 0.376249,
-    "spearman_rho": 0.756032
+    "e1_model_geomean_mpki": 15.005509,
+    "e1_rtl_geomean_mpki": 15.605351,
+    "geomean_relative_gap": 0.039975,
+    "pearson_r": 0.818594,
+    "spearman_rho": 0.903081
   },
   "per_trace": {
+    "alias_thrash": {
+      "cva6_model_mpki": 104.0625,
+      "e1_model_mpki": 96.40625,
+      "e1_rtl_mpki": 96.40625,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.0794,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "allocator_gc_barrier": {
+      "cva6_model_mpki": 8.759124,
+      "e1_model_mpki": 8.759124,
+      "e1_rtl_mpki": 8.844998,
+      "e1_rtl_vs_model_rel_gap": 0.0098,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.9903,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
     "alternating": {
       "cva6_model_mpki": 100.0,
       "e1_model_mpki": 1.0,
-      "e1_rtl_mpki": 3.0,
-      "e1_rtl_vs_model_rel_gap": 2.0,
-      "improvement_ratio_cva6_model_over_e1_rtl": 33.3333,
+      "e1_rtl_mpki": 1.0,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 100.0,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "always_not_taken": {
       "cva6_model_mpki": 0.0,
-      "e1_model_mpki": 0.2,
+      "e1_model_mpki": 0.0,
       "e1_rtl_mpki": 0.0,
-      "e1_rtl_vs_model_rel_gap": 1.0,
+      "e1_rtl_vs_model_rel_gap": 0.0,
       "improvement_ratio_cva6_model_over_e1_rtl": null,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
@@ -81,62 +101,202 @@
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
-    "audio_frames": {
-      "cva6_model_mpki": 10.370996,
-      "e1_model_mpki": 8.347092,
-      "e1_rtl_mpki": 38.154971,
-      "e1_rtl_vs_model_rel_gap": 3.571,
-      "improvement_ratio_cva6_model_over_e1_rtl": 0.2718,
-      "rtl_group": "workload",
-      "rtl_source": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
-      "trace_class": "qemu_rv64_workload"
+    "android_runtime_inline_cache": {
+      "cva6_model_mpki": 53.8125,
+      "e1_model_mpki": 55.3125,
+      "e1_rtl_mpki": 55.125,
+      "e1_rtl_vs_model_rel_gap": 0.0034,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.9762,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "btb_confidence_churn": {
+      "cva6_model_mpki": 48.472222,
+      "e1_model_mpki": 51.041667,
+      "e1_rtl_mpki": 52.777778,
+      "e1_rtl_vs_model_rel_gap": 0.034,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.9184,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "command_buffer_validation": {
+      "cva6_model_mpki": 62.660668,
+      "e1_model_mpki": 60.539846,
+      "e1_rtl_mpki": 60.604113,
+      "e1_rtl_vs_model_rel_gap": 0.0011,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.0339,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "control_indirect_pair": {
+      "cva6_model_mpki": 133.229167,
+      "e1_model_mpki": 31.770833,
+      "e1_rtl_mpki": 36.458333,
+      "e1_rtl_vs_model_rel_gap": 0.1475,
+      "improvement_ratio_cva6_model_over_e1_rtl": 3.6543,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "correlated_xor_branches": {
+      "cva6_model_mpki": 100.086806,
+      "e1_model_mpki": 1.909722,
+      "e1_rtl_mpki": 1.909722,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 52.4091,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
     },
     "deep_recursion": {
       "cva6_model_mpki": 193.359375,
-      "e1_model_mpki": 12.5,
+      "e1_model_mpki": 25.0,
       "e1_rtl_mpki": 25.0,
-      "e1_rtl_vs_model_rel_gap": 1.0,
+      "e1_rtl_vs_model_rel_gap": 0.0,
       "improvement_ratio_cva6_model_over_e1_rtl": 7.7344,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "dual_branch_fetch_block": {
+      "cva6_model_mpki": 6.841046,
+      "e1_model_mpki": 98.591549,
+      "e1_rtl_mpki": 7.243461,
+      "e1_rtl_vs_model_rel_gap": 0.9265,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.9444,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "epoll_rpc_dispatch": {
+      "cva6_model_mpki": 53.576642,
+      "e1_model_mpki": 47.080292,
+      "e1_rtl_mpki": 47.591241,
+      "e1_rtl_vs_model_rel_gap": 0.0109,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.1258,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "gpu_command_processor": {
       "cva6_model_mpki": 104.632153,
-      "e1_model_mpki": 12.098093,
-      "e1_rtl_mpki": 37.057221,
-      "e1_rtl_vs_model_rel_gap": 2.0631,
-      "improvement_ratio_cva6_model_over_e1_rtl": 2.8235,
+      "e1_model_mpki": 10.572207,
+      "e1_rtl_mpki": 13.73297,
+      "e1_rtl_vs_model_rel_gap": 0.299,
+      "improvement_ratio_cva6_model_over_e1_rtl": 7.619,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_driver_submit_phases": {
+      "cva6_model_mpki": 56.574123,
+      "e1_model_mpki": 23.153483,
+      "e1_rtl_mpki": 24.62022,
+      "e1_rtl_vs_model_rel_gap": 0.0633,
+      "improvement_ratio_cva6_model_over_e1_rtl": 2.2979,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_nested_reconvergence": {
+      "cva6_model_mpki": 57.552083,
+      "e1_model_mpki": 23.697917,
+      "e1_rtl_mpki": 25.260417,
+      "e1_rtl_vs_model_rel_gap": 0.0659,
+      "improvement_ratio_cva6_model_over_e1_rtl": 2.2784,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_occupancy_phase": {
+      "cva6_model_mpki": 30.357143,
+      "e1_model_mpki": 15.079365,
+      "e1_rtl_mpki": 15.277778,
+      "e1_rtl_vs_model_rel_gap": 0.0132,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.987,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "gpu_tile_kernel": {
       "cva6_model_mpki": 6.502525,
-      "e1_model_mpki": 1.010101,
-      "e1_rtl_mpki": 1.515152,
-      "e1_rtl_vs_model_rel_gap": 0.5,
-      "improvement_ratio_cva6_model_over_e1_rtl": 4.2917,
+      "e1_model_mpki": 0.883838,
+      "e1_rtl_mpki": 1.010101,
+      "e1_rtl_vs_model_rel_gap": 0.1429,
+      "improvement_ratio_cva6_model_over_e1_rtl": 6.4375,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "gpu_warp_divergence": {
       "cva6_model_mpki": 84.765625,
-      "e1_model_mpki": 26.757812,
-      "e1_rtl_mpki": 21.679688,
-      "e1_rtl_vs_model_rel_gap": 0.1898,
-      "improvement_ratio_cva6_model_over_e1_rtl": 3.9099,
+      "e1_model_mpki": 5.859375,
+      "e1_rtl_mpki": 7.421875,
+      "e1_rtl_vs_model_rel_gap": 0.2667,
+      "improvement_ratio_cva6_model_over_e1_rtl": 11.4211,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "gpu_wavefront_compaction": {
+      "cva6_model_mpki": 75.585938,
+      "e1_model_mpki": 58.398438,
+      "e1_rtl_mpki": 60.15625,
+      "e1_rtl_vs_model_rel_gap": 0.0301,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.2565,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "hash_probe_inline_cache": {
+      "cva6_model_mpki": 97.090552,
+      "e1_model_mpki": 77.345538,
+      "e1_rtl_mpki": 77.214776,
+      "e1_rtl_vs_model_rel_gap": 0.0017,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.2574,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "interpreter_dispatch_mixed": {
+      "cva6_model_mpki": 120.45134,
+      "e1_model_mpki": 106.911142,
+      "e1_rtl_mpki": 108.039492,
+      "e1_rtl_vs_model_rel_gap": 0.0106,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.1149,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "jit_dispatch_warmup": {
       "cva6_model_mpki": 8.77193,
-      "e1_model_mpki": 10.902256,
-      "e1_rtl_mpki": 10.902256,
+      "e1_model_mpki": 9.14787,
+      "e1_rtl_mpki": 9.14787,
       "e1_rtl_vs_model_rel_gap": 0.0,
-      "improvement_ratio_cva6_model_over_e1_rtl": 0.8046,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.9589,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "json_parser_state_machine": {
+      "cva6_model_mpki": 51.510417,
+      "e1_model_mpki": 16.666667,
+      "e1_rtl_mpki": 26.71875,
+      "e1_rtl_vs_model_rel_gap": 0.6031,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.9279,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "l2_ftb_target_pressure": {
+      "cva6_model_mpki": 0.260417,
+      "e1_model_mpki": 100.0,
+      "e1_rtl_mpki": 200.0,
+      "e1_rtl_vs_model_rel_gap": 1.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 0.0013,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
@@ -144,74 +304,115 @@
     "loop_with_known_trip": {
       "cva6_model_mpki": 12.695312,
       "e1_model_mpki": 0.78125,
-      "e1_rtl_mpki": 2.929688,
-      "e1_rtl_vs_model_rel_gap": 2.75,
-      "improvement_ratio_cva6_model_over_e1_rtl": 4.3333,
+      "e1_rtl_mpki": 1.367188,
+      "e1_rtl_vs_model_rel_gap": 0.75,
+      "improvement_ratio_cva6_model_over_e1_rtl": 9.2857,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
     "mixed_workload": {
       "cva6_model_mpki": 54.545455,
-      "e1_model_mpki": 1.988636,
-      "e1_rtl_mpki": 15.056818,
-      "e1_rtl_vs_model_rel_gap": 6.5714,
-      "improvement_ratio_cva6_model_over_e1_rtl": 3.6226,
+      "e1_model_mpki": 3.409091,
+      "e1_rtl_mpki": 4.261364,
+      "e1_rtl_vs_model_rel_gap": 0.25,
+      "improvement_ratio_cva6_model_over_e1_rtl": 12.8,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
-    "sample_fp_trace": {
-      "cva6_model_mpki": 11.974049,
-      "e1_model_mpki": 1.838152,
-      "e1_rtl_mpki": 36.60469,
-      "e1_rtl_vs_model_rel_gap": 18.9139,
-      "improvement_ratio_cva6_model_over_e1_rtl": 0.3271,
-      "rtl_group": "cbp5",
-      "rtl_source": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
-      "trace_class": "cbp5_train_traces_only"
+    "nested_imli_loop": {
+      "cva6_model_mpki": 28.409091,
+      "e1_model_mpki": 6.534091,
+      "e1_rtl_mpki": 7.386364,
+      "e1_rtl_vs_model_rel_gap": 0.1304,
+      "improvement_ratio_cva6_model_over_e1_rtl": 3.8462,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
     },
-    "sample_int_trace": {
-      "cva6_model_mpki": 65.123769,
-      "e1_model_mpki": 2.027472,
-      "e1_rtl_mpki": 43.891463,
-      "e1_rtl_vs_model_rel_gap": 20.6484,
-      "improvement_ratio_cva6_model_over_e1_rtl": 1.4837,
-      "rtl_group": "cbp5",
-      "rtl_source": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
-      "trace_class": "cbp5_train_traces_only"
+    "phase_change_server": {
+      "cva6_model_mpki": 108.958333,
+      "e1_model_mpki": 39.513889,
+      "e1_rtl_mpki": 40.277778,
+      "e1_rtl_vs_model_rel_gap": 0.0193,
+      "improvement_ratio_cva6_model_over_e1_rtl": 2.7052,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "return_mismatch_exceptions": {
+      "cva6_model_mpki": 166.666667,
+      "e1_model_mpki": 11.640212,
+      "e1_rtl_mpki": 11.640212,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 14.3182,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "signal_exception_unwind": {
+      "cva6_model_mpki": 162.078652,
+      "e1_model_mpki": 9.831461,
+      "e1_rtl_mpki": 9.831461,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 16.4857,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
     },
     "v8_indirect_dispatch": {
       "cva6_model_mpki": 200.0,
-      "e1_model_mpki": 12.890625,
-      "e1_rtl_mpki": 123.4375,
-      "e1_rtl_vs_model_rel_gap": 8.5758,
-      "improvement_ratio_cva6_model_over_e1_rtl": 1.6203,
+      "e1_model_mpki": 13.671875,
+      "e1_rtl_mpki": 13.671875,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 14.6286,
       "rtl_group": "synthetic",
       "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
       "trace_class": "synthetic_planning_only"
     },
-    "video_blocks": {
-      "cva6_model_mpki": 9.983754,
-      "e1_model_mpki": 1.910429,
-      "e1_rtl_mpki": 12.640788,
-      "e1_rtl_vs_model_rel_gap": 5.6167,
-      "improvement_ratio_cva6_model_over_e1_rtl": 0.7898,
-      "rtl_group": "workload",
-      "rtl_source": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
-      "trace_class": "qemu_rv64_workload"
+    "vtable_path_correlated": {
+      "cva6_model_mpki": 132.986111,
+      "e1_model_mpki": 4.166667,
+      "e1_rtl_mpki": 4.166667,
+      "e1_rtl_vs_model_rel_gap": 0.0,
+      "improvement_ratio_cva6_model_over_e1_rtl": 31.9167,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "work_stealing_queues": {
+      "cva6_model_mpki": 112.5,
+      "e1_model_mpki": 95.182292,
+      "e1_rtl_mpki": 97.005208,
+      "e1_rtl_vs_model_rel_gap": 0.0192,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.1597,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
+    },
+    "workload_class_phase_alias": {
+      "cva6_model_mpki": 119.921875,
+      "e1_model_mpki": 33.984375,
+      "e1_rtl_mpki": 78.515625,
+      "e1_rtl_vs_model_rel_gap": 1.3103,
+      "improvement_ratio_cva6_model_over_e1_rtl": 1.5274,
+      "rtl_group": "synthetic",
+      "rtl_source": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+      "trace_class": "synthetic_planning_only"
     }
   },
   "provenance": "simulator",
   "rtl_evidence_sources": [
-    "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
-    "docs/evidence/cpu_ap/mpki_results_synthetic.json",
-    "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
+    "docs/evidence/cpu_ap/mpki_results_synthetic.json"
   ],
   "rtl_traces_without_model_pair": [
-    "dual_branch_fetch_block"
+    "audio_frames",
+    "sample_fp_trace",
+    "sample_int_trace",
+    "video_blocks"
   ],
   "schema": "eliza.bpu_vs_cva6_mpki_rtl.v1",
-  "shared_trace_count": 15,
+  "shared_trace_count": 35,
   "simulator": "verilator (oss-cad-suite) via cocotb on bpu_top.sv"
 }

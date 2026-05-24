@@ -1,13 +1,14 @@
-"""eliza_robot.rl — Brax-PPO deployment skills and runtime harnesses.
+"""eliza_robot.rl — continual-RL deployment skills and runtime harnesses.
 
 This subpackage hosts the runtime-side of the RL stack: skill wrappers that
-load Brax/JAX checkpoints, the composite (walk + upper-body) policy, the
-text-conditioned meta policy, and deploy CLIs that drive the real robot via
-the websocket bridge.
+load Alberta, Brax, or PPO checkpoints, the composite (walk + upper-body)
+policy, the text-conditioned meta policy, and deploy CLIs that drive the real
+robot via the websocket bridge.
 
-Training itself (Brax PPO loop, MuJoCo envs) lives under
-`eliza_robot.sim.mujoco`. The skills here consume checkpoints produced by
-that training.
+Default text-conditioned training lives in `eliza_robot.rl.alberta` and writes
+`regime="alberta_streaming"` checkpoints. Brax/MJX and PPO baselines remain
+available for comparison and full-training flows. The skills here consume
+checkpoints produced by those training paths.
 
 Environment variables
 ---------------------

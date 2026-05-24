@@ -1,0 +1,108 @@
+{
+  "schema": "robot-end-to-end-full-training-preflight-v1",
+  "created_at": "2026-05-23T18:28:55Z",
+  "ok": true,
+  "package_root": "/home/shaw/milady/eliza/packages/robot",
+  "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
+  "profile_id": "asimov-1",
+  "default_profiles": [
+    "hiwonder-ainex",
+    "asimov-1",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1"
+  ],
+  "tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "budgets": {
+    "alberta_steps": 150000000,
+    "alberta_episode_steps": 200,
+    "alberta_eval_episodes": 3,
+    "backend_compare_steps": 30000,
+    "brax_steps": 150000000,
+    "brax_num_envs": 8192,
+    "brax_num_evals": 10,
+    "benchmark_steps_per_task": 16000,
+    "benchmark_seeds": 3
+  },
+  "checks": {
+    "profile_loads": true,
+    "tasks_declared": true,
+    "training_inputs_valid": true,
+    "brax_job_valid": true,
+    "multi_robot_readiness": true,
+    "scripts_executable": true,
+    "launch_template_hygiene": true
+  },
+  "scripts": {
+    "local_preflight": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/00_local_preflight.sh",
+    "train_alberta": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
+    "compare_backends": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/20_nebius_compare_backends.sh",
+    "continual_benchmarks": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh",
+    "brax_baseline": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/40_nebius_brax_baseline.sh",
+    "post_training_validation": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/50_post_train_validation.sh",
+    "run_all_stages": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/scripts/run_all_nebius_stages.sh"
+  },
+  "launch_template": {
+    "path": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/nebius_instance_launch_template.json",
+    "hygiene": {
+      "schema": "robot-nebius-instance-launch-hygiene-v1",
+      "ok": true,
+      "instance_id": "computeinstance-template",
+      "instance_name": "robot-full-training-template",
+      "checks": {
+        "instance_loaded": true,
+        "cloud_init_present": true,
+        "no_inline_object_storage_credentials": true,
+        "uses_repo_owned_stage_runner": true,
+        "uses_nebius_s3_endpoint": true,
+        "uses_training_s3_uri": true,
+        "has_status_heartbeat_upload_contract": true,
+        "has_hard_cap_shutdown": true
+      },
+      "secret_fields_embedded": [],
+      "cloud_init_bytes": 2490,
+      "recommendations": []
+    }
+  },
+  "brax_job_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
+  "brax_validation": {
+    "ok": true,
+    "failed_checks": []
+  },
+  "training_inputs": {
+    "ok": true,
+    "curriculum": {
+      "version": 2,
+      "task_count": 22,
+      "content_sha256": "cd524c5bf5fce957d4a1eb591db02290952e09a5a54953e6c7c3a53599d5debe",
+      "duplicate_ids": [],
+      "text_variant_collisions": []
+    },
+    "rl_from_sim_ready": true,
+    "imitation_training_ready": false,
+    "offline_datasets_block_current_plan": false,
+    "dataset_warning_count": 1,
+    "unsupported_future_task_count": 13
+  },
+  "multi_robot_readiness": {
+    "ok": true,
+    "alberta_ok": true,
+    "video_ok": true
+  },
+  "launch_order": [
+    "scripts/00_local_preflight.sh",
+    "scripts/10_nebius_train_alberta.sh",
+    "scripts/20_nebius_compare_backends.sh",
+    "scripts/30_nebius_continual_benchmarks.sh",
+    "scripts/40_nebius_brax_baseline.sh",
+    "scripts/50_post_train_validation.sh"
+  ]
+}

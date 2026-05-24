@@ -90,6 +90,20 @@ need a small series of patches to:
 | `0005-tinycc-disable-on-riscv64.patch`              | `scripts/build/deps/tinycc.ts`                |
 | `0006-build-add-riscv64-cli-validation.patch`       | `scripts/build.ts` (doc-only)                 |
 | `0007-deps-per-dep-riscv64-checks.patch`            | `scripts/build/deps/lolhtml.ts`               |
+| `0008-source-stabilize-riscv64-musl-build.patch`     | riscv64 source/build stabilization + LLVM strip override |
+| `0009-disable-wasm-streaming-hooks-for-c-loop.patch` | C_LOOP-only WebAssembly hook guards           |
+| `0010-disable-inspector-profiler-for-riscv64-c-loop.patch` | C_LOOP-only inspector/profiler stubs    |
+| `0011-process-arch-add-riscv64.patch`                | `process.arch` + node config riscv64 values   |
+| `0012-cpu-features-add-riscv64-fallback.patch`       | portable CPU feature fallback                 |
+| `0013-disable-console-inspector-hooks-for-riscv64-c-loop.patch` | C_LOOP-only console inspector guards |
+| `0014-disable-custom-inspector-dispatchers-on-riscv64.patch` | C_LOOP-only custom inspector dispatchers |
+| `0015-disable-jsc-profiler-builtins-on-riscv64.patch` | C_LOOP-only JSC profiler builtin guards      |
+| `0016-node-vm-disable-jit-cached-data-on-riscv64-c-loop.patch` | C_LOOP-only Node VM JIT/watchdog guards |
+| `0017-disable-performance-domjit-signature-on-riscv64-c-loop.patch` | C_LOOP-only performance DOMJIT guard |
+| `0018-fix-serialized-script-identifier-big-endian-path.patch` | explicit Identifier conversion for fallback string path |
+| `0019-add-wtf-timer-fire-bridge-for-c-loop.patch` | C_LOOP/local-WebKit `WTFTimer__fire` link bridge |
+| `0020-run-riscv64-smoke-test-under-qemu.patch` | run post-link `--revision` smoke through qemu |
+| `0021-fix-riscv64-linux-open-flags.patch` | use riscv64-compatible Linux open flags for resolver file/directory checks |
 
 Note on the original task brief: Bun 1.3.x removed the top-level
 `CMakeLists.txt` — the build is now fully driven by `scripts/build.ts`

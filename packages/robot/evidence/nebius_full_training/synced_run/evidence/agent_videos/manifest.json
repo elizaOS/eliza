@@ -1,0 +1,118 @@
+{
+  "started_at": "2026-05-23T02:45:57Z",
+  "commands": [
+    "stand up",
+    "walk forward",
+    "turn left",
+    "turn right"
+  ],
+  "record_combined": true,
+  "policy_checkpoint": null,
+  "profiles": [
+    {
+      "profile": "hiwonder-ainex",
+      "videos": [
+        "hiwonder-ainex_combined_actions.mp4",
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_turn_left.mp4",
+        "hiwonder-ainex_turn_right.mp4",
+        "hiwonder-ainex_walk_forward.mp4"
+      ],
+      "expected_videos": [
+        "hiwonder-ainex_stand_up.mp4",
+        "hiwonder-ainex_walk_forward.mp4",
+        "hiwonder-ainex_turn_left.mp4",
+        "hiwonder-ainex_turn_right.mp4",
+        "hiwonder-ainex_combined_actions.mp4"
+      ],
+      "missing_videos": [],
+      "combined_video": "hiwonder-ainex_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_left.mp4\n[viewer] recording /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4\n[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_turn_right.mp4\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 7.86
+    },
+    {
+      "profile": "asimov-1",
+      "videos": [
+        "asimov-1_combined_actions.mp4",
+        "asimov-1_stand_up.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_walk_forward.mp4"
+      ],
+      "expected_videos": [
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_combined_actions.mp4"
+      ],
+      "missing_videos": [],
+      "combined_video": "asimov-1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/asimov-1/asimov-1_turn_left.mp4\n[viewer] recording /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/asimov-1/asimov-1_turn_right.mp4\n[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/asimov-1/asimov-1_turn_right.mp4\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/asimov-1/asimov-1_combined_actions.mp4",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 14.53
+    },
+    {
+      "profile": "unitree-g1",
+      "videos": [
+        "unitree-g1_combined_actions.mp4",
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_turn_left.mp4",
+        "unitree-g1_turn_right.mp4",
+        "unitree-g1_walk_forward.mp4"
+      ],
+      "expected_videos": [
+        "unitree-g1_stand_up.mp4",
+        "unitree-g1_walk_forward.mp4",
+        "unitree-g1_turn_left.mp4",
+        "unitree-g1_turn_right.mp4",
+        "unitree-g1_combined_actions.mp4"
+      ],
+      "missing_videos": [],
+      "combined_video": "unitree-g1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-g1/unitree-g1_turn_left.mp4\n[viewer] recording /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-g1/unitree-g1_turn_right.mp4\n[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-g1/unitree-g1_turn_right.mp4\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-g1/unitree-g1_combined_actions.mp4",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 10.55
+    },
+    {
+      "profile": "unitree-h1",
+      "videos": [
+        "unitree-h1_combined_actions.mp4",
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_turn_left.mp4",
+        "unitree-h1_turn_right.mp4",
+        "unitree-h1_walk_forward.mp4"
+      ],
+      "expected_videos": [
+        "unitree-h1_stand_up.mp4",
+        "unitree-h1_walk_forward.mp4",
+        "unitree-h1_turn_left.mp4",
+        "unitree-h1_turn_right.mp4",
+        "unitree-h1_combined_actions.mp4"
+      ],
+      "missing_videos": [],
+      "combined_video": "unitree-h1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "stdout_tail": "",
+      "stderr_tail": "[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-h1/unitree-h1_turn_left.mp4\n[viewer] recording /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-h1/unitree-h1_turn_right.mp4\n[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-h1/unitree-h1_turn_right.mp4\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-h1/unitree-h1_combined_actions.mp4",
+      "exit_code": 0,
+      "ok": true,
+      "wall_clock_s": 9.42
+    }
+  ],
+  "ok": true
+}

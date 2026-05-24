@@ -198,12 +198,12 @@ Status: automated EVT0 concept generation, not tooling release.
 - Sprue diameter: 4.0 mm.
 - Runner diameter: 2.2 mm.
 - Gate thickness: 0.85 mm.
-- Estimated CAD mass: 183.15 g.
+- Estimated CAD mass: 182.18 g.
 
 ## Design Decisions From This Pass
 
 - The envelope is held to 78.0 x 153.6 mm around the 77.1 x 151.77 mm commodity touch panel module to keep the orange side rails compact while preserving a narrow positive screen margin.
 - Front camera and earpiece are kept behind the cover glass. The single rear camera and single rear torch/flash LED are fully buried under the flat flush back wall, and the orange back shell now has an explicit camera aperture with four molded bevel lands around the flush rear cover window (no camera bump, no proud lens ring).
 - Orange hard plastic is modeled as the entire molded shell and button material. The black glass remains a separate bonded part.
-- The enclosure now includes six screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.
+- The enclosure now includes ten outboard screw bosses, eight snap hooks, battery ribs, a USB-C insertion saddle, display adhesive, display FPC connector keepout, and explicit cold-runner/submarine-gate placeholders for mold review.
 - The exterior shell and cover glass now use rounded-rectangle geometry tied to the 7.5 mm corner-radius parameter instead of square block placeholders.

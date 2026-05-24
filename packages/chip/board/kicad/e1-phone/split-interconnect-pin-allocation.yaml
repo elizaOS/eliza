@@ -482,7 +482,7 @@ release_blockers:
   - flex stackup, bend radius, stiffener, strain relief, and assembly drawing are missing
   - USB2 impedance, length, skew, eye, attach, ADB, and fastboot evidence are missing
   - power contact current rise and return allocation have not been reviewed against datasheets
-  - bottom island ESD, decoupling, haptic drive return, and fixture pads are not implemented in KiCad
+  - bottom island ESD, decoupling, haptic drive return, and fixture pads are pending KiCad capture
   - routed copper, DRC/ERC, and enclosure clearance evidence are missing
 forbidden_claims:
   - interconnect_pinout_frozen

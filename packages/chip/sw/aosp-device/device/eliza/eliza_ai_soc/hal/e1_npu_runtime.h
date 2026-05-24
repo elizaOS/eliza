@@ -10,6 +10,7 @@ namespace e1_npu {
 struct ProbeResult {
 	bool device_node_present;
 	bool runtime_supported;
+	bool fixed_vector_smoke_passed;
 	bool nnapi_acceleration;
 	int open_errno;
 	std::string status;

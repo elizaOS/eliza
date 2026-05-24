@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="eliza_orange">#FF5800</color>
-    <color name="splash_background">#FF5800</color>
+    <color name="eliza_blue">#0B35F1</color>
+    <!-- Launch splash field: elizaOS blue, matching the AOSP boot animation
+         (boot is blue end-to-end) and the white face mark in splash.png. -->
+    <color name="splash_background">#0B35F1</color>
     <color name="colorPrimary">#FF5800</color>
     <color name="colorPrimaryDark">#FF5800</color>
     <color name="colorAccent">#FF5800</color>

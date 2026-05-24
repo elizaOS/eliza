@@ -1,0 +1,7 @@
+E1 phone supplier-return placeholder
+lane: split_interconnect
+function: top_bottom_interconnect
+evidence_class: step_or_brep_model
+expected_intake_path: board/kicad/e1-phone/production/sourcing/top_bottom_interconnect/supplier-model.step
+release_credit: false
+This is not supplier evidence. Replace with signed supplier artifact.

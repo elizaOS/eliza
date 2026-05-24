@@ -320,12 +320,15 @@ comparison_axes:
 e1_vs_ariane_verdict:
   branch_prediction:
     verdict: win
-    evidence: docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json
+    evidence:
+      - docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json
+      - docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json
     reason: >-
-      Measured (L2 behavioural model, both predictors on identical 20-trace set):
-      E1 BPU geomean MPKI ~3.1 vs CVA6-baseline 18.64 -> >=5x fewer mispredicts
-      (latest run 6.07x geomean / 5.84x pooled; the evidence file is the live
-      source of truth and the E1 figure improves as the model is tuned). E1 adds
+      Measured (L2 behavioural model, both predictors on identical 35-trace set):
+      E1 BPU geomean MPKI 15.005509 vs CVA6-baseline 43.006539 -> 2.866x
+      fewer mispredicts geomean. E1 RTL is also corroborated on the shared
+      trace subset (15.605351 MPKI vs CVA6 model 43.006539, 2.7559x), but the
+      comparison remains held at L2 because CVA6 is model-only. E1 adds
       TAGE-SC-L + ITTAGE + FTB + loop + SC; CVA6 has only BHT(128)+BTB(32)+RAS(2).
   scalar_integer_throughput:
     verdict: parity
