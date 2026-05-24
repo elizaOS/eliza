@@ -145,7 +145,7 @@ function installLinux() {
     canSudoNonInteractively = false;
   }
 
-  if (!canSudoNonInteractively && !process.stdout.isTTY) {
+  if (!canSudoNonInteractively && !process.stdin.isTTY) {
     console.warn(
       `  ${orange(logPrefix)} ${dim("fswebcam missing; skipping install (sudo needs a password and stdin is not a TTY). Install manually with: sudo apt-get install -y fswebcam — or set ELIZA_NO_VISION_DEPS=1 to silence this check.")}`,
     );
