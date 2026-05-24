@@ -216,7 +216,7 @@ function EthereumButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+      className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
     >
       {loading ? <Spinner /> : <EvmIconRow />}{" "}
       {t("cloud.login.wallet.evm", { defaultValue: "EVM" })}
@@ -306,7 +306,7 @@ function SolanaButton({
       type="button"
       onClick={handleClick}
       disabled={disabled}
-      className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
+      className="flex items-center justify-center gap-2 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white hover:text-black disabled:opacity-50"
     >
       {loading ? <Spinner /> : <SolanaIcon />}{" "}
       {t("cloud.login.wallet.solana", { defaultValue: "Solana" })}
