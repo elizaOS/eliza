@@ -1,5 +1,6 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { agentSandboxes } from "./agent-sandboxes";
 import { organizations } from "./organizations";
 import { userCharacters } from "./user-characters";
 import { users } from "./users";
@@ -23,6 +24,9 @@ export const agentServerWallets = pgTable(
     character_id: uuid("character_id").references(() => userCharacters.id, {
       onDelete: "set null",
     }),
+    sandbox_agent_id: uuid("sandbox_agent_id").references(() => agentSandboxes.id, {
+      onDelete: "set null",
+    }),
 
     // Steward references
     steward_agent_id: text("steward_agent_id"),
@@ -44,6 +48,7 @@ export const agentServerWallets = pgTable(
     organization_idx: index("agent_server_wallets_organization_idx").on(table.organization_id),
     user_idx: index("agent_server_wallets_user_idx").on(table.user_id),
     character_idx: index("agent_server_wallets_character_idx").on(table.character_id),
+    sandbox_agent_idx: index("agent_server_wallets_sandbox_agent_idx").on(table.sandbox_agent_id),
     address_idx: index("agent_server_wallets_address_idx").on(table.address),
     client_address_idx: index("agent_server_wallets_client_address_idx").on(table.client_address),
     steward_agent_idx: index("agent_server_wallets_steward_agent_idx").on(table.steward_agent_id),

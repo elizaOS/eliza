@@ -1,4 +1,7 @@
+import { and, eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
+import { dbWrite } from "@/db/helpers";
+import { agentServerWallets } from "@/db/schemas/agent-server-wallets";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { nextStyleParams } from "@/lib/api/hono-next-style-params";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
@@ -102,6 +105,46 @@ const SUPPORTED_WALLET_PATHS = new Set([
   "steward-approve-tx",
   "steward-deny-tx",
 ]);
+
+export async function resolveStewardAgentId(
+  sandboxAgentId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const row = await dbWrite
+    .select({ stewardAgentId: agentServerWallets.steward_agent_id })
+    .from(agentServerWallets)
+    .where(
+      and(
+        eq(agentServerWallets.sandbox_agent_id, sandboxAgentId),
+        eq(agentServerWallets.organization_id, organizationId),
+      ),
+    )
+    .limit(1);
+  return row[0]?.stewardAgentId ?? null;
+}
+
+async function resolveStewardAgentIdForProxy(
+  client: StewardClient,
+  sandboxAgentId: string,
+  organizationId: string,
+): Promise<string | null> {
+  const stewardAgentId = await resolveStewardAgentId(
+    sandboxAgentId,
+    organizationId,
+  );
+  if (stewardAgentId) return stewardAgentId;
+
+  try {
+    await client.getAgent(sandboxAgentId);
+    logger.info(
+      "[wallet-api] No agent_server_wallets steward_agent_id mapping found; falling back to sandbox agent id",
+      { sandboxAgentId, orgId: organizationId },
+    );
+    return sandboxAgentId;
+  } catch {
+    return null;
+  }
+}
 
 function json(data: unknown, init?: ResponseInit): Response {
   return applyCorsHeaders(Response.json(data, init), CORS_METHODS);
@@ -210,9 +253,12 @@ async function readJsonBody(c: Context<AppEnv>): Promise<JsonObject | null> {
   return isJsonObject(parsed) ? parsed : null;
 }
 
-async function getAgentAddresses(client: StewardClient, agentId: string) {
+async function getAgentAddresses(
+  client: StewardClient,
+  stewardAgentId: string,
+) {
   try {
-    const result = await client.getAddresses(agentId);
+    const result = await client.getAddresses(stewardAgentId);
     return {
       evmAddress:
         result.addresses.find((a) => a.chainFamily === "evm")?.address ?? "",
@@ -220,7 +266,7 @@ async function getAgentAddresses(client: StewardClient, agentId: string) {
         result.addresses.find((a) => a.chainFamily === "solana")?.address ?? "",
     };
   } catch {
-    const agent = await client.getAgent(agentId);
+    const agent = await client.getAgent(stewardAgentId);
     return {
       evmAddress: agent.walletAddresses?.evm ?? agent.walletAddress ?? "",
       solanaAddress: agent.walletAddresses?.solana ?? "",
@@ -228,7 +274,7 @@ async function getAgentAddresses(client: StewardClient, agentId: string) {
   }
 }
 
-async function handleDirectWalletRequest(
+export async function handleDirectWalletRequest(
   c: Context<AppEnv>,
   params: Promise<{ agentId: string; path: string[] }>,
   method: WalletMethod,
@@ -275,19 +321,32 @@ async function handleDirectWalletRequest(
     return json({ error: "Steward not configured" }, { status: 503 });
   }
 
+  const stewardAgentId = await resolveStewardAgentIdForProxy(
+    client,
+    agentId,
+    user.organization_id,
+  );
+  if (!stewardAgentId) {
+    return json(
+      { error: "No Steward-managed wallet found for this agent" },
+      { status: 404 },
+    );
+  }
+
   logger.info("[wallet-api] Direct Steward request", {
     agentId,
+    stewardAgentId,
     orgId: user.organization_id,
     walletPath,
     method,
   });
 
   if (method === "GET" && walletPath === "addresses") {
-    return json(await getAgentAddresses(client, agentId));
+    return json(await getAgentAddresses(client, stewardAgentId));
   }
 
   if (method === "GET" && walletPath === "balances") {
-    const balance = await client.getBalance(agentId);
+    const balance = await client.getBalance(stewardAgentId);
     const { balances } = balance;
     return json({
       evm: [
@@ -305,11 +364,12 @@ async function handleDirectWalletRequest(
 
   if (method === "GET" && walletPath === "steward-status") {
     try {
-      await client.getAgent(agentId);
+      await client.getAgent(stewardAgentId);
       return json({
         configured: true,
         connected: true,
         agentId,
+        stewardAgentId,
         version: "cloud-worker",
       });
     } catch {
@@ -317,13 +377,14 @@ async function handleDirectWalletRequest(
         configured: true,
         connected: false,
         agentId,
+        stewardAgentId,
         version: "cloud-worker",
       });
     }
   }
 
   if (method === "GET" && walletPath === "steward-policies") {
-    return json(await client.getPolicies(agentId));
+    return json(await client.getPolicies(stewardAgentId));
   }
 
   if (method === "PUT" && walletPath === "steward-policies") {
@@ -343,7 +404,7 @@ async function handleDirectWalletRequest(
       }
       normalizedPolicies.push(normalizedPolicy);
     }
-    await client.setPolicies(agentId, normalizedPolicies);
+    await client.setPolicies(stewardAgentId, normalizedPolicies);
     return json({ ok: true });
   }
 
@@ -358,7 +419,7 @@ async function handleDirectWalletRequest(
       0,
       Number.MAX_SAFE_INTEGER,
     );
-    const dashboard = await client.getAgentDashboard(agentId);
+    const dashboard = await client.getAgentDashboard(stewardAgentId);
     const records = (dashboard.recentTransactions ?? [])
       .filter((tx) => !status || tx.status === status)
       .map((tx) => ({
@@ -388,7 +449,7 @@ async function handleDirectWalletRequest(
     );
     const approvals = (
       await client.listApprovals({ status: "pending", limit, offset })
-    ).filter((entry) => entry.agentId === agentId);
+    ).filter((entry) => entry.agentId === stewardAgentId);
     return json({ approvals, total: approvals.length, offset, limit });
   }
 
