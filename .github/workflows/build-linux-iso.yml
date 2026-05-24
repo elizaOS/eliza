@@ -51,7 +51,7 @@ jobs:
       #   default is read; override here at the job level so the privilege
       #   is scoped as tightly as possible.
       # id-token + attestations are required by
-      #   actions/attest-build-provenance@v2 to mint a Sigstore-signed
+      #   actions/attest-build-provenance@v4 to mint a Sigstore-signed
       #   SLSA build provenance for the ISO via GitHub OIDC.
       contents: write
       id-token: write
@@ -174,7 +174,7 @@ jobs:
         # Gated on amd64 because that's the only arch with a validated
         # artifact today — same gate as the QEMU smoke test.
         if: matrix.arch == 'amd64'
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ steps.iso.outputs.path }}
 
