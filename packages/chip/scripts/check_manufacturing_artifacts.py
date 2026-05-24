@@ -6,6 +6,7 @@ import sys
 from argparse import ArgumentParser
 from collections import Counter
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -100,7 +101,7 @@ TRUE_MISSING_STATES = {
     "true_missing_release_output",
     "true_missing_checksum_manifest",
 }
-PHONE_RELEASE_OUTPUT_GENERATION_PLAN = {
+PHONE_RELEASE_OUTPUT_GENERATION_PLAN: dict[str, dict[str, object]] = {
     "schematic_erc_report": {
         "generation_status": "blocked_by_schematic_release_gate",
         "can_generate_from_repo_now": False,
@@ -702,13 +703,16 @@ def generation_plan_for_missing_finding(finding: str) -> dict[str, object]:
                 ),
                 "can_generate_from_repo_now": output_plan.get("can_generate_from_repo_now", False),
                 "required_before_generation": list(
-                    output_plan.get(
-                        "required_before_generation",
-                        ["approved phone release source package"],
+                    cast(
+                        "list[str]",
+                        output_plan.get(
+                            "required_before_generation",
+                            ["approved phone release source package"],
+                        ),
                     )
                 ),
                 "generation_commands": _dedupe_commands(
-                    list(output_plan.get("generation_commands", []))
+                    list(cast("list[str]", output_plan.get("generation_commands", [])))
                     + blocker_next_commands(finding)
                 ),
             }
@@ -864,11 +868,19 @@ def manifest_unblock_matrix(findings: list[str]) -> list[dict[str, object]]:
                 ),
             },
         )
-        row["blocker_count"] = int(row["blocker_count"]) + 1
-        row["bucket_counts"][bucket] += 1
-        row["artifact_state_counts"][artifact_state_for_finding(finding)] += 1
-        if len(row["sample_findings"]) < 6:
-            row["sample_findings"].append(finding)
+        blocker_count = row["blocker_count"]
+        assert isinstance(blocker_count, int)
+        row["blocker_count"] = blocker_count + 1
+        bucket_counts = row["bucket_counts"]
+        assert isinstance(bucket_counts, Counter)
+        bucket_counts[bucket] += 1
+        artifact_state_counts = row["artifact_state_counts"]
+        assert isinstance(artifact_state_counts, Counter)
+        artifact_state_counts[artifact_state_for_finding(finding)] += 1
+        sample_findings = row["sample_findings"]
+        assert isinstance(sample_findings, list)
+        if len(sample_findings) < 6:
+            sample_findings.append(finding)
 
     rows: list[dict[str, object]] = []
     for row in grouped.values():
@@ -901,7 +913,10 @@ def manifest_unblock_matrix(findings: list[str]) -> list[dict[str, object]]:
                 ],
             }
         )
-    return sorted(rows, key=lambda row: (-int(row["blocker_count"]), str(row["manifest"])))
+    return sorted(
+        rows,
+        key=lambda row: (-int(cast("int", row["blocker_count"])), str(row["manifest"])),
+    )
 
 
 def blocker_source_selector(finding: str) -> str:
@@ -1051,7 +1066,7 @@ def blocker_execution_packets(findings: list[str]) -> list[dict[str, object]]:
         selector = blocker_source_selector(finding)
         repo_generation_plan = generation_plan_for_missing_finding(finding)
         generation_commands = (
-            list(repo_generation_plan["generation_commands"])
+            list(cast("list[str]", repo_generation_plan["generation_commands"]))
             if artifact_state_for_finding(finding) in TRUE_MISSING_STATES
             else list(guidance.get("generation_commands", blocker_next_commands(finding)))
         )

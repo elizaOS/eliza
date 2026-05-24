@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -315,7 +315,9 @@ def main() -> None:
             if coverage == "public_som_pinout_pad_count_aligned" and not expected:
                 expected = list(electrical_pads)
         elif support_basis:
-            expected = [str(item) for item in support_basis.get("terminal_contract", [])]
+            expected = [
+                str(item) for item in cast("list[Any]", support_basis.get("terminal_contract", []))
+            ]
         missing = sorted(set(expected) - set(electrical_pads), key=str)
         extra = sorted(set(electrical_pads) - set(expected), key=str) if expected else []
         exact_match = bool(expected) and not missing and not extra
@@ -332,12 +334,12 @@ def main() -> None:
             local_terminal_contract_source = "captured_public_pinout_expected_pins"
         else:
             local_terminal_contract = [
-                str(item) for item in support_basis.get("terminal_contract", [])
+                str(item) for item in cast("list[Any]", support_basis.get("terminal_contract", []))
             ]
             local_terminal_contract_source = record.get("local_terminal_contract_source", "")
         npth_feature_contract = [
             dict(item)
-            for item in support_basis.get("npth_mechanical_feature_contract", [])
+            for item in cast("list[Any]", support_basis.get("npth_mechanical_feature_contract", []))
             if isinstance(item, dict)
         ]
         npth_feature_contract_matches_footprint = len(npth_feature_contract) == len(

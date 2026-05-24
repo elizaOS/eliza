@@ -15,6 +15,7 @@ import tempfile
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import yaml
@@ -1104,7 +1105,7 @@ class ReportFileTests(unittest.TestCase):
             module="tests.test_x",
         )
         report = agg.build_report([result])
-        gate = report["gates"][0]  # type: ignore[index]
+        gate = report["gates"][0]
         self.assertEqual(gate["script"], "scripts/check_x.py")
         self.assertEqual(gate["args"], ("--release",))
         self.assertEqual(gate["module"], "tests.test_x")
@@ -1496,7 +1497,7 @@ class E1PhoneReleaseContentStrictnessTests(unittest.TestCase):
 
 class E1PhoneBoardPackageGateTests(unittest.TestCase):
     def test_top_bottom_interconnect_accepts_current_kicad_capture_blocker(self) -> None:
-        plan = {
+        plan: dict[str, Any] = {
             "status": "blocked_interconnect_requires_connector_stackup_and_si",
             "source_artifacts": [
                 "board/kicad/e1-phone/board-topology-decision.yaml",
@@ -1794,7 +1795,7 @@ class E1PhoneMechanicalCadEvidenceInventoryTests(unittest.TestCase):
 
 
 class E1PhoneFabricationReleaseGateTests(unittest.TestCase):
-    def _release_report(self) -> dict[str, object]:
+    def _release_report(self) -> dict[str, Any]:
         return {
             "schema": fabrication_release.EXPECTED_SCHEMA,
             "summary": {

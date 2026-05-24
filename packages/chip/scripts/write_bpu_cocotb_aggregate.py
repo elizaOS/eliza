@@ -13,6 +13,7 @@ import json
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -124,15 +125,18 @@ def build_report() -> dict[str, object]:
         for path in RESULT_DIR.glob("*.xml")
         if path.name not in {result for _source, result in TARGET_RESULTS.values()}
     )
-    total_tests = sum(int(item["tests"]) for item in modules.values())
-    total_failures = sum(int(item["failures"]) for item in modules.values())
-    total_errors = sum(int(item["errors"]) for item in modules.values())
+    total_tests = sum(int(cast(int, item["tests"])) for item in modules.values())
+    total_failures = sum(int(cast(int, item["failures"])) for item in modules.values())
+    total_errors = sum(int(cast(int, item["errors"])) for item in modules.values())
     missing = [name for name, item in modules.items() if item["status"] == "missing"]
     status = (
         "PASS"
         if not missing
         and total_tests == expected_total
-        and all(int(item["tests"]) == int(item["expected_tests"]) for item in modules.values())
+        and all(
+            int(cast(int, item["tests"])) == int(cast(int, item["expected_tests"]))
+            for item in modules.values()
+        )
         and total_failures == 0
         and total_errors == 0
         else "BLOCKED"

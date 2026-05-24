@@ -7,6 +7,7 @@ import subprocess
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -686,7 +687,7 @@ def kicad_blocker_next_step(blocker_class: str) -> str:
 
 def write_report(status: str, failures: list[str], blockers: list[str], release: bool) -> None:
     inventory = release_evidence_inventory()
-    findings = []
+    findings: list[dict[str, object]] = []
     for failure in failures:
         findings.append(
             {
@@ -798,7 +799,7 @@ def main() -> int:
         if not fab_notes["present"]:
             failures.append("missing docs/board/kicad/e1-demo/fab-notes.md")
         elif fab_notes["missing_markers"]:
-            missing = ", ".join(fab_notes["missing_markers"])
+            missing = ", ".join(cast("list[str]", fab_notes["missing_markers"]))
             failures.append(
                 "docs/board/kicad/e1-demo/fab-notes.md is missing required "
                 f"fail-closed fabrication markers: {missing}"
@@ -827,7 +828,7 @@ def main() -> int:
             continue
         diagnostic_paths = entry["diagnostic_only_paths"]
         if diagnostic_paths:
-            shown = ", ".join(diagnostic_paths)
+            shown = ", ".join(cast("list[str]", diagnostic_paths))
             blockers.append(
                 f"missing release-credit KiCad/fab release evidence: {label} "
                 f"(diagnostic-only files present: {shown})"

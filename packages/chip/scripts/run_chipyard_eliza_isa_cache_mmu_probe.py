@@ -17,7 +17,9 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "build/chipyard/eliza_rocket"
@@ -266,7 +268,9 @@ def utc_now() -> str:
 
 def write_report(payload: dict[str, object]) -> None:
     status = str(payload.get("status") or "unknown")
-    problems = [str(item) for item in payload.get("problems", []) if str(item)]
+    problems = [
+        str(item) for item in cast("Iterable[object]", payload.get("problems", [])) if str(item)
+    ]
     findings = payload.get("findings")
     if not isinstance(findings, list):
         findings = [

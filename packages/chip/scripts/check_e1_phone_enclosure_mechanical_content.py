@@ -7,7 +7,7 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -851,7 +851,7 @@ def handoff_packet_failures(packet: dict[str, Any]) -> list[str]:
         "executed_pass",
     }:
         failures.append(f"{packet_id}:unapproved_release_credit:{expected_path}")
-    for field in required_fields:
+    for field in cast("list[Any]", required_fields):
         if str(field) not in data or data.get(str(field)) in (None, "", []):
             failures.append(f"{packet_id}:missing_field:{field}")
     return failures
@@ -1598,7 +1598,7 @@ def main() -> int:
             "routed_clearance_release_action_count": len(clearance_release_actions),
             "first_article_physical_fit_action_count": len(first_article_physical_fit_actions),
         }
-        findings = [
+        findings: list[dict[str, Any]] = [
             {
                 "code": "enclosure_mechanical_release_blocked",
                 "severity": "blocker",
@@ -1628,7 +1628,7 @@ def main() -> int:
             }
             and value
         ]
-        diagnostic_findings = []
+        diagnostic_findings: list[dict[str, Any]] = []
         if present_candidate_step_paths:
             diagnostic_findings.append(
                 {

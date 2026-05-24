@@ -30,10 +30,11 @@ import os
 import signal
 import subprocess
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from datetime import date
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "build/reports/tapeout-readiness.json"
@@ -1090,7 +1091,11 @@ def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
     }
     rows: list[dict[str, object]] = []
     for phase in AGGREGATE_RELEASE_PHASES:
-        gate_names = {str(name) for name in phase.get("gates", set()) if isinstance(name, str)}
+        gate_names = {
+            str(name)
+            for name in cast("Iterable[object]", phase.get("gates", set()))
+            if isinstance(name, str)
+        }
         matched = [blocked_by_name[name] for name in sorted(gate_names) if name in blocked_by_name]
         if not matched:
             continue

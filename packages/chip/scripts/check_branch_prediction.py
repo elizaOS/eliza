@@ -22,8 +22,10 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -464,7 +466,7 @@ def validate_cbp5_trace_manifest(failures: list[str]) -> None:
         failures.append(f"{artifact} stage_dir must be external/cbp5-traces")
         stage_dir = ROOT / "external/cbp5-traces"
     else:
-        stage_dir = ROOT / stage_dir_value
+        stage_dir = ROOT / "external/cbp5-traces"
     staged = data.get("staged_traces")
     if not isinstance(staged, list) or not staged:
         failures.append(f"{artifact} staged_traces must be a non-empty list")
@@ -529,7 +531,7 @@ def validate_workload_trace_manifest(
     missing = data.get("missing_required_local_trace_names")
     if missing != []:
         failures.append(f"{artifact} missing_required_local_trace_names must be empty")
-    required = set(data.get("required_local_trace_names", []))
+    required = set(cast(Iterable[str], data.get("required_local_trace_names", [])))
     if required != REQUIRED_QEMU_WORKLOAD_TRACES:
         failures.append(f"{artifact} required_local_trace_names does not match gate list")
 
@@ -771,14 +773,14 @@ def validate_sweep_evidence(
     parse_artifact_timestamp(data, artifact, failures)
     if data.get("harness") != "behavioural-bpu-model":
         failures.append(f"{artifact} harness must be behavioural-bpu-model")
-    declared = set(data.get("ittage_evidence_counters", []))
+    declared = set(cast(Iterable[str], data.get("ittage_evidence_counters", [])))
     missing_declared = REQUIRED_ITTAGE_SWEEP_COUNTERS - declared
     if missing_declared:
         failures.append(
             f"{artifact} missing ITTAGE evidence counter declarations: "
             + ", ".join(sorted(missing_declared))
         )
-    timing_declared = set(data.get("timing_evidence_counters", []))
+    timing_declared = set(cast(Iterable[str], data.get("timing_evidence_counters", [])))
     missing_timing_declared = REQUIRED_TIMING_SWEEP_COUNTERS - timing_declared
     if missing_timing_declared:
         failures.append(
@@ -866,7 +868,7 @@ def validate_full_trace_shard_sweep(
     if data.get("window_mode") != "prefix":
         failures.append(f"{artifact} window_mode must be prefix for full-trace shard")
     trace_filter = data.get("trace_filter")
-    if set(trace_filter or []) != required_traces:
+    if set(cast(Iterable[str], trace_filter or [])) != required_traces:
         failures.append(f"{artifact} trace_filter must match required full shard")
     trace_set = data.get("trace_set")
     if not isinstance(trace_set, list) or not trace_set:
@@ -1284,7 +1286,8 @@ def evaluate_evidence_artifacts() -> list[str]:
         policy = claim_policy(data, artifact, failures)
         reject_stale_false_claim_reason(policy, ("cbp5_claim",), artifact, failures)
         evaluate_target_claim_semantics(data, artifact, policy, "cbp5_claim", failures)
-        for name, workload in data.get("workloads", {}).items():
+        cbp5_workloads = cast("dict[str, object]", data.get("workloads", {}))
+        for name, workload in cbp5_workloads.items():
             if not isinstance(workload, dict):
                 failures.append(f"mpki_results_cbp5.json workload {name} must be an object")
             elif workload.get("trace_class") != "cbp5_train_traces_only":
@@ -1333,7 +1336,7 @@ def evaluate_evidence_artifacts() -> list[str]:
             failures.append(f"{artifact} evidence_class must be qemu_rv64_workload")
         validate_bpu_claim_boundary(data, artifact, "qemu_rv64_workload", failures)
         validate_workload_replay_coverage(data, artifact, failures)
-        workloads = data.get("workloads", {})
+        workloads = cast("dict[str, object]", data.get("workloads", {}))
         if isinstance(workloads, dict):
             workloads_for_manifest = workloads
         if workload_trace_dir.is_dir():
@@ -1347,7 +1350,7 @@ def evaluate_evidence_artifacts() -> list[str]:
                     "mpki_results_workload_rtl.json missing workload traces: " + ", ".join(missing)
                 )
         for name, workload in workloads.items():
-            if workload.get("trace_class") != "qemu_rv64_workload":
+            if cast("dict[str, object]", workload).get("trace_class") != "qemu_rv64_workload":
                 failures.append(
                     f"mpki_results_workload_rtl.json workload {name} has non-QEMU trace_class"
                 )
@@ -1549,7 +1552,7 @@ def build_evidence(
         or name in EVIDENCE_SCALARS
     }
     synthetic_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
-    synthetic_mpki_ref: dict[str, str | bool] = {
+    synthetic_mpki_ref: dict[str, object] = {
         "path": str(synthetic_mpki_path.relative_to(ROOT)),
         "schema": "eliza.bpu_mpki.v1",
         "harness": "cocotb-rtl-bpu_top",
@@ -1581,7 +1584,9 @@ def build_evidence(
         "present": workload_trace_manifest_path.is_file(),
     }
     if workload_trace_manifest_path.is_file():
-        manifest_data = load_json_object_if_present(workload_trace_manifest_path)
+        manifest_data = cast(
+            "dict[str, object]", load_json_object_if_present(workload_trace_manifest_path)
+        )
         workload_trace_manifest_ref["sha256"] = sha256_path(workload_trace_manifest_path)
         workload_trace_manifest_ref["trace_count"] = manifest_data.get("trace_count")
         workload_trace_manifest_ref["total_instruction_count"] = manifest_data.get(
@@ -1591,7 +1596,7 @@ def build_evidence(
         workload_trace_manifest_ref["production_external_suites"] = manifest_data.get(
             "production_external_suites"
         )
-    workload_mpki_ref: dict[str, str | bool] = {
+    workload_mpki_ref: dict[str, object] = {
         "path": str(workload_mpki_path.relative_to(ROOT)),
         "schema": "eliza.bpu_mpki.v1",
         "harness": "cocotb-rtl-bpu_top",
@@ -1625,7 +1630,7 @@ def build_evidence(
         "present": sweep_path.is_file(),
     }
     if sweep_path.is_file():
-        sweep_data = load_json_object_if_present(sweep_path)
+        sweep_data = cast("dict[str, object]", load_json_object_if_present(sweep_path))
         sweep_ref["sha256"] = sha256_path(sweep_path)
         sweep_ref["best_config"] = sweep_data.get("best_config")
         sweep_ref["best_weighted_mpki"] = sweep_data.get("best_weighted_mpki")
@@ -1661,6 +1666,20 @@ def build_evidence(
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
+    cbp5_model_ref: dict[str, object] = {
+        "path": str(cbp5_model_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "behavioural-bpu-model",
+        "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+        "present": cbp5_model_path.is_file(),
+    }
+    cbp5_rtl_ref: dict[str, object] = {
+        "path": str(cbp5_rtl_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl",
+        "present": cbp5_rtl_path.is_file(),
+    }
     cbp5_mpki_ref: dict[str, object] = {
         "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
         "evidence_class": "cbp5_train_traces_only",
@@ -1668,29 +1687,17 @@ def build_evidence(
         "android_claim": False,
         "v8_claim": False,
         "cbp5_claim": False,
-        "model": {
-            "path": str(cbp5_model_path.relative_to(ROOT)),
-            "schema": "eliza.bpu_mpki.v1",
-            "harness": "behavioural-bpu-model",
-            "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
-            "present": cbp5_model_path.is_file(),
-        },
-        "rtl": {
-            "path": str(cbp5_rtl_path.relative_to(ROOT)),
-            "schema": "eliza.bpu_mpki.v1",
-            "harness": "cocotb-rtl-bpu_top",
-            "command": "make mpki-eval-rtl",
-            "present": cbp5_rtl_path.is_file(),
-        },
+        "model": cbp5_model_ref,
+        "rtl": cbp5_rtl_ref,
     }
     if cbp5_model_path.is_file():
-        cbp5_mpki_ref["model"]["sha256"] = sha256_path(cbp5_model_path)  # type: ignore[index]
-        cbp5_mpki_ref["model"].update(  # type: ignore[union-attr]
+        cbp5_model_ref["sha256"] = sha256_path(cbp5_model_path)
+        cbp5_model_ref.update(
             artifact_metric_ref(cbp5_model_path, load_json_object_if_present(cbp5_model_path))
         )
     if cbp5_rtl_path.is_file():
-        cbp5_mpki_ref["rtl"]["sha256"] = sha256_path(cbp5_rtl_path)  # type: ignore[index]
-        cbp5_mpki_ref["rtl"].update(  # type: ignore[union-attr]
+        cbp5_rtl_ref["sha256"] = sha256_path(cbp5_rtl_path)
+        cbp5_rtl_ref.update(
             artifact_metric_ref(cbp5_rtl_path, load_json_object_if_present(cbp5_rtl_path))
         )
 

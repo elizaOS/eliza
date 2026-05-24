@@ -46,7 +46,7 @@ REQUIRED_LOCAL_TRACES = {
     "wasm_jit_osr_proxy",
 }
 
-PRODUCTION_EXTERNAL_SUITES = [
+PRODUCTION_EXTERNAL_SUITES: list[dict[str, Any]] = [
     {
         "name": "spec2017_intrate",
         "status": "missing_external_trace",
@@ -133,11 +133,12 @@ def _coverage_buckets(name: str, source: dict[str, Any]) -> list[str]:
 
 
 def build_manifest() -> dict[str, Any]:
-    traces = []
+    traces: list[dict[str, Any]] = []
     for path in sorted(TRACE_DIR.glob("*.btrace.json")):
         meta = _read_json_metadata_before_branches(path)
         name = path.name[: -len(".btrace.json")]
-        source = meta.get("source") if isinstance(meta.get("source"), dict) else {}
+        raw_source = meta.get("source")
+        source: dict[str, Any] = raw_source if isinstance(raw_source, dict) else {}
         branch_count = int(meta.get("branch_count", 0))
         instruction_count = int(meta.get("instruction_count", 0))
         class_counts = (

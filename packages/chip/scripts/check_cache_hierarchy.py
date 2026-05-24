@@ -25,7 +25,7 @@ import sys
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeGuard
 
 import yaml
 
@@ -291,7 +291,7 @@ def validate_scoped_artifact(
     validate_scoped_artifact_semantics(artifact=artifact, data=data, errors=errors)
 
 
-def is_number(value: Any) -> bool:
+def is_number(value: Any) -> TypeGuard[float]:
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
@@ -359,10 +359,12 @@ def validate_champsim_sweep_artifact(
         for path_key in ("json_path", "log_path"):
             path_value = row.get(path_key)
             require(
-                isinstance(path_value, str)
-                and path_value
-                and not Path(path_value).is_absolute()
-                and ".." not in Path(path_value).parts,
+                bool(
+                    isinstance(path_value, str)
+                    and path_value
+                    and not Path(path_value).is_absolute()
+                    and ".." not in Path(path_value).parts
+                ),
                 f"{artifact}: results[{index}].{path_key} must be a relative artifact path",
                 errors,
             )
@@ -893,7 +895,7 @@ def check_gate_yaml(errors: list[str]) -> dict:
             declared_artifacts.add(artifact)
             expected_schema = schema_map.get(artifact)
             require(
-                isinstance(expected_schema, str) and expected_schema,
+                bool(isinstance(expected_schema, str) and expected_schema),
                 f"claim {cid} artifact lacks required_artifact_schemas entry: {artifact}",
                 errors,
             )

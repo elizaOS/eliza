@@ -8,7 +8,7 @@ import re
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict, TypeGuard
 
 import yaml
 
@@ -66,7 +66,15 @@ REQUIRED_BLOCKED_MEMORY_CLAIMS = {
     "phone_2028_bandwidth_latency",
     "linux_interrupt_access_map",
 }
-DRAMSIM_SKUS = {
+
+
+class DramsimSku(TypedDict):
+    standard: str
+    capacity_gib: int
+    peak_gbps: float
+
+
+DRAMSIM_SKUS: dict[str, DramsimSku] = {
     "lpddr5x_10667": {
         "standard": "LPDDR5X-10667",
         "capacity_gib": 16,
@@ -161,7 +169,7 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
         errors.append(message)
 
 
-def is_number(value: Any) -> bool:
+def is_number(value: Any) -> TypeGuard[float]:
     return isinstance(value, int | float) and not isinstance(value, bool)
 
 
@@ -268,7 +276,7 @@ def validate_uma_gate(errors: list[str]) -> None:
             declared_artifacts.add(artifact)
             expected_schema = schema_map.get(artifact)
             require(
-                isinstance(expected_schema, str) and expected_schema,
+                bool(isinstance(expected_schema, str) and expected_schema),
                 f"memory claim {claim_id} artifact lacks required_artifact_schemas entry: {artifact}",
                 errors,
             )
@@ -668,7 +676,7 @@ def validate_dramsim_report(
                 continue
             path_value = artifact.get("path")
             digest = artifact.get("sha256")
-            path_ok = (
+            path_ok = bool(
                 isinstance(path_value, str)
                 and path_value
                 and not Path(path_value).is_absolute()
@@ -681,6 +689,7 @@ def validate_dramsim_report(
                 errors,
             )
             if path_ok:
+                assert isinstance(path_value, str)
                 raw_paths.add(path_value)
                 raw_path = ROOT / path_value
                 require(
@@ -1061,10 +1070,12 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
                 )
                 raw_trace = contention.get("raw_trace_path")
                 require(
-                    isinstance(raw_trace, str)
-                    and raw_trace
-                    and not Path(raw_trace).is_absolute()
-                    and ".." not in Path(raw_trace).parts,
+                    bool(
+                        isinstance(raw_trace, str)
+                        and raw_trace
+                        and not Path(raw_trace).is_absolute()
+                        and ".." not in Path(raw_trace).parts
+                    ),
                     f"{rel}: contention_workload.raw_trace_path must be a relative repo path",
                     errors,
                 )
@@ -1093,7 +1104,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
             )
             if isinstance(artifact, dict):
                 path_value = artifact.get("path")
-                path_ok = (
+                path_ok = bool(
                     isinstance(path_value, str)
                     and path_value
                     and not Path(path_value).is_absolute()
@@ -1107,6 +1118,7 @@ def validate_real_report(path: Path, errors: list[str]) -> None:
                     errors,
                 )
                 if path_ok:
+                    assert isinstance(path_value, str)
                     raw_artifact_paths.add(path_value)
                     artifact_path = ROOT / path_value
                     require(

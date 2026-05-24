@@ -4,6 +4,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -85,7 +86,7 @@ def manufacturing_release_blocker_message() -> str:
 
     def bucket_count(item: tuple[object, object]) -> int:
         try:
-            return int(item[1])
+            return int(cast(int, item[1]))
         except (TypeError, ValueError):
             return 0
 

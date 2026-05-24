@@ -7,6 +7,7 @@ import hashlib
 import math
 import re
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -114,10 +115,72 @@ def rotate_size(width: float, height: float, degrees: float) -> tuple[float, flo
     return (width * c + height * s, width * s + height * c)
 
 
+class Point2D(TypedDict):
+    x: float
+    y: float
+
+
+class PadPose(TypedDict):
+    x: float
+    y: float
+    rotation: float
+
+
+class Size2D(TypedDict):
+    width: float
+    height: float
+
+
+class PadRecord(TypedDict):
+    name: str
+    type: str
+    shape: str
+    at_mm: PadPose
+    size_mm: Size2D
+    layers: str
+
+
+class FootprintPose(TypedDict):
+    x: float
+    y: float
+    rotation: float
+
+
+class Envelope(TypedDict):
+    width: float
+    depth: float
+    height: float
+
+
+class FootprintRecord(TypedDict):
+    reference: str
+    footprint: str
+    layer: str
+    at_mm: FootprintPose
+    envelope_mm: Envelope
+    pad_count: int
+    pads: list[PadRecord]
+
+
+class SegmentRecord(TypedDict):
+    start_mm: Point2D
+    end_mm: Point2D
+    width_mm: float
+    layer: str
+
+
+class ViaRecord(TypedDict):
+    at_mm: Point2D
+    size_mm: float
+    drill_mm: float
+    layers: list[str]
+    net_id: int
+
+
 def parse_pads(
     block: str, footprint_x: float, footprint_y: float, footprint_rot: float
-) -> list[dict[str, object]]:
-    pads: list[dict[str, object]] = []
+) -> list[PadRecord]:
+    pads: list[PadRecord] = []
     pad_re = re.compile(
         r'\(pad "([^"]*)" ([^\s)]+) ([^\s)]+) \(at ([^)]+)\) \(size ([^)]+)\)[\s\S]*?\(layers ([^)]+)\)',
         re.S,
@@ -150,8 +213,8 @@ def parse_pads(
     return pads
 
 
-def parse_footprints(text: str) -> list[dict[str, object]]:
-    records = []
+def parse_footprints(text: str) -> list[FootprintRecord]:
+    records: list[FootprintRecord] = []
     for block in blocks(text):
         header = re.search(r'\(footprint "e1-phone-dev:([^"]+)" \(layer "([^"]+)"\)', block)
         at = re.search(r"\(at ([^\)]+)\)", block)
@@ -184,8 +247,8 @@ def parse_footprints(text: str) -> list[dict[str, object]]:
     return records
 
 
-def parse_segments(text: str) -> list[dict[str, object]]:
-    segments: list[dict[str, object]] = []
+def parse_segments(text: str) -> list[SegmentRecord]:
+    segments: list[SegmentRecord] = []
     segment_re = re.compile(
         r'\(segment \(start ([^)]+)\) \(end ([^)]+)\) \(width ([^\s)]+)\) \(layer "([^"]+)"\)',
         re.S,
@@ -205,8 +268,8 @@ def parse_segments(text: str) -> list[dict[str, object]]:
     return segments
 
 
-def parse_vias(text: str) -> list[dict[str, object]]:
-    vias: list[dict[str, object]] = []
+def parse_vias(text: str) -> list[ViaRecord]:
+    vias: list[ViaRecord] = []
     via_re = re.compile(
         r'\(via \(at ([^)]+)\) \(size ([^\s)]+)\) \(drill ([^\s)]+)\) \(layers "([^"]+)" "([^"]+)"\) \(net (\d+)\)',
         re.S,

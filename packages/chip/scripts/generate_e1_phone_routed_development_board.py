@@ -13,6 +13,7 @@ import re
 import shutil
 import uuid
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -260,7 +261,7 @@ def flatten_nets(value: object) -> list[str]:
             nets.extend(flatten_nets(child))
         return nets
     if isinstance(value, list):
-        nets: list[str] = []
+        nets = []
         for child in value:
             nets.extend(flatten_nets(child))
         return nets
@@ -427,7 +428,7 @@ def main() -> int:
         },
         "evidence_class": "development_routing_visualization_not_release",
         "route_count": len(route_records),
-        "segment_count": sum(int(item["segment_count"]) for item in route_records),
+        "segment_count": sum(int(cast(int, item["segment_count"])) for item in route_records),
         "via_count": len(via_records),
         "missing_nets": sorted(set(missing_nets)),
         "coverage": route_coverage(route_records),

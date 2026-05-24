@@ -31,7 +31,7 @@ from typing import Any
 try:  # PyYAML is part of the chip toolchain (see requirements.txt).
     import yaml as _yaml
 except ImportError:  # pragma: no cover - yaml is required by the chip env.
-    _yaml = None  # type: ignore[assignment]
+    _yaml = None
 
 SCHEMA = "eliza.e1_npu_stablehlo_subset.v1"
 

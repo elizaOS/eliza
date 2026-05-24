@@ -7,7 +7,7 @@ import csv
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -469,7 +469,7 @@ def factory_first_article_bridge(
     bridged_consumer_rows = 0
     for path_text in sorted(set(first_article_by_path) & blocked_paths):
         consumers = first_article_by_path[path_text]
-        category = category_by_path.get(path_text, "unknown_factory_blocker")
+        category = cast(str, category_by_path.get(path_text, "unknown_factory_blocker"))
         counts[category] += len(consumers)
         bridged_consumer_rows += len(consumers)
         bridged[path_text] = {

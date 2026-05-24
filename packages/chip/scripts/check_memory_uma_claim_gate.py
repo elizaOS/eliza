@@ -6,6 +6,7 @@ import re
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from typing import Any, cast
 
 import yaml
 
@@ -724,14 +725,15 @@ def check_gate(errors: list[str]) -> None:
                 "IOMMU local RTL evidence must not claim non-identity G-stage/PDT/Linux",
                 errors,
             )
+        scaffold = cast("dict[str, Any]", actual)
         require(
-            actual.get("measured_bandwidth_gbps") is None
-            and actual.get("measured_latency_ns") is None,
+            scaffold.get("measured_bandwidth_gbps") is None
+            and scaffold.get("measured_latency_ns") is None,
             "current scaffold must not record phone bandwidth/latency measurements",
             errors,
         )
         require(
-            actual.get("phone_class_status") == "blocked",
+            scaffold.get("phone_class_status") == "blocked",
             "current phone-class memory status must remain blocked",
             errors,
         )

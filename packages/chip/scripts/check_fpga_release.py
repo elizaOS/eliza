@@ -5,6 +5,7 @@ import shutil
 import sys
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -1636,12 +1637,12 @@ def yosys_memory_rom_pressure(
 
     sorted_pressure_modules = sorted(
         pressure_modules,
-        key=lambda row: row["cells_including_submodules"],
+        key=lambda row: cast("int", row["cells_including_submodules"]),
         reverse=True,
     )
     next_actions = []
     for row in sorted_pressure_modules:
-        action = module_actions[row["module"]]
+        action = module_actions[cast("str", row["module"])]
         next_actions.append(
             {
                 **action,
@@ -1673,7 +1674,7 @@ def yosys_memory_rom_pressure(
 def bounded_synthesis_diagnostics() -> list[dict]:
     rows = []
     for spec in BOUNDED_SYNTH_DIAGNOSTIC_LOGS:
-        path = spec["log"]
+        path = cast("Path", spec["log"])
         if not path.is_file():
             rows.append(
                 {

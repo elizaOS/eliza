@@ -1133,7 +1133,7 @@ def main() -> int:
         for key, expected in expected_candidate_context.items():
             if candidate_context.get(key) != expected:
                 contract_mismatches.append(f"candidate context stale: {key}")
-        expected_candidate_counts = {
+        expected_candidate_counts: dict[str | tuple[str, str], float] = {
             "source_step_size_bytes": 32959460,
             ("routed_step_visual_detail", "footprint_envelope_count"): 89,
             ("routed_step_visual_detail", "pad_contact_visual_count"): 1452,
@@ -1221,15 +1221,15 @@ def main() -> int:
                 "models_with_npth_mechanical_feature_contract_count",
             ): 4,
         }
-        for key, expected in expected_candidate_counts.items():
-            if isinstance(key, tuple):
-                section, field = key
+        for count_key, expected_count in expected_candidate_counts.items():
+            if isinstance(count_key, tuple):
+                section, field = count_key
                 actual = candidate_context[section].get(field)
                 label = f"{section}.{field}"
             else:
-                actual = candidate_context.get(key)
-                label = key
-            if actual != expected:
+                actual = candidate_context.get(count_key)
+                label = count_key
+            if actual != expected_count:
                 contract_mismatches.append(f"candidate context count stale: {label}")
         if (
             candidate_context["cad_connection_coverage"].get(

@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+from typing import cast
 
 ROOT = Path(__file__).resolve().parents[1]
 CALIBRATION_DIR = ROOT / "build/tmp/benchmark-skeletons/calibration"
@@ -943,7 +944,7 @@ def test_score_only_transcripts_do_not_promote_l5_l6() -> None:
             }
             if script == "scripts/run_spec.sh":
                 resolved_env["E1_SPEC_RUN_MANIFEST"] = str(run_manifest)
-            proc = run_script(script, resolved_env)
+            proc = run_script(script, cast("dict[str, str]", resolved_env))
             result = load_result(result_path)
         if proc.returncode != 0:
             raise AssertionError(proc.stdout)

@@ -250,7 +250,7 @@ def execute_fetch(asset: dict[str, Any], dest: Path) -> dict[str, Any]:
         except Exception as exc:  # noqa: BLE001
             return {"status": "BLOCKED_MISSING_TOOL", "tool": "huggingface_hub", "error": str(exc)}
         try:
-            snapshot_download(
+            snapshot_download(  # type: ignore[call-overload]  # local_dir_use_symlinks dropped in newer huggingface_hub stubs; kept for older versions, except-TypeError handles its absence
                 repo_id=dataset_id,
                 repo_type="dataset",
                 revision=revision,
