@@ -84,9 +84,14 @@ test("cross-page hover audit — no orange↔black, no blue", async ({
   context,
 }) => {
   test.setTimeout(600_000);
-  const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" }), "utf8")
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+    "utf8",
+  )
     .toString("base64")
-    .replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
   const payload = Buffer.from(
     JSON.stringify({
       sub: "22222222-2222-4222-8222-222222222222",
@@ -97,7 +102,11 @@ test("cross-page hover audit — no orange↔black, no blue", async ({
       iat: Math.floor(Date.now() / 1000),
     }),
     "utf8",
-  ).toString("base64").replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+  )
+    .toString("base64")
+    .replace(/=+$/, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
   const syntheticToken = `${header}.${payload}.audit-fake-signature`;
   await context.addCookies([
     {

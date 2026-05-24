@@ -317,7 +317,11 @@ export function AdminMetricsClient() {
           icon={UserPlus}
           loading={loading}
           value={overview?.newSignups7d?.toLocaleString() ?? "0"}
-          helper={overview?.newSignupsToday != null ? `${overview.newSignupsToday} today` : "— today"}
+          helper={
+            overview?.newSignupsToday != null
+              ? `${overview.newSignupsToday} today`
+              : "— today"
+          }
           className="border border-brand-surface border-t-0 border-l-0 lg:border-t"
         />
       </div>
@@ -337,7 +341,9 @@ export function AdminMetricsClient() {
           icon={Link2}
           loading={loading}
           value={
-            overview?.oauthRate ? `${overview.oauthRate.ratePercent.toFixed(1)}%` : "0%"
+            overview?.oauthRate
+              ? `${overview.oauthRate.ratePercent.toFixed(1)}%`
+              : "0%"
           }
           helper={
             overview?.oauthRate

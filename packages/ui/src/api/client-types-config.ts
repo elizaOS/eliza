@@ -465,7 +465,8 @@ export interface TrainingReadinessReport {
   checks: TrainingReadinessCheck[];
 }
 
-export interface BuildTrainingReadinessReportOptions extends BuildTrainingAnalysisIndexOptions {
+export interface BuildTrainingReadinessReportOptions
+  extends BuildTrainingAnalysisIndexOptions {
   reportOutputDir?: string;
   reportPath?: string;
 }
@@ -953,11 +954,38 @@ export interface TrainingCollectionRunSummary {
     testTrajectories: number;
     trainingJsonlDatasets: number;
   };
+      sourceArtifacts: Array<{
+        category:
+          | "huggingface"
+          | "feed"
+          | "natural"
+      | "scenario"
+      | "test"
+      | "training_jsonl";
+    title: string;
+    path: string;
+    schema: string | null;
+  }>;
   benchmarks: {
     actionBenchmarkPairs: number;
     benchmarkComparisons: number;
     caseSamples: number;
     tiers: string[];
+    comparisonInventory: Array<{
+      tier: string | null;
+      benchmark: string | null;
+      baseModelId: string | null;
+      trainedModelId: string | null;
+      referenceModelId: string | null;
+      baseScore: number | null;
+      trainedScore: number | null;
+      improvementPercent: number | null;
+      referenceScore: number | null;
+      trainedVsReferencePercent: number | null;
+      dryRun: boolean;
+      useMocks: boolean;
+      modelBacked: boolean;
+    }>;
     baselineProgress: {
       tierOrder: string[];
       establishedTiers: string[];
@@ -1153,6 +1181,28 @@ export interface RunTrainingCollectionResponse {
         path: string;
         schema: string | null;
       }>;
+      evidenceArtifacts: Array<{
+        category: "eval" | "benchmark" | "model";
+        title: string;
+        path: string;
+        schema: string | null;
+      }>;
+      training: {
+        trainingRuns: number;
+        models: number;
+        modelInventory: Array<{
+          title: string;
+          path: string;
+          schema: string | null;
+          model: string | null;
+          tier: string | null;
+          variant: string | null;
+          outputPath: string | null;
+          baseModel: string | null;
+          repoId: string | null;
+          evalImprovementPercent: number | null;
+        }>;
+      };
       benchmarks: {
         actionBenchmarkPairs: number;
         actionBenchmarkMatrixSources: number;

@@ -20,7 +20,10 @@ export default defineConfig({
     },
   },
   outputDir: recording
-    ? path.resolve(import.meta.dirname, "../../e2e-recordings/cloud-frontend/test-results")
+    ? path.resolve(
+        import.meta.dirname,
+        "../../e2e-recordings/cloud-frontend/test-results",
+      )
     : "./test-results",
   use: {
     baseURL: BASE_URL,

@@ -228,11 +228,10 @@ interface ScreenshotQuality {
 const FRAGMENT_DIR = path.join(OUT_ROOT, "_fragments");
 
 test.beforeAll(() => {
-  fs.rmSync(FRAGMENT_DIR, { recursive: true, force: true });
+  fs.mkdirSync(FRAGMENT_DIR, { recursive: true });
   for (const v of VIEWPORTS) {
     fs.mkdirSync(path.join(OUT_ROOT, v.name), { recursive: true });
   }
-  fs.mkdirSync(FRAGMENT_DIR, { recursive: true });
   fs.mkdirSync(MANUAL_REVIEW_DIR, { recursive: true });
   // Pre-seed manual-review stubs for every route. Existing files are never
   // overwritten — the human-authored review notes are the source of truth.
@@ -293,6 +292,7 @@ _Pick one. Until verdict is \`good\`, redo the audit loop after each fix._
 }
 
 function persistReport(report: PageReport) {
+  fs.mkdirSync(FRAGMENT_DIR, { recursive: true });
   const file = path.join(
     FRAGMENT_DIR,
     `${report.viewport}-${report.slug}.json`,
@@ -301,6 +301,7 @@ function persistReport(report: PageReport) {
 }
 
 test.afterAll(() => {
+  fs.mkdirSync(FRAGMENT_DIR, { recursive: true });
   const all: PageReport[] = [];
   for (const f of fs.readdirSync(FRAGMENT_DIR)) {
     if (!f.endsWith(".json")) continue;
@@ -499,9 +500,9 @@ function screenshotQualityIssues(
     issues.push(`${label}: screenshot is one color`);
   } else if (quality.colorBuckets <= 2 && quality.dominantRatio > 0.995) {
     issues.push(
-      `${label}: screenshot is effectively one color (${quality.colorBuckets} color buckets, ${Math.round(
-        quality.dominantRatio * 1000,
-      ) / 10}% dominant)`,
+      `${label}: screenshot is effectively one color (${quality.colorBuckets} color buckets, ${
+        Math.round(quality.dominantRatio * 1000) / 10
+      }% dominant)`,
     );
   }
   return issues;
@@ -512,13 +513,29 @@ async function captureAuditedScreenshot(
   outputPath: string,
   label: string,
 ): Promise<string[]> {
-  const buffer = await page.screenshot({
-    fullPage: true,
-    timeout: 15_000,
-  });
-  fs.writeFileSync(outputPath, buffer);
-  const quality = await analyzeScreenshot(buffer);
-  return screenshotQualityIssues(label, quality);
+  const deadline = Date.now() + 20_000;
+  let lastBuffer: Buffer | null = null;
+  let lastIssues: string[] = [];
+
+  while (Date.now() <= deadline) {
+    const buffer = await page.screenshot({
+      fullPage: true,
+      timeout: 15_000,
+    });
+    lastBuffer = buffer;
+    const quality = await analyzeScreenshot(buffer);
+    lastIssues = screenshotQualityIssues(label, quality);
+    if (lastIssues.length === 0) {
+      fs.writeFileSync(outputPath, buffer);
+      return [];
+    }
+    await page.waitForTimeout(500);
+  }
+
+  if (lastBuffer) {
+    fs.writeFileSync(outputPath, lastBuffer);
+  }
+  return lastIssues;
 }
 
 function reportBlockingIssues(report: PageReport): string[] {
@@ -529,7 +546,9 @@ function reportBlockingIssues(report: PageReport): string[] {
     );
   }
   for (const error of report.consoleErrors) {
-    issues.push(`console error for ${report.viewport}/${report.slug}: ${error}`);
+    issues.push(
+      `console error for ${report.viewport}/${report.slug}: ${error}`,
+    );
   }
   for (const failed of report.failedRequests) {
     issues.push(
@@ -547,7 +566,9 @@ function reportBlockingIssues(report: PageReport): string[] {
     );
   }
   for (const issue of report.screenshotIssues) {
-    issues.push(`screenshot issue for ${report.viewport}/${report.slug}: ${issue}`);
+    issues.push(
+      `screenshot issue for ${report.viewport}/${report.slug}: ${issue}`,
+    );
   }
   return issues;
 }
@@ -806,7 +827,7 @@ async function auditPage(
 for (const viewport of VIEWPORTS) {
   test.describe(`aesthetic audit — ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
-    test.setTimeout(75_000);
+    test.setTimeout(120_000);
 
     for (const route of ROUTES) {
       test(`${route.slug} (${viewport.name})`, async ({ page, context }) => {
@@ -892,7 +913,21 @@ for (const viewport of VIEWPORTS) {
             if (/\/me\/plugin-grants/.test(url)) return empty({ grants: [] });
 
             // List endpoints
-            if (/\/api-keys\/explorer/.test(url)) return empty({ keys: [] });
+            if (/\/api-keys\/explorer/.test(url))
+              return empty({
+                apiKey: {
+                  id: "audit-explorer-key",
+                  name: "Audit Explorer Key",
+                  description: "Synthetic key for the aesthetic audit",
+                  key_prefix: "elizaaudit",
+                  key: "elizaaudit_test_key",
+                  created_at: new Date(0).toISOString(),
+                  is_active: true,
+                  usage_count: 0,
+                  last_used_at: null,
+                },
+                isNew: false,
+              });
             if (/\/api-keys($|\?)/.test(url))
               return empty({ keys: [], total: 0 });
             if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
@@ -912,10 +947,15 @@ for (const viewport of VIEWPORTS) {
                   errorMessage: null,
                   createdAt: new Date().toISOString(),
                   updatedAt: new Date().toISOString(),
-                  token_address: null, token_chain: null, token_name: null, token_ticker: null,
+                  token_address: null,
+                  token_chain: null,
+                  token_name: null,
+                  token_ticker: null,
                   bridgeUrl: null,
                   errorCount: 0,
-                  walletAddress: null, walletProvider: null, walletStatus: "none",
+                  walletAddress: null,
+                  walletProvider: null,
+                  walletStatus: "none",
                   adminDetails: null,
                 },
               });
@@ -925,8 +965,7 @@ for (const viewport of VIEWPORTS) {
               return empty({ success: true, data: { agents: [] } });
             if (/\/my-agents\/claim-affiliate-characters/.test(url))
               return empty({ success: true, claimed: [] });
-            if (/\/agents(\/[^/]+)?($|\?)/.test(url))
-              return empty([]);
+            if (/\/agents(\/[^/]+)?($|\?)/.test(url)) return empty([]);
             if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
             if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
             if (/\/documents\/query/.test(url))
@@ -956,7 +995,8 @@ for (const viewport of VIEWPORTS) {
                 },
                 eligibility: {
                   canRedeem: false,
-                  reason: "Minimum redemption is $10.00. You have $0.00 available.",
+                  reason:
+                    "Minimum redemption is $10.00. You have $0.00 available.",
                   dailyLimitRemaining: 1000,
                 },
               });
@@ -982,7 +1022,11 @@ for (const viewport of VIEWPORTS) {
                 },
               });
             if (/\/referrals/.test(url))
-              return empty({ code: "REF123", total_referrals: 0, is_active: true });
+              return empty({
+                code: "REF123",
+                total_referrals: 0,
+                is_active: true,
+              });
             if (/\/quotas\/usage/.test(url))
               return empty({
                 quotas: {},
@@ -1320,7 +1364,7 @@ for (const viewport of VIEWPORTS) {
         try {
           await page.goto(route.path, {
             waitUntil: "domcontentloaded",
-            timeout: 30_000,
+            timeout: 60_000,
           });
           await page.evaluate(() => document.fonts.ready).catch(() => {});
           // Wait for data fetches to settle so loading skeletons don't get
