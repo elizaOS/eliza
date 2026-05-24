@@ -191,6 +191,32 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids inventing tool workarounds for dead candidateActions hints", async () => {
+		// Follow-up tightening after the initial rule was empirically softer
+		// than intended: live trajectory tj-d255e7683eddf2 ("who is brassrhino21?"
+		// against a runtime with no SEARCH_MESSAGES action) showed the planner
+		// still ran SHELL `echo "placeholder for SEARCH_MESSAGES"` and SHELL
+		// `echo "search messages for brassrhino21"` before falling through to
+		// BROWSER. The model interpreted the original rule narrowly (only
+		// "shell greps") and missed that bare-echo placeholders are the same
+		// anti-pattern.
+		//
+		// The strengthening rule generalizes the prohibition to any "dead
+		// hint" — when candidateActions names a tool not in the exposed tools
+		// list, the planner must either find a genuine alternative or bail to
+		// messageToUser. No SHELL/BROWSER/TASKS workarounds, and especially no
+		// `echo "<placeholder>"` commands that burn cost for no progress.
+		expect(plannerTemplate).toContain(
+			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
+		);
+		expect(plannerTemplate).toContain(
+			"do not invent SHELL/BROWSER/TASKS workarounds to fulfill it",
+		);
+		expect(plannerTemplate).toContain(
+			"placeholder echoes burn cost and produce no progress",
+		);
+	});
+
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
