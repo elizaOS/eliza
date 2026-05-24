@@ -163,6 +163,22 @@ describe("TASKS:spawn_agent", () => {
     expect(initialTask).toContain("AGENT_COORDINATION");
     expect(initialTask).toContain(TASK_ROOM);
     expect(initialTask).toContain(WORKTREE_ROOM);
+    // Regression for elizaOS/eliza#7935: the prompt must instruct the
+    // sub-agent NOT to write routing-kind labels as markdown banners in
+    // its prose. The original instruction said "report it with routing
+    // kind QUESTION_FOR_TASK_CREATOR" which sub-agents (opencode)
+    // interpreted as "write **QUESTION_FOR_TASK_CREATOR** as the first
+    // line of the reply text", leaking the framework's routing-kind
+    // constant into the user-visible Discord message. Routing is
+    // classified from the session event by the router; the sub-agent's
+    // prose must not duplicate it.
+    expect(initialTask).toContain(
+      "Do not prefix the reply with routing-kind labels",
+    );
+    expect(initialTask).toContain("no markdown banners");
+    expect(initialTask).toContain(
+      "the orchestrator classifies routing from the session event, not your prose",
+    );
   });
 
   it("keeps both swarm roles when task room and worktree room are the same", async () => {
