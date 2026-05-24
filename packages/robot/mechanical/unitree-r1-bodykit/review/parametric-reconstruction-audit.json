@@ -1145,7 +1145,7 @@
       ],
       "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
-      "has_morph_history": false,
+      "has_morph_history": true,
       "has_section_parameters": true,
       "uses_simple_primitive_parameters": false,
       "next_reconstruction_step": "carry forward into morph/control optimization"

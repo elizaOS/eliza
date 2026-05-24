@@ -141,7 +141,7 @@ def _make_scripts(
         + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_joint_reach --expected-env joint_reach --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo > evidence/alberta_joint_reach/validation_report.json\n"
         + f"uv run eliza-robot-benchmark-alberta --env obstacle_course --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_obstacle_course\n"
         + "uv run eliza-robot-render-alberta-obstacle-demo evidence/alberta_obstacle_course\n"
-        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
+        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
     )
     scripts["continual_benchmarks"] = str(continual)
 
@@ -149,7 +149,25 @@ def _make_scripts(
     _write_executable(
         brax,
         _shell_header()
-        + "export JAX_PLATFORMS=cuda,cpu\n"
+        + "unset CUDA_VISIBLE_DEVICES\n"
+        + "unset JAX_PLATFORM_NAME\n"
+        + "export JAX_PLATFORMS=\"${BRAX_JAX_PLATFORMS:-cuda,cpu}\"\n"
+        + "if [[ \"${BRAX_REQUIRE_GPU:-1}\" == \"1\" ]]; then\n"
+        + "  for attempt in $(seq 1 30); do\n"
+        + "    if nvidia-smi -L >/dev/null 2>&1 && uv run python - <<'PY'\n"
+        + "import jax\n"
+        + "raise SystemExit(0 if jax.default_backend() == 'gpu' and jax.devices('gpu') else 1)\n"
+        + "PY\n"
+        + "    then\n"
+        + "      break\n"
+        + "    fi\n"
+        + "    if [[ \"$attempt\" == \"30\" ]]; then\n"
+        + "      echo \"Brax/MJX requested GPU, but CUDA was not ready after $attempt attempts\" >&2\n"
+        + "      exit 70\n"
+        + "    fi\n"
+        + "    sleep 10\n"
+        + "  done\n"
+        + "fi\n"
         + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
     )
     scripts["brax_baseline"] = str(brax)

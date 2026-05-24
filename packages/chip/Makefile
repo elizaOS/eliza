@@ -1174,7 +1174,7 @@ cocotb-cpu:
 cocotb-coverage: cocotb cocotb-npu
 	@$(PYTHON) scripts/check_cocotb_coverage.py --require-blocks
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-rtl-full mpki-eval-rtl-stratified mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-manifest bpu-workload-trace-manifest-check bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-full-proxy-shard bpu-sweep-full-io-media-shard bpu-sweep-full-system-gpu-shard bpu-sweep-full-browser-build-crypto-shard bpu-sweep-full-compression-shard bpu-model-test bpu-vs-cva6-mpki
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval mpki-eval-rtl mpki-eval-rtl-full mpki-eval-rtl-stratified mpki-eval-model bpu-lint bpu-workload-trace bpu-workload-trace-manifest bpu-workload-trace-manifest-check bpu-workload-trace-decode bpu-sweep bpu-sweep-full bpu-sweep-full-proxy-shard bpu-sweep-full-io-media-shard bpu-sweep-full-system-gpu-shard bpu-sweep-full-browser-build-crypto-shard bpu-sweep-full-compression-shard bpu-sweep-full-agent-shard bpu-model-test bpu-vs-cva6-mpki
 
 cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
@@ -1310,6 +1310,16 @@ bpu-sweep-full-compression-shard:
 	  --include-traces compression_proxy \
 	  --output docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json \
 	  --leaderboard-output docs/evidence/cpu_ap/bpu_sweep_full_compression_shard_leaderboard.md \
+	  --jobs $(or $(JOBS),4)
+
+bpu-sweep-full-agent-shard:
+	@$(PYTHON) -m benchmarks.cpu.branch.sweep \
+	  --max-branches 0 \
+	  --window-mode prefix \
+	  --configs baseline h2p_off h2p_lowconf_only \
+	  --include-traces agent_loop agent_decode \
+	  --output docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json \
+	  --leaderboard-output docs/evidence/cpu_ap/bpu_sweep_full_agent_shard_leaderboard.md \
 	  --jobs $(or $(JOBS),4)
 
 # Behavioural apples-to-apples MPKI comparison against a CVA6/Ariane-class

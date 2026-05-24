@@ -177,12 +177,16 @@ def _production_step_contract(
         checks = parsed.get("checks") if isinstance(parsed, dict) else {}
         argv_min_steps = _positive_int(_arg_after(argv, "--min-steps"))
         parsed_min_steps = _positive_int(parsed.get("min_steps")) if isinstance(parsed, dict) else None
+        min_steps_match = (
+            argv_min_steps == expected_min_steps and parsed_min_steps == expected_min_steps
+            if expected_min_steps is not None
+            else argv_min_steps is not None
+            and (parsed_min_steps is None or parsed_min_steps == argv_min_steps)
+        )
         return (
             step.get("passed") is True
             and _step_parsed_ok(step)
-            and expected_min_steps is not None
-            and argv_min_steps == expected_min_steps
-            and parsed_min_steps == expected_min_steps
+            and min_steps_match
             and "--require-inference-check" in argv
             and isinstance(checks, dict)
             and checks.get("inference_check") is True

@@ -18,12 +18,12 @@ on success so downstream gates can chain.
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import re
 import sys
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -152,7 +152,7 @@ def parse_utc_timestamp(value: Any) -> datetime | None:
         return None
     if parsed.tzinfo is None or parsed.utcoffset() is None:
         return None
-    return parsed.astimezone(timezone.utc)
+    return parsed.astimezone(UTC)
 
 
 def sha256_file(path: Path) -> str:
@@ -188,7 +188,7 @@ def validate_scoped_artifact_freshness(artifact: str, data: dict[str, Any], erro
     captured = parse_utc_timestamp(data.get("captured_utc"))
     if captured is None:
         return
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if captured > now + timedelta(minutes=5):
         errors.append(f"{artifact}: captured_utc must not be in the future")
     if now - captured > CACHE_EVIDENCE_MAX_AGE:
