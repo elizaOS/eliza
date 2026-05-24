@@ -107,7 +107,9 @@ def evidence_status() -> dict[str, Any]:
     }
 
 
-def structured_findings(evidence: dict[str, Any], checks: list[dict[str, Any]]) -> list[dict[str, str]]:
+def structured_findings(
+    evidence: dict[str, Any], checks: list[dict[str, Any]]
+) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
     for path in list_values(evidence.get("missing_transcripts")):
         text = str(path)

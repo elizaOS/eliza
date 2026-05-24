@@ -178,9 +178,7 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
             }
         )
 
-    results = {
-        item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)
-    }
+    results = {item.get("name"): item for item in data.get("results", []) if isinstance(item, dict)}
     for bench in sorted(REQUIRED_REPORT_BENCHES):
         result = results.get(bench)
         if result is None:
@@ -202,9 +200,7 @@ def report_findings(report_path: Path) -> list[dict[str, Any]]:
                     "status": "blocked",
                     "reason": f"result status is {result.get('status')!r}",
                     **(
-                        {"blocked_requirements_summary": blocked_summary}
-                        if blocked_summary
-                        else {}
+                        {"blocked_requirements_summary": blocked_summary} if blocked_summary else {}
                     ),
                 }
             )

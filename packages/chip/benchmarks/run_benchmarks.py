@@ -1449,9 +1449,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
     if not isinstance(scenarios, list) or not scenarios:
         raise ValueError("MLPerf inference output is missing scenarios")
     by_name = {
-        scenario.get("scenario"): scenario
-        for scenario in scenarios
-        if isinstance(scenario, dict)
+        scenario.get("scenario"): scenario for scenario in scenarios if isinstance(scenario, dict)
     }
     missing_scenarios = {"SingleStream", "Offline"} - set(by_name)
     if missing_scenarios:
@@ -1496,9 +1494,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
         "min_top1_accuracy": float(min_accuracy),
         "scenario_count": int(summary.get("scenario_count", len(scenarios))),
         "single_stream_p90_latency_ns": int(latency["p90"]),
-        "offline_throughput_samples_per_second": float(
-            offline["throughput_samples_per_second"]
-        ),
+        "offline_throughput_samples_per_second": float(offline["throughput_samples_per_second"]),
         "energy_joules_per_inference": float(energy),
         "npu_macs_total": npu_macs_total,
         "npu_commands_total": npu_commands_total,

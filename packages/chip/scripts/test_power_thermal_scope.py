@@ -62,7 +62,9 @@ def test_structured_findings_cover_blocked_real_evidence() -> None:
         str(item.get("code", "")).startswith("power_thermal_missing_real_evidence_")
         for item in findings
     ):
-        raise AssertionError(f"power/thermal findings must include missing real evidence: {findings}")
+        raise AssertionError(
+            f"power/thermal findings must include missing real evidence: {findings}"
+        )
     print("PASS structured power/thermal findings cover blocked real evidence")
 
 

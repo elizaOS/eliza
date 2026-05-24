@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 INVENTORY = (
-    ROOT
-    / "board/kicad/e1-phone/production/readiness/"
+    ROOT / "board/kicad/e1-phone/production/readiness/"
     "production-factory-required-output-presence-inventory-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_production_factory_required_output_presence_inventory.v1"
@@ -141,8 +138,12 @@ def content_failures(path_text: str) -> list[str]:
     failures: list[str] = []
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml", ".json"}:
-        failures.extend(f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS))
-        failures.extend(f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS))
+        failures.extend(
+            f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
+        )
+        failures.extend(
+            f"missing_factory_field:{field}" for field in missing_fields(parsed, FACTORY_FIELDS)
+        )
         if isinstance(parsed, dict) and parsed.get("disposition") != "approved":
             failures.append("disposition_not_approved")
     elif suffix == ".csv":

@@ -12,6 +12,8 @@ description: Test ability to write comprehensive tests that pass
 prerequisites:
   - setup
   - implementation
+  - cli_arguments
+  - error_handling
 
 prompt: |
   The setup task already created package.json, tsconfig.json, .gitignore,

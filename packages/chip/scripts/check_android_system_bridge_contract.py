@@ -352,9 +352,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
             "launcher_consumed_live_state",
             "production_mock_fallback_absent",
         }
-        missing_true = sorted(
-            key for key in required_true if runtime_evidence.get(key) is not True
-        )
+        missing_true = sorted(key for key in required_true if runtime_evidence.get(key) is not True)
         add_if(
             findings,
             bool(missing_true),

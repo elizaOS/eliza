@@ -172,7 +172,9 @@ def unresolved_evidence_file_payloads(artifact: dict[str, Any]) -> list[str]:
             continue
         status = str(payload.get("status", "")).lower()
         if status not in allowed_statuses:
-            unresolved.append(f"{evidence_row_label(artifact, row)}: payload_status={status or '<missing>'}")
+            unresolved.append(
+                f"{evidence_row_label(artifact, row)}: payload_status={status or '<missing>'}"
+            )
     return unresolved
 
 

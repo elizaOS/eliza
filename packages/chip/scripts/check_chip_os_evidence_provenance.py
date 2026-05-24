@@ -51,9 +51,7 @@ EXCLUDED_FILENAMES = {
 }
 MAX_FILE_BYTES = 750_000
 HOST_PATH_RE = re.compile(r"(?<![\w/])/(?:home|Users|tmp|var/tmp)/[^\s\"'<>]+")
-PLACEHOLDER_RE = re.compile(
-    r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I
-)
+PLACEHOLDER_RE = re.compile(r"\b(placeholder|stub|dummy|fake|sentinel|all-zero|TODO|TBD)\b", re.I)
 BLOCKED_RE = re.compile(r"\b(BLOCKED|FAIL|blocked until|not yet|missing required)\b", re.I)
 REFERENCE_ONLY_RE = re.compile(
     r"(reference[_ -]?only|no[_ -]?(?:silicon|hardware|chip|boot)|not[_ -]?(?:rtl|chip|boot|launcher|runtime))",
@@ -330,10 +328,7 @@ def build_report(roots: list[str]) -> dict[str, Any]:
         },
         "scan_roots": roots,
         "scan_root_summary": by_root,
-        "top_paths": [
-            {"path": path, "findings": count}
-            for path, count in by_path.most_common(25)
-        ],
+        "top_paths": [{"path": path, "findings": count} for path, count in by_path.most_common(25)],
         "findings": findings,
     }
 

@@ -22,9 +22,7 @@
 import {
   Calendar,
   CheckCircle2,
-  ChevronRight,
   ListChecks,
-  MessageSquare,
   Pause,
   Play,
   Plus,
@@ -48,7 +46,6 @@ import { PagePanel } from "../composites/page-panel";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { StatusBadge } from "../ui/status-badge";
-import { AutomationsChatPane } from "./AutomationsChatPane";
 import { TaskEditor } from "./TaskEditor";
 import { WorkflowEditor } from "./WorkflowEditor";
 import {
@@ -138,7 +135,7 @@ function automationToRow(item: AutomationItem): FeedRow {
 
 export function AutomationsFeed({
   connectedCredTypes,
-  showChatPane = false,
+  showChatPane: _showChatPane = false,
 }: AutomationsFeedProps = {}) {
   const [data, setData] = useState<AutomationListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,7 +143,6 @@ export function AutomationsFeed({
   const [filter, setFilter] = useState<FeedFilter>("all");
   const [chooser, setChooser] = useState<ChooserState>("closed");
   const { link, setLink } = useAutomationDeepLink();
-  const [chatOpen, setChatOpen] = useState(showChatPane);
   const rowRefs = useRef<Map<string, HTMLLIElement>>(new Map());
 
   const editor: EditorState = useMemo(() => {
@@ -284,7 +280,7 @@ export function AutomationsFeed({
   const feedContent = (
     <div
       data-testid="automations-shell"
-      className={`device-layout mx-auto flex w-full ${chatOpen ? "max-w-3xl" : "max-w-5xl"} flex-col gap-4 px-4 py-4 lg:px-6`}
+      className="device-layout mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-4 lg:px-6"
     >
       {/* Header */}
       <div className="flex flex-wrap items-end justify-between gap-3">
@@ -298,15 +294,6 @@ export function AutomationsFeed({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setChatOpen((v) => !v)}
-            aria-label={chatOpen ? "Hide chat" : "Show chat"}
-            data-testid="automations-feed-chat-toggle"
-          >
-            <MessageSquare className="h-3.5 w-3.5" aria-hidden />
-          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -432,29 +419,7 @@ export function AutomationsFeed({
     </div>
   );
 
-  if (!chatOpen) return feedContent;
-  return (
-    <div className="flex h-full min-h-0 w-full">
-      <div className="min-w-0 flex-1 overflow-y-auto">{feedContent}</div>
-      <aside
-        className="hidden w-[360px] shrink-0 border-l border-border/40 bg-bg/40 lg:block"
-        data-testid="automations-feed-chat-pane"
-      >
-        <div className="flex items-center justify-between border-b border-border/30 px-3 py-2 text-xs font-medium text-txt">
-          <span>Ask the agent</span>
-          <button
-            type="button"
-            onClick={() => setChatOpen(false)}
-            className="text-muted-strong hover:text-txt"
-            aria-label="Collapse chat"
-          >
-            <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-          </button>
-        </div>
-        <AutomationsChatPane className="h-[calc(100%-37px)]" />
-      </aside>
-    </div>
-  );
+  return feedContent;
 }
 
 function FeedRowItem({

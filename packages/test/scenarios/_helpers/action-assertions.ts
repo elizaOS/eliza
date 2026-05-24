@@ -12,7 +12,7 @@ import type {
 import {
   actionMatchesScenarioExpectation,
   actionsAreScenarioEquivalent,
-} from "../../../packages/scenario-runner/src/action-families.ts";
+} from "../../../scenario-runner/src/action-families.ts";
 
 type Pattern = string | RegExp;
 

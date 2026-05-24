@@ -397,9 +397,8 @@ class _SC:
                 self.storage[tid][idx] = ctr - 1
         if self.local_history_bits > 0:
             idx = (pc >> 1) % self.local_history_entries
-            self.local_history[idx] = (
-                ((self.local_history[idx] << 1) | int(taken)) &
-                _mask(self.local_history_bits)
+            self.local_history[idx] = ((self.local_history[idx] << 1) | int(taken)) & _mask(
+                self.local_history_bits
             )
 
 
@@ -687,9 +686,7 @@ class BPUSimulator:
     def _step(self, event: BranchEvent) -> None:
         ittage_hist = self._ittage_history()
         pred_taken, pred_target = self._predict(event)
-        pred_taken, pred_target = self._apply_fetch_block_slot_limit(
-            event, pred_taken, pred_target
-        )
+        pred_taken, pred_target = self._apply_fetch_block_slot_limit(event, pred_taken, pred_target)
         actual_taken = event.taken
         actual_target = event.target
         misp = (pred_taken != actual_taken) or (actual_taken and pred_target != actual_target)

@@ -10,7 +10,7 @@
  * plugins are installed or uninstalled at runtime.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchWithCsrf } from "../api/csrf-client";
 import { getFrontendPlatform } from "../platform/platform-guards";
 
@@ -91,10 +91,23 @@ async function fetchViewList(
 }
 
 async function fetchViews(): Promise<ViewRegistryEntry[]> {
-  const guiViews = await fetchViewList();
-  const tuiViews = (await fetchViewList("tui")).filter(
-    (view) => view.viewType === "tui",
-  );
+  const [guiResult, tuiResult] = await Promise.allSettled([
+    fetchViewList(),
+    fetchViewList("tui"),
+  ]);
+  const guiViews = guiResult.status === "fulfilled" ? guiResult.value : [];
+  const tuiViews =
+    tuiResult.status === "fulfilled"
+      ? tuiResult.value.filter((view) => view.viewType === "tui")
+      : [];
+  if (
+    guiResult.status === "rejected" &&
+    tuiResult.status === "rejected" &&
+    !String(guiResult.reason).includes("404") &&
+    !String(tuiResult.reason).includes("404")
+  ) {
+    throw guiResult.reason;
+  }
   const merged = new Map<string, ViewRegistryEntry>();
   for (const view of guiViews) {
     merged.set(`${view.viewType ?? "gui"}:${view.id}`, view);
@@ -109,14 +122,21 @@ export function useAvailableViews(): UseAvailableViewsResult {
   const [views, setViews] = useState<ViewRegistryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const requestSeqRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const load = useCallback(async () => {
+    const requestSeq = requestSeqRef.current + 1;
+    requestSeqRef.current = requestSeq;
+    if (!mountedRef.current) return;
     setLoading(true);
     setError(null);
     try {
       const result = await fetchViews();
+      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
       setViews(result);
     } catch (err) {
+      if (!mountedRef.current || requestSeq !== requestSeqRef.current) return;
       // /api/views does not exist yet — this is expected during development.
       // Silence 404s; surface other errors.
       const e = err instanceof Error ? err : new Error(String(err));
@@ -125,7 +145,9 @@ export function useAvailableViews(): UseAvailableViewsResult {
       }
       setViews([]);
     } finally {
-      setLoading(false);
+      if (mountedRef.current && requestSeq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -135,11 +157,15 @@ export function useAvailableViews(): UseAvailableViewsResult {
 
   // Initial load + polling.
   useEffect(() => {
+    mountedRef.current = true;
     void load();
     const id = setInterval(() => {
       void load();
     }, POLL_INTERVAL_MS);
-    return () => clearInterval(id);
+    return () => {
+      mountedRef.current = false;
+      clearInterval(id);
+    };
   }, [load]);
 
   return { views, loading, error, refresh };

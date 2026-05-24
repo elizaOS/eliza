@@ -465,7 +465,13 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 		expect(evalStage?.evaluation?.decision).toBe("FINISH");
 	});
 
-	it("prefers a single tool's verified user-facing text over evaluator paraphrase", async () => {
+	it("falls back to a single tool's user-facing text when the evaluator omits messageToUser", async () => {
+		// When the evaluator returns FINISH with no `messageToUser`, the framework
+		// falls through to the tool's `userFacingText`. This preserves the
+		// authentic tool output (exact paths, metrics) for users instead of
+		// surfacing the diagnostic `text` log or an empty reply. When the
+		// evaluator DOES supply `messageToUser`, it wins — that contract lives in
+		// `planner-loop-user-facing-text.test.ts`.
 		const inspectRuntime = makeMockAction({
 			name: "CHECK_RUNTIME",
 			parameters: [],
@@ -506,8 +512,6 @@ describe("v5 happy path — message handler → planner → executor → evaluat
 						success: true,
 						decision: "FINISH",
 						thought: "Tool result is enough.",
-						messageToUser:
-							"Root disk: 65% used, 138G available. Biggest cleanup candidate: /home/wrong-user/.bun (19G).",
 					}),
 				},
 			],

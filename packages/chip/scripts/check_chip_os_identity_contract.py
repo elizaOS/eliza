@@ -32,8 +32,7 @@ APP_AGENT_SERVICE = PACKAGES / "app/android/app/src/main/java/app/eliza/ElizaAge
 APP_AGENT_PLUGIN = PACKAGES / "app/android/app/src/main/java/app/eliza/AgentPlugin.java"
 OS_VENDOR_COMMON = PACKAGES / "os/android/vendor/eliza/eliza_common.mk"
 OS_VENDOR_OVERLAY = (
-    PACKAGES
-    / "os/android/vendor/eliza/overlays/frameworks/base/core/res/res/values/config.xml"
+    PACKAGES / "os/android/vendor/eliza/overlays/frameworks/base/core/res/res/values/config.xml"
 )
 OS_PERMISSION_XMLS = (
     PACKAGES / "os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml",
@@ -55,9 +54,7 @@ ANDROID_RELEASE_MANIFESTS = (
     PACKAGES / "os/android/installer/manifests/android-release-manifest.example.json",
     PACKAGES / "os/release/beta-2026-05-16/android-release-manifest.json",
 )
-APP_AGENT_PLUGIN_MANIFEST = (
-    PACKAGES / "app/android/app/src/main/assets/agent/plugins-manifest.json"
-)
+APP_AGENT_PLUGIN_MANIFEST = PACKAGES / "app/android/app/src/main/assets/agent/plugins-manifest.json"
 
 
 def rel(path: Path) -> str:
@@ -108,18 +105,11 @@ def manifest_has_home_activity(path: Path) -> bool:
     root = xml_root(path)
     android_name = "{http://schemas.android.com/apk/res/android}name"
     for activity in root.findall(".//activity"):
-        actions = {
-            action.attrib.get(android_name)
-            for action in activity.findall(".//action")
-        }
+        actions = {action.attrib.get(android_name) for action in activity.findall(".//action")}
         categories = {
-            category.attrib.get(android_name)
-            for category in activity.findall(".//category")
+            category.attrib.get(android_name) for category in activity.findall(".//category")
         }
-        if (
-            "android.intent.action.MAIN" in actions
-            and "android.intent.category.HOME" in categories
-        ):
+        if "android.intent.action.MAIN" in actions and "android.intent.category.HOME" in categories:
             return True
     return False
 
@@ -128,19 +118,13 @@ def shortcut_target_packages(path: Path) -> set[str]:
     root = xml_root(path)
     android_target_package = "{http://schemas.android.com/apk/res/android}targetPackage"
     return {
-        value
-        for element in root.iter()
-        if (value := element.attrib.get(android_target_package))
+        value for element in root.iter() if (value := element.attrib.get(android_target_package))
     }
 
 
 def permission_packages(path: Path) -> set[str]:
     root = xml_root(path)
-    return {
-        value
-        for element in root.iter()
-        if (value := element.attrib.get("package"))
-    }
+    return {value for element in root.iter() if (value := element.attrib.get("package"))}
 
 
 def ro_home(text: str) -> str | None:
@@ -176,10 +160,7 @@ def script_default(text: str, var_name: str) -> str | None:
 
 
 def endpoint_literals(text: str) -> set[str]:
-    return {
-        value.rstrip(".,;:")
-        for value in re.findall(r"/api/[A-Za-z0-9_./{}-]+", text)
-    }
+    return {value.rstrip(".,;:") for value in re.findall(r"/api/[A-Za-z0-9_./{}-]+", text)}
 
 
 def release_validation_tokens(path: Path) -> set[str]:
@@ -188,7 +169,8 @@ def release_validation_tokens(path: Path) -> set[str]:
     return {
         token
         for token in json.dumps(validation, sort_keys=True).split('"')
-        if token in {
+        if token
+        in {
             "pm path",
             "cmd role holders",
             "HOME",
@@ -277,12 +259,17 @@ def build_report() -> dict[str, Any]:
         if endpoint_literals(read_text(path))
     }
     doc_packages = {
-        rel(path): sorted(set(re.findall(r"\b(?:app\.eliza|ai\.elizaos\.app|com\.elizaos\.agent)\b", read_text(path))))
+        rel(path): sorted(
+            set(
+                re.findall(
+                    r"\b(?:app\.eliza|ai\.elizaos\.app|com\.elizaos\.agent)\b", read_text(path)
+                )
+            )
+        )
         for path in OPERATOR_DOCS
     }
     release_validation = {
-        rel(path): sorted(release_validation_tokens(path))
-        for path in ANDROID_RELEASE_MANIFESTS
+        rel(path): sorted(release_validation_tokens(path)) for path in ANDROID_RELEASE_MANIFESTS
     }
     plugin_manifest = json_file(APP_AGENT_PLUGIN_MANIFEST)
     externals_as_stubs = plugin_manifest.get("externalsAsStubs", [])
@@ -344,7 +331,10 @@ def build_report() -> dict[str, Any]:
             finding(
                 "chip_script_service_defaults_mismatch",
                 "chip-side AOSP scripts default to service components that do not match the vendor package service",
-                json.dumps({"expected": expected_service, "script_services": script_services}, sort_keys=True),
+                json.dumps(
+                    {"expected": expected_service, "script_services": script_services},
+                    sort_keys=True,
+                ),
                 "Set AOSP_AGENT_SERVICE defaults to the service component exported by the installed Eliza APK.",
             )
         )
@@ -374,7 +364,9 @@ def build_report() -> dict[str, Any]:
             finding(
                 "chip_script_health_endpoint_missing",
                 "chip smoke scripts do not probe /api/health",
-                json.dumps({key: sorted(value) for key, value in script_endpoints.items()}, sort_keys=True),
+                json.dumps(
+                    {key: sorted(value) for key, value in script_endpoints.items()}, sort_keys=True
+                ),
                 "Probe /api/health through adb forward as the primary app watchdog readiness contract.",
             )
         )
@@ -383,15 +375,15 @@ def build_report() -> dict[str, Any]:
             finding(
                 "legacy_self_status_endpoint_still_required",
                 "chip smoke scripts still require /api/agent/self-status in addition to /api/health",
-                json.dumps({key: sorted(value) for key, value in script_endpoints.items()}, sort_keys=True),
+                json.dumps(
+                    {key: sorted(value) for key, value in script_endpoints.items()}, sort_keys=True
+                ),
                 "Either make /api/agent/self-status a documented secondary check or remove it from required launcher/agent readiness.",
             )
         )
 
     stale_docs = {
-        path: packages
-        for path, packages in doc_packages.items()
-        if "com.elizaos.agent" in packages
+        path: packages for path, packages in doc_packages.items() if "com.elizaos.agent" in packages
     }
     if stale_docs:
         findings.append(
@@ -462,7 +454,9 @@ def build_report() -> dict[str, Any]:
         "release_validation_tokens": release_validation,
         "agent_plugin_manifest": {
             "path": rel(APP_AGENT_PLUGIN_MANIFEST),
-            "externals_as_stubs_count": len(externals_as_stubs) if isinstance(externals_as_stubs, list) else None,
+            "externals_as_stubs_count": len(externals_as_stubs)
+            if isinstance(externals_as_stubs, list)
+            else None,
             "runtime_stub_externals": runtime_stub_externals,
         },
     }

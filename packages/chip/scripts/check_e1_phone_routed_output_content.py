@@ -5,17 +5,14 @@ from __future__ import annotations
 
 import csv
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX = (
-    ROOT
-    / "board/kicad/e1-phone/production/readiness/"
+    ROOT / "board/kicad/e1-phone/production/readiness/"
     "routed-board-release-acceptance-matrix-2026-05-22.yaml"
 )
 EXPECTED_SCHEMA = "eliza.e1_phone_routed_board_release_acceptance_matrix.v1"
@@ -149,7 +146,9 @@ def content_failures(path_text: str) -> list[str]:
     if not path.exists():
         return ["artifact_missing"]
     if path.is_dir():
-        children = [child for child in path.iterdir() if child.is_file() and child.stat().st_size > 0]
+        children = [
+            child for child in path.iterdir() if child.is_file() and child.stat().st_size > 0
+        ]
         if not children:
             failures.append("directory_empty_or_no_release_files")
         return failures
@@ -163,8 +162,12 @@ def content_failures(path_text: str) -> list[str]:
 
     suffix = path.suffix.lower()
     if suffix in {".yaml", ".yml", ".json"}:
-        failures.extend(f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS))
-        failures.extend(f"missing_routed_field:{field}" for field in missing_fields(parsed, ROUTED_FIELDS))
+        failures.extend(
+            f"missing_common_field:{field}" for field in missing_fields(parsed, COMMON_FIELDS)
+        )
+        failures.extend(
+            f"missing_routed_field:{field}" for field in missing_fields(parsed, ROUTED_FIELDS)
+        )
         if isinstance(parsed, dict) and parsed.get("disposition") != "approved":
             failures.append("disposition_not_approved")
     elif suffix == ".csv":
@@ -218,7 +221,13 @@ def main() -> int:
         print(f"FAIL: E1 phone routed-output content contract invalid: {exc}")
         return 1
 
-    if blocked or missing_categories or missing_outputs or domains_missing_outputs or domains_missing_nets:
+    if (
+        blocked
+        or missing_categories
+        or missing_outputs
+        or domains_missing_outputs
+        or domains_missing_nets
+    ):
         print(
             "STATUS: BLOCKED E1 phone routed-output content "
             f"paths={len(outputs)} present={present} blocked={len(blocked)} "

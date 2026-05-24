@@ -377,8 +377,7 @@ def best_reference_evidence(results: list[dict[str, object]]) -> dict[str, objec
 def on_chip_os_boot_claim(results: list[dict[str, object]]) -> bool:
     by_name = {str(item.get("name")): item for item in results}
     return all(
-        by_name.get(name, {}).get("status") == "pass"
-        for name in ON_CHIP_OS_BOOT_REQUIRED_STEPS
+        by_name.get(name, {}).get("status") == "pass" for name in ON_CHIP_OS_BOOT_REQUIRED_STEPS
     )
 
 

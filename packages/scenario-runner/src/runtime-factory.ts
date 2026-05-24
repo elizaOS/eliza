@@ -1,8 +1,8 @@
 /**
  * Build a real AgentRuntime for scenario execution. Uses PGLite for storage
- * (no SQL mocks) and registers the first available live LLM provider via
- * `selectLiveProvider()`. Fails if no provider key is set — the caller must
- * have verified that before invoking.
+ * (no SQL mocks) and registers either the first available live LLM provider
+ * via `selectLiveProvider()` or the deterministic test LLM proxy when mock
+ * mode is explicitly enabled.
  */
 
 import fs from "node:fs";
@@ -21,23 +21,36 @@ import {
 
 // Test helpers loaded lazily so the build rootDir stays within src/.
 async function loadTestMocks() {
-  // Keep these as widened strings so TypeScript does not pull repo-level test
-  // helpers into the scenario-runner typecheck graph.
-  const mockRuntimeSpecifier =
-    "../../../test/mocks/helpers/mock-runtime.ts" as string;
-  const lifeopsSimulatorSpecifier =
-    "../../../test/mocks/helpers/lifeops-simulator.ts" as string;
-  const benchmarkFixturesSpecifier =
-    "../../../test/mocks/helpers/seed-benchmark-fixtures.ts" as string;
-  const grantsSpecifier =
-    "../../../test/mocks/helpers/seed-grants.ts" as string;
+  // Keep these as file URL strings so runtime resolution is anchored to this
+  // module instead of the process cwd or test runner transform root.
+  const mockRuntimeSpecifier = new URL(
+    "../../test/mocks/helpers/mock-runtime.ts",
+    import.meta.url,
+  ).href;
+  const lifeopsSimulatorSpecifier = new URL(
+    "../../test/mocks/helpers/lifeops-simulator.ts",
+    import.meta.url,
+  ).href;
+  const benchmarkFixturesSpecifier = new URL(
+    "../../test/mocks/helpers/seed-benchmark-fixtures.ts",
+    import.meta.url,
+  ).href;
+  const grantsSpecifier = new URL(
+    "../../test/mocks/helpers/seed-grants.ts",
+    import.meta.url,
+  ).href;
+  const llmProxySpecifier = new URL(
+    "../../test/mocks/helpers/llm-proxy-plugin.ts",
+    import.meta.url,
+  ).href;
 
-  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants] =
+  const [mockRuntime, lifeopsSimulator, benchmarkFixtures, grants, llmProxy] =
     await Promise.all([
       import(mockRuntimeSpecifier),
       import(lifeopsSimulatorSpecifier),
       import(benchmarkFixturesSpecifier),
       import(grantsSpecifier),
+      import(llmProxySpecifier),
     ]);
   return {
     prepareMockedTestEnvironment: mockRuntime.prepareMockedTestEnvironment,
@@ -46,14 +59,29 @@ async function loadTestMocks() {
       benchmarkFixtures.seedBenchmarkLifeOpsFixtures,
     seedGoogleConnectorGrant: grants.seedGoogleConnectorGrant,
     seedXConnectorGrant: grants.seedXConnectorGrant,
+    createDeterministicLlmProxyPlugin:
+      llmProxy.createDeterministicLlmProxyPlugin,
   };
 }
+
+export async function loadScenarioTestMocksForTests() {
+  return loadTestMocks();
+}
+
+const DETERMINISTIC_LLM_PROXY_PROVIDER_NAME =
+  "deterministic-llm-proxy" as const;
 
 export interface RuntimeFactoryResult {
   runtime: AgentRuntime;
   pgliteDir: string;
-  providerName: LiveProviderName;
-  providerConfig: LiveProviderConfig;
+  providerName: LiveProviderName | typeof DETERMINISTIC_LLM_PROXY_PROVIDER_NAME;
+  providerConfig:
+    | LiveProviderConfig
+    | {
+        name: typeof DETERMINISTIC_LLM_PROXY_PROVIDER_NAME;
+        env: Record<string, string>;
+        pluginPackage: null;
+      };
   cleanup: () => Promise<void>;
 }
 
@@ -89,10 +117,56 @@ function extractPlugin(mod: unknown, names: readonly string[]): Plugin | null {
   return null;
 }
 
+async function runCleanupStep(
+  label: string,
+  operation: () => Promise<void>,
+  timeoutMs = 5_000,
+): Promise<void> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<"timeout">((resolve) => {
+    timeout = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  const result = await Promise.race([
+    operation().then(() => "done" as const),
+    timeoutPromise,
+  ]);
+  if (timeout) {
+    clearTimeout(timeout);
+  }
+  if (result === "timeout") {
+    logger.warn(
+      `[scenario-runner] cleanup step timed out after ${timeoutMs}ms: ${label}`,
+    );
+  }
+}
+
+function cancelScenarioOnlyLazyServiceStarts(runtime: AgentRuntime): void {
+  const runtimeInternals = runtime as unknown as {
+    startingServices?: Map<string, Promise<unknown>>;
+    servicePromises?: Map<string, Promise<unknown>>;
+    servicePromiseHandlers?: Map<
+      string,
+      { reject: (error: Error) => void }
+    >;
+  };
+  const serviceType = "AGENT_SKILLS_SERVICE";
+  if (!runtimeInternals.startingServices?.has(serviceType)) {
+    return;
+  }
+  const error = new Error(
+    "[scenario-runner] cancelled unfinished agent-skills lazy service start during cleanup",
+  );
+  runtimeInternals.servicePromiseHandlers?.get(serviceType)?.reject(error);
+  runtimeInternals.servicePromiseHandlers?.delete(serviceType);
+  runtimeInternals.servicePromises?.delete(serviceType);
+  runtimeInternals.startingServices.delete(serviceType);
+}
+
 export interface CreateScenarioRuntimeOptions {
   characterName?: string;
   preferredProvider?: LiveProviderName;
   extraPlugins?: Plugin[];
+  useDeterministicLlmProxy?: boolean;
 }
 
 const SAVE_TRAJECTORY_ENV_FLAGS = [
@@ -115,6 +189,38 @@ function envFlag(value: string | undefined): boolean {
   );
 }
 
+export function shouldUseDeterministicLlmProxy(
+  options: Pick<CreateScenarioRuntimeOptions, "useDeterministicLlmProxy"> = {},
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  return (
+    options.useDeterministicLlmProxy === true ||
+    envFlag(env.SCENARIO_USE_LLM_PROXY) ||
+    envFlag(env.ELIZA_SCENARIO_USE_LLM_PROXY)
+  );
+}
+
+function deterministicLlmProxyProviderConfig(): RuntimeFactoryResult["providerConfig"] {
+  return {
+    name: DETERMINISTIC_LLM_PROXY_PROVIDER_NAME,
+    env: {},
+    pluginPackage: null,
+  };
+}
+
+export function resolveScenarioProviderConfig(
+  options: Pick<
+    CreateScenarioRuntimeOptions,
+    "preferredProvider" | "useDeterministicLlmProxy"
+  > = {},
+  env: NodeJS.ProcessEnv = process.env,
+): RuntimeFactoryResult["providerConfig"] | null {
+  if (shouldUseDeterministicLlmProxy(options, env)) {
+    return deterministicLlmProxyProviderConfig();
+  }
+  return selectLiveProvider(options.preferredProvider);
+}
+
 export function shouldPreserveScenarioTrajectoryDb(
   env: NodeJS.ProcessEnv = process.env,
 ): boolean {
@@ -134,10 +240,10 @@ export function scenarioPgliteDirOverride(
 export async function createScenarioRuntime(
   options?: CreateScenarioRuntimeOptions,
 ): Promise<RuntimeFactoryResult> {
-  const providerConfig = selectLiveProvider(options?.preferredProvider);
+  const providerConfig = resolveScenarioProviderConfig(options);
   if (!providerConfig) {
     throw new Error(
-      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY.",
+      "[scenario-runner] no LLM provider configured. Set GROQ_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / GOOGLE_GENERATIVE_AI_API_KEY / OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.",
     );
   }
   const {
@@ -146,6 +252,7 @@ export async function createScenarioRuntime(
     seedBenchmarkLifeOpsFixtures,
     seedGoogleConnectorGrant,
     seedXConnectorGrant,
+    createDeterministicLlmProxyPlugin,
   } = await loadTestMocks();
   const mockedEnvironment = await prepareMockedTestEnvironment({
     seedLifeOpsSimulator: true,
@@ -169,9 +276,19 @@ export async function createScenarioRuntime(
   const prevSelfControlHostsFilePath = process.env.SELFCONTROL_HOSTS_FILE_PATH;
   const prevElizaDisableActivityTracker =
     process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
+  const prevElizaDisableProactiveAgent =
+    process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
+  const prevElizaDisableLifeOpsScheduler =
+    process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+  const prevSkillsSyncCatalogOnStart =
+    process.env.SKILLS_SYNC_CATALOG_ON_START;
   let scenarioHostsRoot: string | null = null;
   process.env.PGLITE_DATA_DIR = pgliteDir;
   process.env.ELIZA_DISABLE_ACTIVITY_TRACKER = "1";
+  process.env.ELIZA_DISABLE_PROACTIVE_AGENT = "1";
+  process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER = "1";
+  process.env.SKILLS_SYNC_CATALOG_ON_START =
+    prevSkillsSyncCatalogOnStart ?? "false";
   if (!process.env.LOCAL_EMBEDDING_DIMENSIONS?.trim()) {
     process.env.LOCAL_EMBEDDING_DIMENSIONS = "384";
   }
@@ -262,20 +379,26 @@ export async function createScenarioRuntime(
   }
 
   applyRuntimeSettings(runtime, providerConfig.env);
-  const providerModule = (await import(providerConfig.pluginPackage)) as Record<
-    string,
-    unknown
-  >;
-  const providerPlugin = extractPlugin(providerModule, [
-    "default",
-    "elizaPlugin",
-  ]);
-  if (!providerPlugin) {
-    throw new Error(
-      `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+  if (providerConfig.name === DETERMINISTIC_LLM_PROXY_PROVIDER_NAME) {
+    await runtime.registerPlugin(createDeterministicLlmProxyPlugin());
+    logger.info(
+      "[scenario-runner] Registered deterministic LLM proxy; no live provider key required.",
     );
+  } else {
+    const providerModule = (await import(
+      providerConfig.pluginPackage
+    )) as Record<string, unknown>;
+    const providerPlugin = extractPlugin(providerModule, [
+      "default",
+      "elizaPlugin",
+    ]);
+    if (!providerPlugin) {
+      throw new Error(
+        `[scenario-runner] provider package ${providerConfig.pluginPackage} did not export a Plugin`,
+      );
+    }
+    await runtime.registerPlugin(providerPlugin);
   }
-  await runtime.registerPlugin(providerPlugin);
 
   const agentSkillsModule = (await import(
     "@elizaos/plugin-agent-skills"
@@ -291,10 +414,9 @@ export async function createScenarioRuntime(
   }
   await runtime.registerPlugin(agentSkillsPlugin);
 
-  const lifeOpsModule = (await import("@elizaos/plugin-lifeops")) as Record<
-    string,
-    unknown
-  >;
+  const lifeOpsModule = (await import(
+    "@elizaos/plugin-lifeops/plugin"
+  )) as Record<string, unknown>;
   const lifeOpsPlugin = extractPlugin(lifeOpsModule, [
     "default",
     "appLifeOpsPlugin",
@@ -337,21 +459,28 @@ export async function createScenarioRuntime(
   }
 
   const cleanup = async (): Promise<void> => {
-    try {
-      await cleanupRuntimeFixtures?.();
-    } catch (err) {
-      logger.debug(`[scenario-runner] runtime fixture cleanup error: ${err}`);
-    }
-    try {
-      await runtime.stop();
-    } catch (err) {
-      logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
-    }
-    try {
-      await runtime.close();
-    } catch (err) {
-      logger.debug(`[scenario-runner] runtime.close() error: ${err}`);
-    }
+    await runCleanupStep("runtime fixtures", async () => {
+      try {
+        await cleanupRuntimeFixtures?.();
+      } catch (err) {
+        logger.debug(`[scenario-runner] runtime fixture cleanup error: ${err}`);
+      }
+    });
+    cancelScenarioOnlyLazyServiceStarts(runtime);
+    await runCleanupStep("runtime.stop()", async () => {
+      try {
+        await runtime.stop();
+      } catch (err) {
+        logger.debug(`[scenario-runner] runtime.stop() error: ${err}`);
+      }
+    });
+    await runCleanupStep("runtime.close()", async () => {
+      try {
+        await runtime.close();
+      } catch (err) {
+        logger.debug(`[scenario-runner] runtime.close() error: ${err}`);
+      }
+    });
     if (prevPgliteDir !== undefined) {
       process.env.PGLITE_DATA_DIR = prevPgliteDir;
     } else {
@@ -374,13 +503,33 @@ export async function createScenarioRuntime(
     } else {
       delete process.env.ELIZA_DISABLE_ACTIVITY_TRACKER;
     }
-    try {
-      await mockedEnvironment.cleanup();
-    } catch (err) {
-      logger.debug(
-        `[scenario-runner] mocked environment cleanup error: ${err}`,
-      );
+    if (prevElizaDisableProactiveAgent !== undefined) {
+      process.env.ELIZA_DISABLE_PROACTIVE_AGENT =
+        prevElizaDisableProactiveAgent;
+    } else {
+      delete process.env.ELIZA_DISABLE_PROACTIVE_AGENT;
     }
+    if (prevElizaDisableLifeOpsScheduler !== undefined) {
+      process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER =
+        prevElizaDisableLifeOpsScheduler;
+    } else {
+      delete process.env.ELIZA_DISABLE_LIFEOPS_SCHEDULER;
+    }
+    if (prevSkillsSyncCatalogOnStart !== undefined) {
+      process.env.SKILLS_SYNC_CATALOG_ON_START =
+        prevSkillsSyncCatalogOnStart;
+    } else {
+      delete process.env.SKILLS_SYNC_CATALOG_ON_START;
+    }
+    await runCleanupStep("mocked environment", async () => {
+      try {
+        await mockedEnvironment.cleanup();
+      } catch (err) {
+        logger.debug(
+          `[scenario-runner] mocked environment cleanup error: ${err}`,
+        );
+      }
+    });
     if (removePgliteDirOnCleanup) {
       try {
         fs.rmSync(pgliteDir, { recursive: true, force: true });

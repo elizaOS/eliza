@@ -4,10 +4,6 @@
 
 import { Keyboard } from "@capacitor/keyboard";
 import {
-  ArrowDownLeft,
-  ArrowLeftRight,
-  Layers3,
-  MessagesSquare,
   PanelLeftClose,
   PanelLeftOpen,
   PanelRightClose,
@@ -27,6 +23,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { createNavigateViewHandler } from "./app-navigate-view";
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 import {
   invokeDesktopBridgeRequest,
@@ -62,13 +59,9 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { Button } from "./components/ui/button";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { VoiceWaveform } from "./components/voice/VoiceWaveform";
-import {
-  AppWorkspaceChrome,
-  type AppWorkspaceChromeProps,
-} from "./components/workspace/AppWorkspaceChrome";
+import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
 import { useBootConfig } from "./config/boot-config-react";
 import type { CompanionShellComponentProps } from "./config/boot-config-store";
 import {
@@ -99,16 +92,7 @@ import type { FlaminaGuideTopic } from "./state/types";
 const CHAT_MOBILE_BREAKPOINT_PX = 820;
 const MOBILE_NAV_PADDING_CLASS =
   "pb-[calc(var(--eliza-mobile-nav-offset,0px)+var(--safe-area-bottom,0px))]";
-const WALLET_CHAT_PREFILL_EVENT = "eliza:chat:prefill";
 type MobileChatSurface = "left" | "center" | "right";
-type NavigateViewDetail = {
-  viewId?: string;
-  viewPath?: string;
-  viewLabel?: string;
-  viewType?: "gui" | "tui";
-  action?: string;
-};
-
 type ExtractComponent<TValue> =
   TValue extends ComponentType<infer Props> ? ComponentType<Props> : never;
 
@@ -213,86 +197,6 @@ function LazyViewBoundary({ children }: { children: ReactNode }) {
   );
 }
 
-function prefillWalletChat(text: string): void {
-  if (typeof window === "undefined") return;
-  window.dispatchEvent(
-    new CustomEvent(WALLET_CHAT_PREFILL_EVENT, {
-      detail: { text, select: true },
-    }),
-  );
-}
-
-function WalletChatGuideBody() {
-  const items = [
-    {
-      icon: ArrowLeftRight,
-      label: "Swap, bridge, send, or receive",
-    },
-    {
-      icon: Layers3,
-      label: "Inspect tokens, NFTs, LPs, and activity",
-    },
-    {
-      icon: MessagesSquare,
-      label: "Ask how the agent can use this wallet",
-    },
-  ];
-
-  return (
-    <div className="grid gap-2">
-      {items.map((item) => (
-        <div
-          key={item.label}
-          className="flex items-center gap-2 text-xs-tight text-muted"
-        >
-          <item.icon className="h-3.5 w-3.5 shrink-0 text-accent" />
-          <span>{item.label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function WalletChatGuideActions() {
-  const actions = [
-    {
-      label: "Swap",
-      prompt:
-        "Prepare a wallet swap. Ask me for source token, destination token, amount, slippage, and route before any transaction.",
-      icon: ArrowLeftRight,
-    },
-    {
-      label: "Bridge",
-      prompt:
-        "Prepare a bridge. Ask me for token, amount, destination address, destination network requirements, and route before any transaction.",
-      icon: Layers3,
-    },
-    {
-      label: "Receive",
-      prompt:
-        "Show the EVM and Solana receive addresses available in this wallet and ask which address I want to use.",
-      icon: ArrowDownLeft,
-    },
-  ];
-
-  return (
-    <>
-      {actions.map((action) => (
-        <Button
-          key={action.label}
-          variant="outline"
-          size="sm"
-          className="rounded-full"
-          onClick={() => prefillWalletChat(action.prompt)}
-        >
-          <action.icon className="mr-1.5 h-3.5 w-3.5" />
-          {action.label}
-        </Button>
-      ))}
-    </>
-  );
-}
-
 interface MobileChatSurfaceButtonProps {
   icon: typeof PanelLeftOpen;
   label: string;
@@ -318,20 +222,6 @@ function MobileChatSurfaceButton({
       <Icon className="h-4 w-4" aria-hidden />
     </button>
   );
-}
-
-function buildWalletPageScopedChatPaneProps(): NonNullable<
-  AppWorkspaceChromeProps["pageScopedChatPaneProps"]
-> {
-  return {
-    persistentIntro: true,
-    placeholderOverride: "Ask about how the agent can use a wallet",
-    introOverride: {
-      title: "Wallet agent",
-      body: <WalletChatGuideBody />,
-      actions: <WalletChatGuideActions />,
-    },
-  };
 }
 
 /** Check if we're in pop-out mode (StreamView only, no chrome). */
@@ -398,22 +288,14 @@ function ChatOverlayShell() {
 function TabScrollView({
   children,
   className = "",
-  chat,
-  chatScope,
-  pageScopedChatPaneProps,
 }: {
   children: ReactNode;
   className?: string;
-  chat?: ReactNode;
-  chatScope?: PageScope;
-  pageScopedChatPaneProps?: AppWorkspaceChromeProps["pageScopedChatPaneProps"];
 }) {
   return (
     <AppWorkspaceChrome
       testId="tab-scroll-view"
-      chat={chat}
-      chatScope={chat ? undefined : chatScope}
-      pageScopedChatPaneProps={chat ? undefined : pageScopedChatPaneProps}
+      chatDisabled
       main={
         <div
           data-shell-scroll-region="true"
@@ -428,24 +310,15 @@ function TabScrollView({
 
 function TabContentView({
   children,
-  chatScope,
-  chatDisabled = false,
 }: {
   children: ReactNode;
   chatScope?: PageScope;
   chatDisabled?: boolean;
 }) {
-  const { activeGameRunId, appsSubTab } = useApp();
-  const gameOwnsChat =
-    chatScope === "page-apps" &&
-    appsSubTab === "games" &&
-    activeGameRunId.trim().length > 0;
-
   return (
     <AppWorkspaceChrome
       testId="tab-content-view"
-      chatScope={chatScope}
-      chatDisabled={chatDisabled || gameOwnsChat}
+      chatDisabled
       main={
         <div className="flex flex-col flex-1 min-h-0 min-w-0 w-full overflow-hidden">
           {children}
@@ -650,6 +523,7 @@ function renderStaticViewRouterTab({
 }): ReactNode {
   const directViews: Record<string, ReactNode> = {
     chat: <ChatView />,
+    home: <HomeView />,
     browser: <BrowserWorkspaceView />,
     companion: <ChatView />,
     stream: <StreamView />,
@@ -746,10 +620,7 @@ function renderStaticViewRouterTab({
   }
   if (tab === "inventory") {
     return (
-      <TabScrollView
-        chatScope="page-wallet"
-        pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
-      >
+      <TabScrollView>
         <WalletInventoryPage />
       </TabScrollView>
     );
@@ -874,43 +745,6 @@ function greetingForTimeOfDay(): string {
   if (hour < 12) return "Good morning! What would you like to do?";
   if (hour < 18) return "Good afternoon! What would you like to do?";
   return "Good evening! What would you like to do?";
-}
-
-function pathForNavigateViewDetail(detail: NavigateViewDetail): string | null {
-  return detail.viewPath ?? (detail.viewId ? `/apps/${detail.viewId}` : null);
-}
-
-function directTabForNavigateView(
-  detail: NavigateViewDetail,
-  path: string,
-): "views" | "apps" | null {
-  if (path === "/views") return "views";
-  if (path === "/apps") return "apps";
-  if (detail.viewId === "views-manager" && detail.viewType !== "tui") {
-    return "views";
-  }
-  return null;
-}
-
-function navigateBrowserPath(path: string): void {
-  if (typeof window === "undefined") return;
-  try {
-    if (window.location.protocol === "file:") {
-      window.location.hash = path;
-      return;
-    }
-    window.history.pushState(null, "", path);
-    window.dispatchEvent(new PopStateEvent("popstate"));
-  } catch {
-    return;
-  }
-}
-
-function desktopEntryForDetail(
-  views: ViewRegistryEntry[],
-  viewId: string,
-): ViewRegistryEntry | undefined {
-  return views.find((view) => view.id === viewId);
 }
 
 const APP_SHELL_CLASS =
@@ -1083,13 +917,24 @@ function HeartbeatsShellContent(): ReactNode {
   );
 }
 
+function HomeShellContent(): ReactNode {
+  return (
+    <div key="home-shell" className={APP_SHELL_CLASS}>
+      <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
+        <LazyViewBoundary>
+          <HomeView />
+        </LazyViewBoundary>
+      </main>
+    </div>
+  );
+}
+
 function SettingsShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key={`settings-shell-${props.tab}`} className={APP_SHELL_CLASS}>
       <Header />
       <AppWorkspaceChrome
         testId="settings-workspace"
-        chatScope="page-settings"
         chatDisabled
         main={
           <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
@@ -1118,8 +963,7 @@ function WalletsShellContent(): ReactNode {
       <Header />
       <AppWorkspaceChrome
         testId="wallets-workspace"
-        chatScope="page-wallet"
-        pageScopedChatPaneProps={buildWalletPageScopedChatPaneProps()}
+        chatDisabled
         main={
           <div className="flex flex-col flex-1 min-h-0 min-w-0 overflow-hidden">
             <LazyViewBoundary>
@@ -1207,6 +1051,7 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
 function ShellContent(props: ShellContentProps): ReactNode {
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
+  if (props.tab === "home") return <HomeShellContent />;
   if (props.tab === "stream") return <StreamShellContent />;
   if (props.isChatWorkspace) return <ChatWorkspaceShellContent {...props} />;
   if (props.isHeartbeats) return <HeartbeatsShellContent />;
@@ -1243,6 +1088,10 @@ function ShellFoundationMount() {
       </AssistantOverlay>
     </>
   );
+}
+
+function shouldSuppressShellPill(tab: string): boolean {
+  return tab === "home" || tab === "chat";
 }
 
 export function App() {
@@ -1495,48 +1344,13 @@ export function App() {
   // On desktop, also open the view as a desktop tab if desktopTabEnabled.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const handleNavigateView = (event: Event) => {
-      const detail = (event as CustomEvent<NavigateViewDetail>).detail;
-      if (!detail) return;
-      const path = pathForNavigateViewDetail(detail);
-      if (!path) return;
-      const directTab = directTabForNavigateView(detail, path);
-      if (directTab) {
-        setTab(directTab);
-        return;
-      }
-      if (detail.action === "open-window" && detail.viewId) {
-        const entry = desktopEntryForDetail(
-          availableViewsForDesktopTabs,
-          detail.viewId,
-        );
-        const viewPath = entry?.path ?? `/apps/${detail.viewId}`;
-        const viewLabel = entry?.label ?? detail.viewId;
-        void invokeDesktopBridgeRequest<{ id: string }>({
-          rpcMethod: "desktopOpenAppWindow",
-          ipcChannel: "desktop:openAppWindow",
-          params: {
-            title: viewLabel,
-            path: viewPath,
-            alwaysOnTop: false,
-          },
-        }).catch(() => {
-          // Not in Electrobun runtime — fall through to URL navigation.
-        });
-        return;
-      }
-      if (detail.viewId) {
-        const entry = desktopEntryForDetail(
-          availableViewsForDesktopTabs,
-          detail.viewId,
-        );
-        if (entry && (detail.action === "pin-tab" || entry.desktopTabEnabled)) {
-          openDesktopTab(entry);
-          setActiveDesktopTabId(entry.id);
-        }
-      }
-      navigateBrowserPath(path);
-    };
+    const handleNavigateView = createNavigateViewHandler({
+      availableViewsForDesktopTabs,
+      invokeDesktopBridgeRequest,
+      openDesktopTab,
+      setActiveDesktopTabId,
+      setTab,
+    });
     window.addEventListener("eliza:navigate:view", handleNavigateView);
     return () =>
       window.removeEventListener("eliza:navigate:view", handleNavigateView);
@@ -1867,7 +1681,9 @@ export function App() {
           tab !== "apps" &&
           tab !== "views" && <GameViewOverlay />}
         <ShellOverlays actionNotice={actionNotice} />
-        {isCoordinatorReady && <ShellFoundationMount />}
+        {isCoordinatorReady && !shouldSuppressShellPill(tab) ? (
+          <ShellFoundationMount />
+        ) : null}
         <SaveCommandModal
           open={contextMenu.saveCommandModalOpen}
           text={contextMenu.saveCommandText}

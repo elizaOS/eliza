@@ -9,7 +9,6 @@ from typing import Any
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CHIP_ROOT = REPO_ROOT / "packages/chip"
 BOARD_ROOT = CHIP_ROOT / "board/kicad/e1-phone"
@@ -46,7 +45,8 @@ def main() -> int:
     manifest = load_yaml(BOARD_ROOT / "artifact-manifest.yaml")
     route_inventory = load_yaml(BOARD_ROOT / "kicad-route-readiness-inventory-2026-05-22.yaml")
     supplier_intake = load_yaml(
-        BOARD_ROOT / "production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
+        BOARD_ROOT
+        / "production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml"
     )
     production_burndown = load_yaml(
         BOARD_ROOT / "production-factory-output-burndown-2026-05-22.yaml"
@@ -109,7 +109,9 @@ def main() -> int:
             "blocking_facts": [
                 f"artifact manifest enclosure gate is {release_gates['enclosure']['status']}",
                 mechanical_burndown["upstream_status"]["routed_board_step_export_contract"],
-                mechanical_burndown["upstream_status"]["enclosure_physical_fit_first_article_execution"],
+                mechanical_burndown["upstream_status"][
+                    "enclosure_physical_fit_first_article_execution"
+                ],
                 "mechanical intake files are templates only and contain no signed routed-board fit evidence",
             ],
             "complete": False,
@@ -159,8 +161,12 @@ def main() -> int:
         ],
         "summary": {
             "objective_requirement_count": len(objective_requirements),
-            "completed_requirement_count": sum(1 for item in objective_requirements if item["complete"]),
-            "blocked_requirement_count": sum(1 for item in objective_requirements if not item["complete"]),
+            "completed_requirement_count": sum(
+                1 for item in objective_requirements if item["complete"]
+            ),
+            "blocked_requirement_count": sum(
+                1 for item in objective_requirements if not item["complete"]
+            ),
             "fabrication_ready": False,
             "enclosure_ready": False,
             "end_to_end_phone_ready": False,

@@ -72,7 +72,9 @@ def test_structured_findings_cover_required_real_evidence() -> None:
     findings = report.get("findings", [])
     if not findings:
         raise AssertionError("NPU scope report must expose structured findings")
-    if not any(str(item.get("code", "")).startswith("npu_missing_real_evidence_") for item in findings):
+    if not any(
+        str(item.get("code", "")).startswith("npu_missing_real_evidence_") for item in findings
+    ):
         raise AssertionError(f"NPU findings must include missing real evidence: {findings}")
     print("PASS structured NPU findings cover required real evidence")
 

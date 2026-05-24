@@ -36,6 +36,28 @@ describe("CompanionBar", () => {
     expect(screen.getByText("remind me at 3pm")).toBeDefined();
   });
 
+  it("opens the chat input from the pill and closes it from the same control", () => {
+    const onExpandChange = vi.fn();
+    render(<CompanionBar hooks={{ onExpandChange }} />);
+    const pill = screen.getByRole("button", { name: /elizaos companion/i });
+
+    act(() => {
+      fireEvent.click(pill);
+    });
+
+    expect(pill.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByLabelText(/message eliza/i)).toBeDefined();
+    expect(onExpandChange).toHaveBeenLastCalledWith(true);
+
+    act(() => {
+      fireEvent.click(pill);
+    });
+
+    expect(pill.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByLabelText(/message eliza/i)).toBeNull();
+    expect(onExpandChange).toHaveBeenLastCalledWith(false);
+  });
+
   it("toggles expand on Ctrl+Space", () => {
     const onExpandChange = vi.fn();
     render(<CompanionBar hooks={{ onExpandChange }} />);

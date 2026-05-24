@@ -9,15 +9,26 @@
  * or via the `eliza:navigate:view` custom event dispatched by VIEWS actions.
  */
 
-import { Pin, Search } from "lucide-react";
+import { Pencil, Pin, Plus, Search, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { fetchWithCsrf } from "../../api/csrf-client";
+import {
+  type DynamicViewManifest,
+  registerDynamicView,
+  unregisterDynamicView,
+} from "../../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../../bridge/electrobun-runtime";
 import {
   useAvailableViews,
   type ViewRegistryEntry,
 } from "../../hooks/useAvailableViews";
+import { useDesktopTabs } from "../../hooks/useDesktopTabs";
 import { useIsDeveloperMode } from "../../state/useDeveloperMode";
+import {
+  readRecentViewIds,
+  recordRecentViewId,
+  TOP_VIEW_LIMIT,
+} from "../../view-recents";
 
 const VIEW_LOADING_SKELETON_KEYS = [
   "view-skeleton-1",
@@ -32,29 +43,71 @@ function ViewCard({
   view,
   onClick,
   onPin,
+  onEdit,
+  onDelete,
+  compact = false,
 }: {
   view: ViewRegistryEntry;
   onClick: (view: ViewRegistryEntry) => void;
   onPin?: (view: ViewRegistryEntry) => void;
+  onEdit?: (view: ViewRegistryEntry) => void;
+  onDelete?: (view: ViewRegistryEntry) => void;
+  compact?: boolean;
 }) {
   const isDesktop = isElectrobunRuntime();
   const showPinButton = isDesktop && view.desktopTabEnabled !== false && onPin;
+  const showManagementButtons = Boolean(onEdit || onDelete);
 
   return (
-    <div className="group relative flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border">
-      {showPinButton && (
-        <button
-          type="button"
-          title="Pin as desktop tab"
-          onClick={(e) => {
-            e.stopPropagation();
-            onPin(view);
-          }}
-          className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted opacity-0 transition-opacity hover:border-accent hover:text-accent group-hover:opacity-100 focus:opacity-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Pin ${view.label} as desktop tab`}
-        >
-          <Pin className="h-3 w-3" />
-        </button>
+    <div
+      className="group relative flex flex-col gap-2 rounded-xl border border-border/50 bg-card p-4 text-left transition-colors hover:bg-card/80 hover:border-border"
+      data-testid={`view-card-${view.id}`}
+    >
+      {(showPinButton || showManagementButtons) && (
+        <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {showPinButton && (
+            <button
+              type="button"
+              title="Pin as desktop tab"
+              onClick={(e) => {
+                e.stopPropagation();
+                onPin(view);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Pin ${view.label} as desktop tab`}
+            >
+              <Pin className="h-3 w-3" />
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              title="Edit dynamic view"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(view);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-accent hover:text-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Edit ${view.label}`}
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              title="Delete dynamic view"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(view);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded-md border border-border/40 bg-card/80 text-muted hover:border-destructive hover:text-destructive focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              aria-label={`Delete ${view.label}`}
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          )}
+        </div>
       )}
 
       <button
@@ -62,7 +115,7 @@ function ViewCard({
         onClick={() => onClick(view)}
         className="flex flex-col gap-2 text-left focus:outline-none"
       >
-        {view.heroImageUrl && (
+        {view.heroImageUrl && !compact && (
           <div className="aspect-video w-full overflow-hidden rounded-lg bg-muted">
             <img
               src={view.heroImageUrl}
@@ -149,11 +202,15 @@ function ViewSection({
   views,
   onViewClick,
   onViewPin,
+  onViewEdit,
+  onViewDelete,
 }: {
   title: string;
   views: ViewRegistryEntry[];
   onViewClick: (view: ViewRegistryEntry) => void;
   onViewPin: (view: ViewRegistryEntry) => void;
+  onViewEdit?: (view: ViewRegistryEntry) => void;
+  onViewDelete?: (view: ViewRegistryEntry) => void;
 }) {
   if (views.length === 0) return null;
   return (
@@ -168,6 +225,38 @@ function ViewSection({
             view={view}
             onClick={onViewClick}
             onPin={onViewPin}
+            onEdit={onViewEdit}
+            onDelete={onViewDelete}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TopViewsSection({
+  views,
+  onViewClick,
+  onViewPin,
+}: {
+  views: ViewRegistryEntry[];
+  onViewClick: (view: ViewRegistryEntry) => void;
+  onViewPin: (view: ViewRegistryEntry) => void;
+}) {
+  if (views.length === 0) return null;
+  return (
+    <div className="mb-5" data-testid="views-top-section">
+      <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted/70">
+        Pinned & recent
+      </h2>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {views.map((view) => (
+          <ViewCard
+            key={view.id}
+            view={view}
+            onClick={onViewClick}
+            onPin={onViewPin}
+            compact
           />
         ))}
       </div>
@@ -192,9 +281,22 @@ async function fetchSearchResults(
 }
 
 export function ViewManagerPage() {
-  const { views, loading, error } = useAvailableViews();
+  const { views, loading, error, refresh } = useAvailableViews();
+  const { tabs: desktopTabs } = useDesktopTabs();
   const isDeveloperMode = useIsDeveloperMode();
+  const canManageDynamicViews = isDeveloperMode && isElectrobunRuntime();
   const [query, setQuery] = useState("");
+  const [formViewId, setFormViewId] = useState("agent.quick-view");
+  const [formTitle, setFormTitle] = useState("Quick View");
+  const [formEntrypoint, setFormEntrypoint] = useState(
+    "/dynamic-views/quick-view.js",
+  );
+  const [formDescription, setFormDescription] = useState(
+    "Developer-created dynamic view",
+  );
+  const [formStatus, setFormStatus] = useState<string | null>(null);
+  const [formBusy, setFormBusy] = useState(false);
+  const [recentViewIds, setRecentViewIds] = useState(readRecentViewIds);
   const [searchResults, setSearchResults] = useState<
     ViewRegistryEntry[] | null
   >(null);
@@ -258,11 +360,35 @@ export function ViewManagerPage() {
       pluginViews: visible.filter((v) => !v.builtin),
     };
   }, [views, isDeveloperMode, query, searchResults]);
+  const visibleViews = useMemo(
+    () => [...builtinViews, ...pluginViews],
+    [builtinViews, pluginViews],
+  );
+  const topViews = useMemo(() => {
+    const byId = new Map(visibleViews.map((view) => [view.id, view]));
+    const ordered: ViewRegistryEntry[] = [];
+    for (const tab of desktopTabs) {
+      if (!tab.pinned) continue;
+      const view = byId.get(tab.viewId);
+      if (view && !ordered.some((existing) => existing.id === view.id)) {
+        ordered.push(view);
+      }
+    }
+    for (const id of recentViewIds) {
+      const view = byId.get(id);
+      if (view && !ordered.some((existing) => existing.id === view.id)) {
+        ordered.push(view);
+      }
+      if (ordered.length >= TOP_VIEW_LIMIT) break;
+    }
+    return ordered.slice(0, TOP_VIEW_LIMIT);
+  }, [desktopTabs, recentViewIds, visibleViews]);
 
   const totalVisible = builtinViews.length + pluginViews.length;
   const isSearching = searchLoading && query.trim().length > 0;
 
   function handleViewClick(view: ViewRegistryEntry) {
+    setRecentViewIds(recordRecentViewId(view.id));
     const path = view.path ?? `/apps/${view.id}`;
     try {
       if (
@@ -295,6 +421,72 @@ export function ViewManagerPage() {
     );
   }
 
+  function fillManagementForm(view: ViewRegistryEntry) {
+    setFormViewId(view.id);
+    setFormTitle(view.label);
+    setFormEntrypoint(view.bundleUrl ?? view.path ?? `/apps/${view.id}`);
+    setFormDescription(view.description ?? "");
+    setFormStatus(`Editing ${view.label}`);
+  }
+
+  function buildManagedManifest(): DynamicViewManifest {
+    const entrypoint = formEntrypoint.trim();
+    return {
+      id: formViewId.trim(),
+      title: formTitle.trim(),
+      description: formDescription.trim() || undefined,
+      source: entrypoint.startsWith("http") ? "remote" : "developer",
+      entrypoint,
+      placement: "canvas",
+      metadata: { managedBy: "view-manager" },
+    };
+  }
+
+  async function handleRegisterView() {
+    setFormBusy(true);
+    setFormStatus(null);
+    try {
+      const manifest = buildManagedManifest();
+      if (!manifest.id || !manifest.title || !manifest.entrypoint) {
+        setFormStatus("View ID, title, and entrypoint are required.");
+        return;
+      }
+      const registered = await registerDynamicView(manifest, { update: true });
+      if (!registered) {
+        setFormStatus("Dynamic view bridge unavailable.");
+        return;
+      }
+      await refresh();
+      setFormStatus(`Saved ${registered.title}.`);
+    } catch (err) {
+      setFormStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFormBusy(false);
+    }
+  }
+
+  async function handleDeleteView(view: ViewRegistryEntry) {
+    setFormBusy(true);
+    setFormStatus(null);
+    try {
+      const result = await unregisterDynamicView(view.id);
+      if (!result) {
+        setFormStatus("Dynamic view bridge unavailable.");
+        return;
+      }
+      await refresh();
+      setFormStatus(
+        result.removed
+          ? `Deleted ${view.label}.`
+          : `${view.label} was not registered.`,
+      );
+    } catch (err) {
+      setFormStatus(err instanceof Error ? err.message : String(err));
+    } finally {
+      setFormBusy(false);
+    }
+  }
+
   return (
     <div className="flex flex-1 min-h-0 flex-col">
       {/* Header */}
@@ -316,6 +508,66 @@ export function ViewManagerPage() {
         </div>
       </div>
 
+      {canManageDynamicViews && (
+        <form
+          className="shrink-0 border-y border-border/40 px-4 py-3"
+          aria-label="Dynamic view management"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleRegisterView();
+          }}
+        >
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-muted/70">
+              Dynamic view management
+            </h2>
+            {formStatus && (
+              <p className="text-xs text-muted" role="status">
+                {formStatus}
+              </p>
+            )}
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1.4fr_1.4fr_auto]">
+            <input
+              aria-label="Dynamic view ID"
+              value={formViewId}
+              onChange={(event) => setFormViewId(event.target.value)}
+              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="View ID"
+            />
+            <input
+              aria-label="Dynamic view title"
+              value={formTitle}
+              onChange={(event) => setFormTitle(event.target.value)}
+              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Title"
+            />
+            <input
+              aria-label="Dynamic view entrypoint"
+              value={formEntrypoint}
+              onChange={(event) => setFormEntrypoint(event.target.value)}
+              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="/dynamic-views/view.js"
+            />
+            <input
+              aria-label="Dynamic view description"
+              value={formDescription}
+              onChange={(event) => setFormDescription(event.target.value)}
+              className="rounded-lg border border-border bg-muted/20 px-3 py-2 text-sm placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Description"
+            />
+            <button
+              type="submit"
+              disabled={formBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-border bg-accent px-3 py-2 text-sm font-medium text-accent-foreground transition-colors hover:bg-accent/90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Save
+            </button>
+          </div>
+        </form>
+      )}
+
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4">
         {error && (
@@ -330,6 +582,11 @@ export function ViewManagerPage() {
           <ViewsEmptyState hasQuery={query.trim().length > 0} />
         ) : (
           <>
+            <TopViewsSection
+              views={topViews}
+              onViewClick={handleViewClick}
+              onViewPin={handleViewPin}
+            />
             <ViewSection
               title="Core"
               views={builtinViews}
@@ -341,6 +598,12 @@ export function ViewManagerPage() {
               views={pluginViews}
               onViewClick={handleViewClick}
               onViewPin={handleViewPin}
+              onViewEdit={
+                canManageDynamicViews ? fillManagementForm : undefined
+              }
+              onViewDelete={
+                canManageDynamicViews ? handleDeleteView : undefined
+              }
             />
           </>
         )}

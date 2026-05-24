@@ -65,7 +65,9 @@ def _scenario_from_cli(value: str) -> Scenario:
 
 
 def _score(dataset: list[Any], responses: list[Any]) -> dict[str, Any]:
-    correct = sum(1 for response in responses if response.prediction == dataset[response.index].label)
+    correct = sum(
+        1 for response in responses if response.prediction == dataset[response.index].label
+    )
     total = len(responses)
     return {
         "correct": correct,

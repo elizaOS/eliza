@@ -10,6 +10,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   exportScenarioNativeJsonl,
+  SCENARIO_NATIVE_EXPORT_SCHEMA,
   recordedTrajectoryToNativeRows,
 } from "./native-export.ts";
 
@@ -234,6 +235,23 @@ describe("exportScenarioNativeJsonl", () => {
       expect(parsed.metadata.source_dataset).toBe(
         "scenario_trajectory_boundary",
       );
+      const manifest = JSON.parse(
+        readFileSync(path.join(runDir, "native.manifest.json"), "utf-8"),
+      );
+      expect(manifest).toMatchObject({
+        schema: SCENARIO_NATIVE_EXPORT_SCHEMA,
+        runDir,
+        jsonlPath: outPath,
+        counts: {
+          trajectoryFiles: 3,
+          parsedTrajectories: 1,
+          skippedFiles: 2,
+          rows: 1,
+        },
+        runIds: ["run-1"],
+        scenarioIds: ["todos.create-basic"],
+        agentIds: ["agent-test"],
+      });
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }
@@ -246,6 +264,15 @@ describe("exportScenarioNativeJsonl", () => {
       const count = exportScenarioNativeJsonl(runDir, outPath);
       expect(count).toBe(0);
       expect(readFileSync(outPath, "utf-8")).toBe("");
+      const manifest = JSON.parse(
+        readFileSync(path.join(runDir, "native.manifest.json"), "utf-8"),
+      );
+      expect(manifest.counts).toMatchObject({
+        trajectoryFiles: 0,
+        parsedTrajectories: 0,
+        skippedFiles: 0,
+        rows: 0,
+      });
     } finally {
       rmSync(runDir, { recursive: true, force: true });
     }

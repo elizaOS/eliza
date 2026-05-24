@@ -86,11 +86,13 @@ cleanup_lock() {
 }
 quiet_linux_finished() {
 	printf '%s\n' "${binary_arg:-}" | grep -F -q 'linux-poweroff-quiet' || return 1
+	# shellcheck disable=SC2016 # literal Verilator finish marker; `$finish` is part of the log string.
 	if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ] &&
 		grep -F -q 'TestDriver.v:158: Verilog $finish' "$raw_log"; then
 		return 0
 	fi
 	sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
+	# shellcheck disable=SC2016 # literal Verilator finish marker.
 	[ -f "$sim_log" ] && grep -F -q 'TestDriver.v:158: Verilog $finish' "$sim_log"
 }
 cleanup_signal() {
@@ -102,6 +104,7 @@ cleanup_signal() {
 		if quiet_linux_finished; then
 			signal_quiet_finish=1
 			sim_log="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "${binary_arg:-none}").log"
+			# shellcheck disable=SC2016 # literal Verilator finish marker.
 			if [ -f "$sim_log" ] && ! grep -F -q 'TestDriver.v:158: Verilog $finish' "$log_tmp"; then
 				cat "$sim_log" >>"$log_tmp"
 			fi

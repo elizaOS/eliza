@@ -116,12 +116,12 @@ export function useShellController(): ShellController {
 
   const phase: ShellPhase = !ready
     ? "booting"
-    : !isOpen
-      ? "idle"
-      : recording
-        ? "listening"
-        : chatSending
-          ? "responding"
+    : recording
+      ? "listening"
+      : chatSending
+        ? "responding"
+        : !isOpen
+          ? "idle"
           : "summoned";
 
   const waveformMode =
@@ -133,8 +133,7 @@ export function useShellController(): ShellController {
 
   // Allow text/voice submission whenever the agent is reachable and not
   // mid-response. Mirrors the ChatView composer gate.
-  const canSend =
-    ready && !chatSending && agentStatus?.state !== "stopped" && isOpen;
+  const canSend = ready && !chatSending && agentStatus?.state !== "stopped";
 
   return {
     phase,

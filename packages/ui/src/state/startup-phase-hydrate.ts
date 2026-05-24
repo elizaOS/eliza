@@ -20,6 +20,7 @@ import { type AppEmoteEventDetail, dispatchAppEmoteEvent } from "../events";
 import {
   getWindowNavigationPath,
   isRouteRootPath,
+  resolveDefaultLandingTab,
   shouldUseHashNavigation,
   type Tab,
   tabFromPath,
@@ -142,7 +143,7 @@ function shouldNotifyDesktopForAssistantEvent(
   return payload.source === "lifeops-reminder";
 }
 
-const DEFAULT_LANDING_TAB: Tab = "chat";
+const DEFAULT_LANDING_TAB: Tab = resolveDefaultLandingTab();
 
 /**
  * Runs the hydrating phase.

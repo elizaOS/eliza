@@ -1162,7 +1162,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-xs bg-[#229ED9] hover:bg-black text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-xs bg-[#ff5800] hover:bg-[#cc4600] text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
                   t("homepage_eliza.getStarted.telegramConnecting", {

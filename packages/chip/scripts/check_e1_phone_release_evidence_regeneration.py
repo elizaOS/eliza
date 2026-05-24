@@ -11,7 +11,6 @@ from pathlib import Path
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = sys.executable
 
@@ -38,8 +37,7 @@ def run_generator(args: list[str]) -> None:
     if completed.returncode != 0:
         output = (completed.stdout or "").strip()
         raise RuntimeError(
-            f"{args[0]} exited {completed.returncode}"
-            + (f": {output}" if output else "")
+            f"{args[0]} exited {completed.returncode}" + (f": {output}" if output else "")
         )
 
 
@@ -55,8 +53,7 @@ def write_stdout(args: list[str], output: Path) -> None:
     if completed.returncode != 0:
         output_text = (completed.stdout or "").strip()
         raise RuntimeError(
-            f"{args[0]} exited {completed.returncode}"
-            + (f": {output_text}" if output_text else "")
+            f"{args[0]} exited {completed.returncode}" + (f": {output_text}" if output_text else "")
         )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(completed.stdout, encoding="utf-8")
@@ -118,9 +115,7 @@ def main() -> int:
             production_presence = (
                 tmp / "production-factory-required-output-presence-inventory-2026-05-22.yaml"
             )
-            first_article = (
-                tmp / "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
-            )
+            first_article = tmp / "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml"
             mechanical_cad = tmp / "mechanical-cad-evidence-inventory-2026-05-22.yaml"
             objective_audit = tmp / "e1-phone-objective-completion-audit-2026-05-22.yaml"
             unblock_register = tmp / "e1-phone-readiness-unblock-register-2026-05-22.yaml"
@@ -244,73 +239,66 @@ def main() -> int:
             outputs = [
                 OutputSpec(
                     route_inventory,
-                    ROOT
-                    / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml",
+                    ROOT / "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     supplier_yaml,
-                    ROOT
-                    / "board/kicad/e1-phone/production/sourcing/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
                     "supplier-return-evidence-acceptance-matrix-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     supplier_md,
-                    ROOT
-                    / "board/kicad/e1-phone/production/sourcing/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/sourcing/readiness/"
                     "supplier-return-evidence-acceptance-matrix-2026-05-22.md",
                 ),
                 OutputSpec(
                     routed_yaml,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "routed-board-release-acceptance-matrix-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     routed_md,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "routed-board-release-acceptance-matrix-2026-05-22.md",
                 ),
                 OutputSpec(
                     production_presence,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "production-factory-required-output-presence-inventory-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     first_article,
-                    ROOT
-                    / "board/kicad/e1-phone/production/test/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/test/readiness/"
                     "e1-phone-first-article-bench-acceptance-matrix-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     mechanical_cad,
-                    ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
+                    ROOT
+                    / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     objective_audit,
-                    ROOT / "board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml",
+                    ROOT
+                    / "board/kicad/e1-phone/e1-phone-objective-completion-audit-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     unblock_register,
-                    ROOT / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml",
+                    ROOT
+                    / "board/kicad/e1-phone/e1-phone-readiness-unblock-register-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     content_contract,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "release-evidence-content-contract-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     validation_dry_run,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "release-evidence-validation-dry-run-2026-05-22.yaml",
                 ),
                 OutputSpec(
                     release_gate,
-                    ROOT
-                    / "board/kicad/e1-phone/production/readiness/"
+                    ROOT / "board/kicad/e1-phone/production/readiness/"
                     "fabrication-enclosure-e2e-release-gate-2026-05-22.yaml",
                 ),
             ]

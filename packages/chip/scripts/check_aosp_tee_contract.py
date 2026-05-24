@@ -148,9 +148,7 @@ def check_sepolicy(findings: list[Finding]) -> None:
     # The gating must be exclusive: a neverallow envelope must keep apps and
     # other domains off the vsock channel and the management binder.
     has_app_vsock_neverallow = (
-        "neverallow" in text
-        and "eliza_pvm_vsock_device" in text
-        and "appdomain" in text
+        "neverallow" in text and "eliza_pvm_vsock_device" in text and "appdomain" in text
     )
     add_if(
         findings,
@@ -307,8 +305,7 @@ def check_policy_json(findings: list[Finding]) -> None:
     allowed = policy.get("allowedKinds")
     add_if(
         findings,
-        not isinstance(allowed, list)
-        or not set(allowed).issubset(set(ALLOWED_PVM_KINDS)),
+        not isinstance(allowed, list) or not set(allowed).issubset(set(ALLOWED_PVM_KINDS)),
         "tee_policy_kinds_out_of_contract",
         "AOSP TEE policy allowedKinds are not a subset of the contracted pVM/cloud kinds",
         f"allowedKinds={allowed!r} contract={list(ALLOWED_PVM_KINDS)}",
@@ -317,8 +314,7 @@ def check_policy_json(findings: list[Finding]) -> None:
     req = policy.get("requiredMeasurements")
     add_if(
         findings,
-        not isinstance(req, dict)
-        or not set(REQUIRED_MEASUREMENTS).issubset(req.keys()),
+        not isinstance(req, dict) or not set(REQUIRED_MEASUREMENTS).issubset(req.keys()),
         "tee_policy_missing_required_measurements",
         "AOSP TEE policy requiredMeasurements omit one of boot/os/agent/policy",
         f"requiredMeasurements={sorted(req) if isinstance(req, dict) else req!r} required={list(REQUIRED_MEASUREMENTS)}",
@@ -488,11 +484,7 @@ def check_evidence_fixture(findings: list[Finding]) -> None:
     # NOT assert the confidential-posture claims, or it would over-claim.
     claims = ev.get("claims")
     if isinstance(claims, dict):
-        overclaimed = [
-            name
-            for name in BLOCKED_CONFIDENTIALITY_CLAIMS
-            if claims.get(name) is True
-        ]
+        overclaimed = [name for name in BLOCKED_CONFIDENTIALITY_CLAIMS if claims.get(name) is True]
         add_if(
             findings,
             bool(overclaimed),

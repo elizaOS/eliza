@@ -277,7 +277,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     add_if(
         findings,
         not (
-            'hidl_interface' in interface_bp
+            "hidl_interface" in interface_bp
             and 'name: "vendor.eliza.e1_npu@1.0"' in interface_bp
             and '"IE1Npu.hal"' in interface_bp
             and '"types.hal"' in interface_bp
@@ -328,7 +328,8 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         findings,
         not (
             'name: "vendor.eliza.e1_npu@1.0-service.sim"' in sim_hal_bp
-            and 'service vendor.e1_npu_sim /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim' in sim_hal_rc
+            and "service vendor.e1_npu_sim /vendor/bin/hw/vendor.eliza.e1_npu@1.0-service.sim"
+            in sim_hal_rc
             and "kSimulatedIdentity" in sim_hal_impl
             and E1_NPU_SERVICE_PACKAGE in packages
             and "vendor.eliza.e1_npu@1.0-service.sim" not in packages

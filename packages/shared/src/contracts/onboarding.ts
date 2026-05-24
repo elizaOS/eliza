@@ -65,6 +65,7 @@ export type OnboardingProviderFamily =
   | "mistral"
   | "mlx"
   | "moonshot"
+  | "nearai"
   | "ollama"
   | "openai"
   | "openrouter"
@@ -86,6 +87,7 @@ export type OnboardingProviderId =
   | "mistral"
   | "mlx"
   | "moonshot"
+  | "nearai"
   | "ollama"
   | "openai"
   | "openai-subscription"
@@ -498,6 +500,19 @@ export const ONBOARDING_PROVIDER_CATALOG = [
     order: 150,
   },
   {
+    id: "nearai",
+    name: "NEAR AI",
+    envKey: "NEARAI_API_KEY",
+    pluginName: "@elizaos/plugin-nearai",
+    keyPrefix: null,
+    description: "TEE-backed private inference via NEAR AI Cloud.",
+    family: "nearai",
+    authMode: "api-key",
+    group: "local",
+    order: 155,
+    supportsPrimaryModelOverride: true,
+  },
+  {
     id: "moonshot",
     name: "Kimi / Moonshot",
     envKey: "MOONSHOT_API_KEY",
@@ -715,6 +730,10 @@ const ONBOARDING_PROVIDER_ALIASES: Record<string, OnboardingProviderId> = {
   grok: "grok",
   "together-ai": "together",
   together: "together",
+  "near-ai": "nearai",
+  "near-ai-cloud": "nearai",
+  "near.ai": "nearai",
+  nearai: "nearai",
   "z.ai": "zai",
   zai: "zai",
   kimi: "moonshot",

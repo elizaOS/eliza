@@ -925,6 +925,62 @@ def preflight_matrix(
                                 ),
                             }
                         )
+        if cell.benchmark == "osworld" and "--dry_run" not in cell.command:
+            provider_name = _command_option(cell.command, "--provider_name") or "docker"
+            no_docker_requested = cell.env_overrides.get("OSWORLD_NO_DOCKER_REQUESTED") == "1"
+            if no_docker_requested and provider_name == "docker":
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "osworld_no_docker_requires_provider",
+                        "message": (
+                            "osworld --no-docker requires OSWORLD_PROVIDER_NAME=vmware, "
+                            "virtualbox, or aws plus the provider-specific disposable "
+                            "environment configuration; otherwise the OSWorld runner "
+                            "defaults to Docker."
+                        ),
+                    }
+                )
+            if provider_name == "vmware" and not _command_option(cell.command, "--path_to_vm"):
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_osworld_vmware_path",
+                        "message": "osworld VMware runs require OSWORLD_PATH_TO_VM or --path_to_vm",
+                    }
+                )
+            if provider_name == "docker" and not no_docker_requested and not docker_checked:
+                docker_checked = True
+                docker = shutil.which("docker")
+                if not docker:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "missing_docker_cli",
+                            "message": "osworld live execution requires the Docker CLI by default",
+                        }
+                    )
+                else:
+                    completed = subprocess.run(
+                        [docker, "version"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if completed.returncode != 0:
+                        detail = (completed.stderr or completed.stdout or "").strip()
+                        issues.append(
+                            {
+                                "severity": "error",
+                                "kind": "docker_daemon_unavailable",
+                                "message": (
+                                    "osworld live execution requires a running Docker daemon"
+                                    + (f": {detail}" if detail else "")
+                                ),
+                            }
+                        )
         cell_checks.append(
             {
                 "benchmark": cell.benchmark,
@@ -972,6 +1028,17 @@ def _swe_bench_pro_evaluator_backend(command: list[str]) -> str:
         return "local-docker"
     backend = str(command[index + 1]).strip()
     return backend or "local-docker"
+
+
+def _command_option(command: list[str], option: str) -> str | None:
+    try:
+        index = command.index(option)
+    except ValueError:
+        return None
+    if index + 1 >= len(command):
+        return None
+    value = str(command[index + 1]).strip()
+    return value or None
 
 
 def _quality_guardrail_next_action(scope: str, reason: str, value: str) -> str:
@@ -1238,7 +1305,7 @@ def default_command(
             python,
             "-m",
             "benchmarks.mind2web",
-            "--sample",
+            "--sample" if smoke else "--hf",
             "--provider",
             "eliza",
             "--model",
@@ -1290,6 +1357,8 @@ def default_command(
         if smoke:
             cmd.extend(["--use-sample-tasks", "--mock"])
         else:
+            if max_tasks is not None and max_tasks > 1:
+                cmd.extend(["--split", "train"])
             cmd.append("--bridge")
         return cmd, b_root / "webshop"
 
@@ -1306,6 +1375,13 @@ def default_command(
             cmd.extend(["--max_tasks", str(max_tasks)])
         if smoke:
             cmd.append("--dry_run")
+        else:
+            provider_name = os.environ.get("OSWORLD_PROVIDER_NAME", "").strip()
+            path_to_vm = os.environ.get("OSWORLD_PATH_TO_VM", "").strip()
+            if provider_name:
+                cmd.extend(["--provider_name", provider_name])
+            if path_to_vm:
+                cmd.extend(["--path_to_vm", path_to_vm])
         return cmd, b_root / "OSWorld"
 
     if benchmark == "nl2repo":
@@ -1669,6 +1745,10 @@ def build_cell(
         )
     if benchmark == "webshop" and smoke:
         env_overrides["WEBSHOP_ALLOW_SPACY_STUB"] = "1"
+    if benchmark == "mind2web":
+        env_overrides["ELIZA_BENCH_SKIP_CORE_PLUGINS"] = "true"
+    if benchmark == "osworld" and no_docker and not smoke:
+        env_overrides["OSWORLD_NO_DOCKER_REQUESTED"] = "1"
     return MatrixCell(
         benchmark=benchmark,
         adapter=adapter,
@@ -1723,6 +1803,8 @@ def _text_has(text: str, *needles: str) -> bool:
 
 
 def _collect_result_items(payload: Any) -> list[dict[str, Any]]:
+    if isinstance(payload, list):
+        return [item for item in payload if isinstance(item, dict)]
     if not isinstance(payload, dict):
         return []
     candidates: list[Any] = []
@@ -1758,6 +1840,39 @@ def classify_failure(
     if exit_code == 0 and isinstance(accuracy, (int, float)) and accuracy >= 1.0:
         return "pass", notes
 
+    items = _collect_result_items(result_payload)
+    statuses = " ".join(str(item.get("patch_status") or item.get("status") or "") for item in items).lower()
+    errors = " ".join(str(item.get("error") or item.get("error_message") or "") for item in items).lower()
+    if "not_generated" in statuses or "not generated" in statuses or _text_has(errors, "no patch", "did not contain an applicable unified diff"):
+        notes.append("no generated patch reported")
+        return "no_patch", notes
+    if _text_has(errors, "harness did not produce a report.json", "swe-bench harness evaluation failed"):
+        notes.append("harness report failure reported")
+        return "harness_error", notes
+    if "apply_failed" in statuses or _text_has(errors, "git apply", "patch does not apply", "apply failed", "patch failed"):
+        notes.append("patch apply failure reported")
+        return "patch_apply_failed", notes
+
+    has_item_failure = any(item.get("success") is False for item in items) or _text_has(statuses, "failed")
+    total = outcome.get("total")
+    wrong = outcome.get("wrong")
+    has_partial_outcome = (
+        exit_code == 0
+        and (
+            (isinstance(accuracy, (int, float)) and accuracy < 1.0)
+            or (isinstance(wrong, (int, float)) and wrong > 0)
+            or (
+                isinstance(total, (int, float))
+                and total > 0
+                and isinstance(score, (int, float))
+                and score < 1.0
+            )
+        )
+    )
+    if exit_code == 0 and (has_item_failure or has_partial_outcome):
+        notes.append("benchmark item failures reported")
+        return "tests_failed", notes
+
     if _text_has(
         combined,
         "unauthorized",
@@ -1789,18 +1904,6 @@ def classify_failure(
         if isinstance(matrix, dict) and matrix.get("strict_capabilities") and error_text:
             return "auth_or_provider", [error_text]
 
-    items = _collect_result_items(result_payload)
-    statuses = " ".join(str(item.get("patch_status") or item.get("status") or "") for item in items).lower()
-    errors = " ".join(str(item.get("error") or item.get("error_message") or "") for item in items).lower()
-    if "not_generated" in statuses or "not generated" in statuses or _text_has(errors, "no patch", "did not contain an applicable unified diff"):
-        notes.append("no generated patch reported")
-        return "no_patch", notes
-    if _text_has(errors, "harness did not produce a report.json", "swe-bench harness evaluation failed"):
-        notes.append("harness report failure reported")
-        return "harness_error", notes
-    if "apply_failed" in statuses or _text_has(errors, "git apply", "patch does not apply", "apply failed", "patch failed"):
-        notes.append("patch apply failure reported")
-        return "patch_apply_failed", notes
     if any(item.get("success") is False for item in items) or _text_has(statuses, "failed"):
         notes.append("benchmark item failures reported")
         return "tests_failed", notes
@@ -4435,6 +4538,1215 @@ def write_report_rows(run_root: Path, rows: list[dict[str, Any]]) -> dict[str, s
     }
 
 
+def _read_text_tail(path: Path | None, *, max_chars: int = 80_000) -> str:
+    if path is None or not path.exists() or not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return f"[truncated to last {max_chars} chars]\n{text[-max_chars:]}"
+
+
+def _load_json_artifact(path: Path | None) -> Any:
+    if path is None or not path.exists() or not path.is_file():
+        return None
+    if path.suffix.lower() == ".jsonl":
+        rows: list[Any] = []
+        try:
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rows.append(json.loads(line))
+                except json.JSONDecodeError:
+                    rows.append({"_raw": line})
+        except OSError:
+            return None
+        return rows
+    return read_json(path)
+
+
+def _relative_to_run_root(path: Path, run_root: Path) -> str:
+    try:
+        return str(path.relative_to(run_root))
+    except ValueError:
+        return str(path)
+
+
+def _collect_viewer_trajectory_files(
+    trajectory_dir: Path,
+    *,
+    run_root: Path,
+) -> list[dict[str, Any]]:
+    if not trajectory_dir.exists():
+        return []
+    files: list[dict[str, Any]] = []
+    for path in sorted(trajectory_dir.rglob("*")):
+        if not path.is_file() or path.suffix.lower() not in {".json", ".jsonl"}:
+            continue
+        payload = _load_json_artifact(path)
+        files.append(
+            {
+                "path": _relative_to_run_root(path, run_root),
+                "kind": "jsonl" if path.suffix.lower() == ".jsonl" else "json",
+                "entries": payload if isinstance(payload, list) else None,
+                "payload": payload if not isinstance(payload, list) else None,
+            }
+        )
+    return files
+
+
+def _collect_viewer_output_trajectory_files(
+    output_dir: Path,
+    *,
+    run_root: Path,
+    existing_paths: set[str],
+) -> list[dict[str, Any]]:
+    if not output_dir.exists():
+        return []
+    files: list[dict[str, Any]] = []
+    for path in sorted(output_dir.rglob("*.jsonl")):
+        relative_path = _relative_to_run_root(path, run_root)
+        if relative_path in existing_paths:
+            continue
+        name = path.name.lower()
+        if "traj" not in name and "telemetry" not in name:
+            continue
+        payload = _load_json_artifact(path)
+        files.append(
+            {
+                "path": relative_path,
+                "kind": "jsonl",
+                "entries": payload if isinstance(payload, list) else None,
+                "payload": payload if not isinstance(payload, list) else None,
+            }
+        )
+    return files
+
+
+def _collect_viewer_output_artifacts(
+    output_dir: Path,
+    *,
+    run_root: Path,
+    limit: int = 80,
+) -> list[dict[str, Any]]:
+    if not output_dir.exists():
+        return []
+    artifacts: list[dict[str, Any]] = []
+    text_suffixes = {".json", ".jsonl", ".md", ".txt", ".log", ".patch", ".diff", ".html", ".csv", ".tsv"}
+    binary_suffixes = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".zip", ".tar", ".gz"}
+    for path in sorted(output_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        suffix = path.suffix.lower()
+        if suffix not in text_suffixes | binary_suffixes:
+            continue
+        row: dict[str, Any] = {
+            "path": _relative_to_run_root(path, run_root),
+            "size_bytes": path.stat().st_size,
+        }
+        if suffix in {".json", ".jsonl"}:
+            row["payload"] = _load_json_artifact(path)
+        else:
+            row["text"] = _read_text_tail(path, max_chars=40_000)
+        artifacts.append(row)
+        if len(artifacts) >= limit:
+            break
+    return artifacts
+
+
+def _first_string_value(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return str(value)
+    return ""
+
+
+def _viewer_task_id(item: dict[str, Any], index: int) -> str:
+    task_id = _first_string_value(
+        item,
+        "task_id",
+        "taskId",
+        "id",
+        "instance_id",
+        "instanceId",
+        "sample_id",
+        "sampleId",
+        "problem_id",
+        "problemId",
+        "annotation_id",
+        "name",
+    )
+    return task_id or f"task-{index + 1}"
+
+
+def _viewer_task_status(item: dict[str, Any]) -> str:
+    status = _first_string_value(item, "status", "patch_status", "result")
+    if status:
+        return status
+    success = item.get("success")
+    if isinstance(success, bool):
+        return "passed" if success else "failed"
+    passed = item.get("passed")
+    if isinstance(passed, bool):
+        return "passed" if passed else "failed"
+    resolved = item.get("resolved")
+    if isinstance(resolved, bool):
+        return "passed" if resolved else "failed"
+    score = _metric_number(item, "score", "reward", "accuracy", "step_accuracy")
+    if score is not None:
+        return "passed" if float(score) >= 1.0 else "failed"
+    return ""
+
+
+def _viewer_task_score(item: dict[str, Any]) -> int | float | None:
+    return _metric_number(
+        item,
+        "score",
+        "reward",
+        "accuracy",
+        "step_accuracy",
+        "element_accuracy",
+        "operation_accuracy",
+    )
+
+
+def _viewer_task_error(item: dict[str, Any]) -> str:
+    return _first_string_value(
+        item,
+        "error",
+        "error_message",
+        "failure",
+        "message",
+        "reason",
+    )
+
+
+def _entry_matches_task(entry: Any, task_id: str) -> bool:
+    if not task_id:
+        return False
+    needle = task_id.lower()
+    try:
+        haystack = json.dumps(entry, ensure_ascii=True, sort_keys=True).lower()
+    except (TypeError, ValueError):
+        haystack = str(entry).lower()
+    return needle in haystack
+
+
+def _trajectory_usage_totals(entries: list[Any]) -> dict[str, int]:
+    totals = {
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "total_tokens": 0,
+        "cached_tokens": 0,
+    }
+
+    def number_from(payload: Any, *keys: str) -> int:
+        if not isinstance(payload, dict):
+            return 0
+        for key in keys:
+            value = payload.get(key)
+            if isinstance(value, int | float) and not isinstance(value, bool):
+                return int(value)
+        return 0
+
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        usage = entry.get("usage")
+        if not isinstance(usage, dict):
+            response = entry.get("response")
+            usage = response.get("usage") if isinstance(response, dict) else {}
+        if not isinstance(usage, dict):
+            usage = {}
+        totals["prompt_tokens"] += number_from(usage, "prompt_tokens", "promptTokens", "input_tokens", "inputTokens")
+        totals["completion_tokens"] += number_from(usage, "completion_tokens", "completionTokens", "output_tokens", "outputTokens")
+        totals["total_tokens"] += number_from(usage, "total_tokens", "totalTokens", "total")
+        totals["cached_tokens"] += number_from(
+            usage,
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+            "cached_tokens",
+            "cachedTokens",
+        )
+    return totals
+
+
+def _build_viewer_task_diagnostics(
+    result_payload: Any,
+    trajectory_files: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    items = _collect_result_items(result_payload)
+    rows: list[dict[str, Any]] = []
+    for index, item in enumerate(items):
+        task_id = _viewer_task_id(item, index)
+        matched_entries: list[Any] = []
+        matched_files: list[str] = []
+        for file in trajectory_files:
+            entries = file.get("entries")
+            if not isinstance(entries, list):
+                continue
+            file_matches = [entry for entry in entries if _entry_matches_task(entry, task_id)]
+            if not file_matches:
+                continue
+            matched_entries.extend(file_matches)
+            if file.get("path"):
+                matched_files.append(str(file.get("path")))
+        rows.append(
+            {
+                "task_id": task_id,
+                "status": _viewer_task_status(item),
+                "score": _viewer_task_score(item),
+                "error": _viewer_task_error(item),
+                "trajectory_match_count": len(matched_entries),
+                "trajectory_files": sorted(set(matched_files)),
+                "usage": _trajectory_usage_totals(matched_entries),
+                "raw": item,
+            }
+        )
+    return rows
+
+
+def _diagnostic_payload_from_artifacts(
+    result_payload: Any,
+    output_artifacts: list[dict[str, Any]],
+) -> Any:
+    if _collect_result_items(result_payload):
+        return result_payload
+    for artifact in output_artifacts:
+        payload = artifact.get("payload")
+        if _collect_result_items(payload):
+            return payload
+    return result_payload
+
+
+def build_code_agent_viewer_payload(
+    run_root: Path,
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    cells: list[dict[str, Any]] = []
+    for raw_cell in summary.get("cells", []) if isinstance(summary.get("cells"), list) else []:
+        if not isinstance(raw_cell, dict):
+            continue
+        cell = dict(raw_cell)
+        output_dir = Path(str(cell.get("output_dir") or ""))
+        trajectory_dir = Path(
+            str(cell.get("trajectory_dir") or output_dir.parent / "trajectories")
+        )
+        command_path = Path(str(cell.get("command_path") or output_dir.parent / "command.json"))
+        stdout_path = Path(str(cell.get("stdout_path") or output_dir.parent / "stdout.log"))
+        stderr_path = Path(str(cell.get("stderr_path") or output_dir.parent / "stderr.log"))
+        result_path_raw = cell.get("result_path")
+        result_path = Path(str(result_path_raw)) if result_path_raw else None
+        cell["command"] = _load_json_artifact(command_path)
+        cell["stdout_tail"] = _read_text_tail(stdout_path)
+        cell["stderr_tail"] = _read_text_tail(stderr_path)
+        cell["result_payload"] = _load_json_artifact(result_path)
+        trajectory_files = _collect_viewer_trajectory_files(
+            trajectory_dir,
+            run_root=run_root,
+        )
+        trajectory_files.extend(
+            _collect_viewer_output_trajectory_files(
+                output_dir,
+                run_root=run_root,
+                existing_paths={
+                    str(item.get("path"))
+                    for item in trajectory_files
+                    if isinstance(item, dict) and item.get("path")
+                },
+            )
+        )
+        cell["trajectory_files"] = trajectory_files
+        output_artifacts = _collect_viewer_output_artifacts(
+            output_dir,
+            run_root=run_root,
+        )
+        cell["output_artifacts"] = output_artifacts
+        cell["task_diagnostics"] = _build_viewer_task_diagnostics(
+            _diagnostic_payload_from_artifacts(
+                cell["result_payload"],
+                output_artifacts,
+            ),
+            trajectory_files,
+        )
+        cells.append(cell)
+
+    cells.sort(key=lambda c: (str(c.get("benchmark")), str(c.get("adapter"))))
+    return {
+        "schema": "code_agent_matrix_viewer_v1",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "run_root": str(run_root),
+        "summary": summary,
+        "cells": cells,
+    }
+
+
+def _code_agent_viewer_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Agent Matrix Run Viewer</title>
+  <style>
+    :root { --bg:#f7f8f5; --panel:#fff; --ink:#182018; --muted:#5d665c; --line:#d8ded2; --accent:#116b5b; --bad:#a12222; --ok:#17633a; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { padding:18px 22px 10px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:2; }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
+    .muted { color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; padding:14px 22px; }
+    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+    .card { padding:10px; }
+    .card b { display:block; font-size:20px; margin-top:3px; }
+    .layout { display:grid; grid-template-columns:320px 1fr; gap:12px; padding:0 22px 22px; }
+    aside, section { min-width:0; }
+    .panel { margin-bottom:12px; overflow:hidden; }
+    .panel h2 { margin:0; padding:10px 12px; font-size:14px; border-bottom:1px solid var(--line); background:#f2f5ef; }
+    .controls { display:grid; gap:8px; padding:10px; }
+    input, select { width:100%; border:1px solid var(--line); border-radius:6px; padding:7px 8px; background:#fff; color:var(--ink); }
+    .bench-list { max-height:62vh; overflow:auto; }
+    .bench-item { width:100%; text-align:left; border:0; border-bottom:1px solid var(--line); background:#fff; padding:10px; cursor:pointer; }
+    .bench-item:hover, .bench-item.active { background:#eef6f2; }
+    .pill { display:inline-block; padding:1px 6px; border:1px solid var(--line); border-radius:999px; margin:2px 3px 0 0; font-size:11px; color:var(--muted); }
+    .status-succeeded, .pass { color:var(--ok); font-weight:600; }
+    .status-failed, .fail { color:var(--bad); font-weight:600; }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid var(--line); padding:7px; text-align:left; vertical-align:top; }
+    th { background:#f7faf4; position:sticky; top:65px; }
+    details { border-top:1px solid var(--line); }
+    summary { cursor:pointer; padding:9px 12px; background:#fff; }
+    pre { margin:0; padding:10px 12px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#101510; color:#eef7ea; max-height:520px; }
+    .trajectory-step { border-top:1px solid var(--line); padding:10px 12px; }
+    .trajectory-step h3 { margin:0 0 6px; font-size:13px; }
+    .split { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    @media (max-width: 900px) { .layout { grid-template-columns:1fr; } th { top:0; } .split { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Code Agent Matrix Run Viewer</h1>
+    <div id="run-meta" class="muted"></div>
+  </header>
+  <div class="cards" id="cards"></div>
+  <main class="layout">
+    <aside class="panel">
+      <h2>Benchmarks</h2>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Search benchmark, adapter, status..." />
+        <select id="status"><option value="">all statuses</option></select>
+      </div>
+      <div id="bench-list" class="bench-list"></div>
+    </aside>
+    <section>
+      <div class="panel">
+        <h2 id="detail-title">Run Detail</h2>
+        <div id="detail"></div>
+      </div>
+    </section>
+  </main>
+  <script src="./data.js"></script>
+  <script>
+    const data = window.BENCHMARK_RUN_DATA || { cells: [], summary: {} };
+    let activeBenchmark = "";
+    const text = (v) => v === null || v === undefined ? "" : String(v);
+    const esc = (v) => text(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const json = (v) => esc(JSON.stringify(v, null, 2));
+    const pct = (v) => typeof v === "number" ? v.toFixed(2) + "%" : "";
+    function grouped() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const st = document.getElementById("status").value;
+      const groups = new Map();
+      for (const c of data.cells) {
+        const hay = [c.benchmark, c.adapter, c.status, c.failure_class, c.notes?.join(" ")].map(text).join(" ").toLowerCase();
+        if (q && !hay.includes(q)) continue;
+        if (st && c.status !== st) continue;
+        if (!groups.has(c.benchmark)) groups.set(c.benchmark, []);
+        groups.get(c.benchmark).push(c);
+      }
+      return [...groups.entries()].sort((a,b) => a[0].localeCompare(b[0]));
+    }
+    function renderCards() {
+      const s = data.summary || {};
+      const token = s.token_by_adapter || {};
+      document.getElementById("run-meta").textContent = `${data.run_root || ""} · generated ${data.generated_at || s.generated_at || ""}`;
+      const items = [
+        ["Cells", data.cells.length],
+        ["Benchmarks", new Set(data.cells.map(c => c.benchmark)).size],
+        ["Succeeded", data.cells.filter(c => c.status === "succeeded").length],
+        ["Failed", data.cells.filter(c => c.status === "failed").length],
+        ["Eliza tokens", token.elizaos?.total_tokens ?? ""],
+        ["OpenCode tokens", token.opencode?.total_tokens ?? ""],
+      ];
+      document.getElementById("cards").innerHTML = items.map(([k,v]) => `<div class="card"><span class="muted">${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    }
+    function renderFilters() {
+      const statuses = [...new Set(data.cells.map(c => c.status).filter(Boolean))].sort();
+      document.getElementById("status").innerHTML = `<option value="">all statuses</option>` + statuses.map(s => `<option>${esc(s)}</option>`).join("");
+    }
+    function renderList() {
+      const groups = grouped();
+      if (!activeBenchmark && groups.length) activeBenchmark = groups[0][0];
+      if (!groups.some(([b]) => b === activeBenchmark) && groups.length) activeBenchmark = groups[0][0];
+      document.getElementById("bench-list").innerHTML = groups.map(([b,cells]) => {
+        const status = cells.map(c => `<span class="pill ${c.status === "succeeded" ? "status-succeeded" : "status-failed"}">${esc(c.adapter)} ${esc(c.status)}</span>`).join("");
+        return `<button class="bench-item ${b === activeBenchmark ? "active" : ""}" data-bench="${esc(b)}"><strong>${esc(b)}</strong><br>${status}</button>`;
+      }).join("");
+      renderDetail();
+    }
+    function metricTable(cells) {
+      return `<table><thead><tr><th>adapter</th><th>status</th><th>right/wrong/total</th><th>accuracy</th><th>input</th><th>output</th><th>total</th><th>cached</th><th>cache %</th><th>calls</th></tr></thead><tbody>` +
+        cells.map(c => {
+          const o = c.outcome_metrics || {}, t = c.token_metrics || {};
+          return `<tr><td>${esc(c.adapter)}</td><td class="status-${esc(c.status)}">${esc(c.status)}</td><td>${esc(o.right)}/${esc(o.wrong)}/${esc(o.total)}</td><td>${esc(o.accuracy)}</td><td>${esc(t.input_tokens)}</td><td>${esc(t.output_tokens)}</td><td>${esc(t.total_tokens)}</td><td>${esc(t.cached_tokens)}</td><td>${esc(pct(t.cached_token_percent))}</td><td>${esc(t.llm_call_count)}</td></tr>`;
+        }).join("") + `</tbody></table>`;
+    }
+    function trajectoryHtml(file) {
+      const entries = Array.isArray(file.entries) ? file.entries : [];
+      if (!entries.length) return `<pre>${json(file.payload)}</pre>`;
+      return entries.map((e, i) => {
+        const req = e.request || e.prompt || e.prompt_text || e.input || e.input_text || e.messages || e.model_input || e;
+        const res = e.response || e.response_text || e.output || e.output_text || e.completion || e.completion_text || e.result || {};
+        const usage = e.usage || e.response?.usage || e.token_metrics || e.tokenMetrics || e.cacheStats || e.trajectoryTotals || {};
+        return `<div class="trajectory-step"><h3>${esc(file.path)} · step ${i}</h3><div class="split"><div><strong>input/request</strong><pre>${json(req)}</pre></div><div><strong>output/response</strong><pre>${json(res)}</pre></div></div><details><summary>usage/cache/raw</summary><pre>${json({ usage, raw: e })}</pre></details></div>`;
+      }).join("");
+    }
+    function taskDiagnosticsHtml(c) {
+      const rows = c.task_diagnostics || [];
+      if (!rows.length) return '<div class="trajectory-step muted">No per-task result rows found.</div>';
+      return `<table><thead><tr><th>task</th><th>status</th><th>score</th><th>error</th><th>trajectory matches</th><th>usage</th><th>raw</th></tr></thead><tbody>` +
+        rows.map(r => `<tr>
+          <td>${esc(r.task_id)}</td>
+          <td>${esc(r.status)}</td>
+          <td>${esc(r.score)}</td>
+          <td>${esc(r.error)}</td>
+          <td>${esc(r.trajectory_match_count)}<br>${(r.trajectory_files || []).map(f => `<span class="pill">${esc(f)}</span>`).join("")}</td>
+          <td>prompt ${esc(r.usage?.prompt_tokens)}<br>completion ${esc(r.usage?.completion_tokens)}<br>total ${esc(r.usage?.total_tokens)}<br>cached ${esc(r.usage?.cached_tokens)}</td>
+          <td><details><summary>raw</summary><pre>${json(r.raw)}</pre></details></td>
+        </tr>`).join("") + `</tbody></table>`;
+    }
+    function renderCell(c) {
+      return `<details open><summary><strong>${esc(c.adapter)}</strong> <span class="status-${esc(c.status)}">${esc(c.status)}</span> ${esc(c.failure_class || "")}</summary>
+        <details><summary>Command</summary><pre>${json(c.command)}</pre></details>
+        <details open><summary>Task Diagnostics (${(c.task_diagnostics || []).length})</summary>${taskDiagnosticsHtml(c)}</details>
+        <details><summary>Result JSON</summary><pre>${json(c.result_payload)}</pre></details>
+        <details><summary>Trajectories (${(c.trajectory_files || []).length})</summary>${(c.trajectory_files || []).map(trajectoryHtml).join("") || '<div class="trajectory-step muted">No trajectory files found.</div>'}</details>
+        <details><summary>Output Artifacts (${(c.output_artifacts || []).length})</summary>${(c.output_artifacts || []).map(a => `<details><summary>${esc(a.path)} (${esc(a.size_bytes)} bytes)</summary><pre>${a.payload !== undefined ? json(a.payload) : a.text !== undefined ? esc(a.text) : esc("[binary or unsupported preview]")}</pre></details>`).join("")}</details>
+        <details><summary>stdout</summary><pre>${esc(c.stdout_tail)}</pre></details>
+        <details><summary>stderr</summary><pre>${esc(c.stderr_tail)}</pre></details>
+      </details>`;
+    }
+    function renderDetail() {
+      const cells = data.cells.filter(c => c.benchmark === activeBenchmark);
+      document.getElementById("detail-title").textContent = activeBenchmark || "Run Detail";
+      document.getElementById("detail").innerHTML = cells.length ? metricTable(cells) + cells.map(renderCell).join("") : '<div class="trajectory-step muted">No matching cells.</div>';
+    }
+    document.addEventListener("click", e => {
+      const btn = e.target.closest(".bench-item");
+      if (btn) { activeBenchmark = btn.dataset.bench; renderList(); }
+    });
+    document.getElementById("search").addEventListener("input", renderList);
+    document.getElementById("status").addEventListener("change", renderList);
+    renderCards(); renderFilters(); renderList();
+  </script>
+</body>
+</html>
+"""
+
+
+def write_code_agent_run_viewer(
+    run_root: Path,
+    summary: dict[str, Any],
+) -> dict[str, str]:
+    viewer_dir = run_root / "viewer"
+    viewer_dir.mkdir(parents=True, exist_ok=True)
+    payload = build_code_agent_viewer_payload(run_root, summary)
+    data_path = viewer_dir / "data.js"
+    index_path = viewer_dir / "index.html"
+    data_path.write_text(
+        "window.BENCHMARK_RUN_DATA = "
+        + json.dumps(payload, ensure_ascii=True, sort_keys=True)
+        + ";\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(_code_agent_viewer_html(), encoding="utf-8")
+    return {
+        "viewer_index": str(index_path),
+        "viewer_data": str(data_path),
+    }
+
+
+def discover_code_agent_summary_paths(search_root: Path) -> list[Path]:
+    if search_root.is_file():
+        return [search_root] if search_root.name == "summary.json" else []
+    if not search_root.exists():
+        return []
+    return sorted(
+        {
+            path
+            for path in search_root.rglob("summary.json")
+            if path.is_file() and "viewer" not in path.parts
+        }
+    )
+
+
+def _summary_run_root(summary_path: Path, summary: dict[str, Any]) -> Path:
+    artifact_paths = summary.get("artifact_paths")
+    if isinstance(artifact_paths, dict):
+        run_root = artifact_paths.get("run_root")
+        if run_root:
+            return Path(str(run_root)).expanduser().resolve()
+    run_config = summary.get("run_config")
+    if isinstance(run_config, dict):
+        run_root = run_config.get("run_root")
+        if run_root:
+            return Path(str(run_root)).expanduser().resolve()
+    return summary_path.parent.resolve()
+
+
+def _index_href(path: str | Path | None, *, index_dir: Path) -> str:
+    if not path:
+        return ""
+    target = Path(str(path)).expanduser()
+    if not target.is_absolute():
+        target = (index_dir / target).resolve()
+    try:
+        return target.relative_to(index_dir).as_posix()
+    except ValueError:
+        return target.as_uri()
+
+
+def build_code_agent_run_index_payload(
+    index_root: Path,
+    summary_paths: list[Path] | None = None,
+    *,
+    scan_root: Path | None = None,
+) -> dict[str, Any]:
+    index_root = index_root.expanduser().resolve()
+    search_root = (scan_root or index_root).expanduser().resolve()
+    paths = (
+        summary_paths
+        if summary_paths is not None
+        else discover_code_agent_summary_paths(search_root)
+    )
+    runs: list[dict[str, Any]] = []
+    benchmark_rows: list[dict[str, Any]] = []
+    for summary_path in sorted({path.expanduser().resolve() for path in paths}):
+        summary = read_json(summary_path)
+        if not isinstance(summary, dict):
+            continue
+        run_root = _summary_run_root(summary_path, summary)
+        artifact_paths = summary.get("artifact_paths")
+        artifact_paths = artifact_paths if isinstance(artifact_paths, dict) else {}
+        cells = summary.get("cells")
+        cells = cells if isinstance(cells, list) else []
+        comparisons = (
+            (summary.get("head_to_head") or {}).get("comparisons")
+            if isinstance(summary.get("head_to_head"), dict)
+            else []
+        )
+        comparisons = comparisons if isinstance(comparisons, list) else []
+        report_rows = summary.get("report_rows")
+        report_rows = report_rows if isinstance(report_rows, list) else []
+        report_row_by_benchmark = {
+            str(row.get("benchmark")): row
+            for row in report_rows
+            if isinstance(row, dict) and row.get("benchmark")
+        }
+        run_id = run_root.name or summary_path.parent.name
+        gate_summary = _code_agent_index_gate_summary(summary)
+        run_record = {
+            "run_id": run_id,
+            "run_root": str(run_root),
+            "summary_json": str(summary_path),
+            "summary_href": _index_href(summary_path, index_dir=index_root),
+            "viewer_index": artifact_paths.get("viewer_index") or str(run_root / "viewer" / "index.html"),
+            "viewer_href": _index_href(
+                artifact_paths.get("viewer_index") or run_root / "viewer" / "index.html",
+                index_dir=index_root,
+            ),
+            "generated_at": summary.get("generated_at"),
+            "mode": (summary.get("run_config") or {}).get("mode")
+            if isinstance(summary.get("run_config"), dict)
+            else None,
+            "provider": (summary.get("run_config") or {}).get("provider")
+            if isinstance(summary.get("run_config"), dict)
+            else None,
+            "model": (summary.get("run_config") or {}).get("model")
+            if isinstance(summary.get("run_config"), dict)
+            else None,
+            "cell_count": len(cells),
+            "benchmark_count": len({str(cell.get("benchmark")) for cell in cells if isinstance(cell, dict)}),
+            "succeeded_count": sum(1 for cell in cells if isinstance(cell, dict) and cell.get("status") == "succeeded"),
+            "failed_count": sum(1 for cell in cells if isinstance(cell, dict) and cell.get("status") == "failed"),
+            "head_to_head": summary.get("head_to_head"),
+            "token_by_adapter": summary.get("token_by_adapter"),
+            "outcome_by_adapter": summary.get("outcome_by_adapter"),
+            "gates": gate_summary,
+            "artifact_paths": artifact_paths,
+        }
+        runs.append(run_record)
+        for comparison in comparisons:
+            if not isinstance(comparison, dict):
+                continue
+            report_row = report_row_by_benchmark.get(str(comparison.get("benchmark") or ""))
+            report_row = report_row if isinstance(report_row, dict) else {}
+            target_limit = _code_agent_index_result_limit(report_row.get("target_result_path"))
+            baseline_limit = _code_agent_index_result_limit(report_row.get("baseline_result_path"))
+            benchmark_rows.append(
+                {
+                    "run_id": run_id,
+                    "run_root": str(run_root),
+                    "viewer_href": run_record["viewer_href"],
+                    "generated_at": run_record["generated_at"],
+                    "run_mode": run_record.get("mode"),
+                    "release_evidence_mode": str(run_record.get("mode") or "").startswith("live"),
+                    "gates": {
+                        key.removesuffix("_ok"): report_row.get(key)
+                        for key in REPORT_ROW_FIELDS
+                        if key.endswith("_gate_ok") or key == "release_readiness_ok"
+                    },
+                    "release_readiness_blocking_requirements": report_row.get(
+                        "release_readiness_blocking_requirements",
+                    ),
+                    "release_readiness_unblock_command_ids": report_row.get(
+                        "release_readiness_unblock_command_ids",
+                    ),
+                    "target_result_path": report_row.get("target_result_path"),
+                    "baseline_result_path": report_row.get("baseline_result_path"),
+                    "target_dataset_limit": target_limit,
+                    "baseline_dataset_limit": baseline_limit,
+                    **comparison,
+                }
+            )
+
+    runs.sort(key=lambda run: str(run.get("generated_at") or run.get("run_id") or ""))
+    benchmark_rows.sort(
+        key=lambda row: (
+            str(row.get("benchmark") or ""),
+            str(row.get("generated_at") or ""),
+            str(row.get("run_id") or ""),
+        )
+    )
+
+    def row_preference(row: dict[str, Any]) -> tuple[int, int, int, int, str, str]:
+        mode = str(row.get("run_mode") or "")
+        target_total = row.get("target_total")
+        status = str(row.get("status") or "")
+        release_mode = 1 if mode.startswith("live") else 0
+        five_examples = 1 if isinstance(target_total, int | float) and target_total >= 5 else 0
+        scored = 1 if isinstance(target_total, int | float) else 0
+        non_missing = 1 if status != "missing" else 0
+        return (
+            release_mode,
+            five_examples,
+            scored,
+            non_missing,
+            str(row.get("generated_at") or ""),
+            str(row.get("run_id") or ""),
+        )
+
+    latest_by_benchmark: dict[str, dict[str, Any]] = {}
+    for row in benchmark_rows:
+        benchmark = str(row.get("benchmark") or "")
+        if not benchmark:
+            continue
+        current = latest_by_benchmark.get(benchmark)
+        if current is None or row_preference(row) >= row_preference(current):
+            latest_by_benchmark[benchmark] = row
+    return {
+        "schema": "code_agent_matrix_run_index_v1",
+        "generated_at": datetime.now(UTC).isoformat(),
+        "index_root": str(index_root),
+        "scan_root": str(search_root),
+        "summary_paths": [str(path.expanduser().resolve()) for path in paths],
+        "runs": runs,
+        "benchmark_rows": benchmark_rows,
+        "latest_by_benchmark": latest_by_benchmark,
+    }
+
+
+def _code_agent_index_gate_summary(summary: dict[str, Any]) -> dict[str, Any]:
+    gates: dict[str, Any] = {}
+    for key in (
+        "coverage_gate",
+        "benchmark_gate",
+        "required_stats_gate",
+        "efficiency_gate",
+        "no_regression_gate",
+        "quality_guardrail_gate",
+        "trajectory_review_gate",
+        "live_report_gate",
+        "report_gate",
+        "release_readiness",
+    ):
+        value = summary.get(key)
+        if isinstance(value, dict):
+            gates[key] = {
+                "ok": value.get("ok"),
+                "message": value.get("message"),
+            }
+            if key == "release_readiness":
+                gates[key]["blocking_requirements"] = value.get("blocking_requirements")
+                gates[key]["unblock_commands"] = value.get("unblock_commands")
+    return gates
+
+
+def _code_agent_index_result_limit(path: Any) -> dict[str, Any]:
+    if not isinstance(path, str) or not path:
+        return {}
+    payload = read_json(Path(path))
+    if not isinstance(payload, dict):
+        return {}
+    out: dict[str, Any] = {}
+    for key in ("dataset_version", "dataset", "available_task_count", "coverage_note"):
+        value = payload.get(key)
+        if value not in (None, ""):
+            out[key] = value
+    return out
+
+
+def _code_agent_run_index_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Code Agent Matrix Run Index</title>
+  <style>
+    :root { --bg:#f6f7f4; --panel:#fff; --ink:#182018; --muted:#5f685d; --line:#d9dfd2; --accent:#0e6b59; --bad:#a12222; --ok:#17633a; --warn:#8a5a00; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--ink); font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    header { padding:18px 22px 10px; border-bottom:1px solid var(--line); background:#fff; position:sticky; top:0; z-index:2; }
+    h1 { margin:0 0 6px; font-size:22px; letter-spacing:0; }
+    .muted { color:var(--muted); }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:8px; padding:14px 22px; }
+    .card, .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; }
+    .card { padding:10px; }
+    .card b { display:block; font-size:20px; margin-top:3px; }
+    main { padding:0 22px 24px; }
+    .panel { margin-bottom:12px; overflow:hidden; }
+    .panel h2 { margin:0; padding:10px 12px; font-size:14px; border-bottom:1px solid var(--line); background:#f1f4ed; }
+    .controls { display:grid; grid-template-columns:minmax(220px,1fr) 220px 220px; gap:8px; padding:10px; border-bottom:1px solid var(--line); }
+    input, select { width:100%; border:1px solid var(--line); border-radius:6px; padding:7px 8px; background:#fff; color:var(--ink); }
+    table { width:100%; border-collapse:collapse; }
+    th, td { border-bottom:1px solid var(--line); padding:7px; text-align:left; vertical-align:top; }
+    th { background:#f7faf4; position:sticky; top:64px; z-index:1; }
+    th button { appearance:none; border:0; background:transparent; color:inherit; padding:0; font:inherit; font-weight:600; cursor:pointer; text-align:left; }
+    th button:hover { color:var(--accent); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    .status-inferior, .status-missing, .bad { color:var(--bad); font-weight:600; }
+    .status-superior, .status-comparable, .ok { color:var(--ok); font-weight:600; }
+    .status-weak, .warn { color:var(--warn); font-weight:600; }
+    .pill { display:inline-block; padding:1px 6px; border:1px solid var(--line); border-radius:999px; margin:1px 3px 1px 0; font-size:11px; color:var(--muted); }
+    details { border-top:1px solid var(--line); }
+    summary { cursor:pointer; padding:9px 12px; background:#fff; }
+    pre { margin:0; padding:10px 12px; overflow:auto; white-space:pre-wrap; word-break:break-word; background:#101510; color:#eef7ea; max-height:420px; }
+    @media (max-width: 900px) { .controls { grid-template-columns:1fr; } th { position:static; } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Code Agent Matrix Run Index</h1>
+    <div id="meta" class="muted"></div>
+  </header>
+  <div class="cards" id="cards"></div>
+  <main>
+    <section class="panel">
+      <h2>Benchmark Comparisons Across Runs</h2>
+      <div class="controls">
+        <input id="search" type="search" placeholder="Search benchmark, run, status..." />
+        <select id="benchmark"><option value="">all benchmarks</option></select>
+        <select id="status"><option value="">all statuses</option></select>
+      </div>
+      <div id="comparisons"></div>
+    </section>
+    <section class="panel">
+      <h2>Runs</h2>
+      <div id="runs"></div>
+    </section>
+  </main>
+  <script src="./index-data.js"></script>
+  <script>
+    const data = window.BENCHMARK_RUN_INDEX || { runs: [], benchmark_rows: [] };
+    let comparisonSort = { key: "benchmark", dir: "asc" };
+    let runSort = { key: "generated_at", dir: "desc" };
+    const text = v => v === null || v === undefined ? "" : String(v);
+    const esc = v => text(v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const pct = v => typeof v === "number" ? v.toFixed(2) + "%" : "";
+    const num = v => typeof v === "number" ? v.toLocaleString() : esc(v);
+    const json = v => esc(JSON.stringify(v, null, 2));
+    const sortValue = (row, key) => {
+      const value = key.split(".").reduce((acc, part) => acc && acc[part], row);
+      if (typeof value === "number") return value;
+      if (typeof value === "boolean") return value ? 1 : 0;
+      return text(value).toLowerCase();
+    };
+    const sorted = (rows, state) => [...rows].sort((a,b) => {
+      const av = sortValue(a, state.key), bv = sortValue(b, state.key);
+      if (av < bv) return state.dir === "asc" ? -1 : 1;
+      if (av > bv) return state.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+    const th = (label, key, kind) => `<th><button data-sort-kind="${kind}" data-sort-key="${esc(key)}">${esc(label)}</button></th>`;
+    const gateHtml = gates => {
+      if (!gates || typeof gates !== "object") return "";
+      return Object.entries(gates).map(([key,value]) => `<span class="pill ${value === true ? "ok" : value === false ? "bad" : ""}">${esc(key)} ${value === true ? "ok" : value === false ? "blocked" : "n/a"}</span>`).join("");
+    };
+    function renderCards() {
+      const rows = data.benchmark_rows || [];
+      const runs = data.runs || [];
+      const latest = Object.keys(data.latest_by_benchmark || {}).length;
+      const items = [
+        ["Runs", runs.length],
+        ["Benchmark rows", rows.length],
+        ["Latest benchmarks", latest],
+        ["Inferior", rows.filter(r => r.status === "inferior").length],
+        ["Weak", rows.filter(r => r.status === "weak").length],
+        ["Comparable+", rows.filter(r => ["comparable", "superior"].includes(r.status)).length],
+      ];
+      document.getElementById("cards").innerHTML = items.map(([k,v]) => `<div class="card"><span class="muted">${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+      document.getElementById("meta").textContent = `${data.index_root || ""} · generated ${data.generated_at || ""}`;
+    }
+    function renderFilters() {
+      const benchmarks = [...new Set((data.benchmark_rows || []).map(r => r.benchmark).filter(Boolean))].sort();
+      const statuses = [...new Set((data.benchmark_rows || []).map(r => r.status).filter(Boolean))].sort();
+      document.getElementById("benchmark").innerHTML = `<option value="">all benchmarks</option>` + benchmarks.map(v => `<option>${esc(v)}</option>`).join("");
+      document.getElementById("status").innerHTML = `<option value="">all statuses</option>` + statuses.map(v => `<option>${esc(v)}</option>`).join("");
+    }
+    function filteredRows() {
+      const q = document.getElementById("search").value.toLowerCase();
+      const bench = document.getElementById("benchmark").value;
+      const status = document.getElementById("status").value;
+      return (data.benchmark_rows || []).filter(r => {
+        const hay = [r.benchmark, r.run_id, r.status, r.run_root].map(text).join(" ").toLowerCase();
+        return (!q || hay.includes(q)) && (!bench || r.benchmark === bench) && (!status || r.status === status);
+      });
+    }
+    function renderComparisons() {
+      const rows = sorted(filteredRows(), comparisonSort);
+      document.getElementById("comparisons").innerHTML = `<table><thead><tr>${[
+        th("benchmark", "benchmark", "comparison"),
+        th("run", "run_id", "comparison"),
+        th("mode", "run_mode", "comparison"),
+        th("status", "status", "comparison"),
+        th("target", "target_accuracy", "comparison"),
+        th("baseline", "baseline_accuracy", "comparison"),
+        th("delta", "accuracy_delta", "comparison"),
+        th("tokens", "total_token_delta", "comparison"),
+        th("cache", "cached_token_percent_delta", "comparison"),
+        th("calls", "llm_call_delta", "comparison"),
+        "<th>gates</th>",
+        "<th>viewer</th>",
+      ].join("")}</tr></thead><tbody>` +
+        rows.map(r => `<tr>
+          <td>${esc(r.benchmark)}</td>
+          <td><span class="muted">${esc(r.generated_at || "")}</span><br>${esc(r.run_id)}</td>
+          <td>${esc(r.run_mode || "")}</td>
+          <td class="status-${esc(r.status)}">${esc(r.status)}</td>
+          <td>${esc(r.target_adapter)}<br>${esc(r.target_right)}/${esc(r.target_total)} · ${esc(r.target_accuracy)}</td>
+          <td>${esc(r.baseline_adapter)}<br>${esc(r.baseline_right)}/${esc(r.baseline_total)} · ${esc(r.baseline_accuracy)}</td>
+          <td>accuracy ${esc(r.accuracy_delta)}<br>right ${esc(r.right_delta)}</td>
+          <td>target ${num(r.target_total_tokens)}<br>baseline ${num(r.baseline_total_tokens)}<br>delta ${num(r.total_token_delta)}</td>
+          <td>target ${pct(r.target_cached_token_percent)}<br>baseline ${pct(r.baseline_cached_token_percent)}<br>delta ${pct(r.cached_token_percent_delta)}</td>
+          <td>target ${esc(r.target_llm_call_count)}<br>baseline ${esc(r.baseline_llm_call_count)}<br>delta ${esc(r.llm_call_delta)}</td>
+          <td>${gateHtml(r.gates)}${r.release_readiness_blocking_requirements ? `<br><span class="bad">${esc(r.release_readiness_blocking_requirements)}</span>` : ""}</td>
+          <td><a href="${esc(r.viewer_href)}">open run</a></td>
+        </tr>`).join("") + `</tbody></table>`;
+    }
+    function renderRuns() {
+      const runs = sorted(data.runs || [], runSort);
+      document.getElementById("runs").innerHTML = `<table><thead><tr>${[
+        th("run", "run_id", "run"),
+        th("generated", "generated_at", "run"),
+        th("mode", "mode", "run"),
+        "<th>status</th>",
+        "<th>gates</th>",
+        "<th>provider/model</th>",
+        "<th>tokens</th>",
+        "<th>links</th>",
+      ].join("")}</tr></thead><tbody>` +
+        runs.map(r => {
+          const h = r.head_to_head || {};
+          const counts = h.status_counts || {};
+          const tok = r.token_by_adapter || {};
+          const release = r.gates?.release_readiness || {};
+          return `<tr>
+            <td>${esc(r.run_id)}<br><span class="muted">${esc(r.run_root)}</span></td>
+            <td>${esc(r.generated_at || "")}</td>
+            <td>${esc(r.mode || "")}</td>
+            <td>${Object.entries(counts).map(([k,v]) => `<span class="pill ${k === "inferior" || k === "missing" ? "bad" : k === "weak" ? "warn" : "ok"}">${esc(k)} ${esc(v)}</span>`).join("")}</td>
+            <td>${Object.entries(r.gates || {}).map(([k,v]) => `<span class="pill ${v.ok === true ? "ok" : v.ok === false ? "bad" : ""}">${esc(k)} ${v.ok === true ? "ok" : v.ok === false ? "blocked" : "n/a"}</span>`).join("")}${Array.isArray(release.blocking_requirements) && release.blocking_requirements.length ? `<br><span class="bad">${esc(release.blocking_requirements.join(", "))}</span>` : ""}</td>
+            <td>${esc(r.provider || "")}<br>${esc(r.model || "")}<br>${esc(r.mode || "")}</td>
+            <td>${Object.entries(tok).map(([k,v]) => `<span class="pill">${esc(k)} ${num(v.total_tokens)}</span>`).join("")}</td>
+            <td><a href="${esc(r.viewer_href)}">viewer</a><br><a href="${esc(r.summary_href)}">summary</a></td>
+          </tr>`;
+        }).join("") + `</tbody></table>`;
+    }
+    for (const id of ["search", "benchmark", "status"]) document.addEventListener("input", e => { if (e.target.id === id) renderComparisons(); });
+    document.addEventListener("change", e => { if (["benchmark", "status"].includes(e.target.id)) renderComparisons(); });
+    document.addEventListener("click", e => {
+      const button = e.target.closest("button[data-sort-key]");
+      if (!button) return;
+      const state = button.dataset.sortKind === "run" ? runSort : comparisonSort;
+      if (state.key === button.dataset.sortKey) state.dir = state.dir === "asc" ? "desc" : "asc";
+      else { state.key = button.dataset.sortKey; state.dir = "asc"; }
+      if (button.dataset.sortKind === "run") renderRuns();
+      else renderComparisons();
+    });
+    renderCards(); renderFilters(); renderComparisons(); renderRuns();
+  </script>
+</body>
+</html>
+"""
+
+
+def _analysis_percent(value: Any) -> str:
+    return f"{value * 100:.1f}%" if isinstance(value, int | float) and math.isfinite(value) else "n/a"
+
+
+def _analysis_number(value: Any) -> str:
+    if not isinstance(value, int | float) or not math.isfinite(value):
+        return "n/a"
+    if float(value).is_integer():
+        return f"{int(value):,}"
+    return f"{value:.3f}".rstrip("0").rstrip(".")
+
+
+def _analysis_cache_percent(value: Any) -> str:
+    return f"{value:.2f}%" if isinstance(value, int | float) and math.isfinite(value) else "n/a"
+
+
+def render_code_agent_run_index_analysis(payload: dict[str, Any]) -> str:
+    rows = payload.get("benchmark_rows")
+    rows = rows if isinstance(rows, list) else []
+    runs = payload.get("runs")
+    runs = runs if isinstance(runs, list) else []
+    included = set(included_benchmark_ids())
+    covered = {str(row.get("benchmark")) for row in rows if isinstance(row, dict) and row.get("benchmark")}
+    latest_by_benchmark = payload.get("latest_by_benchmark")
+    latest_by_benchmark = latest_by_benchmark if isinstance(latest_by_benchmark, dict) else {}
+    run_by_id = {
+        str(run.get("run_id")): run
+        for run in runs
+        if isinstance(run, dict) and run.get("run_id")
+    }
+
+    def row_run_mode(row: dict[str, Any]) -> str:
+        if row.get("run_mode"):
+            return str(row.get("run_mode") or "")
+        run = run_by_id.get(str(row.get("run_id") or ""))
+        if isinstance(run, dict):
+            return str(run.get("mode") or "")
+        return ""
+
+    release_covered = {
+        str(row.get("benchmark"))
+        for row in rows
+        if isinstance(row, dict)
+        and row.get("benchmark")
+        and row_run_mode(row).startswith("live")
+        and isinstance(row.get("target_total"), int | float)
+    }
+    missing = sorted(included - release_covered)
+
+    latest_rows = [
+        row
+        for benchmark, row in latest_by_benchmark.items()
+        if benchmark in included and isinstance(row, dict)
+    ]
+    latest_under_five = [
+        row
+        for row in latest_rows
+        if isinstance(row.get("target_total"), int | float) and row.get("target_total") < 5
+    ]
+    latest_missing_total = [
+        row
+        for row in latest_rows
+        if not isinstance(row.get("target_total"), int | float)
+    ]
+    historical_under_five = [
+        row
+        for row in rows
+        if isinstance(row, dict)
+        and isinstance(row.get("target_total"), int | float)
+        and row.get("target_total") < 5
+        and latest_by_benchmark.get(str(row.get("benchmark") or "")) is not row
+    ]
+    lines = [
+        "# Code Agent Benchmark Analysis",
+        "",
+        f"Generated: {payload.get('generated_at') or ''}",
+        f"Aggregate viewer: {Path(str(payload.get('index_root') or '')).joinpath('index.html')}",
+        f"Scan root: {payload.get('scan_root') or payload.get('index_root') or ''}",
+        (
+            f"Runs indexed: {len(runs)}; benchmark rows: {len(rows)}; "
+            f"included manifest coverage: {len(covered & included)}/{len(included)}; "
+            f"release/live scored coverage: {len(release_covered & included)}/{len(included)}."
+        ),
+        "",
+        "## Head-to-head Rows",
+        "",
+        "| benchmark | run | mode | status | elizaOS | OpenCode | token delta | cache delta | viewer |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|",
+    ]
+    for row in sorted(
+        (row for row in rows if isinstance(row, dict)),
+        key=lambda item: (str(item.get("benchmark") or ""), str(item.get("generated_at") or "")),
+    ):
+        lines.append(
+            "| "
+            + " | ".join(
+                [
+                    str(row.get("benchmark") or ""),
+                    str(row.get("run_id") or ""),
+                    row_run_mode(row),
+                    str(row.get("status") or "n/a"),
+                    (
+                        f"{_analysis_percent(row.get('target_accuracy'))} "
+                        f"({_analysis_number(row.get('target_right'))}/{_analysis_number(row.get('target_total'))})"
+                    ),
+                    (
+                        f"{_analysis_percent(row.get('baseline_accuracy'))} "
+                        f"({_analysis_number(row.get('baseline_right'))}/{_analysis_number(row.get('baseline_total'))})"
+                    ),
+                    _analysis_number(row.get("total_token_delta")),
+                    _analysis_cache_percent(row.get("cached_token_percent_delta")),
+                    str(row.get("viewer_href") or ""),
+                ]
+            )
+            + " |"
+        )
+
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        if isinstance(row, dict):
+            status = str(row.get("status") or "unknown")
+            status_counts[status] = status_counts.get(status, 0) + 1
+    lines.extend(
+        [
+            "",
+            "## Readout",
+            "",
+            "- Status counts: "
+            + ", ".join(f"`{key}` {value}" for key, value in sorted(status_counts.items())),
+            "- Rows with lower elizaOS accuracy than OpenCode: "
+            + (
+                ", ".join(
+                    f"`{row.get('benchmark')}`"
+                    for row in rows
+                    if isinstance(row, dict)
+                    and isinstance(row.get("accuracy_delta"), int | float)
+                    and row.get("accuracy_delta") < 0
+                )
+                or "none"
+            )
+            + ".",
+            "- Rows with no successful scored examples for elizaOS: "
+            + (
+                ", ".join(
+                    f"`{row.get('benchmark')}`"
+                    for row in rows
+                    if isinstance(row, dict)
+                    and row.get("target_right") == 0
+                    and row.get("target_total")
+                )
+                or "none"
+            )
+            + ".",
+            "",
+            "## Coverage Caveats",
+            "",
+            "- Included manifest rows not indexed with a live/imported viewer: "
+            + (", ".join(f"`{item}`" for item in missing) if missing else "none")
+            + ".",
+            "- Latest included rows with fewer than five target examples: "
+            + (
+                ", ".join(
+                    (
+                        f"`{row.get('benchmark')}` "
+                        f"({_analysis_number(row.get('target_total'))}, {row_run_mode(row) or 'unknown mode'}"
+                        + (
+                            f"; {row.get('target_dataset_limit', {}).get('coverage_note')}"
+                            if isinstance(row.get("target_dataset_limit"), dict)
+                            and row.get("target_dataset_limit", {}).get("coverage_note")
+                            else ""
+                        )
+                        + ")"
+                    )
+                    for row in latest_under_five
+                )
+                or "none"
+            )
+            + ".",
+            "- Latest included rows without a scored target total: "
+            + (
+                ", ".join(
+                    f"`{row.get('benchmark')}` ({row_run_mode(row) or 'unknown mode'})"
+                    for row in latest_missing_total
+                )
+                or "none"
+            )
+            + ".",
+            "- Historical rows with fewer than five target examples retained for comparison: "
+            + (
+                ", ".join(
+                    f"`{row.get('benchmark')}` ({_analysis_number(row.get('target_total'))}, {row_run_mode(row) or 'unknown mode'})"
+                    for row in historical_under_five
+                )
+                or "none"
+            )
+            + ".",
+        ]
+    )
+    return "\n".join(lines) + "\n"
+
+
+def write_code_agent_run_index(
+    index_root: Path,
+    *,
+    summary_paths: list[Path] | None = None,
+    scan_root: Path | None = None,
+) -> dict[str, str]:
+    index_root = index_root.expanduser().resolve()
+    index_root.mkdir(parents=True, exist_ok=True)
+    payload = build_code_agent_run_index_payload(
+        index_root,
+        summary_paths,
+        scan_root=scan_root,
+    )
+    index_path = index_root / "index.html"
+    data_path = index_root / "index-data.js"
+    analysis_path = index_root / "analysis.md"
+    data_path.write_text(
+        "window.BENCHMARK_RUN_INDEX = "
+        + json.dumps(payload, ensure_ascii=True, sort_keys=True)
+        + ";\n",
+        encoding="utf-8",
+    )
+    index_path.write_text(_code_agent_run_index_html(), encoding="utf-8")
+    analysis_path.write_text(
+        render_code_agent_run_index_analysis(payload),
+        encoding="utf-8",
+    )
+    return {
+        "index_root": str(index_root),
+        "index_html": str(index_path),
+        "index_data": str(data_path),
+        "analysis_md": str(analysis_path),
+        "run_count": str(len(payload.get("runs") or [])),
+    }
+
+
 def write_code_agent_latest_snapshots(
     latest_dir: Path,
     summary: dict[str, Any],
@@ -5889,12 +7201,58 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Comma-separated queue statuses to rerun, for example inferior,missing.",
     )
+    parser.add_argument(
+        "--write-run-index",
+        default="",
+        help="Write a multi-run HTML index under this directory and exit.",
+    )
+    parser.add_argument(
+        "--index-scan-root",
+        default="",
+        help="Directory to scan for summary.json files when writing a run index.",
+    )
+    parser.add_argument(
+        "--index-summary",
+        action="append",
+        default=[],
+        help="Summary JSON to include in --write-run-index. May be passed multiple times; defaults to scanning the index directory.",
+    )
+    parser.add_argument(
+        "--update-run-index",
+        nargs="?",
+        const="__default__",
+        default="",
+        help=(
+            "After a normal run, update a multi-run HTML index. With no value, "
+            "writes <run-root-parent>/index and scans <run-root-parent>."
+        ),
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     root = workspace_root()
+    if args.write_run_index:
+        index_root = Path(args.write_run_index).expanduser().resolve()
+        scan_root = (
+            Path(args.index_scan_root).expanduser().resolve()
+            if args.index_scan_root
+            else None
+        )
+        summary_paths = [
+            Path(path).expanduser().resolve()
+            for path in (args.index_summary or [])
+            if str(path).strip()
+        ]
+        paths = write_code_agent_run_index(
+            index_root,
+            summary_paths=summary_paths or None,
+            scan_root=scan_root,
+        )
+        print(json.dumps(paths, indent=2, sort_keys=True))
+        return EXIT_OK
+
     default_run_root = root / "benchmark_results" / "code-agent-matrix" / now_id()
     queue_summary_path = Path(args.rerun_queue).expanduser().resolve() if args.rerun_queue else None
     run_root = Path(
@@ -6048,6 +7406,7 @@ def main(argv: list[str] | None = None) -> int:
         "summary_md": str(run_root / "summary.md"),
         **write_report_rows(run_root, summary["report_rows"]),
     }
+    summary["artifact_paths"].update(write_code_agent_run_viewer(run_root, summary))
     if args.publish_latest_dir:
         summary["artifact_paths"].update(
             write_code_agent_latest_snapshots(
@@ -6060,6 +7419,18 @@ def main(argv: list[str] | None = None) -> int:
     summary["exit_reason"] = exit_reason_for_code(selected_exit_code)
     write_json(run_root / "summary.json", summary)
     (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
+    if args.update_run_index:
+        index_root = (
+            run_root.parent / "index"
+            if args.update_run_index == "__default__"
+            else Path(args.update_run_index).expanduser().resolve()
+        )
+        summary["artifact_paths"]["run_index"] = write_code_agent_run_index(
+            index_root,
+            scan_root=run_root.parent,
+        )
+        write_json(run_root / "summary.json", summary)
+        (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"run_root": str(run_root), "summary": str(run_root / "summary.json")}, indent=2))
     return selected_exit_code
 

@@ -33,6 +33,20 @@ done < <(find scripts config/includes.chroot/usr/local/lib/elizaos config/includ
     \( -name "*.sh" -o -name "first-boot.sh" -o -name "start-launcher" -o -name "start-chat-overlay" \) \
     2>/dev/null)
 
+# Release-check Make targets must stay wired to the checked-in Python gate.
+# This is intentionally source-only: it catches stale deleted helper paths
+# without requiring a local ISO, QEMU transcript, or release artifact.
+python3 -m py_compile scripts/check_release_manifest.py \
+    || { echo "PY COMPILE FAIL: scripts/check_release_manifest.py"; fail=1; }
+if ! make -n release-check ARCH=riscv64 2>/dev/null | grep -q 'scripts/check_release_manifest.py'; then
+    echo "BAD RELEASE CHECK TARGET: release-check must invoke scripts/check_release_manifest.py"
+    fail=1
+fi
+if make -n release-check ARCH=riscv64 2>/dev/null | grep -q 'scripts/release-check.sh'; then
+    echo "STALE RELEASE CHECK TARGET: release-check references deleted scripts/release-check.sh"
+    fail=1
+fi
+
 # Systemd unit files have [Unit] + [Install] (or are .path/.target).
 for f in $(find config/includes.chroot/etc/systemd -name "*.service" 2>/dev/null); do
     grep -q '^\[Unit\]' "${f}" || { echo "BAD UNIT: ${f}"; fail=1; }

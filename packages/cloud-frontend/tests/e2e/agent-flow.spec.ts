@@ -224,13 +224,26 @@ test("agent flow: landing → login → create agent → chat", async ({
     return route.fulfill({ json: { rooms: [] } });
   });
   await page.route("**/api/eliza/rooms/*/messages/stream", (route) =>
-    route.fulfill({ status: 200, body: "" }),
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: [
+        'event: message\ndata: {"type":"token","messageId":"agent-flow-reply","text":"Hello from the deterministic cloud agent."}',
+        'event: message\ndata: {"type":"done","fullText":"Hello from the deterministic cloud agent."}',
+      ].join("\n\n"),
+    }),
   );
 
-  // Stub the streaming message endpoint — we don't care about the response,
-  // only that the UI lets the user submit.
+  // Keep the generic chat fallback deterministic for any legacy caller.
   await page.route("**/api/chat/**", (route) =>
-    route.fulfill({ status: 200, body: "" }),
+    route.fulfill({
+      status: 200,
+      contentType: "text/event-stream",
+      body: [
+        'event: message\ndata: {"type":"token","messageId":"agent-flow-reply","text":"Hello from the deterministic cloud agent."}',
+        'event: message\ndata: {"type":"done","fullText":"Hello from the deterministic cloud agent."}',
+      ].join("\n\n"),
+    }),
   );
 
   await page.goto(`/chat/${FAKE_CHARACTER_ID}`);
@@ -241,7 +254,9 @@ test("agent flow: landing → login → create agent → chat", async ({
   await chatInput.fill("hello agent");
   const sendButton = page.locator('button[type="submit"]').last();
   await expect(sendButton).toBeEnabled();
-  // Click but don't assert any network behavior — we only verify the UI
-  // accepted the submission affordance.
   await sendButton.click();
+  await expect(page.getByText("hello agent")).toBeVisible();
+  await expect(
+    page.getByText("Hello from the deterministic cloud agent."),
+  ).toBeVisible();
 });

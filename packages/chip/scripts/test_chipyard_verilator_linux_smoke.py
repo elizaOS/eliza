@@ -3,9 +3,9 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import tempfile
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -256,9 +256,7 @@ def test_quiet_completion_does_not_mask_nonquiet_payload_timeout() -> None:
             tmp_path = Path(tmp)
             smoke.LOG = tmp_path / "verilator-linux-smoke.log"
             smoke.SIM_OUTPUT_DIR = (
-                tmp_path
-                / "output"
-                / "chipyard.harness.TestHarness.ElizaRocketConfig"
+                tmp_path / "output" / "chipyard.harness.TestHarness.ElizaRocketConfig"
             )
             smoke.SIM_OUTPUT_DIR.mkdir(parents=True)
             smoke.LOG.write_text(
@@ -345,9 +343,7 @@ def test_live_sim_output_metadata_reports_latest_progress() -> None:
             smoke.SIM_OUTPUT_DIR = Path(tmp)
             live = smoke.SIM_OUTPUT_DIR / "eliza-e1-linux-smoke-bin-nodisk.log"
             live.write_text(
-                "[UART] UART0 is here (stdin/stdout).\n"
-                "OpenSBI v1.8.1\n"
-                "Domain0 Next Address\n",
+                "[UART] UART0 is here (stdin/stdout).\nOpenSBI v1.8.1\nDomain0 Next Address\n",
                 encoding="utf-8",
             )
             metadata = smoke.live_sim_output_metadata(

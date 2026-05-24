@@ -102,7 +102,9 @@ def test_report_is_self_consistent_and_fail_closed_on_power() -> None:
         assert scenario["accuracy"]["top1_accuracy"] == 1.0
         assert scenario["energy_joules_per_inference"]["value"] > 0
         assert scenario["npu_counters"]["npu_commands"] == scenario["query_count"] * 2
-        assert scenario["npu_counters"]["npu_macs"] == scenario["query_count"] * macs_per_inference()
+        assert (
+            scenario["npu_counters"]["npu_macs"] == scenario["query_count"] * macs_per_inference()
+        )
         assert scenario["observed_macs_per_inference"] == float(macs_per_inference())
     assert report["workload"]["macs_per_inference"] == macs_per_inference()
     assert report["summary"]["npu_macs_total"] == (

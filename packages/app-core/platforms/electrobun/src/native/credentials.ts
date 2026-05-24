@@ -545,6 +545,7 @@ const ENV_PROVIDER_MAP: Array<{
     providerId: "together",
     authMode: "api-key",
   },
+  { envVar: "NEARAI_API_KEY", providerId: "nearai", authMode: "api-key" },
   { envVar: "ZAI_API_KEY", providerId: "zai", authMode: "api-key" },
   {
     envVar: "OLLAMA_BASE_URL",
@@ -732,6 +733,10 @@ const VALIDATION_ENDPOINTS: Record<
   },
   zai: {
     url: "https://api.z.ai/api/paas/v4/models",
+    authHeader: (key) => ({ Authorization: `Bearer ${key}` }),
+  },
+  nearai: {
+    url: "https://cloud-api.near.ai/v1/model/list",
     authHeader: (key) => ({ Authorization: `Bearer ${key}` }),
   },
 };

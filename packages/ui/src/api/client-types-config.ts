@@ -335,6 +335,900 @@ export interface TrainingModelRecord {
   };
 }
 
+export type TrainingAnalysisArtifactKind =
+  | "trajectory_bundle"
+  | "trajectory_dataset"
+  | "scenario_run"
+  | "collection_run"
+  | "training_run"
+  | "eval"
+  | "benchmark_matrix"
+  | "model";
+
+export interface TrainingAnalysisArtifact {
+  id: string;
+  kind: TrainingAnalysisArtifactKind;
+  title: string;
+  path: string;
+  generatedAt?: string;
+  summary: Record<string, unknown>;
+  payload: unknown;
+}
+
+export interface TrainingAnalysisCoverageSummary {
+  dataSources: {
+    huggingFace: number;
+    feed: number;
+    natural: number;
+    scenarios: number;
+    tests: number;
+    trainingJsonl: number;
+  };
+  readableSamples: {
+    huggingFace: number;
+    feed: number;
+    natural: number;
+    scenarios: number;
+    tests: number;
+    trainingJsonl: number;
+    total: number;
+  };
+  evals: {
+    artifacts: number;
+    comparisons: number;
+    scoredComparisons: number;
+  };
+  benchmarks: {
+    matrices: number;
+    comparisons: number;
+    scoredComparisons: number;
+    caseSamples: number;
+    tiers: string[];
+    allEliza1TiersCovered: boolean;
+    tierCoverage: Array<{
+      tier: string;
+      hasBase: boolean;
+      hasTrained: boolean;
+      hasReference: boolean;
+      hasImprovement: boolean;
+      benchmarkCount: number;
+      comparisonCount: number;
+    }>;
+  };
+  models: {
+    artifacts: number;
+    inventory: Array<{
+      model: string | null;
+      tier: string | null;
+      variant: string | null;
+      baseModel: string | null;
+      outputPath: string | null;
+      evalImprovementPercent: number | null;
+    }>;
+  };
+}
+
+export interface TrainingAnalysisIndexManifest {
+  schema: string;
+  schemaVersion: number;
+  generatedAt: string;
+  roots: string[];
+  outputDir: string;
+  indexHtmlPath: string;
+  manifestPath: string;
+  counts: Record<string, number>;
+  coverage: TrainingAnalysisCoverageSummary;
+  artifacts: TrainingAnalysisArtifact[];
+}
+
+export interface BuildTrainingAnalysisIndexOptions {
+  roots?: string[];
+  outputDir?: string;
+  maxDepth?: number;
+}
+
+export interface TrainingAnalysisIndexResponse {
+  outputDir: string;
+  indexHtmlPath: string;
+  manifestPath: string;
+  manifest: TrainingAnalysisIndexManifest;
+}
+
+export type TrainingReadinessStatus = "ready" | "partial" | "missing";
+
+export interface TrainingReadinessCheck {
+  id: string;
+  label: string;
+  status: TrainingReadinessStatus;
+  artifactCount: number;
+  artifactPaths: string[];
+  note: string;
+  recommendedAction: TrainingReadinessAction | null;
+}
+
+export interface TrainingReadinessAction {
+  label: string;
+  capability: string;
+  params: Record<string, unknown>;
+}
+
+export interface TrainingReadinessReport {
+  schema: string;
+  schemaVersion: number;
+  generatedAt: string;
+  outputDir: string;
+  reportPath: string;
+  analysisManifestPath: string;
+  analysisIndexHtmlPath: string;
+  status: TrainingReadinessStatus;
+  counts: Record<string, number>;
+  checks: TrainingReadinessCheck[];
+}
+
+export interface BuildTrainingReadinessReportOptions extends BuildTrainingAnalysisIndexOptions {
+  reportOutputDir?: string;
+  reportPath?: string;
+}
+
+export interface TrainingReadinessReportResponse {
+  outputDir: string;
+  reportPath: string;
+  report: TrainingReadinessReport;
+}
+
+export interface IngestHuggingFaceDatasetOptions {
+  repoId?: string;
+  revision?: string;
+  files?: string[];
+  outputDir?: string;
+  token?: string;
+  dryRun?: boolean;
+}
+
+export interface HuggingFaceDatasetFileReceipt {
+  hfPath: string;
+  url: string;
+  localPath: string;
+  bytes: number;
+  sha256: string | null;
+  rows: number | null;
+  contentType: string | null;
+  status: "downloaded" | "dry_run";
+}
+
+export interface HuggingFaceDatasetIngestResponse {
+  outputDir: string;
+  manifestPath: string;
+  manifest: {
+    schema: string;
+    schemaVersion: number;
+    generatedAt: string;
+    source: {
+      kind: "huggingface_dataset";
+      repoId: string;
+      revision: string;
+    };
+    outputDir: string;
+    manifestPath: string;
+    counts: Record<string, number>;
+    files: HuggingFaceDatasetFileReceipt[];
+  };
+}
+
+export type BenchmarkMatrixVariant = "reference" | "base" | "trained";
+
+export interface BenchmarkMatrixRowInput {
+  modelId: string;
+  benchmark: string;
+  score: number;
+  variant: BenchmarkMatrixVariant;
+  tier?: string;
+  provider?: string;
+  datasetVersion?: string;
+  codeCommit?: string;
+  ts?: number | string;
+  metrics?: Record<string, unknown>;
+  raw?: Record<string, unknown>;
+}
+
+export interface BenchmarkMatrixArtifact {
+  schema: string;
+  version: number;
+  generatedAt: string;
+  source: Record<string, unknown>;
+  referenceModelId: string | null;
+  tiers: string[];
+  benchmarks: string[];
+  counts: Record<string, number>;
+  rows: Array<Record<string, unknown>>;
+  comparisons: Array<Record<string, unknown>>;
+}
+
+export interface WriteBenchmarkMatrixOptions {
+  rows: BenchmarkMatrixRowInput[];
+  outputDir?: string;
+  generatedAt?: string;
+  referenceModelId?: string;
+  source?: Record<string, unknown>;
+}
+
+export interface BenchmarkMatrixResponse {
+  outputDir: string;
+  artifactPath: string;
+  artifact: BenchmarkMatrixArtifact;
+}
+
+export interface BenchmarkMatrixArtifactSource {
+  path: string;
+  modelId?: string;
+  benchmark?: string;
+  variant?: BenchmarkMatrixVariant;
+  tier?: string;
+  provider?: string;
+  datasetVersion?: string;
+  codeCommit?: string;
+  useMocks?: boolean;
+}
+
+export interface WriteBenchmarkMatrixFromArtifactsOptions {
+  artifacts: BenchmarkMatrixArtifactSource[];
+  outputDir?: string;
+  generatedAt?: string;
+  referenceModelId?: string;
+  source?: Record<string, unknown>;
+}
+
+export interface RunBenchmarkVsCerebrasOptions {
+  trainingRoot?: string;
+  python?: string;
+  tiers?: string;
+  benchmark?: "eliza_harness_action_selection" | "clawbench" | "hermes" | "all";
+  variants?: "trained" | "base" | "both";
+  cerebrasModel?: string;
+  maxSamples?: number;
+  outputDir?: string;
+  checkpointsDir?: string;
+  trainedModelPath?: string;
+  dryRun?: boolean;
+  resultsDb?: string;
+  datasetVersion?: string;
+  codeCommit?: string;
+  matrixOutputDir?: string;
+}
+
+export interface RunBenchmarkVsCerebrasResponse {
+  trainingRoot: string;
+  outputDir: string;
+  matrixOutputDir: string | null;
+  matrixArtifactPath: string | null;
+  resultsDb: string | null;
+  command: string[];
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface StageEliza1BundleOptions {
+  trainingRoot?: string;
+  python?: string;
+  repoId?: string;
+  tier?: string;
+  localDir?: string;
+  outputDir?: string;
+  maxBytes?: number;
+  apply?: boolean;
+}
+
+export interface StageEliza1BundleResponse {
+  trainingRoot: string;
+  outputDir: string;
+  manifestPath: string;
+  manifest: Record<string, unknown>;
+  command: string[];
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  plan: Record<string, unknown> | null;
+}
+
+export interface RunActionBenchmarkOptions {
+  workspaceRoot?: string;
+  bun?: string;
+  outputDir?: string;
+  useMocks?: boolean;
+  forceTrajectoryCapture?: boolean;
+  filter?: string;
+  runsPerCase?: number;
+  provider?: string;
+  modelId?: string;
+  runtimeModel?: string;
+  smallModel?: string;
+  largeModel?: string;
+  baseUrl?: string;
+  variant?: "reference" | "base" | "trained";
+  tier?: string;
+  benchmark?: string;
+  datasetVersion?: string;
+  codeCommit?: string;
+  dryRun?: boolean;
+}
+
+export interface RunActionBenchmarkResponse {
+  workspaceRoot: string;
+  appCoreRoot: string;
+  outputDir: string;
+  reportMarkdownPath: string;
+  reportJsonPath: string;
+  trajectoryDir: string;
+  command: string[];
+  env: Record<string, string>;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  matrixSource: BenchmarkMatrixArtifactSource | null;
+}
+
+export interface RunFeedGenerationOptions {
+  workspaceRoot?: string;
+  bun?: string;
+  archetypes?: string;
+  numAgents?: number;
+  ticks?: number;
+  parallel?: number;
+  managerId?: string;
+  cleanup?: boolean;
+  dryRun?: boolean;
+  outputDir?: string;
+}
+
+export interface RunFeedGenerationResponse {
+  workspaceRoot: string;
+  feedCliRoot: string;
+  outputDir: string;
+  artifacts: Array<{
+    schema: string | null;
+    manifestPath: string;
+    exportPath: string | null;
+    outputDir: string | null;
+    sourceKind: string | null;
+    trajectories: number | null;
+    archetypes: unknown;
+    generatedAt: string | null;
+  }>;
+  command: string[];
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface RunScenarioOptions {
+  workspaceRoot?: string;
+  bun?: string;
+  scenarioDir?: string;
+  outputDir?: string;
+  runId?: string;
+  scenario?: string;
+  fileGlobs?: string[];
+  exportNative?: boolean;
+  useDeterministicProxy?: boolean;
+  dryRun?: boolean;
+}
+
+export interface RunScenarioResponse {
+  workspaceRoot: string;
+  scenarioRunnerRoot: string;
+  scenarioDir: string;
+  outputDir: string;
+  runId: string;
+  matrixPath: string;
+  viewerHtmlPath: string;
+  nativeJsonlPath: string | null;
+  nativeManifestPath: string | null;
+  command: string[];
+  env: Record<string, string>;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface RunLocalEvalComparisonOptions {
+  trainingRoot?: string;
+  python?: string;
+  manifestPath?: string;
+  model?: string;
+  trainedModelPath?: string;
+  backend?: "mlx" | "cuda" | "cpu";
+  promptFile?: string;
+  maxTokens?: number;
+  systemPrompt?: string;
+  outputPath?: string;
+  outputDir?: string;
+  dryRun?: boolean;
+}
+
+export interface RunLocalEvalComparisonResponse {
+  outputDir: string;
+  artifactPath: string;
+  artifact: Record<string, unknown>;
+  trainingRoot: string;
+  command: string[];
+  reportPath: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+}
+
+export interface RunTrainingCollectionOptions {
+  preflightOnly?: boolean;
+  preflightProbe?: boolean;
+  outputDir?: string;
+  workspaceRoot?: string;
+  includeHuggingFace?: boolean;
+  includeFeed?: boolean;
+  includeNaturalTrajectories?: boolean;
+  includeTestTrajectories?: boolean;
+  includeScenarios?: boolean;
+  includeEvalComparison?: boolean;
+  includeActionBenchmark?: boolean;
+  includeBenchmarkVsCerebras?: boolean;
+  includeEliza1ModelRegistry?: boolean;
+  includeEliza1BundleStage?: boolean;
+  includeBenchmarkMatrix?: boolean;
+  huggingFace?: IngestHuggingFaceDatasetOptions;
+  feed?: RunFeedGenerationOptions;
+  naturalTrajectories?: {
+    outputDir?: string;
+    trajectoryIds?: string[];
+    runId?: string;
+    limit?: number;
+    rawJsonlPath?: string;
+    sanitizedJsonlPath?: string;
+    includeRawJsonl?: boolean;
+    tasks?: string[];
+    source?: Record<string, unknown>;
+    privacy?: Record<string, unknown>;
+    uploadToHuggingFace?: boolean | Record<string, unknown>;
+  };
+  testTrajectories?: {
+    roots?: string[];
+    outputDir?: string;
+    workspaceRoot?: string;
+    limit?: number;
+    generatedAt?: string;
+  };
+  scenarios?: RunScenarioOptions;
+  evalComparison?: RunLocalEvalComparisonOptions;
+  actionBenchmark?: RunActionBenchmarkOptions;
+  actionBenchmarkPair?: {
+    label?: string;
+    tier?: string;
+    base?: RunActionBenchmarkOptions;
+    trained?: RunActionBenchmarkOptions;
+  };
+  actionBenchmarkPairs?: Array<{
+    label?: string;
+    tier?: string;
+    base?: RunActionBenchmarkOptions;
+    trained?: RunActionBenchmarkOptions;
+  }>;
+  benchmarkVsCerebras?: RunBenchmarkVsCerebrasOptions;
+  eliza1BundleStage?: StageEliza1BundleOptions;
+  benchmarkMatrix?: WriteBenchmarkMatrixFromArtifactsOptions;
+  analysis?: BuildTrainingAnalysisIndexOptions;
+}
+
+export interface TrainingCollectionStep {
+  id:
+    | "huggingface"
+    | "feed"
+    | "natural_trajectories"
+    | "test_trajectories"
+    | "scenarios"
+    | "eval_comparison"
+    | "action_benchmark"
+    | "benchmark_vs_cerebras"
+    | "eliza1_model_registry"
+    | "eliza1_bundle_stage"
+    | "benchmark_matrix";
+  status: "skipped" | "succeeded" | "failed";
+  outputDir: string | null;
+  error: string | null;
+  result: unknown;
+}
+
+export interface TrainingCollectionSourceSample {
+  title: string;
+  path: string;
+  schema: string | null;
+  sourceKind: string | null;
+  trajectoryId: string | null;
+  scenarioId: string | null;
+  task: string | null;
+  input: unknown;
+  output: unknown;
+  model: string | null;
+  systemPrompt?: unknown;
+  callId?: string | null;
+}
+
+export interface TrainingCollectionEvalComparison {
+  title: string;
+  path: string;
+  baseModel: string | null;
+  trainedModel: string | null;
+  backend: string | null;
+  baseScore: number | null;
+  trainedScore: number | null;
+  improvementAbsolute: number | null;
+  improvementPercent: number | null;
+  baseLatencyMs: number | null;
+  trainedLatencyMs: number | null;
+  latencyDeltaMs: number | null;
+  promptCount: number | null;
+  distinctResponseCount: number | null;
+  reportPath: string | null;
+}
+
+export interface TrainingCollectionCoverageSummary {
+  dataSources: {
+    huggingFace: number;
+    feed: number;
+    natural: number;
+    scenarios: number;
+    tests: number;
+    trainingJsonl: number;
+  };
+  readableSamples: {
+    huggingFace: number;
+    feed: number;
+    natural: number;
+    scenarios: number;
+    tests: number;
+    trainingJsonl: number;
+    total: number;
+  };
+  evals: {
+    artifacts: number;
+    comparisons: number;
+    scoredComparisons: number;
+  };
+  benchmarks: {
+    matrices: number;
+    comparisons: number;
+    scoredComparisons: number;
+    caseSamples: number;
+    tiers: string[];
+    allEliza1TiersCovered: boolean;
+    tierCoverage: Array<{
+      tier: string;
+      hasBase: boolean;
+      hasTrained: boolean;
+      hasReference: boolean;
+      hasImprovement: boolean;
+      benchmarkCount: number;
+      comparisonCount: number;
+    }>;
+  };
+  models: {
+    artifacts: number;
+    inventoryCount: number;
+  };
+}
+
+export interface TrainingCollectionPreflightSummary {
+  liveRequired: boolean;
+  checks: Array<{
+    id: string;
+    label: string;
+    status: "ok" | "missing" | "warning" | "skipped";
+    detail: string;
+    path?: string | null;
+  }>;
+}
+
+export interface RunTrainingCollectionPreflightResponse {
+  preflight: TrainingCollectionPreflightSummary;
+}
+
+export interface TrainingCollectionRunSummary {
+  generatedAt: string;
+  outputDir: string;
+  manifestPath: string;
+  readmePath: string;
+  analysisIndexHtmlPath: string;
+  readinessStatus: TrainingReadinessStatus;
+  readiness: {
+    ready: number;
+    partial: number;
+    missing: number;
+  };
+  artifactCount: number;
+  stepCounts: Record<string, number>;
+  dataSources: {
+    huggingFaceDatasets: number;
+    feedDatasets: number;
+    naturalTrajectoryBundles: number;
+    scenarioRuns: number;
+    scenarioNativeDatasets: number;
+    testTrajectories: number;
+    trainingJsonlDatasets: number;
+  };
+  benchmarks: {
+    actionBenchmarkPairs: number;
+    benchmarkComparisons: number;
+    caseSamples: number;
+    tiers: string[];
+    baselineProgress: {
+      tierOrder: string[];
+      establishedTiers: string[];
+      remainingTiers: string[];
+      nextTier: string | null;
+      smallestTierEstablished: boolean;
+      allTiersEstablished: boolean;
+    };
+  };
+  evals: {
+    evalArtifacts: number;
+    evalComparisons: number;
+    actionBenchmarks: number;
+    benchmarkMatrices: number;
+    comparisonInventory: TrainingCollectionEvalComparison[];
+  };
+  coverage?: TrainingCollectionCoverageSummary;
+}
+
+export interface ListTrainingCollectionsResponse {
+  root: string;
+  indexJsonPath: string;
+  indexHtmlPath: string;
+  collections: TrainingCollectionRunSummary[];
+}
+
+export interface RunTrainingCollectionResponse {
+  outputDir: string;
+  manifestPath: string;
+  readmePath: string;
+  collectionIndex: ListTrainingCollectionsResponse & {
+    schema: string;
+    schemaVersion: number;
+    generatedAt: string;
+  };
+  manifest: {
+    schema: string;
+    schemaVersion: number;
+    generatedAt: string;
+    outputDir: string;
+    manifestPath: string;
+    readmePath: string;
+    provenance: {
+      generatedBy: string;
+      workspaceRoot: string | null;
+      trainingStateRoot: string;
+      analysisRoots: string[];
+      outputLayout: {
+        collection: string;
+        analysis: string;
+        steps: string;
+      };
+    };
+    recipe: {
+      include: Record<string, boolean>;
+      sources: Record<string, Record<string, unknown>>;
+      evals: {
+        evalComparison: Record<string, unknown>;
+        actionBenchmark: Record<string, unknown>;
+        actionBenchmarkPair: Record<string, unknown> | null;
+        actionBenchmarkPairs: Record<string, unknown>[];
+        benchmarkVsCerebras: Record<string, unknown>;
+        benchmarkMatrix: Record<string, unknown>;
+      };
+      training: Record<string, Record<string, unknown>>;
+    };
+    analysis: {
+      outputDir: string;
+      indexHtmlPath: string;
+      manifestPath: string;
+      artifactCount: number;
+    };
+    readiness: {
+      outputDir: string;
+      reportPath: string;
+      status: TrainingReadinessStatus;
+      ready: number;
+      partial: number;
+      missing: number;
+    };
+    evidence: {
+      preflight?: TrainingCollectionPreflightSummary;
+      viewerHtmlPath: string;
+      analysisManifestPath: string;
+      readinessReportPath: string;
+      artifactCounts: Record<string, number>;
+      stepCounts: Record<string, number>;
+      stepArtifacts?: Array<{
+        stepId: string;
+        status: string;
+        outputDir: string | null;
+        command: string[] | null;
+        exitCode: number | null;
+        stdout?: string | null;
+        stderr?: string | null;
+        paths: Array<{
+          label: string;
+          path: string;
+        }>;
+      }>;
+      dataSources: {
+        huggingFaceDatasets: number;
+        feedDatasets: number;
+        naturalTrajectoryBundles: number;
+        scenarioRuns: number;
+        scenarioNativeDatasets: number;
+        testTrajectories: number;
+        trainingJsonlDatasets: number;
+      };
+      feed?: {
+        runs: Array<{
+          title: string;
+          path: string;
+          schema: string | null;
+          sourceKind: string | null;
+          archetype: string | null;
+          archetypes: unknown;
+          trajectories: number | null;
+          totalTicks: number | null;
+          durationMs: number | null;
+          errors: number | null;
+          exportPath: string | null;
+          outputDir: string | null;
+        }>;
+        archetypeStats: Array<{
+          title: string;
+          path: string;
+          archetype: string;
+          agents: number | null;
+          trajectories: number | null;
+          avgTicksPerAgent: number | null;
+        }>;
+        trajectorySamples: Array<{
+          title: string;
+          path: string;
+          trajectoryId: string | null;
+          agentId: string | null;
+          archetype: string | null;
+          scenarioId: string | null;
+          score: number | null;
+          finalPnl: number | null;
+          steps: number | null;
+          firstStep: unknown;
+          reasoning: unknown;
+        }>;
+      };
+      sourceSamples?: {
+        huggingFace: TrainingCollectionSourceSample[];
+        feed: TrainingCollectionSourceSample[];
+        natural: TrainingCollectionSourceSample[];
+        scenarios: TrainingCollectionSourceSample[];
+        tests: TrainingCollectionSourceSample[];
+        trainingJsonl: TrainingCollectionSourceSample[];
+      };
+      training: {
+        trainingRuns: number;
+        models: number;
+        modelInventory?: Array<{
+          title: string;
+          path: string;
+          schema: string | null;
+          model: string | null;
+          tier: string | null;
+          variant: string | null;
+          outputPath: string | null;
+          baseModel: string | null;
+          repoId: string | null;
+          evalImprovementPercent: number | null;
+        }>;
+      };
+      evals: {
+        evalArtifacts: number;
+        actionBenchmarks: number;
+        evalComparisons: number;
+        benchmarkMatrices: number;
+        comparisonInventory: TrainingCollectionEvalComparison[];
+      };
+      coverage?: TrainingCollectionCoverageSummary;
+      artifactLinks: Array<{
+        category:
+          | "huggingface"
+          | "feed"
+          | "natural"
+          | "scenario"
+          | "test"
+          | "training_jsonl"
+          | "eval"
+          | "benchmark"
+          | "model"
+          | "other";
+        kind: TrainingAnalysisArtifactKind;
+        title: string;
+        path: string;
+        schema: string | null;
+      }>;
+      benchmarks: {
+        actionBenchmarkPairs: number;
+        actionBenchmarkMatrixSources: number;
+        benchmarkRows: number;
+        benchmarkComparisons: number;
+        tiers: string[];
+        comparisonInventory: Array<{
+          tier: string | null;
+          benchmark: string | null;
+          baseModelId: string | null;
+          trainedModelId: string | null;
+          referenceModelId: string | null;
+          baseScore: number | null;
+          trainedScore: number | null;
+          improvementPercent: number | null;
+          referenceScore: number | null;
+          trainedVsReferencePercent: number | null;
+          dryRun: boolean;
+          useMocks: boolean;
+          modelBacked: boolean;
+        }>;
+        improvementComparisons: Array<{
+          tier: string | null;
+          benchmark: string | null;
+          baseScore: number | null;
+          trainedScore: number | null;
+          improvementPercent: number | null;
+          referenceScore: number | null;
+          modelBacked: boolean;
+        }>;
+        baselineProgress: {
+          tierOrder: string[];
+          establishedTiers: string[];
+          remainingTiers: string[];
+          nextTier: string | null;
+          smallestTierEstablished: boolean;
+          allTiersEstablished: boolean;
+        };
+        caseSamples?: Array<{
+          tier: string | null;
+          variant: string | null;
+          modelId: string | null;
+          benchmark: string | null;
+          score: number | null;
+          caseId: string | null;
+          prompt: string | null;
+          expectedAction: string | null;
+          actualAction: string | null;
+          pass: boolean;
+          response: string | null;
+          latencyMs: number | null;
+          trajectoryPath: string | null;
+          useMocks: boolean;
+        }>;
+      };
+      benchmarkReadiness: {
+        smallestTier: TrainingReadinessStatus;
+        allEliza1Tiers: TrainingReadinessStatus;
+        allEliza1TierImprovements: TrainingReadinessStatus;
+        cerebrasReference: TrainingReadinessStatus;
+        baseTrainedImprovement: TrainingReadinessStatus;
+      };
+      readinessGaps: Array<{
+        id: string;
+        label: string;
+        status: TrainingReadinessStatus;
+        note: string;
+        recommendedCapability: string | null;
+        recommendedParams: Record<string, unknown> | null;
+      }>;
+    };
+    steps: TrainingCollectionStep[];
+  };
+  analysis: TrainingAnalysisIndexResponse;
+}
+
 export type TrainingEventKind =
   | "job_started"
   | "job_progress"

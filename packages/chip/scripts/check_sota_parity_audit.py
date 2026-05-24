@@ -272,8 +272,7 @@ def structured_findings(domains: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "evidence": evidence if isinstance(evidence, list) else [],
                 "next_step": (
                     "Close the domain gate with measured phone-class target "
-                    "evidence covering: "
-                    + "; ".join(str(item) for item in criteria if item)
+                    "evidence covering: " + "; ".join(str(item) for item in criteria if item)
                     if isinstance(criteria, list)
                     else "Close the domain gate with measured phone-class target evidence."
                 ),

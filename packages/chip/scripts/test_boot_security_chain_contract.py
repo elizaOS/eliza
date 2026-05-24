@@ -50,7 +50,7 @@ def ready_contract() -> dict:
         "e1_chip_cpu_variant": {
             "has_cpu": True,
             "boot": {"reset_vector": "0x1000"},
-        }
+        },
     }
 
 

@@ -47,11 +47,12 @@ HEADER = (
     "#   initcall_debug on so do_initcalls() is fully observable.\n"
     "# Proves: real CVA6 RTL + OpenSBI v1.8.1 + real Linux 6.12.90 + real\n"
     "#   freestanding /init reach userland (ELIZA-USERLAND-OK).\n"
-    "# ---------------------------------------------------------------\n")
+    "# ---------------------------------------------------------------\n"
+)
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).isoformat()
+    return _dt.datetime.now(_dt.UTC).isoformat()
 
 
 def _furthest(text: str) -> str:
@@ -97,8 +98,11 @@ def _observed() -> dict:
         out["last_heartbeat_cycle"] = int(last[0])
         out["last_heartbeat_uart_bytes"] = int(last[1])
         out["last_heartbeat_furthest"] = last[2]
-    m = re.search(r"E1 boot run: (\d+) UART bytes, (\d+) cycles, "
-                  r"DRAM AR=(\d+) R=(\d+), UART writes=(\d+)", text)
+    m = re.search(
+        r"E1 boot run: (\d+) UART bytes, (\d+) cycles, "
+        r"DRAM AR=(\d+) R=(\d+), UART writes=(\d+)",
+        text,
+    )
     if m:
         out["final_uart_bytes"] = int(m.group(1))
         out["final_cycles"] = int(m.group(2))
@@ -152,7 +156,8 @@ def main() -> int:
             "CONFIG_UNIX98_PTYS/LEGACY_PTYS, CONFIG_CRYPTO, CONFIG_BINFMT_SCRIPT, "
             "PM/CPU_FREQ/CPU_IDLE/SUSPEND, FTRACE/BPF/PROFILING, "
             "RTC/I2C/SPI/GPIO/MTD/MMC/WATCHDOG/HWMON/INPUT/HW_RANDOM/THERMAL; "
-            "added SLUB_TINY + initcall_debug; Image 2.0 MiB -> 1.70 MiB."),
+            "added SLUB_TINY + initcall_debug; Image 2.0 MiB -> 1.70 MiB."
+        ),
         "claim_boundary": (
             "FUNCTIONAL BOOT PROOF, NOT A TIMING/PERF/SILICON CLAIM.  Sim-only "
             "zero-wait DRAM + tiny advertised RAM make the OpenSBI -> Linux -> "
@@ -160,7 +165,8 @@ def main() -> int:
             "RTL + OpenSBI + real Linux + real /init reach userland; it makes NO "
             "statement about cycle counts, memory latency, or wall-clock "
             "performance on silicon.  The realistic-latency config (no "
-            "+E1_DRAM_FAST) remains the DRAMsim3-derived fidelity reference."),
+            "+E1_DRAM_FAST) remains the DRAMsim3-derived fidelity reference."
+        ),
         "observed": observed,
         "transcript": "docs/evidence/cpu_ap/linux_userland_cva6.transcript",
         "transcript_excerpt": text[-2500:],
@@ -171,26 +177,37 @@ def main() -> int:
         detail["proof"] = (
             "Real CVA6 RTL + OpenSBI v1.8.1 + real Linux 6.12.90 + real "
             "freestanding /init reached userland: ELIZA-USERLAND-OK printed over "
-            "the ns16550a UART, preceded by a live uname(2) + /proc/cpuinfo dump.")
+            "the ns16550a UART, preceded by a live uname(2) + /proc/cpuinfo dump."
+        )
         payload = {
-            "schema": "eliza.gate_status.v1", "gate": "linux_boot_cva6",
-            "status": "PASS", "blocker_id": None, "blocker_reason": None,
-            "evidence_paths": evidence, "as_of": _now(),
-            "subsystem": "cpu_ap", "detail": detail,
+            "schema": "eliza.gate_status.v1",
+            "gate": "linux_boot_cva6",
+            "status": "PASS",
+            "blocker_id": None,
+            "blocker_reason": None,
+            "evidence_paths": evidence,
+            "as_of": _now(),
+            "subsystem": "cpu_ap",
+            "detail": detail,
         }
         print(f"PASS: reached userland (furthest={furthest})")
     else:
         nxt = _next_marker(furthest)
         detail["next_marker"] = nxt
         payload = {
-            "schema": "eliza.gate_status.v1", "gate": "linux_boot_cva6",
-            "status": "BLOCKED", "blocker_id": "boot-marker-not-reached",
+            "schema": "eliza.gate_status.v1",
+            "gate": "linux_boot_cva6",
+            "status": "BLOCKED",
+            "blocker_id": "boot-marker-not-reached",
             "blocker_reason": (
                 f"required marker 'ELIZA-USERLAND-OK' not reached on the fast "
                 f"functional config; furthest honest marker = {furthest}; next "
-                f"gap = {nxt}. {reason} NOT FAKED."),
-            "evidence_paths": evidence, "as_of": _now(),
-            "subsystem": "cpu_ap", "detail": detail,
+                f"gap = {nxt}. {reason} NOT FAKED."
+            ),
+            "evidence_paths": evidence,
+            "as_of": _now(),
+            "subsystem": "cpu_ap",
+            "detail": detail,
         }
         print(f"BLOCKED: furthest marker = {furthest}; userland not reached. {reason}")
 

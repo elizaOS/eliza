@@ -33,6 +33,8 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_trajectory_review_gate,
     build_token_evidence,
     build_run_config,
+    build_code_agent_viewer_payload,
+    build_code_agent_run_index_payload,
     build_cell,
     build_exit_code_summary,
     classify_failure,
@@ -51,6 +53,8 @@ from benchmarks.orchestrator.code_agent_matrix import (
     summarize_existing,
     summarize_results,
     truncate_log_text,
+    write_code_agent_run_viewer,
+    write_code_agent_run_index,
 )
 from benchmarks.orchestrator.code_agent_coverage import (
     DEFERRED_STATUS,
@@ -241,6 +245,7 @@ def test_builds_browser_and_computer_use_cells(tmp_path: Path) -> None:
     assert mind2web.command[:3] == [sys.executable, "-m", "benchmarks.mind2web"]
     assert "--sample" in mind2web.command
     assert "--mock" in mind2web.command
+    assert mind2web.env_overrides["ELIZA_BENCH_SKIP_CORE_PLUGINS"] == "true"
     assert visual.command[:3] == [sys.executable, "-m", "benchmarks.visualwebbench"]
     assert "--use-sample-tasks" in visual.command
     assert "--mock" in visual.command
@@ -251,6 +256,71 @@ def test_builds_browser_and_computer_use_cells(tmp_path: Path) -> None:
     assert "run_multienv_eliza.py" in " ".join(osworld.command)
     assert "--dry_run" in osworld.command
     assert "--result_dir" in osworld.command
+
+
+def test_mind2web_live_cell_uses_huggingface_and_minimal_bridge(tmp_path: Path) -> None:
+    cell = build_cell(
+        root=_root(),
+        run_root=tmp_path,
+        benchmark="mind2web",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=5,
+        smoke=False,
+        no_docker=True,
+    )
+
+    assert "--hf" in cell.command
+    assert "--sample" not in cell.command
+    assert "--mock" not in cell.command
+    assert cell.env_overrides["ELIZA_BENCH_SKIP_CORE_PLUGINS"] == "true"
+
+
+def test_osworld_no_docker_preflight_requires_explicit_provider(tmp_path: Path) -> None:
+    cell = build_cell(
+        root=_root(),
+        run_root=tmp_path,
+        benchmark="osworld",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=5,
+        smoke=False,
+        no_docker=True,
+    )
+
+    report = preflight_matrix(
+        root=tmp_path,
+        cells=[cell],
+        provider="cerebras",
+        env={"CEREBRAS_API_KEY": "present"},
+    )
+
+    assert report["ok"] is False
+    assert "osworld_no_docker_requires_provider" in {
+        issue["kind"] for issue in report["issues"]
+    }
+
+
+def test_osworld_provider_env_is_forwarded(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("OSWORLD_PROVIDER_NAME", "vmware")
+    monkeypatch.setenv("OSWORLD_PATH_TO_VM", "/tmp/disposable.vmwarevm/Ubuntu.vmx")
+
+    cell = build_cell(
+        root=_root(),
+        run_root=tmp_path,
+        benchmark="osworld",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=5,
+        smoke=False,
+        no_docker=True,
+    )
+
+    assert cell.command[cell.command.index("--provider_name") + 1] == "vmware"
+    assert cell.command[cell.command.index("--path_to_vm") + 1] == "/tmp/disposable.vmwarevm/Ubuntu.vmx"
 
 
 def test_builds_explicit_vision_language_cell(tmp_path: Path, monkeypatch) -> None:
@@ -649,6 +719,24 @@ def test_builds_real_webshop_cell_with_bridge(tmp_path: Path) -> None:
     assert "--bridge" in cell.command
     assert "--mock" not in cell.command
     assert "--use-sample-tasks" not in cell.command
+    assert "--split" not in cell.command
+
+
+def test_builds_five_task_webshop_cell_with_train_split(tmp_path: Path) -> None:
+    cell = build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="webshop",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=5,
+        smoke=False,
+        no_docker=True,
+    )
+
+    assert "--bridge" in cell.command
+    assert cell.command[cell.command.index("--split") + 1] == "train"
 
 
 def test_webshop_smoke_enables_spacy_stub(tmp_path: Path) -> None:
@@ -1997,6 +2085,54 @@ def test_cli_can_publish_code_agent_latest_snapshots(
     assert snapshot["token_metrics"]["target_total_tokens"] == 110
     assert not publishability.ok
     assert not readiness.ok
+
+
+def test_cli_normal_run_records_viewer_artifact_paths(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run_cell(cell, **_kwargs):
+        return _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=1,
+            wrong=0,
+            input_tokens=80,
+            output_tokens=20,
+            cached_percent=25.0,
+            llm_calls=1,
+            output_dir=cell.output_dir,
+        )
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    paths = summary["artifact_paths"]
+
+    assert code == 0
+    assert paths["viewer_index"] == str(tmp_path / "run" / "viewer" / "index.html")
+    assert paths["viewer_data"] == str(tmp_path / "run" / "viewer" / "data.js")
+    assert Path(paths["viewer_index"]).exists()
+    assert Path(paths["viewer_data"]).exists()
+    assert "window.BENCHMARK_RUN_DATA" in Path(paths["viewer_data"]).read_text(
+        encoding="utf-8"
+    )
 
 
 def test_code_agent_latest_publisher_sanitizes_non_finite_scores(tmp_path: Path) -> None:
@@ -4801,3 +4937,234 @@ def test_queue_cell_pairs_extracts_exact_target_and_baseline_pairs() -> None:
         ("webshop", "elizaos"),
         ("webshop", "opencode"),
     )
+
+
+def test_code_agent_run_viewer_embeds_cell_artifacts_and_trajectories(
+    tmp_path: Path,
+) -> None:
+    cell_root = tmp_path / "terminal_bench" / "elizaos"
+    output_dir = cell_root / "output"
+    trajectory_dir = cell_root / "trajectories"
+    output_dir.mkdir(parents=True)
+    trajectory_dir.mkdir(parents=True)
+    command_path = cell_root / "command.json"
+    stdout_path = cell_root / "stdout.log"
+    stderr_path = cell_root / "stderr.log"
+    result_path = output_dir / "terminal-bench-results.json"
+    telemetry_path = trajectory_dir / "telemetry.jsonl"
+    command_path.write_text(
+        json.dumps({"command": ["python", "-m", "bench"], "env_overrides": {}}),
+        encoding="utf-8",
+    )
+    stdout_path.write_text("stdout body", encoding="utf-8")
+    stderr_path.write_text("stderr body", encoding="utf-8")
+    result_path.write_text(
+        json.dumps({"results": [{"task_id": "task-1", "success": True, "score": 1.0}]}),
+        encoding="utf-8",
+    )
+    telemetry_path.write_text(
+        json.dumps(
+            {
+                "format": "eliza_native_v1",
+                "task_id": "task-1",
+                "request": {"messages": [{"role": "user", "content": "input"}]},
+                "response": {
+                    "text": "output",
+                    "usage": {
+                        "promptTokens": 10,
+                        "completionTokens": 3,
+                        "cacheReadInputTokens": 4,
+                    },
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    summary = summarize_results(
+        [
+            CellResult(
+                benchmark="terminal_bench",
+                adapter="elizaos",
+                status="succeeded",
+                exit_code=0,
+                duration_seconds=1.0,
+                output_dir=str(output_dir),
+                stdout_path=str(stdout_path),
+                stderr_path=str(stderr_path),
+                result_path=str(result_path),
+                command_path=str(command_path),
+                failure_class="pass",
+                score=1.0,
+                outcome_metrics={"right": 1, "wrong": 0, "total": 1, "accuracy": 1.0},
+                token_metrics={
+                    "input_tokens": 10,
+                    "output_tokens": 3,
+                    "total_tokens": 13,
+                    "cached_tokens": 4,
+                    "cached_token_percent": 40.0,
+                    "llm_call_count": 1,
+                },
+            )
+        ]
+    )
+
+    payload = build_code_agent_viewer_payload(tmp_path, summary)
+    paths = write_code_agent_run_viewer(tmp_path, summary)
+    cell = payload["cells"][0]
+
+    assert cell["command"]["command"] == ["python", "-m", "bench"]
+    assert cell["result_payload"]["results"][0]["task_id"] == "task-1"
+    assert cell["task_diagnostics"][0]["task_id"] == "task-1"
+    assert cell["task_diagnostics"][0]["trajectory_match_count"] == 1
+    assert cell["task_diagnostics"][0]["usage"]["prompt_tokens"] == 10
+    assert cell["task_diagnostics"][0]["usage"]["completion_tokens"] == 3
+    assert cell["stdout_tail"] == "stdout body"
+    assert cell["stderr_tail"] == "stderr body"
+    assert cell["trajectory_files"][0]["entries"][0]["request"]["messages"][0]["content"] == "input"
+    assert Path(paths["viewer_index"]).exists()
+    assert Path(paths["viewer_data"]).exists()
+    data_js = Path(paths["viewer_data"]).read_text(encoding="utf-8")
+    assert "window.BENCHMARK_RUN_DATA" in data_js
+    assert "terminal_bench" in data_js
+    assert "task_diagnostics" in data_js
+    assert "Task Diagnostics" in Path(paths["viewer_index"]).read_text(encoding="utf-8")
+
+
+def test_code_agent_run_index_links_multiple_summaries(tmp_path: Path) -> None:
+    index_root = tmp_path / "index"
+    run_a = tmp_path / "runs" / "run-a"
+    run_b = tmp_path / "runs" / "run-b"
+    run_c = tmp_path / "runs" / "run-c"
+    run_a.mkdir(parents=True)
+    run_b.mkdir(parents=True)
+    run_c.mkdir(parents=True)
+    for run_root, benchmark, status, target_right, mode in (
+        (run_a, "terminal_bench", "weak", 0, "live"),
+        (run_b, "standard_humaneval", "inferior", 2, "live"),
+        (run_c, "standard_humaneval", "comparable", 5, "smoke"),
+    ):
+        summary = {
+            "generated_at": f"2026-05-23T00:00:0{target_right + 1}+00:00",
+            "artifact_paths": {
+                "run_root": str(run_root),
+                "summary_json": str(run_root / "summary.json"),
+                "viewer_index": str(run_root / "viewer" / "index.html"),
+            },
+            "run_config": {
+                "run_root": str(run_root),
+                "mode": mode,
+                "provider": "cerebras",
+                "model": "gpt-oss-120b",
+            },
+            "cells": [
+                {"benchmark": benchmark, "adapter": "elizaos", "status": "succeeded"},
+                {"benchmark": benchmark, "adapter": "opencode", "status": "succeeded"},
+            ],
+            "head_to_head": {
+                "status_counts": {status: 1},
+                "comparisons": [
+                    {
+                        "benchmark": benchmark,
+                        "status": status,
+                        "target_adapter": "elizaos",
+                        "baseline_adapter": "opencode",
+                        "target_right": target_right,
+                        "target_total": 5,
+                        "target_accuracy": target_right / 5,
+                        "baseline_right": 4,
+                        "baseline_total": 5,
+                        "baseline_accuracy": 0.8,
+                        "accuracy_delta": target_right / 5 - 0.8,
+                        "right_delta": target_right - 4,
+                        "target_total_tokens": 100,
+                        "baseline_total_tokens": 200,
+                        "total_token_delta": -100,
+                        "target_cached_token_percent": 30.0,
+                        "baseline_cached_token_percent": 20.0,
+                        "cached_token_percent_delta": 10.0,
+                        "target_llm_call_count": 3,
+                        "baseline_llm_call_count": 4,
+                        "llm_call_delta": -1,
+                    }
+                ],
+            },
+            "token_by_adapter": {
+                "elizaos": {"total_tokens": 100},
+                "opencode": {"total_tokens": 200},
+            },
+            "coverage_gate": {"ok": True, "message": "covered"},
+            "benchmark_gate": {"ok": status != "inferior", "message": status},
+            "required_stats_gate": {"ok": True, "message": "stats"},
+            "efficiency_gate": {"ok": True, "message": "efficient"},
+            "release_readiness": {
+                "ok": status != "inferior",
+                "message": "release",
+                "blocking_requirements": ["comparable_or_better"]
+                if status == "inferior"
+                else [],
+                "unblock_commands": [{"id": "rerun"}] if status == "inferior" else [],
+            },
+            "report_rows": [
+                {
+                    "benchmark": benchmark,
+                    "coverage_gate_ok": True,
+                    "benchmark_gate_ok": status != "inferior",
+                    "required_stats_gate_ok": True,
+                    "efficiency_gate_ok": True,
+                    "release_readiness_ok": status != "inferior",
+                    "release_readiness_blocking_requirements": (
+                        "comparable_or_better" if status == "inferior" else ""
+                    ),
+                    "release_readiness_unblock_command_ids": (
+                        "rerun" if status == "inferior" else ""
+                    ),
+                }
+            ],
+        }
+        (run_root / "summary.json").write_text(
+            json.dumps(summary),
+            encoding="utf-8",
+        )
+
+    payload = build_code_agent_run_index_payload(
+        index_root,
+        [run_a / "summary.json", run_b / "summary.json", run_c / "summary.json"],
+    )
+    paths = write_code_agent_run_index(
+        index_root,
+        summary_paths=[run_a / "summary.json", run_b / "summary.json", run_c / "summary.json"],
+    )
+
+    assert len(payload["runs"]) == 3
+    assert len(payload["benchmark_rows"]) == 3
+    assert len(payload["summary_paths"]) == 3
+    assert payload["latest_by_benchmark"]["standard_humaneval"]["status"] == "inferior"
+    assert payload["latest_by_benchmark"]["standard_humaneval"]["run_mode"] == "live"
+    row = next(
+        item
+        for item in payload["benchmark_rows"]
+        if item["benchmark"] == "standard_humaneval" and item["run_mode"] == "live"
+    )
+    assert row["gates"]["benchmark_gate"] is False
+    assert row["release_readiness_blocking_requirements"] == "comparable_or_better"
+    run = next(item for item in payload["runs"] if item["run_id"] == "run-b")
+    assert run["gates"]["release_readiness"]["ok"] is False
+    assert Path(paths["index_html"]).exists()
+    assert Path(paths["index_data"]).exists()
+    assert Path(paths["analysis_md"]).exists()
+    data_js = Path(paths["index_data"]).read_text(encoding="utf-8")
+    assert "window.BENCHMARK_RUN_INDEX" in data_js
+    assert "terminal_bench" in data_js
+    assert "data-sort-key" in Path(paths["index_html"]).read_text(encoding="utf-8")
+    analysis = Path(paths["analysis_md"]).read_text(encoding="utf-8")
+    assert "included manifest coverage" in analysis
+    assert "release/live scored coverage" in analysis
+
+    scan_paths = write_code_agent_run_index(
+        index_root / "scan",
+        scan_root=tmp_path / "runs",
+    )
+    scan_data_js = Path(scan_paths["index_data"]).read_text(encoding="utf-8")
+    assert "standard_humaneval" in scan_data_js
+    assert "standard_humaneval" in data_js

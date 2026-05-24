@@ -38,13 +38,13 @@ from make_vbmeta import (  # noqa: E402
 )
 
 # OTP floors the C harness seeds the controller with.
-VBMETA_ROLLBACK_FLOOR = 5      # OTP floor for the vbmeta rollback slot (slot 2)
-RECOVERY_ROLLBACK_FLOOR = 1    # OTP floor for the recovery rollback slot (slot 3)
+VBMETA_ROLLBACK_FLOOR = 5  # OTP floor for the vbmeta rollback slot (slot 2)
+RECOVERY_ROLLBACK_FLOOR = 1  # OTP floor for the recovery rollback slot (slot 3)
 
 # Per-image rollback indices.
 SLOT_A_INDEX = 7
-OTA_B_INDEX = 8                # a forward OTA (>= floor): accepted
-DOWNGRADE_INDEX = VBMETA_ROLLBACK_FLOOR - 1   # below floor: rejected
+OTA_B_INDEX = 8  # a forward OTA (>= floor): accepted
+DOWNGRADE_INDEX = VBMETA_ROLLBACK_FLOOR - 1  # below floor: rejected
 RECOVERY_INDEX = 2
 
 BOOT_SALT = bytes.fromhex("a1b2c3d4e5f60718")
@@ -100,9 +100,7 @@ def main() -> int:
     (out / "ota_b_boot.bin").write_bytes(ota_b_boot)
 
     # Downgrade OTA (rollback_index 4 < floor 5): rejected pre-write.
-    (out / "ota_downgrade_vbmeta.bin").write_bytes(
-        build_slot(downgrade_boot, DOWNGRADE_INDEX)
-    )
+    (out / "ota_downgrade_vbmeta.bin").write_bytes(build_slot(downgrade_boot, DOWNGRADE_INDEX))
     (out / "ota_downgrade_boot.bin").write_bytes(downgrade_boot)
 
     # Tampered OTA: valid image with a vbmeta auth-block-covered byte flipped

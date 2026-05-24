@@ -30,7 +30,12 @@ class MlperfHarnessTests(unittest.TestCase):
         self.assertEqual(sut.counters.inferences, len(dataset))
         self.assertEqual(sut.counters.npu_commands, len(dataset) * 2)
         self.assertEqual(sut.counters.npu_macs, len(dataset) * macs_per_inference())
-        self.assertTrue(all(response.prediction == dataset[response.index].label for response in result.responses))
+        self.assertTrue(
+            all(
+                response.prediction == dataset[response.index].label
+                for response in result.responses
+            )
+        )
 
     def test_offline_reports_throughput_and_accuracy(self) -> None:
         report = build_report([Scenario.SINGLE_STREAM, Scenario.OFFLINE], 8)

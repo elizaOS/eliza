@@ -208,8 +208,7 @@ def evaluate(values: dict[str, int | list[int]]) -> tuple[str, list[str]]:
         failures.append("TAGE_HIST_LEN must declare >=4 per-table histories")
     elif max(tage_hist) < TAGE_HIST_LEN_MAX_THRESHOLD:
         failures.append(
-            f"max TAGE history {max(tage_hist)} below minimum reach "
-            f"{TAGE_HIST_LEN_MAX_THRESHOLD}"
+            f"max TAGE history {max(tage_hist)} below minimum reach {TAGE_HIST_LEN_MAX_THRESHOLD}"
         )
     ittage_hist = values.get("ITTAGE_HIST_LEN")
     if not isinstance(ittage_hist, list) or len(ittage_hist) < 5:

@@ -24,6 +24,10 @@ import {
   TableHeader,
   TableRow,
 } from "@elizaos/ui";
+import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
+import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
+import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
+import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import {
   AlertTriangle,
   AppWindow,
@@ -39,10 +43,6 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
-import NetworkBase from "@web3icons/react/icons/networks/NetworkBase";
-import NetworkBinanceSmartChain from "@web3icons/react/icons/networks/NetworkBinanceSmartChain";
-import NetworkEthereum from "@web3icons/react/icons/networks/NetworkEthereum";
-import TokenSOL from "@web3icons/react/icons/tokens/TokenSOL";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -384,9 +384,9 @@ export function EarningsPageClient() {
             <Coins className="mr-2 h-4 w-4" />
             Redeem for elizaOS
           </Button>
-          {balance?.eligibility.reason && !balance.eligibility.canRedeem && (
+          {balance?.eligibility?.reason && !balance.eligibility?.canRedeem && (
             <p className="text-xs text-white/40 mt-2 text-center">
-              {balance.eligibility.reason}
+              {balance.eligibility?.reason}
             </p>
           )}
         </BrandCard>
@@ -781,7 +781,7 @@ export function EarningsPageClient() {
                 !quote?.success ||
                 !redeemAddress ||
                 submitting ||
-                !balance?.eligibility.canRedeem
+                !balance?.eligibility?.canRedeem
               }
               className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
             >

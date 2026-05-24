@@ -283,9 +283,7 @@ def test_missing_report_includes_real_run_command() -> None:
             write_json(path, side_result(name))
         report = gate.build_report(root / "benchmarks/results/cpu-phone/report.json")
         expect_status(report, "blocked")
-        finding = next(
-            item for item in report["findings"] if item["name"] == "benchmark_report"
-        )
+        finding = next(item for item in report["findings"] if item["name"] == "benchmark_report")
         if "--report-id cpu-phone" not in finding.get("next_command", ""):
             raise AssertionError(finding)
         if "target-built bw_mem" not in finding.get("requirements", ""):

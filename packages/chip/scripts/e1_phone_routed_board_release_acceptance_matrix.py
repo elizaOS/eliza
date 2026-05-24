@@ -14,7 +14,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
 E1_DIR = ROOT / "board/kicad/e1-phone"
@@ -187,8 +186,14 @@ def first_matching_unblock_action(
         exit_outputs = [str(item) for item in step.get("exit_outputs", [])]
         if any(output in missing_outputs for output in exit_outputs):
             actions = step.get("actions", [])
-            return str(actions[0] if actions else step.get("current_status", "complete prior blocked step"))
-    return current_blockers[0] if current_blockers else "complete the first blocked routed-release prerequisite"
+            return str(
+                actions[0] if actions else step.get("current_status", "complete prior blocked step")
+            )
+    return (
+        current_blockers[0]
+        if current_blockers
+        else "complete the first blocked routed-release prerequisite"
+    )
 
 
 def route_domain_rows(
@@ -208,8 +213,12 @@ def route_domain_rows(
         inventory = inventory_by_id.get(domain_id, {})
         exact_nets = sorted(set(flatten_exact_nets(domain.get("exact_nets", {}))))
         missing_nets = sorted(set(inventory.get("missing_exact_nets", [])))
-        present_count = inventory.get("exact_nets_present_count", len(exact_nets) - len(missing_nets))
-        outputs = [path_presence(str(output)) for output in domain.get("required_route_outputs", [])]
+        present_count = inventory.get(
+            "exact_nets_present_count", len(exact_nets) - len(missing_nets)
+        )
+        outputs = [
+            path_presence(str(output)) for output in domain.get("required_route_outputs", [])
+        ]
         missing_outputs = [output["path"] for output in outputs if not output["present"]]
         evidence = []
         for requirement_id in DOMAIN_REQUIREMENT_HINTS.get(domain_id, ()):

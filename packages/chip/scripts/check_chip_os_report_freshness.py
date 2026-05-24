@@ -47,18 +47,10 @@ GATE_REPORT_ALIAS_SOURCES = {
         "packages/chip/scripts/run_mvp_simulator.py",
         "packages/chip/scripts/check_mvp_simulator.py",
     ),
-    "chipyard_payload_path.json": (
-        "packages/chip/scripts/check_chipyard_payload_path.py",
-    ),
-    "cpu_ap_scope.json": (
-        "packages/chip/scripts/check_cpu_ap_scope.py",
-    ),
-    "cpu_ap_boot_readiness.json": (
-        "packages/chip/scripts/check_cpu_ap_boot_readiness.py",
-    ),
-    "software_bsp.json": (
-        "packages/chip/scripts/check_software_bsp.py",
-    ),
+    "chipyard_payload_path.json": ("packages/chip/scripts/check_chipyard_payload_path.py",),
+    "cpu_ap_scope.json": ("packages/chip/scripts/check_cpu_ap_scope.py",),
+    "cpu_ap_boot_readiness.json": ("packages/chip/scripts/check_cpu_ap_boot_readiness.py",),
+    "software_bsp.json": ("packages/chip/scripts/check_software_bsp.py",),
     "aosp_product_contract.json": (
         "packages/chip/scripts/check_aosp_product_contract.py",
         "packages/chip/sw/aosp-device/build-aosp-riscv64.sh",

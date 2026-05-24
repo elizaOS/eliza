@@ -129,8 +129,9 @@ class AospTeeContractTests(unittest.TestCase):
         ]
 
     def test_complete_contract_passes(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir, PatchStack(
-            self._patch_tree(Path(tmpdir), complete=True)
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            PatchStack(self._patch_tree(Path(tmpdir), complete=True)),
         ):
             report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "pass", report["findings"])
@@ -139,8 +140,9 @@ class AospTeeContractTests(unittest.TestCase):
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
 
     def test_missing_pieces_block(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir, PatchStack(
-            self._patch_tree(Path(tmpdir), complete=False)
+        with (
+            tempfile.TemporaryDirectory() as tmpdir,
+            PatchStack(self._patch_tree(Path(tmpdir), complete=False)),
         ):
             report = gate.run_check(Namespace())
         self.assertEqual(report["status"], "blocked")

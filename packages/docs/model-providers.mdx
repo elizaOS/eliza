@@ -4,7 +4,7 @@ sidebarTitle: "Model Providers"
 description: "Supported inference backends and how they fit into Eliza's server-target-first routing model."
 ---
 
-Eliza supports **18 inference backends**. Five are **bundled** with every release (OpenAI, OpenRouter, Groq, Ollama, and Eliza Cloud); the remaining providers are **on demand** — they auto-install from the plugin registry when their API key or config is detected. The active backend is selected through canonical runtime routing on the connected server, not by ad hoc env toggles in the client.
+Eliza supports **19 inference backends**. Five are **bundled** with every release (OpenAI, OpenRouter, Groq, Ollama, and Eliza Cloud); the remaining providers are **on demand** — they auto-install from the plugin registry when their API key or config is detected. The active backend is selected through canonical runtime routing on the connected server, not by ad hoc env toggles in the client.
 
 ---
 
@@ -35,6 +35,7 @@ Providers marked **bundled** are pre-installed with every Eliza release and load
 | [Cohere](https://cohere.com) | `@elizaos/plugin-cohere` | `COHERE_API_KEY` | On demand | Command R+ and embed models. |
 | [Perplexity](https://perplexity.ai) | `@elizaos/plugin-perplexity` | `PERPLEXITY_API_KEY` | On demand | Search-augmented generation. |
 | [Zai](https://z.ai) | `@elizaos/plugin-zai` | `ZAI_API_KEY` | On demand | z.ai models. |
+| [NEAR AI](https://near.ai) | `@elizaos/plugin-nearai` | `NEARAI_API_KEY` | On demand | NEAR AI Cloud TEE inference via an OpenAI-compatible API. |
 | [Eliza Cloud](https://elizacloud.ai) | `@elizaos/plugin-elizacloud` | `ELIZAOS_CLOUD_API_KEY` | Bundled | Cloud-managed inference route. Can be selected independently from where Eliza itself is running. |
 
 <Info>
@@ -316,6 +317,7 @@ Every env variable that triggers auto-enable, grouped by provider:
 | `COHERE_API_KEY` | Cohere |
 | `PERPLEXITY_API_KEY` | Perplexity |
 | `ZAI_API_KEY` | Zai |
+| `NEARAI_API_KEY` | NEAR AI |
 | `ELIZAOS_CLOUD_API_KEY` | Eliza Cloud |
 | `ELIZAOS_CLOUD_ENABLED` | Eliza Cloud |
 

@@ -54,6 +54,7 @@ export {
   computeDeterministicRewardJudgment,
   upsertRewardJudgment,
 } from "./reward-judgments";
+export { rulerScoringService, RulerScoringService } from "./RulerScoringService";
 // Trajectory data archival
 export { TrainingDataArchiver } from "./storage/TrainingDataArchiver";
 // Trajectory capture

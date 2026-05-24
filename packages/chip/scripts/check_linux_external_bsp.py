@@ -54,8 +54,7 @@ def tool_status() -> dict[str, Any]:
         ROOT / "external/deb-tools/dtc/usr/bin",
     ]
     search_path = os.pathsep.join(
-        [str(path) for path in repo_tool_bins if path.is_dir()]
-        + [os.environ.get("PATH", "")]
+        [str(path) for path in repo_tool_bins if path.is_dir()] + [os.environ.get("PATH", "")]
     )
 
     def which(name: str) -> str:
@@ -94,7 +93,9 @@ def tool_status() -> dict[str, Any]:
         "riscv_compiler": found_compiler,
         "riscv_compiler_path": which(found_compiler) if found_compiler else "",
         "cross_compile": os.environ.get("CROSS_COMPILE", ""),
-        "search_path_prefix": os.pathsep.join(str(path) for path in repo_tool_bins if path.is_dir()),
+        "search_path_prefix": os.pathsep.join(
+            str(path) for path in repo_tool_bins if path.is_dir()
+        ),
     }
 
 

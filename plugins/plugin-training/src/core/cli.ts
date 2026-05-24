@@ -26,6 +26,12 @@ import {
   type TrainingSample,
 } from "./dataset-generator.js";
 import {
+  ELIZA_ONE_BENCHMARK_TIER_LIST,
+  elizaOneActionBenchmarkPairs,
+  elizaOneBenchmarkModelId,
+  parseElizaOneBenchmarkTiers,
+} from "./eliza1-benchmark-recipe.js";
+import {
   type CompareMode,
   comparePrompts,
   formatComparisonSummary,
@@ -37,7 +43,17 @@ import {
   exportRoleplayEpisodes,
 } from "./roleplay-trajectories.js";
 import { ALL_BLUEPRINTS, BLUEPRINT_STATS } from "./scenario-blueprints.js";
+import {
+  buildTrainingCollectionPreflightWithProbes,
+  listTrainingCollections,
+  runTrainingCollection,
+  type ListTrainingCollectionsResult,
+  type TrainingCollectionPreflightSummary,
+  type TrainingCollectionRunOptions,
+  type TrainingCollectionRunResult,
+} from "./training-collection-runner.js";
 import type { TrajectoryTrainingTask } from "./trajectory-task-datasets.js";
+import { discoverWorkspaceRoot } from "./workspace-runtime.js";
 
 const AGENT_DECISIONS = ["RESPOND", "IGNORE", "STOP"] as const;
 type AgentDecision = (typeof AGENT_DECISIONS)[number];
@@ -68,6 +84,18 @@ function parseAgentDecisions(
     }
   }
   return out.length > 0 ? out : undefined;
+}
+
+function parseCliTierList(value: string | undefined): string[] {
+  return parseElizaOneBenchmarkTiers(value);
+}
+
+function optionalPositiveInteger(
+  value: string | undefined,
+): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
 function getTeacherModel(): TeacherModel {
@@ -487,6 +515,438 @@ async function cmdExportTrajectories(args: string[]) {
   );
 }
 
+export function buildRunCollectionOptionsFromCliArgs(
+  args: string[],
+): TrainingCollectionRunOptions {
+  const { values } = parseArgs({
+    args,
+    options: {
+      output: { type: "string", short: "o" },
+      "workspace-root": { type: "string" },
+      tiers: { type: "string", default: "0_8b" },
+      benchmark: { type: "string", default: "eliza_harness_action_selection" },
+      provider: { type: "string", default: "local-llama-cpp" },
+      "base-url": { type: "string", default: "http://localhost:11434/v1" },
+      "runs-per-case": { type: "string", default: "1" },
+      "dataset-version": { type: "string", default: "eliza-native-v1" },
+      "hf-repo": { type: "string", default: "elizaos/eliza-1-training" },
+      "hf-revision": { type: "string", default: "main" },
+      "feed-archetypes": { type: "string", default: "trader" },
+      "feed-agents": { type: "string", default: "1" },
+      "feed-ticks": { type: "string", default: "1" },
+      "feed-parallel": { type: "string", default: "1" },
+      scenario: { type: "string", default: "deterministic-pr-smoke" },
+      "natural-sanitized-jsonl": { type: "string" },
+      "natural-raw-jsonl": { type: "string" },
+      "natural-run-id": { type: "string" },
+      "natural-tasks": { type: "string" },
+      "include-natural-raw": { type: "boolean", default: false },
+      live: { type: "boolean", default: false },
+      "preflight-only": { type: "boolean", default: false },
+      "probe-endpoints": { type: "boolean", default: false },
+      "skip-hf": { type: "boolean", default: false },
+      "skip-feed": { type: "boolean", default: false },
+      "skip-natural": { type: "boolean", default: false },
+      "skip-tests": { type: "boolean", default: false },
+      "skip-scenarios": { type: "boolean", default: false },
+      "skip-cerebras": { type: "boolean", default: false },
+      "skip-model-registry": { type: "boolean", default: false },
+      "skip-bundle-stage": { type: "boolean", default: false },
+      "include-eval-comparison": { type: "boolean", default: false },
+      "skip-eval-comparison": { type: "boolean", default: false },
+      "include-matrix": { type: "boolean", default: true },
+      "skip-matrix": { type: "boolean", default: false },
+      mocks: { type: "boolean" },
+    },
+  });
+  const tiers = parseCliTierList(
+    typeof values.tiers === "string" ? values.tiers : undefined,
+  );
+  const live = values.live === true;
+  const dryRun = !live;
+  const benchmark =
+    typeof values.benchmark === "string"
+      ? values.benchmark
+      : "eliza_harness_action_selection";
+  const provider =
+    typeof values.provider === "string" ? values.provider : "local-llama-cpp";
+  const baseUrl =
+    typeof values["base-url"] === "string"
+      ? values["base-url"]
+      : "http://localhost:11434/v1";
+  const datasetVersion =
+    typeof values["dataset-version"] === "string"
+      ? values["dataset-version"]
+      : "eliza-native-v1";
+  const actionBenchmark = {
+    useMocks: typeof values.mocks === "boolean" ? values.mocks : dryRun,
+    forceTrajectoryCapture: true,
+    provider,
+    baseUrl,
+    benchmark,
+    datasetVersion,
+    runsPerCase: optionalPositiveInteger(
+      typeof values["runs-per-case"] === "string"
+        ? values["runs-per-case"]
+        : undefined,
+    ),
+    dryRun,
+  };
+
+  return {
+    preflightOnly: values["preflight-only"] === true,
+    preflightProbe: values["probe-endpoints"] === true,
+    outputDir: typeof values.output === "string" ? values.output : undefined,
+    workspaceRoot:
+      typeof values["workspace-root"] === "string"
+        ? values["workspace-root"]
+        : discoverWorkspaceRoot(),
+    includeHuggingFace: values["skip-hf"] !== true,
+    includeFeed: values["skip-feed"] !== true,
+    includeNaturalTrajectories: values["skip-natural"] !== true,
+    includeTestTrajectories: values["skip-tests"] !== true,
+    includeScenarios: values["skip-scenarios"] !== true,
+    includeEvalComparison:
+      values["skip-eval-comparison"] !== true &&
+      (dryRun || values["include-eval-comparison"] === true),
+    includeActionBenchmark: true,
+    includeBenchmarkVsCerebras: values["skip-cerebras"] !== true,
+    includeEliza1ModelRegistry: values["skip-model-registry"] !== true,
+    includeEliza1BundleStage: values["skip-bundle-stage"] !== true,
+    includeBenchmarkMatrix: values["skip-matrix"] !== true,
+    naturalTrajectories: {
+      sanitizedJsonlPath:
+        typeof values["natural-sanitized-jsonl"] === "string"
+          ? values["natural-sanitized-jsonl"]
+          : undefined,
+      rawJsonlPath:
+        typeof values["natural-raw-jsonl"] === "string"
+          ? values["natural-raw-jsonl"]
+          : undefined,
+      includeRawJsonl:
+        values["include-natural-raw"] === true ||
+        typeof values["natural-raw-jsonl"] === "string",
+      tasks:
+        typeof values["natural-tasks"] === "string"
+          ? (values["natural-tasks"]
+              .split(",")
+              .map((task) => task.trim())
+              .filter(Boolean) as TrajectoryTrainingTask[])
+          : undefined,
+      source: {
+        kind: "training_collection_natural_trajectories",
+        runId:
+          typeof values["natural-run-id"] === "string"
+            ? values["natural-run-id"]
+            : undefined,
+        metadata: {
+          cli: true,
+          sanitizedJsonlPath:
+            typeof values["natural-sanitized-jsonl"] === "string"
+              ? values["natural-sanitized-jsonl"]
+              : undefined,
+          rawJsonlPath:
+            typeof values["natural-raw-jsonl"] === "string"
+              ? values["natural-raw-jsonl"]
+              : undefined,
+        },
+      },
+    },
+    huggingFace: {
+      repoId:
+        typeof values["hf-repo"] === "string"
+          ? values["hf-repo"]
+          : "elizaos/eliza-1-training",
+      revision:
+        typeof values["hf-revision"] === "string"
+          ? values["hf-revision"]
+          : "main",
+      dryRun,
+    },
+    feed: {
+      archetypes:
+        typeof values["feed-archetypes"] === "string"
+          ? values["feed-archetypes"]
+          : "trader",
+      numAgents: optionalPositiveInteger(
+        typeof values["feed-agents"] === "string"
+          ? values["feed-agents"]
+          : undefined,
+      ),
+      ticks: optionalPositiveInteger(
+        typeof values["feed-ticks"] === "string"
+          ? values["feed-ticks"]
+          : undefined,
+      ),
+      parallel: optionalPositiveInteger(
+        typeof values["feed-parallel"] === "string"
+          ? values["feed-parallel"]
+          : undefined,
+      ),
+      cleanup: true,
+      dryRun,
+    },
+    scenarios: {
+      scenario:
+        typeof values.scenario === "string" ? values.scenario : undefined,
+      exportNative: true,
+      useDeterministicProxy: true,
+      dryRun,
+    },
+    evalComparison: {
+      model: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "base"),
+      trainedModelPath: elizaOneBenchmarkModelId(tiers[0] ?? "0_8b", "trained"),
+      backend: "cpu",
+      dryRun,
+    },
+    actionBenchmark,
+    actionBenchmarkPair:
+      tiers.length === 1
+        ? {
+            tier: tiers[0],
+            base: {
+              variant: "base",
+              modelId: elizaOneBenchmarkModelId(tiers[0], "base"),
+              runtimeModel: elizaOneBenchmarkModelId(tiers[0], "base"),
+            },
+            trained: {
+              variant: "trained",
+              modelId: elizaOneBenchmarkModelId(tiers[0], "trained"),
+              runtimeModel: elizaOneBenchmarkModelId(tiers[0], "trained"),
+            },
+          }
+        : undefined,
+    actionBenchmarkPairs:
+      tiers.length > 1 ? elizaOneActionBenchmarkPairs(tiers) : undefined,
+    benchmarkVsCerebras: {
+      tiers: tiers.join(","),
+      benchmark,
+      variants: "both",
+      maxSamples: 50,
+      dryRun,
+    },
+    eliza1BundleStage: {
+      repoId: "elizaos/eliza-1",
+      tier: tiers[0] ?? "0_8b",
+      localDir: "/tmp/eliza-1-bundles",
+      maxBytes: 8589934592,
+      apply: false,
+    },
+  };
+}
+
+export function formatTrainingCollectionPreflightSummary(
+  preflight: TrainingCollectionPreflightSummary,
+): string[] {
+  const counts = preflight.checks.reduce<Record<string, number>>(
+    (acc, check) => {
+      acc[check.status] = (acc[check.status] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  return [
+    `[run-collection:preflight] live=${preflight.liveRequired ? "yes" : "no"} ok=${counts.ok ?? 0} warning=${counts.warning ?? 0} missing=${counts.missing ?? 0} skipped=${counts.skipped ?? 0}`,
+    ...preflight.checks.map(
+      (check) =>
+        `[run-collection:preflight] ${check.id}=${check.status} ${check.detail}${check.path ? ` path=${check.path}` : ""}`,
+    ),
+  ];
+}
+
+async function cmdRunCollection(args: string[]) {
+  const options = buildRunCollectionOptionsFromCliArgs(args);
+  if (options.preflightOnly) {
+    const preflight = await buildTrainingCollectionPreflightWithProbes({
+      options,
+      workspaceRoot: options.workspaceRoot,
+      trainingRoot: options.workspaceRoot
+        ? join(options.workspaceRoot, "packages", "training")
+        : undefined,
+    });
+    for (const line of formatTrainingCollectionPreflightSummary(preflight)) {
+      console.log(line);
+    }
+    return;
+  }
+  const result = await runTrainingCollection(options);
+  for (const line of formatRunCollectionSummary(result)) {
+    console.log(line);
+  }
+}
+
+async function cmdListCollections(args: string[]) {
+  const { values } = parseArgs({
+    args,
+    options: {
+      root: { type: "string" },
+      limit: { type: "string", short: "n", default: "20" },
+    },
+  });
+  const result = await listTrainingCollections({
+    root: values.root,
+    limit: optionalPositiveInteger(values.limit),
+  });
+  for (const line of formatListTrainingCollectionsSummary(result)) {
+    console.log(line);
+  }
+}
+
+export function formatListTrainingCollectionsSummary(
+  result: ListTrainingCollectionsResult,
+): string[] {
+  const lines = [
+    `[list-collections] root=${result.root}`,
+    `[list-collections] count=${result.collections.length}`,
+  ];
+  for (const collection of result.collections) {
+    const firstEvalComparison = collection.evals.comparisonInventory[0];
+    const evalSummary = [
+      `artifacts:${collection.evals.evalArtifacts}`,
+      `comparisons:${collection.evals.evalComparisons}`,
+      `action:${collection.evals.actionBenchmarks}`,
+      `matrices:${collection.evals.benchmarkMatrices}`,
+      firstEvalComparison
+        ? `first:${firstEvalComparison.baseModel ?? "base"}->${
+            firstEvalComparison.trainedModel ?? "trained"
+          },improvement:${firstEvalComparison.improvementPercent ?? "n/a"}%`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+    lines.push(
+      [
+        `[list-collections] run=${collection.generatedAt}`,
+        `readiness=${collection.readinessStatus}`,
+        `ready=${collection.readiness.ready}`,
+        `partial=${collection.readiness.partial}`,
+        `missing=${collection.readiness.missing}`,
+        `artifacts=${collection.artifactCount}`,
+        `sources=hf:${collection.dataSources.huggingFaceDatasets},feed:${collection.dataSources.feedDatasets},natural:${collection.dataSources.naturalTrajectoryBundles},scenarios:${collection.dataSources.scenarioRuns},native:${collection.dataSources.scenarioNativeDatasets},tests:${collection.dataSources.testTrajectories},jsonl:${collection.dataSources.trainingJsonlDatasets}`,
+        `benchmarks=pairs:${collection.benchmarks.actionBenchmarkPairs},comparisons:${collection.benchmarks.benchmarkComparisons},cases:${collection.benchmarks.caseSamples},tiers:${collection.benchmarks.tiers.join(",") || "none"}`,
+        `baseline=established:${collection.benchmarks.baselineProgress.establishedTiers.join(",") || "none"},next:${collection.benchmarks.baselineProgress.nextTier ?? "none"},remaining:${collection.benchmarks.baselineProgress.remainingTiers.join(",") || "none"}`,
+        `evals=${evalSummary}`,
+        `output=${collection.outputDir}`,
+        `readme=${collection.readmePath}`,
+        `viewer=${collection.analysisIndexHtmlPath}`,
+      ].join(" "),
+    );
+  }
+  return lines;
+}
+
+export function formatRunCollectionSummary(
+  result: TrainingCollectionRunResult,
+): string[] {
+  const evidence = result.manifest.evidence;
+  const readiness = evidence.benchmarkReadiness;
+  const preflight = evidence.preflight ?? { liveRequired: false, checks: [] };
+  const preflightCounts = preflight.checks.reduce<Record<string, number>>(
+    (acc, check) => {
+      acc[check.status] = (acc[check.status] ?? 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  const priorityGapIds = [
+    "feed_generation",
+    "natural_trajectories",
+    "test_trajectories",
+    "smallest_model_benchmark",
+    "all_eliza1_tiers_benchmark",
+    "cerebras_reference",
+    "base_trained_improvement",
+    "all_eliza1_tier_improvements",
+    "agentic_benchmarks",
+    "benchmark_matrix",
+    "benchmark_case_provenance",
+    "eval_comparison",
+    "model_tracking",
+    "readable_source_samples",
+  ];
+  const readinessStatusFor = (id: string): "ready" | "partial" | "missing" =>
+    evidence.readinessGaps.find((gap) => gap.id === id)?.status ?? "ready";
+  const comparisonInventory = evidence.benchmarks.comparisonInventory ?? [];
+  const dryRunComparisons = comparisonInventory.filter(
+    (comparison) => comparison.dryRun === true,
+  ).length;
+  const liveComparisons = Math.max(
+    0,
+    comparisonInventory.length - dryRunComparisons,
+  );
+  const gaps = [...evidence.readinessGaps]
+    .sort((left, right) => {
+      const leftIndex = priorityGapIds.indexOf(left.id);
+      const rightIndex = priorityGapIds.indexOf(right.id);
+      const leftPriority = leftIndex >= 0 ? 0 : 1;
+      const rightPriority = rightIndex >= 0 ? 0 : 1;
+      if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+      if (leftIndex >= 0 && rightIndex >= 0 && leftIndex !== rightIndex) {
+        return leftIndex - rightIndex;
+      }
+      return left.id.localeCompare(right.id);
+    })
+    .slice(0, 5);
+  const sourceSamples = evidence.sourceSamples ?? {
+    huggingFace: [],
+    feed: [],
+    natural: [],
+    scenarios: [],
+    tests: [],
+    trainingJsonl: [],
+  };
+  const sourceSampleEntries = Object.entries(sourceSamples) as Array<
+    [
+      string,
+      Array<{
+        trajectoryId?: string | null;
+        title?: string;
+        task?: string | null;
+      }>,
+    ]
+  >;
+  const sampleCounts = sourceSampleEntries
+    .map(([source, samples]) => `${source}=${samples.length}`)
+    .join(" ");
+  const sampleExamples = sourceSampleEntries
+    .flatMap(([source, samples]) =>
+      samples.slice(0, 2).map((sample) => {
+        const id = sample.trajectoryId ?? sample.title ?? "sample";
+        const task = sample.task ? `:${sample.task}` : "";
+        return `${source}:${id}${task}`;
+      }),
+    )
+    .slice(0, 5)
+    .join(" ");
+  return [
+    `[run-collection] output=${result.outputDir}`,
+    `[run-collection] manifest=${result.manifestPath}`,
+    `[run-collection] readme=${result.readmePath}`,
+    `[run-collection] viewer=${result.manifest.analysis.indexHtmlPath}`,
+    `[run-collection] collection-index=${result.collectionIndex.indexHtmlPath} json=${result.collectionIndex.indexJsonPath}`,
+    `[run-collection] readiness=${result.manifest.readiness.status} ready=${result.manifest.readiness.ready} partial=${result.manifest.readiness.partial} missing=${result.manifest.readiness.missing}`,
+    `[run-collection] preflight live=${preflight.liveRequired ? "yes" : "no"} ok=${preflightCounts.ok ?? 0} warning=${preflightCounts.warning ?? 0} missing=${preflightCounts.missing ?? 0} skipped=${preflightCounts.skipped ?? 0}`,
+    `[run-collection] sources hf=${evidence.dataSources.huggingFaceDatasets} feed=${evidence.dataSources.feedDatasets} natural=${evidence.dataSources.naturalTrajectoryBundles} scenarios=${evidence.dataSources.scenarioRuns} scenario-native=${evidence.dataSources.scenarioNativeDatasets} tests=${evidence.dataSources.testTrajectories} jsonl=${evidence.dataSources.trainingJsonlDatasets}`,
+    `[run-collection] evals artifacts=${evidence.evals.evalArtifacts} comparisons=${evidence.evals.evalComparisons} action=${evidence.evals.actionBenchmarks} matrices=${evidence.evals.benchmarkMatrices} models=${evidence.training.models} training-runs=${evidence.training.trainingRuns}`,
+    `[run-collection] benchmarks pairs=${evidence.benchmarks.actionBenchmarkPairs} rows=${evidence.benchmarks.benchmarkRows} comparisons=${evidence.benchmarks.benchmarkComparisons} tiers=${evidence.benchmarks.tiers.join(",") || "none"}`,
+    `[run-collection] baseline established=${evidence.benchmarks.baselineProgress.establishedTiers.join(",") || "none"} next=${evidence.benchmarks.baselineProgress.nextTier ?? "none"} remaining=${evidence.benchmarks.baselineProgress.remainingTiers.join(",") || "none"} smallest=${evidence.benchmarks.baselineProgress.smallestTierEstablished ? "yes" : "no"} all=${evidence.benchmarks.baselineProgress.allTiersEstablished ? "yes" : "no"}`,
+    `[run-collection] benchmark-comparisons live=${liveComparisons} dry-run=${dryRunComparisons} improvements=${evidence.benchmarks.improvementComparisons.length}`,
+    `[run-collection] benchmark-readiness smallest=${readiness.smallestTier} all-tiers=${readiness.allEliza1Tiers} improvement=${readiness.baseTrainedImprovement} all-tier-improvements=${readiness.allEliza1TierImprovements} cerebras=${readiness.cerebrasReference} cases=${readinessStatusFor("benchmark_case_provenance")}`,
+    `[run-collection] source-readiness natural=${readinessStatusFor("natural_trajectories")} tests=${readinessStatusFor("test_trajectories")} readable=${readinessStatusFor("readable_source_samples")}`,
+    `[run-collection] eval-readiness comparison=${readinessStatusFor("eval_comparison")} models=${readinessStatusFor("model_tracking")}`,
+    `[run-collection] sample-readiness readable=${readinessStatusFor("readable_source_samples")}`,
+    `[run-collection] source-samples ${sampleCounts}${sampleExamples ? ` examples=${sampleExamples}` : ""}`,
+    gaps.length > 0
+      ? `[run-collection] readiness-gaps ${gaps
+          .map(
+            (gap) =>
+              `${gap.id}:${gap.status}${gap.recommendedCapability ? `->${gap.recommendedCapability}` : ""}`,
+          )
+          .join(" ")}`
+      : "[run-collection] readiness-gaps none",
+  ];
+}
+
 async function cmdValidate(args: string[]) {
   const { values } = parseArgs({
     args,
@@ -606,6 +1066,12 @@ async function main() {
     case "export-trajectories":
       await cmdExportTrajectories(restArgs);
       break;
+    case "run-collection":
+      await cmdRunCollection(restArgs);
+      break;
+    case "list-collections":
+      await cmdListCollections(restArgs);
+      break;
     case "rollback-prompt":
       await cmdRollbackPrompt(restArgs);
       break;
@@ -627,6 +1093,33 @@ Commands:
     -i, --input DIR    Trajectory dir (default: $ELIZA_TRAJECTORY_DIR or ~/.eliza/trajectories)
     -o, --output DIR   Output dir (default: ./training-data)
     --max-per-task N   Cap examples per task bucket
+
+  run-collection    Collect HF/feed/natural/test/scenario/eval/benchmark evidence
+    -o, --output DIR   Output dir (default: training state collection dir)
+    --tiers LIST       Eliza-1 benchmark tiers, comma-separated, or "all" (default: 0_8b)
+                       (all expands to ${ELIZA_ONE_BENCHMARK_TIER_LIST})
+    --live             Execute live external work instead of dry-run defaults
+    --preflight-only   Print live-readiness checks without collecting artifacts
+    --probe-endpoints  Probe local OpenAI-compatible endpoints during preflight
+    --skip-matrix      Skip benchmark matrix generation
+    --skip-hf          Skip Hugging Face ingest
+    --skip-feed        Skip feed generation
+    --skip-natural     Skip natural trajectory export
+    --skip-tests       Skip test trajectory collection
+    --skip-scenarios   Skip scenario trajectories
+    --natural-sanitized-jsonl PATH Existing sanitized app trajectory JSONL
+    --natural-raw-jsonl PATH       Existing raw app trajectory JSONL
+    --natural-run-id ID            Run id to record on imported natural trajectories
+    --natural-tasks LIST           Task buckets for natural trajectory export
+    --include-natural-raw          Copy raw natural trajectory JSONL into the collection
+    --skip-eval-comparison Skip dry-run local eval comparison artifact
+    --skip-cerebras    Skip benchmark-vs-Cerebras step
+    --skip-model-registry Skip persisted Eliza-1 model registry manifests
+    --skip-bundle-stage Skip Eliza-1 bundle stage step
+
+  list-collections  List saved training collection runs
+    --root DIR       Collection root or a single collection output dir
+    -n, --limit N    Maximum runs to print (default: 20)
 
   compare           A/B compare two prompts on a trajectory dataset
     --baseline PATH    Path to baseline prompt (.txt)

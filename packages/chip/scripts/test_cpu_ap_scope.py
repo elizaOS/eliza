@@ -65,7 +65,9 @@ def test_structured_findings_cover_missing_transcripts() -> None:
     findings = report.get("findings", [])
     if not findings:
         raise AssertionError("CPU/AP scope report must expose structured findings")
-    if not any(str(item.get("code", "")).startswith("cpu_ap_missing_transcript_") for item in findings):
+    if not any(
+        str(item.get("code", "")).startswith("cpu_ap_missing_transcript_") for item in findings
+    ):
         raise AssertionError(f"CPU/AP scope findings must include missing transcripts: {findings}")
     print("PASS structured CPU/AP findings cover missing transcripts")
 

@@ -25,11 +25,11 @@ from benchmarks.cpu.branch.traces import (
     synthetic_alias_thrash,
     synthetic_alternating,
     synthetic_always_taken_loop,
-    synthetic_dual_branch_fetch_block,
     synthetic_btb_confidence_churn,
     synthetic_control_indirect_pair,
-    synthetic_gpu_occupancy_phase,
+    synthetic_dual_branch_fetch_block,
     synthetic_gpu_nested_reconvergence,
+    synthetic_gpu_occupancy_phase,
     synthetic_loop_known_count,
     synthetic_phase_change_server,
     synthetic_recursive_call_return,
@@ -293,7 +293,9 @@ def test_weak_ittage_yields_to_stable_ftb_target():
         "ctr": 1 << (sim.geometry["ITTAGE_CTR_W"] - 1),
     }
 
-    pred_taken, pred_target = sim._predict(BranchEvent(pc=pc, target=stable, taken=True, kind=BR_IND))
+    pred_taken, pred_target = sim._predict(
+        BranchEvent(pc=pc, target=stable, taken=True, kind=BR_IND)
+    )
 
     assert pred_taken
     assert pred_target == stable

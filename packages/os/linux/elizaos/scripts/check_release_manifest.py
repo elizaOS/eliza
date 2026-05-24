@@ -207,8 +207,7 @@ def check_schema(manifest: dict, schema: dict) -> list[GateResult]:
             GateResult(
                 "BLOCKED",
                 "python dependency missing: jsonschema; run "
-                "`python3 -m pip install -r packages/os/linux/variants/"
-                "elizaos-linux/requirements.txt`",
+                "`python3 -m pip install jsonschema`",
             )
         ]
     artifact_schema = _artifact_schema(schema)

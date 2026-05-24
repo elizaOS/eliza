@@ -157,6 +157,7 @@ export const PROVIDER_PLUGIN_MAP: Readonly<Record<string, string>> = {
   AIGATEWAY_API_KEY: "@elizaos/plugin-vercel-ai-gateway",
   OLLAMA_BASE_URL: "@elizaos/plugin-ollama",
   MLX_BASE_URL: "@elizaos/plugin-mlx",
+  NEARAI_API_KEY: "@elizaos/plugin-nearai",
   ZAI_API_KEY: "@elizaos/plugin-zai",
   Z_AI_API_KEY: "@elizaos/plugin-zai",
   // ElizaCloud — loaded when API key is present OR cloud is explicitly enabled

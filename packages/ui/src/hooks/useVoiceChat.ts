@@ -563,6 +563,19 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       if (interruptOnSpeechRef.current) {
         interruptSpeechRef.current();
       }
+
+      if (isFinal && mode === "passive") {
+        emitTranscript(nextText, {
+          text: nextText,
+          mode,
+          isFinal: true,
+          turn,
+          speaker: turn.speaker,
+        });
+        transcriptBufferRef.current = "";
+        latestTranscriptTurnRef.current = null;
+        setInterimTranscript("");
+      }
     },
     [],
   );

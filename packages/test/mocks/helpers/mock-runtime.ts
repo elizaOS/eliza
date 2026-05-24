@@ -2,12 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { ChannelType, type Plugin, stringToUuid } from "@elizaos/core";
-import { appLifeOpsPlugin } from "../../../plugins/plugin-lifeops/src/plugin.ts";
+import { appLifeOpsPlugin } from "../../../../plugins/plugin-lifeops/src/plugin.ts";
 import {
   createRealTestRuntime,
   type RealTestRuntimeOptions,
   type RealTestRuntimeResult,
-} from "../../app-core/test/helpers/real-runtime.ts";
+} from "../../../app-core/test/helpers/real-runtime.ts";
 import {
   MOCK_ENVIRONMENTS,
   type MockEnvironmentName,

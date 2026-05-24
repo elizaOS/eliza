@@ -13,6 +13,7 @@ import type { JsonValue } from "@feed/shared";
 export interface CreateAgentParams {
   userId: string;
   name: string;
+  username?: string;
   description?: string;
   profileImageUrl?: string;
   coverImageUrl?: string;
@@ -26,6 +27,7 @@ export interface CreateAgentParams {
 
 export interface IAgentService {
   createAgent(params: CreateAgentParams): Promise<User>;
+  deleteAgent?(agentUserId: string, managerUserId: string): Promise<void>;
 }
 
 export interface IAgentRuntimeManager {

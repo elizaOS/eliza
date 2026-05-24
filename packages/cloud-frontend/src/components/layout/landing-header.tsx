@@ -18,8 +18,8 @@ export default function LandingHeader() {
 
   const openDashboard = () => navigate("/login?intent=dashboard");
 
-  const devDashboardLabel = t("cloud.landing.developerDashboard", {
-    defaultValue: "Developer Dashboard",
+  const dashboardLabel = t("cloud.landing.dashboard", {
+    defaultValue: "Dashboard",
   });
 
   return (
@@ -41,7 +41,7 @@ export default function LandingHeader() {
                 to="/dashboard"
                 className="inline-flex min-h-10 items-center justify-center rounded-[3px] bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:min-h-11"
               >
-                {devDashboardLabel}
+                {dashboardLabel}
               </Link>
               <UserMenu />
             </>
@@ -53,7 +53,7 @@ export default function LandingHeader() {
               disabled={!ready}
               type="button"
             >
-              {devDashboardLabel}
+              {dashboardLabel}
             </button>
           )}
         </div>

@@ -12,7 +12,6 @@ from typing import Any
 
 import yaml
 
-
 ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ROOT.parents[1]
 BOARD_ROOT = ROOT / "board/kicad/e1-phone"
@@ -201,7 +200,11 @@ def content_findings(row: dict[str, Any], resolved: Path | None) -> dict[str, An
         "resolved_path": rel(resolved) if resolved else None,
         "source_matrix": row["source_matrix"],
         "present": bool(resolved and resolved.exists()),
-        "artifact_kind": "directory" if resolved and resolved.is_dir() else "file" if resolved and resolved.is_file() else "missing",
+        "artifact_kind": "directory"
+        if resolved and resolved.is_dir()
+        else "file"
+        if resolved and resolved.is_file()
+        else "missing",
         "parsed_kind": parsed_kind,
         "file_size_bytes": file_size,
         "sha256": content_hash,
@@ -215,13 +218,15 @@ def content_findings(row: dict[str, Any], resolved: Path | None) -> dict[str, An
 def build_report(contract_path: Path, report_path: Path) -> dict[str, Any]:
     contract = load_yaml(contract_path)
     rows = contract["artifact_content_requirements"]
-    validation_rows = [
-        content_findings(row, resolve_path(row.get("path")))
-        for row in rows
+    validation_rows = [content_findings(row, resolve_path(row.get("path"))) for row in rows]
+    missing = [
+        row
+        for row in validation_rows
+        if "artifact_missing" in row["failures"] or "missing_path" in row["failures"]
     ]
-    missing = [row for row in validation_rows if "artifact_missing" in row["failures"] or "missing_path" in row["failures"]]
     present_blocked = [
-        row for row in validation_rows
+        row
+        for row in validation_rows
         if row["present"] and row["validation_state"] == "blocked_fail_closed"
     ]
     validated = [row for row in validation_rows if row["validation_state"] == "validated"]

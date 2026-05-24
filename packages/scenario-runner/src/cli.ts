@@ -30,6 +30,7 @@ type ScenarioRuntimeFactoryModule = {
     providerName: string;
     cleanup: () => Promise<void>;
   }>;
+  shouldUseDeterministicLlmProxy: () => boolean;
 };
 
 interface ParsedArgs {
@@ -42,6 +43,13 @@ interface ParsedArgs {
   runId?: string;
   filter?: Set<string>;
   fileGlobs?: string[];
+}
+
+function scenarioNativeManifestPath(nativeJsonlPath?: string): string | undefined {
+  if (!nativeJsonlPath) return undefined;
+  return nativeJsonlPath.endsWith(".jsonl")
+    ? `${nativeJsonlPath.slice(0, -".jsonl".length)}.manifest.json`
+    : `${nativeJsonlPath}.manifest.json`;
 }
 
 function usageAndExit(message: string, code: number): never {
@@ -151,8 +159,14 @@ async function main(): Promise<number> {
   const [
     { availableProviderNames },
     { runScenario },
-    { buildAggregate, printStdoutSummary, writeReport, writeReportBundle },
-    { createScenarioRuntime },
+    {
+      buildAggregate,
+      printStdoutSummary,
+      writeReport,
+      writeReportBundle,
+      writeScenarioRunViewer,
+    },
+    { createScenarioRuntime, shouldUseDeterministicLlmProxy },
     { exportScenarioNativeJsonl },
     // Keep out-of-root imports behind widened specifiers so TypeScript does not
     // pull those modules into this package's rootDir validation graph.
@@ -170,9 +184,12 @@ async function main(): Promise<number> {
     import("./native-export.ts"),
   ]);
 
-  if (availableProviderNames().length === 0) {
+  if (
+    availableProviderNames().length === 0 &&
+    !shouldUseDeterministicLlmProxy()
+  ) {
     process.stderr.write(
-      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY.\n",
+      "[eliza-scenarios] no LLM provider API key set; refusing to run (WS7 policy: fail loudly on silent credential skips).\n  Set one of: GROQ_API_KEY, OPENAI_API_KEY, ANTHROPIC_API_KEY, GOOGLE_GENERATIVE_AI_API_KEY, OPENROUTER_API_KEY, or enable deterministic test mode with SCENARIO_USE_LLM_PROXY=1.\n",
     );
     return 2;
   }
@@ -238,7 +255,7 @@ async function main(): Promise<number> {
   // (required when testing cross-scenario state leakage), invoke the CLI
   // once per scenario from a shell loop (see scripts/run-scenarios-isolated.mjs).
   const { runtime, providerName, cleanup } = await createScenarioRuntime();
-  logger.info(`[eliza-scenarios] live provider: ${providerName}`);
+  logger.info(`[eliza-scenarios] provider: ${providerName}`);
 
   const reports: ScenarioReport[] = [];
   try {
@@ -270,6 +287,32 @@ async function main(): Promise<number> {
     effectiveRunId,
   );
 
+  if (parsed.exportNativePath && effectiveRunDir) {
+    // Convert the recorded per-turn trajectory JSON under <runDir>/trajectories/
+    // into canonical eliza_native_v1 model-boundary rows for the eliza-1
+    // training corpus (see packages/training/docs/dataset/CANONICAL_RECORD.md).
+    // The training prep script runs the mandatory privacy filter on every row.
+    exportScenarioNativeJsonl(effectiveRunDir, parsed.exportNativePath);
+  }
+  if (effectiveRunDir) {
+    const viewerIndex = path.join(effectiveRunDir, "viewer", "index.html");
+    const viewerData = path.join(effectiveRunDir, "viewer", "data.js");
+    aggregate.artifactPaths = {
+      runDir: effectiveRunDir,
+      matrixJson: path.join(effectiveRunDir, "matrix.json"),
+      viewerIndex,
+      viewerData,
+      ...(parsed.exportNativePath
+        ? {
+            nativeJsonl: parsed.exportNativePath,
+            nativeManifest: scenarioNativeManifestPath(parsed.exportNativePath),
+          }
+        : {}),
+    };
+    writeScenarioRunViewer(aggregate, effectiveRunDir, {
+      nativeJsonlPath: parsed.exportNativePath,
+    });
+  }
   if (parsed.reportPath) {
     writeReport(aggregate, parsed.reportPath);
   }
@@ -278,15 +321,7 @@ async function main(): Promise<number> {
   }
   if (effectiveRunDir) {
     // Drop the matrix.json next to trajectories/ so the aggregator can find it.
-    const matrixPath = path.join(effectiveRunDir, "matrix.json");
-    writeReport(aggregate, matrixPath);
-  }
-  if (parsed.exportNativePath && effectiveRunDir) {
-    // Convert the recorded per-turn trajectory JSON under <runDir>/trajectories/
-    // into canonical eliza_native_v1 model-boundary rows for the eliza-1
-    // training corpus (see packages/training/docs/dataset/CANONICAL_RECORD.md).
-    // The training prep script runs the mandatory privacy filter on every row.
-    exportScenarioNativeJsonl(effectiveRunDir, parsed.exportNativePath);
+    writeReport(aggregate, path.join(effectiveRunDir, "matrix.json"));
   }
   printStdoutSummary(aggregate);
 
