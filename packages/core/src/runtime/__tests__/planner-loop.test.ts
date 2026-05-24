@@ -862,6 +862,79 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("collapses repeated parameter-validation failures on the same tool even when args vary", async () => {
+		// Regression for runaway loops where the model retries a single
+		// tool repeatedly with shifting argument shapes that every time
+		// fail `validateToolArgs`. Without canonical signing of these
+		// validation failures, the repeatKey + error message both diverge
+		// per call and `maxRepeatedFailures` never trips. Observed live as
+		// a 27-iteration runaway against TASKS where the model alternated
+		// between `action=spawn_agent` / `action=create` / `action=update`
+		// with the same set of unrecognized arguments.
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-1",
+							name: "TASKS",
+							arguments: { action: "spawn_agent", task: "build a site" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-2",
+							name: "TASKS",
+							arguments: { action: "create", task: "build a site" },
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "call-3",
+							name: "TASKS",
+							arguments: { action: "update", task: "build a site" },
+						},
+					],
+				}),
+		};
+		let callCount = 0;
+		const executeToolCall = vi.fn(async () => {
+			callCount++;
+			return {
+				success: false,
+				error: `Unexpected argument 'task'; action value '${callCount}' rejected`,
+				data: {
+					parameterErrors: ["Unexpected argument 'task'", "action not in enum"],
+				},
+			};
+		});
+		const evaluate = vi.fn(async () => ({
+			success: false,
+			decision: "CONTINUE" as const,
+			thought: "Retry with a different action.",
+		}));
+
+		await expect(
+			runPlannerLoop({
+				runtime,
+				context: { id: "ctx" },
+				config: { maxRepeatedFailures: 1 },
+				executeToolCall,
+				evaluate,
+			}),
+		).rejects.toBeInstanceOf(TrajectoryLimitExceeded);
+		// Loop must bail on the second validation rejection, not run forever.
+		expect(executeToolCall.mock.calls.length).toBeLessThanOrEqual(2);
+	});
+
 	it("compacts old assistant/tool suffixes when the planner input crosses the budget threshold", async () => {
 		const capturedMessages: ChatMessage[][] = [];
 		const longPayload = `generated file content: ${"x".repeat(20_000)}`;

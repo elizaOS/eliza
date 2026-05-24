@@ -1742,11 +1742,28 @@ async function executeQueuedToolCall(params: {
 	}
 	const endedAt = Date.now();
 
+	// Parameter-validation rejections from `validateToolArgs` set
+	// `result.data.parameterErrors`. A model that keeps the same tool but
+	// shuffles its argument shape across retries (e.g. trying `action=create`
+	// then `action=spawn_agent` then `action=update`) varies both the error
+	// string and the params JSON, so the per-call repeatKey + per-call error
+	// message both diverge and `assertRepeatedFailureLimit` never trips —
+	// even though the failure category is identical and the model is just
+	// hunting for a valid arg shape that does not exist on this action.
+	// Collapse parameter-validation failures of a tool to a single canonical
+	// signature so the existing repeated-failure guard catches that pattern.
+	const isParameterValidationFailure = Array.isArray(
+		(result.data as { parameterErrors?: unknown } | undefined)?.parameterErrors,
+	);
 	const failure = {
 		toolName: params.toolCall.name,
 		success: result.success,
-		error: result.error,
-		repeatKey: toolFailureRepeatKey(params.toolCall),
+		error: isParameterValidationFailure
+			? "parameter_validation_failed"
+			: result.error,
+		repeatKey: isParameterValidationFailure
+			? "parameter_validation"
+			: toolFailureRepeatKey(params.toolCall),
 	};
 	if (!result.success || result.error != null) {
 		params.failures.push(failure);
