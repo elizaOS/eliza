@@ -175,6 +175,31 @@ describe("prompt templates (src/index.ts)", () => {
       /Per-agent character config may override/,
       "safety-scaffold rule should be opt-out-overridable at the agent layer",
     );
+    // Stage 1 routing contract: the deferral is the complete reply (simple
+    // path), no tools. Live trajectory tj-f7ab3f282747f6 showed that without
+    // this clause Stage 1 set requiresTool=true and the planner spawned
+    // BROWSER to fetch nolo.com / findlaw.com, all of which failed and the
+    // user got no reply at all.
+    assert.match(
+      body,
+      /The deferral itself is the complete reply for this turn/,
+      "safety-scaffold rule should state the deferral is the complete reply",
+    );
+    assert.match(
+      body,
+      /use contexts=\["simple"\], put the deferral text in replyText/,
+      "safety-scaffold rule should pin Stage 1 routing to simple path",
+    );
+    assert.match(
+      body,
+      /do NOT set requiresTool=true or hint candidateActions for these topics/,
+      "safety-scaffold rule should forbid tool-spawning routing",
+    );
+    assert.match(
+      body,
+      /calling BROWSER to fetch nolo\.com \/ findlaw\.com/,
+      "safety-scaffold rule should explicitly call out the failed-BROWSER-lookup anti-pattern",
+    );
   });
 });
 
