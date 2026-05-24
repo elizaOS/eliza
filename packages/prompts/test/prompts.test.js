@@ -142,6 +142,40 @@ describe("prompt templates (src/index.ts)", () => {
       "attachment rule should disclaim generic-verb false positives",
     );
   });
+
+  it("messageHandlerTemplate defaults to deferring high-stakes personal-crisis topics to qualified professionals", () => {
+    // Default safety scaffold (#7925): when a user asks what someone should
+    // do in a personal-crisis situation involving legal jeopardy, criminal
+    // exposure, medical emergencies, self-harm, or active police/CPS
+    // contact, the framework default is to acknowledge the stakes and
+    // recommend qualified professional help instead of dispensing tactical
+    // advice on concealing evidence, evading authorities, etc. Per-agent
+    // character config may override.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /personal-crisis situation involving legal jeopardy, criminal exposure/,
+      "safety-scaffold rule should enumerate high-stakes topic categories",
+    );
+    assert.match(
+      body,
+      /do not give specific tactical advice on concealing evidence/,
+      "safety-scaffold rule should forbid tactical concealment/evasion advice",
+    );
+    assert.match(
+      body,
+      /recommend qualified professional help/,
+      "safety-scaffold rule should direct users to qualified counsel",
+    );
+    assert.match(
+      body,
+      /Per-agent character config may override/,
+      "safety-scaffold rule should be opt-out-overridable at the agent layer",
+    );
+  });
 });
 
 describe("build scripts", () => {
