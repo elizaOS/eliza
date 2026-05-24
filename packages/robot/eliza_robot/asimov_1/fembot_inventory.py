@@ -16,6 +16,9 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_SOURCE_MESH_DIR,
 )
 from eliza_robot.asimov_1.fembot_assembly import build_fembot_assembly_proof
+from eliza_robot.asimov_1.fembot_all_cad_readiness import (
+    build_fembot_all_cad_readiness_proof,
+)
 from eliza_robot.asimov_1.fembot_body_matching import build_fembot_body_matching_proof
 from eliza_robot.asimov_1.fembot_cad_toolchain import build_fembot_cad_toolchain_readiness_proof
 from eliza_robot.asimov_1.fembot_clearance_projection import build_fembot_clearance_projection_proof
@@ -519,6 +522,10 @@ def collect_fembot_inventory(
         generated_cad_report=generated_cad,
         parametric_constraint_report=parametric_constraints,
     )
+    all_cad_readiness = build_fembot_all_cad_readiness_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+    )
     assembly = build_fembot_assembly_proof(
         records_dict,
         mesh_dir=mesh_dir,
@@ -697,6 +704,11 @@ def collect_fembot_inventory(
             "ok": bool(supplier_pocket_plan.get("ok")),
             "accepted": bool(supplier_pocket_plan.get("accepted")),
             "summary": supplier_pocket_plan.get("summary", {}),
+        },
+        "all_cad_readiness": {
+            "ok": bool(all_cad_readiness.get("ok")),
+            "accepted": bool(all_cad_readiness.get("accepted")),
+            "summary": all_cad_readiness.get("summary", {}),
         },
         "assembly": {
             "ok": bool(assembly.get("ok")),
