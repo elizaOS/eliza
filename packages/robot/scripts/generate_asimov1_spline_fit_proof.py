@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 from eliza_robot.asimov_1.spline_fit_proof import (  # noqa: E402
     ASIMOV_PARAM_PROOFS,
     SECTION_METHODS,
+    VALIDATION_MESH_SOURCES,
     build_spline_fit_proof,
     load_connection_specs,
     write_spline_fit_proof,
@@ -65,6 +66,25 @@ def main() -> int:
     parser.add_argument("--min-loop-perimeter-m", type=float, default=0.005)
     parser.add_argument("--section-nudge-m", type=float, default=1e-7)
     parser.add_argument(
+        "--validation-mesh-source",
+        choices=sorted(VALIDATION_MESH_SOURCES),
+        default="output_mesh",
+        help=(
+            "Mesh used for interface/topology/surface proof. controlled_loft "
+            "validates a sealed mesh generated from the fitted spline sections."
+        ),
+    )
+    parser.add_argument(
+        "--reuse-existing-parameters",
+        action="store_true",
+        help=(
+            "When an existing proof JSON is present in --output-dir, reuse its "
+            "axis, section method, validation source, sampling, and tolerance "
+            "parameters before regenerating. This is useful when refreshing the "
+            "proof schema across all links without losing per-link repair settings."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -101,22 +121,88 @@ def main() -> int:
 
     results = []
     for link in links:
-        axis = args.axis or connection_specs.get(link, {}).get("spine") or "x"
+        existing_report = None
+        existing_path = args.output if args.output is not None else args.output_dir / f"{link}.spline-fit.json"
+        if args.reuse_existing_parameters and existing_path.is_file():
+            try:
+                existing_report = json.loads(existing_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing_report = None
+        existing_tolerances = (
+            existing_report.get("tolerances", {})
+            if isinstance(existing_report, dict)
+            else {}
+        )
+        existing_surface_distance = (
+            existing_report.get("surface_distance", {})
+            if isinstance(existing_report, dict)
+            else {}
+        )
+        axis = (
+            args.axis
+            or (existing_report.get("axis") if isinstance(existing_report, dict) else None)
+            or connection_specs.get(link, {}).get("spine")
+            or "x"
+        )
         report = build_spline_fit_proof(
             link=link,
             axis=axis,
-            step_m=args.step_m,
-            slab_m=args.slab_m,
-            angular_samples=args.angular_samples,
-            control_count=args.control_count,
-            max_error_m=args.max_error_m,
-            rms_error_m=args.rms_error_m,
-            interface_tolerance_m=args.interface_tolerance_m,
-            surface_distance_tolerance_m=args.surface_distance_tolerance_m,
-            surface_distance_samples=args.surface_distance_samples,
-            section_method=args.section_method,
-            min_loop_perimeter_m=args.min_loop_perimeter_m,
-            section_nudge_m=args.section_nudge_m,
+            step_m=(
+                existing_report.get("step_m", args.step_m)
+                if isinstance(existing_report, dict)
+                else args.step_m
+            ),
+            slab_m=(
+                existing_report.get("slab_m", args.slab_m)
+                if isinstance(existing_report, dict)
+                else args.slab_m
+            ),
+            angular_samples=(
+                existing_report.get("angular_samples", args.angular_samples)
+                if isinstance(existing_report, dict)
+                else args.angular_samples
+            ),
+            control_count=(
+                existing_report.get("control_count", args.control_count)
+                if isinstance(existing_report, dict)
+                else args.control_count
+            ),
+            max_error_m=existing_tolerances.get("max_error_m", args.max_error_m),
+            rms_error_m=existing_tolerances.get("rms_error_m", args.rms_error_m),
+            interface_tolerance_m=existing_tolerances.get(
+                "interface_tolerance_m",
+                args.interface_tolerance_m,
+            ),
+            surface_distance_tolerance_m=existing_tolerances.get(
+                "surface_distance_tolerance_m",
+                args.surface_distance_tolerance_m,
+            ),
+            topology_merge_tolerance_m=existing_tolerances.get(
+                "topology_merge_tolerance_m",
+                1e-6,
+            ),
+            surface_distance_samples=existing_surface_distance.get(
+                "source_sample_count",
+                args.surface_distance_samples,
+            ),
+            section_method=(
+                existing_report.get("section_method", args.section_method)
+                if isinstance(existing_report, dict)
+                else args.section_method
+            ),
+            min_loop_perimeter_m=existing_tolerances.get(
+                "min_loop_perimeter_m",
+                args.min_loop_perimeter_m,
+            ),
+            section_nudge_m=existing_tolerances.get(
+                "section_nudge_m",
+                args.section_nudge_m,
+            ),
+            validation_mesh_source=(
+                existing_report.get("validation_mesh_source", args.validation_mesh_source)
+                if isinstance(existing_report, dict)
+                else args.validation_mesh_source
+            ),
         )
         if args.output is not None:
             output = args.output

@@ -8,25 +8,61 @@ from pathlib import Path
 from typing import Any
 
 from eliza_robot.asimov_1.cad import sha256_file
+from eliza_robot.asimov_1.collision_sweep import build_asimov1_collision_sweep_proof
 from eliza_robot.asimov_1.constants import (
     ASIMOV1_GENERATED_MJCF,
     ASIMOV1_MAIN_STEP,
     ASIMOV1_MECHANICAL_ROOT,
     ASIMOV1_SOURCE_MESH_DIR,
 )
-from eliza_robot.asimov_1.collision_sweep import build_asimov1_collision_sweep_proof
+from eliza_robot.asimov_1.fembot_assembly import build_fembot_assembly_proof
+from eliza_robot.asimov_1.fembot_body_matching import build_fembot_body_matching_proof
+from eliza_robot.asimov_1.fembot_cad_toolchain import build_fembot_cad_toolchain_readiness_proof
+from eliza_robot.asimov_1.fembot_clearance_projection import build_fembot_clearance_projection_proof
+from eliza_robot.asimov_1.fembot_component_constraints import (
+    build_fembot_component_constraint_coverage_proof,
+)
+from eliza_robot.asimov_1.fembot_controller_validation import (
+    build_fembot_controller_validation_proof,
+)
+from eliza_robot.asimov_1.fembot_foot_handling import build_fembot_foot_handling_proof
+from eliza_robot.asimov_1.fembot_generated_cad import build_fembot_generated_cad_envelope_proof
+from eliza_robot.asimov_1.fembot_hardware_measurements import (
+    build_fembot_hardware_measurement_requirements_proof,
+)
+from eliza_robot.asimov_1.fembot_inertia_calibration import (
+    build_fembot_inertia_calibration_proof,
+)
 from eliza_robot.asimov_1.fembot_keepouts import build_fembot_keepout_proof
 from eliza_robot.asimov_1.fembot_link_sources import build_fembot_link_source_assignment_proof
 from eliza_robot.asimov_1.fembot_materials import build_fembot_material_manufacturing_proof
-from eliza_robot.asimov_1.fembot_source_manifest import build_fembot_source_manifest_proof
-from eliza_robot.asimov_1.fembot_surface_quality import build_fembot_surface_quality_proof
-from eliza_robot.asimov_1.mujoco_load_proof import build_mujoco_load_proof
-from eliza_robot.asimov_1.parametric_inventory import collect_asimov1_parametric_inventory
+from eliza_robot.asimov_1.fembot_media_review import build_fembot_media_review_proof
+from eliza_robot.asimov_1.fembot_mesh_traceability import (
+    build_fembot_mesh_parametric_traceability_proof,
+)
+from eliza_robot.asimov_1.fembot_mold_dfm import build_fembot_mold_dfm_proof
+from eliza_robot.asimov_1.fembot_motion_validation import build_fembot_collision_dynamics_proof
+from eliza_robot.asimov_1.fembot_parametric_constraints import (
+    build_fembot_parametric_constraints_proof,
+)
 from eliza_robot.asimov_1.fembot_proofs import (
     FEMBOT_PROOF_CONTRACTS,
     fembot_proof_contract_report,
 )
-
+from eliza_robot.asimov_1.fembot_slimming_envelope import build_fembot_slimming_envelope_proof
+from eliza_robot.asimov_1.fembot_source_manifest import build_fembot_source_manifest_proof
+from eliza_robot.asimov_1.fembot_structural import build_fembot_structural_sanity_proof
+from eliza_robot.asimov_1.fembot_supplier_pocket_plan import (
+    build_fembot_supplier_pocket_plan_proof,
+)
+from eliza_robot.asimov_1.fembot_surface_quality import build_fembot_surface_quality_proof
+from eliza_robot.asimov_1.fembot_thinness_frontier import (
+    build_fembot_thinness_frontier_proof,
+)
+from eliza_robot.asimov_1.fembot_topology import build_fembot_topology_proof
+from eliza_robot.asimov_1.fembot_visual_review import build_fembot_visual_review_proof
+from eliza_robot.asimov_1.mujoco_load_proof import build_mujoco_load_proof
+from eliza_robot.asimov_1.parametric_inventory import collect_asimov1_parametric_inventory
 
 FEMBOT_BODY_GROUP_LINKS: dict[str, tuple[str, ...]] = {
     "torso": ("IMU_ORIGIN", "WAIST_YAW"),
@@ -221,8 +257,10 @@ def _missing_group_proofs(
     collision_sweep_accepted: bool,
     surface_quality_accepted: bool,
     keepout_accepted: bool,
+    generated_topology_links: set[str] | None = None,
 ) -> list[str]:
     missing: set[str] = set()
+    generated_topology_links = generated_topology_links or set()
     for link in group_links:
         record = link_records.get(link)
         if not record:
@@ -239,7 +277,7 @@ def _missing_group_proofs(
             missing.add("source_step_or_controlled_loft")
         if not record.get("interface_proven"):
             missing.add("interface_preservation")
-        if not record.get("topology_proven"):
+        if not record.get("topology_proven") and link not in generated_topology_links:
             missing.add("topology")
         if not record.get("surface_distance_proven"):
             missing.add("surface_distance")
@@ -248,9 +286,11 @@ def _missing_group_proofs(
         {
             "material_properties",
             "manufacturing_process",
+            "hardware_measurements",
             "whole_robot_assembly",
             "structural_sanity",
             "visual_review",
+            "visual_motion_media",
         }
     )
     if not collision_sweep_accepted:
@@ -338,16 +378,174 @@ def collect_fembot_inventory(
         records_dict,
         main_step=main_step,
         mechanical_root=mechanical_root,
+        mesh_dir=mesh_dir,
+    )
+    body_matching = build_fembot_body_matching_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        max_files_per_group=1,
     )
     link_source_assignments = build_fembot_link_source_assignment_proof(
         records_dict,
         main_step=main_step,
         mechanical_root=mechanical_root,
         mesh_dir=mesh_dir,
+        body_matching_report=body_matching,
     )
-    material_manufacturing = build_fembot_material_manufacturing_proof(records_dict)
-    surface_quality = build_fembot_surface_quality_proof(records_dict, mesh_dir=mesh_dir)
+    mesh_traceability = build_fembot_mesh_parametric_traceability_proof(
+        inventory=parametric,
+        source_assignment_report=link_source_assignments,
+    )
+    accepted_source_links = {
+        str(record.get("link"))
+        for record in link_source_assignments.get("link_assignments", [])
+        if record.get("accepted")
+    }
+    for record in records_dict:
+        links = [str(link) for link in record.get("links", [])]
+        if links and all(link in accepted_source_links for link in links):
+            record["missing_proofs"] = [
+                proof
+                for proof in record["missing_proofs"]
+                if proof != "source_step_or_controlled_loft"
+            ]
+    cad_toolchain = build_fembot_cad_toolchain_readiness_proof()
     keepouts = build_fembot_keepout_proof(records_dict, mjcf_path=mjcf_path, mesh_dir=mesh_dir)
+    component_constraints = build_fembot_component_constraint_coverage_proof(
+        records_dict,
+        keepout_report=keepouts,
+    )
+    slimming_envelope = build_fembot_slimming_envelope_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+    )
+    clearance_projection = build_fembot_clearance_projection_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+    )
+    generated_cad = build_fembot_generated_cad_envelope_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+        clearance_report=clearance_projection,
+        component_constraint_report=component_constraints,
+    )
+    hardware_measurements = build_fembot_hardware_measurement_requirements_proof(
+        records_dict,
+        component_constraint_report=component_constraints,
+        generated_cad_report=generated_cad,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+    )
+    if hardware_measurements.get("accepted"):
+        for record in records_dict:
+            record["missing_proofs"] = [
+                proof
+                for proof in record["missing_proofs"]
+                if proof != "hardware_measurements"
+            ]
+    generated_topology = build_fembot_topology_proof(generated_cad_report=generated_cad)
+    generated_topology_links = {
+        str(record.get("link")).upper()
+        for record in generated_topology.get("link_topology", [])
+        if record.get("accepted")
+    }
+    for record in records_dict:
+        links = [str(link) for link in record.get("links", [])]
+        if links and all(link in generated_topology_links for link in links):
+            record["missing_proofs"] = [
+                proof for proof in record["missing_proofs"] if proof != "topology"
+            ]
+    material_manufacturing = build_fembot_material_manufacturing_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+    )
+    mold_dfm = build_fembot_mold_dfm_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+    )
+    surface_quality = build_fembot_surface_quality_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        generated_cad_report=generated_cad,
+    )
+    foot_handling = build_fembot_foot_handling_proof(
+        records_dict,
+        source_mjcf=mjcf_path,
+        generated_cad_report=generated_cad,
+        material_report=material_manufacturing,
+        surface_report=surface_quality,
+    )
+    inertia_calibration = build_fembot_inertia_calibration_proof(
+        records_dict,
+        source_mjcf=mjcf_path,
+        generated_cad_report=generated_cad,
+        material_report=material_manufacturing,
+        hardware_measurements=hardware_measurements,
+    )
+    controller_validation = build_fembot_controller_validation_proof(
+        records_dict,
+        source_mjcf=mjcf_path,
+    )
+    structural_sanity = build_fembot_structural_sanity_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+        generated_topology_report=generated_topology,
+    )
+    thinness_frontier = build_fembot_thinness_frontier_proof(
+        records_dict,
+        slimming_report=slimming_envelope,
+        clearance_report=clearance_projection,
+        generated_cad_report=generated_cad,
+        structural_report=structural_sanity,
+        component_constraint_report=component_constraints,
+    )
+    parametric_constraints = build_fembot_parametric_constraints_proof(
+        records_dict,
+        slimming_report=slimming_envelope,
+        clearance_report=clearance_projection,
+        generated_cad_report=generated_cad,
+        material_report=material_manufacturing,
+        surface_report=surface_quality,
+        topology_report=generated_topology,
+        mold_dfm_report=mold_dfm,
+        thinness_frontier_report=thinness_frontier,
+    )
+    supplier_pocket_plan = build_fembot_supplier_pocket_plan_proof(
+        records_dict,
+        component_constraint_report=component_constraints,
+        generated_cad_report=generated_cad,
+        parametric_constraint_report=parametric_constraints,
+    )
+    assembly = build_fembot_assembly_proof(
+        records_dict,
+        mesh_dir=mesh_dir,
+        mjcf_path=mjcf_path,
+        generated_cad_report=generated_cad,
+        mujoco_report=mujoco,
+        structural_report=structural_sanity,
+    )
+    fembot_collision_dynamics = build_fembot_collision_dynamics_proof(
+        records_dict,
+        mjcf_path=mjcf_path,
+        generated_cad_report=generated_cad,
+        structural_report=structural_sanity,
+        foot_handling_report=foot_handling,
+        inertia_calibration_report=inertia_calibration,
+        controller_validation_report=controller_validation,
+    )
+    visual_review = build_fembot_visual_review_proof(
+        records_dict,
+        generated_cad_report=generated_cad,
+    )
+    visual_motion_media = build_fembot_media_review_proof()
+    if visual_motion_media.get("ok"):
+        for record in records_dict:
+            record["missing_proofs"] = [
+                proof for proof in record["missing_proofs"] if proof != "visual_motion_media"
+            ]
     ready_groups = [record["group"] for record in records_dict if not record["missing_proofs"]]
     return {
         "schema": "asimov-fembot-inventory-v1",
@@ -388,25 +586,132 @@ def collect_fembot_inventory(
             "accepted": bool(link_source_assignments.get("accepted")),
             "summary": link_source_assignments.get("summary", {}),
         },
+        "mesh_traceability": {
+            "ok": bool(mesh_traceability.get("ok")),
+            "accepted": bool(mesh_traceability.get("accepted")),
+            "summary": mesh_traceability.get("summary", {}),
+        },
+        "body_matching": {
+            "ok": bool(body_matching.get("ok")),
+            "accepted": bool(body_matching.get("accepted")),
+            "summary": body_matching.get("summary", {}),
+        },
+        "cad_toolchain": {
+            "ok": bool(cad_toolchain.get("ok")),
+            "accepted": bool(cad_toolchain.get("accepted")),
+            "summary": cad_toolchain.get("summary", {}),
+            "selected_backend": cad_toolchain.get("selected_backend"),
+        },
         "collision_sweep": {
             "ok": bool(collision_sweep.get("ok")),
             "accepted": collision_sweep_accepted,
             "summary": collision_sweep.get("summary", {}),
+        },
+        "fembot_collision_dynamics": {
+            "ok": bool(fembot_collision_dynamics.get("ok")),
+            "accepted": bool(fembot_collision_dynamics.get("accepted")),
+            "summary": fembot_collision_dynamics.get("summary", {}),
+            "contact_pairs": fembot_collision_dynamics.get("contact_pairs", []),
         },
         "material_manufacturing": {
             "ok": bool(material_manufacturing.get("ok")),
             "accepted": bool(material_manufacturing.get("accepted")),
             "summary": material_manufacturing.get("summary", {}),
         },
+        "mold_dfm": {
+            "ok": bool(mold_dfm.get("ok")),
+            "accepted": bool(mold_dfm.get("accepted")),
+            "summary": mold_dfm.get("summary", {}),
+        },
         "surface_quality": {
             "ok": bool(surface_quality.get("ok")),
             "accepted": bool(surface_quality.get("accepted")),
             "summary": surface_quality.get("summary", {}),
         },
+        "foot_handling": {
+            "ok": bool(foot_handling.get("ok")),
+            "accepted": bool(foot_handling.get("accepted")),
+            "summary": foot_handling.get("summary", {}),
+        },
+        "inertia_calibration": {
+            "ok": bool(inertia_calibration.get("ok")),
+            "accepted": bool(inertia_calibration.get("accepted")),
+            "summary": inertia_calibration.get("summary", {}),
+        },
+        "controller_validation": {
+            "ok": bool(controller_validation.get("ok")),
+            "accepted": bool(controller_validation.get("accepted")),
+            "summary": controller_validation.get("summary", {}),
+        },
         "keepouts": {
             "ok": bool(keepouts.get("ok")),
             "accepted": bool(keepouts.get("accepted")),
             "summary": keepouts.get("summary", {}),
+        },
+        "component_constraints": {
+            "ok": bool(component_constraints.get("ok")),
+            "accepted": bool(component_constraints.get("accepted")),
+            "summary": component_constraints.get("summary", {}),
+        },
+        "slimming_envelope": {
+            "ok": bool(slimming_envelope.get("ok")),
+            "accepted": bool(slimming_envelope.get("accepted")),
+            "summary": slimming_envelope.get("summary", {}),
+        },
+        "clearance_projection": {
+            "ok": bool(clearance_projection.get("ok")),
+            "accepted": bool(clearance_projection.get("accepted")),
+            "summary": clearance_projection.get("summary", {}),
+        },
+        "generated_cad": {
+            "ok": bool(generated_cad.get("ok")),
+            "accepted": bool(generated_cad.get("accepted")),
+            "summary": generated_cad.get("summary", {}),
+        },
+        "hardware_measurements": {
+            "ok": bool(hardware_measurements.get("ok")),
+            "accepted": bool(hardware_measurements.get("accepted")),
+            "summary": hardware_measurements.get("summary", {}),
+        },
+        "generated_topology": {
+            "ok": bool(generated_topology.get("ok")),
+            "accepted": bool(generated_topology.get("accepted")),
+            "summary": generated_topology.get("summary", {}),
+        },
+        "structural_sanity": {
+            "ok": bool(structural_sanity.get("ok")),
+            "accepted": bool(structural_sanity.get("accepted")),
+            "summary": structural_sanity.get("summary", {}),
+        },
+        "thinness_frontier": {
+            "ok": bool(thinness_frontier.get("ok")),
+            "accepted": bool(thinness_frontier.get("accepted")),
+            "summary": thinness_frontier.get("summary", {}),
+        },
+        "parametric_constraints": {
+            "ok": bool(parametric_constraints.get("ok")),
+            "accepted": bool(parametric_constraints.get("accepted")),
+            "summary": parametric_constraints.get("summary", {}),
+        },
+        "supplier_pocket_plan": {
+            "ok": bool(supplier_pocket_plan.get("ok")),
+            "accepted": bool(supplier_pocket_plan.get("accepted")),
+            "summary": supplier_pocket_plan.get("summary", {}),
+        },
+        "assembly": {
+            "ok": bool(assembly.get("ok")),
+            "accepted": bool(assembly.get("accepted")),
+            "summary": assembly.get("summary", {}),
+        },
+        "visual_review": {
+            "ok": bool(visual_review.get("ok")),
+            "accepted": bool(visual_review.get("accepted")),
+            "summary": visual_review.get("summary", {}),
+        },
+        "visual_motion_media": {
+            "ok": bool(visual_motion_media.get("ok")),
+            "accepted": bool(visual_motion_media.get("accepted")),
+            "summary": visual_motion_media.get("summary", {}),
         },
         "proof_contracts": fembot_proof_contract_report(),
         "body_groups": records_dict,

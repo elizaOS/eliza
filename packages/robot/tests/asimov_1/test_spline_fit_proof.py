@@ -25,6 +25,11 @@ def test_left_ankle_a_spline_fit_proves_every_fitted_ring() -> None:
     assert report["summary"]["section_coverage_ok"] is True
     assert report["summary"]["internal_rings_skipped"] == 0
     assert report["summary"]["rings_fit"] >= 3
+    assert report["summary"]["rings_closed"] == report["summary"]["rings_fit"]
+    assert report["summary"]["rings_nondegenerate"] == report["summary"]["rings_fit"]
+    assert report["summary"]["max_closure_gap_m"] <= report["tolerances"]["spline_closure_tolerance_m"]
+    assert report["summary"]["min_fitted_ring_area_m2"] >= report["tolerances"]["min_fitted_ring_area_m2"]
+    assert report["summary"]["min_fitted_ring_perimeter_m"] >= report["tolerances"]["min_fitted_ring_perimeter_m"]
     assert report["summary"]["interfaces_checked"] == 2
     assert report["summary"]["interfaces_ok"] == 2
     assert report["summary"]["output_watertight"] is True
@@ -42,12 +47,16 @@ def test_left_ankle_a_spline_fit_proves_every_fitted_ring() -> None:
         <= report["tolerances"]["surface_distance_tolerance_m"]
     )
     assert all(ring["ok"] for ring in report["rings"])
+    assert all(ring["closed_loop_ok"] for ring in report["rings"])
+    assert all(ring["nondegenerate_loop_ok"] for ring in report["rings"])
+    assert all(ring["closure_gap_m"] <= report["tolerances"]["spline_closure_tolerance_m"] for ring in report["rings"])
+    assert all(ring["fitted_area_m2"] >= report["tolerances"]["min_fitted_ring_area_m2"] for ring in report["rings"])
     assert all(interface["ok"] for interface in report["interfaces"])
     assert report["topology"]["ok"] is True
     assert report["surface_distance"]["ok"] is True
 
 
-def test_waist_yaw_spline_fit_reports_actionable_failure_reasons() -> None:
+def test_waist_yaw_default_radial_sections_report_actionable_fit_failures() -> None:
     report = build_spline_fit_proof(
         link="WAIST_YAW",
         axis="z",
@@ -60,10 +69,10 @@ def test_waist_yaw_spline_fit_reports_actionable_failure_reasons() -> None:
     assert report["summary"]["ok"] is False
     reasons = report["summary"]["failure_reasons"]
     assert any(reason.startswith("spline_fit:") for reason in reasons)
-    assert any(reason.startswith("topology:") for reason in reasons)
     assert any(reason.startswith("section_coverage:") for reason in reasons)
     assert report["summary"]["interfaces_checked"] == 3
     assert report["summary"]["interfaces_ok"] == 3
+    assert report["topology"]["ok"] is True
 
 
 def test_plane_intersection_sections_separate_coverage_from_shape_error() -> None:
@@ -127,7 +136,7 @@ def test_plane_loop_sections_nudge_coplanar_intersection_degeneracy() -> None:
     assert report["summary"]["failure_reasons"] == []
 
 
-def test_plane_loop_sections_can_isolate_inherited_toe_topology() -> None:
+def test_plane_loop_sections_prove_repaired_toe_topology() -> None:
     report = build_spline_fit_proof(
         link="RIGHT_TOE",
         axis="x",
@@ -145,10 +154,64 @@ def test_plane_loop_sections_can_isolate_inherited_toe_topology() -> None:
         for reason in report["summary"]["failure_reasons"]
     )
     assert report["summary"]["source_nonmanifold_edges"] == 27
-    assert report["summary"]["output_nonmanifold_edges"] == 27
-    assert any(
+    assert report["summary"]["output_nonmanifold_edges"] == 0
+    assert report["summary"]["output_boundary_edges"] == 0
+    assert not any(
         reason.startswith("topology:")
         for reason in report["summary"]["failure_reasons"]
+    )
+
+
+def test_controlled_loft_validation_reports_repaired_shoulder_roll_ring_integrity() -> None:
+    report = build_spline_fit_proof(
+        link="LEFT_SHOULDER_ROLL",
+        axis="z",
+        section_method="plane_loops",
+        validation_mesh_source="controlled_loft",
+        control_count=64,
+        max_error_m=0.006,
+        rms_error_m=0.002,
+        surface_distance_samples=1000,
+    )
+
+    assert report["validation_mesh_source"] == "controlled_loft"
+    assert report["summary"]["interfaces_checked"] == 2
+    assert report["summary"]["interfaces_ok"] == 2
+    assert report["summary"]["controlled_loft_sections"] > 0
+    assert report["summary"]["controlled_loft_triangles"] > 0
+    assert report["summary"]["rings_closed"] == report["summary"]["rings_fit"]
+    assert report["summary"]["rings_nondegenerate"] == report["summary"]["rings_fit"]
+    assert not any(
+        reason.startswith("spline_closure:")
+        or reason.startswith("spline_degenerate:")
+        for reason in report["summary"]["failure_reasons"]
+    )
+    assert report["summary"]["output_watertight"] is True
+    assert report["summary"]["output_nonmanifold_edges"] == 0
+
+
+def test_controlled_loft_footprint_guard_preserves_ankle_toe_interface() -> None:
+    report = build_spline_fit_proof(
+        link="LEFT_ANKLE_B",
+        axis="x",
+        section_method="plane_loops",
+        validation_mesh_source="controlled_loft",
+        control_count=64,
+        max_error_m=0.006,
+        rms_error_m=0.002,
+        surface_distance_samples=1000,
+    )
+
+    assert report["summary"]["ok"] is True
+    assert report["summary"]["failure_reasons"] == []
+    assert report["summary"]["interface_footprint_levels"] == 1
+    assert report["summary"]["interfaces_checked"] == 2
+    assert report["summary"]["interfaces_ok"] == 2
+    assert report["summary"]["output_watertight"] is True
+    assert report["summary"]["output_nonmanifold_edges"] == 0
+    assert (
+        report["summary"]["surface_symmetric_hausdorff_m"]
+        <= report["tolerances"]["surface_distance_tolerance_m"]
     )
 
 

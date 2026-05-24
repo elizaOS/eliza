@@ -1,0 +1,2044 @@
+{
+  "accepted": false,
+  "links": [
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.0017550007700920089,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.062,
+        0.13499999046325684,
+        0.18379999697208405
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 3.885118055740877e-08,
+      "candidate_xy_area_m2": 0.008369999408721924,
+      "clearance_adjusted_bbox_extent_m": [
+        0.062,
+        0.13499999046325684,
+        0.18379999697208405
+      ],
+      "clearance_adjusted_xy_area_m2": 0.008369999408721924,
+      "generated_bbox_extent_m": [
+        0.06200019635568596,
+        0.13500018954592996,
+        0.18380019697209
+      ],
+      "generated_xy_area_m2": 0.008370038259902481,
+      "group": "torso",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 3,
+      "keepout_limited": false,
+      "keepout_point_count": 4,
+      "link": "IMU_ORIGIN",
+      "minimum_projected_clearance_m": 0.0017550007700920089,
+      "process_floor_limited": false,
+      "protected_anchor_count": 9,
+      "source_bbox_extent_m": [
+        0.13185408432036638,
+        0.13499999046325684,
+        0.18379999697208405
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.5297832424412553,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.5297832424412553,
+      "source_to_generated_xy_reduction_fraction": 0.5297810598274633,
+      "source_xy_area_m2": 0.017800300125790924,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.06200019635568596,
+        0.13500018954592996,
+        0.18380019697209
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.008370038259902481,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.0362128253533167,
+        0.2029999999999999,
+        0.3816669760271907
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 4.736054373677412e-08,
+      "candidate_xy_area_m2": 0.007351203546723286,
+      "clearance_adjusted_bbox_extent_m": [
+        0.0362128253533167,
+        0.2029999999999999,
+        0.3816669760271907
+      ],
+      "clearance_adjusted_xy_area_m2": 0.007351203546723286,
+      "generated_bbox_extent_m": [
+        0.0362130232247276,
+        0.2030001986204597,
+        0.38166717602669503
+      ],
+      "generated_xy_area_m2": 0.007351250907267023,
+      "group": "torso",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": false,
+      "keepout_point_count": 4,
+      "link": "WAIST_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": false,
+      "protected_anchor_count": 8,
+      "source_bbox_extent_m": [
+        0.21884702146053314,
+        0.25,
+        0.3816669760271907
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.8656375856036221,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8656375856036221,
+      "source_to_generated_xy_reduction_fraction": 0.8656367199661843,
+      "source_xy_area_m2": 0.054711755365133286,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0362130232247276,
+        0.2030001986204597,
+        0.38166717602669503
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.007351250907267023,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.07466627261601388
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015151805646e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.07466627261601388
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540634078,
+        0.01200026789683811,
+        0.074666472616015
+      ],
+      "generated_xy_area_m2": 0.00014400553730151518,
+      "group": "head",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "NECK_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.07068441063165665,
+        0.060499999672174454,
+        0.07466627261601388
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9663268706510599,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9663268706510599,
+      "source_to_generated_xy_reduction_fraction": 0.9663255758019615,
+      "source_xy_area_m2": 0.004276406820043072,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000193540634078,
+        0.01200026789683811,
+        0.074666472616015
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730151518,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.04,
+        0.012,
+        0.18396008387207985
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 1.2857546709287883e-08,
+      "candidate_xy_area_m2": 0.00048,
+      "clearance_adjusted_bbox_extent_m": [
+        0.04,
+        0.012,
+        0.18396008387207985
+      ],
+      "clearance_adjusted_xy_area_m2": 0.00048,
+      "generated_bbox_extent_m": [
+        0.04000017846877603,
+        0.012000267896839643,
+        0.18396028387199
+      ],
+      "generated_xy_area_m2": 0.0004800128575467093,
+      "group": "head",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": false,
+      "keepout_point_count": 4,
+      "link": "NECK_PITCH",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 5,
+      "source_bbox_extent_m": [
+        0.1687920019030571,
+        0.13140400499105453,
+        0.18396008387207985
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9783588282707514,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9783588282707514,
+      "source_to_generated_xy_reduction_fraction": 0.9783582485783007,
+      "source_xy_area_m2": 0.0221799450605194,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000267896839643,
+        0.04000017846877603,
+        0.18396028387199
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004800128575467093,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.0753532232325531,
+        0.06670644879341125
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00011223871191590195,
+      "candidate_to_generated_xy_area_delta_m2": 0.00011225744633796663,
+      "candidate_xy_area_m2": 0.0009042386787906372,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.08470644922554493,
+        0.06670644879341125
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0010164773907065392,
+      "generated_bbox_extent_m": [
+        0.012000199294639712,
+        0.08470660362971269,
+        0.06670664879342
+      ],
+      "generated_xy_area_m2": 0.0010164961251286039,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": true,
+      "keepout_point_count": 2,
+      "link": "LEFT_SHOULDER_PITCH",
+      "minimum_projected_clearance_m": -0.0006766129964959153,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.08659999817609787,
+        0.11670644395053387,
+        0.06670644879341125
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9105314578286908,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994261665313403,
+      "source_to_generated_xy_reduction_fraction": 0.8994243128819999,
+      "source_xy_area_m2": 0.010106777833255101,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000199294639712,
+        0.06670664879342,
+        0.08470660362971269
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0008004930797985777,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.0753532232325457,
+        0.08274189755320549
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00011223871191599075,
+      "candidate_to_generated_xy_area_delta_m2": 0.0001122574463370777,
+      "candidate_xy_area_m2": 0.0009042386787905484,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.08470644922554493,
+        0.08274189755320549
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0010164773907065392,
+      "generated_bbox_extent_m": [
+        0.012000199294639684,
+        0.08470660362963141,
+        0.08274209755321002
+      ],
+      "generated_xy_area_m2": 0.0010164961251276261,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": true,
+      "keepout_point_count": 2,
+      "link": "RIGHT_SHOULDER_PITCH",
+      "minimum_projected_clearance_m": -0.0006766129964996138,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.08659999817609787,
+        0.11670644395053387,
+        0.08274189755320549
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9105314578286996,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994261665313403,
+      "source_to_generated_xy_reduction_fraction": 0.8994243128820967,
+      "source_xy_area_m2": 0.010106777833255101,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000199294639684,
+        0.08274209755321002,
+        0.08470660362963141
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0009929216606950387,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.02,
+        0.18338218331336975
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.8e-05,
+      "candidate_to_generated_xy_area_delta_m2": 4.800867454948595e-05,
+      "candidate_xy_area_m2": 0.00024,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.024,
+        0.18338218331336975
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000288,
+      "generated_bbox_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "generated_xy_area_m2": 0.00028800867454948595,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "LEFT_SHOULDER_ROLL",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.07459999993443489,
+        0.10000000149011612,
+        0.18338218331336975
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9678284186816817,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.961394102418018,
+      "source_to_generated_xy_reduction_fraction": 0.9613929396097922,
+      "source_xy_area_m2": 0.0074600001046061515,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00028800867454948595,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.02,
+        0.18338218331336975
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.8e-05,
+      "candidate_to_generated_xy_area_delta_m2": 4.800867454948595e-05,
+      "candidate_xy_area_m2": 0.00024,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.024,
+        0.18338218331336975
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000288,
+      "generated_bbox_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "generated_xy_area_m2": 0.00028800867454948595,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "RIGHT_SHOULDER_ROLL",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.07459999993443489,
+        0.10000000149011612,
+        0.18338218331336975
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9678284186816817,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.961394102418018,
+      "source_to_generated_xy_reduction_fraction": 0.9613929396097922,
+      "source_xy_area_m2": 0.0074600001046061515,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00028800867454948595,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.13505129981786013
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015360785614e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.13505129981786013
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540634817,
+        0.012000267896839112,
+        0.135051499818241
+      ],
+      "generated_xy_area_m2": 0.00014400553730153608,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "LEFT_SHOULDER_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.06852789595723152,
+        0.06450000032782555,
+        0.13505129981786013
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.967421177945094,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.967421177945094,
+      "source_to_generated_xy_reduction_fraction": 0.9674199251759176,
+      "source_xy_area_m2": 0.004420049311706628,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.013320246824110316,
+        "adjusted_width_m": 0.013320246824110316,
+        "adjusted_xy_area_m2": 0.00017742897545522095,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.012,
+        "current_xy_area_m2": 0.000144,
+        "depth_increase_m": 0.0013202468241103153,
+        "group": "arm",
+        "height_delta_m": 0.0,
+        "link": "LEFT_SHOULDER_YAW",
+        "max_minor_axis_increase_m": 0.0013202468241103153,
+        "width_increase_m": 0.0013202468241103153,
+        "xy_area_increase_fraction": 0.23214566288347876,
+        "xy_area_increase_m2": 3.3428975455220944e-05
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000193540634817,
+        0.012000267896839112,
+        0.135051499818241
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730153608,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.13535130489617586
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.537301538653542e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.13535130489617586
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540634817,
+        0.012000267896839327,
+        0.13535150489624098
+      ],
+      "generated_xy_area_m2": 0.00014400553730153866,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "RIGHT_SHOULDER_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.06852789595723152,
+        0.0656999982893467,
+        0.13535130489617586
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9680162239279336,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9680162239279336,
+      "source_to_generated_xy_reduction_fraction": 0.9680149940403472,
+      "source_xy_area_m2": 0.004502282647162639,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.01333010279813105,
+        "adjusted_width_m": 0.01333010279813105,
+        "adjusted_xy_area_m2": 0.00017769164060874127,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.012,
+        "current_xy_area_m2": 0.000144,
+        "depth_increase_m": 0.0013301027981310505,
+        "group": "arm",
+        "height_delta_m": 0.0,
+        "link": "RIGHT_SHOULDER_YAW",
+        "max_minor_axis_increase_m": 0.0013301027981310505,
+        "width_increase_m": 0.0013301027981310505,
+        "xy_area_increase_fraction": 0.2339697264495921,
+        "xy_area_increase_m2": 3.3691640608741265e-05
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000193540634817,
+        0.012000267896839327,
+        0.13535150489624098
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730153866,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.09999999999999999,
+        0.02,
+        0.13214801996946335
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0006414835963249204,
+      "candidate_to_generated_xy_area_delta_m2": 0.0006415102355116337,
+      "candidate_xy_area_m2": 0.002,
+      "clearance_adjusted_bbox_extent_m": [
+        0.11006181651353836,
+        0.024,
+        0.13214801996946335
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0026414835963249205,
+      "generated_bbox_extent_m": [
+        0.11006201576563879,
+        0.024000198589278515,
+        0.13214821996946002
+      ],
+      "generated_xy_area_m2": 0.0026415102355116338,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 3,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "LEFT_ELBOW",
+      "minimum_projected_clearance_m": -0.001030908256769188,
+      "process_floor_limited": false,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.1414158120751381,
+        0.07349999994039536,
+        0.13214801996946335
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.8075824479843159,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.7458660963527866,
+      "source_to_generated_xy_reduction_fraction": 0.7458635334292391,
+      "source_xy_area_m2": 0.01039406217909361,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.024000198589278515,
+        0.11006201576563879,
+        0.13214821996946002
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0026415102355116338,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.09999999999999999,
+        0.02,
+        0.13205821812152863
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0006397753868103025,
+      "candidate_to_generated_xy_area_delta_m2": 0.0006398020118740409,
+      "candidate_xy_area_m2": 0.002,
+      "clearance_adjusted_bbox_extent_m": [
+        0.10999064111709594,
+        0.024,
+        0.13205821812152863
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0026397753868103026,
+      "generated_bbox_extent_m": [
+        0.10999084036968369,
+        0.024000198589278515,
+        0.13205841812152003
+      ],
+      "generated_xy_area_m2": 0.002639802011874041,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 3,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "RIGHT_ELBOW",
+      "minimum_projected_clearance_m": -0.0009953205585479814,
+      "process_floor_limited": false,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.1414869874715805,
+        0.07349999994039536,
+        0.13205821812152863
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.807679244133502,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.7461582011454327,
+      "source_to_generated_xy_reduction_fraction": 0.7461556408692411,
+      "source_xy_area_m2": 0.010399293570727886,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.024000198589278515,
+        0.10999084036968369,
+        0.13205841812152003
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.002639802011874041,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.040321046486496925
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.537301519517373e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.040321046486496925
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.01200019354063355,
+        0.012000267896839,
+        0.0403212464865
+      ],
+      "generated_xy_area_m2": 0.00014400553730151952,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "LEFT_WRIST_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 3,
+      "source_bbox_extent_m": [
+        0.03803807031363249,
+        0.03759061545133591,
+        0.040321046486496925
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.899291859074638,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.899291859074638,
+      "source_to_generated_xy_reduction_fraction": 0.8992879864958758,
+      "source_xy_area_m2": 0.001429874473670635,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.01200019354063355,
+        0.012000267896839,
+        0.0403212464865
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730151952,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.04037221148610115
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015276217845e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.04037221148610115
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540634325,
+        0.0120002678968389,
+        0.0403724114861
+      ],
+      "generated_xy_area_m2": 0.00014400553730152763,
+      "group": "arm",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "RIGHT_WRIST_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 3,
+      "source_bbox_extent_m": [
+        0.03807985968887806,
+        0.03759999759495258,
+        0.04037221148610115
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.8994274792422687,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8994274792422687,
+      "source_to_generated_xy_reduction_fraction": 0.8994236118785686,
+      "source_xy_area_m2": 0.0014318026327179469,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.012000193540634325,
+        0.0120002678968389,
+        0.0403724114861
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.00014400553730152763,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.0522501,
+        0.050000275940092404,
+        0.09600000083446503
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.00235115217552435,
+      "candidate_to_generated_xy_area_delta_m2": 0.002351178661624523,
+      "candidate_xy_area_m2": 0.002612519417897422,
+      "clearance_adjusted_bbox_extent_m": [
+        0.0522501,
+        0.09499831758067012,
+        0.09600000083446503
+      ],
+      "clearance_adjusted_xy_area_m2": 0.004963671593421772,
+      "generated_bbox_extent_m": [
+        0.052250296928733626,
+        0.09499846644493029,
+        0.09600020083447
+      ],
+      "generated_xy_area_m2": 0.004963698079521945,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "LEFT_HIP_PITCH",
+      "minimum_projected_clearance_m": -0.018499020820288856,
+      "process_floor_limited": false,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.09724928066134453,
+        0.09899831237271428,
+        0.09600000083446503
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.7286403076161447,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.4844285606231239,
+      "source_to_generated_xy_reduction_fraction": 0.4844258095392674,
+      "source_xy_area_m2": 0.009627514664933548,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.052250296928733626,
+        0.09499846644493029,
+        0.09600020083447
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004963698079521945,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.052250000000000005,
+        0.05,
+        0.09600000083446503
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0023434431952340535,
+      "candidate_to_generated_xy_area_delta_m2": 0.0023434696563731337,
+      "candidate_xy_area_m2": 0.0026125000000000002,
+      "clearance_adjusted_bbox_extent_m": [
+        0.052250000000000005,
+        0.09485058746859432,
+        0.09600000083446503
+      ],
+      "clearance_adjusted_xy_area_m2": 0.004955943195234054,
+      "generated_bbox_extent_m": [
+        0.05225019692874271,
+        0.09485073641218884,
+        0.09600020083447
+      ],
+      "generated_xy_area_m2": 0.004955969656373134,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "RIGHT_HIP_PITCH",
+      "minimum_projected_clearance_m": -0.018425293734297153,
+      "process_floor_limited": false,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.09725009649991989,
+        0.09885058226063848,
+        0.09600000083446503
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.728239066048118,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.48446631527300266,
+      "source_to_generated_xy_reduction_fraction": 0.4844635626973587,
+      "source_xy_area_m2": 0.009613228663920361,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.05225019692874271,
+        0.09485073641218884,
+        0.09600020083447
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.004955969656373134,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.052249999999995404,
+        0.012,
+        0.07999999821186066
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 5.1230739712770294e-05,
+      "candidate_to_generated_xy_area_delta_m2": 5.124403864737023e-05,
+      "candidate_xy_area_m2": 0.0006269999999999449,
+      "clearance_adjusted_bbox_extent_m": [
+        0.05651922830939293,
+        0.012,
+        0.07999999821186066
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0006782307397127152,
+      "generated_bbox_extent_m": [
+        0.0565193978861952,
+        0.01200019929463855,
+        0.08000019821186
+      ],
+      "generated_xy_area_m2": 0.0006782440386473151,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": true,
+      "keepout_point_count": 2,
+      "link": "LEFT_HIP_ROLL",
+      "minimum_projected_clearance_m": 0.0018653858453012376,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.07251923158764839,
+        0.05338030308485031,
+        0.07999999821186066
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.8380304737743292,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8247963132648095,
+      "source_to_generated_xy_reduction_fraction": 0.8247928778228055,
+      "source_xy_area_m2": 0.0038710985616291216,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.0565193978861952,
+        0.08000019821186
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0007064924848813195,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 3,
+        "fit_pass_count": 2,
+        "link": "LEFT_HIP_ROLL",
+        "max_required_extent_growth_m": 0.0004998009053614506,
+        "max_required_sorted_extent_growth_m": [
+          0.0004998009053614506,
+          0.0,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 2.8248446234004423e-05,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.0522499999999986,
+        0.012,
+        0.07999999821186066
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 5.123073971273191e-05,
+      "candidate_to_generated_xy_area_delta_m2": 5.1244038647350497e-05,
+      "candidate_xy_area_m2": 0.0006269999999999833,
+      "clearance_adjusted_bbox_extent_m": [
+        0.05651922830939293,
+        0.012,
+        0.07999999821186066
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0006782307397127152,
+      "generated_bbox_extent_m": [
+        0.0565193978861952,
+        0.012000199294638879,
+        0.08000019821186
+      ],
+      "generated_xy_area_m2": 0.0006782440386473338,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": true,
+      "keepout_point_count": 2,
+      "link": "RIGHT_HIP_ROLL",
+      "minimum_projected_clearance_m": 0.001865385845302837,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.07251923158764839,
+        0.0533982589840889,
+        0.07999999821186066
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.8380849382558953,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.8248552279149328,
+      "source_to_generated_xy_reduction_fraction": 0.8248517936281388,
+      "source_xy_area_m2": 0.003872400709644369,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.0565193978861952,
+        0.08000019821186
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0007064924848813195,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 3,
+        "fit_pass_count": 2,
+        "link": "RIGHT_HIP_ROLL",
+        "max_required_extent_growth_m": 0.000499800905361121,
+        "max_required_sorted_extent_growth_m": [
+          0.000499800905361121,
+          0.0,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 2.8248446233985775e-05,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.3087400123476982
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.601496541500091e-05,
+      "candidate_to_generated_xy_area_delta_m2": 4.6021505219015046e-05,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.015834580451250076,
+        0.012,
+        0.3087400123476982
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0001900149654150009,
+      "generated_bbox_extent_m": [
+        0.015834771927804595,
+        0.012000267896839894,
+        0.30874021234777
+      ],
+      "generated_xy_area_m2": 0.00019002150521901505,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "LEFT_HIP_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.12319221720099449,
+        0.11502362042665482,
+        0.3087400123476982
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.989837695886772,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9865903481624185,
+      "source_to_generated_xy_reduction_fraction": 0.9865898866382711,
+      "source_xy_area_m2": 0.014170014830845207,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.017547300841741182,
+        "adjusted_width_m": 0.017547300841741182,
+        "adjusted_xy_area_m2": 0.0003079077668305708,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.015834580451250076,
+        "current_xy_area_m2": 0.0001900149654150009,
+        "depth_increase_m": 0.005547300841741182,
+        "group": "leg",
+        "height_delta_m": 0.0,
+        "link": "LEFT_HIP_YAW",
+        "max_minor_axis_increase_m": 0.005547300841741182,
+        "width_increase_m": 0.0017127203904911056,
+        "xy_area_increase_fraction": 0.620439559368847,
+        "xy_area_increase_m2": 0.00011789280141556987
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.30874021234777
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "LEFT_HIP_YAW",
+        "max_required_extent_growth_m": 0.02266522817219542,
+        "max_required_sorted_extent_growth_m": [
+          0.0004997323031601057,
+          0.02266522817219542,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00029122850373098513,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.3087400272488594
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 4.601496541500091e-05,
+      "candidate_to_generated_xy_area_delta_m2": 4.6021505219001656e-05,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.015834580451250076,
+        0.012,
+        0.3087400272488594
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0001900149654150009,
+      "generated_bbox_extent_m": [
+        0.015834771927804595,
+        0.01200026789683905,
+        0.30874022724893
+      ],
+      "generated_xy_area_m2": 0.00019002150521900166,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": true,
+      "keepout_point_count": 4,
+      "link": "RIGHT_HIP_YAW",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.12319221720099449,
+        0.11502033844590187,
+        0.3087400272488594
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9898374059164332,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9865899655325303,
+      "source_to_generated_xy_reduction_fraction": 0.9865895039952147,
+      "source_xy_area_m2": 0.01416961051635944,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.01754730112404468,
+        "adjusted_width_m": 0.01754730112404468,
+        "adjusted_xy_area_m2": 0.00030790777673789964,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.015834580451250076,
+        "current_xy_area_m2": 0.0001900149654150009,
+        "depth_increase_m": 0.005547301124044678,
+        "group": "leg",
+        "height_delta_m": 0.0,
+        "link": "RIGHT_HIP_YAW",
+        "max_minor_axis_increase_m": 0.005547301124044678,
+        "width_increase_m": 0.0017127206727946022,
+        "xy_area_increase_fraction": 0.6204396115085763,
+        "xy_area_increase_m2": 0.00011789281132289873
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.30874022724893
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "RIGHT_HIP_YAW",
+        "max_required_extent_growth_m": 0.02266522817219542,
+        "max_required_sorted_extent_growth_m": [
+          0.0004997323031609505,
+          0.02266522817219542,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0002912285037309986,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.36964358016848564
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.537301519354743e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.36964358016848564
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540634323,
+        0.012000267896838213,
+        0.36964378016836996
+      ],
+      "generated_xy_area_m2": 0.00014400553730151936,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": false,
+      "keepout_point_count": 4,
+      "link": "LEFT_KNEE",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.12836166843771935,
+        0.10094565525650978,
+        0.36964358016848564
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.988886790353269,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.988886790353269,
+      "source_to_generated_xy_reduction_fraction": 0.9888863630116533,
+      "source_xy_area_m2": 0.01295755273026443,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.0186326119328198,
+        "adjusted_width_m": 0.0186326119328198,
+        "adjusted_xy_area_m2": 0.00034717422743905886,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.012,
+        "current_xy_area_m2": 0.000144,
+        "depth_increase_m": 0.006632611932819801,
+        "group": "leg",
+        "height_delta_m": 0.0,
+        "link": "LEFT_KNEE",
+        "max_minor_axis_increase_m": 0.006632611932819801,
+        "width_increase_m": 0.006632611932819801,
+        "xy_area_increase_fraction": 1.4109321349934643,
+        "xy_area_increase_m2": 0.00020317422743905885
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.36964378016836996
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "LEFT_KNEE",
+        "max_required_extent_growth_m": 0.0264997322031618,
+        "max_required_sorted_extent_growth_m": [
+          0.0004998066593656769,
+          0.0264997322031618,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164848085,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "structural_safety_factor",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.36964358016848564
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015385993315e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.36964358016848564
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540635477,
+        0.012000267896838664,
+        0.36964378016836996
+      ],
+      "generated_xy_area_m2": 0.0001440055373015386,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 4,
+      "keepout_limited": false,
+      "keepout_point_count": 4,
+      "link": "RIGHT_KNEE",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 6,
+      "source_bbox_extent_m": [
+        0.1280105821788311,
+        0.10094646736979485,
+        0.36964358016848564
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9888564005302274,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9888564005302274,
+      "source_to_generated_xy_reduction_fraction": 0.9888559720200157,
+      "source_xy_area_m2": 0.012922216056903815,
+      "structural_limited": true,
+      "structural_remediation": {
+        "adjusted_depth_m": 0.0186326119328198,
+        "adjusted_width_m": 0.0186326119328198,
+        "adjusted_xy_area_m2": 0.00034717422743905886,
+        "current_depth_m": 0.012,
+        "current_width_m": 0.012,
+        "current_xy_area_m2": 0.000144,
+        "depth_increase_m": 0.006632611932819801,
+        "group": "leg",
+        "height_delta_m": 0.0,
+        "link": "RIGHT_KNEE",
+        "max_minor_axis_increase_m": 0.006632611932819801,
+        "width_increase_m": 0.006632611932819801,
+        "xy_area_increase_fraction": 1.4109321349934643,
+        "xy_area_increase_m2": 0.00020317422743905885
+      },
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.36964378016836996
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "RIGHT_KNEE",
+        "max_required_extent_growth_m": 0.02649973220316135,
+        "max_required_sorted_extent_growth_m": [
+          0.0004998066593645233,
+          0.02649973220316135,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0003372444716484616,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.05099999159574509
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015096240284e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.05099999159574509
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540632725,
+        0.012000267896839,
+        0.051000191595750005
+      ],
+      "generated_xy_area_m2": 0.00014400553730150963,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "LEFT_ANKLE_A",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.050999999046325684,
+        0.050999999046325684,
+        0.05099999159574509
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9446366761301596,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9446366761301596,
+      "source_to_generated_xy_reduction_fraction": 0.9446345472175426,
+      "source_xy_area_m2": 0.0026009999027252206,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.051000191595750005
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "LEFT_ANKLE_A",
+        "max_required_extent_growth_m": 0.026499732203161014,
+        "max_required_sorted_extent_growth_m": [
+          0.0004998066593672745,
+          0.026499732203161014,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164849055,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "manufacturing_process_floor",
+        "internal_cavity_keepout",
+        "supplier_vendor_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.05099999159574509
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 5.5373015096240284e-09,
+      "candidate_xy_area_m2": 0.000144,
+      "clearance_adjusted_bbox_extent_m": [
+        0.012,
+        0.012,
+        0.05099999159574509
+      ],
+      "clearance_adjusted_xy_area_m2": 0.000144,
+      "generated_bbox_extent_m": [
+        0.012000193540632725,
+        0.012000267896839,
+        0.051000191595750005
+      ],
+      "generated_xy_area_m2": 0.00014400553730150963,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 2,
+      "keepout_limited": false,
+      "keepout_point_count": 2,
+      "link": "RIGHT_ANKLE_A",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": true,
+      "protected_anchor_count": 4,
+      "source_bbox_extent_m": [
+        0.050999999046325684,
+        0.050999999046325684,
+        0.05099999159574509
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.9446366761301596,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.9446366761301596,
+      "source_to_generated_xy_reduction_fraction": 0.9446345472175426,
+      "source_xy_area_m2": 0.0026009999027252206,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.0125000002,
+        0.038500000100000015,
+        0.051000191595750005
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0004812500089500002,
+      "supplier_vendor_growth": {
+        "checked_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "failed_supplier_codes": [
+          "1600-0515-0006",
+          "1602-0032-0006",
+          "2806-0005-0004",
+          "2920-0001-0006",
+          "91390A117"
+        ],
+        "fit_check_count": 5,
+        "fit_fail_count": 5,
+        "fit_pass_count": 0,
+        "link": "RIGHT_ANKLE_A",
+        "max_required_extent_growth_m": 0.026499732203161014,
+        "max_required_sorted_extent_growth_m": [
+          0.0004998066593672745,
+          0.026499732203161014,
+          0.0
+        ],
+        "requires_growth": true
+      },
+      "supplier_vendor_limited": true,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.00033724447164849055,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.14753,
+        0.08,
+        0.06608647108078003
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 4.473208351819802e-08,
+      "candidate_xy_area_m2": 0.0118024,
+      "clearance_adjusted_bbox_extent_m": [
+        0.14753,
+        0.08,
+        0.06608647108078003
+      ],
+      "clearance_adjusted_xy_area_m2": 0.0118024,
+      "generated_bbox_extent_m": [
+        0.14753019899737613,
+        0.08000019529759753,
+        0.06608667108078001
+      ],
+      "generated_xy_area_m2": 0.011802444732083518,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 1,
+      "keepout_limited": false,
+      "keepout_point_count": 13,
+      "link": "LEFT_ANKLE_B",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": false,
+      "protected_anchor_count": 15,
+      "source_bbox_extent_m": [
+        0.151763454079628,
+        0.0968388170003891,
+        0.06608647108078003
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.19692953915695188,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.19692953915695188,
+      "source_to_generated_xy_reduction_fraction": 0.19692649545271157,
+      "source_xy_area_m2": 0.01469659335696405,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.06608667108078001,
+        0.08000019529759753,
+        0.14753019899737613
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.005286946593030491,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "internal_cavity_keepout"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.002,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.14747000000000002,
+        0.08,
+        0.06609831750392914
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0,
+      "candidate_to_generated_xy_area_delta_m2": 4.47204161081044e-08,
+      "candidate_xy_area_m2": 0.011797600000000002,
+      "clearance_adjusted_bbox_extent_m": [
+        0.14747000000000002,
+        0.08,
+        0.06609831750392914
+      ],
+      "clearance_adjusted_xy_area_m2": 0.011797600000000002,
+      "generated_bbox_extent_m": [
+        0.14747019899800617,
+        0.08000019529759783,
+        0.06609851750393
+      ],
+      "generated_xy_area_m2": 0.01179764472041611,
+      "group": "leg",
+      "internal_cavity_limited": true,
+      "internal_cavity_violation_count": 1,
+      "keepout_limited": false,
+      "keepout_point_count": 13,
+      "link": "RIGHT_ANKLE_B",
+      "minimum_projected_clearance_m": 0.002,
+      "process_floor_limited": false,
+      "protected_anchor_count": 15,
+      "source_bbox_extent_m": [
+        0.15176347270607948,
+        0.09683230891823769,
+        0.06609831750392914
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.19720229171772474,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.19720229171772474,
+      "source_to_generated_xy_reduction_fraction": 0.1971992486032299,
+      "source_xy_area_m2": 0.014695607471579622,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.06609851750393,
+        0.08000019529759783,
+        0.14747019899800617
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.005287894309196089,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.0003999012038111687,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.06999999999999999,
+        0.08,
+        0.04073064122349024
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0005894365345451118,
+      "candidate_to_generated_xy_area_delta_m2": 0.0005894365345446252,
+      "candidate_xy_area_m2": 0.0056,
+      "clearance_adjusted_bbox_extent_m": [
+        0.07030546944588423,
+        0.08803634458780289,
+        0.04073064122349024
+      ],
+      "clearance_adjusted_xy_area_m2": 0.006189436534545112,
+      "generated_bbox_extent_m": [
+        0.07030546944588101,
+        0.0880363445878,
+        0.04073064122349
+      ],
+      "generated_xy_area_m2": 0.006189436534544625,
+      "group": "foot",
+      "internal_cavity_limited": false,
+      "internal_cavity_violation_count": 0,
+      "keepout_limited": true,
+      "keepout_point_count": 11,
+      "link": "LEFT_TOE",
+      "minimum_projected_clearance_m": -1.817229390144344e-05,
+      "process_floor_limited": false,
+      "protected_anchor_count": 13,
+      "source_bbox_extent_m": [
+        0.07030546944588423,
+        0.09526947140693665,
+        0.04073064122349024
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.16392515125036056,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.0759228188454828,
+      "source_to_generated_xy_reduction_fraction": 0.0759228188455554,
+      "source_xy_area_m2": 0.006697964911125925,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.04073064122349,
+        0.07030546944588101,
+        0.0880363445878
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.0028635868520492176,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    },
+    {
+      "accepted": false,
+      "active_limiters": [
+        "z_height_preservation",
+        "keepout_clearance"
+      ],
+      "adjusted_minimum_projected_clearance_m": 0.0003999012038111687,
+      "blocking_reason": "thinness frontier is analytically bounded, but production acceptance still needs resolved cavity/keepout constraints, structural proof at the final envelope, collision simulation, and hardware-calibrated inertia",
+      "candidate_min_bbox_extent_m": [
+        0.06999999999999999,
+        0.08,
+        0.040729970671236515
+      ],
+      "candidate_to_clearance_adjusted_xy_area_increase_m2": 0.0005894365345451118,
+      "candidate_to_generated_xy_area_delta_m2": 0.0005894365345446252,
+      "candidate_xy_area_m2": 0.0056,
+      "clearance_adjusted_bbox_extent_m": [
+        0.07030546944588423,
+        0.08803634458780289,
+        0.040729970671236515
+      ],
+      "clearance_adjusted_xy_area_m2": 0.006189436534545112,
+      "generated_bbox_extent_m": [
+        0.07030546944588101,
+        0.0880363445878,
+        0.04072997067124
+      ],
+      "generated_xy_area_m2": 0.006189436534544625,
+      "group": "foot",
+      "internal_cavity_limited": false,
+      "internal_cavity_violation_count": 0,
+      "keepout_limited": true,
+      "keepout_point_count": 11,
+      "link": "RIGHT_TOE",
+      "minimum_projected_clearance_m": -1.817229390144344e-05,
+      "process_floor_limited": false,
+      "protected_anchor_count": 13,
+      "source_bbox_extent_m": [
+        0.07030546944588423,
+        0.09526947140693665,
+        0.040729970671236515
+      ],
+      "source_to_candidate_xy_reduction_fraction": 0.16392515125036056,
+      "source_to_clearance_adjusted_xy_reduction_fraction": 0.0759228188454828,
+      "source_to_generated_xy_reduction_fraction": 0.0759228188455554,
+      "source_xy_area_m2": 0.006697964911125925,
+      "structural_limited": false,
+      "structural_remediation": null,
+      "supplier_vendor_adjusted_sorted_extent_m": [
+        0.04072997067124,
+        0.07030546944588101,
+        0.0880363445878
+      ],
+      "supplier_vendor_adjusted_sorted_footprint_area_m2": 0.002863539708558493,
+      "supplier_vendor_growth": null,
+      "supplier_vendor_limited": false,
+      "supplier_vendor_sorted_footprint_area_delta_m2": 0.0,
+      "z_height_preserved": true
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-thinness-frontier-proof-v1",
+  "source": {
+    "clearance_schema": "asimov-fembot-clearance-projection-v1",
+    "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+    "slimming_schema": "asimov-fembot-slimming-envelope-v1",
+    "structural_schema": "asimov-fembot-structural-proof-v1"
+  },
+  "summary": {
+    "acceptance_blocker": "thinness frontier identifies active per-link limiters, but final acceptance still requires the limiting cavity, keepout, structural, collision, inertia, and hardware-controller gates to pass at the same final envelope",
+    "accepted": false,
+    "active_limiter_counts": {
+      "internal_cavity_keepout": 26,
+      "keepout_clearance": 14,
+      "manufacturing_process_floor": 18,
+      "structural_safety_factor": 6,
+      "supplier_vendor_keepout": 8,
+      "z_height_preservation": 28
+    },
+    "candidate_total_xy_area_m2": 0.06535269973092375,
+    "clearance_adjusted_total_xy_area_m2": 0.073022395987995,
+    "generated_total_sorted_footprint_area_m2": 0.05310626248387023,
+    "generated_total_xy_area_m2": 0.07302283505238742,
+    "height_preserved_links": 28,
+    "internal_cavity_limited_links": 26,
+    "keepout_limited_links": 14,
+    "links": 28,
+    "missing_links": [],
+    "process_floor_limited_links": 18,
+    "source_to_candidate_xy_reduction_fraction": 0.779119153517378,
+    "source_to_clearance_adjusted_xy_reduction_fraction": 0.7531969038092321,
+    "source_to_generated_xy_reduction_fraction": 0.7531954198473596,
+    "source_total_xy_area_m2": 0.2958730952530348,
+    "structural_limited_links": 6,
+    "supplier_vendor_adjusted_total_sorted_footprint_area_m2": 0.05509419427039412,
+    "supplier_vendor_limited_links": 8,
+    "supplier_vendor_max_required_extent_growth_m": 0.0264997322031618,
+    "supplier_vendor_sorted_footprint_area_delta_m2": 0.001987931786523893,
+    "supplier_vendor_worst_growth_links": [
+      "LEFT_KNEE",
+      "RIGHT_KNEE",
+      "LEFT_ANKLE_A",
+      "RIGHT_ANKLE_A",
+      "LEFT_HIP_YAW",
+      "RIGHT_HIP_YAW",
+      "LEFT_HIP_ROLL",
+      "RIGHT_HIP_ROLL"
+    ]
+  }
+}

@@ -1,6 +1,6 @@
 name: Build elizaOS Linux ISO
 
-# One canonical live distro at packages/os/linux/variants/elizaos. The build
+# One canonical live distro at packages/os/linux. The build
 # runs inside that Tails-derived Docker builder. riscv64 support is verified as
 # a native artifact + GUI contract until full riscv64 ISO boot evidence is
 # produced for this canonical distro.
@@ -54,7 +54,7 @@ jobs:
       attestations: write
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
-      VARIANT_DIR: packages/os/linux/variants/elizaos
+      LINUX_DIR: packages/os/linux
 
     steps:
       - name: Checkout
@@ -66,8 +66,8 @@ jobs:
         uses: actions/cache@v5
         with:
           path: |
-            ${{ env.VARIANT_DIR }}/cache
-          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/variants/elizaos/tails/auto/config', 'packages/os/linux/variants/elizaos/tails/config/chroot_local-packageslists/**', 'packages/os/linux/variants/elizaos/Dockerfile') }}
+            ${{ env.LINUX_DIR }}/cache
+          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/tails/auto/config', 'packages/os/linux/tails/config/chroot_local-packageslists/**', 'packages/os/linux/Dockerfile') }}
           restore-keys: elizaos-iso-${{ matrix.arch }}-
 
       - name: Detect KVM acceleration
@@ -86,11 +86,11 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/verify-riscv64-buildpaths.sh
-          cd "${VARIANT_DIR}"
+          cd "${LINUX_DIR}"
           ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
 
       - name: Build ISO (${{ matrix.arch }})
-        working-directory: ${{ env.VARIANT_DIR }}
+        working-directory: ${{ env.LINUX_DIR }}
         run: just build
         timeout-minutes: 110
 
@@ -104,7 +104,7 @@ jobs:
           ISO_MAX_BYTES: ${{ env.ELIZAOS_ISO_MAX_BYTES || '3221225472' }}
         run: |
           set -euo pipefail
-          ISO=$(find "${VARIANT_DIR}/out" \( -name "binary.iso" -o -name "elizaos-live-${{ matrix.arch }}-*.iso" -o -name "elizaos-linux-${{ matrix.arch }}-*.iso" \) | sort | tail -1)
+          ISO=$(find "${LINUX_DIR}/out" \( -name "binary.iso" -o -name "elizaos-live-${{ matrix.arch }}-*.iso" -o -name "elizaos-linux-${{ matrix.arch }}-*.iso" \) | sort | tail -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1

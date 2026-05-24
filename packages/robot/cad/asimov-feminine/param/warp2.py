@@ -17,6 +17,9 @@ Constraints enforced:
 Topology is never rebuilt: we displace original vertices, so all mechanical
 detail and watertightness state are preserved exactly.
 """
+from collections import defaultdict
+import math
+
 import numpy as np
 import trimesh
 
@@ -190,3 +193,248 @@ def warp_profile(mesh, axis='z', scale_fn=None, bulges=None, shift_fn=None,
     nv[:, pd] = new_c + new_off
     m.vertices = nv
     return m
+
+
+def separate_quantized_components(
+    mesh,
+    axis='z',
+    epsilon=1e-5,
+    merge_tolerance=1e-6,
+    component_offset_aliases=None,
+):
+    """Separate closed components that only touch after proof vertex quantization.
+
+    Some source STLs contain multiple watertight components that share exact
+    edges. The proof topology merge then sees four incident faces on those
+    edges. This nudges each already-closed face component in the non-spine plane
+    by a tiny deterministic amount, preserving the visible surface while making
+    the component contacts explicit gaps below geometric tolerances.
+    """
+    a = AXIS_IDX[axis]
+    pd = [d for d in range(3) if d != a]
+    out = mesh.copy()
+    vertices = np.asarray(out.vertices).copy()
+    faces = np.asarray(out.faces)
+    if len(faces) == 0:
+        return out
+
+    vertex_ids = {}
+    next_vertex_id = 0
+    face_vertex_ids = []
+    for face in faces:
+        ids = []
+        for vertex_index in face:
+            key = tuple(
+                np.round(vertices[int(vertex_index)] / merge_tolerance)
+                .astype(np.int64)
+                .tolist()
+            )
+            if key not in vertex_ids:
+                vertex_ids[key] = next_vertex_id
+                next_vertex_id += 1
+            ids.append(vertex_ids[key])
+        face_vertex_ids.append(tuple(ids))
+
+    edges = defaultdict(list)
+    for face_index, ids in enumerate(face_vertex_ids):
+        for start, end in ((ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[0])):
+            edges[tuple(sorted((start, end)))].append(face_index)
+
+    adjacency = [[] for _ in range(len(faces))]
+    nonmanifold_edges = 0
+    for incident_faces in edges.values():
+        if len(incident_faces) == 2:
+            left, right = incident_faces
+            adjacency[left].append(right)
+            adjacency[right].append(left)
+        elif len(incident_faces) > 2:
+            nonmanifold_edges += 1
+    if nonmanifold_edges == 0:
+        return out
+
+    component_id = np.full(len(faces), -1, dtype=np.int64)
+    components = []
+    for start in range(len(faces)):
+        if component_id[start] >= 0:
+            continue
+        current_id = len(components)
+        stack = [start]
+        component_id[start] = current_id
+        component_faces = []
+        while stack:
+            face_index = stack.pop()
+            component_faces.append(face_index)
+            for neighbor in adjacency[face_index]:
+                if component_id[neighbor] < 0:
+                    component_id[neighbor] = current_id
+                    stack.append(neighbor)
+        components.append(component_faces)
+    if len(components) <= 1:
+        return out
+
+    centroids = np.array([
+        vertices[faces[component_faces]].reshape(-1, 3).mean(axis=0)
+        for component_faces in components
+    ])
+    global_centroid = centroids.mean(axis=0)
+    offsets = []
+    for index, centroid in enumerate(centroids):
+        direction = centroid[pd] - global_centroid[pd]
+        norm = float(np.linalg.norm(direction))
+        if norm <= 1e-12:
+            angle = 2.0 * math.pi * index / max(1, len(components))
+            direction = np.array([math.cos(angle), math.sin(angle)])
+        else:
+            direction = direction / norm
+        offset = np.zeros(3)
+        offset[pd] = direction * epsilon
+        offsets.append(offset)
+    offsets = np.asarray(offsets)
+    if component_offset_aliases:
+        for child, parent in component_offset_aliases.items():
+            if 0 <= child < len(offsets) and 0 <= parent < len(offsets):
+                offsets[child] = offsets[parent]
+
+    separated_vertices = vertices[faces].reshape(-1, 3).copy()
+    separated_faces = np.arange(len(separated_vertices), dtype=np.int64).reshape(-1, 3)
+    for face_index, face in enumerate(faces):
+        separated_vertices[face_index * 3 : face_index * 3 + 3] += offsets[
+            component_id[face_index]
+        ]
+    out = trimesh.Trimesh(
+        vertices=separated_vertices,
+        faces=separated_faces,
+        process=False,
+    )
+    return out
+
+
+def cap_quantized_boundary_loops(mesh, merge_tolerance=1e-6, max_loop_vertices=64):
+    """Cap small boundary loops measured after proof vertex quantization."""
+    vertices = np.asarray(mesh.vertices).copy()
+    faces = np.asarray(mesh.faces).copy()
+    if len(faces) == 0:
+        return mesh.copy()
+
+    vertex_ids = {}
+    representative = []
+    face_vertex_ids = []
+    for face in faces:
+        ids = []
+        for vertex_index in face:
+            key = tuple(
+                np.round(vertices[int(vertex_index)] / merge_tolerance)
+                .astype(np.int64)
+                .tolist()
+            )
+            if key not in vertex_ids:
+                vertex_ids[key] = len(representative)
+                representative.append(int(vertex_index))
+            ids.append(vertex_ids[key])
+        face_vertex_ids.append(tuple(ids))
+
+    edges = defaultdict(list)
+    for face_index, ids in enumerate(face_vertex_ids):
+        for start, end in ((ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[0])):
+            edges[tuple(sorted((start, end)))].append(face_index)
+    boundary_edges = [edge for edge, incident in edges.items() if len(incident) == 1]
+    if not boundary_edges:
+        return mesh.copy()
+
+    adjacency = defaultdict(list)
+    for start, end in boundary_edges:
+        adjacency[start].append(end)
+        adjacency[end].append(start)
+
+    loops = []
+    seen_edges = set()
+    for start_edge in boundary_edges:
+        edge_key = tuple(sorted(start_edge))
+        if edge_key in seen_edges:
+            continue
+        start, current = start_edge
+        previous = start
+        loop = [start, current]
+        seen_edges.add(edge_key)
+        while current != start:
+            candidates = [
+                candidate
+                for candidate in adjacency[current]
+                if tuple(sorted((current, candidate))) not in seen_edges
+            ]
+            if not candidates:
+                break
+            next_vertex = candidates[0]
+            seen_edges.add(tuple(sorted((current, next_vertex))))
+            previous, current = current, next_vertex
+            if current != start:
+                loop.append(current)
+        if current == start and 3 <= len(loop) <= max_loop_vertices:
+            loops.append(loop)
+
+    if not loops:
+        return mesh.copy()
+
+    new_vertices = vertices.tolist()
+    new_faces = faces.tolist()
+    for loop in loops:
+        loop_indices = [representative[vertex_id] for vertex_id in loop]
+        points = vertices[loop_indices]
+        center_index = len(new_vertices)
+        new_vertices.append(points.mean(axis=0).tolist())
+        for index, vertex_index in enumerate(loop_indices):
+            next_index = loop_indices[(index + 1) % len(loop_indices)]
+            new_faces.append([vertex_index, next_index, center_index])
+
+    return trimesh.Trimesh(
+        vertices=np.asarray(new_vertices),
+        faces=np.asarray(new_faces),
+        process=False,
+    )
+
+
+def remove_excess_quantized_nonmanifold_faces(mesh, merge_tolerance=1e-6):
+    """Drop extra faces from edges with more than two quantized incident faces.
+
+    This is a narrow cleanup for source meshes with overlapping coplanar sheets:
+    keep the first two incident faces on every quantized edge, then let boundary
+    capping close the small holes left by removed duplicate sheet triangles.
+    """
+    vertices = np.asarray(mesh.vertices).copy()
+    faces = np.asarray(mesh.faces).copy()
+    if len(faces) == 0:
+        return mesh.copy()
+
+    vertex_ids = {}
+    face_vertex_ids = []
+    for face in faces:
+        ids = []
+        for vertex_index in face:
+            key = tuple(
+                np.round(vertices[int(vertex_index)] / merge_tolerance)
+                .astype(np.int64)
+                .tolist()
+            )
+            if key not in vertex_ids:
+                vertex_ids[key] = len(vertex_ids)
+            ids.append(vertex_ids[key])
+        face_vertex_ids.append(tuple(ids))
+
+    edges = defaultdict(list)
+    for face_index, ids in enumerate(face_vertex_ids):
+        for start, end in ((ids[0], ids[1]), (ids[1], ids[2]), (ids[2], ids[0])):
+            edges[tuple(sorted((start, end)))].append(face_index)
+
+    remove = set()
+    for incident_faces in edges.values():
+        if len(incident_faces) > 2:
+            remove.update(incident_faces[2:])
+    if not remove:
+        return mesh.copy()
+
+    keep = [index for index in range(len(faces)) if index not in remove]
+    return trimesh.Trimesh(
+        vertices=vertices,
+        faces=faces[keep],
+        process=False,
+    )

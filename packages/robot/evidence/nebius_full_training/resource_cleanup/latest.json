@@ -1,10 +1,61 @@
 {
   "started_at": "2026-05-24T03:45:28Z",
-  "target_instance_id": "computeinstance-e00x4sqmx07qwehxrc",
-  "target_disk_id": "computedisk-e00te9qnayns1bsz15",
+  "updated_at": "2026-05-24T09:18:38Z",
+  "project_id": "project-e00kfz6cpr00q21z892vec",
   "actions": [
-    {"name":"delete_instance","ok":true,"output":{  "id": "computeoperation-e00cc7jrb26pj3t60c",  "description": "Delete Instance",  "created_at": "2026-05-24T03:45:28.307448Z",  "finished_at": "2026-05-24T03:45:48.146734Z",  "resource_id": "computeinstance-e00x4sqmx07qwehxrc",  "status": {},  "progress_tracker": {    "description": "Deleting instance",    "started_at": "2026-05-24T03:45:28.307448Z",    "finished_at": "2026-05-24T03:45:48.146734Z"  }}},
-    {"name":"delete_disk","ok":true,"output":{  "id": "computeoperation-e00yzgw64ky261e4jm",  "description": "Delete Disk",  "created_at": "2026-05-24T03:45:49.656332Z",  "finished_at": "2026-05-24T03:45:58.819120Z",  "resource_id": "computedisk-e00te9qnayns1bsz15",  "status": {},  "progress_tracker": {    "description": "Deleting disk",    "started_at": "2026-05-24T03:45:49.656332Z",    "finished_at": "2026-05-24T03:45:58.819120Z"  }}}
+    {
+      "name": "delete_obsolete_instance",
+      "resource_id": "computeinstance-e00x4sqmx07qwehxrc",
+      "ok": true,
+      "operation_id": "computeoperation-e00cc7jrb26pj3t60c",
+      "finished_at": "2026-05-24T03:45:48.146734Z"
+    },
+    {
+      "name": "delete_obsolete_disk",
+      "resource_id": "computedisk-e00te9qnayns1bsz15",
+      "ok": true,
+      "operation_id": "computeoperation-e00yzgw64ky261e4jm",
+      "finished_at": "2026-05-24T03:45:58.819120Z"
+    },
+    {
+      "name": "verify_clean_run_instance_absent",
+      "resource_id": "computeinstance-e00vp47p03jxxtqev3",
+      "ok": true,
+      "result": "not_found"
+    },
+    {
+      "name": "verify_clean_run_disk_absent",
+      "resource_id": "computedisk-e00bef82gpgk1qgx5y",
+      "ok": true,
+      "result": "not_found"
+    },
+    {
+      "name": "delete_training_artifact_bucket",
+      "resource_id": "storagebucket-e005281935902153032806",
+      "resource_name": "robot-rl-results-1779358330",
+      "ok": true,
+      "operation_id": "opstoragebucket-e00b9vc15kftabwpwn",
+      "finished_at": "2026-05-24T09:17:43.660625Z"
+    },
+    {
+      "name": "purge_training_artifact_bucket",
+      "resource_id": "storagebucket-e005281935902153032806",
+      "resource_name": "robot-rl-results-1779358330",
+      "ok": true,
+      "operation_id": "opstoragebucket-e00ztt0pt5t9t9m8k5",
+      "finished_at": "2026-05-24T09:18:07.812479Z"
+    }
   ],
-  "finished_at": "2026-05-24T03:45:59Z"
+  "final_inventory": {
+    "compute_instances": 0,
+    "compute_disks": 0,
+    "compute_filesystems": 0,
+    "storage_buckets": 0,
+    "mk8s_clusters": 0
+  },
+  "retained_resources": [
+    "default VPC network vpcnetwork-e00mgn1s4e51aazwmq",
+    "default VPC subnet vpcsubnet-e00ahpd6vbm4m8zk0q"
+  ],
+  "finished_at": "2026-05-24T09:18:38Z"
 }

@@ -1,0 +1,122 @@
+"""Validation wrapper for fembot screenshot and joint-motion media."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from PIL import Image, ImageStat
+
+from eliza_robot.asimov_1.parametric_inventory import ASIMOV_FEMININE_CAD_ROOT, ASIMOV_PARAM_PROOFS
+
+FEMBOT_MEDIA_REVIEW_SCHEMA = "asimov-fembot-media-review-v1"
+DEFAULT_FEMBOT_MEDIA_ROOT = ASIMOV_FEMININE_CAD_ROOT / "output" / "media" / "fembot"
+DEFAULT_FEMBOT_MEDIA_PROOF = ASIMOV_PARAM_PROOFS / "fembot-media-review.json"
+
+
+def _image_report(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        return {"path": str(path), "exists": False, "nonblank": False}
+    image = Image.open(path).convert("RGB")
+    stddev = [round(float(value), 3) for value in ImageStat.Stat(image).stddev]
+    return {
+        "path": str(path),
+        "exists": True,
+        "bytes": path.stat().st_size,
+        "width": image.width,
+        "height": image.height,
+        "stddev_rgb": stddev,
+        "nonblank": max(stddev) >= 1.0,
+    }
+
+
+def _video_report(path: Path) -> dict[str, Any]:
+    return {
+        "path": str(path),
+        "exists": path.is_file(),
+        "bytes": path.stat().st_size if path.is_file() else 0,
+        "nonzero": path.is_file() and path.stat().st_size > 0,
+    }
+
+
+def build_fembot_media_review_proof(
+    *,
+    media_root: Path = DEFAULT_FEMBOT_MEDIA_ROOT,
+    proof_path: Path = DEFAULT_FEMBOT_MEDIA_PROOF,
+) -> dict[str, Any]:
+    """Return gateable evidence for screenshots and simultaneous joint video."""
+    screenshot_names = [
+        "fembot_front.png",
+        "fembot_rear.png",
+        "fembot_left.png",
+        "fembot_right.png",
+        "fembot_three_quarter.png",
+        "fembot_upper_three_quarter.png",
+    ]
+    screenshots = [_image_report(media_root / name) for name in screenshot_names]
+    video = _video_report(media_root / "fembot_all_joints_simultaneous_constraints.mp4")
+    existing_proof: dict[str, Any] = {}
+    if proof_path.is_file():
+        existing_proof = json.loads(proof_path.read_text(encoding="utf-8"))
+
+    joint_motion = existing_proof.get("joint_motion") if isinstance(existing_proof, dict) else {}
+    if not isinstance(joint_motion, dict):
+        joint_motion = {}
+    source = existing_proof.get("source") if isinstance(existing_proof, dict) else {}
+    if not isinstance(source, dict):
+        source = {}
+
+    missing_screenshots = [item["path"] for item in screenshots if not item["exists"]]
+    blank_screenshots = [item["path"] for item in screenshots if item["exists"] and not item["nonblank"]]
+    frame_count = (existing_proof.get("video") or {}).get("frame_count") if isinstance(existing_proof, dict) else None
+    joint_count = joint_motion.get("joint_count")
+    ok = bool(
+        not missing_screenshots
+        and not blank_screenshots
+        and video["nonzero"]
+        and isinstance(frame_count, int)
+        and frame_count > 0
+        and isinstance(joint_count, int)
+        and joint_count > 0
+    )
+    return {
+        "schema": FEMBOT_MEDIA_REVIEW_SCHEMA,
+        "ok": ok,
+        "accepted": False,
+        "source": {
+            "media_root": str(media_root),
+            "proof_path": str(proof_path),
+            "mjcf": source.get("mjcf"),
+        },
+        "summary": {
+            "screenshot_count": len(screenshots),
+            "missing_screenshots": missing_screenshots,
+            "blank_screenshots": blank_screenshots,
+            "video_exists": video["exists"],
+            "video_bytes": video["bytes"],
+            "video_frame_count": frame_count,
+            "joint_count": joint_count,
+            "accepted": False,
+            "acceptance_blocker": (
+                "screenshots and constrained all-joint video exist, but production "
+                "acceptance still requires manual visual review and hardware calibration"
+            ),
+        },
+        "screenshots": screenshots,
+        "video": video,
+        "joint_motion": joint_motion,
+    }
+
+
+def dump_fembot_media_review_proof_json(report: dict[str, Any]) -> str:
+    return json.dumps(report, indent=2, sort_keys=True) + "\n"
+
+
+def write_fembot_media_review_proof(
+    report: dict[str, Any],
+    output: Path = DEFAULT_FEMBOT_MEDIA_PROOF,
+) -> Path:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(dump_fembot_media_review_proof_json(report), encoding="utf-8")
+    return output

@@ -1,0 +1,62 @@
+from __future__ import annotations
+
+import json
+
+from PIL import Image
+
+from eliza_robot.asimov_1.fembot_media_review import build_fembot_media_review_proof
+
+SCREENSHOT_NAMES = [
+    "fembot_front.png",
+    "fembot_rear.png",
+    "fembot_left.png",
+    "fembot_right.png",
+    "fembot_three_quarter.png",
+    "fembot_upper_three_quarter.png",
+]
+
+
+def test_fembot_media_review_validates_screenshots_and_joint_video(tmp_path) -> None:
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    for index, name in enumerate(SCREENSHOT_NAMES):
+        image = Image.new("RGB", (32, 24), (20 + index * 10, 40, 70))
+        image.putpixel((index + 1, 1), (220, 210, 50))
+        image.save(media_root / name)
+    video = media_root / "fembot_all_joints_simultaneous_constraints.mp4"
+    video.write_bytes(b"not a real mp4, but nonzero artifact bytes for wrapper validation")
+    proof_path = tmp_path / "fembot-media-review.json"
+    proof_path.write_text(
+        json.dumps(
+            {
+                "schema": "asimov-fembot-media-review-v1",
+                "source": {"mjcf": "asimov_fembot.xml"},
+                "video": {"frame_count": 144},
+                "joint_motion": {"joint_count": 27, "joints": []},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report = build_fembot_media_review_proof(media_root=media_root, proof_path=proof_path)
+
+    assert report["schema"] == "asimov-fembot-media-review-v1"
+    assert report["ok"] is True
+    assert report["accepted"] is False
+    assert report["summary"]["screenshot_count"] == 6
+    assert report["summary"]["missing_screenshots"] == []
+    assert report["summary"]["blank_screenshots"] == []
+    assert report["summary"]["video_frame_count"] == 144
+    assert report["summary"]["joint_count"] == 27
+
+
+def test_fembot_media_review_reports_missing_round_media(tmp_path) -> None:
+    report = build_fembot_media_review_proof(
+        media_root=tmp_path / "missing-media",
+        proof_path=tmp_path / "missing-proof.json",
+    )
+
+    assert report["ok"] is False
+    assert len(report["summary"]["missing_screenshots"]) == 6
+    assert report["summary"]["video_exists"] is False
+    assert report["summary"]["joint_count"] is None

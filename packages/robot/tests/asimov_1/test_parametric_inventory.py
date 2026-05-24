@@ -15,10 +15,10 @@ def test_asimov_parametric_inventory_separates_mesh_warps_from_proven_parametric
     assert report["counts"]["mesh_files"] == 28
     assert report["counts"]["with_connection_specs"] == 28
     assert report["counts"]["with_part_scripts"] == 28
-    assert report["counts"]["with_spline_fit_proofs"] == 11
-    assert report["counts"]["with_interface_proofs"] == 11
-    assert report["counts"]["with_topology_proofs"] == 11
-    assert report["counts"]["with_surface_distance_proofs"] == 11
+    assert report["counts"]["with_spline_fit_proofs"] == 28
+    assert report["counts"]["with_interface_proofs"] == 28
+    assert report["counts"]["with_topology_proofs"] == 28
+    assert report["counts"]["with_surface_distance_proofs"] == 28
     assert report["counts"]["proven_parametric"] == 0
     assert report["statuses"].get("mesh_derived_parametric_unproven") == 25
     assert report["statuses"].get("non_parametric_mesh_warp") == 3
@@ -46,14 +46,31 @@ def test_asimov_parametric_inventory_separates_mesh_warps_from_proven_parametric
 
     for link in (
         "RIGHT_ANKLE_A",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
         "LEFT_HIP_ROLL",
         "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
         "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_PITCH",
         "RIGHT_SHOULDER_YAW",
+        "LEFT_TOE",
+        "RIGHT_TOE",
         "LEFT_WRIST_YAW",
         "RIGHT_WRIST_YAW",
         "NECK_PITCH",
         "NECK_YAW",
+        "WAIST_YAW",
+        "IMU_ORIGIN",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B",
     ):
         proven = next(record for record in report["records"] if record["link"] == link)
         assert proven["spline_fit_proven"] is True

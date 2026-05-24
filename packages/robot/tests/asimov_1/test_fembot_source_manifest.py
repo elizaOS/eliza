@@ -14,14 +14,15 @@ def test_fembot_source_manifest_splits_step_candidates_by_body_group() -> None:
 
     assert report["schema"] == "asimov-fembot-source-manifest-v1"
     assert report["ok"] is True
-    assert report["accepted"] is False
+    assert report["accepted"] is True
     assert report["summary"]["body_groups"] == 5
     assert report["summary"]["links"] == 28
     assert report["summary"]["unique_step_files"] > 0
     assert report["summary"]["group_step_file_references"] >= report["summary"]["unique_step_files"]
     assert report["summary"]["missing_assemblies"] == []
     assert report["summary"]["exact_link_assignments"] == 0
-    assert report["summary"]["unresolved_links"] == 28
+    assert report["summary"]["controlled_loft_assignments"] == 28
+    assert report["summary"]["unresolved_links"] == 0
     assert report["summary"]["fabrication_class_counts"]["ASSEMBLY"] > 0
     assert report["summary"]["fabrication_class_counts"]["OFF_THE_SHELF"] > 0
 
@@ -35,8 +36,9 @@ def test_fembot_source_manifest_splits_step_candidates_by_body_group() -> None:
     for group in groups.values():
         assert group["step_file_count"] > 0
         assert group["exact_link_assignments"] == []
-        assert group["unresolved_links"] == group["links"]
-        assert group["accepted"] is False
+        assert len(group["controlled_loft_assignments"]) == len(group["links"])
+        assert group["unresolved_links"] == []
+        assert group["accepted"] is True
         assert all(record["sha256"] for record in group["step_files"])
 
 
@@ -44,11 +46,12 @@ def test_fembot_inventory_surfaces_source_manifest_status() -> None:
     report = collect_fembot_inventory()
 
     assert report["source_manifest"]["ok"] is True
-    assert report["source_manifest"]["accepted"] is False
-    assert report["source_manifest"]["summary"]["unresolved_links"] == 28
+    assert report["source_manifest"]["accepted"] is True
+    assert report["source_manifest"]["summary"]["controlled_loft_assignments"] == 28
+    assert report["source_manifest"]["summary"]["unresolved_links"] == 0
     assert report["source_manifest"]["summary"]["exact_link_assignments"] == 0
     for group in report["body_groups"]:
-        assert "source_step_or_controlled_loft" in group["missing_proofs"]
+        assert "source_step_or_controlled_loft" not in group["missing_proofs"]
 
 
 def test_fembot_source_manifest_cli_writes_gateable_proof(tmp_path) -> None:
@@ -71,4 +74,4 @@ def test_fembot_source_manifest_cli_writes_gateable_proof(tmp_path) -> None:
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["schema"] == "asimov-fembot-source-manifest-v1"
     assert proc.returncode == (0 if report["accepted"] else 2)
-    assert '"accepted": false' in proc.stdout
+    assert '"accepted": true' in proc.stdout

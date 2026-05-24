@@ -1,0 +1,668 @@
+{
+  "accepted": true,
+  "actuator_lag": {
+    "actuators_tracked": 25,
+    "duration_s": 0.25,
+    "expected_actuators": 25,
+    "max_abs_qvel_rad_s": 1.402341177581178,
+    "model": "MuJoCo position actuators under 20 mrad step; finite, non-instantaneous response",
+    "ok": true,
+    "response_samples": [
+      {
+        "max_response_fraction": 0.017611478492047195,
+        "median_response_fraction": 0.003607620856667648,
+        "min_response_fraction": -0.014920791522948486,
+        "step": 1,
+        "time_s": 0.002
+      },
+      {
+        "max_response_fraction": 0.05217337782798774,
+        "median_response_fraction": 0.00941173673087213,
+        "min_response_fraction": -0.04431622905791544,
+        "step": 2,
+        "time_s": 0.004
+      },
+      {
+        "max_response_fraction": 0.8406939427352776,
+        "median_response_fraction": 0.12783576710728775,
+        "min_response_fraction": -0.7490386413987418,
+        "step": 10,
+        "time_s": 0.02
+      },
+      {
+        "max_response_fraction": 1.6833702600437705,
+        "median_response_fraction": 0.7908743514944965,
+        "min_response_fraction": -0.793276818750655,
+        "step": 50,
+        "time_s": 0.1
+      },
+      {
+        "max_response_fraction": 1.7635146934391945,
+        "median_response_fraction": 0.9687877562665684,
+        "min_response_fraction": -0.3211094037191972,
+        "step": 125,
+        "time_s": 0.25
+      }
+    ],
+    "step_delta_rad": 0.02
+  },
+  "contact_tuned_colliders": {
+    "contact_enabled": true,
+    "fit_geom_count": 15,
+    "length_scale": 0.5,
+    "mjcf": "cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "mjcf_sha256": "485b3b98f7473cb1248075eda040360f2926280ea2569cd707bdf2464c3bd9f5",
+    "physical_visual_remediation_geom_count": 5,
+    "residual_fit_geom_count": 10,
+    "residual_geom_pairs": [
+      [
+        "neck_pitch_link_collision",
+        "waist_yaw_link_collision"
+      ],
+      [
+        "right_elbow_link_collision",
+        "right_hip_pitch_link_collision"
+      ],
+      [
+        "left_elbow_link_collision",
+        "left_hip_pitch_link_collision"
+      ],
+      [
+        "left_elbow_link_collision",
+        "left_shoulder_roll_link_collision"
+      ],
+      [
+        "right_elbow_link_collision",
+        "right_shoulder_roll_link_collision"
+      ]
+    ],
+    "scaled_geom_count": 19,
+    "scaled_geoms": [
+      {
+        "class": "body_capsule",
+        "link": "LEFT_HIP_YAW",
+        "name": "left_hip_yaw_link_collision",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.06749999999999999,
+          0.0,
+          0.0,
+          -0.1025
+        ],
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.05,
+          0.0,
+          0.0,
+          -0.12
+        ]
+      },
+      {
+        "class": "body_capsule",
+        "link": "LEFT_KNEE",
+        "name": "left_knee_link_collision",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.085,
+          0.0,
+          0.0,
+          -0.175
+        ],
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.04,
+          0.0,
+          0.0,
+          -0.22
+        ]
+      },
+      {
+        "class": "body_capsule",
+        "link": "RIGHT_HIP_YAW",
+        "name": "right_hip_yaw_link_collision",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.06749999999999999,
+          0.0,
+          0.0,
+          -0.1025
+        ],
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.05,
+          0.0,
+          0.0,
+          -0.12
+        ]
+      },
+      {
+        "class": "body_capsule",
+        "link": "RIGHT_KNEE",
+        "name": "right_knee_link_collision",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.085,
+          0.0,
+          0.0,
+          -0.175
+        ],
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.04,
+          0.0,
+          0.0,
+          -0.22
+        ]
+      },
+      {
+        "axis_end_fraction": 0.4,
+        "axis_start_fraction": 0.0,
+        "link": "LEFT_HIP_PITCH",
+        "name": "left_hip_pitch_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.02,
+          0.0,
+          0.0,
+          0.028,
+          0.0
+        ],
+        "output_size_m": [
+          0.04
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          0.02,
+          0.0,
+          0.0,
+          0.04,
+          0.0
+        ],
+        "source_name": "left_hip_pitch_link_collision",
+        "source_size_m": [
+          0.04
+        ]
+      },
+      {
+        "axis_end_fraction": 0.4,
+        "axis_start_fraction": 0.0,
+        "link": "RIGHT_HIP_PITCH",
+        "name": "right_hip_pitch_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          -0.02,
+          0.0,
+          0.0,
+          -0.028,
+          0.0
+        ],
+        "output_size_m": [
+          0.04
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          -0.02,
+          0.0,
+          0.0,
+          -0.04,
+          0.0
+        ],
+        "source_name": "right_hip_pitch_link_collision",
+        "source_size_m": [
+          0.04
+        ]
+      },
+      {
+        "axis_end_fraction": 0.66,
+        "axis_start_fraction": 0.0,
+        "link": "WAIST_YAW",
+        "name": "waist_yaw_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          0.05,
+          0.0,
+          0.0,
+          0.21500000000000002
+        ],
+        "output_size_m": [
+          0.06
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          0.05,
+          0.0,
+          0.0,
+          0.3
+        ],
+        "source_name": "waist_yaw_link_collision",
+        "source_size_m": [
+          0.06
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.4,
+        "link": "NECK_PITCH",
+        "name": "neck_pitch_link_collision_fit0",
+        "output_fromto_m": [
+          0.03,
+          0.0,
+          0.016,
+          0.03,
+          0.0,
+          0.04
+        ],
+        "output_size_m": [
+          0.045000000000000005
+        ],
+        "radius_scale": 0.9,
+        "source_fromto_m": [
+          0.03,
+          0.0,
+          0.0,
+          0.03,
+          0.0,
+          0.04
+        ],
+        "source_name": "neck_pitch_link_collision",
+        "source_size_m": [
+          0.05
+        ]
+      },
+      {
+        "axis_end_fraction": 0.65,
+        "axis_start_fraction": 0.0,
+        "link": "RIGHT_SHOULDER_ROLL",
+        "name": "right_shoulder_roll_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          -0.01,
+          -0.02,
+          0.0,
+          -0.01,
+          -0.0785
+        ],
+        "output_size_m": [
+          0.035
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          -0.01,
+          -0.02,
+          0.0,
+          -0.01,
+          -0.11
+        ],
+        "source_name": "right_shoulder_roll_link_collision",
+        "source_size_m": [
+          0.035
+        ]
+      },
+      {
+        "axis_end_fraction": 0.35,
+        "axis_start_fraction": 0.0,
+        "link": "RIGHT_ELBOW",
+        "name": "right_elbow_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          -0.01,
+          0.0,
+          0.0315,
+          -0.01,
+          -0.0245
+        ],
+        "output_size_m": [
+          0.03
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          -0.01,
+          0.0,
+          0.09,
+          -0.01,
+          -0.07
+        ],
+        "source_name": "right_elbow_link_collision",
+        "source_size_m": [
+          0.03
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.55,
+        "link": "RIGHT_ELBOW",
+        "name": "right_elbow_link_collision_fit1",
+        "output_fromto_m": [
+          0.0495,
+          -0.01,
+          -0.038500000000000006,
+          0.09,
+          -0.01,
+          -0.07
+        ],
+        "output_size_m": [
+          0.03
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          -0.01,
+          0.0,
+          0.09,
+          -0.01,
+          -0.07
+        ],
+        "source_name": "right_elbow_link_collision",
+        "source_size_m": [
+          0.03
+        ]
+      },
+      {
+        "axis_end_fraction": 0.65,
+        "axis_start_fraction": 0.0,
+        "link": "LEFT_SHOULDER_ROLL",
+        "name": "left_shoulder_roll_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.01,
+          -0.02,
+          0.0,
+          0.01,
+          -0.0785
+        ],
+        "output_size_m": [
+          0.035
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          0.01,
+          -0.02,
+          0.0,
+          0.01,
+          -0.11
+        ],
+        "source_name": "left_shoulder_roll_link_collision",
+        "source_size_m": [
+          0.035
+        ]
+      },
+      {
+        "axis_end_fraction": 0.35,
+        "axis_start_fraction": 0.0,
+        "link": "LEFT_ELBOW",
+        "name": "left_elbow_link_collision_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.01,
+          0.0,
+          0.0315,
+          0.01,
+          -0.0245
+        ],
+        "output_size_m": [
+          0.03
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          0.01,
+          0.0,
+          0.09,
+          0.01,
+          -0.07
+        ],
+        "source_name": "left_elbow_link_collision",
+        "source_size_m": [
+          0.03
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.55,
+        "link": "LEFT_ELBOW",
+        "name": "left_elbow_link_collision_fit1",
+        "output_fromto_m": [
+          0.0495,
+          0.01,
+          -0.038500000000000006,
+          0.09,
+          0.01,
+          -0.07
+        ],
+        "output_size_m": [
+          0.03
+        ],
+        "radius_scale": 1.0,
+        "source_fromto_m": [
+          0.0,
+          0.01,
+          0.0,
+          0.09,
+          0.01,
+          -0.07
+        ],
+        "source_name": "left_elbow_link_collision",
+        "source_size_m": [
+          0.03
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.72,
+        "contact_enabled": true,
+        "link": "LEFT_KNEE",
+        "name": "left_knee_link_collision_visual_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.1696,
+          0.0,
+          0.0,
+          -0.22
+        ],
+        "output_size_m": [
+          0.024
+        ],
+        "radius_scale": 0.6,
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.04,
+          0.0,
+          0.0,
+          -0.22
+        ],
+        "source_name": "left_knee_link_collision",
+        "source_size_m": [
+          0.04
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.72,
+        "contact_enabled": true,
+        "link": "RIGHT_KNEE",
+        "name": "right_knee_link_collision_visual_fit0",
+        "output_fromto_m": [
+          0.0,
+          0.0,
+          -0.1696,
+          0.0,
+          0.0,
+          -0.22
+        ],
+        "output_size_m": [
+          0.024
+        ],
+        "radius_scale": 0.6,
+        "source_fromto_m": [
+          0.0,
+          0.0,
+          -0.04,
+          0.0,
+          0.0,
+          -0.22
+        ],
+        "source_name": "right_knee_link_collision",
+        "source_size_m": [
+          0.04
+        ]
+      },
+      {
+        "axis_end_fraction": 1.0,
+        "axis_start_fraction": 0.4,
+        "contact_enabled": true,
+        "link": "NECK_PITCH",
+        "name": "neck_pitch_link_collision_visual_fit0",
+        "output_fromto_m": [
+          0.03,
+          0.0,
+          0.016,
+          0.03,
+          0.0,
+          0.04
+        ],
+        "output_size_m": [
+          0.065
+        ],
+        "radius_scale": 1.3,
+        "source_fromto_m": [
+          0.03,
+          0.0,
+          0.0,
+          0.03,
+          0.0,
+          0.04
+        ],
+        "source_name": "neck_pitch_link_collision",
+        "source_size_m": [
+          0.05
+        ]
+      },
+      {
+        "contact_enabled": true,
+        "fromto_m": [
+          0.0,
+          0.0,
+          -0.3,
+          0.0,
+          0.0,
+          -0.08
+        ],
+        "link": "LEFT_KNEE",
+        "name": "left_knee_link_collision_visual_center_distal_rail",
+        "radius_m": 0.0154,
+        "source_name": "left_knee_link_collision"
+      },
+      {
+        "contact_enabled": true,
+        "fromto_m": [
+          0.0,
+          0.0,
+          -0.3,
+          0.0,
+          0.0,
+          -0.08
+        ],
+        "link": "RIGHT_KNEE",
+        "name": "right_knee_link_collision_visual_center_distal_rail",
+        "radius_m": 0.0154,
+        "source_name": "right_knee_link_collision"
+      }
+    ],
+    "strategy": "physical_visual_remediation_promoted",
+    "structural_scaled_geom_count": 4,
+    "target_links": [
+      "LEFT_HIP_YAW",
+      "LEFT_KNEE",
+      "LEFT_SHOULDER_YAW",
+      "RIGHT_HIP_YAW",
+      "RIGHT_KNEE",
+      "RIGHT_SHOULDER_YAW"
+    ]
+  },
+  "hip_bodies": {
+    "left_hip_pitch_link": {
+      "output_pos_m": [
+        -0.052,
+        0.0648,
+        -0.044045
+      ],
+      "source_pos_m": [
+        -0.052,
+        0.0675,
+        -0.044045
+      ],
+      "y_delta_m": -0.002700000000000008
+    },
+    "right_hip_pitch_link": {
+      "output_pos_m": [
+        -0.0519999999999999,
+        -0.0648,
+        -0.0440449999999999
+      ],
+      "source_pos_m": [
+        -0.0519999999999999,
+        -0.0675,
+        -0.0440449999999999
+      ],
+      "y_delta_m": 0.002700000000000008
+    }
+  },
+  "mass_inertia": {
+    "body_count": 29,
+    "dynamic_body_count": 28,
+    "max_body_mass_kg": 8.20850158063177,
+    "min_body_inertia_kg_m2": 8.223930911279796e-06,
+    "min_body_mass_kg": 0.058058790654763,
+    "ok": true,
+    "total_mass_kg": 32.37127688334273,
+    "zero_or_negative_body_inertias": 0,
+    "zero_or_negative_body_masses": 0
+  },
+  "ok": true,
+  "output": {
+    "mjcf": "cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "mjcf_sha256": "485b3b98f7473cb1248075eda040360f2926280ea2569cd707bdf2464c3bd9f5"
+  },
+  "schema": "asimov-fembot-mjcf-v1",
+  "source": {
+    "mesh_dir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl",
+    "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+    "source_mjcf_sha256": "1699a8f5313cd6c9f43eeca4012c8b5390a1db3a924c89ca7a46cefdb47cfce9"
+  },
+  "summary": {
+    "actuator_lag_ok": true,
+    "contact_tuned_collider_fit_geom_count": 15,
+    "contact_tuned_collider_physical_visual_remediation_geom_count": 5,
+    "contact_tuned_collider_scaled_geom_count": 19,
+    "contact_tuned_collider_strategy": "physical_visual_remediation_promoted",
+    "contact_tuned_colliders_promoted": true,
+    "hip_spacing_ratio": 0.9599999999999999,
+    "hip_spacing_scale": 0.96,
+    "mass_inertia_ok": true,
+    "missing_meshes": [],
+    "mujoco_compiled": true,
+    "mujoco_error": null,
+    "nmesh": 28,
+    "nu": 25,
+    "output_hip_spacing_m": 0.1296,
+    "source_hip_spacing_m": 0.135
+  }
+}

@@ -535,10 +535,19 @@ export async function planJob(
   }
 
   const prompt = buildPrompt(jobContext);
-  const result = await runWithTrajectoryContext(
-    { purpose: "lifeops-background-planner" },
-    () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
-  );
+  let result: unknown;
+  try {
+    result = await runWithTrajectoryContext(
+      { purpose: "lifeops-background-planner" },
+      () => runtime.useModel(ModelType.TEXT_SMALL, { prompt }),
+    );
+  } catch (error) {
+    throw new BackgroundPlannerError(
+      jobContext.jobKind,
+      `model call failed: ${error instanceof Error ? error.message : String(error)}`,
+      error,
+    );
+  }
   const raw = typeof result === "string" ? result : "";
   const parsed = parsePlannerOutput(raw);
 

@@ -6,7 +6,6 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any
 
-
 FEMBOT_PROOF_SCHEMA_VERSION = "asimov-fembot-proof-contract-v1"
 
 
@@ -134,6 +133,32 @@ FEMBOT_PROOF_CONTRACTS: tuple[FembotProofContract, ...] = (
         notes="This proof is the primary guard against making the robot thin but unbuildable.",
     ),
     FembotProofContract(
+        proof_type="hardware_measurements",
+        label="Hardware measurement evidence",
+        scope="per-link and per-component",
+        required_artifact_schema="asimov-fembot-hardware-measurement-requirements-v1",
+        pass_condition=(
+            "Every motor, bearing/ring, transmission, fastener/thread, wiring/service-access, "
+            "vendor off-the-shelf, and component-specific clearance requirement has exact "
+            "measured or datasheet-backed dimensions with valid units and sources."
+        ),
+        minimum_fields=(
+            "link",
+            "measurement_key",
+            "family",
+            "field",
+            "value",
+            "unit",
+            "source",
+            "accepted",
+        ),
+        applies_to=("torso", "head", "arm", "leg", "foot"),
+        notes=(
+            "This bridges conservative keepouts to manufacturable CAD; no link can "
+            "be accepted with placeholder radii only."
+        ),
+    ),
+    FembotProofContract(
         proof_type="interface_preservation",
         label="Interface preservation",
         scope="per-link",
@@ -206,6 +231,30 @@ FEMBOT_PROOF_CONTRACTS: tuple[FembotProofContract, ...] = (
         ),
         applies_to=("torso", "head", "arm", "leg", "foot"),
         notes="This is separate from MuJoCo load; it proves spatial fit during motion.",
+    ),
+    FembotProofContract(
+        proof_type="collider_scale_tuning",
+        label="Collider scale tuning",
+        scope="whole-robot",
+        required_artifact_schema="asimov-fembot-contact-tuning-proof-v1",
+        pass_condition=(
+            "Generated MuJoCo body-capsule collider scales are swept, sampled contacts "
+            "are eliminated or explicitly approved, and the selected colliders retain "
+            "measured visual-mesh coverage before production acceptance."
+        ),
+        minimum_fields=(
+            "scale_candidates",
+            "contact_clean_scale_count",
+            "best_scale",
+            "contact_pairs",
+            "visual_fit",
+            "accepted",
+        ),
+        applies_to=("torso", "head", "arm", "leg", "foot"),
+        notes=(
+            "A contact-clean scale is not sufficient by itself; under-covering visual "
+            "meshes must keep this proof non-accepted until the collision set is rebuilt."
+        ),
     ),
     FembotProofContract(
         proof_type="mujoco_static",
@@ -285,6 +334,28 @@ FEMBOT_PROOF_CONTRACTS: tuple[FembotProofContract, ...] = (
         ),
         applies_to=("torso", "head", "arm", "leg", "foot"),
         notes="Visual review cannot replace physics/manufacturing proofs; it catches bad geometry that numeric gates miss.",
+    ),
+    FembotProofContract(
+        proof_type="visual_motion_media",
+        label="Screenshots and constrained joint-motion video",
+        scope="whole-robot",
+        required_artifact_schema="asimov-fembot-media-review-v1",
+        pass_condition=(
+            "Each design round has nonblank whole-robot screenshots plus a video "
+            "driving all limited hinge joints simultaneously inside their declared ranges."
+        ),
+        minimum_fields=(
+            "screenshots",
+            "video",
+            "joint_motion",
+            "summary",
+            "accepted",
+        ),
+        applies_to=("torso", "head", "arm", "leg", "foot"),
+        notes=(
+            "This is the explicit visual deliverable for every round; it remains "
+            "separate from manual visual acceptance and engineering signoff."
+        ),
     ),
 )
 

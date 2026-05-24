@@ -1,0 +1,1474 @@
+{
+  "accepted": true,
+  "links": [
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.000001257264188,
+        1.0000147907832668,
+        1.0
+      ],
+      "link": "IMU_ORIGIN",
+      "non_spine_area_ratio": 1.000016048066051,
+      "output_sha256": "1357d679e6b9232382d1160e68dd1be27fa0017397c0585be3d48cad33adc03d",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/IMU_ORIGIN.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.033805001527071,
+          "output_points": 4150,
+          "source_points": 4150,
+          "x_center_delta_m": 0.00017502874834463,
+          "x_extent_ratio": 0.8492184008700475,
+          "x_max_delta_m": -0.009173237369395792,
+          "x_min_delta_m": 0.009523294866085052,
+          "y_extent_ratio": 0.8629158081357526
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.058094996958971024,
+          "output_points": 38578,
+          "source_points": 38266,
+          "x_center_delta_m": 8.954666554927826e-07,
+          "x_extent_ratio": 1.0000003624551579,
+          "x_max_delta_m": 9.192153811454773e-07,
+          "x_min_delta_m": 8.717179298400879e-07,
+          "y_extent_ratio": 1.0000147907832668
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.012144997715950012,
+          "output_points": 11245,
+          "source_points": 11245,
+          "x_center_delta_m": 8.113496005535126e-05,
+          "x_extent_ratio": 0.9966236576568537,
+          "x_max_delta_m": -0.0001346878707408905,
+          "x_min_delta_m": 0.000296957790851593,
+          "y_extent_ratio": 0.9982116949619502
+        }
+      },
+      "source_sha256": "4103db420f4b511026f9967711366852243e80904909ff491300117e796194de",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/IMU_ORIGIN.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "link": "LEFT_ANKLE_A",
+      "non_spine_area_ratio": 1.0,
+      "output_sha256": "17d8b9afb206ed1121a398b26809e2e5b565cd63f45512bf55b3656e32b700ee",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_A.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.005250001326203346,
+          "output_points": 5696,
+          "source_points": 5696,
+          "x_center_delta_m": 1.909211277961731e-06,
+          "x_extent_ratio": 0.9951400300126922,
+          "x_max_delta_m": -0.00012202002108097076,
+          "x_min_delta_m": 0.00012583844363689423,
+          "y_extent_ratio": 1.0
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.020249994471669197,
+          "output_points": 2933,
+          "source_points": 2933,
+          "x_center_delta_m": 1.1175870895385742e-08,
+          "x_extent_ratio": 0.999761946640986,
+          "x_max_delta_m": -6.059184670448303e-06,
+          "x_min_delta_m": 6.081536412239075e-06,
+          "y_extent_ratio": 0.9457992960191612
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.007499996572732925,
+          "output_points": 5956,
+          "source_points": 5956,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 1.0
+        }
+      },
+      "source_sha256": "00dd23a465b135d15ef991b46bb314bf801c0b03c7aada1db8d1f9e17d9568a2",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_A.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        0.9000000076937955,
+        1.0
+      ],
+      "link": "LEFT_ANKLE_B",
+      "non_spine_area_ratio": 0.9000000076937955,
+      "output_sha256": "2c88d8b0f814442b0c26495633eae75a026826b5e04c77d9ea593ab30201d737",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ANKLE_B.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.06538025662302971,
+          "output_points": 24367,
+          "source_points": 24367,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9000000279064164
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.010501470416784286,
+          "output_points": 2964,
+          "source_points": 2964,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9000000152758918
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.02743939310312271,
+          "output_points": 93832,
+          "source_points": 93832,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.8999999816763703
+        }
+      },
+      "source_sha256": "6030dd954865caf17613e9a0350b961300b3a679d8fde1acab8c05d7f2714a00",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ANKLE_B.STL",
+      "spine": "x",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9363452002261899,
+        1.0014629493777143,
+        1.0
+      ],
+      "link": "LEFT_ELBOW",
+      "non_spine_area_ratio": 0.9377150258541866,
+      "output_sha256": "989464c2ee1f2105a0fbafd79c21ed6cc8b773db11cb054bdd2c4f2db7f277bb",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_ELBOW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.0007118675857782364,
+          "output_points": 2828,
+          "source_points": 2828,
+          "x_center_delta_m": -0.0005634371191263199,
+          "x_extent_ratio": 0.9896513477372604,
+          "x_max_delta_m": -0.001050114631652832,
+          "x_min_delta_m": -7.675960659980774e-05,
+          "y_extent_ratio": 1.0014629493777143
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.06536214239895344,
+          "output_points": 7276,
+          "source_points": 7276,
+          "x_center_delta_m": 3.7925317883491516e-05,
+          "x_extent_ratio": 0.8922545817750652,
+          "x_max_delta_m": -0.004293918609619141,
+          "x_min_delta_m": 0.004369769245386124,
+          "y_extent_ratio": 0.987425954153283
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.0323251374065876,
+          "output_points": 10426,
+          "source_points": 10382,
+          "x_center_delta_m": 0.00024335738271474838,
+          "x_extent_ratio": 0.8446679272908089,
+          "x_max_delta_m": -0.00992295891046524,
+          "x_min_delta_m": 0.010409673675894737,
+          "y_extent_ratio": 0.8482835737606973
+        }
+      },
+      "source_sha256": "fc697105abe95a3a3b23356527f7180113055d6168f40e66472c834eab485375",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_ELBOW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0260614809603696,
+        1.0,
+        1.0063457215274125
+      ],
+      "link": "LEFT_HIP_PITCH",
+      "non_spine_area_ratio": 1.0325725813885487,
+      "output_sha256": "a4c65c80e0c099c424bc879df7dae7b77919cba3591ba7325b270481d08c9d1f",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_PITCH.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.07024873688351363,
+          "output_points": 15704,
+          "source_points": 15668,
+          "x_center_delta_m": -1.817755401134491e-05,
+          "x_extent_ratio": 1.0366062840884025,
+          "x_max_delta_m": 0.0015978552401065826,
+          "x_min_delta_m": -0.0016342103481292725,
+          "y_extent_ratio": 1.0
+        },
+        "low": {
+          "available": true,
+          "level_m": 0.02074958069715649,
+          "output_points": 13072,
+          "source_points": 12988,
+          "x_center_delta_m": -1.208484172821045e-05,
+          "x_extent_ratio": 1.0239541779258303,
+          "x_max_delta_m": 0.001094534993171692,
+          "x_min_delta_m": -0.0011187046766281128,
+          "y_extent_ratio": 1.0
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.04549915879033506,
+          "output_points": 12193,
+          "source_points": 12184,
+          "x_center_delta_m": 0.000604778528213501,
+          "x_extent_ratio": 1.0249695510331196,
+          "x_max_delta_m": 0.0018189139664173126,
+          "x_min_delta_m": -0.0006093569099903107,
+          "y_extent_ratio": 1.0
+        }
+      },
+      "source_sha256": "b63a1752cbae0cc09b140052df32c8ea45e14c0ebaea5d53ad317c8c90246d9a",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_PITCH.STL",
+      "spine": "y",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        0.9991564407865747,
+        1.0
+      ],
+      "link": "LEFT_HIP_ROLL",
+      "non_spine_area_ratio": 0.9991564407865747,
+      "output_sha256": "a25a90c087e950df3d03ae26e83ef95c15e1bff70be243b61a29489c0ba13dae",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_ROLL.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.00299999862909317,
+          "output_points": 5792,
+          "source_points": 5792,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9991564407865747
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.03700000047683716,
+          "output_points": 6237,
+          "source_points": 6237,
+          "x_center_delta_m": 6.929086521267891e-05,
+          "x_extent_ratio": 0.9936843192744006,
+          "x_max_delta_m": -0.0001588454470038414,
+          "x_min_delta_m": 0.0002974271774291992,
+          "y_extent_ratio": 0.9977119833923319
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.017000000923871994,
+          "output_points": 3223,
+          "source_points": 3223,
+          "x_center_delta_m": 8.707167580723763e-06,
+          "x_extent_ratio": 0.9952544460096182,
+          "x_max_delta_m": -2.688448876142502e-05,
+          "x_min_delta_m": 4.429882392287254e-05,
+          "y_extent_ratio": 0.991027616603403
+        }
+      },
+      "source_sha256": "7bd909211765b2a133354677bc6ee09a38f290d8afab0e325b419ff9db79a12c",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_ROLL.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.1005754334423805,
+        1.0429127821757045,
+        1.0
+      ],
+      "link": "LEFT_HIP_YAW",
+      "non_spine_area_ratio": 1.1478041872856248,
+      "output_sha256": "490399da7a65a7ec66e6d1de7560f4a5834f7235519e667033a688d28c9f8d1a",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_HIP_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.00018500350415706635,
+          "output_points": 3872,
+          "source_points": 3872,
+          "x_center_delta_m": -0.00020130537450313568,
+          "x_extent_ratio": 1.008512178150638,
+          "x_max_delta_m": 0.0003128647804260254,
+          "x_min_delta_m": -0.0007154755294322968,
+          "y_extent_ratio": 1.0042994356424122
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.15455500967800617,
+          "output_points": 4705,
+          "source_points": 4705,
+          "x_center_delta_m": 3.302283585071564e-05,
+          "x_extent_ratio": 1.0005576259496405,
+          "x_max_delta_m": 5.7250261306762695e-05,
+          "x_min_delta_m": 8.795410394668579e-06,
+          "y_extent_ratio": 1.000674660732757
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.07737000659108162,
+          "output_points": 21704,
+          "source_points": 21704,
+          "x_center_delta_m": -3.052316606044769e-05,
+          "x_extent_ratio": 1.0498820913209934,
+          "x_max_delta_m": 0.002883322536945343,
+          "x_min_delta_m": -0.0029443688690662384,
+          "y_extent_ratio": 1.0578182666345224
+        }
+      },
+      "source_sha256": "ef18971b3c0aae2e06ad66a1e4c3a98440163d337e3ffa3750a1c3969e40a422",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_HIP_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.1321598918159113,
+        0.9723146060582285,
+        0.973911146962579
+      ],
+      "link": "LEFT_KNEE",
+      "non_spine_area_ratio": 1.1008155992059143,
+      "output_sha256": "25caf91ea33c3fc34079c24d34419a974e1b057bfacc63c93b7e832af6d49a61",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_KNEE.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.03092964645475149,
+          "output_points": 1152,
+          "source_points": 8361,
+          "x_center_delta_m": 0.0060812849551439285,
+          "x_extent_ratio": 0.8062152580352339,
+          "x_max_delta_m": -0.005042120814323425,
+          "x_min_delta_m": 0.017204690724611282,
+          "y_extent_ratio": 0.8776895033243013
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.2157514365389943,
+          "output_points": 1152,
+          "source_points": 359,
+          "x_center_delta_m": -0.0033708401024341583,
+          "x_extent_ratio": 0.9856338897114197,
+          "x_max_delta_m": -0.004002783447504044,
+          "x_min_delta_m": -0.002738896757364273,
+          "y_extent_ratio": 0.8372810868140625
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.1233405414968729,
+          "output_points": 1152,
+          "source_points": 8028,
+          "x_center_delta_m": -0.021921513602137566,
+          "x_extent_ratio": 0.9371139172073208,
+          "x_max_delta_m": -0.025521639734506607,
+          "x_min_delta_m": -0.018321387469768524,
+          "y_extent_ratio": 0.863377623231507
+        }
+      },
+      "source_sha256": "c1429554f677ad70f0d1c26969079ad19add24c08c2c0ce29ed2c31c1a1c41f1",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_KNEE.STL",
+      "spine": "z",
+      "spine_extent_ratio": 0.973911146962579
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.7800000099873735,
+        0.7800000044703483,
+        1.0
+      ],
+      "link": "LEFT_SHOULDER_ROLL",
+      "non_spine_area_ratio": 0.608400011277023,
+      "output_sha256": "9dcc4f0ca6bb6ccda7f368b1a8aec07c12e5b92579c3296b23ac799390555c97",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_ROLL.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.004037894308567047,
+          "output_points": 91269,
+          "source_points": 91269,
+          "x_center_delta_m": 1.0999850928783417e-05,
+          "x_extent_ratio": 0.7800000099873735,
+          "x_max_delta_m": -0.008194999769330025,
+          "x_min_delta_m": 0.008216999471187592,
+          "y_extent_ratio": 0.7800000044703483
+        },
+        "low": {
+          "available": false,
+          "level_m": -0.08765319734811783,
+          "output_points": 0,
+          "source_points": 0
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.04180765151977539,
+          "output_points": 1990,
+          "source_points": 1990,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 0.7800000120009348,
+          "x_max_delta_m": -0.008194999769330025,
+          "x_min_delta_m": 0.008194999769330025,
+          "y_extent_ratio": 0.7799999918526022
+        }
+      },
+      "source_sha256": "539c9175e7b60d0df3ffd6d9620825244ae684967a63aec05d3da7aac7879237",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_ROLL.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9853919886240612,
+        0.9998539917236179,
+        1.0
+      ],
+      "link": "LEFT_SHOULDER_YAW",
+      "non_spine_area_ratio": 0.9852481132382415,
+      "output_sha256": "7fac3ec25b4dbafd5160eb0f5fe763368e2f004102bda9ea9a4cc9f9428bc331",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_SHOULDER_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.02876282506622374,
+          "output_points": 2541,
+          "source_points": 2541,
+          "x_center_delta_m": -0.0007829684764146805,
+          "x_extent_ratio": 0.8646386385712217,
+          "x_max_delta_m": -0.0036749038845300674,
+          "x_min_delta_m": 0.0021089669317007065,
+          "y_extent_ratio": 0.8805979671531485
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.0962884749751538,
+          "output_points": 4552,
+          "source_points": 4552,
+          "x_center_delta_m": 0.0005003977566957474,
+          "x_extent_ratio": 0.9853919886240612,
+          "x_max_delta_m": -1.30385160446167e-07,
+          "x_min_delta_m": 0.001000925898551941,
+          "y_extent_ratio": 0.9998539917236179
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.06252565002068877,
+          "output_points": 5500,
+          "source_points": 5500,
+          "x_center_delta_m": -0.00035296007990837097,
+          "x_extent_ratio": 0.8502149868950368,
+          "x_max_delta_m": -0.004271799698472023,
+          "x_min_delta_m": 0.003565879538655281,
+          "y_extent_ratio": 0.8518029407147347
+        }
+      },
+      "source_sha256": "82df3e536649a1d4bb218c157de154de4a94736ae195dc974e4ab97b8e86caa5",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_SHOULDER_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9160553736084511,
+        0.9858114746576386,
+        1.0
+      ],
+      "link": "LEFT_WRIST_YAW",
+      "non_spine_area_ratio": 0.9030578987250013,
+      "output_sha256": "0afc00835b827164b739f642e01d0b1f5639c0f766ff23a056017d2307b603dd",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/LEFT_WRIST_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.0068663242273032665,
+          "output_points": 4475,
+          "source_points": 4475,
+          "x_center_delta_m": -0.0002672080881893635,
+          "x_extent_ratio": 0.9672121183097993,
+          "x_max_delta_m": -0.0007615480571985245,
+          "x_min_delta_m": 0.00022713188081979752,
+          "y_extent_ratio": 0.9858114746576386
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.013294199015945196,
+          "output_points": 5107,
+          "source_points": 5107,
+          "x_center_delta_m": 0.0009407298639416695,
+          "x_extent_ratio": 0.9063462363230389,
+          "x_max_delta_m": -0.0005500838160514832,
+          "x_min_delta_m": 0.002431543543934822,
+          "y_extent_ratio": 0.8872662267480383
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.003213937394320965,
+          "output_points": 6194,
+          "source_points": 6194,
+          "x_center_delta_m": 0.0008349977433681488,
+          "x_extent_ratio": 0.9160553736084511,
+          "x_max_delta_m": -0.0007615480571985245,
+          "x_min_delta_m": 0.002431543543934822,
+          "y_extent_ratio": 0.9858114746576386
+        }
+      },
+      "source_sha256": "966dd01e04b12fb5f5d46720d8fd82a094f3f8a8404f643c9b9c5b0c01018c38",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/LEFT_WRIST_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9676054769482547,
+        0.9842137555185205,
+        1.0
+      ],
+      "link": "NECK_PITCH",
+      "non_spine_area_ratio": 0.952330620327531,
+      "output_sha256": "f94b7ecfc2fbb26cf9f96ebf74b050690e55c5a3c502bbf3f4c6ad62376fd0c1",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_PITCH.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.08691798057407141,
+          "output_points": 6390,
+          "source_points": 6390,
+          "x_center_delta_m": 5.157291889190674e-05,
+          "x_extent_ratio": 0.9992724746250591,
+          "x_max_delta_m": -6.034970283508301e-06,
+          "x_min_delta_m": 0.00010918080806732178,
+          "y_extent_ratio": 0.999402776327212
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.005062061361968517,
+          "output_points": 9322,
+          "source_points": 9322,
+          "x_center_delta_m": -0.00015970692038536072,
+          "x_extent_ratio": 0.9936506843070606,
+          "x_max_delta_m": -0.0006527751684188843,
+          "x_min_delta_m": 0.00033336132764816284,
+          "y_extent_ratio": 0.9955858259905974
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.040927959606051445,
+          "output_points": 3780,
+          "source_points": 3780,
+          "x_center_delta_m": 0.00017960742115974426,
+          "x_extent_ratio": 0.880320536321563,
+          "x_max_delta_m": -0.009890884160995483,
+          "x_min_delta_m": 0.010250099003314972,
+          "y_extent_ratio": 0.8800000555871337
+        }
+      },
+      "source_sha256": "6467104a3890738a7dd4f946c1533d0f136d75ad6566e9627f57f64cda874798",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_PITCH.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9997846549752132,
+        1.0,
+        1.0
+      ],
+      "link": "NECK_YAW",
+      "non_spine_area_ratio": 0.9997846549752132,
+      "output_sha256": "b04d7c67558190827fc7df56a9b4e2870a6839a3ab9378545abed049180e84b6",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/NECK_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.05399970436701551,
+          "output_points": 2753,
+          "source_points": 2753,
+          "x_center_delta_m": -3.292597830295563e-05,
+          "x_extent_ratio": 0.9831329297744906,
+          "x_max_delta_m": -0.0006171129643917084,
+          "x_min_delta_m": 0.0005512610077857971,
+          "y_extent_ratio": 0.9782178580565869
+        },
+        "low": {
+          "available": true,
+          "level_m": 0.01666656805900857,
+          "output_points": 4381,
+          "source_points": 4381,
+          "x_center_delta_m": 2.491101622581482e-05,
+          "x_extent_ratio": 0.9547310216468042,
+          "x_max_delta_m": -0.0014715641736984253,
+          "x_min_delta_m": 0.001521386206150055,
+          "y_extent_ratio": 0.9687990926301134
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.03533313621301204,
+          "output_points": 2220,
+          "source_points": 2220,
+          "x_center_delta_m": 7.517635822296143e-06,
+          "x_extent_ratio": 0.9997846549752132,
+          "x_max_delta_m": -9.313225746154785e-08,
+          "x_min_delta_m": 1.5128403902053833e-05,
+          "y_extent_ratio": 1.0
+        }
+      },
+      "source_sha256": "47b311a7138ebae9326216e5b79d85cf2750f0283a133188eaf5b9a14670a7c7",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/NECK_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "link": "RIGHT_ANKLE_A",
+      "non_spine_area_ratio": 1.0,
+      "output_sha256": "71c496512fdc956d094f79f51c46f206eba1fbe414dfefd4bec225f1d9663bf7",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_A.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.005250001326203346,
+          "output_points": 5681,
+          "source_points": 5681,
+          "x_center_delta_m": 1.9082799553871155e-06,
+          "x_extent_ratio": 0.9951399934902377,
+          "x_max_delta_m": -0.00012202188372612,
+          "x_min_delta_m": 0.00012583844363689423,
+          "y_extent_ratio": 1.0
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.020249994471669197,
+          "output_points": 2956,
+          "source_points": 2956,
+          "x_center_delta_m": 1.1175870895385742e-08,
+          "x_extent_ratio": 0.999761946640986,
+          "x_max_delta_m": -6.059184670448303e-06,
+          "x_min_delta_m": 6.081536412239075e-06,
+          "y_extent_ratio": 0.9457993382586873
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.007499996572732925,
+          "output_points": 5915,
+          "source_points": 5915,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 1.0
+        }
+      },
+      "source_sha256": "351c68c81211de8ff1bb0dbeea7e933335ec3a1a9035446f48829c4029a42d5f",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_A.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        0.9000000192357817,
+        1.0
+      ],
+      "link": "RIGHT_ANKLE_B",
+      "non_spine_area_ratio": 0.9000000192357817,
+      "output_sha256": "710de2865258ce16aeabfa482ba0136f9a591965391e9b2c6e733ac77c3c6a4b",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ANKLE_B.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.06538025196641684,
+          "output_points": 25013,
+          "source_points": 25013,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9000000279064164
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.010501484386622906,
+          "output_points": 30452,
+          "source_points": 30452,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9000000203298787
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.027439383789896965,
+          "output_points": 93967,
+          "source_points": 93967,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9000000045836655
+        }
+      },
+      "source_sha256": "808f88fe6fcba2ac5bcb01e25c65c1104fe5d4a2c1fc944e5dadf5640f2e0105",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ANKLE_B.STL",
+      "spine": "x",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9360956536108203,
+        1.00146254390394,
+        1.0
+      ],
+      "link": "RIGHT_ELBOW",
+      "non_spine_area_ratio": 0.9374647346025134,
+      "output_sha256": "69c0ddf53d0d6af7112b038fc3ce4ae694f41f4ca5b4382316821b08e907c4f5",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_ELBOW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.0007343180477619171,
+          "output_points": 2816,
+          "source_points": 2816,
+          "x_center_delta_m": -0.0005585271865129471,
+          "x_extent_ratio": 0.9898102512743374,
+          "x_max_delta_m": -0.0010377317667007446,
+          "x_min_delta_m": -7.932260632514954e-05,
+          "y_extent_ratio": 1.00146254390394
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.0652947910130024,
+          "output_points": 7319,
+          "source_points": 7319,
+          "x_center_delta_m": 4.727393388748169e-06,
+          "x_extent_ratio": 0.8915686647078997,
+          "x_max_delta_m": -0.004360757768154144,
+          "x_min_delta_m": 0.004370212554931641,
+          "y_extent_ratio": 0.987425954153283
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.03228023648262024,
+          "output_points": 10459,
+          "source_points": 10415,
+          "x_center_delta_m": 0.00017864303663372993,
+          "x_extent_ratio": 0.8428007334361083,
+          "x_max_delta_m": -0.010109879076480865,
+          "x_min_delta_m": 0.010467165149748325,
+          "y_extent_ratio": 0.8472614504019917
+        }
+      },
+      "source_sha256": "aa3df244f5dbe2404911005d288f658814709f0ff64b8c03d0a5af3079f5e6c6",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_ELBOW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.03449722650976,
+        1.0,
+        1.0118520109815348
+      ],
+      "link": "RIGHT_HIP_PITCH",
+      "non_spine_area_ratio": 1.046758098998721,
+      "output_sha256": "1e79104df16f75b4d6e6a26caa91eb5169cce7eff16c9ea9039d0585dac94e11",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_PITCH.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.020712648169137537,
+          "output_points": 13021,
+          "source_points": 12879,
+          "x_center_delta_m": 7.045641541481018e-05,
+          "x_extent_ratio": 1.0323330713655927,
+          "x_max_delta_m": 0.0015641599893569946,
+          "x_min_delta_m": -0.0014232471585273743,
+          "y_extent_ratio": 1.0
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.07013793929945678,
+          "output_points": 15743,
+          "source_points": 15743,
+          "x_center_delta_m": -0.00015866011381149292,
+          "x_extent_ratio": 1.049412364463768,
+          "x_max_delta_m": 0.0020547471940517426,
+          "x_min_delta_m": -0.0023720674216747284,
+          "y_extent_ratio": 1.0
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.045425293734297156,
+          "output_points": 12076,
+          "source_points": 12068,
+          "x_center_delta_m": 0.000652829185128212,
+          "x_extent_ratio": 1.0334162996477276,
+          "x_max_delta_m": 0.002277698367834091,
+          "x_min_delta_m": -0.0009720399975776672,
+          "y_extent_ratio": 1.0
+        }
+      },
+      "source_sha256": "3d7b4b69b2e5f13baaf2c822a3965c9e1db16a444b375f66813be57c6d1800a4",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_PITCH.STL",
+      "spine": "y",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.0,
+        0.9989293975869656,
+        1.0
+      ],
+      "link": "RIGHT_HIP_ROLL",
+      "non_spine_area_ratio": 0.9989293975869656,
+      "output_sha256": "7123866f4144486825205a09213a482b23f134af9f8a77e7781d812e05850d03",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_ROLL.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.00299999862909317,
+          "output_points": 5848,
+          "source_points": 5848,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 1.0,
+          "x_max_delta_m": 0.0,
+          "x_min_delta_m": 0.0,
+          "y_extent_ratio": 0.9989293975869656
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.03700000047683716,
+          "output_points": 6504,
+          "source_points": 6504,
+          "x_center_delta_m": 6.935000419616699e-05,
+          "x_extent_ratio": 0.9936859564663694,
+          "x_max_delta_m": -0.00015872716903686523,
+          "x_min_delta_m": 0.0002974271774291992,
+          "y_extent_ratio": 0.9977119833923319
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.017000000923871994,
+          "output_points": 3336,
+          "source_points": 3336,
+          "x_center_delta_m": 8.683884516358376e-06,
+          "x_extent_ratio": 0.9952549427149716,
+          "x_max_delta_m": -2.6904046535491943e-05,
+          "x_min_delta_m": 4.4271815568208694e-05,
+          "y_extent_ratio": 0.9910076900236682
+        }
+      },
+      "source_sha256": "c4b84b8450d8e2830217f69b22999d10795c15fd72a7f99382fd1abcccda65b1",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_ROLL.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.100575493921693,
+        1.0429416013072097,
+        1.0
+      ],
+      "link": "RIGHT_HIP_YAW",
+      "non_spine_area_ratio": 1.1478359679901637,
+      "output_sha256": "dd7d6caabe4c47f244a2ea2cac0f9ce1eeb5c701c813f7d9f1b52dac37fd76dc",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.00018499232828617096,
+          "output_points": 3902,
+          "source_points": 3902,
+          "x_center_delta_m": -0.00020099058747291565,
+          "x_extent_ratio": 1.0085176978699897,
+          "x_max_delta_m": 0.00031351298093795776,
+          "x_min_delta_m": -0.0007154941558837891,
+          "y_extent_ratio": 1.0043051864875268
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.15455500595271587,
+          "output_points": 4602,
+          "source_points": 4602,
+          "x_center_delta_m": 3.118440508842468e-05,
+          "x_extent_ratio": 1.0005922956479298,
+          "x_max_delta_m": 5.692616105079651e-05,
+          "x_min_delta_m": 5.4426491260528564e-06,
+          "y_extent_ratio": 1.000674660732757
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.07736999914050102,
+          "output_points": 21771,
+          "source_points": 21771,
+          "x_center_delta_m": -3.053434193134308e-05,
+          "x_extent_ratio": 1.0498820275477911,
+          "x_max_delta_m": 0.002883307635784149,
+          "x_min_delta_m": -0.0029443763196468353,
+          "y_extent_ratio": 1.0577536655875532
+        }
+      },
+      "source_sha256": "664a399f5b9a15cd11567cf08cf20e6fb386ff48f3ac741cd1f25848e237276e",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_HIP_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        1.1353198198540337,
+        0.9723067837972875,
+        0.973911146962579
+      ],
+      "link": "RIGHT_KNEE",
+      "non_spine_area_ratio": 1.1038791626235913,
+      "output_sha256": "705139be80b341d5c4180058aa2db3dce27a61fbf20aa7cb6d140f8b11984798",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_KNEE.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.03092964645475149,
+          "output_points": 1152,
+          "source_points": 8497,
+          "x_center_delta_m": 0.0061435699462890625,
+          "x_extent_ratio": 0.8054181300737634,
+          "x_max_delta_m": -0.0050254687666893005,
+          "x_min_delta_m": 0.017312608659267426,
+          "y_extent_ratio": 0.8767992989503184
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.2157514365389943,
+          "output_points": 1152,
+          "source_points": 367,
+          "x_center_delta_m": -0.013865189626812935,
+          "x_extent_ratio": 0.7447447996784173,
+          "x_max_delta_m": -0.02509327232837677,
+          "x_min_delta_m": -0.0026371069252490997,
+          "y_extent_ratio": 0.8378505557683165
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.1233405414968729,
+          "output_points": 1152,
+          "source_points": 8162,
+          "x_center_delta_m": -0.022101255133748055,
+          "x_extent_ratio": 0.9400473233051302,
+          "x_max_delta_m": -0.025522921234369278,
+          "x_min_delta_m": -0.01867958903312683,
+          "y_extent_ratio": 0.8631517874496697
+        }
+      },
+      "source_sha256": "64d35ef5e9cb1d1a57e2232d670cb798d2aa7a6985bdafdaed7b3dd125aba7fe",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_KNEE.STL",
+      "spine": "z",
+      "spine_extent_ratio": 0.973911146962579
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.7800000099873735,
+        0.7800000044703483,
+        1.0
+      ],
+      "link": "RIGHT_SHOULDER_ROLL",
+      "non_spine_area_ratio": 0.608400011277023,
+      "output_sha256": "1edd68ecfea58a6a6b03dc395b3ce86e559a4b005c59a0124c9342e42ac106de",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_ROLL.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.004037894308567047,
+          "output_points": 91159,
+          "source_points": 91159,
+          "x_center_delta_m": 1.0999850928783417e-05,
+          "x_extent_ratio": 0.7800000099873735,
+          "x_max_delta_m": -0.008194999769330025,
+          "x_min_delta_m": 0.008216999471187592,
+          "y_extent_ratio": 0.7800000044703483
+        },
+        "low": {
+          "available": false,
+          "level_m": -0.08765319734811783,
+          "output_points": 0,
+          "source_points": 0
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.04180765151977539,
+          "output_points": 1974,
+          "source_points": 1974,
+          "x_center_delta_m": 0.0,
+          "x_extent_ratio": 0.7800000120009348,
+          "x_max_delta_m": -0.008194999769330025,
+          "x_min_delta_m": 0.008194999769330025,
+          "y_extent_ratio": 0.7799999918526022
+        }
+      },
+      "source_sha256": "7ea6c316d2292a5e929f91963fde0a72e378343758575c7652a40cbf8d3b51b3",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_ROLL.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9847192086986052,
+        0.99997714928418,
+        1.0
+      ],
+      "link": "RIGHT_SHOULDER_YAW",
+      "non_spine_area_ratio": 0.9846967071598047,
+      "output_sha256": "1ed621ec55d39b6c7a43dc0ad3535120782499f551956574868ffae725328d66",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_SHOULDER_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": -0.028837826335802674,
+          "output_points": 2598,
+          "source_points": 2598,
+          "x_center_delta_m": -0.000808181706815958,
+          "x_extent_ratio": 0.8633929769234047,
+          "x_max_delta_m": -0.0037267301231622696,
+          "x_min_delta_m": 0.0021103667095303535,
+          "y_extent_ratio": 0.8785011274429397
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.0965134787838906,
+          "output_points": 113054,
+          "source_points": 113054,
+          "x_center_delta_m": 0.0005209203809499741,
+          "x_extent_ratio": 0.9847192086986052,
+          "x_max_delta_m": -2.6598572731018066e-06,
+          "x_min_delta_m": 0.00104450061917305,
+          "y_extent_ratio": 0.99997714928418
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.06267565255984664,
+          "output_points": 5443,
+          "source_points": 5443,
+          "x_center_delta_m": -0.0002649826928973198,
+          "x_extent_ratio": 0.8520755250261548,
+          "x_max_delta_m": -0.004135144874453545,
+          "x_min_delta_m": 0.003605179488658905,
+          "y_extent_ratio": 0.8582625938861124
+        }
+      },
+      "source_sha256": "3bf54ab880e06c09f841d640374e9a91a99d3146cd2c5df98a79487c0c357f25",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_SHOULDER_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9183018718136385,
+        0.9889720006271566,
+        1.0
+      ],
+      "link": "RIGHT_WRIST_YAW",
+      "non_spine_area_ratio": 0.9081748393471968,
+      "output_sha256": "f3c47eecffcedf67e861aca4972a50deac978af57a7c6089e3afd46ae5b1616f",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_WRIST_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.006879114545881748,
+          "output_points": 4529,
+          "source_points": 4529,
+          "x_center_delta_m": -0.00021941028535366058,
+          "x_extent_ratio": 0.9644422005991624,
+          "x_max_delta_m": -0.0007660649716854095,
+          "x_min_delta_m": 0.0003272444009780884,
+          "y_extent_ratio": 0.9916420590669816
+        },
+        "low": {
+          "available": true,
+          "level_m": -0.013306991197168827,
+          "output_points": 4995,
+          "source_points": 4995,
+          "x_center_delta_m": 0.0008276822045445442,
+          "x_extent_ratio": 0.9039655024540686,
+          "x_max_delta_m": -0.0006896238774061203,
+          "x_min_delta_m": 0.0023449882864952087,
+          "y_extent_ratio": 0.9358072003624233
+        },
+        "mid": {
+          "available": true,
+          "level_m": -0.0032139383256435394,
+          "output_points": 6006,
+          "source_points": 6006,
+          "x_center_delta_m": 0.0007894616574048996,
+          "x_extent_ratio": 0.9183018718136385,
+          "x_max_delta_m": -0.0007660649716854095,
+          "x_min_delta_m": 0.0023449882864952087,
+          "y_extent_ratio": 0.9889720006271566
+        }
+      },
+      "source_sha256": "f71c5a4e4b762bd141477ac6b46af9598300630ce923f67f6c02bf98d4a67586",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/RIGHT_WRIST_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    },
+    {
+      "available": true,
+      "bbox_extent_ratio": [
+        0.9827755620353963,
+        0.9999435842037201,
+        1.0
+      ],
+      "link": "WAIST_YAW",
+      "non_spine_area_ratio": 0.9827201179694997,
+      "output_sha256": "cdaf9fa370b2e52b0f726fdb2119d43d5bb08bdc5779bf30244a518adc193fe3",
+      "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/WAIST_YAW.STL",
+      "sections": {
+        "high": {
+          "available": true,
+          "level_m": 0.28275028918869793,
+          "output_points": 17092,
+          "source_points": 17092,
+          "x_center_delta_m": 0.008468817919492722,
+          "x_extent_ratio": 1.1007777918736166,
+          "x_max_delta_m": 0.016855522990226746,
+          "x_min_delta_m": 8.211284875869751e-05,
+          "y_extent_ratio": 0.9967014491558075
+        },
+        "low": {
+          "available": true,
+          "level_m": 0.09191680117510259,
+          "output_points": 68685,
+          "source_points": 68685,
+          "x_center_delta_m": -0.0005832090973854065,
+          "x_extent_ratio": 0.9501805440105053,
+          "x_max_delta_m": -0.004607208073139191,
+          "x_min_delta_m": 0.0034407898783683777,
+          "y_extent_ratio": 0.9424280067713494
+        },
+        "mid": {
+          "available": true,
+          "level_m": 0.18733354518190026,
+          "output_points": 55136,
+          "source_points": 55136,
+          "x_center_delta_m": -0.00950586050748825,
+          "x_extent_ratio": 0.9475850442082497,
+          "x_max_delta_m": -0.014830343425273895,
+          "x_min_delta_m": -0.004181377589702606,
+          "y_extent_ratio": 0.9477832463754609
+        }
+      },
+      "source_sha256": "24d5000c0a90bc5b053c6734ce517d8d23e9957d3ee59994e1b65d3a1db52a7d",
+      "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/WAIST_YAW.STL",
+      "spine": "z",
+      "spine_extent_ratio": 1.0
+    }
+  ],
+  "ok": true,
+  "parameters": [
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "at least 8 affected links have non-spine bbox area ratio below 0.98",
+      "evidence_links": [
+        "NECK_YAW",
+        "NECK_PITCH",
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_ANKLE_A",
+        "RIGHT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ],
+      "group": "lean",
+      "metrics": {
+        "affected_links": [
+          "NECK_YAW",
+          "NECK_PITCH",
+          "LEFT_HIP_PITCH",
+          "RIGHT_HIP_PITCH",
+          "LEFT_HIP_ROLL",
+          "RIGHT_HIP_ROLL",
+          "LEFT_HIP_YAW",
+          "RIGHT_HIP_YAW",
+          "LEFT_KNEE",
+          "RIGHT_KNEE",
+          "LEFT_ANKLE_A",
+          "RIGHT_ANKLE_A",
+          "LEFT_ANKLE_B",
+          "RIGHT_ANKLE_B",
+          "LEFT_SHOULDER_ROLL",
+          "RIGHT_SHOULDER_ROLL",
+          "LEFT_SHOULDER_YAW",
+          "RIGHT_SHOULDER_YAW",
+          "LEFT_ELBOW",
+          "RIGHT_ELBOW",
+          "LEFT_WRIST_YAW",
+          "RIGHT_WRIST_YAW"
+        ],
+        "available_link_count": 22,
+        "max_spine_extent_delta": 0.026088853037421034,
+        "median_non_spine_area_ratio": 0.9920887554126036,
+        "slimmed_link_count": 9,
+        "slimmed_link_fraction": 0.4090909090909091,
+        "slimmed_links": [
+          "NECK_PITCH",
+          "LEFT_ANKLE_B",
+          "RIGHT_ANKLE_B",
+          "LEFT_SHOULDER_ROLL",
+          "RIGHT_SHOULDER_ROLL",
+          "LEFT_ELBOW",
+          "RIGHT_ELBOW",
+          "LEFT_WRIST_YAW",
+          "RIGHT_WRIST_YAW"
+        ]
+      },
+      "name": "global_shell_scale"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "WAIST_YAW low and IMU_ORIGIN high waist sections show at least 5% median area reduction",
+      "evidence_links": [
+        "WAIST_YAW",
+        "IMU_ORIGIN"
+      ],
+      "group": "torso",
+      "metrics": {
+        "affected_links": [
+          "WAIST_YAW",
+          "IMU_ORIGIN"
+        ],
+        "available_link_count": 2,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 0.9913680830177753,
+        "median_waist_section_area_ratio": 0.8141403694176328,
+        "waist_section_area_ratios": [
+          0.895476756164737,
+          0.7328039826705286
+        ]
+      },
+      "name": "torso_waist_cinch_depth"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "generated fembot MJCF reduces left/right hip-pitch body spacing below 0.98x and compiles in MuJoCo",
+      "evidence_links": [
+        "IMU_ORIGIN",
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH"
+      ],
+      "group": "pelvis",
+      "metrics": {
+        "affected_links": [
+          "IMU_ORIGIN",
+          "LEFT_HIP_PITCH",
+          "RIGHT_HIP_PITCH"
+        ],
+        "available_link_count": 3,
+        "fembot_mjcf_ok": true,
+        "hip_spacing_ratio": 0.9599999999999999,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 1.0325725813885487,
+        "median_y_extent_ratio": 1.0,
+        "output_hip_spacing_m": 0.1296,
+        "source_hip_spacing_m": 0.135
+      },
+      "name": "hip_spacing_scale"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "median upper-thigh non-spine bbox area ratio is above 1.05",
+      "evidence_links": [
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW"
+      ],
+      "group": "hips",
+      "metrics": {
+        "affected_links": [
+          "LEFT_HIP_YAW",
+          "RIGHT_HIP_YAW"
+        ],
+        "available_link_count": 2,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 1.1478200776378942
+      },
+      "name": "upper_thigh_hip_flare"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "WAIST_YAW high torso/bust band pushes front +X outward by more than 10 mm",
+      "evidence_links": [
+        "WAIST_YAW"
+      ],
+      "group": "torso",
+      "metrics": {
+        "affected_links": [
+          "WAIST_YAW"
+        ],
+        "available_link_count": 1,
+        "bust_band_x_max_delta_m": 0.016855522990226746,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 0.9827201179694997
+      },
+      "name": "bust_front_gain"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "WAIST_YAW mid torso center shifts back -X by more than 8 mm",
+      "evidence_links": [
+        "WAIST_YAW"
+      ],
+      "group": "torso",
+      "metrics": {
+        "affected_links": [
+          "WAIST_YAW"
+        ],
+        "available_link_count": 1,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 0.9827201179694997,
+        "mid_torso_x_center_delta_m": -0.00950586050748825
+      },
+      "name": "back_arch_shift_m"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "mid-calf back -X envelope expands by more than 5 mm",
+      "evidence_links": [
+        "LEFT_KNEE",
+        "RIGHT_KNEE"
+      ],
+      "group": "legs",
+      "metrics": {
+        "affected_links": [
+          "LEFT_KNEE",
+          "RIGHT_KNEE"
+        ],
+        "available_link_count": 2,
+        "max_spine_extent_delta": 0.026088853037421034,
+        "median_mid_calf_x_min_delta_m": -0.018500488251447678,
+        "median_non_spine_area_ratio": 1.1023473809147528
+      },
+      "name": "calf_back_bulge"
+    },
+    {
+      "accepted": true,
+      "blocking_reason": null,
+      "criterion": "median arm-link non-spine bbox area ratio is below 0.94",
+      "evidence_links": [
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ],
+      "group": "arms",
+      "metrics": {
+        "affected_links": [
+          "LEFT_SHOULDER_ROLL",
+          "RIGHT_SHOULDER_ROLL",
+          "LEFT_SHOULDER_YAW",
+          "RIGHT_SHOULDER_YAW",
+          "LEFT_ELBOW",
+          "RIGHT_ELBOW",
+          "LEFT_WRIST_YAW",
+          "RIGHT_WRIST_YAW"
+        ],
+        "available_link_count": 8,
+        "max_spine_extent_delta": 0.0,
+        "median_non_spine_area_ratio": 0.9228197869748551
+      },
+      "name": "arm_slim_taper"
+    }
+  ],
+  "schema": "asimov-1-morphology-effect-proof-v1",
+  "source": {
+    "catalog_schema": "asimov-1-morphology-parameter-catalog-v1",
+    "fembot_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "fembot_mjcf_schema": "asimov-fembot-mjcf-v1",
+    "output_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl",
+    "source_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes"
+  },
+  "summary": {
+    "acceptance_blocker": null,
+    "accepted": true,
+    "accepted_parameters": 8,
+    "affected_links": 24,
+    "blocked_parameters": 0,
+    "parameters": 8
+  }
+}

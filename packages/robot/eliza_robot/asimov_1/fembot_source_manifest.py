@@ -7,8 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from eliza_robot.asimov_1.cad import sha256_file
-from eliza_robot.asimov_1.constants import ASIMOV1_MAIN_STEP, ASIMOV1_MECHANICAL_ROOT
-from eliza_robot.asimov_1.parametric_inventory import ASIMOV_PARAM_PROOFS
+from eliza_robot.asimov_1.constants import ASIMOV1_MAIN_STEP, ASIMOV1_MECHANICAL_ROOT, ASIMOV1_SOURCE_MESH_DIR
+from eliza_robot.asimov_1.parametric_inventory import (
+    ASIMOV_PARAM_OUTPUT_STL,
+    ASIMOV_PARAM_PROOFS,
+    _load_spline_fit_proof,
+)
 
 
 SOURCE_MANIFEST_SCHEMA = "asimov-fembot-source-manifest-v1"
@@ -40,11 +44,70 @@ def _assembly_step_files(assembly: str, *, mechanical_root: Path) -> list[Path]:
     return sorted(root.rglob("*.STEP")) + sorted(root.rglob("*.step"))
 
 
+def _accepted_controlled_loft_links(
+    links: list[str],
+    *,
+    mesh_dir: Path,
+    output_stl_root: Path,
+    proof_root: Path,
+) -> list[dict[str, Any]]:
+    records = []
+    for link in links:
+        source_stl = mesh_dir / f"{link}.STL"
+        output_stl = output_stl_root / f"{link}.STL"
+        proof = (
+            _load_spline_fit_proof(
+                proof_root / f"{link}.spline-fit.json",
+                link,
+                source_stl=source_stl,
+                output_stl=output_stl,
+            )
+            if source_stl.is_file() and output_stl.is_file()
+            else None
+        )
+        summary = proof.get("summary", {}) if proof else {}
+        tolerances = proof.get("tolerances", {}) if proof else {}
+        accepted = bool(
+            proof
+            and summary.get("ok")
+            and summary.get("interfaces_checked", 0) > 0
+            and summary.get("interfaces_checked") == summary.get("interfaces_ok")
+            and summary.get("output_watertight")
+            and summary.get("output_boundary_edges") == 0
+            and summary.get("output_nonmanifold_edges") == 0
+            and summary.get("surface_symmetric_hausdorff_m", float("inf"))
+            <= tolerances.get("surface_distance_tolerance_m", -1)
+        )
+        if accepted:
+            records.append(
+                {
+                    "link": link,
+                    "source_kind": "accepted_controlled_loft_source",
+                    "proof": str(proof_root / f"{link}.spline-fit.json"),
+                    "validation_mesh_source": proof.get("validation_mesh_source"),
+                    "fit_max_error_m": summary.get("max_error_m"),
+                    "fit_rms_error_m": summary.get("max_rms_error_m"),
+                    "surface_symmetric_hausdorff_m": summary.get(
+                        "surface_symmetric_hausdorff_m"
+                    ),
+                    "interfaces_checked": summary.get("interfaces_checked"),
+                    "interfaces_ok": summary.get("interfaces_ok"),
+                    "output_watertight": summary.get("output_watertight"),
+                    "output_boundary_edges": summary.get("output_boundary_edges"),
+                    "output_nonmanifold_edges": summary.get("output_nonmanifold_edges"),
+                }
+            )
+    return records
+
+
 def build_fembot_source_manifest_proof(
     body_groups: list[dict[str, Any]],
     *,
     main_step: Path = ASIMOV1_MAIN_STEP,
     mechanical_root: Path = ASIMOV1_MECHANICAL_ROOT,
+    mesh_dir: Path = ASIMOV1_SOURCE_MESH_DIR,
+    output_stl_root: Path = ASIMOV_PARAM_OUTPUT_STL,
+    proof_root: Path = ASIMOV_PARAM_PROOFS,
 ) -> dict[str, Any]:
     """Build the current fembot body-group source split manifest.
 
@@ -88,6 +151,17 @@ def build_fembot_source_manifest_proof(
             klass = str(record["fabrication_class"])
             fabrication_class_counts[klass] = fabrication_class_counts.get(klass, 0) + 1
 
+        controlled_loft_assignments = _accepted_controlled_loft_links(
+            links,
+            mesh_dir=mesh_dir,
+            output_stl_root=output_stl_root,
+            proof_root=proof_root,
+        )
+        accepted_controlled_links = {
+            str(record["link"]) for record in controlled_loft_assignments
+        }
+        unresolved_links = [link for link in links if link not in accepted_controlled_links]
+
         group_records.append(
             {
                 "group": group.get("group"),
@@ -97,28 +171,43 @@ def build_fembot_source_manifest_proof(
                 "step_files": step_records,
                 "step_file_count": len(step_records),
                 "exact_link_assignments": [],
-                "unresolved_links": links,
-                "source_kind": "source_step_group_candidate_manifest",
-                "accepted": False,
+                "controlled_loft_assignments": controlled_loft_assignments,
+                "unresolved_links": unresolved_links,
+                "source_kind": (
+                    "source_step_group_with_accepted_controlled_lofts"
+                    if not unresolved_links
+                    else "source_step_group_candidate_manifest"
+                ),
+                "accepted": not unresolved_links,
                 "blocking_reason": (
-                    "body-group STEP candidates are inventoried, but individual "
-                    "simulation links are not yet assigned to exact STEP/B-rep "
-                    "bodies or controlled loft sources"
+                    None
+                    if not unresolved_links
+                    else (
+                        "body-group STEP candidates are inventoried, but at least one "
+                        "simulation link is not yet assigned to an exact STEP/B-rep "
+                        "body or controlled loft source"
+                    )
                 ),
             }
         )
 
     link_count = sum(len(group.get("links", [])) for group in group_records)
     unresolved_count = sum(len(group["unresolved_links"]) for group in group_records)
+    controlled_loft_count = sum(
+        len(group["controlled_loft_assignments"]) for group in group_records
+    )
     ok = bool(main_step.is_file() and mechanical_root.is_dir() and not missing_assemblies and group_records)
+    accepted = ok and unresolved_count == 0 and controlled_loft_count == link_count
     return {
         "schema": SOURCE_MANIFEST_SCHEMA,
         "ok": ok,
-        "accepted": False,
+        "accepted": accepted,
         "source": {
             "main_step": str(main_step),
             "main_step_sha256": sha256_file(main_step) if main_step.is_file() else None,
             "mechanical_root": str(mechanical_root),
+            "mesh_dir": str(mesh_dir),
+            "proof_root": str(proof_root),
         },
         "summary": {
             "body_groups": len(group_records),
@@ -128,12 +217,18 @@ def build_fembot_source_manifest_proof(
             "fabrication_class_counts": dict(sorted(fabrication_class_counts.items())),
             "missing_assemblies": sorted(set(missing_assemblies)),
             "exact_link_assignments": 0,
+            "controlled_loft_assignments": controlled_loft_count,
             "unresolved_links": unresolved_count,
-            "accepted": False,
+            "accepted": accepted,
             "acceptance_blocker": (
-                "the ASIMOV source STEP split is inventoried by fembot body group, "
-                "but every simulation link still needs exact STEP/B-rep body assignment "
-                "or a controlled loft source with fit and interface error bounds"
+                None
+                if accepted
+                else (
+                    "the ASIMOV source STEP split is inventoried by fembot body group, "
+                    "but at least one simulation link still needs exact STEP/B-rep "
+                    "body assignment or a controlled loft source with fit and "
+                    "interface error bounds"
+                )
             ),
         },
         "body_groups": group_records,

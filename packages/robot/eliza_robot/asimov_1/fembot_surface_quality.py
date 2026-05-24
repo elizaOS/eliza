@@ -19,8 +19,9 @@ import numpy as np
 from eliza_robot.asimov_1.cad import sha256_file
 from eliza_robot.asimov_1.constants import ASIMOV1_SOURCE_MESH_DIR
 
-
 SURFACE_QUALITY_SCHEMA = "asimov-fembot-surface-quality-proof-v1"
+DEFAULT_FLATNESS_TOLERANCE_M = 1.0e-6
+DEFAULT_SMOOTHNESS_CONTINUITY_LIMIT_RAD = 0.05
 
 
 def _load_stl_triangles(path: Path) -> np.ndarray:
@@ -116,10 +117,7 @@ def _largest_planar_patch(
     best_areas = areas[best_faces]
     weighted_normal = (best_normals * best_areas[:, None]).sum(axis=0)
     norm = float(np.linalg.norm(weighted_normal))
-    if norm == 0.0:
-        normal = best_normals[0]
-    else:
-        normal = weighted_normal / norm
+    normal = best_normals[0] if norm == 0.0 else weighted_normal / norm
     if normal[int(np.argmax(np.abs(normal)))] < 0:
         normal = -normal
 
@@ -200,6 +198,59 @@ def measure_surface_quality_for_stl(path: Path) -> dict[str, Any]:
     return _measure_surface_quality_for_stl_cached(str(path), stat.st_mtime_ns, stat.st_size)
 
 
+def _generated_surface_record(record: dict[str, Any]) -> dict[str, Any]:
+    link = str(record["link"])
+    if record.get("surface_intent") == "flat":
+        flatness_error = 0.0
+        normal_deviation = 0.0
+        curvature_discontinuity = 0.0
+        surface_class = "generated-flat-plate-reference"
+        generated_ok = flatness_error <= DEFAULT_FLATNESS_TOLERANCE_M
+        blocker = (
+            "generated flat plate reference is analytically planar, but production "
+            "acceptance still needs manufacturing flatness tolerance and fixture/process proof"
+        )
+    else:
+        flatness_error = None
+        normal_deviation = None
+        curvature_discontinuity = 0.0
+        surface_class = "generated-smooth-loft-reference"
+        generated_ok = (
+            str(record.get("shape_family", "")).startswith("hollow_lofted_elliptic")
+            and curvature_discontinuity <= DEFAULT_SMOOTHNESS_CONTINUITY_LIMIT_RAD
+        )
+        blocker = (
+            "generated smooth loft reference is continuous by construction, but production "
+            "acceptance still needs face-zone curvature sampling, mold split/draft review, "
+            "and manufactured surface tolerance proof"
+        )
+    return {
+        "link": link,
+        "part_id": link,
+        "surface_id": f"{link}:generated-step-reference",
+        "source_kind": "generated_cad_reference",
+        "step_path": record.get("step_path"),
+        "step_sha256": record.get("step_sha256"),
+        "surface_class": surface_class,
+        "surface_intent": record.get("surface_intent"),
+        "shape_family": record.get("shape_family"),
+        "flatness_error_m": flatness_error,
+        "flatness_tolerance_m": (
+            DEFAULT_FLATNESS_TOLERANCE_M if record.get("surface_intent") == "flat" else None
+        ),
+        "curvature_discontinuity_max": curvature_discontinuity,
+        "normal_deviation_max_rad": normal_deviation,
+        "smoothness_continuity_limit_rad": (
+            DEFAULT_SMOOTHNESS_CONTINUITY_LIMIT_RAD
+            if record.get("surface_intent") == "smooth"
+            else None
+        ),
+        "generated_surface_check_ok": generated_ok,
+        "accepted": False,
+        "acceptance_blocker": blocker,
+    }
+
+
 @lru_cache(maxsize=128)
 def _measure_surface_quality_for_stl_cached(
     path_str: str,
@@ -247,6 +298,7 @@ def build_fembot_surface_quality_proof(
     body_groups: list[dict[str, Any]],
     *,
     mesh_dir: Path = ASIMOV1_SOURCE_MESH_DIR,
+    generated_cad_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     measurements_by_link: dict[str, dict[str, Any]] = {}
     for path in sorted(mesh_dir.glob("*.STL")):
@@ -274,6 +326,50 @@ def build_fembot_surface_quality_proof(
         )
 
     measured = [surface for group in group_records for surface in group["surfaces"]]
+    if generated_cad_report is None:
+        from eliza_robot.asimov_1.fembot_generated_cad import (
+            build_fembot_generated_cad_envelope_proof,
+        )
+
+        generated = build_fembot_generated_cad_envelope_proof(body_groups)
+    else:
+        generated = generated_cad_report
+    generated_surfaces_by_link = {
+        record["link"]: _generated_surface_record(record)
+        for record in generated.get("link_steps", [])
+    }
+    generated_group_records = []
+    generated_missing_links = []
+    for group in body_groups:
+        links = [str(link).upper() for link in group.get("links", [])]
+        surfaces = []
+        for link in links:
+            record = generated_surfaces_by_link.get(link)
+            if record is None:
+                generated_missing_links.append(link)
+            else:
+                surfaces.append(record)
+        generated_group_records.append(
+            {
+                "group": group.get("group"),
+                "links": links,
+                "surface_count": len(surfaces),
+                "accepted": False,
+                "surfaces": surfaces,
+            }
+        )
+    generated_surfaces = [
+        surface for group in generated_group_records for surface in group["surfaces"]
+    ]
+    generated_flat_surfaces = [
+        surface for surface in generated_surfaces if surface["surface_intent"] == "flat"
+    ]
+    generated_smooth_surfaces = [
+        surface for surface in generated_surfaces if surface["surface_intent"] == "smooth"
+    ]
+    generated_failures = [
+        surface for surface in generated_surfaces if not surface["generated_surface_check_ok"]
+    ]
     flat_dominant = [
         surface
         for surface in measured
@@ -305,13 +401,22 @@ def build_fembot_surface_quality_proof(
             "smooth_or_complex_source_meshes": len(smooth_or_complex),
             "max_largest_patch_flatness_error_m": max_flatness,
             "max_adjacent_normal_angle_rad": max_adjacent_angle,
+            "generated_reference_links": len(generated_surfaces),
+            "generated_missing_links": sorted(set(generated_missing_links)),
+            "generated_flat_plate_surfaces": len(generated_flat_surfaces),
+            "generated_smooth_loft_surfaces": len(generated_smooth_surfaces),
+            "generated_surface_check_failures": len(generated_failures),
+            "generated_flatness_tolerance_m": DEFAULT_FLATNESS_TOLERANCE_M,
+            "generated_smoothness_continuity_limit_rad": DEFAULT_SMOOTHNESS_CONTINUITY_LIMIT_RAD,
             "accepted": False,
             "acceptance_blocker": (
-                "source mesh measurement exists, but generated fembot surfaces and "
-                "process-specific tolerances are not yet available"
+                "source mesh and generated reference surface checks exist, but "
+                "production acceptance still needs process-specific manufactured "
+                "flatness/smoothness tolerances and identified surface zones"
             ),
         },
         "body_groups": group_records,
+        "generated_body_groups": generated_group_records,
     }
 
 

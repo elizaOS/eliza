@@ -1,8 +1,8 @@
 {
-  "accepted": false,
+  "accepted": true,
   "body_groups": [
     {
-      "accepted": false,
+      "accepted": true,
       "assembly_candidates": [
         "200",
         "700"
@@ -23,14 +23,44 @@
           "step_file_count": 14
         }
       ],
-      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "blocking_reason": null,
+      "controlled_loft_assignments": [
+        {
+          "fit_max_error_m": 0.001424471117655853,
+          "fit_rms_error_m": 0.0003365760608574752,
+          "interfaces_checked": 3,
+          "interfaces_ok": 3,
+          "link": "IMU_ORIGIN",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/IMU_ORIGIN.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.01913570037192677,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00249832626463383,
+          "fit_rms_error_m": 0.0011722092556364873,
+          "interfaces_checked": 3,
+          "interfaces_ok": 3,
+          "link": "WAIST_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/WAIST_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.002199809359521794,
+          "validation_mesh_source": null
+        }
+      ],
       "exact_link_assignments": [],
       "group": "torso",
       "links": [
         "IMU_ORIGIN",
         "WAIST_YAW"
       ],
-      "source_kind": "source_step_group_candidate_manifest",
+      "source_kind": "source_step_group_with_accepted_controlled_lofts",
       "step_file_count": 31,
       "step_files": [
         {
@@ -282,13 +312,10 @@
           "sha256": "347e512b59519928186d6b19069b322b857820c93d7a1743d501f883d8f70412"
         }
       ],
-      "unresolved_links": [
-        "IMU_ORIGIN",
-        "WAIST_YAW"
-      ]
+      "unresolved_links": []
     },
     {
-      "accepted": false,
+      "accepted": true,
       "assembly_candidates": [
         "100"
       ],
@@ -301,14 +328,44 @@
           "step_file_count": 14
         }
       ],
-      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "blocking_reason": null,
+      "controlled_loft_assignments": [
+        {
+          "fit_max_error_m": 0.0004887934537592268,
+          "fit_rms_error_m": 0.00014599561875689734,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "NECK_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/NECK_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0035010522326228573,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0008802519690543244,
+          "fit_rms_error_m": 0.00017666906614367234,
+          "interfaces_checked": 1,
+          "interfaces_ok": 1,
+          "link": "NECK_PITCH",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/NECK_PITCH.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.010965820088104015,
+          "validation_mesh_source": null
+        }
+      ],
       "exact_link_assignments": [],
       "group": "head",
       "links": [
         "NECK_YAW",
         "NECK_PITCH"
       ],
-      "source_kind": "source_step_group_candidate_manifest",
+      "source_kind": "source_step_group_with_accepted_controlled_lofts",
       "step_file_count": 14,
       "step_files": [
         {
@@ -424,13 +481,10 @@
           "sha256": "1323788b5ef2d92157d18eb1e270ea65a659229a5502b7419073a3553ccd726d"
         }
       ],
-      "unresolved_links": [
-        "NECK_YAW",
-        "NECK_PITCH"
-      ]
+      "unresolved_links": []
     },
     {
-      "accepted": false,
+      "accepted": true,
       "assembly_candidates": [
         "300",
         "400"
@@ -451,7 +505,149 @@
           "step_file_count": 24
         }
       ],
-      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "blocking_reason": null,
+      "controlled_loft_assignments": [
+        {
+          "fit_max_error_m": 0.0009414567078098179,
+          "fit_rms_error_m": 0.00032101606990334795,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_SHOULDER_PITCH",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_PITCH.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0022149473530136393,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00037610068717056213,
+          "fit_rms_error_m": 9.158960057493528e-05,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_SHOULDER_PITCH",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_PITCH.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.01741013774389975,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.000936543495740988,
+          "fit_rms_error_m": 0.0002554425351985119,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_SHOULDER_ROLL",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_ROLL.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.007966619729995843,
+          "validation_mesh_source": "controlled_loft"
+        },
+        {
+          "fit_max_error_m": 0.0007723916563143526,
+          "fit_rms_error_m": 0.0002443193256492168,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_SHOULDER_ROLL",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_ROLL.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.007567566633224623,
+          "validation_mesh_source": "controlled_loft"
+        },
+        {
+          "fit_max_error_m": 0.000760297102016166,
+          "fit_rms_error_m": 0.00029976402408609027,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_SHOULDER_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_SHOULDER_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.005782191357247843,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0007244329831727324,
+          "fit_rms_error_m": 0.0003018990797080799,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_SHOULDER_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_SHOULDER_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.006277856443779076,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0007063738431117388,
+          "fit_rms_error_m": 0.00020026433221690494,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_ELBOW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ELBOW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.013292474967251734,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0005903473191221308,
+          "fit_rms_error_m": 0.00017277129500645002,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_ELBOW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ELBOW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.013499051378065138,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00040781079385649686,
+          "fit_rms_error_m": 0.00011154919404634007,
+          "interfaces_checked": 1,
+          "interfaces_ok": 1,
+          "link": "LEFT_WRIST_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_WRIST_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.00422898369986104,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0004063611106987886,
+          "fit_rms_error_m": 0.00010457628585168051,
+          "interfaces_checked": 1,
+          "interfaces_ok": 1,
+          "link": "RIGHT_WRIST_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_WRIST_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0041684361677753745,
+          "validation_mesh_source": null
+        }
+      ],
       "exact_link_assignments": [],
       "group": "arm",
       "links": [
@@ -466,7 +662,7 @@
         "LEFT_WRIST_YAW",
         "RIGHT_WRIST_YAW"
       ],
-      "source_kind": "source_step_group_candidate_manifest",
+      "source_kind": "source_step_group_with_accepted_controlled_lofts",
       "step_file_count": 48,
       "step_files": [
         {
@@ -854,21 +1050,10 @@
           "sha256": "f9df3d4943ec53fa37ca7c753b8e3175acd190f605535d2e588ca7b81a1f305b"
         }
       ],
-      "unresolved_links": [
-        "LEFT_SHOULDER_PITCH",
-        "RIGHT_SHOULDER_PITCH",
-        "LEFT_SHOULDER_ROLL",
-        "RIGHT_SHOULDER_ROLL",
-        "LEFT_SHOULDER_YAW",
-        "RIGHT_SHOULDER_YAW",
-        "LEFT_ELBOW",
-        "RIGHT_ELBOW",
-        "LEFT_WRIST_YAW",
-        "RIGHT_WRIST_YAW"
-      ]
+      "unresolved_links": []
     },
     {
-      "accepted": false,
+      "accepted": true,
       "assembly_candidates": [
         "500",
         "600"
@@ -889,7 +1074,177 @@
           "step_file_count": 42
         }
       ],
-      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "blocking_reason": null,
+      "controlled_loft_assignments": [
+        {
+          "fit_max_error_m": 0.0010750194047410065,
+          "fit_rms_error_m": 0.00021948501325789224,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_HIP_PITCH",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_PITCH.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.008819661895588452,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0008049666148851925,
+          "fit_rms_error_m": 0.00018906424279392073,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_HIP_PITCH",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_PITCH.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.008572163890137503,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00023710688153207938,
+          "fit_rms_error_m": 5.652624060943745e-05,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_HIP_ROLL",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_ROLL.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0006596736566620902,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00044621323516334566,
+          "fit_rms_error_m": 0.00014278349348151038,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_HIP_ROLL",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_ROLL.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0006596710920500608,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0010461346286463314,
+          "fit_rms_error_m": 0.0003695854131760877,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_HIP_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_HIP_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.007559374798365361,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0010292863436561816,
+          "fit_rms_error_m": 0.00037243817769859466,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_HIP_YAW",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_HIP_YAW.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.007545322738396001,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.001692582527504657,
+          "fit_rms_error_m": 0.00045763556944034456,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_KNEE",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_KNEE.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0074555161690098015,
+          "validation_mesh_source": "controlled_loft"
+        },
+        {
+          "fit_max_error_m": 0.0016478985998055404,
+          "fit_rms_error_m": 0.0004452039237430655,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_KNEE",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_KNEE.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.006061897426186656,
+          "validation_mesh_source": "controlled_loft"
+        },
+        {
+          "fit_max_error_m": 0.0003735565945049557,
+          "fit_rms_error_m": 0.00011231749948568829,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_ANKLE_A",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ANKLE_A.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0017848601603884962,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.00041075684189123606,
+          "fit_rms_error_m": 0.0001440948641589378,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_ANKLE_A",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ANKLE_A.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.001793405843583505,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.0007174380282382223,
+          "fit_rms_error_m": 0.0002365831572369996,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "LEFT_ANKLE_B",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_ANKLE_B.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.019317821149912096,
+          "validation_mesh_source": "controlled_loft"
+        },
+        {
+          "fit_max_error_m": 0.0007165799593392538,
+          "fit_rms_error_m": 0.00023663042118808494,
+          "interfaces_checked": 2,
+          "interfaces_ok": 2,
+          "link": "RIGHT_ANKLE_B",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_ANKLE_B.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.01980583411147658,
+          "validation_mesh_source": "controlled_loft"
+        }
+      ],
       "exact_link_assignments": [],
       "group": "leg",
       "links": [
@@ -906,7 +1261,7 @@
         "LEFT_ANKLE_B",
         "RIGHT_ANKLE_B"
       ],
-      "source_kind": "source_step_group_candidate_manifest",
+      "source_kind": "source_step_group_with_accepted_controlled_lofts",
       "step_file_count": 84,
       "step_files": [
         {
@@ -1582,23 +1937,10 @@
           "sha256": "1e6d5ce73dd09d8db5ef1872cea16a61986c5507cfccc367fecb2abe17988ac2"
         }
       ],
-      "unresolved_links": [
-        "LEFT_HIP_PITCH",
-        "RIGHT_HIP_PITCH",
-        "LEFT_HIP_ROLL",
-        "RIGHT_HIP_ROLL",
-        "LEFT_HIP_YAW",
-        "RIGHT_HIP_YAW",
-        "LEFT_KNEE",
-        "RIGHT_KNEE",
-        "LEFT_ANKLE_A",
-        "RIGHT_ANKLE_A",
-        "LEFT_ANKLE_B",
-        "RIGHT_ANKLE_B"
-      ]
+      "unresolved_links": []
     },
     {
-      "accepted": false,
+      "accepted": true,
       "assembly_candidates": [
         "500",
         "600"
@@ -1619,14 +1961,44 @@
           "step_file_count": 42
         }
       ],
-      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "blocking_reason": null,
+      "controlled_loft_assignments": [
+        {
+          "fit_max_error_m": 0.00044980388223848835,
+          "fit_rms_error_m": 0.00016947559533278864,
+          "interfaces_checked": 1,
+          "interfaces_ok": 1,
+          "link": "LEFT_TOE",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/LEFT_TOE.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0063983849959200045,
+          "validation_mesh_source": null
+        },
+        {
+          "fit_max_error_m": 0.000582143975688327,
+          "fit_rms_error_m": 0.0001693942530899995,
+          "interfaces_checked": 1,
+          "interfaces_ok": 1,
+          "link": "RIGHT_TOE",
+          "output_boundary_edges": 0,
+          "output_nonmanifold_edges": 0,
+          "output_watertight": true,
+          "proof": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs/RIGHT_TOE.spline-fit.json",
+          "source_kind": "accepted_controlled_loft_source",
+          "surface_symmetric_hausdorff_m": 0.0075077989147590484,
+          "validation_mesh_source": null
+        }
+      ],
       "exact_link_assignments": [],
       "group": "foot",
       "links": [
         "LEFT_TOE",
         "RIGHT_TOE"
       ],
-      "source_kind": "source_step_group_candidate_manifest",
+      "source_kind": "source_step_group_with_accepted_controlled_lofts",
       "step_file_count": 84,
       "step_files": [
         {
@@ -2302,10 +2674,7 @@
           "sha256": "1e6d5ce73dd09d8db5ef1872cea16a61986c5507cfccc367fecb2abe17988ac2"
         }
       ],
-      "unresolved_links": [
-        "LEFT_TOE",
-        "RIGHT_TOE"
-      ]
+      "unresolved_links": []
     }
   ],
   "ok": true,
@@ -2313,12 +2682,15 @@
   "source": {
     "main_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/ASIMOV_V1.STEP",
     "main_step_sha256": "f68d0493683c86f59b949cf540cba894699e70c1074cfde39996885d8a497343",
-    "mechanical_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1"
+    "mechanical_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1",
+    "mesh_dir": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
+    "proof_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/proofs"
   },
   "summary": {
-    "acceptance_blocker": "the ASIMOV source STEP split is inventoried by fembot body group, but every simulation link still needs exact STEP/B-rep body assignment or a controlled loft source with fit and interface error bounds",
-    "accepted": false,
+    "acceptance_blocker": null,
+    "accepted": true,
     "body_groups": 5,
+    "controlled_loft_assignments": 28,
     "exact_link_assignments": 0,
     "fabrication_class_counts": {
       "ALU_7075": 57,
@@ -2331,6 +2703,6 @@
     "links": 28,
     "missing_assemblies": [],
     "unique_step_files": 177,
-    "unresolved_links": 28
+    "unresolved_links": 0
   }
 }

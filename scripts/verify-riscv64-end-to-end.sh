@@ -200,19 +200,19 @@ record "aosp:pixel-arm64-attached" "SKIP" "no \`adb devices\` in sandbox; deploy
 
 # ── Canonical Linux live distro — riscv64 GUI contract ────────────────
 echo "── elizaOS Live (Linux ISO, riscv64 GUI contract) ──"
-deb_dir="$repo_root/packages/os/linux/variants/elizaos"
+deb_dir="$repo_root/packages/os/linux"
 if [ -d "$deb_dir" ]; then
     for f in Dockerfile build.sh README.md tails/auto/config docs/riscv64-gui-support.md tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list; do
         if [ -f "$deb_dir/$f" ]; then
-            record "linux-live:variant/$f" "PASS" "present"
+            record "linux-live:distro/$f" "PASS" "present"
         else
-            record "linux-live:variant/$f" "FAIL" "missing"
+            record "linux-live:distro/$f" "FAIL" "missing"
         fi
     done
     if bash -n "$deb_dir/build.sh" 2>"$tmp_log"; then
-        record "linux-live:variant/build.sh-syntax" "PASS" "bash -n clean"
+        record "linux-live:distro/build.sh-syntax" "PASS" "bash -n clean"
     else
-        record "linux-live:variant/build.sh-syntax" "FAIL" "$(tail -1 "$tmp_log")"
+        record "linux-live:distro/build.sh-syntax" "FAIL" "$(tail -1 "$tmp_log")"
     fi
     if grep -qx "virtio-gpu-pci" "$deb_dir/docs/riscv64-gui-support.md" \
         && grep -qx "linux-image-riscv64" "$deb_dir/tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list" \
@@ -221,9 +221,9 @@ if [ -d "$deb_dir" ]; then
     else
         record "linux-live:riscv64-gui-contract" "FAIL" "missing riscv64 GUI contract markers"
     fi
-    record "linux-live:variant/lb-build" "SKIP" "needs docker + Tails live-build host budget; not run in sandbox"
+    record "linux-live:distro/lb-build" "SKIP" "needs docker + Tails live-build host budget; not run in sandbox"
 else
-    record "linux-live:variant" "FAIL" "$deb_dir does not exist"
+    record "linux-live:distro" "FAIL" "$deb_dir does not exist"
 fi
 
 # ── Cloud Dockerfile BUN_BASE indirection ────────────────────────────

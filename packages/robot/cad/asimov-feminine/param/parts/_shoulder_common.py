@@ -43,7 +43,7 @@ def build(part, render=False):
     slim = SLIM[part]
 
     orig = trimesh.load(os.path.join(SRC_DIR, part + ".STL"))
-    if part.endswith("SHOULDER_YAW"):
+    if part.endswith("SHOULDER_YAW") or part.endswith("SHOULDER_PITCH"):
         femme = W.warp_similarity(
             orig,
             axis=axis,
@@ -53,6 +53,12 @@ def build(part, render=False):
             step=0.0025,
             smooth_m=5,
         )
+        if part.endswith("SHOULDER_PITCH"):
+            femme = W.cap_quantized_boundary_loops(
+                femme,
+                merge_tolerance=1e-6,
+                max_loop_vertices=16,
+            )
     else:
         param = P.slice_to_rings(orig, axis=axis, step=0.01, n_angular=72)
         w = P.connection_weight(param, reserved, ramp=0.035)

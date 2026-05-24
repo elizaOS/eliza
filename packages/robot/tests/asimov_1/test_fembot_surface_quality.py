@@ -21,6 +21,12 @@ def test_fembot_surface_quality_measures_source_stl_geometry() -> None:
     assert report["accepted"] is False
     assert report["summary"]["measured_links"] == 28
     assert report["summary"]["missing_links"] == []
+    assert report["summary"]["generated_reference_links"] == 28
+    assert report["summary"]["generated_missing_links"] == []
+    assert report["summary"]["generated_flat_plate_surfaces"] == 2
+    assert report["summary"]["generated_smooth_loft_surfaces"] == 26
+    assert report["summary"]["generated_surface_check_failures"] == 0
+    assert report["summary"]["generated_flatness_tolerance_m"] == 1.0e-6
     assert report["summary"]["max_largest_patch_flatness_error_m"] is not None
     assert report["summary"]["max_adjacent_normal_angle_rad"] is not None
 
@@ -30,6 +36,15 @@ def test_fembot_surface_quality_measures_source_stl_geometry() -> None:
     assert groups["arm"]["surface_count"] == 10
     assert groups["leg"]["surface_count"] == 12
     assert groups["foot"]["surface_count"] == 2
+    generated_groups = {group["group"]: group for group in report["generated_body_groups"]}
+    assert generated_groups["foot"]["surfaces"][0]["surface_class"] == (
+        "generated-flat-plate-reference"
+    )
+    assert generated_groups["foot"]["surfaces"][0]["flatness_error_m"] == 0.0
+    assert generated_groups["arm"]["surfaces"][0]["surface_class"] == (
+        "generated-smooth-loft-reference"
+    )
+    assert generated_groups["arm"]["surfaces"][0]["generated_surface_check_ok"] is True
 
     first_surface = groups["arm"]["surfaces"][0]
     assert first_surface["triangle_count"] > 0
@@ -47,6 +62,8 @@ def test_fembot_inventory_surfaces_flatness_smoothness_status() -> None:
     assert report["surface_quality"]["ok"] is True
     assert report["surface_quality"]["accepted"] is False
     assert report["surface_quality"]["summary"]["measured_links"] == 28
+    assert report["surface_quality"]["summary"]["generated_reference_links"] == 28
+    assert report["surface_quality"]["summary"]["generated_surface_check_failures"] == 0
     for group in report["body_groups"]:
         assert "flatness_or_smoothness" in group["missing_proofs"]
 

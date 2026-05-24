@@ -1,0 +1,964 @@
+{
+  "accepted": false,
+  "ok": true,
+  "schema": "asimov-fembot-mold-dfm-proof-v1",
+  "shells": [
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.06200019635568596,
+        0.13500018954592996,
+        0.18380019697209
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 2.9645099173179297,
+      "group": "torso",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.030127043642848732,
+      "internal_cavity_violation_count": 3,
+      "link": "IMU_ORIGIN",
+      "recommended_process": "molded_shell_candidate_needs_draft_split_and_keepout_resolution",
+      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": true,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.0362130232247276,
+        0.2030001986204597,
+        0.38166717602669503
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 10.539500490146276,
+      "group": "torso",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.052892124935303014,
+      "internal_cavity_violation_count": 4,
+      "link": "WAIST_YAW",
+      "recommended_process": "molded_shell_candidate_needs_draft_split_and_keepout_resolution",
+      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540634078,
+        0.01200026789683811,
+        0.074666472616015
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 6.222105698811062,
+      "group": "head",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019199999905005094,
+      "internal_cavity_violation_count": 2,
+      "link": "NECK_YAW",
+      "recommended_process": "molded_shell_candidate_needs_draft_split_and_keepout_resolution",
+      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.04000017846877603,
+        0.012000267896839643,
+        0.18396028387199
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 15.329681424898629,
+      "group": "head",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.05044285140633583,
+      "internal_cavity_violation_count": 4,
+      "link": "NECK_PITCH",
+      "recommended_process": "molded_shell_candidate_needs_draft_split_and_keepout_resolution",
+      "shape_family": "hollow_lofted_elliptic_shell_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000199294639712,
+        0.08470660362971269,
+        0.06670664879342
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 7.058766404617106,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019199999999999995,
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_SHOULDER_PITCH",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000199294639684,
+        0.08470660362963141,
+        0.08274209755321002
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 7.058766404610349,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019199999999999995,
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_SHOULDER_PITCH",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 15.281524120075145,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.0362,
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_SHOULDER_ROLL",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000267896839091,
+        0.024000187081269105,
+        0.18338238331291
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 15.281524120075145,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.0362,
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_SHOULDER_ROLL",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540634817,
+        0.012000267896839112,
+        0.135051499818241
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 11.254110140885002,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.016200000111758713,
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_SHOULDER_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540634817,
+        0.012000267896839327,
+        0.13535150489624098
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 11.27911016084169,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.016200000111758713,
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_SHOULDER_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.11006201576563879,
+        0.024000198589278515,
+        0.13214821996946002
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 5.506130271292585,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.031200000000000006,
+      "internal_cavity_violation_count": 3,
+      "link": "LEFT_ELBOW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.10999084036968369,
+        0.024000198589278515,
+        0.13205841812152003
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 5.502388558589419,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.031200000000000006,
+      "internal_cavity_violation_count": 3,
+      "link": "RIGHT_ELBOW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.01200019354063355,
+        0.012000267896839,
+        0.0403212464865
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 3.3600496816963203,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.01909243522658944,
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_WRIST_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540634325,
+        0.0120002678968389,
+        0.0403724114861
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 3.364313362896473,
+      "group": "arm",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019091863860189913,
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_WRIST_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.052250296928733626,
+        0.09499846644493029,
+        0.09600020083447
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 1.8373139767111506,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.02344948980743885,
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_HIP_PITCH",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": true,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.05225019692874271,
+        0.09485073641218884,
+        0.09600020083447
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 1.837317493087964,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.023449947726726532,
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_HIP_PITCH",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": true,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.0565193978861952,
+        0.01200019929463855,
+        0.08000019821186
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 6.666572466642491,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019199999999999995,
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_HIP_ROLL",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.0565193978861952,
+        0.012000199294638879,
+        0.08000019821186
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 6.666572466642308,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.019199999999999995,
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_HIP_ROLL",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.015834771927804595,
+        0.012000267896839894,
+        0.30874021234777
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 25.727776663142038,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.0412,
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_HIP_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.015834771927804595,
+        0.01200026789683905,
+        0.30874022724893
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 25.72777790487946,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.0412,
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_HIP_YAW",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540634323,
+        0.012000267896838213,
+        0.36964378016836996
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 30.803151542240112,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.03988073566257954,
+      "internal_cavity_violation_count": 4,
+      "link": "LEFT_KNEE",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540635477,
+        0.012000267896838664,
+        0.36964378016836996
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 30.80315154223715,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.03970519253313542,
+      "internal_cavity_violation_count": 4,
+      "link": "RIGHT_KNEE",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540632725,
+        0.012000267896839,
+        0.051000191595750005
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 4.2499474215197495,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.016699999314546583,
+      "internal_cavity_violation_count": 2,
+      "link": "LEFT_ANKLE_A",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.012000193540632725,
+        0.012000267896839,
+        0.051000191595750005
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 4.2499474215197495,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.016699999314546583,
+      "internal_cavity_violation_count": 2,
+      "link": "RIGHT_ANKLE_A",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": false,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.14753019899737613,
+        0.08000019529759753,
+        0.06608667108078001
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 2.232374495260094,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.004923667770624163,
+      "internal_cavity_violation_count": 1,
+      "link": "LEFT_ANKLE_B",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": true,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    },
+    {
+      "accepted": false,
+      "bbox_extent_m": [
+        0.14747019899800617,
+        0.08000019529759783,
+        0.06609851750393
+      ],
+      "blocking_reason": "smooth loft has a generated shell reference, but production molding still needs explicit draft analysis, undercut/split-line proof, trim or parting features, and resolved internal keepout/cavity clearance",
+      "draw_ratio": 2.2310666648346245,
+      "group": "leg",
+      "injection_molding": {
+        "candidate": false,
+        "cavity_clearance_ok": false,
+        "draft_proven": false,
+        "minimum_wall_m": 0.0015,
+        "split_line_proven": false,
+        "undercut_proven": false,
+        "wall_ok": false
+      },
+      "internal_cavity_minimum_projected_clearance_m": -0.0049269218116998695,
+      "internal_cavity_violation_count": 1,
+      "link": "RIGHT_ANKLE_B",
+      "recommended_process": "split_structural_shell_or_additive_reference_before_production",
+      "shape_family": "hollow_lofted_elliptic_limb_reference",
+      "surface_intent": "smooth",
+      "vacuform": {
+        "candidate": false,
+        "draw_ratio_ok": true,
+        "max_draw_ratio": 3.0,
+        "minimum_wall_m": 0.00075,
+        "single_sided_pull_proven": false,
+        "trim_flange_proven": false,
+        "wall_ok": true
+      },
+      "wall_thickness_m": 0.0012
+    }
+  ],
+  "source": {
+    "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1"
+  },
+  "summary": {
+    "acceptance_blocker": "smooth shell references are classified for injection/vacuform DFM, but production acceptance still needs draft, undercut, split-line or trim-flange proof and resolved internal keepout clearance",
+    "accepted": false,
+    "draft_proven_shells": 0,
+    "injection_candidate_shells": 0,
+    "injection_min_wall_m": 0.0015,
+    "injection_wall_failures": 26,
+    "internal_cavity_clearance_failures": 26,
+    "limb_shell_records": 22,
+    "max_vacuform_draw_ratio": 3.0,
+    "smooth_shell_records": 26,
+    "split_line_proven_shells": 0,
+    "torso_head_shell_records": 4,
+    "undercut_proven_shells": 0,
+    "vacuform_candidate_shells": 0,
+    "vacuform_draw_ratio_failures": 21,
+    "vacuform_min_wall_m": 0.00075
+  }
+}

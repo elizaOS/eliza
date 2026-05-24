@@ -12,6 +12,8 @@
  *
  * @module plugin-collector
  */
+import { existsSync } from "node:fs";
+import path from "node:path";
 import {
   hasExplicitCanonicalRuntimeConfig,
   isAndroidMobile,
@@ -38,6 +40,19 @@ const STORE_BUILD_LOCAL_EXECUTION_PLUGINS = new Set<string>([
   "@elizaos/plugin-shell",
   "@elizaos/plugin-coding-tools",
 ]);
+
+function isOptionalProviderPackageAvailable(pluginName: string): boolean {
+  if (pluginName !== "@elizaos/plugin-vercel-ai-gateway") return true;
+  return (
+    existsSync(path.join(process.cwd(), "plugins/plugin-vercel-ai-gateway")) ||
+    existsSync(
+      path.join(
+        process.cwd(),
+        "node_modules/@elizaos/plugin-vercel-ai-gateway",
+      ),
+    )
+  );
+}
 
 /**
  * Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package;
@@ -490,7 +505,10 @@ export function collectPluginNames(
         continue;
       }
     }
-    if (process.env[envKey]?.trim()) {
+    if (
+      process.env[envKey]?.trim() &&
+      isOptionalProviderPackageAvailable(pluginName)
+    ) {
       pluginsToLoad.add(pluginName);
       track(pluginName, `env: ${envKey}`);
     }

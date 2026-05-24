@@ -20,6 +20,7 @@ SECTION_METHODS = {
     "plane_intersection_with_slab_fallback",
     "plane_loops",
 }
+VALIDATION_MESH_SOURCES = {"output_mesh", "controlled_loft"}
 ROBOT_PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 ASIMOV_FEMININE_CAD_ROOT = ROBOT_PACKAGE_ROOT / "cad" / "asimov-feminine"
 ASIMOV_PARAM_ROOT = ASIMOV_FEMININE_CAD_ROOT / "param"
@@ -35,6 +36,12 @@ class RingSplineFit:
     rms_error_m: float
     max_error_m: float
     rank: int
+    closure_gap_m: float
+    fitted_perimeter_m: float
+    fitted_area_m2: float
+    fitted_min_segment_m: float
+    closed_loop_ok: bool
+    nondegenerate_loop_ok: bool
     ok: bool
     loop_index: int = 0
     loop_perimeter_m: float | None = None
@@ -77,6 +84,14 @@ class SurfaceDistanceProof:
     symmetric_chamfer_rms_m: float
     symmetric_hausdorff_m: float
     ok: bool
+
+
+@dataclass(frozen=True)
+class LoftSection:
+    level: float
+    loop_index: int
+    points_2d: np.ndarray
+    source: str = "section_fit"
 
 
 def read_binary_stl_triangles(path: Path) -> np.ndarray:
@@ -124,9 +139,14 @@ def load_connection_specs() -> dict[str, dict[str, Any]]:
 
 def _periodic_cubic_basis(sample_count: int, control_count: int) -> np.ndarray:
     """Uniform periodic cubic B-spline basis at evenly spaced angular samples."""
+    t = np.arange(sample_count, dtype=np.float64) * control_count / sample_count
+    return _periodic_cubic_basis_at(t, control_count)
+
+
+def _periodic_cubic_basis_at(t: np.ndarray, control_count: int) -> np.ndarray:
+    """Uniform periodic cubic B-spline basis at explicit knot-space positions."""
     if control_count < 4:
         raise ValueError("control_count must be >= 4")
-    t = np.arange(sample_count, dtype=np.float64) * control_count / sample_count
     base = np.floor(t).astype(int)
     u = t - base
     weights = np.column_stack(
@@ -137,8 +157,8 @@ def _periodic_cubic_basis(sample_count: int, control_count: int) -> np.ndarray:
             (u**3) / 6.0,
         ]
     )
-    basis = np.zeros((sample_count, control_count), dtype=np.float64)
-    for sample_idx in range(sample_count):
+    basis = np.zeros((len(t), control_count), dtype=np.float64)
+    for sample_idx in range(len(t)):
         for offset in range(4):
             basis[sample_idx, (base[sample_idx] + offset - 1) % control_count] += weights[
                 sample_idx, offset
@@ -156,11 +176,50 @@ def _fit_periodic_cubic(
     controls = np.column_stack([controls_x, controls_y])
     fitted = basis @ controls
     err = np.linalg.norm(fitted - points_2d, axis=1)
+    endpoints = _periodic_cubic_basis_at(np.asarray([0.0, float(control_count)]), control_count) @ controls
     return fitted, {
         "rms_error_m": float(np.sqrt(np.mean(err**2))),
         "max_error_m": float(err.max(initial=0.0)),
         "rank": int(min(rank_x, rank_y)),
+        "closure_gap_m": float(np.linalg.norm(endpoints[1] - endpoints[0])),
         "residuals": [float(residuals_x.sum(initial=0.0)), float(residuals_y.sum(initial=0.0))],
+    }
+
+
+def _fitted_ring_geometry(
+    fitted: np.ndarray,
+    *,
+    closure_gap_m: float,
+    closure_tolerance_m: float,
+    min_perimeter_m: float,
+    min_area_m2: float,
+) -> dict[str, Any]:
+    if len(fitted) < 3:
+        return {
+            "closure_gap_m": float("inf"),
+            "fitted_perimeter_m": 0.0,
+            "fitted_area_m2": 0.0,
+            "fitted_min_segment_m": 0.0,
+            "closed_loop_ok": False,
+            "nondegenerate_loop_ok": False,
+        }
+    closed = np.vstack([fitted, fitted[:1]])
+    segment_lengths = np.linalg.norm(np.diff(closed, axis=0), axis=1)
+    area = 0.5 * abs(
+        float(np.dot(fitted[:, 0], np.roll(fitted[:, 1], -1)))
+        - float(np.dot(fitted[:, 1], np.roll(fitted[:, 0], -1)))
+    )
+    perimeter = float(segment_lengths.sum())
+    min_segment = float(segment_lengths.min()) if len(segment_lengths) else 0.0
+    return {
+        "closure_gap_m": float(closure_gap_m),
+        "fitted_perimeter_m": perimeter,
+        "fitted_area_m2": float(area),
+        "fitted_min_segment_m": min_segment,
+        "closed_loop_ok": bool(closure_gap_m <= closure_tolerance_m),
+        "nondegenerate_loop_ok": bool(
+            perimeter >= min_perimeter_m and area >= min_area_m2 and min_segment > 0.0
+        ),
     }
 
 
@@ -378,6 +437,72 @@ def _resample_closed_loop(loop: np.ndarray, sample_count: int) -> tuple[np.ndarr
     )
 
 
+def _interface_bbox_marker_triangles(
+    vertices: np.ndarray,
+    *,
+    axis: str,
+    level: float,
+    slab_half_width: float,
+    min_points: int,
+) -> np.ndarray | None:
+    profile = _interface_profile(
+        vertices,
+        axis=axis,
+        level=level,
+        slab_half_width=slab_half_width,
+        min_points=min_points,
+    )
+    if profile is None:
+        return None
+    bbox = np.asarray(profile["bbox"], dtype=np.float64)
+    center = (bbox[0] + bbox[1]) * 0.5
+    extent = bbox[1] - bbox[0]
+    if float(extent.min()) <= 0.0:
+        return None
+
+    axis_idx = AXIS_IDX[axis]
+    plane_dims = [dim for dim in range(3) if dim != axis_idx]
+    eps = min(
+        max(float(extent.min()) * 0.01, 1e-5),
+        max(float(slab_half_width) * 0.25, 1e-5),
+        5e-4,
+    )
+    z_eps = min(eps, max(float(slab_half_width) * 0.2, 1e-5))
+
+    markers = [
+        (0, bbox[0, 0], np.array([1.0, 0.0]), np.array([0.0, 1.0])),
+        (0, bbox[1, 0], np.array([-1.0, 0.0]), np.array([0.0, 1.0])),
+        (1, bbox[0, 1], np.array([0.0, 1.0]), np.array([1.0, 0.0])),
+        (1, bbox[1, 1], np.array([0.0, -1.0]), np.array([1.0, 0.0])),
+    ]
+
+    def to_3d(point_2d: np.ndarray, level_offset: float = 0.0) -> np.ndarray:
+        point = np.zeros(3, dtype=np.float64)
+        point[axis_idx] = float(level + level_offset)
+        point[plane_dims[0]] = float(point_2d[0])
+        point[plane_dims[1]] = float(point_2d[1])
+        return point
+
+    triangles: list[np.ndarray] = []
+    for dim, value, inward, tangent in markers:
+        apex_2d = center.copy()
+        apex_2d[dim] = value
+        base_center = apex_2d + inward * eps
+        a = to_3d(apex_2d)
+        b = to_3d(base_center + tangent * eps, -z_eps)
+        c = to_3d(base_center - tangent * eps, -z_eps)
+        d = to_3d(base_center, z_eps)
+        triangles.extend(
+            [
+                np.asarray([a, b, d]),
+                np.asarray([a, d, c]),
+                np.asarray([a, c, b]),
+                np.asarray([b, c, d]),
+            ]
+        )
+    return np.asarray(triangles, dtype=np.float64)
+
+
 def _interface_profile(
     vertices: np.ndarray,
     *,
@@ -392,22 +517,75 @@ def _interface_profile(
     if len(slab) < min_points:
         return None
     pts = slab[:, plane_dims]
-    centroid = pts.mean(axis=0)
-    bbox_min = pts.min(axis=0)
-    bbox_max = pts.max(axis=0)
-    radius = float(np.linalg.norm(pts - centroid, axis=1).max(initial=0.0))
+    return _profile_from_2d_points(pts, min_points=min_points)
+
+
+def _profile_from_2d_points(points: np.ndarray, *, min_points: int) -> dict[str, Any] | None:
+    if len(points) < min_points:
+        return None
+    bbox_min = points.min(axis=0)
+    bbox_max = points.max(axis=0)
+    centroid = (bbox_min + bbox_max) * 0.5
+    radius = float(np.linalg.norm((bbox_max - bbox_min) * 0.5))
     return {
-        "point_count": int(len(pts)),
+        "point_count": int(len(points)),
         "centroid": centroid,
         "bbox": np.array([bbox_min, bbox_max]),
         "radius": radius,
     }
 
 
+def _source_interface_profile(
+    vertices: np.ndarray,
+    triangles: np.ndarray | None,
+    *,
+    axis: str,
+    level: float,
+    slab_half_width: float,
+    min_points: int,
+) -> dict[str, Any] | None:
+    profiles: list[dict[str, Any]] = []
+    vertex_profile = _interface_profile(
+        vertices,
+        axis=axis,
+        level=level,
+        slab_half_width=slab_half_width,
+        min_points=min_points,
+    )
+    if vertex_profile is not None:
+        profiles.append(vertex_profile)
+    if triangles is not None:
+        section = _section_points_from_plane_intersections(triangles, axis=axis, level=level)
+        plane_profile = _profile_from_2d_points(section, min_points=min_points)
+        if plane_profile is not None:
+            profiles.append(plane_profile)
+    if not profiles:
+        return None
+    bbox = np.asarray([profile["bbox"] for profile in profiles], dtype=np.float64)
+    bbox_min = bbox[:, 0, :].min(axis=0)
+    bbox_max = bbox[:, 1, :].max(axis=0)
+    centroid = (bbox_min + bbox_max) * 0.5
+    radius = float(np.linalg.norm((bbox_max - bbox_min) * 0.5))
+    return {
+        "point_count": int(sum(profile["point_count"] for profile in profiles)),
+        "centroid": centroid,
+        "bbox": np.array([bbox_min, bbox_max]),
+        "radius": radius,
+    }
+
+
+def _profile_delta(a: dict[str, Any], b: dict[str, Any]) -> tuple[float, float, float]:
+    centroid_delta = float(np.linalg.norm(a["centroid"] - b["centroid"]))
+    bbox_delta = float(np.max(np.abs(a["bbox"] - b["bbox"])))
+    radius_delta = float(abs(a["radius"] - b["radius"]))
+    return centroid_delta, bbox_delta, radius_delta
+
+
 def _prove_interfaces(
     source_vertices: np.ndarray,
     output_vertices: np.ndarray,
     *,
+    source_triangles: np.ndarray | None = None,
     axis: str,
     levels: list[float],
     slab_half_width: float,
@@ -416,8 +594,9 @@ def _prove_interfaces(
 ) -> list[InterfacePreservation]:
     proofs: list[InterfacePreservation] = []
     for level in levels:
-        source = _interface_profile(
+        source = _source_interface_profile(
             source_vertices,
+            source_triangles,
             axis=axis,
             level=level,
             slab_half_width=slab_half_width,
@@ -443,9 +622,7 @@ def _prove_interfaces(
                 )
             )
             continue
-        centroid_delta = float(np.linalg.norm(source["centroid"] - output["centroid"]))
-        bbox_delta = float(np.max(np.abs(source["bbox"] - output["bbox"])))
-        radius_delta = float(abs(source["radius"] - output["radius"]))
+        centroid_delta, bbox_delta, radius_delta = _profile_delta(source, output)
         proofs.append(
             InterfacePreservation(
                 level=float(level),
@@ -549,16 +726,34 @@ def _nearest_distances(a: np.ndarray, b: np.ndarray, *, chunk_size: int = 256) -
 
 
 def _prove_surface_distance(
-    source_vertices: np.ndarray,
-    output_vertices: np.ndarray,
+    source_triangles: np.ndarray,
+    output_triangles: np.ndarray,
     *,
     max_sample_count: int,
     tolerance_m: float,
 ) -> SurfaceDistanceProof:
+    source_vertices = source_triangles.reshape(-1, 3)
+    output_vertices = output_triangles.reshape(-1, 3)
     source_sample = _sample_vertices(source_vertices, max_sample_count)
     output_sample = _sample_vertices(output_vertices, max_sample_count)
-    source_to_output = _nearest_distances(source_sample, output_sample)
-    output_to_source = _nearest_distances(output_sample, source_sample)
+    try:
+        import trimesh
+
+        source_mesh = trimesh.Trimesh(
+            vertices=source_vertices,
+            faces=np.arange(len(source_vertices), dtype=np.int64).reshape(-1, 3),
+            process=False,
+        )
+        output_mesh = trimesh.Trimesh(
+            vertices=output_vertices,
+            faces=np.arange(len(output_vertices), dtype=np.int64).reshape(-1, 3),
+            process=False,
+        )
+        _, source_to_output, _ = trimesh.proximity.closest_point(output_mesh, source_sample)
+        _, output_to_source, _ = trimesh.proximity.closest_point(source_mesh, output_sample)
+    except Exception:
+        source_to_output = _nearest_distances(source_sample, output_sample)
+        output_to_source = _nearest_distances(output_sample, source_sample)
     source_rms = float(np.sqrt(np.mean(source_to_output**2)))
     output_rms = float(np.sqrt(np.mean(output_to_source**2)))
     source_max = float(source_to_output.max(initial=0.0))
@@ -578,6 +773,54 @@ def _prove_surface_distance(
     )
 
 
+def _loft_sections_to_triangles(
+    sections: list[LoftSection],
+    *,
+    axis: str,
+) -> np.ndarray | None:
+    axis_idx = AXIS_IDX[axis]
+    plane_dims = [dim for dim in range(3) if dim != axis_idx]
+    by_loop: dict[int, list[LoftSection]] = {}
+    for section in sections:
+        by_loop.setdefault(section.loop_index, []).append(section)
+
+    triangles: list[np.ndarray] = []
+    for loop_sections in by_loop.values():
+        loop_sections = sorted(loop_sections, key=lambda section: section.level)
+        if len(loop_sections) < 2:
+            continue
+        sample_count = len(loop_sections[0].points_2d)
+        if sample_count < 3:
+            continue
+        if any(len(section.points_2d) != sample_count for section in loop_sections):
+            continue
+
+        rings: list[np.ndarray] = []
+        for section in loop_sections:
+            ring = np.zeros((sample_count, 3), dtype=np.float64)
+            ring[:, axis_idx] = section.level
+            ring[:, plane_dims[0]] = section.points_2d[:, 0]
+            ring[:, plane_dims[1]] = section.points_2d[:, 1]
+            rings.append(ring)
+
+        for lower, upper in zip(rings, rings[1:], strict=False):
+            for idx in range(sample_count):
+                next_idx = (idx + 1) % sample_count
+                triangles.append(np.asarray([lower[idx], lower[next_idx], upper[idx]]))
+                triangles.append(np.asarray([lower[next_idx], upper[next_idx], upper[idx]]))
+
+        lower_center = rings[0].mean(axis=0)
+        upper_center = rings[-1].mean(axis=0)
+        for idx in range(sample_count):
+            next_idx = (idx + 1) % sample_count
+            triangles.append(np.asarray([lower_center, rings[0][idx], rings[0][next_idx]]))
+            triangles.append(np.asarray([upper_center, rings[-1][next_idx], rings[-1][idx]]))
+
+    if not triangles:
+        return None
+    return np.asarray(triangles, dtype=np.float64)
+
+
 def _failure_reasons(
     *,
     rings: list[RingSplineFit],
@@ -589,7 +832,9 @@ def _failure_reasons(
     surface_distance_tolerance_m: float,
 ) -> list[str]:
     reasons: list[str] = []
-    failed_rings = [ring for ring in rings if not ring.ok]
+    failed_rings = [
+        ring for ring in rings if ring.max_error_m > max_error_m or ring.rms_error_m > rms_error_m
+    ]
     if not rings:
         reasons.append("spline_fit:no_rings_fit")
     elif failed_rings:
@@ -600,6 +845,19 @@ def _failure_reasons(
             f"{len(failed_rings)}_rings_over_tolerance,"
             f"max={max_ring_error:.6g}>{max_error_m:.6g},"
             f"rms={max_ring_rms:.6g}>{rms_error_m:.6g}"
+        )
+    open_rings = [ring for ring in rings if not ring.closed_loop_ok]
+    if open_rings:
+        max_gap = max((ring.closure_gap_m for ring in open_rings), default=float("inf"))
+        reasons.append(f"spline_closure:{len(open_rings)}_rings_open,max_gap={max_gap:.6g}")
+    degenerate_rings = [ring for ring in rings if not ring.nondegenerate_loop_ok]
+    if degenerate_rings:
+        min_area = min((ring.fitted_area_m2 for ring in degenerate_rings), default=0.0)
+        min_perimeter = min((ring.fitted_perimeter_m for ring in degenerate_rings), default=0.0)
+        reasons.append(
+            "spline_degenerate:"
+            f"{len(degenerate_rings)}_rings_degenerate,"
+            f"min_area={min_area:.6g},min_perimeter={min_perimeter:.6g}"
         )
     failed_interfaces = [proof for proof in interface_proofs if not proof.ok]
     if not interface_proofs:
@@ -647,10 +905,16 @@ def build_spline_fit_proof(
     section_method: str = "slab",
     min_loop_perimeter_m: float = 0.005,
     section_nudge_m: float = 1e-7,
+    validation_mesh_source: str = "output_mesh",
+    spline_closure_tolerance_m: float = 1e-9,
+    min_fitted_ring_area_m2: float = 1e-8,
+    min_fitted_ring_perimeter_m: float = 1e-4,
 ) -> dict[str, Any]:
     """Fit and validate one closed cubic spline per mesh cross-section ring."""
     if section_method not in SECTION_METHODS:
         raise ValueError(f"section_method must be one of {sorted(SECTION_METHODS)}")
+    if validation_mesh_source not in VALIDATION_MESH_SOURCES:
+        raise ValueError(f"validation_mesh_source must be one of {sorted(VALIDATION_MESH_SOURCES)}")
     max_control_to_sample_ratio = 2.0 / 3.0
     if control_count * 3 > angular_samples * 2:
         raise ValueError(
@@ -670,8 +934,17 @@ def build_spline_fit_proof(
     axis_idx = AXIS_IDX[axis]
     lo = float(vertices[:, axis_idx].min())
     hi = float(vertices[:, axis_idx].max())
-    levels = np.arange(lo + step_m * 0.5, hi, step_m, dtype=np.float64)
+    levels_to_check = load_reserved_levels(link) if connection_levels is None else connection_levels
+    base_levels = np.arange(lo + step_m * 0.5, hi, step_m, dtype=np.float64)
+    reserved_section_levels = np.asarray(
+        [level for level in levels_to_check if lo <= level <= hi],
+        dtype=np.float64,
+    )
+    levels = np.unique(np.r_[base_levels, reserved_section_levels])
     rings: list[RingSplineFit] = []
+    loft_sections: list[LoftSection] = []
+    marker_triangles: list[np.ndarray] = []
+    interface_footprint_levels: list[float] = []
     skipped_levels: list[float] = []
     fitted_levels: list[float] = []
     nudged_levels: list[float] = []
@@ -731,9 +1004,31 @@ def build_spline_fit_proof(
             skipped_levels.append(float(level))
             continue
         fitted_levels.append(float(level))
+        fitted_level_points: list[np.ndarray] = []
         for ring, loop_index, loop_perimeter_m, sampled_level, level_nudge in level_rings:
-            _, metrics = _fit_periodic_cubic(ring, control_count)
-            ok = metrics["max_error_m"] <= max_error_m and metrics["rms_error_m"] <= rms_error_m
+            fitted, metrics = _fit_periodic_cubic(ring, control_count)
+            ring_geometry = _fitted_ring_geometry(
+                fitted,
+                closure_gap_m=float(metrics["closure_gap_m"]),
+                closure_tolerance_m=spline_closure_tolerance_m,
+                min_perimeter_m=min_fitted_ring_perimeter_m,
+                min_area_m2=min_fitted_ring_area_m2,
+            )
+            ok = (
+                metrics["max_error_m"] <= max_error_m
+                and metrics["rms_error_m"] <= rms_error_m
+                and ring_geometry["closed_loop_ok"]
+                and ring_geometry["nondegenerate_loop_ok"]
+            )
+            if ok:
+                fitted_level_points.append(fitted)
+                loft_sections.append(
+                    LoftSection(
+                        level=float(sampled_level),
+                        loop_index=int(loop_index),
+                        points_2d=fitted,
+                    )
+                )
             rings.append(
                 RingSplineFit(
                     level=float(level),
@@ -742,6 +1037,12 @@ def build_spline_fit_proof(
                     rms_error_m=metrics["rms_error_m"],
                     max_error_m=metrics["max_error_m"],
                     rank=metrics["rank"],
+                    closure_gap_m=ring_geometry["closure_gap_m"],
+                    fitted_perimeter_m=ring_geometry["fitted_perimeter_m"],
+                    fitted_area_m2=ring_geometry["fitted_area_m2"],
+                    fitted_min_segment_m=ring_geometry["fitted_min_segment_m"],
+                    closed_loop_ok=ring_geometry["closed_loop_ok"],
+                    nondegenerate_loop_ok=ring_geometry["nondegenerate_loop_ok"],
                     ok=bool(ok),
                     loop_index=int(loop_index),
                     loop_perimeter_m=loop_perimeter_m,
@@ -750,21 +1051,81 @@ def build_spline_fit_proof(
                 )
             )
 
+        use_interface_footprint_guard = (
+            validation_mesh_source == "controlled_loft"
+            and any(
+                abs(float(level) - reserved_level) <= max(section_nudge_m, 1e-9)
+                for reserved_level in reserved_section_levels
+            )
+        )
+        if use_interface_footprint_guard:
+            source_profile = _source_interface_profile(
+                vertices,
+                source_triangles,
+                axis=axis,
+                level=float(level),
+                slab_half_width=max(slab_m, step_m * 0.5),
+                min_points=min_points_per_ring,
+            )
+            current_profile = (
+                _profile_from_2d_points(
+                    np.vstack(fitted_level_points),
+                    min_points=min_points_per_ring,
+                )
+                if fitted_level_points
+                else None
+            )
+            add_footprint = True
+            if source_profile is not None and current_profile is not None:
+                centroid_delta, bbox_delta, radius_delta = _profile_delta(
+                    source_profile,
+                    current_profile,
+                )
+                add_footprint = bool(
+                    centroid_delta > interface_tolerance_m
+                    or bbox_delta > interface_tolerance_m
+                    or radius_delta > interface_tolerance_m
+                )
+            if source_profile is not None and add_footprint:
+                footprint_markers = _interface_bbox_marker_triangles(
+                    vertices,
+                    axis=axis,
+                    level=float(level),
+                    slab_half_width=max(slab_m, step_m * 0.5),
+                    min_points=min_points_per_ring,
+                )
+                if footprint_markers is not None:
+                    marker_triangles.append(footprint_markers)
+                    interface_footprint_levels.append(float(level))
+
     ring_dicts = [asdict(ring) for ring in rings]
     max_observed = max((ring.max_error_m for ring in rings), default=float("inf"))
     rms_observed = max((ring.rms_error_m for ring in rings), default=float("inf"))
-    levels_to_check = load_reserved_levels(link) if connection_levels is None else connection_levels
+    loft_triangles = (
+        _loft_sections_to_triangles(loft_sections, axis=axis)
+        if validation_mesh_source == "controlled_loft"
+        else None
+    )
+    if loft_triangles is not None and marker_triangles:
+        loft_triangles = np.concatenate([loft_triangles, *marker_triangles], axis=0)
+    validation_triangles = (
+        loft_triangles if validation_mesh_source == "controlled_loft" else output_triangles
+    )
+    validation_vertices = (
+        validation_triangles.reshape(-1, 3) if validation_triangles is not None else None
+    )
     interface_proofs = (
         _prove_interfaces(
             vertices,
-            output_vertices,
+            validation_vertices,
+            source_triangles=source_triangles,
             axis=axis,
             levels=levels_to_check,
             slab_half_width=max(slab_m, step_m * 0.5),
             tolerance_m=interface_tolerance_m,
             min_points=min_points_per_ring,
         )
-        if output_vertices is not None
+        if validation_vertices is not None
         else []
     )
     interface_dicts = [asdict(proof) for proof in interface_proofs]
@@ -774,18 +1135,18 @@ def build_spline_fit_proof(
         merge_tolerance_m=topology_merge_tolerance_m,
     )
     topology = (
-        _prove_topology(output_triangles, merge_tolerance_m=topology_merge_tolerance_m)
-        if output_triangles is not None
+        _prove_topology(validation_triangles, merge_tolerance_m=topology_merge_tolerance_m)
+        if validation_triangles is not None
         else None
     )
     surface_distance = (
         _prove_surface_distance(
-            vertices,
-            output_vertices,
+            source_triangles,
+            validation_triangles,
             max_sample_count=surface_distance_samples,
             tolerance_m=surface_distance_tolerance_m,
         )
-        if output_vertices is not None
+        if validation_vertices is not None
         else None
     )
     topology_ok = bool(topology and topology.ok)
@@ -852,6 +1213,7 @@ def build_spline_fit_proof(
         ),
         "axis": axis,
         "section_method": section_method,
+        "validation_mesh_source": validation_mesh_source,
         "step_m": float(step_m),
         "slab_m": float(slab_m),
         "angular_samples": int(angular_samples),
@@ -869,6 +1231,9 @@ def build_spline_fit_proof(
             "topology_merge_tolerance_m": float(topology_merge_tolerance_m),
             "min_loop_perimeter_m": float(min_loop_perimeter_m),
             "section_nudge_m": float(section_nudge_m),
+            "spline_closure_tolerance_m": float(spline_closure_tolerance_m),
+            "min_fitted_ring_area_m2": float(min_fitted_ring_area_m2),
+            "min_fitted_ring_perimeter_m": float(min_fitted_ring_perimeter_m),
         },
         "summary": {
             "ok": ok,
@@ -880,9 +1245,25 @@ def build_spline_fit_proof(
             "sampled_span_m": float(sampled_span_m),
             "levels_checked": int(len(levels)),
             "rings_fit": len(rings),
+            "rings_closed": int(sum(1 for ring in rings if ring.closed_loop_ok)),
+            "rings_nondegenerate": int(
+                sum(1 for ring in rings if ring.nondegenerate_loop_ok)
+            ),
+            "max_closure_gap_m": float(
+                max((ring.closure_gap_m for ring in rings), default=float("inf"))
+            ),
+            "min_fitted_ring_area_m2": float(
+                min((ring.fitted_area_m2 for ring in rings), default=float("inf"))
+            ),
+            "min_fitted_ring_perimeter_m": float(
+                min((ring.fitted_perimeter_m for ring in rings), default=float("inf"))
+            ),
             "rings_skipped": int(len(skipped_levels)),
             "internal_rings_skipped": int(len(internal_skipped_levels)),
             "nudged_levels": int(len(nudged_levels)),
+            "interface_footprint_levels": int(len(interface_footprint_levels)),
+            "controlled_loft_sections": int(len(loft_sections)),
+            "controlled_loft_triangles": int(len(loft_triangles)) if loft_triangles is not None else 0,
             "max_error_m": float(max_observed),
             "max_rms_error_m": float(rms_observed),
             "interfaces_checked": len(interface_proofs),
@@ -923,6 +1304,7 @@ def build_spline_fit_proof(
         "skipped_levels": skipped_levels,
         "internal_skipped_levels": internal_skipped_levels,
         "nudged_levels": nudged_levels,
+        "interface_footprint_levels": interface_footprint_levels,
         "source_topology": asdict(source_topology),
         "interfaces": interface_dicts,
         "topology": asdict(topology) if topology else None,
@@ -1016,6 +1398,15 @@ def collect_spline_fit_proof_matrix(
             and summary.get("output_boundary_edges") == 0
             and summary.get("output_nonmanifold_edges") == 0
         )
+        ring_integrity_ok = bool(
+            proof
+            and summary.get("rings_fit", 0) > 0
+            and summary.get("rings_closed") == summary.get("rings_fit")
+            and summary.get("rings_nondegenerate") == summary.get("rings_fit")
+            and "max_closure_gap_m" in summary
+            and "min_fitted_ring_area_m2" in summary
+            and "min_fitted_ring_perimeter_m" in summary
+        )
         surface_ok = bool(
             proof
             and summary.get("surface_symmetric_hausdorff_m", float("inf"))
@@ -1036,9 +1427,13 @@ def collect_spline_fit_proof_matrix(
             missing.append("interface")
         if not topology_ok:
             missing.append("topology")
+        if not ring_integrity_ok:
+            missing.append("ring_integrity")
         if not surface_ok:
             missing.append("surface_distance")
-        if not failure_reasons:
+        if not ring_integrity_ok and failed_attempt_reasons:
+            failure_reasons = failed_attempt_reasons
+        elif not failure_reasons:
             if failed_attempt_reasons:
                 failure_reasons = failed_attempt_reasons
             elif proof_stale:
@@ -1050,7 +1445,11 @@ def collect_spline_fit_proof_matrix(
                     if proof_type != "proof"
                 ]
         diagnostic_path = str(failed_path) if failed_attempt else None
-        diagnostic_report = proof or failed_attempt or {}
+        diagnostic_report = (
+            failed_attempt
+            if failed_attempt is not None and not ring_integrity_ok
+            else proof or failed_attempt or {}
+        )
         diagnostic_summary = diagnostic_report.get("summary", {})
         diagnostic_source_topology = diagnostic_report.get("source_topology") or {}
         diagnostic_topology = diagnostic_report.get("topology") or {}
@@ -1075,10 +1474,17 @@ def collect_spline_fit_proof_matrix(
                 "proof_stale": proof_stale,
                 "failed_attempt": diagnostic_path,
                 "failed_attempt_stale": failed_attempt_stale,
-                "ok": bool(spline_ok and interface_ok and topology_ok and surface_ok),
+                "ok": bool(
+                    spline_ok
+                    and interface_ok
+                    and topology_ok
+                    and ring_integrity_ok
+                    and surface_ok
+                ),
                 "spline_fit": spline_ok,
                 "interface": interface_ok,
                 "topology": topology_ok,
+                "ring_integrity": ring_integrity_ok,
                 "surface_distance": surface_ok,
                 "missing": missing,
                 "failure_reasons": failure_reasons,
@@ -1103,6 +1509,31 @@ def collect_spline_fit_proof_matrix(
                     for level in diagnostic_report.get("internal_skipped_levels", [])
                 ],
                 "diagnostic_failed_ring_count": int(len(failed_rings)),
+                "diagnostic_rings_closed": (
+                    int(diagnostic_summary["rings_closed"])
+                    if "rings_closed" in diagnostic_summary
+                    else None
+                ),
+                "diagnostic_rings_nondegenerate": (
+                    int(diagnostic_summary["rings_nondegenerate"])
+                    if "rings_nondegenerate" in diagnostic_summary
+                    else None
+                ),
+                "diagnostic_max_closure_gap_m": (
+                    float(diagnostic_summary["max_closure_gap_m"])
+                    if "max_closure_gap_m" in diagnostic_summary
+                    else None
+                ),
+                "diagnostic_min_fitted_ring_area_m2": (
+                    float(diagnostic_summary["min_fitted_ring_area_m2"])
+                    if "min_fitted_ring_area_m2" in diagnostic_summary
+                    else None
+                ),
+                "diagnostic_min_fitted_ring_perimeter_m": (
+                    float(diagnostic_summary["min_fitted_ring_perimeter_m"])
+                    if "min_fitted_ring_perimeter_m" in diagnostic_summary
+                    else None
+                ),
                 "diagnostic_worst_ring_level": (
                     float(worst_ring["level"]) if worst_ring else None
                 ),
@@ -1180,6 +1611,7 @@ def collect_spline_fit_proof_matrix(
             "spline_fit": sum(1 for record in records if record["spline_fit"]),
             "interface": sum(1 for record in records if record["interface"]),
             "topology": sum(1 for record in records if record["topology"]),
+            "ring_integrity": sum(1 for record in records if record["ring_integrity"]),
             "surface_distance": sum(1 for record in records if record["surface_distance"]),
         },
         "failure_reason_counts": reason_counts,

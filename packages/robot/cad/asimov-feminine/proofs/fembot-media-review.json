@@ -1,0 +1,427 @@
+{
+  "accepted": false,
+  "joint_motion": {
+    "joint_count": 27,
+    "joints": [
+      {
+        "amplitude_rad": 1.39247775,
+        "center_rad": -0.5471975,
+        "name": "left_hip_pitch_joint",
+        "qpos_address": 7,
+        "range_rad": [
+          -2.094395,
+          1.0
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.0,
+        "name": "left_hip_roll_joint",
+        "qpos_address": 8,
+        "range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.0,
+        "name": "left_hip_yaw_joint",
+        "qpos_address": 9,
+        "range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "amplitude_rad": 0.675,
+        "center_rad": 0.75,
+        "name": "left_knee_joint",
+        "qpos_address": 10,
+        "range_rad": [
+          0.0,
+          1.5
+        ]
+      },
+      {
+        "amplitude_rad": 0.315,
+        "center_rad": 0.0,
+        "name": "left_ankle_pitch_joint",
+        "qpos_address": 11,
+        "range_rad": [
+          -0.35,
+          0.35
+        ]
+      },
+      {
+        "amplitude_rad": 0.09000000000000001,
+        "center_rad": 0.0,
+        "name": "left_ankle_roll_joint",
+        "qpos_address": 12,
+        "range_rad": [
+          -0.1,
+          0.1
+        ]
+      },
+      {
+        "amplitude_rad": 0.47114999999999996,
+        "center_rad": -0.5235,
+        "name": "left_toe_joint",
+        "qpos_address": 13,
+        "range_rad": [
+          -1.047,
+          0.0
+        ]
+      },
+      {
+        "amplitude_rad": 1.39247775,
+        "center_rad": 0.5471975,
+        "name": "right_hip_pitch_joint",
+        "qpos_address": 14,
+        "range_rad": [
+          -1.0,
+          2.094395
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.0,
+        "name": "right_hip_roll_joint",
+        "qpos_address": 15,
+        "range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.0,
+        "name": "right_hip_yaw_joint",
+        "qpos_address": 16,
+        "range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "amplitude_rad": 0.675,
+        "center_rad": -0.75,
+        "name": "right_knee_joint",
+        "qpos_address": 17,
+        "range_rad": [
+          -1.5,
+          0.0
+        ]
+      },
+      {
+        "amplitude_rad": 0.315,
+        "center_rad": 0.0,
+        "name": "right_ankle_pitch_joint",
+        "qpos_address": 18,
+        "range_rad": [
+          -0.35,
+          0.35
+        ]
+      },
+      {
+        "amplitude_rad": 0.09000000000000001,
+        "center_rad": 0.0,
+        "name": "right_ankle_roll_joint",
+        "qpos_address": 19,
+        "range_rad": [
+          -0.1,
+          0.1
+        ]
+      },
+      {
+        "amplitude_rad": 0.47114999999999996,
+        "center_rad": 0.5235,
+        "name": "right_toe_joint",
+        "qpos_address": 20,
+        "range_rad": [
+          0.0,
+          1.047
+        ]
+      },
+      {
+        "amplitude_rad": 1.4137164000000002,
+        "center_rad": 0.0,
+        "name": "waist_yaw_joint",
+        "qpos_address": 21,
+        "range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      {
+        "amplitude_rad": 1.4137164000000002,
+        "center_rad": 0.0,
+        "name": "neck_yaw_joint",
+        "qpos_address": 22,
+        "range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.0,
+        "name": "neck_pitch_joint",
+        "qpos_address": 23,
+        "range_rad": [
+          -0.785398,
+          0.785398
+        ]
+      },
+      {
+        "amplitude_rad": 1.8064161,
+        "center_rad": 1.134464,
+        "name": "right_shoulder_pitch_joint",
+        "qpos_address": 24,
+        "range_rad": [
+          -0.872665,
+          3.141593
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": 0.785398,
+        "name": "right_shoulder_roll_joint",
+        "qpos_address": 25,
+        "range_rad": [
+          0.0,
+          1.570796
+        ]
+      },
+      {
+        "amplitude_rad": 1.4137164000000002,
+        "center_rad": 0.0,
+        "name": "right_shoulder_yaw_joint",
+        "qpos_address": 26,
+        "range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      {
+        "amplitude_rad": 1.09955745,
+        "center_rad": -1.2217305,
+        "name": "right_elbow_joint",
+        "qpos_address": 27,
+        "range_rad": [
+          -2.443461,
+          0.0
+        ]
+      },
+      {
+        "amplitude_rad": 2.8274337,
+        "center_rad": 0.0,
+        "name": "right_wrist_yaw_joint",
+        "qpos_address": 28,
+        "range_rad": [
+          -3.141593,
+          3.141593
+        ]
+      },
+      {
+        "amplitude_rad": 1.8064161,
+        "center_rad": -1.134464,
+        "name": "left_shoulder_pitch_joint",
+        "qpos_address": 29,
+        "range_rad": [
+          -3.141593,
+          0.872665
+        ]
+      },
+      {
+        "amplitude_rad": 0.7068582000000001,
+        "center_rad": -0.785398,
+        "name": "left_shoulder_roll_joint",
+        "qpos_address": 30,
+        "range_rad": [
+          -1.570796,
+          0.0
+        ]
+      },
+      {
+        "amplitude_rad": 1.4137164000000002,
+        "center_rad": 0.0,
+        "name": "left_shoulder_yaw_joint",
+        "qpos_address": 31,
+        "range_rad": [
+          -1.570796,
+          1.570796
+        ]
+      },
+      {
+        "amplitude_rad": 1.09955745,
+        "center_rad": 1.2217305,
+        "name": "left_elbow_joint",
+        "qpos_address": 32,
+        "range_rad": [
+          0.0,
+          2.443461
+        ]
+      },
+      {
+        "amplitude_rad": 2.8274337,
+        "center_rad": 0.0,
+        "name": "left_wrist_yaw_joint",
+        "qpos_address": 33,
+        "range_rad": [
+          -3.141593,
+          3.141593
+        ]
+      }
+    ],
+    "mode": "all limited hinge joints driven simultaneously by phase-offset sinusoid"
+  },
+  "ok": true,
+  "sample_video_frames": [
+    {
+      "bytes": 326100,
+      "exists": true,
+      "height": 720,
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0000.png",
+      "stddev_rgb": [
+        50.623,
+        63.64,
+        81.391
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 336748,
+      "exists": true,
+      "height": 720,
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0072.png",
+      "stddev_rgb": [
+        49.293,
+        62.564,
+        80.551
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 326143,
+      "exists": true,
+      "height": 720,
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/joint_rotation_frames/frame_0143.png",
+      "stddev_rgb": [
+        51.065,
+        63.919,
+        81.553
+      ],
+      "width": 960
+    }
+  ],
+  "schema": "asimov-fembot-media-review-v1",
+  "screenshots": [
+    {
+      "bytes": 250611,
+      "exists": true,
+      "height": 720,
+      "name": "front",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_front.png",
+      "stddev_rgb": [
+        49.024,
+        62.893,
+        81.2
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 255446,
+      "exists": true,
+      "height": 720,
+      "name": "rear",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_rear.png",
+      "stddev_rgb": [
+        47.8,
+        61.951,
+        80.498
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 243534,
+      "exists": true,
+      "height": 720,
+      "name": "left",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_left.png",
+      "stddev_rgb": [
+        45.359,
+        61.471,
+        81.036
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 242311,
+      "exists": true,
+      "height": 720,
+      "name": "right",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_right.png",
+      "stddev_rgb": [
+        45.347,
+        61.456,
+        81.018
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 341161,
+      "exists": true,
+      "height": 720,
+      "name": "three_quarter",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_three_quarter.png",
+      "stddev_rgb": [
+        47.122,
+        60.878,
+        79.249
+      ],
+      "width": 960
+    },
+    {
+      "bytes": 333371,
+      "exists": true,
+      "height": 720,
+      "name": "upper_three_quarter",
+      "nonblank": true,
+      "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_upper_three_quarter.png",
+      "stddev_rgb": [
+        53.148,
+        63.628,
+        79.943
+      ],
+      "width": 960
+    }
+  ],
+  "source": {
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "output_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot"
+  },
+  "verification": {
+    "acceptance_blocker": "visual media generated; engineering acceptance still requires manual review and measured hardware calibration",
+    "constraint_policy": "values clipped to each MuJoCo joint range every frame",
+    "renderer": "mujoco.Renderer",
+    "video_encoder": "opencv VideoWriter mp4v"
+  },
+  "video": {
+    "bytes": 3518621,
+    "exists": true,
+    "fps": 24,
+    "frame_count": 144,
+    "height": 720,
+    "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/media/fembot/fembot_all_joints_simultaneous_constraints.mp4",
+    "width": 960
+  }
+}

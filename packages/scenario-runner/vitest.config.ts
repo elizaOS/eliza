@@ -5,7 +5,24 @@ import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "..", "..");
-const pluginsDir = path.join(repoRoot, "plugins");
+const workspacePluginDirs = [
+  path.join(repoRoot, "plugins"),
+  path.join(repoRoot, "packages"),
+];
+const workspaceSourceAliases = [
+  {
+    find: /^@elizaos\/agent$/,
+    replacement: path.join(repoRoot, "packages", "agent", "src", "index.ts"),
+  },
+  {
+    find: /^@elizaos\/agent\/(.*)$/,
+    replacement: path.join(repoRoot, "packages", "agent", "src", "$1.ts"),
+  },
+  {
+    find: /^@elizaos\/shared$/,
+    replacement: path.join(repoRoot, "packages", "shared", "src", "index.ts"),
+  },
+];
 
 // Resolve `@elizaos/plugin-*` to workspace source. The scenario runtime
 // transitively loads `@elizaos/agent`'s server, whose `server.ts` carries
@@ -16,19 +33,27 @@ const pluginsDir = path.join(repoRoot, "plugins");
 // Exact-match only (anchored regex): alias the bare package specifier to its
 // source entry without rewriting subpath imports like `@elizaos/plugin-x/foo`,
 // which must keep their normal resolution.
-const pluginSourceAliases = existsSync(pluginsDir)
-  ? readdirSync(pluginsDir)
-      .filter((name) => name.startsWith("plugin-"))
-      .map((name) => ({
-        name,
-        replacement: path.join(pluginsDir, name, "src", "index.ts"),
-      }))
-      .filter(({ replacement }) => existsSync(replacement))
-      .map(({ name, replacement }) => ({
-        find: new RegExp(`^@elizaos/${name}$`),
-        replacement,
-      }))
-  : [];
+const pluginSourceAliases = workspacePluginDirs.flatMap((workspaceDir) =>
+  existsSync(workspaceDir)
+    ? readdirSync(workspaceDir)
+        .filter((name) => name.startsWith("plugin-"))
+        .map((name) => ({
+          name,
+          replacement: [
+            path.join(workspaceDir, name, "src", "index.ts"),
+            path.join(workspaceDir, name, "index.ts"),
+          ].find((candidate) => existsSync(candidate)),
+        }))
+        .filter(
+          (entry): entry is { name: string; replacement: string } =>
+            entry.replacement !== undefined,
+        )
+        .map(({ name, replacement }) => ({
+          find: new RegExp(`^@elizaos/${name}$`),
+          replacement,
+        }))
+    : [],
+);
 
 export default defineConfig({
   test: {
@@ -38,6 +63,6 @@ export default defineConfig({
     testTimeout: 180_000,
   },
   resolve: {
-    alias: pluginSourceAliases,
+    alias: [...workspaceSourceAliases, ...pluginSourceAliases],
   },
 });
