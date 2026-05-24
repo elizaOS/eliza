@@ -86,6 +86,33 @@ describe("prompt templates (src/index.ts)", () => {
       `src/index.ts has unbalanced delimiters: ${opens} {{ vs ${closes} }}`,
     );
   });
+
+  it("messageHandlerTemplate forbids phantom action claims in replyText", () => {
+    // Regression coverage for the structural rule that prevents Stage 1
+    // from writing "I scanned/searched/checked/looked up/recalled/remembered"
+    // prose when no tool call this turn actually retrieved that content.
+    // Originally observed in production as the bot replying "I've scanned
+    // the recent chat..." with plannerIterations=0 and toolCallsExecuted=0.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const match = src.match(messageHandlerTemplateRe);
+    assert.ok(
+      match,
+      "messageHandlerTemplate string literal should be findable",
+    );
+    const body = match[1];
+    assert.match(
+      body,
+      /Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything/,
+      "messageHandlerTemplate should carry the phantom-action-claim rule",
+    );
+    assert.match(
+      body,
+      /unless an actual tool call this turn returned that content/,
+      "phantom-action-claim rule should bind the prohibition to actual tool execution this turn",
+    );
+  });
 });
 
 describe("build scripts", () => {
