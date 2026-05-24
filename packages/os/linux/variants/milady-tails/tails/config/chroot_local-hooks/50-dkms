@@ -1,0 +1,49 @@
+#!/bin/sh
+
+set -e
+set -u
+set -x
+
+echo "Building DKMS modules"
+
+. /usr/share/tails/build/variables
+
+# Import ensure_hook_dependency_is_installed()
+. /usr/local/lib/tails-shell-library/build.sh
+
+if [ -n "${KERNEL_VERSION}" ]; then
+    headers_package="linux-headers-${KERNEL_VERSION}-amd64"
+else
+    headers_package=linux-headers-amd64
+fi
+
+ensure_hook_dependency_is_installed \
+    "$headers_package" \
+    v4l2loopback-dkms
+
+for log in /var/lib/dkms/*/*/build/make.log; do
+    [ -e "$log" ] || break # handle the case when no file matched the glob
+    echo "---- $log"
+    cat "$log"
+done
+
+# Ensure the modules were actually built and installed: when
+# dkms.conf for a DKMS module includes a BUILD_EXCLUSIVE directive
+# which does not match our kernel version, the modules won't be built
+# and then we should abort the build.
+# shellcheck disable=SC2043 # we currently build only 1 DKMS module
+for module in v4l2loopback; do
+    for modules_dir in /lib/modules/*; do
+        found=$(find "$modules_dir" -name "${module}.ko" -o -name "${module}.ko.xz" | wc -l)
+        if [ "$found" = 0 ]; then
+            echo "Can not find ${module} module in '${modules_dir}" >&2
+            exit 1
+        fi
+    done
+done
+
+# v4l2loopback-dkms's postrm script deletes any previously
+# built binary module; let's delete it before the package gets purged.
+rm /var/lib/dpkg/info/v4l2loopback-dkms.prerm
+
+rm -r /var/lib/dkms/

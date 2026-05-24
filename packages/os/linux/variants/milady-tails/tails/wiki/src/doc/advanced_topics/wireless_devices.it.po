@@ -1,0 +1,247 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2026-03-14 15:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Enabling a wireless device\"]]\n"
+msgstr "[[!meta title=\"Attivare un dispositivo wireless\"]]\n"
+
+#. type: Plain text
+msgid "When Tails starts, Wi-Fi, WWAN, and WiMAX devices are enabled."
+msgstr ""
+"Quando Tails si avvia, i dispositivi Wi-Fi, WWAN e WiMAX vengono attivati."
+
+#. type: Plain text
+msgid ""
+"But all other kinds of wireless devices such as Bluetooth, GPS and FM "
+"devices are disabled by default. If you want to use such a device, you need "
+"to enable it first."
+msgstr ""
+"Ma tutti gli altri dispositivi di tipo wireless come i dispositivi "
+"Bluetooth, GPS e FM sono disattivati per impostazione predefinita. Se vuoi "
+"utilizzare uno di questi dispositivi, devi prima attivarlo."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If Wi-Fi is not working, see\n"
+"[[troubleshooting Wi-Fi that is not working|doc/anonymous_internet/no-wifi]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Enable a wireless device"
+msgstr ""
+
+#. type: Plain text
+msgid "This technique uses the command line."
+msgstr "Questa tecnica utilizza la riga di comando."
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Quando avvii Tails, [[imposta una password di amministrazione|doc/"
+"first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr "Scegli **App&nbsp;▸ Strumenti di sistema&nbsp;▸ Console**."
+
+#. type: Bullet: '1. '
+msgid "Execute the following command to open a root console."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo -i</p>\n"
+msgstr "   <p class=\"command\">sudo -i</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"To find out the index of the wireless device that you want to enable, "
+"execute the following command:"
+msgstr ""
+"Per trovare l'indice del dispositivo wireless che vuoi attivare, esegui il "
+"seguente comando:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root\">rfkill list</p>\n"
+msgstr "   <p class=\"command-root\">rfkill list</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, the command could return the following:\n"
+msgstr "   Ad esempio il comando potrebbe restituire quanto segue:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+msgstr ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The device index is the number that appears at the beginning of the\n"
+"   three lines describing each device. In this example, the index of the Bluetooth\n"
+"   device is 1, while the index of the GPS device is 2. Yours are\n"
+"   probably different.\n"
+msgstr ""
+"   L'indice del dispositivo è il numero che appare all'inizio delle\n"
+"   tre righe che descrivono ciascun dispositivo. In questo esempio, l'indice del dispositivo\n"
+"   Bluetooth è 1, mentre quello del dispositivo GPS è 2. I tuoi sono\n"
+"   probabilmente differenti.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"To enable the wireless device, execute the following command. Replace <span "
+"class=\"command-placeholder\">index</span> with the index found at step 2:"
+msgstr ""
+"Per attivare il dispositivo wireless, esegui il comando seguente, "
+"sostituendo <span class=\"command-placeholder\">indice</span> con l'indice "
+"trovato al passaggio 2:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+msgstr ""
+"   <p class=\"command-root-template\">rfkill unblock <span class=\"command-"
+"placeholder\">indice</span></p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Here is an example of the command to execute. Yours is probably\n"
+"   different:\n"
+msgstr ""
+"   Ecco un esempio del comando da eseguire. Il tuo è probabilmente\n"
+"   differente:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+msgstr "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"To verify that the wireless device is enabled, execute the following command "
+"again:"
+msgstr ""
+"Per verificare che il dispositivo wireless sia attivato, esegui di nuovo il "
+"comando seguente:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This output should be very similar to the one of step 2, but\n"
+"   the device enabled at step 3 should not be soft\n"
+"   blocked anymore.\n"
+msgstr ""
+"   L'output dovrebbe essere molto simile a quello ottenuto al passaggio 2, ma\n"
+"   il dispositivo attivato al passaggio 3 non dovrebbe più essere\n"
+"   \"soft blocked\" (bloccato via software).\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+msgstr ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#~ msgid ""
+#~ "Bluetooth is not enabled by default in Tails because it is insecure when "
+#~ "trying to protect from a local adversary."
+#~ msgstr ""
+#~ "Il Bluetooth non è attivato per impostazione predefinita in Tails perché "
+#~ "non è sicuro quando ci si vuole proteggere da un avversario situato nelle "
+#~ "vicinanze."
+
+#~ msgid ""
+#~ "XXX: one also needs to remove `sudo rm /etc/modprobe.d/no-bluetooth.conf "
+#~ "&& sudo udevadm trigger && sudo rfkill unblock bluetooth`."
+#~ msgstr ""
+#~ "XXX: one also needs to remove `sudo rm /etc/modprobe.d/no-bluetooth.conf "
+#~ "&& sudo udevadm trigger && sudo rfkill unblock bluetooth`."
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "       rfkill list\n"
+#~ msgstr "       rfkill list\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock [index]\n"
+#~ msgstr "       rfkill unblock [indice]\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock 2\n"
+#~ msgstr "       rfkill unblock 2\n"

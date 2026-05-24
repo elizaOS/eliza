@@ -1,0 +1,114 @@
+[[!meta title="Call for testing: 2.2~rc1"]]
+
+[[!meta date="Mon, 23 Feb 2016 17:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming version 2.2 is
+out. Please test it and report any issue.
+
+[[!toc levels=1]]
+
+How to test Tails 2.2~rc1?
+==========================
+
+**Keep in mind that this is a test image.** We tested
+that it is not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Download and install
+--------------------
+
+Tails 2.2~rc1 torrent
+
+Tails 2.2~rc1 ISO image
+
+To install 2.2~rc1, follow our usual [[installation instructions|install]],
+skipping the **Download and verify** step.
+
+Upgrade from 2.0.1
+------------------
+
+1. Start Tails 2.0.1 on a USB stick installed using *Tails Installer* and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. After the upgrade is installed, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 2.2~rc1.
+
+What's new since 2.0.1?
+=======================
+
+Changes since Tails 2.0.1 are:
+
+  * Major new features and changes
+    - Replace Vidalia (which has been unmaintained for years) with:
+      (Closes: [[!tails_ticket 6841]])
+      * the Tor Status GNOME Shell extension, which adds a System Status
+        icon indicating whether Tor is ready or not.
+      * Onion Circuits, a simple Tor circuit monitoring tool.
+
+  * Security fixes
+    - Upgrade cpio to 2.11+dfsg-4.1+deb8u1.
+    - Upgrade glibc to 2.19-18+deb8u3.
+    - Upgrade libgraphite2 to 1.3.5-1~deb8u1.
+    - Upgrade libreoffice to 4.3.3-2+deb8u3.
+    - Upgrade libssh2 to 1.4.3-4.1+deb8u1.
+
+  * Bugfixes
+    - Hide "Laptop Mode Tools Configuration" menu entry. We don't
+      support configuring l-m-t in Tails, and it doesn't work out of
+      the box. (Closes: [[!tails_ticket 11074]])
+    - WhisperBack:
+      * Actually write a string when saving bug report to
+        disk. (Closes: [[!tails_ticket 11133]])
+      * Add missing argument to OpenPGP dialog so the optional OpenPGP
+        key can be added again. (Closes: [[!tails_ticket 11033]])
+
+  * Minor improvements
+    - Upgrade I2P to 0.9.24-1~deb8u+1.
+    - Add support for viewing DRM protected DVD videos using
+      libdvdcss2. Patch series submitted by Austin English
+      <austinenglish@gmail.com>. (Closes: [[!tails_ticket 7674]])
+    - Automatically save KeePassX database after every change by default.
+      (Closes: [[!tails_ticket 11147]])
+    - Implement Tor stream isolation for WhisperBack
+    - Delete unused tor-tsocks-mua.conf previously used by Claws
+      Mail. (Closes: [[!tails_ticket 10904]])
+    - Add set -u to all gettext:ized shell scripts. In gettext-base <
+      1.8.2, like the one we had in Wheezy, gettext.sh references the
+      environment variable ZSH_VERSION, which we do not set. This has
+      prevented us from doing `set -u` without various hacks. (Closes:
+      [[!tails_ticket 9371]])
+    - Also set -e in some shell scripts which lacked it for no good
+      reason.
+    - Make Git verify the integrity of transferred objects. (Closes:
+      [[!tails_ticket 11107]])
+
+For more details, see also our changelog.
+
+<a id="known_issues"></a>
+
+# Known issues in 2.2~rc1
+
+* [[Longstanding known issues|support/known_issues]]
+
+* Tails 2.2~rc1 thinks it is Tails 2.2 in some respects, e.g. that is
+  what the "About Tails" prompt and `tails-version` command will
+  output, and also what is put in the meta data of the ISO image (and
+  so what burnt DVD's will be titled).

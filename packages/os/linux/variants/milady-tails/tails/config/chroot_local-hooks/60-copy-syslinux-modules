@@ -1,0 +1,10 @@
+#!/bin/sh
+
+set -e
+
+echo 'Adapting syslinux 6.x packaging to play well with live-build 2.x'
+
+cp -a /usr/lib/syslinux/modules/bios/ifcpu64.c32 \
+      /usr/lib/syslinux/modules/bios/vesamenu.c32 \
+      /usr/lib/ISOLINUX/isolinux.bin \
+      /usr/lib/syslinux/

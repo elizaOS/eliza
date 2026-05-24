@@ -1,0 +1,52 @@
+[[!meta title="Tails 7.7.2"]]
+[[!meta date="Mon, 04 May 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix a critical security
+vulnerability in the Linux kernel.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update the *Linux* kernel to 6.12.85, which fixes [[Copy
+  Fail|https://copy.fail/]], a vulnerability that could allow an application in
+  Tails to gain administration privileges.
+
+  For example, if an attacker was able to exploit other unknown security
+  vulnerabilities in an application included in Tails, they might then use Copy
+  Fail to take full control of your Tails and deanonymize you.
+
+  <div class="attack">
+
+  <p>We are not aware of this vulnerability being used in practice until now.</p>
+
+  </div>
+
+<h1 id="fixes">Fixed problems</h1>
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.7.2</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.7.2.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.7.2 on a new USB stick
+
+Follow our [[installation instructions|install]].
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.7.2 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

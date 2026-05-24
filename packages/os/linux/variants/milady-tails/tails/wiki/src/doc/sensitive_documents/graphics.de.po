@@ -1,0 +1,137 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-10-09 13:07+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Graphics\"]]\n"
+msgstr "[[!meta title=\"Grafiken\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes several applications for image manipulation, graphic design, "
+"and page layout:"
+msgstr ""
+"Tails enthält mehrere Anwendungen für Bildbearbeitung, Grafikdesign und "
+"Seitenlayout:"
+
+#. type: Bullet: '  - '
+msgid "[*GIMP*](https://www.gimp.org/), an image editor."
+msgstr "[*GIMP*](https://www.gimp.org/), ein Bildeditor."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *GIMP* to edit, enhance, and retouch photos and scans, create\n"
+"    drawings, and make your own images.\n"
+msgstr ""
+"    Sie können *GIMP* verwenden, um Fotos und Scans zu bearbeiten, zu verbessern und zu retuschieren,\n"
+"    Zeichnungen zu erstellen und Ihre eigenen Bilder zu machen.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    *GIMP* has [user manuals](https://www.gimp.org/docs/) in several\n"
+#| "    languages.\n"
+msgid ""
+"    *GIMP* has [user manuals](https://docs.gimp.org/) in several\n"
+"    languages.\n"
+msgstr ""
+"    *GIMP* hat [Benutzerhandbücher](https://www.gimp.org/docs/) in mehreren\n"
+"    Sprachen.\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Inkscape*](https://inkscape.org/), a vector-based drawing application."
+msgstr ""
+"[*Inkscape*](https://inkscape.org/), eine vektorbasierte Zeichenanwendung."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *Inkscape* to create a wide variety of graphics such as\n"
+"    illustrations, icons, logos, diagrams, maps, and web graphics.\n"
+msgstr ""
+"    Sie können *Inkscape* verwenden, um eine Vielzahl von Grafiken wie\n"
+"    Illustrationen, Symbole, Logos, Diagramme, Karten und Webgrafiken zu erstellen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    The *Inkscape* website has\n"
+"    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.\n"
+msgstr ""
+"    Die *Inkscape*-Website bietet\n"
+"    [Tutorials](https://inkscape.org/en/learn/tutorials/) in mehreren Sprachen an.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "These applications can be started from the **Applications&nbsp;▸ "
+#| "Graphics** menu."
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Graphics** submenu."
+msgstr ""
+"Diese Anwendungen können aus dem Menü **Anwendungen&nbsp;▸ Grafik** "
+"gestartet werden."
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+"Sie können auch die Funktion [[Zusätzliche Software|persistent_storage/"
+"additional_software]] verwenden, um zu installieren:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- **[*Scribus*](https://www.scribus.net/)**, a page layout application."
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr ""
+"- **[*Scribus*](https://www.scribus.net/)**, eine Seitenlayout-Anwendung."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.de\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** is a page layout application. You can use it to design "
+#~ "newspapers, magazines, newsletters and posters to technical documentation."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Scribus](https://www.scribus.net/)</"
+#~ "span>** ist eine Anwendung für Seitenlayout. Sie können sie zum Gestalten "
+#~ "von Zeitungen, Magazinen, Informationsblättern und Plakaten für "
+#~ "technische Dokumentationen verwenden."
+
+#~ msgid ""
+#~ "    The *Scribus* website provides\n"
+#~ "    [documentation](https://wiki.scribus.net/canvas/Help:TOC) in several\n"
+#~ "    languages.\n"
+#~ msgstr ""
+#~ "    Die *Scribus*-Website bietet eine in mehrere\n"
+#~ "    Sprachen übersetzte [Dokumentation](https://wiki.scribus.net/canvas/"
+#~ "Hauptseite) an.\n"

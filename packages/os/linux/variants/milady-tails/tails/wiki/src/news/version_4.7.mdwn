@@ -1,0 +1,71 @@
+[[!meta title="Tails 4.7 is out"]]
+[[!meta date="Tue, 02 Jun 2020 18:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.6]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.5](https://blog.torproject.org/new-release-tor-browser-95).
+
+- Update *Thunderbird* to [68.8.0](https://www.thunderbird.net/en-US/thunderbird/68.8.0/releasenotes/).
+
+# Fixed problems
+
+- Make the installation of Additional Software more robust. ([[!tails_ticket 17278]])
+
+- Clarify the error message when entering an incorrect password to unlock a
+  VeraCrypt volume: *Wrong passphrase or parameters* instead of *Error
+  unlocking volume*. ([[!tails_ticket 17668]])
+
+- Clean up confusing comments in `/etc/tor/torrc`. ([[!tails_ticket 17706]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.7
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.7.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.7 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.8 is [[scheduled|contribute/calendar]] for June 30.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.7">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,117 @@
+[[!meta title="How to review and merge proposed changes"]]
+
+We use [[!tails_gitlab desc="GitLab"]] for tracking issues, merge requests, and
+code. Please ensure you are familiar with [[how we use GitLab at
+Tails|contribute/working_together/GitLab]].
+
+In particular, see
+[[how to participate in discussions|working_together/GitLab#discussions]].
+
+<a id="review"></a>
+
+## Review
+
+- Set yourself as the _Reviewer_ on the [[!tails_gitlab help/user/project/merge_requests/index.md desc="Merge
+  Request"]] to you. This avoids duplicating work.
+
+- Verify that the destination branch matches what's in `config/base_branch` on
+  the branch, and is correct:
+
+  - for a new feature: into `devel`
+
+  - for a fix on top on the last RC: into `testing`; then merge
+    `testing` into `devel`
+
+  - for a fix on top of the last stable: into `stable`; then merge
+    `stable` into `devel`
+
+- Merge the destination branch of the MR into the topic branch.
+
+- Build the topic branch and test the feature.
+
+- Check automated ISO build and test results on
+  <https://jenkins.tails.boum.org/>.
+
+- Review the diff, either in the GitLab interface or on the command line.
+  If you're using the command line, beware of changes introduced
+  by merge commits: either add the `--cc` option to `git log`, or use
+  `git diff` after reviewing the individual patches.
+
+- Check the contents of every APT overlay that the branch enables:
+
+  - If you have upload rights to our [[custom APT
+    repository|contribute/APT_repository/custom]]:
+
+        ssh reprepro@incoming.deb.tails.boum.org \
+            reprepro list ${APT_overlay}`
+
+  - Else:
+
+    - `https://deb.tails.boum.org/dists/${APT_overlay}/main/source/Sources`
+    - `https://deb.tails.boum.org/dists/${APT_overlay}/main/binary-amd64/Packages`
+
+- Check the user and design documentation.
+
+- Check the corresponding GitLab issue.
+
+- Ensure the description of the MR includes `Closes #NNNN`
+  statements for the issues fixed by this MR.
+  <a id="closes"></a>
+  <a id="fix-committed"></a>
+
+- Changes proposed by new contributors, or by the patch'n'forget kind,
+  shall respectively be applied once they are in *good enough* state.
+  That is, once the core developers team feels like maintaining it on
+  the long run in case the initial submitter disappears. Such
+  maintenance includes: polishing the proposed changes to make them fit
+  for release; writing and updating the design and end-user
+  documentations; fixing bugs.
+
+- As reviewer, you are allowed to commit trivial fixes on top of the
+  proposed branch to avoid round-trips: for example, fixing typos
+  and improving phrasing of comments and strings.
+  Then, report back about these changes on the MR.
+
+## Give feedback
+
+First, remember that it's hard to receive negative feedback. Don't forget
+to note the good parts, be constructive and precise in your
+comments, and never use reviews to make personal attacks. You can
+read these blog posts on review and feedback:
+
+  - [Kate Heddleston: Criticism and ineffective feedback](https://www.kateheddleston.com/blog/criticism-and-ineffective-feedback) (blog post on how to do a good review)
+  - [Liane Davey: Maybe you shouldn't give feedback](https://www.lianedavey.com/bite-your-tongue/)
+
+As part of your review, if you spot problems that block the merge
+in your opinion:
+
+1. For every blocker, give feedback in a new thread.
+
+2. If there's lots of work remaining:
+    - On the corresponding issue: replace the *Needs Validation* label with *Doing*.
+    - Consider turning the MR into a draft.
+
+3. If the MR includes security-sensitive changes e.g. creating/modifying `sudo`
+   configuration or code that elevates privileges: create a new thread asking
+   another team-mate who's not the author of the MR for an extra,
+   *security-focused* pair of eyes. Make it clear that their review must be
+   focused specifically on security, so they don't waste their own time
+   duplicating work, and to minimize the risk that the whole team ends
+   up bikeshedding.
+
+<a id="merge"></a>
+
+## Merge
+
+1. Click the *Merge* button on the MR.
+
+   If you are not authorized to do so, instead:
+
+    - Add a comment on the MR to say you have reviewed the branch.
+      If you approve its merging, click the _Approve_ button.
+    - Unset the _Reviewer_ on the MR.
+
+2. Close the issues fixed by this MR.
+
+   You don't need to do this if the destination branch of the MR
+   is `stable`: these issues will be closed automatically.

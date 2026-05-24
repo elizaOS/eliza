@@ -1,0 +1,48 @@
+#!/usr/bin/python3 -I
+
+from pathlib import Path
+from sh import git
+import os
+import re
+import sys
+
+sys.path.append(os.path.dirname(__file__))
+from file_type import Python  # NOQA: E402
+
+
+ISOLATE_RE = re.compile(r"^#!/usr/bin/python3[ ]+-[a-zA-Z]*I[a-zA-Z]*\b")
+IGNORED_PATH_RE = re.compile(r"^(?:auto|bin|features)/")
+
+
+def shebang_isolates(file) -> bool:
+    with open(file) as f:
+        return ISOLATE_RE.match(f.readline()) is not None
+
+
+def main():
+    is_python = Python().check
+    errors = []
+    for file in [Path(f) for f in git("ls-files").splitlines()]:
+        # Skip files that are not relevant to this check
+        if not file.is_file():
+            continue
+        if file.is_symlink():
+            continue
+        if not os.access(file, os.X_OK):
+            continue
+        if IGNORED_PATH_RE.match(str(file)):
+            continue
+        if not is_python(file=file):
+            continue
+        # Test relevant files
+        if not shebang_isolates(file):
+            errors.append(str(file))
+
+    if errors:
+        print("Found Python executables without -I in their shebang:\n")
+        print("\n".join(f"  - {error}" for error in errors))
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

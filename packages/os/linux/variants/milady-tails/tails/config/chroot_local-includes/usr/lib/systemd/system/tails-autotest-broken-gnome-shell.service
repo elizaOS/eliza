@@ -1,0 +1,13 @@
+[Unit]
+Description=Break GNOME Shell for Tails test suite
+Documentation=https://tails.net/contribute/release_process/test/automated_tests/
+ConditionKernelCommandLine=autotest_broken_gnome_shell
+Before=gdm.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'echo "#!/bin/sh\nexit 1" > /usr/bin/gnome-shell'
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,169 @@
+[[!meta title="Tails report for March, 2020"]]
+[[!meta date="Sun, 12 Apr 2020 08:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.4 was released on March 12|news/version_4.4]] (bugfix release).
+
+* [[Tails 4.4.1 was released on March 23|news/version_4.4.1]] (bugfix release).
+
+* [[Tails 4.5~rc1 was released on March 27|news/test_4.5-rc1]] (release candidate).
+
+* Tails 4.6 is [[scheduled for May 5|contribute/calendar]].
+
+The following changes were introduced in Tails 4.4:
+
+- Tentatively fix Wi-Fi interfaces with Realtek RTL8822BE and RTL8822CE
+  chipsets. ([[!tails_ticket 17323]])
+
+The following changes were introduced in Tails 4.5~rc1:
+
+- Secure Boot
+
+  Tails 4.5~rc1 should start on computers in UEFI mode and with Secure
+  Boot enabled.
+
+Code
+====
+
+- Secure Boot support was merged ([[!tails_ticket 6560]]).
+
+- Our test suite does not require Sikuli anymore ([[!tails_ticket
+  15460]]), which allows running it on recent Debian systems.
+
+- We prepared for upgrading *po4a* ([[!tails_ticket 17005]]),
+  which on the long term will lower translators' workfload.
+
+Documentation and website
+=========================
+
+- Replaced Stefano Zacchiroli's key, which was expired, by Chris Lamb's
+  key in our [[installation instructions from Debian using the command
+  line and GnuPG|install/expert]]. ([[!tails_ticket 17524]])
+
+- Agreed on the renaming of some core features:
+
+  - *Persistent Storage* ([[!tails_ticket 8948]])
+
+  - *Welcome Screen* ([[!tails_ticket 15122]])
+
+User experience
+===============
+
+- Did a lot of progress on the design of the new Home and About pages:
+
+  - Finalized the texts of both pages.
+
+  - Finalized draft illustrations for both pages.
+
+  - Did 2 rounds of usability tests: 1 on paper and 1 on screen.
+
+  - Designed a replacement of our current sidebar to be on top.
+
+  - Started coding responsive HTML and CSS using CSS Flexbox
+
+  - Translated both pages in Portuguese, Spanish, French, and German.
+
+  You can see our ongoing work on:
+
+  - https://tails.boum.org/about/staging/home
+
+  - https://tails.boum.org/about/staging/about
+
+  - https://tails.boum.org/blueprint/explain_tails
+
+- Agreed on a new set of favorites application for our Applications
+  menu. ([[!tails_ticket 16990]])
+
+- Discussed the security and UX implications of persisting
+  all settings from the Welcome Screen. ([[!tails_ticket 17136#note-24]])
+
+Hot topics on our help desk
+===========================
+
+1. [[!tails_ticket 17183 desc="Seahorse fails to import PGP public key"]]
+
+2. Lots of issues with various Nvidia graphics cards, we need to chase down
+   for details.
+
+3. A bit of pointing to documentation
+
+4. Secure Boot — we heard this will soon be solved.
+
+Infrastructure
+==============
+
+- We kept preparing our upcoming migration to GitLab.
+
+Funding
+=======
+
+- Analyzed the [results of our last donation
+  campaign](https://lists.autistici.org/message/20200315.002900.a10585d8.en.html).
+
+  We raised 81&#8239;842 € (+10%) from 2006 donations (-10%).
+
+- Sent a full proposal to DRL for our joint proposal with Tor and
+  the Guardian Project.
+
+- Submitted a proposal to the Prototype Fund to fund usability
+  improvements.
+
+- Signed a contract with The ISC Project for our work on the new Home
+  and About pages and printed outreach material.
+
+- Sent a thank you email to people who donated during the last donation
+  campaign (1283 emails).
+
+- Added Domains4Bitcoins to our list of sponsors.
+
+On-going discussions
+====================
+
+- What our current changelog is useful for,
+  and how we could get the same benefits with less manual work:
+  <https://lists.autistici.org/message/20200322.084523.51704520.en.html>
+
+Translations
+============
+
+## All the website
+
+  - de: 35% (2283) strings translated, 10% strings fuzzy
+  - es: 55% (3557) strings translated, 2% strings fuzzy
+  - fa: 26% (1715) strings translated, 10% strings fuzzy
+  - fr: 93% (5989) strings translated, 0% strings fuzzy
+  - it: 32% (2056) strings translated, 7% strings fuzzy
+  - pt: 24% (1552) strings translated, 8% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 64% (1167) strings translated, 16% strings fuzzy
+  - es: 95% (1747) strings translated, 1% strings fuzzy
+  - fa: 34% (620) strings translated, 14% strings fuzzy
+  - fr: 98% (1792) strings translated, 0% strings fuzzy
+  - it: 64% (1173) strings translated, 16% strings fuzzy
+  - pt: 45% (823) strings translated, 14% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 6% (120) strings translated, 2% strings fuzzy
+  - ca: 6% (116) strings translated, 2% strings fuzzy
+  - id: 3% (62) strings translated, 0% strings fuzzy
+  - pl: 6% (124) strings translated, 2% strings fuzzy
+  - ru: 8% (151) strings translated, 3% strings fuzzy
+  - sr_Latn: 2% (41) strings translated, 0% strings fuzzy
+  - tr: 6% (119) strings translated, 2% strings fuzzy
+  - zh: 14% (271) strings translated, 4% strings fuzzy
+  - zh_TW: 33% (609) strings translated, 6% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 890&#8239;226 times this month. This makes
+  28&#8239;717 boots a day on average.
+

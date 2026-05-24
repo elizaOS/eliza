@@ -1,0 +1,384 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails 2.2.1\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-05-01 15:18+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<h1 id=\"install\" class=\"step pc-clone mac-clone\">Install Tails by cloning</h1>\n"
+"<h1 id=\"upgrade\" class=\"step upgrade\">Upgrade your primary Tails by cloning</h1>\n"
+msgstr ""
+"<h1 id=\"install\" class=\"step pc-clone mac-clone\">Instale Tails fazendo clonagem</h1>\n"
+"<h1 id=\"upgrade\" class=\"step upgrade\">Atualize seu Tails primário através de clonagem</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">\n"
+msgstr "<div class=\"step-image\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img install/inc/infography/clone-tails.png link=\"no\" class=\"clone upgrade-tails upgrade-os\" alt=\"\"]]\n"
+msgstr "[[!img install/inc/infography/clone-tails.png link=\"no\" class=\"clone upgrade-tails upgrade-os\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+# Mantive "Tails Installer"
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"upgrade\">\n"
+"  In this step, you will upgrade your primary Tails from the\n"
+"  <span class=\"upgrade-clone\">other</span>\n"
+"  <span class=\"upgrade-tails upgrade-os\">intermediary</span>\n"
+"  Tails using\n"
+"  <i>Tails Cloner</i>.\n"
+"</p>\n"
+msgstr ""
+"<p class=\"upgrade\">\n"
+"  Nesta etapa, você atualizará seu Tails primário a partir do\n"
+"  <span class=\"upgrade-clone\">outro</span> Tails\n"
+"  <span class=\"upgrade-tails upgrade-os\">intermediário</span>\n"
+"  usando o\n"
+"  <i>Tails Cloner</i>.\n"
+"</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. Plug\n"
+"   <span class=\"pc-clone mac-clone\">the new</span>\n"
+"   <span class=\"upgrade\">your primary Tails</span>\n"
+"   USB stick <span class=\"upgrade\">in addition to the\n"
+"     <span class=\"upgrade-clone\">other</span>\n"
+"     <span class=\"upgrade-tails upgrade-os\">intermediary</span>\n"
+"   Tails</span> into the computer.\n"
+msgstr ""
+"1. Plugue\n"
+"   <span class=\"pc-clone mac-clone\">o novo pendrive USB</span>\n"
+"   <span class=\"upgrade\">pendrive USB com Tails primário</span>\n"
+"    <span class=\"upgrade\">além do\n"
+"     <span class=\"upgrade-clone\">outro</span> Tails\n"
+"     <span class=\"upgrade-tails upgrade-os\">intermediário</span>\n"
+"   </span> no computador.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution pc-clone mac-clone\">\n"
+msgstr "   <div class=\"caution pc-clone mac-clone\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <div class=\"caution pc-clone mac-clone\">\n"
+#| "   <p>All the data on this USB stick will be lost.</p>\n"
+#| "   </div>\n"
+msgid "   <p>All the data on this USB stick will be lost.</p>\n"
+msgstr ""
+"   <div class=\"caution pc-clone mac-clone\">\n"
+"   <p>Todos os dados neste pendrive USB serão perdidos.</p>\n"
+"   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Some data might still be recovered using advanced forensics tools.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+# Mantive "Tails Installer"
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "1. Choose\n"
+#| "   <span class=\"menuchoice\">\n"
+#| "     **Applications**&nbsp;▸\n"
+#| "     **Tails**&nbsp;▸\n"
+#| "     **Tails Cloner**\n"
+#| "   </span>\n"
+#| "   to start *Tails Cloner*.\n"
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Tails Cloner** to open *Tails Cloner*."
+msgstr ""
+"1. Selecione\n"
+"   <span class=\"menuchoice\">\n"
+"     **Aplicativos**&nbsp;▸\n"
+"     **Tails**&nbsp;▸\n"
+"     **Clonador Tails**\n"
+"   </span>\n"
+"   para iniciar o *Clonador Tails*.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img install/inc/screenshots/tails_cloner.png link=\"no\" class=\"pc-clone mac-clone screenshot\" alt=\"Tails Cloner: 'Clone the current Tails'\"]]\n"
+msgid "   [[!img install/inc/screenshots/tails_cloner.png class=\"pc-clone mac-clone screenshot\" alt=\"Tails Cloner: 'Clone the current Tails'\"]]\n"
+msgstr "   [[!img install/inc/screenshots/tails_cloner.png link=\"no\" class=\"pc-clone mac-clone screenshot\" alt=\"Tails Cloner: 'Clone o Tails atual'\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img install/inc/screenshots/tails_installer_upgrade.png link=\"no\" class=\"upgrade\" alt=\"Tails Cloner: 'Clone the current Tails'\"]]\n"
+msgid "   [[!img install/inc/screenshots/tails_cloner_upgrade.png class=\"upgrade screenshot\" alt=\"Tails Cloner: 'Clone the current Tails'\"]]\n"
+msgstr "   [[!img install/inc/screenshots/tails_installer_upgrade.png link=\"no\" class=\"upgrade\" alt=\"Clonador Tails: 'Clone o Tails que está utilizando atualmente'\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p class=\"clone upgrade-clone\">If the other Tails has a Persistent Storage, another\n"
+"   option <b>Clone the current Persistent Storage</b> is available.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img install/inc/screenshots/tails_installer_upgrade.png link=\"no\" class=\"upgrade\" alt=\"Tails Cloner: 'Clone the current Tails'\"]]\n"
+msgid "   <p class=\"clone upgrade-clone\">[[!img install/inc/screenshots/tails_cloner_persistent_storage.png class=\"screenshot\" alt=\"Option: **Clone the current Persistent Storage** below **Clone the current Tails**\"]]</p>\n"
+msgstr "   [[!img install/inc/screenshots/tails_installer_upgrade.png link=\"no\" class=\"upgrade\" alt=\"Clonador Tails: 'Clone o Tails que está utilizando atualmente'\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"clone upgrade-clone\"></p>\n"
+msgstr "   <p class=\"clone upgrade-clone\"></p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"clone upgrade-clone\">\n"
+msgstr "   <div class=\"clone upgrade-clone\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <div class=\"note upgrade\">\n"
+#| "   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+#| "   <p class=\"upgrade-clone\">The Persistent Storage of the other Tails will not be copied.</p>\n"
+#| "   </div>\n"
+msgid ""
+"   <p>If you select the option <b>Clone the current Persistent Storage</b>, the\n"
+"   Persistent Storage of the other Tails is also be copied.\n"
+"   <span class=\"upgrade-clone\">The <b>Upgrade</b> button becomes unavailable\n"
+"   and you can only [[reinstall|install/clone]] and delete all data on the\n"
+"   target USB stick.</span></p>\n"
+msgstr ""
+"   <div class=\"note upgrade\">\n"
+"   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+"   <p class=\"upgrade-clone\">O Armazenamento Persistente do outro Tails não será copiado.</p>\n"
+"   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug upgrade-clone\">\n"
+msgstr "   <div class=\"bug upgrade-clone\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>In the future, we want to allow cloning the Persistent Storage when\n"
+"   upgrading as well, for example to make it quicker to update a [[backup Tails\n"
+"   USB stick|doc/persistent_storage/backup]]. ([[!tails_ticket 20362]])</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose <span class=\"pc-clone mac-clone\">the new</span> <span "
+"class=\"upgrade\">your</span> USB stick in the **Target USB stick** menu."
+msgstr ""
+"Selecione <span class=\"pc-clone mac-clone\">o novo</span> <span class="
+"\"upgrade\">seu</span> pendrive USB no menu **Pendrive USB a ser utilizado**."
+
+#. type: Bullet: '1. '
+msgid ""
+"To start the <span class=\"pc-clone mac-clone\">installation, click on the "
+"<b>Install</b> button.</span> <span class=\"upgrade\">upgrade, click on the "
+"<b>Upgrade</b> button.</span>"
+msgstr ""
+"Para iniciar a <span class=\"pc-clone mac-clone\">instalação, clique no "
+"botão <b>Instalar</b>.</span> <span class=\"upgrade\">atualização, clique no "
+"botão <b>Atualizar</b>.</span>"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"pc-clone mac-clone\">\n"
+msgstr "   <div class=\"pc-clone mac-clone\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Read the warning message in the confirmation dialog.</p>\n"
+msgstr "   <p>Leia a mensagem de advertência na janela de confirmação.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Click <b>Delete All Data and Install</b> to confirm.</p>\n"
+msgstr "   <p>Clique em <b>Apagar Todos os Dados e Instalar</b> para confirmar.</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"The <span class=\"pc-clone mac-clone\">installation</span> <span "
+"class=\"upgrade\">upgrade</span> takes a few minutes."
+msgstr ""
+"A <span class=\"pc-clone mac-clone\">instalação</span> <span "
+"class=\"upgrade\">atualização</span> demora alguns minutos."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"bug\">\n"
+"   <p>The progress bar usually freezes for some time\n"
+"   while synchronizing data on disk.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"bug\">\n"
+"   <p>A bara de progresso costuma congelar por algum tempo\n"
+"   enquanto os dados são sincronizados.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "   The\n"
+#| "   <span class=\"pc-clone mac-clone\">installation</span>\n"
+#| "   <span class=\"upgrade\">upgrade</span>\n"
+#| "   takes a few minutes.\n"
+msgid ""
+"After the <span class=\"pc-clone mac-clone\">installation</span> <span "
+"class=\"upgrade\">upgrade</span> finishes, close <i>Tails Cloner</i>"
+msgstr ""
+"   A\n"
+"   <span class=\"pc-clone mac-clone\">instalação</span>\n"
+"   <span class=\"upgrade\">atualização</span>\n"
+"   demora alguns minutos.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/installation_complete.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"   [[!img install/inc/screenshots/installation_complete.png class="
+"\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"upgrade\">\n"
+msgstr "<div class=\"upgrade\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"success\">\n"
+msgstr "<div class=\"success\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/start.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+msgstr ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/start.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div>\n"
+"  <p class=\"big\">You made it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<p>You are done upgrading Tails. You can now shutdown and restart on your Tails USB stick.</p>\n"
+msgid "  <p>You are done upgrading Tails. You can now restart on your primary Tails USB stick.</p>\n"
+msgstr "<p>Você terminou com a atualização do Tails. Agora você pode desligar e reiniciar no seu pendrive USB com Tails.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<p>Thank you for staying safe!</p>\n"
+msgid "  <p>Congratulations on staying safe :)</p>\n"
+msgstr "<p>Muito obrigado por procurar manter-se em segurança!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Read the [[release notes|latest]] of Tails [[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]] to see what's new.</p>\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "   <p></p>\n"
+#~ msgstr "   <p></p>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "   <div class=\"note upgrade\">\n"
+#~| "   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+#~| "   <p class=\"upgrade-clone\">The Persistent Storage of the other Tails will not be copied.</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "   <p>If you select the option <b>Clone the current Persistent Storage</b>, the\n"
+#~ "   Persistent Storage of the Tails USB stick that you are cloning from will\n"
+#~ "   also be copied.</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"note upgrade\">\n"
+#~ "   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+#~ "   <p class=\"upgrade-clone\">O Armazenamento Persistente do outro Tails não será copiado.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "   <div class=\"bug\">\n"
+#~ msgstr "   <div class=\"bug\">\n"
+
+#, no-wrap
+#~ msgid "   <ul>\n"
+#~ msgstr "   <ul>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "   <div class=\"note upgrade\">\n"
+#~| "   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+#~| "   <p class=\"upgrade-clone\">The Persistent Storage of the other Tails will not be copied.</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "   <li><p>If you leave the option <b>Clone the current Persistent Storage</b>\n"
+#~ "   deselected, the Persistent Storage of your Tails USB stick will be preserved\n"
+#~ "   when upgrading and the Persistent Storage of the other Tails will not be\n"
+#~ "   copied.</p></li>\n"
+#~ msgstr ""
+#~ "   <div class=\"note upgrade\">\n"
+#~ "   <p>The Persistent Storage of your Tails USB stick will be preserved.</p>\n"
+#~ "   <p class=\"upgrade-clone\">O Armazenamento Persistente do outro Tails não será copiado.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "   </ul>\n"
+#~ msgstr "   </ul>\n"
+
+#~ msgid ""
+#~ "After the installation finishes, close <span class=\"application\">Tails "
+#~ "Cloner</span>."
+#~ msgstr ""
+#~ "Quando a instalação terminar, feche o <span "
+#~ "class=\"application\">Clonador Tails</span>."
+
+#, no-wrap
+#~ msgid "[[!img install/inc/infography/plug-second-usb.png link=\"no\" alt=\"Second USB stick plugged on the right\"]]\n"
+#~ msgstr "[[!img install/inc/infography/plug-second-usb.png link=\"no\" alt=\"Segundo pen drive USB plugado do lado direito\"]]\n"

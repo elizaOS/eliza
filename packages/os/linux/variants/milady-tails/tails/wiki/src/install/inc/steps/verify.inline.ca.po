@@ -1,0 +1,351 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-08 13:08+0100\n"
+"PO-Revision-Date: 2026-01-01 15:29+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"inc/stable_amd64_version\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <h1>
+msgid "Verify your download"
+msgstr "Verificar la baixada"
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/verify.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img inc/infography/verify.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div>
+msgid ""
+"[[!img inc/infography/verify-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"[[!img inc/infography/verify-with-intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div>
+msgid "[[!img inc/infography/verify-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img inc/infography/verify-from-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Verify your download to make sure that it is safe and was not corrupted "
+"during download."
+msgstr ""
+"Verifiqueu la baixada per assegurar-vos que és segura i que no s'hagi danyat "
+"durant la baixada."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"You seem to have JavaScript disabled. To verify your download, you can "
+"either:"
+msgstr ""
+"Sembla que teniu el JavaScript desactivat. Per verificar la baixada, podeu "
+"fer el següent:"
+
+#. type: Content of: <div><div><ul><li><p>
+msgid "Enable JavaScript and reload this page."
+msgstr "Activeu el JavaScript i torneu a carregar aquesta pàgina."
+
+#. type: Content of: <div><div><ul><li><p>
+msgid ""
+"Compare manually the checksum of your download with [[the checksum of our "
+"images|install/v2/Tails/amd64/stable/latest.json]].  In Tails, you can "
+"install <a href=\"https://gtkhash.org/\"><i>GtkHash</i></a> as [[Additional "
+"Software|doc/persistent_storage/additional_software]]"
+msgstr ""
+"Compareu manualment la suma de verificació de la vostra baixada amb [[la "
+"suma de verificació de les nostres imatges|install/v2/Tails/amd64/stable/"
+"latest.json]]. A Tails, podeu instal·lar <a href=\"https://gtkhash.org/"
+"\"><i>GtkHash</i></a> com a [[Programari Addicional|doc/persistent_storage/"
+"additional_software]]"
+
+#. type: Content of: <div><div><ul><li><p>
+msgid ""
+"Verify your download using our [[OpenPGP signing key|tails-signing.key]] and "
+"<span class=\"usb upgrade download-only-img\"><a href=\"[[!inline "
+"pages=\"inc/stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP "
+"signature</a>.</span> <span class=\"dvd download-only-iso\"><a href=\"[[!"
+"inline pages=\"inc/stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]"
+"\">OpenPGP signature</a>.</span>"
+msgstr ""
+"Verifiqueu la vostra baixada utilitzant la nostra [[clau de signatura "
+"OpenPGP|tails-signing.key]] i la <span class=\"usb upgrade download-only-"
+"img\"><a href=\"[[!inline pages=\"inc/stable_amd64_img_sig_url\" raw=\"yes\" "
+"sort=\"age\"]]\">Signatura OpenPGP</a>.</span> <span class=\"dvd download-"
+"only-iso\"><a href=\"[[!inline pages=\"inc/stable_amd64_iso_sig_url\" "
+"raw=\"yes\" sort=\"age\"]]\">Signatura OpenPGP</a>.</span>"
+
+#. type: Content of: <div><div><ul><li><p>
+msgid "We don't provide instructions to verify downloads with OpenPGP anymore."
+msgstr ""
+"Ja no proporcionem instruccions per verificar les baixades amb OpenPGP."
+
+#. type: Content of: <div><div><ul><p>
+msgid ""
+"[[See our security analysis of the different verification techniques.|"
+"contribute/design/download_verification]]"
+msgstr ""
+"[[Consulteu la nostra anàlisi de seguretat de les diferents tècniques de "
+"verificació.|contribute/design/download_verification]]"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"You seem to be using <em>Internet Explorer</em>. To verify your download, "
+"please use a different browser."
+msgstr ""
+"Sembla que feu servir <em>Internet Explorer</em>. Per verificar la baixada, "
+"utilitzeu un navegador diferent."
+
+#. type: Content of: <div><div>
+msgid ""
+"<label class=\"button\"> Select your download to verify&hellip; <input "
+"id=\"verify-file\" type=\"file\"/> </label>"
+msgstr ""
+"<label class=\"button\"> Selecciona la baixada per verificar-la&hellip; "
+"<input id=\"verify-file\" type=\"file\"/> </label>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"or verify using the [[!toggle id=\"openpgp-verification\" text=\"OpenPGP "
+"signature\"]]"
+msgstr ""
+"o verifiqueu-ho amb la [[!toggle id=\"openpgp-verification\" "
+"text=\"signatura OpenPGP\"]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!toggleable id=\"openpgp-verification\" text=\"\"\" [[!toggle id=\"openpgp-"
+"verification\" text=\"\"]]"
+msgstr ""
+"[[!toggleable id=\"openpgp-verification\" text=\"\"\" [[!toggle id=\"openpgp-"
+"verification\" text=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"<a class=\"usb upgrade download-only-img\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP signature </"
+"a> <a class=\"dvd download-only-iso\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]\">OpenPGP signature</a>"
+msgstr ""
+"<a class=\"usb upgrade download-only-img\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_img_sig_url\" raw=\"yes\" sort=\"age\"]]\">Signatura OpenPGP </"
+"a> <a class =\"dvd download-only-iso\" href=\"[[!inline pages=\"inc/"
+"stable_amd64_iso_sig_url\" raw=\"yes\" sort=\"age\"]]\">Signatura OpenPGP</a>"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"If you don't know how to use the OpenPGP signature, select instead the "
+"button <b>Select your download</b> to verify your download with JavaScript."
+msgstr ""
+"Si no sabeu com utilitzar la signatura OpenPGP, seleccioneu el botó "
+"<b>Selecciona la baixada</b> per verificar la baixada amb JavaScript."
+
+#. type: Content of: <div><div><div><p>
+msgid "[[OpenPGP signing key|tails-signing.key]]"
+msgstr "[[Clau de signatura OpenPGP|tails-signing.key]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"[[Security analysis of the different verification techniques|contribute/"
+"design/download_verification]]"
+msgstr ""
+"[[Anàlisi de seguretat de les diferents tècniques de verificació|contribute/"
+"design/download_verification]]"
+
+#. type: Content of: <div><div><div>
+msgid "\"\"\"]]"
+msgstr "\"\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Verifying <em><span class=\"verify-filename\">$FILENAME</span></em>&hellip;"
+msgstr ""
+"S'està verificant el fitxer <em><span class=\"verify-filename\">$FILENAME</"
+"span></em>&hellip;"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/check.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Verification "
+"successful!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+msgstr ""
+"[[!img lib/check.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Verificació "
+"correcta!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Verification "
+"failed!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+msgstr ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Ha fallat la "
+"verificació!</b> (<em><span class=\"verify-filename\">$FILENAME</span></em>)"
+
+#. type: Content of: <div><div><p>
+msgid "[[!toggle id=\"why-failed\" text=\"Why?\"]]"
+msgstr "[[!toggle id=\"why-failed\" text=\"Per què?\"]]"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"\"]]"
+msgstr ""
+"[[!toggleable id=\"why-failed\" text=\"\"\" [[!toggle id=\"why-failed\" "
+"text=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Most likely, the verification failed because of an error or interruption "
+"during the download."
+msgstr ""
+"Molt probablement, la verificació ha fallat a causa d'un error o d'una "
+"interrupció durant la baixada."
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"The verification also fails if you try to verify a different download than "
+"the latest version, Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]]."
+msgstr ""
+"La verificació també falla si proveu de verificar una baixada diferent de la "
+"darrera versió de Tails: [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]]."
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Less likely, the verification might have failed because of a malicious "
+"download from our download mirrors or due to a network attack in your "
+"country or local network."
+msgstr ""
+"És menys probable que la verificació hagi fallat a causa d'una baixada "
+"maliciosa dels nostres miralls de baixada o a causa d'un atac de xarxa al "
+"vostre país o xarxa local."
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Downloading again is usually enough to fix this problem. Otherwise, please "
+"try downloading from a different place or a different computer."
+msgstr ""
+"La baixada de nou sol ser suficient per solucionar aquest problema. En cas "
+"contrari, proveu de baixar-lo des d'un lloc diferent o d'un ordinador "
+"diferent."
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"[[How does the verification work?|contribute/design/download_verification]]"
+msgstr ""
+"[[Com funciona la verificació?|contribute/design/download_verification]]"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-img-again\">Please try to download "
+"again&hellip;</a>"
+msgstr ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_img_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-img-again\">Torneu a provar de baixar&hellip;"
+"</a>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_iso_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-iso-again\">Please try to download "
+"again&hellip;</a>"
+msgstr ""
+"<a href=\"[[!inline pages=\"inc/stable_amd64_iso_url\" raw=\"yes\" "
+"sort=\"age\"]]\" id=\"download-iso-again\">Proveu de tornar a baixar&hellip;"
+"</a>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error selecting "
+"image.</b>"
+msgstr ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>S'ha produït un "
+"error en seleccionar la imatge.</b>"
+
+#. type: Content of: <div><div><p>
+msgid "Make sure that you select a USB image that is readable by your browser."
+msgstr ""
+"Assegureu-vos que seleccioneu una imatge USB que sigui llegible pel vostre "
+"navegador."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Make sure that you select an ISO image that is readable by your browser."
+msgstr ""
+"Assegureu-vos que seleccioneu una imatge ISO que sigui llegible pel vostre "
+"navegador."
+
+#. type: Content of: <div><div><p>
+msgid "<a id=\"retry-json\">Retry&hellip;</a>"
+msgstr "<a id=\"retry-json\">Reintenta&hellip;</a>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error "
+"downloading <a id=\"checksum-file\" href=\"\">checksum file</a> from our "
+"website.</b>"
+msgstr ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>S'ha produït un "
+"error en baixar el <a id=\"checksum-file\" href=\"\">fitxer de verificació</"
+"a> del nostre lloc web.</b>"
+
+#. type: Content of: <div><div><p>
+msgid "Make sure that your browser is connected to the Internet."
+msgstr "Assegureu-vos que el vostre navegador estigui connectat a Internet."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>Error reading "
+"image <em><span class=\"verify-filename\">$FILENAME</span></em>.</b>"
+msgstr ""
+"[[!img lib/cross.png class=\"icon\" link=\"no\" alt=\"\"]]<b>S'ha produït un "
+"error en llegir la imatge <em><span class=\"verify-filename\">$FILENAME</"
+"span> </em>.</b>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Make sure that <em><span class=\"verify-filename\">$FILENAME</span></em> is "
+"readable by your browser."
+msgstr ""
+"Assegureu-vos que el fitxer <em><span class=\"verify-filename\">$FILENAME</"
+"span></em> sigui llegible pel vostre navegador."
+
+#. type: Content of: <div><div><p>
+msgid "<a id=\"retry-image\">Retry&hellip;</a>"
+msgstr "<a id=\"retry-image\">Reintenta&hellip;</a>"
+
+#~ msgid ""
+#~ "Your BitTorrent client will automatically verify your download when it "
+#~ "completes."
+#~ msgstr ""
+#~ "El vostre client BitTorrent verificarà automàticament la vostra baixada "
+#~ "quan finalitzi."
+
+#~ msgid "The verification below is optional for a BitTorrent download."
+#~ msgstr "La verificació següent és opcional per a una baixada de BitTorrent."
+
+#~ msgid ""
+#~ "See our documentation on [[calculating checksums using GtkHash|doc/"
+#~ "encryption_and_privacy/checksums]]."
+#~ msgstr ""
+#~ "Vegeu la nostra documentació sobre el [[càlcul de sumes de verificació "
+#~ "mitjançant GtkHash|doc/encryption_and_privacy/checksums]]."

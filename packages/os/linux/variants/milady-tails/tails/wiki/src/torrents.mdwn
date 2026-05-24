@@ -1,0 +1,3 @@
+We decided to stop providing BitTorrent files since 2026. See [[!tails_ticket 19275]].
+
+Signatures and corresponding package lists [can be found here](/torrents/files/).

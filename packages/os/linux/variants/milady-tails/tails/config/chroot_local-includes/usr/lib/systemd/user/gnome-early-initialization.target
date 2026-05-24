@@ -1,0 +1,5 @@
+[Unit]
+Description=Bits of GNOME EarlyInitialization managed by systemd
+Requires=default.target
+After=default.target
+AllowIsolate=yes

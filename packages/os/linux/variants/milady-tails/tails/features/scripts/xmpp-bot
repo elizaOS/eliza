@@ -1,0 +1,92 @@
+#!/usr/bin/python3
+import asyncio
+import slixmpp
+import logging
+from argparse import ArgumentParser
+
+
+class XmppBot(slixmpp.ClientXMPP):
+    def __init__(self, account, password, connect_server=None, log_file=None):
+        self.__connect_server = connect_server
+        self.__password = password
+        self.__log_file = log_file
+        super().__init__(account, password)
+        self.send_raw_message_fn = self.raw_send
+        self.add_event_handler("session_start", self.start)
+        self.add_event_handler("message", self.handle_message)
+        self.register_plugin("xep_0045")  # Multi-User Chat
+        self.register_plugin("xep_0394")  # Message Markup
+
+    def connect(self):
+        address = ()
+        if self.__connect_server:
+            address = (self.__connect_server, self.default_port)
+        super().connect(address)
+
+    async def start(self, event):
+        self.send_presence()
+        await self.get_roster()
+
+    def raw_send(self, msg):
+        msg.send()
+
+    def get_reply(self, command):
+        if command.strip() == "ping":
+            return "pong"
+        return None
+
+    def handle_message(self, msg):
+        reply = None
+        if msg["type"] == "chat":
+            reply = self.get_reply(msg["body"])
+        elif msg["type"] == "groupchat":
+            try:
+                recipient, command = msg["body"].split(":", 1)
+            except ValueError:
+                recipient, command = None, msg["body"]
+            if msg["mucnick"] == self.boundjid.user or recipient != self.boundjid.user:
+                return
+            response = self.get_reply(command)
+            if response:
+                reply = "{}: {}".format(msg["mucnick"], response)
+        else:
+            return
+        if reply:
+            self.raw_send(msg.reply(reply))
+
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("account", help="the user account, given as user@domain")
+    parser.add_argument("password", help="the user account's password")
+    parser.add_argument(
+        "-c",
+        "--connect-server",
+        metavar="ADDRESS",
+        help="use a Connect Server, given as host[:port] " + "(port defaults to 5222)",
+    )
+    parser.add_argument(
+        "-l", "--log-file", metavar="LOGFILE", help="Log to file instead of stderr"
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        help="enable debug logging",
+        action="store_const",
+        dest="loglevel",
+        const=logging.DEBUG,
+        default=logging.FATAL,
+    )
+    args = parser.parse_args()
+    logging.basicConfig(level=args.loglevel, format="%(levelname)-8s %(message)s")
+    otr_bot = XmppBot(
+        args.account,
+        args.password,
+        connect_server=args.connect_server,
+        log_file=args.log_file,
+    )
+    try:
+        otr_bot.connect()
+        asyncio.get_event_loop().run_forever()
+    except KeyboardInterrupt:
+        otr_bot.disconnect()

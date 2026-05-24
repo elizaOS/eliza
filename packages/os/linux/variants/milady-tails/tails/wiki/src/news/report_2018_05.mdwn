@@ -1,0 +1,149 @@
+[[!meta title="Tails report for May, 2018"]]
+[[!meta date="Sun, 17 Jun 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.7 was released on May 9|news/version_3.7]] (minor release).
+
+* Tails 3.8 is [[scheduled for June 26th|contribute/calendar]].
+
+Code
+====
+
+* We released a [[Beta version of Tails to test the Additional software feature GUI|news/test_asp-beta/]].
+
+Documentation and website
+=========================
+
+- We wrote a FAQ about why we don't provide a checksum to verify Tails
+  downloads.
+
+- We merged the former /install/os into [[/install|install]] to
+  streamline a bit more our installation instructions.
+
+- We changed the style of the purple headers that we had on our homepage
+  to look less like buttons. We're now consistently using green for
+  clickable elements and purple for non-clickable elements.
+
+- We improved the display of command line examples
+  in our installation instructions for macOS.
+
+- We published some first items of a [[documentation style
+  guide|contribute/how/documentation/style_guide]].
+
+User experience
+===============
+
+- We did some moderated user testing of the Additional Software
+  beta.
+
+- We wrote a scope of work together with [Simply
+  Secure](https://simplysecure.org/) to work on explaining what it
+  Tails and got it approved by the OTF usability lab. ([[!tails_ticket 9814]])
+  It covers:
+
+  - Defining brand attributes for Tails
+  - Writing a new tagline
+  - Structuring an explanation of the main properties of Tails
+  - Ideating on visuals to support the explanation of Tails
+  - Reviewing our current introductory pages and proposing more
+    approachable copy samples and tone guidelines
+
+- We started reviewing collectively the persona skeletons that were
+  defined last August. We started with Kim, the surveilled at
+  home.
+
+- We documented some resources that we use for [[user
+  testing|contribute/how/user_experience#resources]].
+
+Hot topics on our help desk
+===========================
+
+Help desk has seen the same issues than last month:
+
+1. Users are still affected by a loss of
+   persistence.conf
+
+1. We received also several reports about keyboard and mouse not
+   working after upgrading
+
+1. A few users reported the disappearance of a part of their
+   keyring
+
+1. And some users had trouble with obfs4
+   bridges
+
+Infrastructure
+==============
+
+- We continued working on the integration of the translation platform with our infrastructure [[!tails_ticket 10034]].
+
+- With the help of our mirror operators we've started to remove rsync.torproject.org from the mirrors synchronization chain [[!tails_ticket 15162]].
+
+- We started working on hosting our website ourselves
+  ([[!tails_ticket 14588]]): we've identified potential issues,
+  evaluated corresponding solutions, designed a migration plan and
+  started working on it.
+
+- We made progress on having our automated test suite run on current
+  Debian testing/sid but hit a new, major and concerning blocking
+  issue regarding the state of SikuliX in Debian
+  ([[!tails_ticket 15460]], [[!debbug 897215]], [[!debbug 897333]]).
+  We could definitely use help from Debian package maintainers; bonus
+  points if you know anything about packaging Java code!
+
+Funding
+=======
+
+- The proposal that we sent to NLnet on distributing USB
+  images was rejected.
+
+Outreach
+========
+
+Past events
+-----------
+
+- intrigeri and a few other Tails contributors attended
+  [Cryptorave](https://cryptorave.org/) in São Paulo (Brazil).
+  See the corresponding reports:
+  - <https://blog.torproject.org/tor-tails-ux-identifying-user-needs-cryptorave-2018>
+
+
+Translation
+===========
+
+## All the website
+
+  - de: 54% (3097) strings translated, 6% strings fuzzy, 47% words translated
+  - es: 59% (3370) strings translated, 1% strings fuzzy, 49% words translated
+  - fa: 36% (2096) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 90% (5181) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 32% (1879) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 28% (1625) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 60238
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 79% (1530) strings translated, 11% strings fuzzy, 78% words translated
+  - es: 97% (1872) strings translated, 0% strings fuzzy, 94% words translated
+  - fa: 33% (641) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 99% (1910) strings translated, 0% strings fuzzy, 99% words translated
+  - it: 67% (1297) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 45% (882) strings translated, 12% strings fuzzy, 49% words translated
+
+Total original words: 17498
+
+
+Metrics
+=======
+
+* Tails has been started more than 677 422 times this month. This makes 21852 boots a day on average.
+* 8 650 downloads of the OpenPGP signature of Tails ISO from our website.
+* 77 bug reports were received through WhisperBack.
+

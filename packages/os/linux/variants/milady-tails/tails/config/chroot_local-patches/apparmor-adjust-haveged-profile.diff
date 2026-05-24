@@ -1,0 +1,11 @@
+--- a/etc/apparmor.d/usr.sbin.haveged	2021-01-13 23:56:44.000000000 +0000
++++ b/etc/apparmor.d/usr.sbin.haveged	2021-10-14 11:54:59.863760010 +0000
+@@ -1,7 +1,7 @@
+ # Last Modified: Fri Aug 21 15:23:17 2015
+ #include <tunables/global>
+ 
+-/usr/sbin/haveged {
++/usr/sbin/haveged flags=(attach_disconnected) {
+   #include <abstractions/base>
+   #include <abstractions/consoles>
+ 

@@ -1,0 +1,58 @@
+[[!meta title="Connecting to a local network"]]
+
+[[!toc levels=2]]
+
+Connecting to a local network
+=============================
+
+You can connect to a local network using a wired, Wi-Fi, or mobile data
+connection:
+
+1. Open the system menu in the top-right corner.
+
+   [[!img doc/first_steps/desktop/system-with-wired.png class="screenshot" alt=""]]
+
+   - If a wired connection is detected, Tails automatically connects to the network.
+
+   - To connect to a Wi-Fi network, click [[!img lib/go-next.png
+     link="no" class="symbolic" alt=""]] on the right of the **Wi-Fi** button.
+
+     A list of available Wi-Fi networks appears below the **Wi-Fi** button.
+
+     <div class="bug">
+
+     <p>If there is no <b>Wi-Fi</b> menu, your Wi-Fi interface might not
+     be compatible with Tails. See [[Troubleshooting Wi-Fi not
+     working|no-wifi]].</p>
+
+     </div>
+
+   - To connect to a mobile data network, choose
+     **Mobile Broadband**.
+
+   <div class="note">
+
+   <p>It is currently impossible to [[use a VPN in
+   Tails|support/faq#vpn]].</p>
+
+   </div>
+
+1. After you connect to a local network, the *Tor Connection* assistant
+   appears to help you [[connect to the Tor network|tor]].
+
+   [[!img tor/tor-connection.png class="screenshot" alt=""]]
+
+Saving your network settings
+============================
+
+To remember the password for Wi-Fi networks and custom network configurations
+across different Tails sessions, turn on the [[Network
+Connections|persistent_storage/configure#network_connections]] feature of
+the Persistent Storage.
+
+Modifying your network settings
+===============================
+
+To modify your network settings, for example, to configure whether or not
+to automatically connect to a Wi-Fi network, choose
+**Apps&nbsp;▸ System Tools&nbsp;▸ Settings&nbsp;▸ Network**.

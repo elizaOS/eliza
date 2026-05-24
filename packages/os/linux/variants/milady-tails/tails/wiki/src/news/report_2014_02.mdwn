@@ -1,0 +1,202 @@
+[[!meta title="Tails report for February, 2014"]]
+[[!meta date="Wed, 05 Mar 2014 23:27:29 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.22.1 was released on February 4.
+
+Metrics
+=======
+
+- Tails has been started more than 222 134 times in February.
+  This make 7 933 boots a day in average.
+- 453 082 downloads of the OpenPGP signature of Tails ISO. Weird.
+- 92 reports were received through WhisperBack.
+
+Code
+====
+
+New features:
+
+- Great progress was made towards better integrated, and more usable,
+  support for using
+  Tor bridge ([[!tails_ticket 5479]]). This implied working with
+  the TBB team to improve Tor Launcher, so that we can start it as
+  a standalone XUL application, instead of as a browser add-on.
+- [[MAC spoofing support|contribute/design/MAC_address]] was
+  completed and
+  merged ([[!tails_ticket 5421]]).
+- Phase four of incremental upgrades was completed
+  ([[!tails_ticket 6508]]), and given it was enabled by default in
+  Tails 0.22.1, most users will see it in action when 0.23 is out.
+- One may now
+  start IBus manually in locales
+  environment where it is disabled by default ([[!tails_ticket
+  6656]]).
+- Ship a 64-bit
+  kernel in replacement for the 686-pae one ([[!tails_ticket
+  5456]]).
+- The branch to
+  stop creating auto-login text consoles was merged
+  ([[!tails_ticket 5588]]).
+- Support for persistence of I2P state was
+  drafted ([[!tails_ticket
+  5544]]).
+- The website
+  lock down was merged and deployed.
+- A branch to
+  stop installing Cookie
+  Monster was prepared ([[!tails_ticket 6790]]).
+- Some initial work to improve the Greeter's administration password
+  interface was done ([[!tails_ticket 5594]]).
+
+Software updates:
+
+- I2P has been updated to 0.9.11 ([[!tails_ticket 6696]]).
+- We have uploaded Pidgin 2.10.9 to squeeze-backports, and we now
+  install it from there ([[!tails_ticket 6661]]).
+- Install
+  Poedit from squeeze-backports-sloppy, where we have
+  uploaded it some time ago ([[!tails_ticket 6456]]).
+- The fact that Linux 3.12 is not in Debian unstable anymore
+  was taken into account.
+- The branch that
+  installs Linux 3.13 was updated.
+
+Bug and regression fixes:
+
+- The Intel Management Engine Interface driver
+  was disabled. This fixes memory wiping
+  at shutdown ([[!tails_ticket 6460]]) on some, if not all, hardware.
+- The possibility to switch identities in the Tor Browser
+  was added back ([[!tails_ticket 6383]]).
+- An issue that lead to releasing needlessly big ISO images
+  was
+  resolved ([[!tails_ticket 6390]]).
+- feature/create-additional-software-config
+  was merged.
+
+Towards Tails based on Debian Wheezy:
+
+- I2P packages compatible with Debian Wheezy were prepared, and are
+  now installed in the feature/wheezy branch.
+- Application launchers were added to the GNOME panel.
+- A launcher to start the documentation viewer was added to the
+  applications menu.
+- A more standard icon is used for the shutdown button.
+
+Documentation, website and localization
+=======================================
+
+- Icons for the different roles on the Contribute section were
+  finalized and [[deployed live|contribute]].
+- The [[support/FAQ]] was greatly expanded, and is now almost ready
+  for prime-time.
+- We have made good progress on specifying how the Tails logo should
+  look like ([[!tails_ticket 5797]]).
+- It was documented how to [[improve Tails by working on
+  Debian|contribute/how/debian]]. We have received positive feedback
+  from Debian contributors about it.
+- Many small improvements to the documentation and its translations
+  were done, including:
+  * quite a few clarifications in the documentation for new
+    contributors;
+  * updated system requirements documentation;
+  * documented how to change the passphrase for the
+    persistent volume ([[!tails_ticket 5621]]).
+- Links to the I2P website were
+  updated.
+- Documentation for the new MAC address spoofing feature was drafted.
+- Work is in progress on documentation about contributing to Tails in
+  the infrastructure (systems administration, automation) area.
+
+Infrastructure
+==============
+
+- Our Puppet modules were published.
+  This was a first blocker before we can welcome contributions to
+  our infrastructure.
+- The system that hosts our Redmine
+  was re-installed from scratch on a new machine, upgraded to Debian
+  Wheezy and to Redmine 1.4.4.
+- Some improvements to our automated test suite were merged:
+  test/fix-persistence-checks,
+  test/keep-volumes-tag, and
+  test/5959-antitest-memory-erasure.
+  Thanks to this and the robustness improvements brought by the move
+  to RJB, we were finally able to remove two of the most painful sets
+  of tests from our manual test suite.
+- A mailing list for early testers was created and is being set up.
+
+On-going discussions
+====================
+
+- Usecases for the Cookie Monster browser
+  extension?
+- Tails
+  logo
+- How to remove identifying information in bug
+  reports?
+- Numlock on by
+  default?
+- Various issues with Vagrant.
+- Interactions between Tails and TBB
+  developers
+- Adding BitMessage and Bitcoin-QT to
+  Tails
+- MAC address 'spoofing' and
+  randomization
+- Adapting Tor Launcher for
+  Tails
+- We were contacted by a few people who want to use Tails as
+  a flexible framework, and build customized derivatives on top of it.
+- We are discussing who we will invite to the 2014 Tails contributors
+  summit, that should be a bit more crowded than usual.
+
+Funding
+=======
+
+- We have discussed with GNOME how they could use the money they have
+  raised for privacy and anonymity improvements.
+
+Outreach
+========
+
+- We have been working with people who want to build bridges between
+  the graphics designers and usability experts community on the one
+  hand, and Free Software developers on the other hand. Thanks to this
+  collaboration, it is likely that Tails will go through a usability
+  study in a few months, followed by a hackfest that will put at work
+  designers and usability experts for finding solutions to (some of)
+  the identified issues. The Tails sprint in July might host
+  this hackfest.
+- One of us attended FOSDEM, and got a chance to talk with many
+  interesting people in person there.
+- We got in touch with the people behind
+  Freepto, and are looking how our two
+  projects could collaborate more.
+- We are participating in two new Debian teams: the [Debian OTR
+  Team](https://wiki.debian.org/Teams/OTR) and the [Debian AppArmor
+  Profiles Team](https://wiki.debian.org/AppArmor/Contribute).
+
+Press and testimonials
+======================
+
+* 2014-02-27: In his article "Why It’s Vital For Users to Fund Open-Source
+  Encryption
+  Tools"
+  Trevor Timm from Freedom of the Press Foundation explains that Tails « has
+  been vital for most, if not all, of the NSA journalists. [...] Its prime use
+  case is journalists trying to communicate or work in environments in which
+  they may normally be at risk or compromised. The NSA stories have been the
+  biggest story in journalism in the past decade, yet the tool the reporters
+  rely on is incredibly underfunded, is maintained by only a handful of
+  developers, and operates on a shoestring budget. »
+* 2014-02-07: In his review of uVirtus, Kheops, from
+  Telecomix concludes that « Users should prefer Tails and other mature secure
+  live distributions (such as IprediaOS, Liberté Linux, Privatix and Whonix)
+  over uVirtus since they provide a real safety improvement to the user. For any
+  activity that does not entail transferring large quantities of data (such as
+  video files), there is no strong reason to prefer uVirtus over any of these. »

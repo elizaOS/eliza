@@ -1,0 +1,174 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2026-03-29 13:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Contact us\"]]"
+msgstr "[[!meta title=\"Nous contacter\"]]"
+
+#. type: Content of: <h1>
+msgid "Report an error"
+msgstr "Signaler une erreur"
+
+#. type: Content of: <div><div><h3>
+msgid "WhisperBack"
+msgstr "WhisperBack"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+msgstr "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Reporting an error from Tails using [[<i>WhisperBack</i>|doc/first_steps/"
+"whisperback]] is the most private and the most useful way of contacting us."
+msgstr ""
+"Signaler une erreur depuis Tails avec "
+"[[<i>WhisperBack</i>|doc/first_steps/whisperback]] est le moyen le plus "
+"confidentiel et le plus pratique pour nous contacter."
+
+#. type: Content of: <h1>
+msgid "Other support channels"
+msgstr "Autres canaux d'assistance"
+
+#. type: Content of: <div><div><h3>
+msgid "Forum"
+msgstr "Forum"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+
+#. type: Content of: <div><div><p><p>
+msgid ""
+"Talk with other Tails users in the [[Tails category of the Tor Forum|https://"
+"forum.torproject.org/c/support/tails/33]]."
+msgstr ""
+"Discutez avec d'autres personnes utilisant Tails dans la [[catégorie Tails "
+"du forum de Tor|https://forum.torproject.org/c/support/tails/33]] (en "
+"anglais)."
+
+#. type: Content of: <div><div><h3>
+msgid "Email"
+msgstr "Messagerie électronique"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+
+#. type: Content of: <div><div><p>
+msgid "Write us at [[support@tails.net|doc/about/contact#support]]."
+msgstr "Écrivez-nous à [[support@tails.net|doc/about/contact#support]]."
+
+#. type: Content of: <div><div><p>
+msgid "Please write in English."
+msgstr "Merci d'écrire en anglais."
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Encrypting your emails with our [[OpenPGP key|doc/about/"
+"openpgp_keys#support]] is the only way to achieve end-to-end encryption."
+msgstr ""
+"Chiffrer vos courriers électroniques avec notre [[clé OpenPGP|doc/about/"
+"openpgp_keys#support]] est le seul moyen de garantir la confidentialité de "
+"nos échanges."
+
+#. type: Content of: <div><div><h3>
+msgid "Chat"
+msgstr "Discussion"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-message\"></i>"
+msgstr "<i class=\"fa-4x fa-regular fa-message\"></i>"
+
+#. type: Content of: <div><div>
+msgid "[[!inline pages=\"support/chat\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"support/chat.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!img lib/email.png link=no]]"
+#~ msgstr "[[!img lib/email.png link=no]]"
+
+#~ msgid "You can write us by email:"
+#~ msgstr "Vous pouvez nous écrire par courrier électronique :"
+
+#~ msgid "[[!img lib/chat.png link=no]]"
+#~ msgstr "[[!img lib/chat.png link=no]]"
+
+#~ msgid "Join our XMPP chat room to talk to contributors and users."
+#~ msgstr ""
+#~ "Rejoignez notre salon XMPP pour discuter avec des personnes utilisant ou "
+#~ "participant à Tails."
+
+#~ msgid "Room: <code>tails</code>"
+#~ msgstr "Salon : <code>tails</code>"
+
+#~ msgid "Server: <code>chat.disroot.org</code>"
+#~ msgstr "Serveur : <code>chat.disroot.org</code>"
+
+#~ msgid "use TLS/SSL to connect!"
+#~ msgstr "utilisez TLS/SSL pour vous connecter !"
+
+#~ msgid ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline\" "
+#~ "raw=\"yes\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline.fr\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline.fr\" "
+#~ "raw=\"yes\"]]"
+
+#~ msgid "Mail us on our private mailing list:"
+#~ msgstr ""
+#~ "Envoyez-nous un courrier électronique sur notre liste de discussion "
+#~ "privée :"
+
+#~ msgid "Public support list"
+#~ msgstr "Liste publique d'assistance"
+
+#~ msgid "[[!img lib/list.png link=no]]"
+#~ msgstr "[[!img lib/list.png link=no]]"
+
+#~ msgid "Subscribe to our [[user support mailing list|tails-support]]."
+#~ msgstr ""
+#~ "S'abonner à notre [[liste mail d'assistance utilisateur|tails-support]]."
+
+#~ msgid ""
+#~ "This is a public mailing list, so <strong>be careful with what you are "
+#~ "sending</strong>. Give only the necessary informations about yourself, "
+#~ "and if possible use Tails or [[<span class=\"application\">Tor Browser</"
+#~ "span>|https://torproject.org/torbrowser/]] to hide your IP address."
+#~ msgstr ""
+#~ "Cette liste mail est publique, soyez donc <strong>prudents avec ce que "
+#~ "vous envoyez</strong>. Donnez uniquement les informations nécessaires "
+#~ "vous concernant et si possible utilisez Tails ou le [[navigateur Tor|"
+#~ "https://torproject.org/torbrowser/]] pour cacher votre adresse IP."
+
+#~ msgid "port: <code>6697</code>"
+#~ msgstr "port : <code>6697</code>"
+
+#~ msgid ""
+#~ "If you are using Tails, read [[the chat documentation|doc/"
+#~ "anonymous_internet/pidgin]]. Else, you can use [[Pidgin|http://"
+#~ "www.pidgin.im/]], an Instant Messaging client for Windows, GNU/Linux and "
+#~ "macOS."
+#~ msgstr ""
+#~ "Si vous utilisez Tails, consultez la [[documentation sur la messagerie "
+#~ "instantanée|doc/anonymous_internet/pidgin]]. Sinon, vous pouvez utiliser "
+#~ "[[Pidgin|http://www.pidgin.im/]], un logiciel de messagerie instantanée "
+#~ "pour Windows, GNU/Linux et macOS."

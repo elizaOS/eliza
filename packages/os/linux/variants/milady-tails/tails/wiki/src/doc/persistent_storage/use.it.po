@@ -1,0 +1,111 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-12-06 21:29+0000\n"
+"Last-Translator: _ignifugo <ignifugo@insicuri.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Unlocking and using the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Sblocco e uso dell'Archivio Persistente\"]]\n"
+
+#. type: Plain text
+msgid ""
+"To unlock your Persistent Storage and use the data that is stored in it:"
+msgstr ""
+"Per sbloccare l'Archivio Persistente e utilizzare i dati in esso memorizzati:"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, in the **Persistent Storage** section of the [[Welcome "
+"Screen|first_steps/welcome_screen]], enter your passphrase and click "
+"**Unlock Encryption**."
+msgstr ""
+"All'avvio di Tails, nella sezione **Archivio Persistente** della [[schermata "
+"di benvenuto|first_steps/welcome_screen]], inserisci la tua frase di accesso "
+"e clicca su **Sblocca Crittografia**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img first_steps/welcome_screen/unlock_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"   [[!img first_steps/welcome_screen/unlock_persistent_storage.png class="
+"\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr "Avvia Tails."
+
+#. type: Bullet: '1. '
+msgid ""
+"The data corresponding to each feature of the Persistent Storage that is "
+"turned on is automatically available. For example:"
+msgstr ""
+"I dati corrispondenti a ciascuna funzionalità attivata dell'Archivio "
+"Persistente sono automaticamente disponibili. Ad esempio:"
+
+#. type: Bullet: '   - '
+msgid ""
+"Your personal files in the *Persistent* folder are accessible from the "
+"*Files* browser, if the [[Persistent Folder|configure#persistent_folder]] "
+"feature is turned on."
+msgstr ""
+"I file personali nella Cartella *Persistente* sono accessibili dal browser "
+"*Files*, se la funzionalità [[Persistent Folder|configure#persistent_folder]]"
+" è attivata."
+
+#. type: Bullet: '   - '
+msgid ""
+"Your persistent bookmarks are available in *Tor Browser*, if the [[Tor "
+"Browser Bookmarks|configure#bookmarks]] feature is turned on."
+msgstr ""
+"I tuoi segnalibri persistenti sono disponibili in *Tor Browser*, se la "
+"funzionalità [[Tor Browser Bookmarks|configure#bookmarks]] è attivata."
+
+#. type: Bullet: '   - '
+msgid ""
+"Your [[Additional Software|additional_software]] packages are automatically "
+"installed when starting Tails, if the [[Additional Software|"
+"configure#additional_software]] feature is turned on."
+msgstr ""
+"I tuoi pacchetti del [[Software aggiuntivo|additional_software]] vengono "
+"installati automaticamente all'avvio di Tails, se la funzione [[Software "
+"aggiuntivo|configure#additional_software]] è attivata."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"read-only\"></a>\n"
+msgstr "<a id=\"read-only\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Tails cannot use a read-only Persistent Storage. If your Tails USB stick has\n"
+"a read-only switch, ensure it is in the read-write position.</p>\n"
+msgstr ""
+"<p>Tails non può utilizzare un Archivio Persistente di sola lettura. Se la chiavetta USB di Tails ha\n"
+"un interruttore di sola lettura, assicurati che sia in posizione di lettura-scrittura..</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

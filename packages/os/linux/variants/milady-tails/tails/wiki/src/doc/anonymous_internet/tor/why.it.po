@@ -1,0 +1,279 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: _ignifugo <ignifugo@insicuri.net>\n"
+"Language-Team: Tails translators <tails-l10n@boum.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why does Tails use Tor?\"]]\n"
+msgstr "[[!meta title=\"Perché Tails utilizza Tor?\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "The Tor software is made by [The Tor Project](https://torproject.org/)."
+msgid ""
+"Both Tails and the Tor *software* are made by the [Tor Project](https://"
+"torproject.org/)."
+msgstr ""
+"Il software Tor è realizzato da [The Tor Project](https://torproject.org/"
+"it/)."
+
+#. type: Plain text
+msgid ""
+"Tails [[was founded|news/celebrating_10_years]] in 2009 and [[joined forces "
+"with Tor|news/tails_tor]] in 2024."
+msgstr ""
+"Tails [[è stata fondata|news/celebrating_10_years]] nel 2009 e "
+"[[ha unito le forze con Tor|news/tails_tor]] nel 2024."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"anonymity\">Anonymity enforcement</h1>\n"
+msgstr "<h1 id=\"anonymity\">Garanzia di anonimato</h1>\n"
+
+#. type: Plain text
+msgid ""
+"We want to enforce good security by default for our users. That is why it is "
+"a fundamental assumption of Tails to force all outgoing traffic to anonymity "
+"networks such as Tor."
+msgstr ""
+"Vogliamo applicare misure predefinite di sicurezza efficaci per chi usa "
+"Tails. Ecco perché uno degli assunti fondamentali di Tails è costringere "
+"tutto il traffico in uscita a transitare su reti di anonimizzazione come Tor."
+
+#. type: Plain text
+msgid ""
+"Over the years Tor has become a big network with a lot of capacity and a "
+"good speed."
+msgstr ""
+"Con il passare degli anni, Tor è divenuto una vasta rete con un'alta "
+"capacità e una buona velocità."
+
+#. type: Plain text
+msgid ""
+"Virtual Private Networks (VPNs) could be faster than Tor but they are not "
+"anonymity networks, because the administrators of the VPN can know both "
+"where you are connecting from and where you are connecting to and break your "
+"anonymity. Tor provides anonymity by making it impossible for a single point "
+"in the network to know both the origin and the destination of a connection."
+msgstr ""
+"Le reti virtuali private (VPN) possono essere più veloci di Tor ma non sono "
+"reti di anonimizzazione, perché coloro che amministrano la VPN possono "
+"sapere contemporaneamente da dove ti stai connettendo e dove è diretta la "
+"tua connessione, e infrangere così il tuo anonimato. Tor garantisce "
+"l'anonimato rendendo impossibile per un singolo punto della rete conoscere "
+"contemporaneamente l'origine e la destinazione di una connessione."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "When using a VPN, an attacker can also break your anonymity by monitoring "
+#| "the incoming and outgoing connections of the few servers of the VPN. On "
+#| "the other hand, the Tor network is formed by over 6000 relays run "
+#| "worldwide by volunteers."
+msgid ""
+"When using a VPN, an attacker can also break your anonymity by monitoring "
+"the incoming and outgoing connections of the few servers of the VPN. On the "
+"other hand, the Tor network is formed by over 7500 relays run worldwide by "
+"volunteers."
+msgstr ""
+"Quando usi una VPN, un attaccante può violare il tuo anonimato anche "
+"sorvegliando le connessioni che entrano ed escono dal ristretto numero di "
+"server di quella VPN. La rete Tor invece è composta da più di 6000 "
+"ripetitori gestiti da persone volenterose in tutto il mondo."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+"[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"Una connessione Tor passa "
+"attraverso 3 relay: l'ultimo è quello che stabilisce l'effettiva connessione "
+"con il sito di destinazione\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See also our warnings about the [[limitations of the Tor\n"
+"network|doc/about/warnings/tor]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"popularity\">User base</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Tor is the anonymity network with the largest user base. More than "
+#| "2&thinsp;000&thinsp;000 users connected to Tor daily in 2019. Being "
+#| "adopted by such a large audience proves its maturity, stability, and "
+#| "usability."
+msgid ""
+"Tor is the anonymity network with the largest user base. More than "
+"2&thinsp;000&thinsp;000 users connected to Tor daily in 2025. Being adopted "
+"by such a large audience proves its maturity, stability, and usability."
+msgstr ""
+"Tor è la rete di anonimizzazione con la base d'utenza più grande. Più di "
+"2&thinsp;000&thinsp;000 di persone si sono connesse a Tor giornalmente nel "
+"2019. L'adozione da parte di un pubblico così grande ne dimostra la "
+"maturità, la stabilità e l'usabilità."
+
+#. type: Plain text
+msgid ""
+"Tor is being used equally by journalists, law enforcement, governments, "
+"human rights activists, business leaders, militaries, abuse victims and "
+"average citizens concerned about online privacy. This diversity actually "
+"provides stronger anonymity to everyone as it makes it more difficult to "
+"identify or target a specific profile of Tor user. Anonymity loves company."
+msgstr ""
+"Tor viene utilizzato allo stesso modo da giornalisti, forze dell'ordine, "
+"governi, attivisti per i diritti umani, dirigenti, militari, vittime di "
+"abusi e cittadini comuni preoccupati per la privacy in rete. Questa "
+"differenziazione garantisce di fatto un anonimato più forte a ognuno, perché "
+"rende più difficile identificare o individuare uno specifico profilo di "
+"utenza Tor. L'anonimato ama la compagnia."
+
+#. type: Title =
+#, no-wrap
+msgid "Technical merits and recognition"
+msgstr "Meriti tecnici e riconoscimenti"
+
+#. type: Plain text
+msgid ""
+"Tor has partnered with leading research institutions, and has been subjected "
+"to intensive academic research. It is the anonymity network which benefits "
+"from the most auditing and peer review."
+msgstr ""
+"Tor si è associato ad alcuni tra i maggiori istituti di ricerca, ed è stato "
+"sottoposto a un'intensa attività di ricerca accademica. Tra le reti di "
+"anonimizzazione, è quella che beneficia della maggiore attività di revisione "
+"e di valutazione."
+
+#. type: Plain text
+msgid ""
+"Tor has been received awards by institutions such as the [Electronic "
+"Frontier Foundation](https://www.eff.org/awards/pioneer/2012), and the [Free "
+"Software Foundation](https://www.fsf.org/news/2010-free-software-awards-"
+"announced) to name a few."
+msgstr ""
+"Tor ha ricevuto premi da istituzioni come la [Electronic Frontier Foundation]"
+"(https://www.eff.org/awards/pioneer/2012), e la [Free Software Foundation]"
+"(https://www.fsf.org/news/2010-free-software-awards-announced) per citarne "
+"alcune."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "An extract of a Top Secret appraisal by the NSA characterized Tor as "
+#| "\"[the King of high secure, low latency Internet anonymity](http://"
+#| "www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-"
+#| "internet-anonymity)\" with \"no contenders for the throne in waiting\"."
+msgid ""
+"An extract of a Top Secret appraisal by the NSA characterized Tor as \"[the "
+"King of high secure, low latency Internet anonymity](https://"
+"www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-internet-"
+"anonymity)\" with \"no contenders for the throne in waiting\"."
+msgstr ""
+"Un estratto da una valutazione top secret della NSA ha caratterizzato Tor "
+"come \"[il re dell'anonimato ad alta sicurezza e bassa latenza su Internet]"
+"(https://www.theguardian.com/world/interactive/2013/oct/04/tor-high-secure-"
+"internet-anonymity)\" senza \"nessun pretendente in attesa di scalzarlo dal "
+"trono\"."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"i2p\">About I2P</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[I2P](https://geti2p.net/) is another anonymity network and alternative to "
+"Tor.  Tails used to include I2P until 2017. We removed I2P in [[Tails 2.12|"
+"news/version_2.11]] because it was too costly to maintain."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We have no plans to add I2P back in Tails because I2P hasn't yet become "
+"popular and usable enough to make a real difference for our [[target "
+"audience|contribute/personas]]."
+msgstr ""
+
+#~ msgid "Tails uses Tor because it is the best available anonymity network."
+#~ msgstr ""
+#~ "Tails utilizza Tor perché è la miglior rete di anonimizzazione "
+#~ "disponibile."
+
+#, fuzzy, no-wrap
+#~| msgid "Relationship between Tor and Tails"
+#~ msgid "<h1 id=\"relationship\">Relationship between Tor and Tails</h1>\n"
+#~ msgstr "Relazione fra Tor e Tails"
+
+#, fuzzy
+#~| msgid "The Tor network is run by a worldwide community of volunteers."
+#~ msgid "- The Tor network is run by a worldwide community of volunteers."
+#~ msgstr ""
+#~ "La rete Tor è gestita da una comunità di persone volonterose in tutto il "
+#~ "mondo."
+
+#, fuzzy
+#~| msgid "Tails is a separate project made by a different group of people."
+#~ msgid "- Tails is a separate project made by a different group of people."
+#~ msgstr ""
+#~ "Tails è un progetto separato, creato da un gruppo differente di persone."
+
+#, no-wrap
+#~ msgid ""
+#~ "Tails is a complete operating system which uses Tor as its default networking\n"
+#~ "application. The Tor Project recommends the usage of Tails for the use cases\n"
+#~ "that are not covered by its own projects (for example the <span\n"
+#~ "class=\"application\">Tor Browser</span>).\n"
+#~ msgstr ""
+#~ "Tails è un sistema operativo completo che usa Tor come applicazione predefinita per\n"
+#~ "la connessione. Il Tor Project raccomanda l'utilizzo di Tails per i casi d'uso\n"
+#~ "che non sono coperti dai suoi specifici progetti (per esempio da <span\n"
+#~ "class=\"application\">Tor Browser</span>).\n"
+
+#~ msgid ""
+#~ "But many people use Tor outside of Tails, and many people use Tails to do "
+#~ "other things than accessing the Internet through Tor, for example to work "
+#~ "offline on sensitive documents."
+#~ msgstr ""
+#~ "Ma tanta gente usa Tor senza usare Tails, e tanta gente usa Tails per "
+#~ "fare altro che non sia accedere a Internet via Tor, ad esempio per "
+#~ "lavorare offline su documenti sensibili."
+
+#, no-wrap
+#~ msgid "User base"
+#~ msgstr "Base di utenza"
+
+#, no-wrap
+#~ msgid "<a id=\"relationship\"></a>\n"
+#~ msgstr "<a id=\"relationship\"></a>\n"

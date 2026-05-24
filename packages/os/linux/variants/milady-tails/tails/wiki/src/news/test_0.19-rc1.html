@@ -1,0 +1,99 @@
+[[!meta date="Mon, 15 Jun 2013 14:45:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Call for testing: 0.19~rc1"]]
+
+<p>You can help Tails! The first (and hopefully only) release candidate for the
+upcoming version 0.19 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.19~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      <a class="download-file"
+         href=""
+      >Tails 0.19~rc1 ISO image</a>
+    </p>
+    <p>
+      <a class="download-signature"
+         href=""
+      >Tails 0.19~rc1 signature</a>
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.18?</h1>
+
+<ul>
+
+<li>New features</li>
+<ul>
+	<li><p>Linux 3.9.5-1.</p></li>
+	<li><p>Unblock Bluetooth, Wi-Fi, WWAN and WiMAX; block every other type of wireless device.</p></li>
+</ul>
+
+<li>Bugfixes</li>
+<ul>
+	<li><p>Fix write access to boot medium at the block device level.</p></li>
+	<li><p>tails-greeter l10n-related fixes.</p></li>
+	<li><p>gpgApplet: partial fix for clipboard emptying after a wrong passphrase was entered.</p></li>
+</ul>
+
+<li><p>Minor improvements</p></li>
+<ul>
+	<li><p>Drop GNOME proxy settings.</p></li>
+	<li><p>Format newly created persistent volumes as ext4.</p></li>
+	<li><p>GnuPG: don't connect to the keyserver specified by the key owner.</p></li>
+	<li><p>GnuPG: locate keys only from local keyrings.</p></li>
+	<li><p>Upgrade live-boot and live-config to the 3.0.x final version from Wheezy.</p></li>
+</ul>
+
+<li><p>Localization: many translation updates all over the place.</p></li>
+
+<li><p>Test suite</p></li>
+<ul>
+<li><p>Re-enable previously disabled boot device permissions test.</p></li>
+</ul>
+
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.19~rc1</h1>
+
+<ul>
+<li>Due to a regression in live-config, passwordless sudo is enabled by default unless one sets an administration password.</li>
+<li>The Unsafe Browser does not work.</li>
+</ul>
+
+<p>All these issues are fixed in Git and will be fixed in Tails 0.19.</p>

@@ -1,0 +1,100 @@
+#!/bin/sh
+
+set -e
+
+# Import is_package_installed
+. /usr/local/lib/tails-shell-library/common.sh
+
+echo "Removing unwanted packages"
+
+### We'll remove packages listed in this variable. It's purpose is to
+### gather *several* packages we might want to remove below and purge
+### then at the same time, which has less overhead than purging them
+### one at a time.
+packages_to_purge=""
+
+### Deinstall dev packages.
+
+# We use apt-get as aptitude doesn't know about globs.
+# There are packages we could be tempted to remove but we can't:
+#   - gcc-*-base (libstdc++6 depends on it)
+#   - libgcc1 (apt depends on it)
+#   - cpp, cpp-* (big parts of GNOME depend on it)
+for package in \
+    '^binutils*' \
+    build-essential \
+    debhelper \
+    dh-autoreconf \
+    dpkg-dev \
+    fakeroot \
+    gcc \
+    '^gcc-[0-9]+$' \
+    gdbm-l10n \
+    libc-dev-bin \
+    libc6-dev \
+    '^libgcc-[0-9]+-dev$' \
+    libtool \
+    libudev-dev \
+    linux-libc-dev \
+    make; do
+    packages_to_purge="${packages_to_purge} ${package}"
+done
+
+### Deinstall a few unwanted packages that were pulled by tasksel
+### since they have Priority: standard.
+for package in \
+    dhcpcd \
+    dhcpcd-base \
+    m4 \
+    nfs-common \
+    texinfo; do
+    packages_to_purge="${packages_to_purge} ${package}"
+done
+
+### Remove packages that can get a different priority in the security
+### archive (see https://bugs.debian.org/867668).
+for package in mutt rpcbind tcpd; do
+    if is_package_installed "${package}"; then
+        packages_to_purge="${packages_to_purge} ${package}"
+    fi
+done
+
+### Remove packages installed by debootstrap
+packages_to_purge="${packages_to_purge} ifupdown"
+
+### Remove unwanted packages that might, or might not,
+### have been installed during the build.
+for package in \
+    gcc-7 \
+    libgcc-7-dev \
+    libmoox-late-perl \
+    libsub-handlesvia-perl \
+    procmail; do
+    if is_package_installed "${package}"; then
+        packages_to_purge="${packages_to_purge} ${package}"
+    fi
+done
+
+### Deinstall some other unwanted packages.
+for package in \
+    live-build \
+    localepurge; do
+    packages_to_purge="${packages_to_purge} ${package}"
+done
+
+if [ -n "${packages_to_purge}" ]; then
+    # shellcheck disable=SC2086
+    apt-get --yes purge $packages_to_purge
+fi
+
+### Deinstall some other unwanted packages whose regexp might not be match
+### anything when building with partial, tagged APT snapshots.
+if dpkg --get-selections | grep -qs -E '^geoclue'; then
+    apt-get --yes purge '^geoclue*'
+fi
+if dpkg --get-selections | grep -qs -E '^exim4'; then
+    apt-get --yes purge '^exim4*'
+fi
+
+### Deinstall dependencies of the just removed packages.
+apt-get --yes --purge autoremove

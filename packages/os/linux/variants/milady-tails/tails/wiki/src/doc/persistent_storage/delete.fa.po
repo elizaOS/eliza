@@ -1,0 +1,152 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2015-10-14 19:35+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"first_steps_persistence_delete/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Deleting the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"پاک کردن درایو مانا\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Start Tails from the USB stick on which you want to delete the Persistent "
+"Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen, keep the Persistent Storage locked."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Delete** in the right of the title bar."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- We should get rid of this warning once we have\n"
+"     #8436 (Wipe the LUKS header when deleting a persistent volume). -->\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>This technique might not prevent a strong attacker from\n"
+"recovering files from an old Persistent Storage using advanced data\n"
+"recovery techniques, especially if\n"
+"the Persistent Storage had a weak passphrase.</p>\n"
+msgstr ""
+"<strong>ممکن است شیوهٔ قبلی از بازیابی فایل‌های قدیمی روی درایو مانا که از\n"
+"[شیوه‌های بازیابی داده‌ها|encryption_and_privacy/secure_deletion#why]] استفاده می‌کنند جلوگیری نکند.</strong>\n"
+"با پاک کردن ایمن درایو مانا، تیلز را روی دستگاه دیگری اجرا کنید و کارهای زیر را روی آن فایل‌ها انجام بدهید:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>See the [[limitations of file deletion|doc/encryption_and_privacy/secure_deletion#spare]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Choose <span class=\"menuchoice\"> <span class=\"guimenu\">Applications</"
+#~ "span>&nbsp;▸ **Tails**&nbsp;▸ <span class=\"guimenuitem\">Delete "
+#~ "persistent volume</span></span>."
+#~ msgstr ""
+#~ "برای پاک کردن درایو مانا از روی یک دستگاه حاوی تیلز، یکی از موارد زیر را "
+#~ "انتخاب کنید:\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **برنامه‌ها**&nbsp;◀\n"
+#~ "  **تیلز**&nbsp;◀\n"
+#~ "  **پاک کردن درایو مانا**</span> و روی\n"
+#~ "  دکمهٔ **پاک کردن** کلیک کنید.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "This can be useful in order to delete all the files saved to the "
+#~| "persistent volume in a single operation. You can later create a new "
+#~| "persistent volume on the same device without having to reinstall Tails."
+#~ msgid ""
+#~ "This can be useful in order to delete all the files saved to the "
+#~ "persistent volume in a single operation. You can later create a new "
+#~ "persistent volume on the same USB stick without having to reinstall Tails."
+#~ msgstr ""
+#~ "این روند می‌تواند برای پاک کردن فایل‌های ذخیره شده روی درایو مانا در یک عمل "
+#~ "واحد مورد استفاده قرار گیرد. بعدتر می‌توانید یک درایو مانای دیگر -بدون "
+#~ "بازنصب کردن تیلز- بسازید."
+
+#~ msgid "Securely delete the persistent volume\n"
+#~ msgstr "پاک کردن درایو مانا به صورت ایمن\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "<ol>\n"
+#~| "<li>[[Format the device and create a single encrypted partition|"
+#~| "encryption_and_privacy/encrypted_volumes]]\n"
+#~| "on the whole device. This step deletes both Tails and the persistent "
+#~| "volume.</li>\n"
+#~| "<li>[[Securely clean all the available disk\n"
+#~| "space|encryption_and_privacy/secure_deletion#clean_disk_space]] on this "
+#~| "new encrypted\n"
+#~| "partition.</li>\n"
+#~| "<li>[[Reinstall Tails|install]] on the device.</li>\n"
+#~| "<li>Start Tails from the device and [[create a new persistent\n"
+#~| "volume|persistence/configure]].</li>\n"
+#~| "</ol>\n"
+#~ msgid ""
+#~ "<ol>\n"
+#~ "<li>[[Format the USB stick and create a single encrypted partition|"
+#~ "encryption_and_privacy/encrypted_volumes]]\n"
+#~ "on the whole USB stick. This step deletes both Tails and the persistent "
+#~ "volume.</li>\n"
+#~ "<li>[[Securely clean all the available disk\n"
+#~ "space|encryption_and_privacy/secure_deletion#clean_disk_space]] on this "
+#~ "new encrypted\n"
+#~ "partition.</li>\n"
+#~ "<li>[[Reinstall Tails|install]] on the USB stick.</li>\n"
+#~ "<li>Start Tails from the USB stick and [[create a new persistent\n"
+#~ "volume|persistence/configure]].</li>\n"
+#~ "</ol>\n"
+#~ msgstr ""
+#~ "<ol>\n"
+#~ "<li>[[دیسک را فرمت کنید و یک پارتیشن رمزگذاری‌شده|encryption_and_privacy/"
+#~ "encrypted_volumes]]\n"
+#~ "روی کل دیسک بسازید. با این کار هم درایو مانا و هم تیلز را پاک خواهید کرد."
+#~ "</li>\n"
+#~ "<li>[[همهٔ فضای دیسک را به صورت امن\n"
+#~ "|encryption_and_privacy/secure_deletion#clean_disk_space]] روی پارتیشن "
+#~ "رمزگذاری‌شدهٔ جدید\n"
+#~ "پاک کنید.</li>\n"
+#~ "<li>روی این دستگاه [[تیلز را دوباره نصب کنید.|install]].</li>\n"
+#~ "<li>تیلز را از روی دستگاه اجرا کنید و یک [[درایو مانای جدید بسازید\n"
+#~ "|persistence/configure]].</li>\n"
+#~ "</ol>\n"

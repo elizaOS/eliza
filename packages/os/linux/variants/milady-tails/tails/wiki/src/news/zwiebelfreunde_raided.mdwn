@@ -1,0 +1,42 @@
+[[!meta date="Thu, 5 Jul 2018 15:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Police raid at Zwiebelfreunde: Donor data compromised"]]
+[[!tag announce]]
+
+On June 20th 2018, German police searched the homes of board members of our
+former fiscal sponsor Zwiebelfreunde in a coordinated raid. Zwiebelfreunde
+(_Friends of onions_ in German) is a nonprofit organization that supports
+privacy and anonymity projects and operates several Tor exit nodes.
+
+They are not accused of a crime but considered to be witnesses in a case: the
+operators of an anonymous website calling for protest against the far-right AfD
+(Alternative for Germany) party convention used an email address at Riseup, a
+privacy-friendly email provider to which Zwiebelfreunde facilitates donations.
+
+During the search, computers, storage media, personal items, bank account
+records, and paper receipts have been confiscated. This unfortunately means
+that if you have donated to Tails before October 18th 2017 using our European
+bank account, your data is now in the hands of the German police (IBAN account
+number, name of account holder, amount, and date). If you donated after this
+date, you donated to our new fiscal sponsor CCT and not to Zwiebelfreunde.
+
+According to Moritz Bartl, one of the board members, "*there's a long history of
+police using that kind of data to investigate social structures; who's working
+where, who's involved in which projects, so we have to assume that they are
+looking into the social networks of people*"
+([[Source|https://www.zdnet.com/article/german-police-raid-homes-of-tor-linked-groups-board-members/]]).
+
+The raid has been strongly criticized by [German
+media](http://www.spiegel.de/netzwelt/web/hausdurchsuchungen-bei-netzaktivisten-chaos-computer-club-kritisiert-polizeivorgehen-a-1216463.html)
+and [digital rights
+activists](https://netzpolitik.org/2018/zwiebelfreunde-durchsuchungen-wenn-zeugen-wie-straftaeter-behandelt-werden/)
+as being
+[disproportionate](https://www.ccc.de/en/updates/2018/hausdurchsuchungen-bei-vereinsvorstanden-der-zwiebelfreunde-und-im-openlab-augsburg).
+
+Please join us in supporting our friends at
+[Zwiebelfreunde](https://www.zwiebelfreunde.de/). We are very grateful for the
+support they have provided to Tails.
+
+Read more about the case and find links to international press coverage on
+[Zwiebelfreunde's
+blog](https://torservers.net/blog/2018-07-04-zwiebelfreunde-raid/).

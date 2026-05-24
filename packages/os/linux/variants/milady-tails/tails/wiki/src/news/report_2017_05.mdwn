@@ -1,0 +1,226 @@
+[[!meta title="Tails report for May, 2017"]]
+[[!meta date="Tue, 06 Jun 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* We've finished testing and releasing Tails 3.0~rc1.
+
+* Tails 3.0 is [[scheduled for June 13th|contribute/calendar]].
+
+Code
+====
+
+## Tails 3.0
+
+We have been focused on the last finishing touches before we deem
+Tails 3.0 ready for release. Things are looking good so far!
+
+## Reproducible builds
+
+Here are some details about our work in April and May on making Tails
+reproducible. This effort is covered by the Mozilla Open Source Support
+award (MOSS) that we've received.
+
+### Current status
+
+In March we [[reported|news/report_2017_03]] that we had finally seen
+an ISO image build reproducibly on several machines. Since then we
+kept working on this front.
+
+Our automatic upgrades are now reproducible, however, one
+remaining issue currently blocks us from claiming that our ISO images
+are too. We are confident that this issue will be solved within a few weeks.
+
+### Reproducible website build
+
+In March we've made great progress to get our website build
+reproducibly.  Later on, we realized that ikiwiki resized some
+images of our website which sometimes contained timestamped metadata,
+thus making the ISO image build unreproducibly. We have worked around this on
+our side ([[!tails_ticket 12566]]), and will fix the root cause of the
+problem in ikiwiki upstream ([[!tails_ticket 12625]]).
+
+### The blocker: fontconfig
+
+The cloud which hides the blue skies and the sun in the reproducible
+builds solar system today, and which is our sole remaining problem to
+make our ISO image build reproducibly is this: we ship a cache for fonts
+in Tails. However, this cache is currently not generated in a
+reproducible manner. In March we
+tried moving its generation out of the ISO, however, it makes Tails
+start slower and resulted in too many unreliable test failures. Thus, we
+decided to move it back into the ISO image and to try and fix the root cause of
+the problem instead. We filed [[!debbug 863427]], but
+we already know that our patch is not yet enough to fix the problem,
+although it greatly reduces the number of differences from 75 to 5
+([[!tails_ticket 12567]]); so we'll keep working on it.
+
+### ISO image and IUKs
+
+Our automatic upgrades are now reproducible ([[!tails_ticket 12630]]).
+
+When we generate the ISO image using isohybrid, we pass it an ID. We
+tried setting this ID to `$SOURCE_DATE_EPOCH` which resulted in a
+reproducible, but non-hybrid, ISO. Thus, we decided to pass a fixed ID
+instead: [[!tails_ticket 12453]].
+
+### The bright future
+
+Remaining technical issues are tracked on [[!tails_ticket 12608]].
+
+We are working on documenting how to modify our release process to
+ensure the ISO images we publish are reproducible
+([[!tails_ticket 12628]], [[!tails_ticket 12629]]).
+
+For those of our users who want to verify their own ISO builds against ours,
+we'll soon document how to do that ([[!tails_ticket 12630]]).
+
+### Infrastructure
+
+See the [[Infrastructure section|report_2017_05#infrastructure]]
+for our work on the infrastructural aspects of this project.
+
+Documentation and website
+=========================
+
+- We have published the Tails Social contract.
+
+- We finished updating all our documentation to Tails 3.0, based on
+  Debian Stretch.
+
+- We updated our documentation to a new layout of the *Universal USB
+  Installer* for Windows and scaled its screenshots to fix an issue
+  reported by [[!tails_ticket 11527 desc="huertanix"]].
+
+- We updated our documentation of the [[build system|contribute/build]],
+  as a result of the work on reproducible builds.
+
+User experience
+===============
+
+- We started experimenting with *Piwik* to do web analytics ([[!tails_ticket 12563]]).
+
+- We continued redesigning the main window of *Tails
+  Installer*.
+
+<a id="infrastructure"></a>
+
+Infrastructure
+==============
+
+- We upgraded some more of our systems to Debian Stretch.
+
+- We have continued the efforts to optimize our systems' resources, by
+  playing with different settings of the NUMA balancing ([[!tails_ticket 11179]]).
+
+- We have adapted our CI infrastructure to be able to bring back the
+  email notification mechanism for build and test failures, at least for
+  branches which have tickets in a "Ready For QA" state in Redmine ([[!tails_ticket 11355]]).
+  This will be unleashed in June so that we'll be able to gather statistics
+  about false positives in our CI notifications to developers.
+
+- Most of our efforts have been focused on upgrading our infrastructure
+  to support reproducible builds, see below.
+
+## Reproducible builds
+
+After a long discussion, we [[!tails_ticket 12409 desc="decided"]] not
+to publish any Vagrant basebox at all: the key argument in favour of
+this major design change was to remove one huge binary blob from the
+list of trusted inputs needed for building a Tails ISO image.
+This will substantially increase the value of Tails ISO images
+building reproducibly. This decision has a few nice side effects,
+including:
+
+ * the properties of the basebox required to build a given state of our
+   code base are entirely encoded in the corresponding Git commit;
+ * changes in the ISO build box definition don't require building and
+   uploading a new basebox.
+
+Then we made enough progress to migrate our Continuous Integration
+platform to the build system used by developers. This is now running
+in production, not exactly smoothly yet (as explained below), but well
+enough to keep supporting our development and quality assurance
+processes. For details, see [[!tails_ticket 11972]],
+[[!tails_ticket 11979]], [[!tails_ticket 11980]],
+[[!tails_ticket 11981]], [[!tails_ticket 12017]], and
+[[!tails_ticket 11006]].
+
+Then we had to deal with a number of issues that we were not in
+a position to identify before submitting this brand new system to
+a real-world workload. Some are fixed already
+([[!tails_ticket 12530]], [[!tails_ticket 12578]],
+[[!tails_ticket 12565]], [[!tails_ticket 12541]],
+[[!tails_ticket 12529]], [[!tails_ticket 12575]],
+[[!tails_ticket 12606]]). Work is still in progress on some other
+problems: they are our Continuous Integration engineers' top priority,
+and should be fully resolved in the next couple of months.
+
+Finally, we have [[!tails_ticket 12579 desc="set up"]] automated tests for
+the reproducibility of our ISO image. Obviously, the results of these
+tests
+are publicly available.
+
+
+Funding
+=======
+
+- We are still in the process of discussing our proposal with OTF, and
+  reworking it accordingly.
+
+- We've submitted a proposal to Lush Digital
+  Fund.
+
+- We started migrating our European fiscal sponsor from Zwiebelfreunde
+  to [CCT, the Center for the Cultivation of Technology](https://techcultivation.org/).
+
+Outreach
+========
+
+Past events
+-----------
+
+* gagz and geb did a presentation and a workshop of Tails at the [CPML](http://medias-libres.org) yearly meeting.
+
+On-going discussions
+====================
+
+- We started to discuss the coordination of Tails 3.0 and Debian
+  Stretch releases.
+
+- The news on the update of our build system received a lot of
+  answers.
+
+Translation
+===========
+
+## All the website
+
+  - de: 59% (2977) strings translated, 5% strings fuzzy, 52% words translated
+  - fa: 43% (2200) strings translated, 9% strings fuzzy, 47% words translated
+  - fr: 87% (4357) strings translated, 1% strings fuzzy, 85% words translated
+  - it: 31% (1585) strings translated, 4% strings fuzzy, 28% words translated
+  - pt: 28% (1443) strings translated, 8% strings fuzzy, 25% words translated
+
+Total original words: 52.798
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 82% (1537) strings translated, 10% strings fuzzy, 82% words translated
+  - fa: 37% (695) strings translated, 10% strings fuzzy, 39% words translated
+  - fr: 98% (1843) strings translated, 1% strings fuzzy, 98% words translated
+  - it: 78% (1473) strings translated, 11% strings fuzzy, 78% words translated
+  - pt: 48% (910) strings translated, 13% strings fuzzy, 49% words translated
+
+Total original words: 17.079
+
+Metrics
+=======
+
+* Tails has been started more than 694.165 times this month. This makes 22.392 boots a day on average.
+* 13.181 downloads of the OpenPGP signature of Tails ISO from our website.
+* 110 bug reports were received through WhisperBack.

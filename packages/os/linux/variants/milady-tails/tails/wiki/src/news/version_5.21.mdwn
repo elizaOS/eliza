@@ -1,0 +1,68 @@
+[[!meta title="Tails 5.21"]]
+[[!meta date="Fri, 22 Dec 2023 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Help troubleshoot when resizing the system partition fails the first time
+  Tails is started.
+
+  [[!img resizing.png link="no" alt="Error message: Resizing System Partition Failed - It will be impossible to create a Persistent Storage or apply automatic upgrades."]]
+
+- Translate the date displayed in the top navigation bar.
+
+  [[!img clock.png link="no" alt="Clock showing date in Spanish"]]
+
+- Update *Tor Browser* to [13.0.7](https://blog.torproject.org/new-release-tor-browser-1307).
+
+- Update the *Tor* client to 0.4.8.10.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix *Tor Browser* crashing when clicking on the *UBlock* icon. ([[!tails_ticket 20061]])
+
+- Make time synchronization more reliable. ([[!tails_ticket 19923]])
+
+- [[!tails_gitlab @BenWestgate]] fixed several issues in the backup feature of *Tails Cloner*:
+
+  * Remove message about doing a backup when no USB stick is plugged in. ([[!tails_ticket 20063]])
+
+  * Update available options when plugging in another USB stick. ([[!tails_ticket 20042]])
+
+  * Point to backup instructions when choosing to clone the Persistent Storage.
+    ([[!tails_mr 1305]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 5.21</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.21.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.21 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]

@@ -1,0 +1,27 @@
+[[!meta title="Tails report for April 2022"]]
+[[!meta date="Tue, 17 May 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+- Disoj, our new Project Manager, started working with us.
+
+  It's the first time Tails has a dedicated Project Manager and we are all very
+  excited about this change. Disoj will help us work better and faster to
+  accomplish our [[mission|contribute/mission]].
+
+- We got very busy preparing [[Tails 5.0|news/version_5.0]].
+
+- We upgraded all our infrastructure to Debian 11 to ensures that all our
+  public and internal servers will continue receiving security updates timely
+  after August.
+
+- We organized 2 [[online trainings|news/ciclo_de_autodefensa_digital_mexico]]
+  for people in Mexico.
+
+  You can download our
+  [[slides|contribute/how/promote/slides/Ciclo_Autodefensa_Digital_202204/Tails-Spanish.odp]]
+  and the
+  [[structure|contribute/how/promote/slides/Ciclo_Autodefensa_Digital_202204/structure]]
+  of the training if you want to organize Tails workshops yourself.
+
+- Tails has been started more than 783&#8239;850 times this month. This makes
+  25&#8239;031 boots a day on average.

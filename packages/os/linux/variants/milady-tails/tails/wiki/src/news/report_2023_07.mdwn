@@ -1,0 +1,44 @@
+[[!meta title="Tails report for July 2023"]]
+[[!meta date="Tue, 22 Aug 2023 14:27:05 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- In case you missed it, we have a new home. In July, we completed the
+  migration of the Tails website to a new namespace: `tails.net`.
+  [[Welcome!|news/new_domain]]
+
+- 2 more sponsors renewed their support for Tails:
+  [freiheitsfoo](https://freiheitsfoo.de/) and [Exam
+  Success](https://www.examsuccess.com.au/)! We are all very grateful for their
+  continued support and generosity. You, too, could sponsor
+  Tails.
+
+- We have started work on deciding the next big feature
+  for Tails! We are deliberating between adding either
+  VPN functionality or messaging applications. We're sure
+  you have preferences and pointers for us. Let us know.
+
+Releases
+========
+
+[[Tails 5.15.1 was released on July 11 2023|news/version_5.15.1]].
+
+- From Tails 5.14 - the previous Tails release - your Persistent Storage
+  automatically uses LUKS2 encryption with Argon2id. On some systems, the
+  upgrade was facing issues with reliability
+  ([#19734](https://gitlab.tails.boum.org/tails/tails/-/issues/19734),
+  [#19728](https://gitlab.tails.boum.org/tails/tails/-/issues/19728)). Tails
+  5.15.1 fixes these reliability issues. If you are still experiencing issues,
+  [WhisperBack](https://tails.net/doc/first_steps/whisperback/index.en.html#whisperback)! 
+
+- Tor browser in Tails now supports authenticated onion services in a consistent manner.
+
+Metrics
+=======
+
+Tails was started more than 751,383 times this month.
+That's a daily average of over 24,238 boots.

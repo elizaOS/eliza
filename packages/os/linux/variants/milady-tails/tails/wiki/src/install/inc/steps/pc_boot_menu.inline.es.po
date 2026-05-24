@@ -1,0 +1,689 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2025-09-18 15:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <p>
+#, fuzzy
+#| msgid ""
+#| "Most computers do not start on the Tails USB stick automatically but you "
+#| "can press a Boot Menu key to display a list of possible devices to start "
+#| "from."
+msgid ""
+"Most computers do not start automatically on the Tails USB stick, but you "
+"can press a Boot Menu key to display a list of possible devices to start "
+"from."
+msgstr ""
+"La mayoría de las computadoras no arrancarán desde una memoria USB de Tails "
+"automáticamente, pero puedes presionar alguna tecla para mostrar una lista "
+"de dispositivos desde los cuales arrancar."
+
+#. type: Content of: <div><p>
+#, fuzzy
+#| msgid ""
+#| "If Windows 8 or 10 is <span class=\"linux upgrade-linux\">also</span> "
+#| "installed on the computer, you can refer instead to the [[instructions on "
+#| "starting Tails from Windows 8 or 10|doc/first_steps/start/pc#windows-"
+#| "restart]].  Starting Tails from Windows is easier than using the Boot "
+#| "Menu key."
+msgid ""
+"If Windows is <span class=\"linux upgrade-linux\">also</span> installed on "
+"the computer, you can refer instead to the [[instructions on starting Tails "
+"from Windows|doc/first_steps/start/pc#windows-restart]].  Starting Tails "
+"from Windows is easier than using the Boot Menu key."
+msgstr ""
+"Si en la computadora <span class=\"linux upgrade-linux\">también</span> está "
+"instalado Windows 8 o 10, lee las [[instrucciones para arrancar Tails desde "
+"Windows 8 o 10|doc/first_steps/start/pc#windows-restart]]. Arrancar Tails "
+"desde Windows es más fácil que usando la tecla del Menú de Arranque."
+
+#. type: Content of: <p>
+msgid "The following screenshot is an example of a Boot Menu:"
+msgstr "La captura de pantalla siguiente es un ejemplo de Menú de Arranque:"
+
+#. type: Content of: <p>
+msgid ""
+"[[!img install/inc/screenshots/boot_menu.png class=\"screenshot\" alt=\"\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/boot_menu.png class=\"screenshot\" alt=\"\"]]"
+
+#. type: Content of: <p>
+msgid ""
+"This animation summarizes how to use the Boot Menu key to start on the USB "
+"stick:"
+msgstr ""
+"Esta animación muestra cómo usar la tecla del Menú de Arranque para iniciar "
+"desde la memoria USB:"
+
+#. type: Content of: <p>
+msgid ""
+"The following instructions explain in detail how to use the Boot Menu key to "
+"start on the USB stick:"
+msgstr ""
+"Las instrucciones siguientes explican en detalle cómo usar la tecla del Menú "
+"de Arranque para arrancar desde la memoria USB:"
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr "Asegúrate de haber instalado Tails usando alguno de los siguientes:"
+
+#. type: Content of: <ol><li><ul><li>
+#, fuzzy
+#| msgid "[[<i>balenaEtcher</i> from Windows|install/windows#etcher]]"
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>balenaEtcher</i> para Windows|install/windows#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> para macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>Discos de GNOME</i> para Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[la línea de comandos de Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr "Apaga la computadora mientras dejas la memoria USB conectada."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer and plug in the Tails USB stick."
+msgstr "Apaga la computadora y conecta la memoria USB de Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr "Apaga la computadora."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Plug in the other Tails USB stick that you want to <span class=\"pc-"
+"clone\">install</span> <span class=\"upgrade\">upgrade</span> from."
+msgstr ""
+"Inserta la otra memoria USB de Tails desde la que quieres <span class=\"pc-"
+"clone\">instalar</span><span class=\"upgrade\">actualizar</span>."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Unplug your Tails USB stick while leaving the intermediary USB stick plugged "
+"in."
+msgstr "Desconecta tu memoria USB y deja conectada la memoria USB intermedia."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Identify the possible Boot Menu keys for the computer depending on the "
+"computer manufacturer in the following list:"
+msgstr ""
+"Identifica las teclas del Menú de Arranque de tu computadora de acuerdo a su "
+"fabricante en la lista siguiente:"
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Manufacturer"
+msgstr "Fabricante"
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Key"
+msgstr "Tecla"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Acer"
+msgstr "Acer"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, F9, F2, Esc"
+msgstr "F12, F9, F2, Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Apple"
+msgstr "Apple"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Option"
+msgstr "Opción"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Asus"
+msgstr "Asus"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc"
+msgstr "Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Clevo"
+msgstr "Clevo"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F7"
+msgstr "F7"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Dell"
+msgstr "Dell"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12"
+msgstr "F12"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Fujitsu"
+msgstr "Fujitsu"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, Esc"
+msgstr "F12, Esc"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "HP"
+msgstr "HP"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F9"
+msgstr "F9"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Huawei"
+msgstr "Huawei"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Intel"
+msgstr "Intel"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F10"
+msgstr "F10"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Lenovo"
+msgstr "Lenovo"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, <a href=\"https://support.lenovo.com/solutions/ht062552\">Novo</a>"
+msgstr ""
+"F12, <a href=\"https://support.lenovo.com/solutions/ht062552\">Novo</a>"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "MSI"
+msgstr "MSI"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11"
+msgstr "F11"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Samsung"
+msgstr "Samsung"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc, F12, F2"
+msgstr "Esc, F12, F2"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Sony"
+msgstr "Sony"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11, Esc, F10"
+msgstr "F11, Esc, F10"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Toshiba"
+msgstr "Toshiba"
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Others&hellip;"
+msgstr "Otros&hellip;"
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"On many computers, a message is displayed very briefly when switching on "
+"that also explains how to get to the Boot Menu or edit the BIOS settings."
+msgstr ""
+"En muchas computadoras, cuando se encienden, se muestra un mensaje "
+"brevemente que también explica cómo llegar al Menú de Arranque o editar la "
+"configuración de la BIOS."
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr "Enciende la computadora."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Immediately press several times the first possible Boot Menu key identified "
+"in step 2."
+msgstr ""
+"Presiona repetidamente la primera tecla posible identificada en el paso 2 de "
+"manera inmediata."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on another operating system or returns an error "
+"message, shut down the computer again and repeat step 3 for all the possible "
+"Boot Menu keys identified in step 2."
+msgstr ""
+"SI la computadora arranca en otro sistema operativo, o te da un mensaje de "
+"error, apágala y enciéndela de nuevo, repitiendo el paso 3 con todas las "
+"teclas posibles para acceder al Menú de Arranque que has identificado en el "
+"paso 2."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If a Boot Menu with a list of devices appears, select your USB stick and "
+"press <b>Enter</b>."
+msgstr ""
+"Si aparece un Menú de Arranque con una lista de dispositivos, selecciona tu "
+"memoria USB y presiona <b>Enter</b>."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+"Si la computadora inicia en Tails, aparece el Gestor de Arranque y Tails "
+"arranca automáticamente luego de 4 segundos."
+
+#. type: Content of: <ol><li><p>
+#, fuzzy
+#| msgid ""
+#| "[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Black screen "
+#| "('GNU GRUB') with Tails logo and 2 options: 'Tails' and 'Tails "
+#| "(Troubleshooting Mode)'.\"]]"
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png link=\"no\" alt=\"Pantalla negra "
+"('GNU GRUB') con el logo de Tails y 2 opciones 'Tails' y 'Tails "
+"(Troubleshooting Mode)'.\"]]"
+
+#~ msgid ""
+#~ "If the Boot Menu key that works on your computer is a different one than "
+#~ "the first in the list, please let us know so we can improve the list. You "
+#~ "can write to [[sajolida@pimienta.org]] (private email)."
+#~ msgstr ""
+#~ "Si la tecla del Menú de Arranque que funciona en tu ordenador es distinta "
+#~ "de la primera en la lista, por favor dínoslo para que la actualicemos. "
+#~ "Puedes escribir a [[sajolida@pimienta.org]] (email privado)."
+
+#, fuzzy
+#~| msgid ""
+#~| "     [[!img install/inc/screenshots/boot_loader_menu.png link=\"no\" "
+#~| "alt=\"Black screen with Tails artwork. Boot Loader Menu with two options "
+#~| "'Tails' and 'Tails (Troubleshooting Mode)'.\"]]\n"
+#~ msgid ""
+#~ "[[!img install/inc/screenshots/syslinux.png link=\"no\" alt=\"Black "
+#~ "screen ('SYSLINUX') with Tails logo and 2 options: 'Tails' and 'Tails "
+#~ "(Troubleshooting Mode)'.\"]]"
+#~ msgstr ""
+#~ "     [[!img install/inc/screenshots/boot_loader_menu.png link=\"no\" "
+#~ "alt=\"Pantalla negra con el logo de Tails. Menú de arranque con dos "
+#~ "opciones 'Tails' y 'Tails (Modo seguro)'.\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   <div class=\"bug mac-dvd\">\n"
+#~| "   <p>If your computer fails to start on the Tails DVD, then it might "
+#~| "currently\n"
+#~| "   be impossible to start Tails on your Mac model.</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "If none of these options work, we are sorry but you might not be able to "
+#~ "use Tails on this computer. Feel free to [[!toggle id=\"report-toggle-2\" "
+#~ "text=\"report the problem to our help desk\"]]."
+#~ msgstr ""
+#~ "   <div class=\"bug mac-dvd\">\n"
+#~ "   <p>Si tu computador no arranca desde el DVD Tails, tal vez sea "
+#~ "imposible por ahora arrancar Tails desde tu modelo de Mac.</p>\n"
+#~ "   </div>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "1. <p>\n"
+#~| "     <span class=\"mac-dvd\">Make sure that the DVD is inserted in the "
+#~| "computer.</span>\n"
+#~| "     <span class=\"usb\">Shut down the computer while leaving the <span "
+#~| "class=\"windows linux mac\">first</span> USB stick plugged in.</span>\n"
+#~| "   </p>\n"
+#~| "   <p class=\"mac-dvd clone upgrade-tails\">Shut down the computer.</p>\n"
+#~| "   <p class=\"clone\">Plug in the other Tails USB stick that you want "
+#~| "to\n"
+#~| "   <span class=\"install-clone debian windows linux mac\">install</"
+#~| "span>\n"
+#~| "   <span class=\"upgrade\">upgrade</span>\n"
+#~| "   from.</p>\n"
+#~| "   <p class=\"upgrade-tails\">Unplug your Tails USB stick while leaving "
+#~| "the intermediary USB stick plugged in.</p>\n"
+#~ msgid ""
+#~ "1. <p>\n"
+#~ "     <span class=\"usb\">Shut down the computer while leaving the USB "
+#~ "stick plugged in.</span>\n"
+#~ "   </p>\n"
+#~ "   <p class=\"clone upgrade-tails\">Shut down the computer.</p>\n"
+#~ "   <p class=\"clone\">Plug in the other Tails USB stick that you want to\n"
+#~ "   <span class=\"install-clone mac-clone\">install</span>\n"
+#~ "   <span class=\"upgrade\">upgrade</span>\n"
+#~ "   from.</p>\n"
+#~ "   <p class=\"upgrade-tails\">Unplug your Tails USB stick while leaving "
+#~ "the intermediary USB stick plugged in.</p>\n"
+#~ msgstr ""
+#~ "1. <p>\n"
+#~ "     <span class=\"mac-dvd\">Asegúrate que el DVD está insertado en la "
+#~ "computadora.</span>\n"
+#~ "     <span class=\"usb\">Apaga la computadora mientras dejas la <span "
+#~ "class=\"windows linux mac\">primera</span> memoria USB conectada.</span>\n"
+#~ "   </p>\n"
+#~ "   <p class=\"mac-dvd clone upgrade-tails\">Apaga la computadora</p>\n"
+#~ "   <p class=\"clone\">Conecta la otra memoria USB desde la cual quieres\n"
+#~ "   <span class=\"install-clone debian windows linux mac\">instalar</"
+#~ "span>\n"
+#~ "   <span class=\"upgrade\">actualizar</span>\n"
+#~ "   Tails.</p>\n"
+#~ "   <p class=\"upgrade-tails\">Desconecta tu memoria USB de Tails mientras "
+#~ "dejas la memoria USB intermediaria conectada.</p>\n"
+
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   <div class=\"note install-clone debian expert windows linux\">\n"
+#~| "   <p>Most computers do not start on Tails by default. If it does you\n"
+#~| "   are lucky. Otherwise, if the computer starts on\n"
+#~| "   <span class=\"debian expert\">Debian, Ubuntu, or Linux Mint</span>\n"
+#~| "   <span class=\"windows\">Windows,</span>\n"
+#~| "   <span class=\"linux\">Linux,</span>\n"
+#~| "   <span class=\"install-clone\">Windows or Linux,</span>\n"
+#~| "   refer to  [[!toggle id=\"not_at_all\" text=\"the troubleshooting "
+#~| "section\n"
+#~| "   about Tails not starting at all\"]].</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "   <div class=\"note install-clone expert windows linux\">\n"
+#~ "   <p>Most computers do not start on Tails by default. If it does you\n"
+#~ "   are lucky. Otherwise, if the computer starts on\n"
+#~ "   <span class=\"expert\">Debian, Ubuntu, or Linux Mint</span>\n"
+#~ "   <span class=\"windows\">Windows,</span>\n"
+#~ "   <span class=\"linux\">Linux,</span>\n"
+#~ "   <span class=\"install-clone\">Windows or Linux,</span>\n"
+#~ "   refer to  [[!toggle id=\"not_at_all\" text=\"the troubleshooting "
+#~ "section\n"
+#~ "   about Tails not starting at all\"]].</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"note install-clone debian expert windows linux\">\n"
+#~ "   <p>Muchas computadoras no inician en Tails por defecto. Si lo hace "
+#~ "entonces\n"
+#~ "   eres suertudo. Si la computadora inicia en\n"
+#~ "   <span class=\"debian expert\">Debian, Ubuntu, o Linux Mint</span>\n"
+#~ "   <span class=\"windows\">Windows,</span>\n"
+#~ "   <span class=\"linux\">Linux,</span>\n"
+#~ "   <span class=\"install-clone\">Windows o Linux,</span>\n"
+#~ "   consulta  [[!toggle id=\"not_at_all\" text=\"la sección de resolución "
+#~ "de problemas\n"
+#~ "   acerca de Tails no iniciando en absoluto\"]].</p>\n"
+#~ "   </div>\n"
+
+#~ msgid "   [[!toggleable id=\"not_at_all\" text=\"\"\"\n"
+#~ msgstr "   [[!toggleable id=\"not_at_all\" text=\"\"\"\n"
+
+#~ msgid ""
+#~ "   <span class=\"hide\">[[!toggle id=\"not_at_all\" text=\"\"]]</span>\n"
+#~ msgstr ""
+#~ "   <span class=\"hide\">[[!toggle id=\"not_at_all\" text=\"\"]]</span>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   Tails does not start entirely\n"
+#~| "   -----------------------------\n"
+#~ msgid ""
+#~ "   Troubleshooting: Tails does not start at all\n"
+#~ "   --------------------------------------------\n"
+#~ msgstr ""
+#~ "   Tails no arranca completamente\n"
+#~ "   ------------------------------\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   The following section applies if the <span class=\"application\">Boot "
+#~| "Loader Menu</span> appears but not\n"
+#~| "   <i>Tails Greeter</i> when starting Tails.\n"
+#~ msgid ""
+#~ "   The following section applies if the <span class=\"application\">Boot "
+#~ "Loader Menu</span>\n"
+#~ "   does not appear when starting on a USB stick.\n"
+#~ msgstr ""
+#~ "   La siguiente sección aplica si el <span class=\"application\">Menú de "
+#~ "cargador de arranque</span> aparece, pero no aparece el\n"
+#~ "   <i>Tails Greeter</i> al arracar Tails.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   [[!img install/inc/screenshots/desktop.png link=\"no\" alt=\"Tails "
+#~| "desktop\"]]\n"
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/boot_menu.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/desktop.png link=\"no\" "
+#~ "alt=\"EscritorioTails\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "   <div class=\"bug mac-dvd\">\n"
+#~| "   <p>If your computer fails to start on the Tails DVD, then it might "
+#~| "currently\n"
+#~| "   be impossible to start Tails on your Mac model.</p>\n"
+#~| "   </div>\n"
+#~ msgid ""
+#~ "   <div class=\"bug mac mac-clone\">\n"
+#~ "   <p>If your computer fails to start on the USB stick, then it might\n"
+#~ "   currently be impossible to start Tails on your Mac model.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac-dvd\">\n"
+#~ "   <p>Si tu computador no arranca desde el DVD Tails, tal vez sea "
+#~ "imposible por ahora arrancar Tails desde tu modelo de Mac.</p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "After 30&ndash;60 seconds, another screen called <span "
+#~ "class=\"application\">Tails Greeter</span> appears."
+#~ msgstr ""
+#~ "Después de 30&ndash;60 segundos aparece otra pantalla llamada <span "
+#~ "class=\"application\">Tails Greeter</span>."
+
+#~ msgid ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_mac_dvd_back_1.png "
+#~ "class=\"mac-dvd qrcode\" link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_mac_dvd_back_1.png "
+#~ "class=\"mac-dvd qrcode\" link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_debian_usb_back_1.png "
+#~ "class=\"debian qrcode\" link=\"no\" alt=\"\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/qrcodes/tails_net_install_debian_usb_back_1.png "
+#~ "class=\"debian qrcode\" link=\"no\" alt=\"\"]]\n"
+
+#~ msgid ""
+#~ "[[!img install/inc/infography/restart-on-intermediary-tails.png "
+#~ "link=\"no\" class=\"clone windows linux mac-usb\" alt=\"Computer "
+#~ "restarted on USB stick on the left\"]]\n"
+#~ msgstr ""
+#~ "[[!img install/inc/infography/restart-on-intermediary-tails.png "
+#~ "link=\"no\" class=\"clone windows linux mac-usb\" alt=\"Computadora "
+#~ "reiniciada en la memoria USB en la izquierda\"]]\n"
+
+#~ msgid ""
+#~ "[[!img install/inc/infography/restart-on-dvd.png link=\"no\" class=\"mac-"
+#~ "dvd\" alt=\"Computer restarted on DVD\"]]\n"
+#~ msgstr ""
+#~ "[[!img install/inc/infography/restart-on-dvd.png link=\"no\" class=\"mac-"
+#~ "dvd\" alt=\"Computadora reiniciada en DVD\"]]\n"
+
+#~ msgid "<div class=\"note clone\">\n"
+#~ msgstr "<div class=\"note clone\">\n"
+
+#~ msgid ""
+#~ "<p>The following instructions assume that the other Tails that you are\n"
+#~ "<span class=\"install-clone debian windows linux mac\">installing</span>\n"
+#~ "<span class=\"upgrade\">upgrading</span>\n"
+#~ "from is on a USB stick. You can also\n"
+#~ "<span class=\"install-clone debian windows linux mac\">install</span>\n"
+#~ "<span class=\"upgrade\">upgrade</span>\n"
+#~ "from a Tails DVD in a similar way.</p>\n"
+#~ msgstr ""
+#~ "<p>Las siguientes instrucciones asumen que el otro Tails que estás desde "
+#~ "el cual\n"
+#~ "<span class=\"install-clone debian windows linux mac\">instalando</span>\n"
+#~ "<span class=\"upgrade\">actualizando</span>\n"
+#~ "se encuentra en una memoria USB. También puedes\n"
+#~ "<span class=\"install-clone debian windows linux mac\">instalar</span>\n"
+#~ "<span class=\"upgrade\">actualizar</span>\n"
+#~ "desde un DVD de Tails de un modo similar.</p>\n"
+
+#~ msgid ""
+#~ "   <p class=\"mac-dvd\">Immediately press-and-hold the\n"
+#~ "   <b>Option</b> key (<span class=\"keycap\">Alt</span> key) until a list "
+#~ "of possible startup\n"
+#~ "   disks appears.</p>\n"
+#~ msgstr ""
+#~ "   <p class=\"mac-dvd\">Oprime imediatamente la tecla\n"
+#~ "   <b>Opción</b> (<span class=\"keycap\">Alt</span> key) hasta que "
+#~ "aparezca la lista de discos de arranque.</p>\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/mac_option_key.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"'Option' or 'alt' key in the bottom left of Mac "
+#~ "keyboard\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/mac_option_key.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Tecla 'opción' o 'alt' en la parte inferior izquierda "
+#~ "del teclado de Mac\"]]\n"
+
+#~ msgid ""
+#~ "   <p class=\"mac-dvd\">Choose the DVD and press\n"
+#~ "   <b>Enter</b>. The DVD\n"
+#~ "   might be labeled <b>Windows</b> like in the following screenshot:</p>\n"
+#~ msgstr ""
+#~ "   <p class=\"mac-dvd\">Elige el DVD y presiona\n"
+#~ "   <b>Enter</b>. El DVD\n"
+#~ "   puede estar etiquetado como <b>Windows</b> como en la siguiente "
+#~ "captura de pantalla:</p>\n"
+
+#~ msgid ""
+#~ "   [[!img install/inc/screenshots/mac_startup_dvd.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Screen with the logo of an internal hard disk labeled "
+#~ "'Macintosh HD' and a DVD labelled 'Windows' (selected)\"]]\n"
+#~ msgstr ""
+#~ "   [[!img install/inc/screenshots/mac_startup_dvd.png class=\"mac-dvd\" "
+#~ "link=\"no\" alt=\"Pantalla con el logo de un disco duro interno "
+#~ "etiquetado 'Macintosh HD' y un DVD etiquetado 'Windows' (seleccionado)"
+#~ "\"]]\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug mac\">\n"
+#~ "   <p>If only your Macintosh hard drive appears, you can try\n"
+#~ "   reinstalling an intermediary Tails from [[Windows using\n"
+#~ "   <i>Universal USB Installer</i>|win/usb]].</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac\">\n"
+#~ "   <p>Si solo aparece tu disco duro Macintosh, puedes intentar\n"
+#~ "   reinstalando un Tails intermedio desde [[Windows usando\n"
+#~ "   <i>Universal USB Installer</i>|win/usb]].</p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "   <div class=\"bug mac-usb mac-clone\">\n"
+#~ "   <p>If your computer fails to start on the intermediary Tails, you can\n"
+#~ "   try these other two methods:</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug mac-usb mac-clone\">\n"
+#~ "   <p>Si tu computadora falla al iniciar en el Tails intermedio, puedes\n"
+#~ "   intentar estos otros dos métodos:</p>\n"
+
+#~ msgid ""
+#~ "   <ul>\n"
+#~ "     <li class=\"mac-usb\">[[Install from another operating system|"
+#~ "install]]</li>\n"
+#~ "     <li class=\"mac-usb mac-clone\">[[Burn a DVD and then install|mac/"
+#~ "dvd]]</li>\n"
+#~ "     <li class=\"mac-clone\">[[Install from the command line|mac/usb]]</"
+#~ "li>\n"
+#~ "   </ul>\n"
+#~ msgstr ""
+#~ "   <ul>\n"
+#~ "     <li class=\"mac-usb\">[[Instalar desde otro sistema operativo|"
+#~ "install]]</li>\n"
+#~ "     <li class=\"mac-usb mac-clone\">[[Quemar un DVD y luego instalar|mac/"
+#~ "dvd]]</li>\n"
+#~ "     <li class=\"mac-clone\">[[IInstalar por linea de comando|mac/usb]]</"
+#~ "li>\n"
+#~ "   </ul>\n"
+
+#~ msgid ""
+#~ "   <p>If you tried them already but failed as well, then it might\n"
+#~ "   currently be impossible to start Tails on your Mac model.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <p>Si ya lo has intentado sin lograrlo, tal vez sea imposible arrancar "
+#~ "Tails desde tu modelo de Mac.</p>\n"
+#~ "   </div>\n"
+
+#~ msgid ""
+#~ "<p class=\"usb\">The most difficult part is over!\n"
+#~ "Now grab your second USB stick as it is time to install the final Tails "
+#~ "on it.</p>\n"
+#~ msgstr ""
+#~ "<p class=\"usb\">La parte más difícil ya está hecha!\n"
+#~ "Ahora toma la segunda memoria USB, que ya es tiempo de instalar el Tails "
+#~ "final en ella.</p>\n"
+
+#~ msgid ""
+#~ "<p class=\"usb\">It is important to install the final Tails as it allows\n"
+#~ "you to store some of your documents and configuration\n"
+#~ "and benefit from automatic security upgrades.</p>\n"
+#~ msgstr ""
+#~ "<p class=\"usb\">Es importante instalar el Tails final porque permite\n"
+#~ "guardar algunos de tus documentos y configuraciones\n"
+#~ "y beneficiarte de las actualizaciones de seguridad automáticas.</p>\n"
+
+#~ msgid ""
+#~ "<p class=\"clone mac-dvd\">This was a first but important step!\n"
+#~ "<span class=\"mac-dvd\">Now grab the USB stick on which you want to "
+#~ "install Tails.</span></p>\n"
+#~ msgstr ""
+#~ "<p class=\"clone mac-dvd\">¡ Este ha sido un paso  importante !\n"
+#~ "<span class=\"mac-dvd\">Ahora toma la nueva memoria USB sobre la cual "
+#~ "quieres instalar Tails.</span></p>\n"
+
+#~ msgid ""
+#~ "[[!img install/inc/infography/plug-source-usb.png link=\"no\" "
+#~ "class=\"install-clone mac-clone\" alt=\"USB stick plugged on the "
+#~ "left\"]]\n"
+#~ msgstr ""
+#~ "[[!img install/inc/infography/plug-source-usb.png link=\"no\" "
+#~ "class=\"install-clone mac-clone\" alt=\"Memoria USB conectada en la "
+#~ "izquierda\"]]\n"

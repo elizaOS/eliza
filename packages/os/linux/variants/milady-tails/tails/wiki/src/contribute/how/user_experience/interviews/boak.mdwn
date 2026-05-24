@@ -1,0 +1,150 @@
+[[!meta title="BOAK, January 2023"]]
+
+[[!img boak.jpg link="no" alt="Russian train derailed and crashed on dirt road"]]
+
+**Can you tell us about who you are and what you do?**
+
+[BOAK](https://t.me/boakom) is a revolutionary organization of anarchists from
+the former Soviet Union, mostly Russia but other countries as well.
+
+We are working on a social revolution to change the political system in Russia
+according to anarcho-communist views. We are growing our organization and
+spreading our ideals and methods.
+
+Right now, our ideals are leading us to fight against the war in Ukraine,
+attacking the Russian war machine and the State as a whole, and helping other
+people to do the same.
+
+**How are you fighting against the war in Ukraine right now?**
+
+- We attacked with fire some cell towers near the Ukrainian border that were
+  used by the Russian military for coordination.
+
+- We sabotaged the railroad tracks leading to missile and artillery warehouses
+  in the Moscow and Vladimir regions.
+
+- We are working with sympathizers and created a solidarity fund to create more
+  groups and spread our struggle.
+
+  Sympathizers attacked military recruiting centers, railroad electricity
+  boxes, and railroad tracks to stop military cargo transportation.
+
+**How do you use Tails in your struggle and why it is important?**
+
+We have been using Tails for about 7 years.
+
+We use Tails, to:
+
+- Communicate securely inside our organization.
+
+- Research targets and methods on how to attack them.
+
+- Communicate with sympathizers.
+
+- Manage our public communication channels.
+
+Tails is very important to protect us from repression:
+
+- By being anonymous on the Internet, so we cannot be tracked through our
+  Internet service providers or digital traces.
+
+- By not leaving any compromising information on our devices, like files that
+  could be found by the police in case our members are arrested.
+
+Tails also has many apps that are useful for our struggle, so we don't need any
+other OS. It saves time and resources, for example when editing photos or
+videos, encrypting communications, deleting metadata, deleting files securely,
+using cryptocurrencies, writing articles, managing our finances, and so on.
+
+**What are the 3 things that you like the most in Tails?**
+
+The 3 most important tools for us are:
+
+- *Tor* that is fully integrated for web browsing, email, messaging, and so on.
+  There's no risk of exposing ourselves.
+
+- *Kleopatra* and PGP in general, to encrypt our messages.
+
+- *Tails Installer* that makes it very easy to create another Tails if you
+  already have one.
+
+The 3 most important aspects of Tails for us are:
+
+- Security
+
+  Tails keeps us safe.
+
+- Multifunctionality
+
+  Tails is almost all-in-one for us with no need for other devices or tools. If
+  Tails doesn't include a tool, you can add it yourself.
+
+- User-friendly
+
+  New people can start working with Tails rather easily. They don't need to be
+  "hackers". Sometimes, we even teach people how to use Tails over email.
+
+**What are the things that you don't like or that are missing in Tails and we should improve?**
+
+There isn't anything that we don't like, only minor issues:
+
+- We have problems with Wi-Fi drivers on some devices and need to install them
+  separately. It would be good to support more hardware.
+
+- We miss some tools like more messengers (*Telegram*) and crypto wallets
+  (*Monero*). It's a minor issue because we can add them manually.
+
+- We would like to be able to copy an entire Tails USB stick *including* the
+  Persistent Storage. This can be useful when you need to add new members and
+  give them access to keys.
+
+**Which applications are missing and how do you install them right now?**
+
+- The *Telegram* messenger
+
+  We download and use an AppImage right now. We have to restore the user
+  profile directory by copy-paste after restarting Tails.
+
+- The *Feather* Monero wallet
+
+  Thank you for recommending it. It works very well!
+
+- The *Pitivi* video editor
+
+  We used to use the *OpenShot* AppImage, but we changed to installing *Pitivi*
+  using the Additional Software feature.
+
+**How can Tails supporters help you in your fight against the Russian regime?**
+
+- Pressure your own government to fight against Putin's regime, or at least not
+  support it.
+
+- Spread our ideals, as we believe that our struggle is part of an international
+  struggle of all people of Earth against oppression.
+
+- [Donate to our revolutionary fund.](https://t.me/rev_anarchy_fond/9)
+
+**What is the biggest hurdle to Tails being adopted by more activists in Russia?**
+
+We believe that the biggest hurdle is underestimating the danger of repression.
+
+Until recently lots of people thought that, if they didn't do anything against
+the law, they would be safe and would not need tools like Tails.
+
+Lots of people find it too complicated to use Tails and Tor. They only use a
+VPN, which puts their lives and freedom at risk, unfortunately.
+
+Tor seems to be a threat to the Russian State, because Tor is being banned in
+Russia and you need to use bridges. This also makes using Tor more complicated.
+
+But in Russia, the law only works in the interest of the State and the people
+in power. Actually, this is a universal problem, but it's more acute right now
+in Russia.
+
+You can consider yourself a law abiding citizen if you want, but if you are
+against the people in power, you are in danger.
+
+And if you want to stay free and continue to act, you need to protect yourself.
+ 
+Lately, a lot more people are beginning to understand this, and we believe that
+the popularity of tools like Tails will grow.

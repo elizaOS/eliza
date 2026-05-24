@@ -1,0 +1,157 @@
+[[!meta title="Set up a Tails mirror"]]
+
+<div id="intro">
+
+<p>Setting up a Tails HTTPS mirror helps Tails users
+downloading it faster and more reliably.</p>
+
+[[!toc levels=2]]
+
+</div>
+
+HTTPS
+=====
+
+Requirements
+------------
+
+In order to efficiently help users download Tails images and upgrades, you need:
+
+- a **1Gbps** Internet uplink or faster
+
+- **80 GiB** of disk space
+
+- sufficiently privileged access to an **HTTPS** web server
+
+- ability to also serve the content over Rsync
+
+- **unfiltered access** to your web server (no GeoIP blocking, no IP bans, no
+  CAPTCHAs, etc.): we want people everywhere to be able to download Tails
+
+- either a system operated by a professional team with on-call people 24/7,
+  or a high-availability setup
+
+If you satisfy these practical requirements, please read on!
+
+The big picture
+------------------
+
+All downloads are currently served from a diverse pool of mirrors
+(see the [[design document|contribute/design/mirrors]] for details).
+
+Every HTTPS mirror makes our files available under a fixed URL
+(e.g. `https://yourdomain.org/pub/tails/`)
+that contains per-version sub-directories (such as
+`https://yourdomain.org/pub/tails/stable/tails-i386-lenny-0.6.2/`).
+
+Our automated server-side redirector periodically checks each mirrors' health
+(using Rsync) and is able to redirect users to the nearest mirror
+based on IP geolocation data.
+
+We only accept mirrors that provide a SSL certificate deemed valid by
+Firefox for the exact hostname used.
+
+Pick a hostname for your mirror
+-------------------------------
+
+Your web server needs to answer HTTP and HTTPS requests sent to
+a _dedicated_ hostname that is unique, within our mirror pool.
+
+Use a hostname of your choice, under a domain you control.
+For example, if you control `example.com`, you can call your Tails
+mirror `tails.example.com`.
+
+Manual set up
+-------------------------
+
+### 1. Set up your web server
+
+Set up a virtual host for the hostname chosen at the
+previous step. The virtual host will need to
+have indexing enabled.
+
+Files must be served over HTTP and HTTPS. To be helpful in our
+context, this requires a certificate that is considered valid by
+mainstream web browsers; you can get such a certificate free of charge,
+from [Let's Encrypt](https://letsencrypt.org/) for example.
+
+#### Apache configuration example
+
+	<VirtualHost YOUR_WEBSERVER_IP:80>
+	   ServerName yourdomain.org
+	   RewriteEngine On
+	   RewriteRule ^/?(.*) https://%{SERVER_NAME}/pub/$1 [R=permanent,L]
+	</VirtualHost>
+
+	<VirtualHost YOUR_WEBSERVER_IP:443>
+	   ServerName yourdomain.org
+	   ServerAdmin YOUR_EMAIL
+
+	   SSLEngine on
+	   SSLCertificateFile /etc/apache2/ssl/apache.crt
+	   SSLCertificateKeyFile /etc/apache2/ssl/apache.key
+
+	   DocumentRoot /var/www/YOUR_PATH/
+	   <Directory /var/www/YOUR_PATH/>
+	      Options Indexes
+	      AllowOverride None
+	      IndexIgnore README.html
+	      IndexOptions FancyIndexing FoldersFirst IgnoreCase NameWidth=50
+	      IndexOrderDefault Descending Date
+	   </Directory>
+	</VirtualHost>
+
+<div class="tip">
+You can harden this configuration using the
+<a href="https://mozilla.github.io/server-side-tls/ssl-config-generator/">
+Mozilla SSL Configuration Generator</a>.
+</div>
+
+### 2. Download the files
+
+Download a snapshot of the current Tails files:
+
+	rsync -rt --delete \
+	         rsync.tails.net::amnesia-archive /var/www/YOUR_PATH/
+
+<a id="cron"></a>
+
+### 3. Schedule the pulling of the files
+
+Your mirror should sync every hour + a random time (maximum 40 minutes).
+Use `cron` or equivalent to schedule the same `rsync` command
+as above. For example, you can create a file in `/etc/cron.d/` with
+this content:
+
+    0 * * * * root sleep $(shuf --input-range=0-2400 --head-count=1) && flock -n /var/run/lock/tails-mirror-rsync rsync -rt --delete rsync.tails.net::amnesia-archive /var/www/YOUR_PATH/
+
+### 4. Set up a read-only Rsync server
+
+You must also provide the archive via Rsync, as this is needed for our setup to
+automatically determine the health of your mirror. Please take note of the
+Rsync URL and include it when you send your mirrors' information to us.
+
+You can now [[ask for your mirror to be added to the pool|mirror#http-pool]].
+
+<a id="http-pool"></a>
+
+Go wild: ask for your mirror to be added to the pool
+----------------------------------------------------
+
+As soon as your web and Rsync servers are ready, please email us the HTTP and Rsync
+URLs so that we can add your mirror to the pool.
+
+<div class="note">
+
+We will publish your email address, associated with the URL of your
+mirror, in a file hosted on our website. If you are not comfortable
+with this, give us an email alias that we can publish without
+revealing additional information, such as
+<emph>webmaster@your-mirror.org</emph>.
+
+</div>
+
+# Talk to us
+
+To get in touch with the sysadmins who manage our pool of mirror, write to
+<sysadmins@tails.net> ([[OpenPGP key|doc/about/openpgp_keys#sysadmins]]).

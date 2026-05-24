@@ -1,0 +1,24 @@
+#!/usr/bin/ruby
+#
+# Usage:   apt-snapshots-serials-cat-json APT_SNAPSHOTS_CONFIG_DIR
+# Example: apt-snapshots-serials-cat-json config/APT_snapshots.d/
+
+require 'json'
+
+usage_str = 'Usage: apt-snapshots-serials-cat-json APT_SNAPSHOTS_CONFIG_DIR'
+!ARGV.empty? || raise(usage_str)
+config_dir = ARGV[0]
+!config_dir.empty? || raise(usage_str)
+
+serials = {}
+
+origins = Dir.glob("#{config_dir}/*").map do |origin_dir|
+  origin_dir.sub("#{config_dir}/", '')
+end
+
+origins.map do |origin|
+  serial_file = "#{config_dir}/#{origin}/serial"
+  serials[origin] = File.open(serial_file) { |f| f.read.chomp }
+end
+
+puts JSON.dump(serials)

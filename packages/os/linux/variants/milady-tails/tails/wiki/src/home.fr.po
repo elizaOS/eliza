@@ -1,0 +1,212 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2025-11-02 18:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Welcome to Tails!\"]]"
+msgstr "[[!meta title=\"Bienvenue dans Tails !\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta robots=\"noindex\"]] [[!meta script=\"home\"]]"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr ""
+"<a href=\"https://check.torproject.org/?lang=fr\">Vérification de Tor</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!meta title=\"Dear Tails user,\"]]"
+#~ msgstr "[[!meta title=\"Chères personnes utilisant Tails,\"]]"
+
+#~ msgid ""
+#~ "The cryptographic parameters of LUKS from Tails 5.12 or earlier are weak "
+#~ "against a state-sponsored attacker with physical access to your device."
+#~ msgstr ""
+#~ "Les paramètres cryptographiques de LUKS jusqu'à Tails 5.12 sont "
+#~ "vulnérables contre un adversaire étatique ayant un accès physique à votre "
+#~ "périphérique."
+
+#~ msgid "[[Read our security advisory and upgrade guide.|security/argon2id]]"
+#~ msgstr ""
+#~ "[[Lisez notre bulletin de sécurité et notre guide de mise à jour.|"
+#~ "security/argon2id]]"
+
+#~ msgid ""
+#~ "<a id=\"tor_check\" href=\"https://check.torproject.org/\"> [[!img lib/"
+#~ "onion.png link=\"no\" alt=\"\"]] <span>Tor check</span> </a>"
+#~ msgstr ""
+#~ "<a id=\"tor_check\" href=\"https://check.torproject.org/\"> [[!img lib/"
+#~ "onion.png link=\"no\" alt=\"\"]] <span>Vérification de Tor</span> </a>"
+
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"home/donate.inline.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "Today, we are asking you to help Tails. Everybody can get Tails for free "
+#~ "because we believe that nobody should have to pay to be safe while using "
+#~ "computers. And we will keep it this way, with your support."
+#~ msgstr ""
+#~ "Aujourd'hui, nous vous demandons d'aider Tails. Tout le monde peut "
+#~ "obtenir Tails gratuitement car nous croyons que personne ne devrait avoir "
+#~ "à payer pour être protégé lors de l'utilisation d'un ordinateur. Et nous "
+#~ "continuerons à le faire, avec votre soutien."
+
+#~ msgid ""
+#~ "<span class=\"highlight\">If everyone reading this gave $5, our "
+#~ "fundraiser would be done in one day.</span> The price of a USB stick is "
+#~ "all we need."
+#~ msgstr ""
+#~ "<span class=\"highlight\">Si toutes les personnes qui lisent ceci "
+#~ "donnaient 5 €, notre collecte de fonds serait terminée en un jour.</span> "
+#~ "Nous n'avons besoin que de l’équivalent du prix d'une clé USB."
+
+#~ msgid ""
+#~ "But, not everyone can donate. So when you do, you are offering to many "
+#~ "others who need it, this precious tool that is Tails."
+#~ msgstr ""
+#~ "Mais tout le monde ne peut pas donner. Donc lorsque vous faites un don, "
+#~ "vous offrez aux nombreuses personnes qui en ont besoin cet outil précieux "
+#~ "qu'est Tails."
+
+#~ msgid "[[Donate now to fight surveillance and censorship!|donate]]"
+#~ msgstr ""
+#~ "[[Faites un don maintenant pour combattre la surveillance et la censure !|"
+#~ "donate]]"
+
+#~ msgid ""
+#~ "<strong>Automatic upgrades are broken since Tails 4.14 (December 15).</"
+#~ "strong> ([[!tails_ticket 18127]])"
+#~ msgstr ""
+#~ "<strong>Les mises à jour automatiques sont cassées depuis Tails 4.14 (15 "
+#~ "décembre 2020).</strong> ([[!tails_ticket 18127]])"
+
+#~ msgid ""
+#~ "If you haven't upgraded your Tails since December, you should upgrade to "
+#~ "the latest version of Tails."
+#~ msgstr ""
+#~ "Si vous n'avez pas mis à jour Tails depuis décembre, vous devriez mettre "
+#~ "à jour vers la dernière version de Tails."
+
+#~ msgid "To do so, you can either:"
+#~ msgstr "Pour cela, vous pouvez au choix :"
+
+#~ msgid "Do a [[manual upgrade|doc/upgrade#manual]]."
+#~ msgstr "Faire une [[mise à jour manuelle|doc/upgrade#manual]]."
+
+#~ msgid "Fix the automatic upgrade from a terminal. To do so:"
+#~ msgstr "Corriger la mise à jour automatique depuis un terminal. Pour cela :"
+
+#~ msgid ""
+#~ "Start Tails and set up an [[administration password|doc/first_steps/"
+#~ "welcome_screen/administration_password]]."
+#~ msgstr ""
+#~ "Démarrer Tails et définissez un [[mot de passe d'administration|doc/"
+#~ "first_steps/welcome_screen/administration_password]]."
+
+#~ msgid "In a terminal, execute the following command:"
+#~ msgstr "Dans le terminal, exécutez la commande suivante :"
+
+#~ msgid ""
+#~ "<code>torsocks curl --silent https://tails.boum.org/isrg-root-x1-cross-"
+#~ "signed.pem \\\n"
+#~ "| sudo tee --append /usr/local/etc/ssl/certs/tails.boum.org-CA.pem \\\n"
+#~ "&amp;&amp; systemctl --user restart tails-upgrade-frontend\n"
+#~ "</code>"
+#~ msgstr ""
+#~ "<code>torsocks curl --silent https://tails.boum.org/isrg-root-x1-cross-"
+#~ "signed.pem \\\n"
+#~ "| sudo tee --append /usr/local/etc/ssl/certs/tails.boum.org-CA.pem \\\n"
+#~ "&amp;&amp; systemctl --user restart tails-upgrade-frontend\n"
+#~ "</code>"
+
+#~ msgid ""
+#~ "This command is a single command that wraps across several lines.  Copy "
+#~ "and paste the entire block at once and make sure that it executes as a "
+#~ "single command."
+#~ msgstr ""
+#~ "Cette commande est une commande unique répartie sur plusieurs lignes.  "
+#~ "Copier et coller le bloc complet en une seule fois et vérifier qu'elle "
+#~ "s'exécute comme une commande unique."
+
+#~ msgid ""
+#~ "Approximately 30 seconds later, you should be prompted to upgrade to the "
+#~ "latest version of Tails. If no prompt appear, you might already be "
+#~ "running the latest version of Tails."
+#~ msgstr ""
+#~ "Environ 30 secondes plus tard, on devrait vous demander de mettre à jour "
+#~ "vers la dernière version de Tails. Si la demande n'apparaît pas, vous "
+#~ "exécutez peut-être la dernière version de Tails."
+
+#, fuzzy
+#~| msgid ""
+#~| "<a id=\"donate\" class=\"random-message\" href=\"https://tails.boum.org/"
+#~| "donate?r=h\" data-display-probability=\"0.1\">"
+#~ msgid ""
+#~ "<a id=\"online-privacy\" class=\"random-message survey\" href=\"https://"
+#~ "survey.tails.boum.org/index.php/229366?lang=en\" data-display-"
+#~ "probability=\"0.05\" data-display-offset=\"1\">"
+#~ msgstr ""
+#~ "<a id=\"donate\" class=\"random-message\" href=\"https://tails.boum.org/"
+#~ "donate?r=h\" data-display-probability=\"0.1\">"
+
+#, fuzzy
+#~| msgid "[[!img \"lib/onion.png\" link=\"no\"]]\n"
+#~ msgid "[[!img \"lib/onion.png\" link=\"no\"]]"
+#~ msgstr "[[!img \"lib/onion.png\" link=\"no\"]]\n"
+
+#~ msgid "<a href=\"https://tails.boum.org/donate?r=home\">Donate</a>"
+#~ msgstr "<a href=\"https://tails.boum.org/donate?r=home\">Faire un don</a>"
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "Tails needs donations from users like you."
+#~ msgstr "Tails a besoin de dons de personnes comme vous."
+
+#~ msgid "Donate"
+#~ msgstr "Faire un don"
+
+#~ msgid ""
+#~ "Today, we are asking you to help Tails. You are able to download Tails "
+#~ "for free because we believe that nobody should have to pay to be safe "
+#~ "while using computers. And we want to keep it this way. <span "
+#~ "class=\"highlight\">If everyone reading this donated $6, our fundraiser "
+#~ "would be done in one day.</span> The price of a USB stick is all we need."
+#~ msgstr ""
+#~ "Aujourd'hui, nous vous demandons d'aider Tails. Vous avez téléchargé "
+#~ "Tails gratuitement car nous croyons que personne ne devrait avoir à payer "
+#~ "pour être protégé lors de l'utilisation d'un ordinateur. Et nous voulons "
+#~ "pouvoir continuer ainsi. <span class=\"highlight\">Si chaque personne qui "
+#~ "lit ceci donnait 5€, notre objectif serait atteint en une journée.</span> "
+#~ "Nous n'avons besoin que de l'équivalent du prix d'une clé USB."
+
+#~ msgid "<a href=\"https://tails.boum.org/donate/?r=home\">Donate</a>"
+#~ msgstr "<a href=\"https://tails.boum.org/donate/?r=home\">Faire un don</a>"
+
+#~ msgid "[[!meta title=\"News\"]] [[!meta robots=\"noindex\"]]"
+#~ msgstr "[[!meta title=\"Nouvelles\"]] [[!meta robots=\"noindex\"]]"

@@ -1,0 +1,21 @@
+[[!meta robots="noindex"]]
+
+Tor is aware of a technical issue that allows JavaScript execution in
+the *Safest* [[security level of *Tor Browser*|doc/anonymous_internet/Tor_Browser#security-level]]
+in some situations.
+
+Until then, do the following to completely disable JavaScript instead of
+setting the security level:
+
+1. Open the address `about:config` in *Tor
+   Browser*.
+
+   [[!img news/version_3.13.2/about-config.png link="no"]]
+
+1. Click the **I accept the risk!** button.
+
+1. At the top of the page, search for
+   `javascript.enabled`.
+
+1. Double-click on the **javascript.enabled** line in the
+   results to set its value to **false**.

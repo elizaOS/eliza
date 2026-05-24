@@ -1,0 +1,61 @@
+#!/bin/sh
+
+set -eu
+
+error() {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") VERSION TAG DIST RELEASE_DATE"
+
+[ $# -eq 4 ] || error "$USAGE"
+
+export VERSION="$1"
+export TAG="$2"
+export DIST="$3"
+export RELEASE_DATE="$4"
+
+MARKDOWN_TMPFILE=$(mktemp /tmp/tor-blog-post-XXXXXX.md)
+
+case "$DIST" in
+stable)
+    MARKDOWN_SOURCE="wiki/src/news/version_${VERSION:?}.mdwn"
+    ;;
+alpha)
+    MARKDOWN_SOURCE="wiki/src/news/test_${TAG:?}.mdwn"
+    ;;
+*)
+    error "Unsupported DIST: '${DIST}'\n${USAGE}"
+    ;;
+esac
+
+html_body() {
+    ikiwiki --setup ikiwiki.setup \
+        --libdir lib/perl5 \
+        --render "$MARKDOWN_SOURCE" |
+        tidy --quiet yes \
+            --mute MISSING_ENDTAG_BEFORE,INSERTING_TAG,DISCARDING_UNEXPECTED,UNKNOWN_ENTITY,MISSING_ATTRIBUTE,TRIM_EMPTY_ELEMENT,STRING_CONTENT_LOOKS \
+            --wrap 99999 |
+        sed '0,/^<section id="content">$/d' |
+        sed '/^<footer id="footer" class="pagefooter">$/,$d' |
+        sed '/^<div class="toc">$/,+7d' |
+        sed '/^<p><img [^<>]*\/><\/p>$/d' |
+        sed '/^<div[^<>]*\>/d' |
+        sed '/^<\/div>$/d' |
+        sed 's@<img [^<>]*/>@@g' |
+        sed 's@<a name[^<>]*></a>@@g' |
+        sed 's@href="\.\./@href="https://tails.net/@g' |
+        sed 's@src="\./@src="https://tails.net/news/@g' |
+        sed 's@\(\.en\)\?.html@/@g' |
+        perl -pE 'BEGIN{undef $/;}s{<nav class="language-switcher">.*?<\/nav>}{}smg'
+
+    echo '<h1>Support and feedback</h1>'
+    echo '<p>For support and feedback, visit the <a href="https://tails.net/support/">Support section</a> on the Tails website.</p>'
+}
+
+BODY=$(html_body | html2markdown | perl -pE 's{^[#]}{##}') j2 --import-env '' \
+    config/release_management/templates/Tor_blog_post.md.jinja \
+    >"$MARKDOWN_TMPFILE"
+
+echo "$MARKDOWN_TMPFILE"

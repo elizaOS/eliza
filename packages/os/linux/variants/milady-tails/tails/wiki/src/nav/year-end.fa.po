@@ -1,0 +1,50 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-19 07:55+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!img lib/yec/globe-chain-burst.svg id=\"yec-illo\" class=\"my-auto\" "
+"alt=\"A wireframe globe breaking out of chains\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Free the internet"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"Support tools that break the chains of censorship and surveillance. <span "
+"class=\"text-secondary fw-bold\">Donate to the Tor Project today.</span>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a class=\"btn btn-secondary px-3 py-13 mt-md-3 rounded-1 fs-tiny fw-bold "
+"w-100 w-md-auto\" href=\"https://www.torproject.org/donate/donate-2025-"
+"banner-ts\">Donate now [[!img lib/yec/heart.svg link=\"no\" alt=\"\" "
+"class=\"align-text-bottom ms-2\"]]</a>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<label tabindex=\"0\" id=\"banner-close-label\" for=\"banner-close-button\" "
+"class=\"cursor-pointer position-absolute\" data-controller=\"label\" data-"
+"action=\"keydown-&gt;label#keydown\"></label> <input type=\"checkbox\" "
+"id=\"banner-close-button\"></input>"
+msgstr ""

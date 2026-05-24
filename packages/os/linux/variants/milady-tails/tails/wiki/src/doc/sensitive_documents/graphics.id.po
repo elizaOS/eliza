@@ -1,0 +1,91 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2016-02-06 14:51+0100\n"
+"Last-Translator: Tails translators <tails@boum.org>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.8.6\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Graphics\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails includes several applications for image manipulation, graphic design, "
+"and page layout:"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "[*GIMP*](https://www.gimp.org/), an image editor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *GIMP* to edit, enhance, and retouch photos and scans, create\n"
+"    drawings, and make your own images.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    *GIMP* has [user manuals](https://docs.gimp.org/) in several\n"
+"    languages.\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Inkscape*](https://inkscape.org/), a vector-based drawing application."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    You can use *Inkscape* to create a wide variety of graphics such as\n"
+"    illustrations, icons, logos, diagrams, maps, and web graphics.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    The *Inkscape* website has\n"
+"    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Graphics** submenu."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""

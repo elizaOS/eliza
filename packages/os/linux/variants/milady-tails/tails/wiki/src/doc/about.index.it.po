@@ -1,0 +1,133 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2025-12-06 21:29+0000\n"
+"Last-Translator: Cosenza Vibes <boots-bounce-hazy@duck.com>\n"
+"Language-Team: Tails translators <tails-l10n@boum.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[[System requirements and recommended hardware|about/requirements]]"
+msgid "[[System requirements and recommended USB sticks|about/requirements]]"
+msgstr "[[Requisiti di sistema e hardware consigliato|about/requirements]]"
+
+#. type: Bullet: '- '
+msgid "[[Warnings: Tails is safe but not magic!|about/warnings]]"
+msgstr "[[Avvertenze: Tails è sicuro ma non è magico!|about/warnings]]"
+
+#. type: Bullet: '  * '
+msgid "[[Protecting your identity when using Tails|about/warnings/identity]]"
+msgstr ""
+"[[Proteggere la tua identità quando utilizzi Tails|about/warnings/identity]]"
+
+#. type: Bullet: '  * '
+msgid "[[Limitations of the Tor network|about/warnings/tor]]"
+msgstr "[[Limiti della rete Tor|about/warnings/tor]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Reducing risks when using untrusted computers|about/warnings/computer]]"
+msgstr ""
+"[[Ridurre i rischi quando utilizzi computer inaffidabili|about/warnings/"
+"computer]]"
+
+#. type: Bullet: '- '
+msgid "[[Features and included software|about/features]]"
+msgstr "[[Funzionalità e programmi inclusi|about/features]]"
+
+#. type: Bullet: '- '
+msgid "[[How can I trust Tails?|about/trust]]"
+msgstr "[[Come posso fidarmi di Tails?|about/trust]]"
+
+#. type: Bullet: '- '
+msgid "[[License and source code distribution|about/license]]"
+msgstr "[[Distribuzione della licenza e del codice sorgente|about/license]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Acknowledgments and similar projects|about/"
+"acknowledgments_and_similar_projects]]"
+msgstr ""
+"[[Ringraziamenti e progetti simili|about/"
+"acknowledgments_and_similar_projects]]"
+
+#. type: Bullet: '- '
+msgid "[[Contact|doc/about/contact]]"
+msgstr "[[Contatti|doc/about/contact]]"
+
+#. type: Bullet: '  * '
+msgid "[[OpenPGP keys|about/openpgp_keys]]"
+msgstr "[[Chiavi OpenPGP|about/openpgp_keys]]"
+
+#~ msgid "- [[Social Contract|doc/about/social_contract]]"
+#~ msgstr "- [[Contratto Sociale|doc/about/social_contract]]"
+
+#~ msgid "- [[Finances|about/finances]]"
+#~ msgstr "- [[Bilancio|about/finances]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - [[!traillink Warnings:_Tails_is_safe_but_not_magic!|about/warnings]]\n"
+#~| "    - [[!traillink Protecting_your_identity_when_using_Tails|about/warnings/identity]]\n"
+#~| "    - [[!traillink Limitations_of_the_Tor_network|about/warnings/tor]]\n"
+#~| "    - [[!traillink Reducing_risks_when_using_untrusted_computers|about/warnings/computer]]\n"
+#~| "  - [[!traillink Features_and_included_software|about/features]]\n"
+#~| "  - [[!traillink Social_Contract|doc/about/social_contract]]\n"
+#~| "  - [[!traillink Trusting_Tails|about/trust]]\n"
+#~| "  - [[!traillink License_and_source_code_distribution|about/license]]\n"
+#~| "  - [[!traillink Acknowledgments_and_similar_projects|about/acknowledgments_and_similar_projects]]\n"
+#~| "  - [[!traillink Finances|about/finances]]\n"
+#~| "  - [[!traillink Contact|about/contact]]\n"
+#~| "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgid ""
+#~ "  - [[!traillink Warnings:_Tails_is_safe_but_not_magic!|about/warnings]]\n"
+#~ "    - [[!traillink Protecting_your_identity_when_using_Tails|about/warnings/identity]]\n"
+#~ "    - [[!traillink Limitations_of_the_Tor_network|about/warnings/tor]]\n"
+#~ "    - [[!traillink Reducing_risks_when_using_untrusted_computers|about/warnings/computer]]\n"
+#~ "  - [[!traillink Features_and_included_software|about/features]]\n"
+#~ "  - [[!traillink Social_Contract|doc/about/social_contract]]\n"
+#~ "  - [[!traillink How_can_I_trust_Tails?|about/trust]]\n"
+#~ "  - [[!traillink License_and_source_code_distribution|about/license]]\n"
+#~ "  - [[!traillink Acknowledgments_and_similar_projects|about/acknowledgments_and_similar_projects]]\n"
+#~ "  - [[!traillink Finances|about/finances]]\n"
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink Avvertenze:_Tails_è_sicuro_ma_non_magico!|about/warnings]]\n"
+#~ "    - [[!traillink Proteggere_la_tua_identità_quando_utilizzi_Tails|about/warnings/identity]]\n"
+#~ "    - [[!traillink Limiti_della_rete__Tor|about/warnings/tor]]\n"
+#~ "    - [[!traillink Ridurre_i_rischi_quando_si_usano_computer_non_fidati|about/warnings/computer]]\n"
+#~ "  - [[!traillink Caratteristiche_e_software_incluso|about/features]]\n"
+#~ "  - [[!traillink Contratto_Sociale|doc/about/social_contract]]\n"
+#~ "  - [[!traillink Fidarsi_di_Tails|about/trust]]\n"
+#~ "  - [[!traillink Licenze_e_diffusione_del_codice_sorgente|about/license]]\n"
+#~ "  - [[!traillink Riconoscimenti_e_progetti_simili|about/acknowledgments_and_similar_projects]]\n"
+#~ "  - [[!traillink Finanze|about/finances]]\n"
+#~ "  - [[!traillink Contatti|about/contact]]\n"
+#~ "   - [[!traillink Chiavi_OpenPGPs|about/openpgp_keys]]\n"
+
+#~ msgid "[[!traillink Why_does_Tails_use_Tor?|about/tor]]"
+#~ msgstr "[[!traillink Perché_Tails_utilizza_Tor?|about/tor]]"
+
+#, fuzzy
+#~| msgid "[[!traillink OpenPGP_keys|about/openpgp_keys]]"
+#~ msgid ""
+#~ "  - [[!traillink Contact|about/contact]]\n"
+#~ "    - [[!traillink OpenPGP_keys|about/openpgp_keys]]\n"
+#~ msgstr ""
+#~ "<!-- This comment is here to confirm the existing translation and to "
+#~ "prevent wrong suggestions from appearing on the staging website. -->\n"
+#~ "[[!traillink Chiavi_OpenPGP|about/openpgp_keys]]"

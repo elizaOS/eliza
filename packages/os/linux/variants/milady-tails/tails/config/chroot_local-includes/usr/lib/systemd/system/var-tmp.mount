@@ -1,0 +1,15 @@
+[Unit]
+Description=Temporary Directory
+ConditionPathIsSymbolicLink=!/var/tmp
+DefaultDependencies=no
+Conflicts=umount.target
+Before=local-fs.target umount.target
+
+[Mount]
+What=tmpfs
+Where=/var/tmp
+Type=tmpfs
+Options=mode=1777,strictatime
+
+[Install]
+WantedBy=local-fs.target

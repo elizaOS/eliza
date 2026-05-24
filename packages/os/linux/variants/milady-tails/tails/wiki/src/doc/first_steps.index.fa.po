@@ -1,0 +1,171 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2015-10-25 18:08+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"first_stepsindex/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Poedit 1.6.10\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails|first_steps/start]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Starting Tails on PC|first_steps/start/pc]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Starting Tails on Mac|first_steps/start/mac]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessibility|first_steps/accessibility]]"
+msgstr "[[!traillink دسترسی‌پذیری|first_steps/accessibility]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Welcome Screen|first_steps/welcome_screen]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Administration password|first_steps/welcome_screen/"
+"administration_password]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[MAC address anonymization|first_steps/welcome_screen/mac_spoofing]]"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Introduction to GNOME and the Tails desktop|first_steps/desktop]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[Why is the time wrong?|first_steps/desktop/time]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Reporting an error using *WhisperBack*|first_steps/whisperback]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Shutting down Tails|first_steps/shutdown]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Uninstalling Tails|doc/first_steps/uninstall]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using Windows|doc/first_steps/uninstall/windows]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using macOS|doc/first_steps/uninstall/mac]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid "[[Uninstalling Tails using Linux|doc/first_steps/uninstall/linux]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#. type: Bullet: '  - '
+#, fuzzy
+msgid ""
+"[[Uninstalling Tails using Tails itself|doc/first_steps/uninstall/tails]]"
+msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#, fuzzy
+#~ msgid "[[!traillink Persistent_Storage|first_steps/persistence]]"
+#~ msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Changing_the_passphrase_of_the_Persistent_Storage|"
+#~ "first_steps/persistence/passphrase]]"
+#~ msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!traillink Installing_additional_software|first_steps/"
+#~ "additional_software]]"
+#~ msgstr "[[!traillink راه‌اندازی_تیلز|first_steps/start]]"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  - Starting Tails\n"
+#~ "    - [[!traillink On_PC|first_steps/start/pc]]\n"
+#~ "    - [[!traillink On_Mac|first_steps/start/mac]]\n"
+#~ "  - [[!traillink Accessibility|first_steps/accessibility]]\n"
+#~ "  - [[!traillink Welcome_Screen|first_steps/welcome_screen]]\n"
+#~ "    - [[!traillink Administration_password|first_steps/welcome_screen/administration_password]]\n"
+#~ "    - [[!traillink MAC_address_anonymization|first_steps/welcome_screen/mac_spoofing]]\n"
+#~ "  - [[!traillink Introduction_to_GNOME_and_the_Tails_desktop|first_steps/introduction_to_gnome_and_the_tails_desktop]]\n"
+#~ "  - [[!traillink Persistent_Storage|first_steps/persistence]]\n"
+#~ "    - [[!traillink Warnings_about_the_Persistent_Storage|first_steps/persistence/warnings]]\n"
+#~ "    - [[!traillink Making_a_backup_of_your_Persistent_Storage|first_steps/persistence/backup]]\n"
+#~ "    - [[!traillink Rescuing_your_Persistent_Storage_from_a_broken_Tails|first_steps/persistence/rescue]]\n"
+#~ "    - [[!traillink Deleting_the_Persistent_Storage|first_steps/persistence/delete]]\n"
+#~ "  - [[!traillink Installing_additional_software|first_steps/additional_software]]\n"
+#~ "  - [[!traillink Reporting_an_error|first_steps/bug_reporting]]\n"
+#~ "  - [[!traillink Shutting_down_Tails|first_steps/shutdown]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink نصب_روی_یک_درایو_یواس‌بی_یا_کارت_حافظه|first_steps/installation]] (پیشنهاد ما)\n"
+#~ "    - [[!traillink نصب_دستی_روی_یک_درایو_یواس‌بی_یا_کارت_حافظه|first_steps/installation/manual]]\n"
+#~ "      با استفاده از [[!traillink لینوکس|first_steps/installation/manual/linux]]،\n"
+#~ "      [[!traillink ویندوز|first_steps/installation/manual/windows]]،\n"
+#~ "      یا [[!traillink مک|first_steps/installation/manual/mac]]\n"
+#~ "    - عزل «تیلز» یا ایجاد یک درایو یو‌اس‌بی یا کارت حافظهٔ جدید \n"
+#~ "      با استفاده از [[!traillink لینوکس|first_steps/reset/linux]]\n"
+#~ "      [[!traillink ویندوز|first_steps/reset/windows]]،\n"
+#~ "      یا [[!traillink مک|first_steps/reset/mac]]\n"
+#~ "  - [[!traillink ارتقای_یک_درایو_یواس‌بی_یا_کارت_حافظهٔ_تیلز|first_steps/upgrade]]\n"
+#~ "  - [[!traillink گزینه‌های_راه‌اندازی|first_steps/welcome_screen]]\n"
+#~ "    - [[!traillink گذرواژهٔ_مدیریتی|first_steps/welcome_screen/administration_password]]\n"
+#~ "    - [[!traillink جا_زدن_آدرس_مک|first_steps/welcome_screen/mac_spoofing]]\n"
+#~ "    - [[!traillink حالت_پل_تور|first_steps/welcome_screen/bridge_mode]]\n"
+#~ "  - [[!traillink آشنایی_با_گنوم_و_دسکتاپ_تیلز|first_steps/introduction_to_gnome_and_the_tails_desktop]]\n"
+#~ "  - [[!traillink مانای_رمزگذاری‌شده|first_steps/persistence]]\n"
+#~ "    - [[!traillink هشدارهایی_در_مورد_مانا|first_steps/persistence/warnings]]\n"
+#~ "    - [[!traillink ایجاد_و_پیکربندی_درایو_مانا|first_steps/persistence/configure]]\n"
+#~ "    - [[!traillink فعال_کردن_درایو_مانا_و_استفاده_از_آن|first_steps/persistence/use]]\n"
+#~ "    - [[!traillink تغییر_گذرواژهٔ_درایو_مانا|first_steps/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink کپی_کردن_دستی_اطلاعات_مانا_روی_یک_دستگاه_جدید|first_steps/persistence/backup]]\n"
+#~ "    - [[!traillink بررسی_فایل_سیستم_درایو_مانا|first_steps/persistence/check_file_system]]\n"
+#~ "    - [[!traillink پاک_کردن_درایو_مانا|first_steps/persistence/delete]]\n"
+#~ "  - [[!traillink گزارش_یک_خطا|first_steps/bug_reporting]]\n"
+#~ "  - [[!traillink خاموش_کردن_تیلز|first_steps/shutdown]]\n"
+
+#~ msgid ""
+#~ "[[!traillink "
+#~ "Choosing_between_burning_a_DVD_and_installing_onto_a_USB_stick_or_SD_card|"
+#~ "first_steps/media]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "انتخاب_بین_ایجاد_یک_دی‌وی‌دی_و_نصب_روی_یک_درایو_یواس‌بی_یا_کارت_حافظه|"
+#~ "first_steps/media]]"

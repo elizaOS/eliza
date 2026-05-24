@@ -1,0 +1,36 @@
+#!/bin/sh
+
+# This script is used to simulate a failure during the LUKS header
+# upgrade process.
+
+# Print the arguments to stderr for debugging purposes.
+echo >&2 "cryptsetup $*"
+
+# If the first argument is "luksConvertKey", then overwrite the LUKS
+# header with zeros instead. See the "I enable persistence but something
+# goes wrong during the LUKS header upgrade" step to understand why.
+if [ "$1" = "luksConvertKey" ]; then
+    # Get the device from the arguments, which is the only argument that
+    # starts with "/dev".
+    for arg in "$@"; do
+        if [ "${arg#/dev}" != "$arg" ]; then
+            device="$arg"
+            break
+        fi
+    done
+
+    if [ -z "$device" ]; then
+        echo >&2 "No device specified"
+        exit 1
+    fi
+
+    echo >&2 "Erasing LUKS header on $device"
+    dd if=/dev/zero of="$device" bs=1M count=2
+
+    # Create a flag file to be able to check that this script was called
+    # and the header was erased.
+    touch /tmp/luks-header-erased
+else
+    # Otherwise, just call cryptsetup with the arguments.
+    exec /sbin/cryptsetup "$@"
+fi

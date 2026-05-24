@@ -1,0 +1,585 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-18 07:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Welcome Screen\"]]\n"
+msgstr "[[!meta title=\"Экран приветствия\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The Welcome Screen appears after the Boot Loader, but before the GNOME "
+"Desktop."
+msgstr ""
+"Экран приветствия появляется после загрузчика, но перед рабочим столом GNOME."
+
+#. type: Plain text
+msgid ""
+"You can use the Welcome Screen to specify startup options that alter some of "
+"the basic functioning of Tails."
+msgstr ""
+"Можно использовать экран приветствия для изменения некоторых основных "
+"настроек Tails по умолчанию."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img welcome_screen.png class=\"screenshot\" alt=\"Welcome to Tails!\"]]\n"
+msgstr "[[!img welcome_screen.png class=\"screenshot\" alt=\"Добро пожаловать в Tails!\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To start Tails without options, click on the\n"
+#| "<span class=\"bold\">Start Tails</span> button.\n"
+msgid "To start Tails without options, click on the **Start Tails** button."
+msgstr ""
+"Для запуска Tails без параметров нажмите кнопку <span class=\"bold\">Start "
+"Tails</span>.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>To store the settings of the Welcome Screen across different Tails sessions,\n"
+#| "turn on the [[Welcome Screen|doc/first_steps/persistence/configure#welcome_screen]]\n"
+#| "feature of the Persistent Storage.</p>\n"
+msgid ""
+"<p>To store the settings of the Welcome Screen across different Tails sessions,\n"
+"turn on the [[Welcome Screen|persistent_storage/configure#welcome_screen]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr "<p>Чтобы сохранить настройки экрана приветствия для использования в других сессиях Tails, включите опцию [[Welcome Screen|doc/first_steps/persistence/configure#welcome_screen]] в Постоянном хранилище.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>With this feature turned on, unlock your Persistent Storage to\n"
+"restore your settings in the Welcome Screen.</p>\n"
+msgstr "<p>Когда эта функция включена, разблокируйте своё Постоянное хранилище. Настройки экрана приветствия будут восстановлены.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"accessibility\"></a>\n"
+msgstr "<a id=\"accessibility\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Assistive technologies"
+msgstr "Специальные возможности"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "You can activate assistive technologies, like a screen reader or large "
+#| "text, from the universal access menu (the"
+msgid ""
+"You can activate several assistive technologies, like a screen reader or "
+"large text, from the accessibility menu in the top bar, the"
+msgstr ""
+"Вы можете использовать специальные технологии вроде экранного диктора или "
+"крупного текста, из универсального меню (значок"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img lib/preferences-desktop-accessibility.png alt=\"Accessibility Menu\" class=\"symbolic\" link=\"no\"]]\n"
+msgid "[[!img lib/accessibility.png alt=\"accessibility menu\" class=\"symbolic\" link=\"no\"]]\n"
+msgstr "[[!img lib/preferences-desktop-accessibility.png alt=\"Меню доступа\" class=\"symbolic\" link=\"no\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "icon which looks like a person) in the top bar."
+msgid "icon that looks like a person."
+msgstr "в виде человечка) в верхнем меню."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"locale\"></a>\n"
+msgstr "<a id=\"locale\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Language and formats"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can configure Tails depending on your language and location from the "
+"Welcome Screen."
+msgstr "На экране приветствия можно выбрать язык и регион для Tails."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img locale.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "[[!img locale.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img locale.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Language** option allows you to change the main language of the "
+"interface."
+msgstr ""
+"С помощью опции <span class=\"guilabel\">Language</span> (язык) можно "
+"сменить язык интерфейса."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Text that is not translated yet will appear in English. You can [[help\n"
+"  to translate more text|contribute/how/translate]].\n"
+msgstr "  Если для какого-то текста ещё нет перевода, он будет отображён на английском языке. Вы можете [[помочь с переводом|contribute/how/translate]].\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Keyboard Layout** option allows you to change the layout of the "
+"keyboard. For example to switch to an *AZERTY* keyboard which is common in "
+"France."
+msgstr ""
+"Опция <span class=\"guilabel\">Keyboard Layout</span> (раскладка клавиатуры) "
+"позволяет изменить клавиатурную раскладку. *Russian* соответствует русской "
+"раскладке."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You will still be able to switch between different keyboard layouts from the\n"
+"  desktop after starting Tails.\n"
+msgstr "  Вы по-прежнему сможете переключаться между разными раскладками клавиатуры во время работы в Tails.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img desktop/keyboard.png link=\"no\" alt=\"Keyboard Menu\"]]\n"
+msgid "  [[!img desktop/keyboard.png class=\"screenshot\" alt=\"Keyboard Menu\"]]\n"
+msgstr "  [[!img desktop/keyboard.png link=\"no\" alt=\"Меню клавиатуры\"]]\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Formats** option allows you to change the date and time format, first "
+"day of the week, measurement units, and default paper size according to the "
+"standards in use in a country."
+msgstr ""
+"Опция <span class=\"guilabel\">Formats</span> (форматы) позволяет выбрать "
+"формат даты и времени, первый день недели, единицы измерений, а также размер "
+"листа бумаги по умолчанию, как это принято в той или иной стране."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  For example, the USA and the United Kingdom, two English-speaking countries,\n"
+"  have different standards:\n"
+msgstr "  Например, в США и в России эти стандарты различаются:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <table>\n"
+"  <tr><th></th><th>USA</th><th>United Kingdom</th></tr>\n"
+"  <tr><td>Date & time</td><td>3/17/2017 3:56 PM</td><td>17/03/2017 15:56</td></tr>\n"
+"  <tr><td>First day of the week</td><td>Sunday</td><td>Monday</td></tr>\n"
+"  <tr><td>Unit system</td><td>Imperial</td><td>Metric</td></tr>\n"
+"  <tr><td>Paper size</td><td>Letter</td><td>A4</td></tr>\n"
+"  </table>\n"
+msgstr ""
+"  <table>\n"
+"  <tr><th></th><th>США</th><th>Россия</th></tr>\n"
+"  <tr><td>Дата и время</td><td>3/17/2017 3:56 PM</td><td>17/03/2017 15:56</td></tr>\n"
+"  <tr><td>Первый день недели</td><td>Воскресенье</td><td>Понедельник</td></tr>\n"
+"  <tr><td>Единицы измерений</td><td>Британская имперская система мер</td><td>Метрическая система мер</td></tr>\n"
+"  <tr><td>Размер бумаги</td><td>Letter</td><td>A4</td></tr>\n"
+"  </table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  With this option you can also display the calendar in a different language\n"
+"  than the main language. For example, to display a US calendar, with weeks\n"
+"  starting on Sunday, when the main language is Russian.\n"
+msgstr "  С помощью этих настроек можно показывать календарь на другом языке, нежели основной язык системы. Например, можно показывать календарь США, где все недели будут начинаться с воскресенья, хотя основным языком системы останется русский.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<a id=\"persistence\"></a>\n"
+msgid "<a id=\"persistent_storage\"></a>\n"
+msgstr "<a id=\"persistence\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Persistent Storage"
+msgstr "Постоянное хранилище"
+
+#. type: Plain text
+msgid ""
+"You can save some of your files and configuration in an encrypted "
+"[[Persistent Storage|persistent_storage]] on your Tails USB stick."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If no Persistent Storage is detected on the USB stick, you can click the "
+"**Create Persistent Storage** button to automatically start the Persistent "
+"Storage settings after you start Tails and the desktop appears."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img create_persistent_storage.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "  [[!img create_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img create_persistent_storage.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"If a Persistent Storage is detected on the USB stick, enter your passphrase "
+"and click **Unlock Encryption** to unlock and activate your Persistent "
+"Storage."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  [[!img unlock_persistent_storage.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "  [[!img unlock_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img unlock_persistent_storage.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To create a Persistent Storage, see our instructions on [[creating a "
+#| "Persistent Storage|first_steps/persistence/configure]]. To learn more "
+#| "about the Persistent Storage, see our [[documentation on the Persistent "
+#| "Storage|persistence]]."
+msgid ""
+"See also our [[documentation on the Persistent Storage|persistent_storage]]."
+msgstr ""
+"Для создания Постоянного хранилища см. [[наши инструкции|first_steps/"
+"persistence/configure]]. Подробнее о Постоянном хранилище можно прочесть [[в "
+"документации|persistence]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"additional\"></a>\n"
+msgstr "<a id=\"additional\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Additional settings"
+msgstr "Дополнительные настройки"
+
+#. type: Plain text
+msgid ""
+"Tails is configured with care to be as safe as possible by default. But, "
+"depending on your situation, you can change one of the following settings "
+"from the Welcome Screen."
+msgstr ""
+"Мы старались настроить Tails так, чтобы система обеспечивала наилучшую "
+"безопасность по умолчанию. Но в зависимости от ситуации вы можете изменить "
+"настройки на экране приветствия."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img additional.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "[[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img additional.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Administration Password"
+msgstr "Пароль администратора"
+
+#. type: Plain text
+msgid ""
+"Set an **Administration Password** to be able to perform administrative "
+"tasks like installing additional software or accessing the internal hard "
+"disks of the computer."
+msgstr ""
+"Чтобы выполнять административные задачи (например, установить дополнительные "
+"программы или получить доступ к внутреннему жёсткому диску компьютера), "
+"нужно установить <span class=\"guilabel\">пароль администратора</span>."
+
+#. type: Plain text
+msgid ""
+"See our documentation about [[the administration password and its security "
+"implications|administration_password]]."
+msgstr ""
+"См. наш материал о [[пароле администратора и вопросах безопасности|"
+"administration_password]]."
+
+#. type: Title -
+#, no-wrap
+msgid "MAC Address Anonymization"
+msgstr "Анонимизация MAC-адреса"
+
+#. type: Plain text
+msgid ""
+"Disable **MAC Address Anonymization** to prevent connectivity problems with "
+"your network interfaces."
+msgstr ""
+"Отключите <span class=\"guilabel\">MAC Address Anonymization</span>, чтобы "
+"ваши сетевые интерфейсы нормально соединялись с сетью."
+
+#. type: Plain text
+msgid "See our documentation about [[MAC address anonymization|mac_spoofing]]."
+msgstr "См. нашу документацию по [[анонимизации MAC-адресов|mac_spoofing]]."
+
+#. type: Title -
+#, no-wrap
+msgid "Offline Mode"
+msgstr "Офлайновый режим"
+
+#. type: Plain text
+msgid ""
+"Turn on the **Offline Mode** if you want to work completely offline for "
+"increased security."
+msgstr ""
+"Чтобы работать полностью в офлайне (для большей безопасности) включите "
+"**Offline Mode**."
+
+#. type: Title -
+#, no-wrap
+msgid "Unsafe Browser"
+msgstr "Небезопасный браузер"
+
+#. type: Plain text
+msgid "Disable the ** *Unsafe Browser* **."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See our documentation about [[the *Unsafe Browser* and its security "
+"implications|anonymous_internet/unsafe_browser]]."
+msgstr ""
+"См. наш материал о [[*небезопасном браузере* и вопросах безопасности|"
+"anonymous_internet/unsafe_browser]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Keyboard shortcuts"
+msgstr "Сочетания клавиш"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><td><b>Alt+L</b></td><td><b>Language</b></td></tr>\n"
+"<tr><td><b>Alt+K</b></td><td><b>Keyboard Layout</b></td></tr>\n"
+"<tr><td><b>Alt+F</b></td><td><b>Formats</b></td></tr>\n"
+"<tr><td><b>Alt+P</b></td><td><b>Persistent Storage</b></td></tr>\n"
+"<tr><td><b>Alt+A</b></td><td><b>Additional Settings</b></td></tr>\n"
+"<tr><td><b>Ctrl+Shift+A</b></td><td><b>Administration Password</b></td></tr>\n"
+"<tr><td><b>Ctrl+Shift+M</b></td><td><b>MAC Address Anonymization</b></td></tr>\n"
+"<tr><td><b>Alt+S</b></td><td><b>Start Tails</b></td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><td><span class=\"keycap\">Alt+L</span></td><td><span class=\"guilabel\">Язык</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+K</span></td><td><span class=\"guilabel\">Раскладка клавиатуры</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+F</span></td><td><span class=\"guilabel\">Форматы</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+P</span></td><td><span class=\"guilabel\">Постоянное хранилище</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+A</span></td><td><span class=\"guilabel\">Дополнительные параметры</td></tr>\n"
+"<tr><td><span class=\"keycap\">Ctrl+Shift+A</span></td><td><span class=\"guilabel\">Пароль администратора</td></tr>\n"
+"<tr><td><span class=\"keycap\">Ctrl+Shift+M</span></td><td><span class=\"guilabel\">Анонимизация MAC-адреса</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+S</td><td><span class=\"guilabel\">Start Tails</td></tr>\n"
+"</table>\n"
+
+#, no-wrap
+#~ msgid "Language & region"
+#~ msgstr "Язык и регион"
+
+#, no-wrap
+#~ msgid "  [[!img US_calendar_in_Russian.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "  [[!img US_calendar_in_Russian.png link=\"no\" alt=\"\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "If a [[Persistent Storage|first_steps/persistence]] is detected on the "
+#~| "USB stick, an additional section appears in the Welcome Screen below the "
+#~| "**Language & Region** section:"
+#~ msgid ""
+#~ "If a [[Persistent Storage|persistent_storage]] is detected on the USB "
+#~ "stick, an additional section appears in the Welcome Screen below the "
+#~ "**Language & Region** section:"
+#~ msgstr ""
+#~ "Если на флешке обнаружено [[Постоянное хранилище|first_steps/"
+#~ "persistence]], после настроек **языка и региона** на экране приветствия "
+#~ "появится ещё одна строка:"
+
+#~ msgid ""
+#~ "To unlock the Persistent Storage, enter your passphrase and click "
+#~ "**Unlock**."
+#~ msgstr ""
+#~ "Для разблокирования Постоянного хранилища введите свой пароль и нажмите "
+#~ "**Unlock** (разблокировать)."
+
+#~ msgid ""
+#~ "Enable the ** *Unsafe Browser* ** to sign in to a network using a captive "
+#~ "portal before starting Tor."
+#~ msgstr ""
+#~ "Чтобы иметь возможность зайти в Интернет через сайт авторизации (до "
+#~ "подключения к Tor), включите опцию ** *Unsafe Browser* **."
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img locale.png link=\"no\" alt=\"Language & Region section of the "
+#~ "Welcome Screen\"]]\n"
+#~ msgstr ""
+#~ "[[!img locale.png link=\"no\" alt=\"Bereich Sprache & Region des Tails "
+#~ "Greeter\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img additional.png link=\"no\" alt=\"Additional settings of the "
+#~ "Welcome Screen\"]]\n"
+#~ msgstr ""
+#~ "[[!img additional.png link=\"no\" alt=\"Zusätzliche Einstellungen des "
+#~ "Tails Greeter\"]]\n"
+
+#~ msgid ""
+#~ "<a id=\"boot_loader_menu\"></a>\n"
+#~ "<a id=\"boot_menu\"></a> <!-- for backward compatibility -->\n"
+#~ msgstr ""
+#~ "<a id=\"boot_loader_menu\"></a>\n"
+#~ "<a id=\"boot_menu\"></a> <!-- for backward compatibility -->\n"
+
+#~ msgid "Language & region\n"
+#~ msgstr "Sprache & Region\n"
+
+#~ msgid "Encrypted persistence storage\n"
+#~ msgstr "Verschlüsselte beständige Datenpartition\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If an [[encrypted persistence storage|first_steps/persistence]] is "
+#~ "detected on the USB stick, an additional section appears in the Welcome "
+#~ "Screen below the **Language & Region** section:"
+#~ msgstr ""
+#~ "Wenn eine [[verschlüsselte beständige Datenpartition|first_steps/"
+#~ "persistence]] auf dem USB-Stick\n"
+#~ "erkannt wird, erscheint ein zusätzlicher Bereich unter dem Abschnitt "
+#~ "<span class=\"guilabel\">Sprache & Region</span>\n"
+#~ " im <span class=\"application\">Tails Greeter</span>.\n"
+
+#~ msgid "Additional settings\n"
+#~ msgstr "Zusätzliche Einstellungen\n"
+
+#~ msgid "Keyboard shortcuts\n"
+#~ msgstr "Tastaturkürzel\n"
+
+#~ msgid "Using the <span class=\"application\">Boot Loader Menu</span>\n"
+#~ msgstr "Benutzung des <span class=\"application\">Bootmenüs</span>\n"
+
+#~ msgid ""
+#~ "The <span class=\"application\">Boot Loader Menu</span> is the first "
+#~ "screen to appear\n"
+#~ "when Tails starts.\n"
+#~ msgstr ""
+#~ "Das <span class=\"application\">Bootmenü</span> ist der erste "
+#~ "erscheinende Bildschirm\n"
+#~ "beim Start von Tails.\n"
+
+#~ msgid ""
+#~ "<p>The <span class=\"guilabel\">Troubleshooting Mode</span> disables some "
+#~ "features of the\n"
+#~ "Linux kernel and might work better on some computers. You can try this "
+#~ "option if you\n"
+#~ "think you are experiencing errors related to hardware compatibility "
+#~ "while\n"
+#~ "starting Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>Der <span class=\"guilabel\">Troubleshooting</span>-Modus deaktiviert "
+#~ "einige Funktionen\n"
+#~ "des Linux-Kernels und könnte auf einigen Computern besser funktionieren. "
+#~ "Sie können diese\n"
+#~ "Option ausprobieren, falls Sie annehmen, dass Sie aufgrund von Hardware-"
+#~ "Inkompatibilität\n"
+#~ "Probleme beim Start von Tails haben.</p>\n"
+
+#~ msgid ""
+#~ "To add a boot option, press <span class=\"keycap\">Tab</span> when the "
+#~ "<span class=\"application\">Boot Loader Menu</span> appears. A list of "
+#~ "boot options appears at the bottom of the screen."
+#~ msgstr ""
+#~ "Um eine Startoption hinzuzufügen, drücken Sie <span class=\"keycap\">Tab</"
+#~ "span>, sobald das <span class=\"application\">Bootmenü</span> erscheint. "
+#~ "Eine Liste von Startoptionen wird im unteren Teil des Bildschirms "
+#~ "aufgeführt."
+
+#~ msgid ""
+#~ "[[!img boot-menu-with-options.png link=no alt=\"Black screen with Tails\n"
+#~ "artwork. Boot Loader Menu with two options 'Tails' and 'Tails "
+#~ "(Troubleshooting Mode)'.\n"
+#~ "At the bottom, a list of options ending with 'vsyscall=none quiet_'\"]]\n"
+#~ msgstr ""
+#~ "[[!img boot-menu-with-options.png link=no alt=\"Schwarzer Bildschirm mit "
+#~ "Tails\n"
+#~ "Grafik. 'Bootmenü' mit zwei Optionen, 'Tails' und 'Tails (Troubleshooting "
+#~ "Mode)'. Am unteren\n"
+#~ "Ende befindet sich eine Liste von Optionen die mit 'vsyscall=none quiet_' "
+#~ "endet\"]]\n"
+
+#~ msgid ""
+#~ "Press <span class=\"keycap\">Space</span>, and type the boot option that "
+#~ "you want to add."
+#~ msgstr ""
+#~ "Drücken Sie die <span class=\"keycap\">Leertaste</span> und geben Sie die "
+#~ "Bootoptionen ein, die Sie hinzufügen möchten."
+
+#~ msgid ""
+#~ "If you want to add more than one boot option, type them one after the "
+#~ "other, and separate them by a <span class=\"keycap\">Space</span>."
+#~ msgstr ""
+#~ "Falls Sie mehr als eine Bootoption hinzufügen wollen, geben Sie eine nach "
+#~ "der anderen ein und trennen Sie diese jeweils durch ein <span "
+#~ "class=\"keycap\">Leerzeichen</span>."
+
+#~ msgid "Then press <span class=\"keycap\">Enter</span> to start Tails."
+#~ msgstr ""
+#~ "Drücken Sie anschließend <span class=\"keycap\">Enter</span>, um Tails zu "
+#~ "starten."
+
+#~ msgid ""
+#~ "<a id=\"greeter\"></a>\n"
+#~ "<a id=\"tails_greeter\"></a>\n"
+#~ msgstr ""
+#~ "<a id=\"greeter\"></a>\n"
+#~ "<a id=\"tails_greeter\"></a>\n"
+
+#~ msgid "Using <span class=\"application\">Tails Greeter</span>\n"
+#~ msgstr "Benutzung des <span class=\"application\">Tails Greeter</span>\n"
+
+#~ msgid ""
+#~ "<span class=\"application\">Tails Greeter</span>\n"
+#~ "appears after the <span class=\"application\">Boot Loader Menu</span>, "
+#~ "but before the\n"
+#~ "<span class=\"application\">GNOME Desktop</span>:\n"
+#~ msgstr ""
+#~ "Der <span class=\"application\">Tails Greeter</span> erscheint nach\n"
+#~ "dem <span class=\"application\">Bootmenü</span>, aber vor der\n"
+#~ "<span class=\"application\">GNOME-Arbeitsumgebung</span>:\n"

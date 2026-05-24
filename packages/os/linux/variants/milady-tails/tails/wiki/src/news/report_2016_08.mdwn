@@ -1,0 +1,124 @@
+[[!meta title="Tails report for August, 2016"]]
+[[!meta date="Sat, 01 Oct 2016 13:29:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+[[Tails 2.5|news/version_2.5]] was released on August 2. It includes
+a number of fixes for bugs and security holes.
+   
+Code
+====
+
+- We updated our roadmap, listing our priorities for the next
+  years.
+
+- Use a dedicated homepage for *Tor Browser* in Tails to be able to
+  customize what we are showing when people start Tails ([[!tails_ticket 11725]]).
+
+- We enabled [[!wikipedia address space layout randomization]] in the Linux
+  kernel (`kASLR`) to improve protection from buffer overflow attacks.
+
+- We installed [[`rngd`|contribute/design/random#rngd]] to improve the
+  entropy of the random numbers generated on computers that have
+  a hardware random number generator.
+
+- Upgrade to Linux 4.6. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.)
+
+- Improved the automatic configuration of *Icedove* for some use cases
+  ([[!tails_ticket 11536]]), and started writing automated tests for
+  *Icedove*.
+
+- We've successfully provided an AppArmor profile to Debian's Icedove
+  package and started integrating it into Tails ([[!tails_ticket 10750]]).
+
+* We started porting Tails to Debian 9 (Stretch).
+
+Documentation and website
+=========================
+
+- We documented how to install *Tails Installer* in Ubuntu
+  16.04 ([[!tails_ticket 11570]]).
+  Unfortunately, this has to be done on the command line since *Tails
+  Installer* is not listed in the new *Ubuntu Software* yet. But we are
+  working on fixing this ([[!tails_ticket 11569]]).
+
+Infrastructure
+==============
+
+* 658 ISO images were automatically built and tested by our continuous integration infrastructure.
+* We started porting Tails to Debian 9 (Stretch). Adjusting our test
+  suite to make it able to provide feedback about our early Tails 3.0
+  ISO images is a critical part of this project. To do so, in the past
+  we had to go through a tedious process of updating the dozens of
+  pictures that we ask Sikuli to recognize; but this time, thanks to
+  the work we [[!tails_ticket 10721 desc="recently did"]] to support
+  Dogtail in our test suite, we are able to _remove_ many such
+  pictures, and replace them with higher-level means of interacting
+  with graphical user interfaces. So far we could remove 31 such
+  images. This change brings two major benefits: it makes our test
+  suite more robust, and it makes our project more sustainable, by
+  decreasing the cost of porting Tails to future versions of Debian.
+* Until recently, the parts of our test suite that rely on emulated
+  USB storage devices were fragile on our Jenkins setup.
+  This prevented us from running a number of tests there, e.g.
+  those involving persistence. We kept working on it, as reported last
+  month, both [[!tails_ticket 11590 desc="in Tails Installer itself"]]
+  and in our test suite ([[!tails_ticket 11588]],
+  [[!tails_ticket 11582]]). As a result, we were able to re-enable
+  these tests on production branches in August.
+
+On-going discussions
+====================
+
+See the
+August 2016 online meeting minutes.
+
+We've had a great Tails contributors summit, attended by almost
+20 people.
+
+Press and testimonials
+======================
+
+* 2016-08-05: A step-by-step guide on how to download, install, and start using Tails, the world's most secure
+  platform
+  by Dan Patterson in TechRepublic.
+
+* 2016-08-03: Tails 2.5 final περιηγηθείτε ανώνυμα στο Διαδίκτυο in iGuru News (in Greek).
+
+* 2016-08-02: Tails 2.5 Anonymous Live CD Released with Tor Browser
+  6.0.3 and Icedove 45.1 by Marius Nestor in Softpedia.
+
+Translation
+===========
+
+## All the website
+
+  - de: 57% (2880) strings translated, 4% strings fuzzy, 51% words translated
+  - fa: 46% (2344) strings translated, 7% strings fuzzy, 52% words translated
+  - fr: 79% (3987) strings translated, 4% strings fuzzy, 78% words translated
+  - it: 17% (885) strings translated, 2% strings fuzzy, 18% words translated
+  - pt: 31% (1593) strings translated, 8% strings fuzzy, 29% words translated
+
+Total original words: 50832
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 85% (1569) strings translated, 8% strings fuzzy, 85% words translated
+  - fa: 39% (724) strings translated, 9% strings fuzzy, 40% words translated
+  - fr: 90% (1662) strings translated, 7% strings fuzzy, 91% words translated
+  - it: 47% (871) strings translated, 6% strings fuzzy, 53% words translated
+  - pt: 51% (947) strings translated, 12% strings fuzzy, 52% words translated
+
+Total original words: 16995
+
+Metrics
+=======
+
+* Tails has been started more than 589774 times this month. This makes 19025 boots a day on average.
+* 10921 downloads of the OpenPGP signature of Tails ISO from our website.
+* 111 bug reports were received through WhisperBack.

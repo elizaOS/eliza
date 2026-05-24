@@ -1,0 +1,233 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2015-10-14 19:35+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"your_data_wont_be_saved_unless_explicitly_asked/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Accessing the internal hard disk\"]]\n"
+msgstr "دسترسی به سخت‌دیسک‌های داخلی\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>Accessing internal disks of the computer has security implications:\n"
+msgstr "<p>دسترسی به دیسک‌های داخلی رایانه مسائلی امنیتی ایجاد می‌کند:\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<ul>\n"
+"  <li>You can leave traces of your Tails activities on the hard disks.</li>\n"
+"  <li>If Tails is compromised, a malware could install itself on your usual operating system.</li>\n"
+"  <li>If an application in Tails is compromised, it could access private data on your disks and use it to deanonymize you.</li>\n"
+"</ul>\n"
+msgstr ""
+"<ul>\n"
+"  <li>ممکن است اثراتی از فعالیت‌های خود در تیلز روی سخت‌دیسک به جا بگذارید.</li>\n"
+"  <li>اگر تیلز دچار مشکل شود، ممکن است یک بدافزار خود را روی سیستم‌عامل معمول شما نصب کند.</li>\n"
+"  <li>اگر ابزاری در تیلز دچار مشکل شود ممکن است به اطلاعات خصوصی شما روی دیسکتان دسترسی پیدا کرده و از آن‌ها برای به مخاطره انداختن ناشناسی شما استفاده کند.</li>\n"
+"</ul>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</p>\n"
+msgstr "</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "To access internal hard disks:"
+msgstr "برای دسترسی به سخت‌دیسک‌های داخلی:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"هنگام آغاز تیلز Tails, [[یک گذرواژهٔ مدیریتی ایجاد کنید|doc/first_steps/"
+"welcome_screen/administration_password/]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane of the *Disks* utility, select the storage device that "
+"corresponds to your internal hard disk."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify its brand and size.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane is displayed a schema of the partitions on your internal "
+"hard disk."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the partition of your internal hard disk that you want to access."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Authentication Required** dialog, enter your administration "
+"password."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the [[!img lib/media-playback-start.png alt=\"Mount selected "
+"partition\" class=\"symbolic\" link=\"no\"]] button to mount the partition."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the */media/amnesia/* link to open the volume in the *Files* browser."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>If your usual operating system is in\n"
+"hibernation, accessing it might corrupt your file system. Only access your disk\n"
+"if your system was shut down entirely.</p>\n"
+msgstr ""
+"<p>اگر سیستم‌عامل معمول شما در حالت خواب زمستانی قرار دارد\n"
+"دسترسی به آن ممکن است باعث خراب شدن فایل‌های سیستم شود. تنها اگر رایانه‌تان کامل خاموش شده\n"
+"سراغ سخت‌دیسک خود بروید.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>If you have a GNU/Linux system on your disks, you can only access\n"
+"files owned by the first user (with UID 1000) on that system.</p>\n"
+msgstr ""
+"<p>اگر روی دیسکتان سیستم گنو/لینوکس دارید تنها می‌توانید به فایل‌های متعلق به\n"
+"کاربر اول آن سیستم (<code>uid=1000</code>) دسترسی داشته باشید.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>In all cases, you might encounter permissions problems. To bypass\n"
+"permission limitations, you can run the <i>Files</i> browser\n"
+"with administration rights.</p>\n"
+msgstr ""
+"<p>در تمام موارد ممکن است دچار مشکلات مرتبط با اجازه‌ها شوید. برای \n"
+"خلاص شدن از محدودیت‌های اجازه‌ها می‌توانید *ناتیلوس*\n"
+"را با حقوق مدیریتی اجرا کنید.</p>\n"
+
+#, fuzzy
+#~ msgid "Click on the hard disk of your choice in the right pane."
+#~ msgstr "سمت راست پنجره روی سخت‌دیسک مورد نظرتان کلیک کنید."
+
+#, fuzzy
+#~ msgid "Open the [[*Files* browser|doc/first_steps/desktop#files]]."
+#~ msgstr ""
+#~ "[[ابزار مدیریت فایل *ناتیلوس*|doc/first_steps/desktop#nautilus]] باز کنید."
+
+#~ msgid ""
+#~ "[[!meta title=\"Your data won't be saved unless explicitly asked\"]]\n"
+#~ msgstr ""
+#~ "[[!meta title=\"اطلاعات شما ذخیره نخواهد شد مگر به وضوح در این مورد از "
+#~ "شما پرسیده شود!\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "As stated in the [[about]] page, Tails is designed to leave no trace on "
+#~| "the computer you're using unless you ask it explicitly. It is important "
+#~| "to understand some of the consequences of that."
+#~ msgid ""
+#~ "As stated in the [[/about]] page, Tails is designed to leave no trace on "
+#~ "the computer that you are using unless you ask it explicitly. It is "
+#~ "important to understand some of the consequences of that."
+#~ msgstr ""
+#~ "همان‌طور که در صفحهٔ [[دربارهٔ تیلز]] اشاره شده، تیلز به گونه‌ای طراحی شده که "
+#~ "اثری روی رایانهٔ مورد استفاده‌تان نگذارد، مگر این که خودتان بخواهید. دانستن "
+#~ "بعضی نتایج این کار مهم است."
+
+#, fuzzy
+#~| msgid ""
+#~| "Starting a computer on a media containing Tails doesn't change anything "
+#~| "on the operating system actually installed on your hard disk: as a live "
+#~| "system, Tails doesn't need to use your hard disk during the whole "
+#~| "session. Be your hard disk absent or damaged, it wouldn't prevent your "
+#~| "computer to start Tails. Consequently, removing the DVD or USB stick "
+#~| "containing Tails is enough to retrieve your usual operating system."
+#~ msgid ""
+#~ "Starting a computer on a media containing Tails does not change anything "
+#~ "on the operating system actually installed on your hard disk: as a live "
+#~ "system, Tails does not need to use your hard disk during the whole "
+#~ "session. Be your hard disk absent or damaged, it would not prevent your "
+#~ "computer to start Tails. Consequently, removing the DVD or USB stick "
+#~ "containing Tails is enough to retrieve your usual operating system."
+#~ msgstr ""
+#~ "استفاده از تیلز روی رایانه‌ای که سیستم‌عامل دیگری دارد هیچ اثری روی "
+#~ "سیستم‌عامل نصب‌شده روی سخت‌دیسک آن رایانه نمی‌گذارد: تیلز که یک سیستم زنده "
+#~ "است، در طول فعالیت‌های خود نیازی به استفاده از سخت‌دیسک شما ندارد. چه "
+#~ "سخت‌دیسک شما از رایانه جدا شده باشد و چه آسیب دیده باشد جلوی استفاده از "
+#~ "تیلز روی آن رایانه را نمی‌گیرد. به طور کلی جدا کردن دی‌وی‌دی یا درایو یواس‌بی "
+#~ "حاوی تیلز برای بازگشت به سیستم‌عامل اصلی رایانه کافی است."
+
+#, fuzzy
+#~ msgid "<a id=\"access_hdd\"></a>\n"
+#~ msgstr "<a id=\"access_hdd\"></a>\n"
+
+#~ msgid ""
+#~ "You should save anything you want to keep for later access into a "
+#~ "separate device (other USB stick, other DVD or any device you would "
+#~ "choose), or use the [[persistence feature|first_steps/persistence]]."
+#~ msgstr ""
+#~ "هر چیزی که می‌خواهید در آینده به آن دسترسی داشته باشید را باید روی دستگاهی "
+#~ "جدا (درایو یواس‌بی یا دی‌وی‌دی دیگر یا هر دستگاه دیگری که در ذهن دارید) "
+#~ "ذخیره کنید یا [[ویژگی مانا|first_steps/persistence]] را به کار ببندید."
+
+#, fuzzy
+#~| msgid ""
+#~| "<p>If your disks use LVM (Logical Volume Manager), you can start the\n"
+#~| "volume groups on the disks and mount logical volumes using\n"
+#~| "*GNOME Disk Utility*.</p>\n"
+#~ msgid ""
+#~ "<p>If your disks use LVM (Logical Volume Manager), for example if you\n"
+#~ "use the full disk encryption of many Linux distributions, you can:</p>\n"
+#~ msgstr ""
+#~ "<p>اگر دیسک‌های شما از ال‌وی‌ام (Logical Volume Manager) استفاده می‌کنند\n"
+#~ "می‌توانید با استفاده از <span class=\"application\">ابزار دیسک گنوم</"
+#~ "span>\n"
+#~ "گروه‌های درایوهای دیسک‌ها را راه‌اندازی کرده و درایوهای منطقی را مشخص کنید.</"
+#~ "p>\n"

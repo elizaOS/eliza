@@ -1,0 +1,116 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2021-12-22 11:10+0000\n"
+"Last-Translator: dedmoroz <cj75300@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Graphics\"]]\n"
+msgstr "[[!meta title=\"Графика\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails includes several applications for image manipulation, graphic design, "
+"and page layout:"
+msgstr ""
+"В Tails есть несколько приложений для обработки изображений, графического "
+"дизайна и верстки страниц."
+
+#. type: Bullet: '  - '
+msgid "[*GIMP*](https://www.gimp.org/), an image editor."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "***[GIMP](https://www.gimp.org/)*** is an advanced picture editor. You can use it to edit, enhance, and retouch photos and scans, create drawings, and make your own images."
+msgid ""
+"    You can use *GIMP* to edit, enhance, and retouch photos and scans, create\n"
+"    drawings, and make your own images.\n"
+msgstr "***[GIMP](https://www.gimp.org/)*** — продвинутый графический редактор. Позволяет редактировать, улучшать и ретушировать фотографии и скан-копии, создавать рисунки и другие изображения."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    The *GIMP* website provides a [user\n"
+#| "    manual](https://www.gimp.org/docs/) translated into several languages.\n"
+msgid ""
+"    *GIMP* has [user manuals](https://docs.gimp.org/) in several\n"
+"    languages.\n"
+msgstr "    На сайте *GIMP* есть [руководство для пользователей](https://docs.gimp.org/2.10/ru/) на нескольких языках.\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Inkscape*](https://inkscape.org/), a vector-based drawing application."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "***[Inkscape](https://inkscape.org/)*** is vector-based drawing application.  You can use it to create a wide variety of graphics such as illustrations, icons, logos, diagrams, maps, and web graphics."
+msgid ""
+"    You can use *Inkscape* to create a wide variety of graphics such as\n"
+"    illustrations, icons, logos, diagrams, maps, and web graphics.\n"
+msgstr "***[Inkscape](https://inkscape.org/)*** — векторный редактор. Подходит для создания широкого спектра графики: иллюстраций, значков, логотипов, диаграмм, карт, веб-графики."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    The *Inkscape* website provides\n"
+#| "    [tutorials](https://inkscape.org/en/learn/tutorials/) translated into several\n"
+#| "    languages.\n"
+msgid ""
+"    The *Inkscape* website has\n"
+"    [tutorials](https://inkscape.org/en/learn/tutorials/) in several languages.\n"
+msgstr ""
+"    На сайте с *Inkscape* есть\n"
+"    [инструкции](https://inkscape.org/en/learn/tutorials/) на нескольких языках.\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "These applications can be started from the\n"
+#| "<span class=\"menuchoice\">\n"
+#| "  **Applications**&nbsp;▸\n"
+#| "  **Graphics**</span> menu.\n"
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Graphics** submenu."
+msgstr ""
+"Эти приложения можно запустить в меню\n"
+"<span class=\"menuchoice\">\n"
+"  **Приложения**&nbsp;▸\n"
+"  **Графика**</span>.\n"
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[*Scribus*](https://www.scribus.net/), a page layout application."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"

@@ -1,0 +1,181 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-03-26 01:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Install Tails from macOS\"]]\n"
+msgstr "[[!meta title=\"Installer Tails depuis macOS\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/mac\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/mac\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/install_with_etcher.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/install_with_etcher.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/welcome.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/welcome.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"install/inc/steps/install_etcher_in_mac.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"install/inc/steps/install_etcher_in_mac.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]]"
+#~ msgstr ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]]"
+
+#~ msgid "Tails does not work on Mac models that use the Apple M1 chip."
+#~ msgstr ""
+#~ "Tails ne fonctionne pas sur les modèles Mac qui utilisent la puce Apple "
+#~ "M1."
+
+#~ msgid ""
+#~ "The keyboard, trackpad, and Touch Bar might not work on recent MacBook "
+#~ "Pro models. You can use an external keyboard and mouse instead. ([[!"
+#~ "tails_ticket 13576]])"
+#~ msgstr ""
+#~ "Le clavier, le pavé tactile et la « Touch Bar » peuvent ne pas "
+#~ "fonctionner sur les modèles récents de MacBook Pro. Vous pouvez utiliser "
+#~ "un clavier externe et une souris à la place.  ([[!tails_ticket 13576]])"
+
+#~ msgid "Install from another Tails"
+#~ msgstr "Installer depuis un autre Tails"
+
+#~ msgid "|install/mac/clone-overview]]"
+#~ msgstr "|install/mac/clone-overview]]"
+
+#~ msgid "Download and install"
+#~ msgstr "Téléchargement et installation"
+
+#~ msgid "You need:"
+#~ msgstr "Vous avez besoin de :"
+
+#~ msgid "1 USB stick <small>(at least 8 GB)</small>"
+#~ msgstr "1 clé USB <small>(d'au moins 8 Go)</small>"
+
+#~ msgid ""
+#~ "1 hour to download Tails (<small class=\"remove-extra-space\">[[!inline "
+#~ "pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</small>)"
+#~ msgstr ""
+#~ "1 heure pour télécharger Tails (<small class=\"remove-extra-space\">[[!"
+#~ "inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</"
+#~ "small>)"
+
+#~ msgid "½ hour to install"
+#~ msgstr "½ heure pour l'installation"
+
+#~ msgid "[["
+#~ msgstr "[["
+
+#~ msgid "Install from macOS"
+#~ msgstr "Installer depuis macOS"
+
+#~ msgid "|mac/usb-overview]]"
+#~ msgstr "|mac/usb-overview]]"
+
+#~ msgid "You can also:"
+#~ msgstr "Vous pouvez également :"
+
+#~ msgid "[[Burn Tails on a DVD|dvd-download]]"
+#~ msgstr "[[Graver Tails sur un DVD|dvd-download]]"
+
+#~ msgid "[[Run Tails in a virtual machine|vm-download]]"
+#~ msgstr "[[Utiliser Tails dans une machine virtuelle|vm-download]]"
+
+#~ msgid ""
+#~ "It is a [[known issue|support/known_issues#mac]] that with recent MacBook "
+#~ "Pro models, the keyboard, trackpad, and Touch Bar might not work."
+#~ msgstr ""
+#~ "C'est un [[problème connu|support/known_issues#mac]] qu'avec les modèles "
+#~ "récents de MacBook Pro, le clavier, le pavé numérique et le pavé tactile "
+#~ "peuvent ne pas fonctionner."
+
+#~ msgid "As a workaround, you can use an external keyboard and mouse."
+#~ msgstr ""
+#~ "Comme contournement, vous pouvez utiliser un clavier et une souris "
+#~ "externes."
+
+#~ msgid "For more information about this bug, see [[!tails_ticket 13576]]."
+#~ msgstr "Pour plus d'informations sur ce bug, voir [[!tails_ticket 13576]]."

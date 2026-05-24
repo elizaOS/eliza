@@ -1,0 +1,57 @@
+[[!meta date="Fri, 23 Mar 2018 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Help us win $50000"]]
+[[!tag announce]]
+
+<blockquote>
+<p>Free, libre, and open source software projects quietly save the
+world every day, even when you can't see it, and their success depends
+on your support.</p>
+&mdash; Edward Snowden (@Snowden)
+<a href="https://twitter.com/Snowden/status/975827513321623553?ref_src=twsrc%5Etfw">March 19, 2018</a>
+</blockquote>
+
+Through our end-of-year donation campaign we managed to raise
+~103&thinsp;000€, which is nearly half of our yearly budget for core work and
+maintenance. A big thanks to everybody who donated!
+
+To fill the gap, we are extremely happy to be part of [DuckDuckGo's
+privacy crowdrising
+challenge](https://spreadprivacy.com/duckduckgo-privacy-challenge-2018/).
+
+If you haven't donated to Tails recently, now is a great opportunity to
+support us as your donation is likely to be matched by DuckDuckGo. It
+will also help us get one of the grand prizes awarded by DuckDuckGo, up
+to $50&thinsp;000.
+
+[Donate to Tails via the DuckDuckGo donation challenge](https://www.crowdrise.com/tails-live)
+
+If you have donated to Tails recently, please help us spread the word
+within your contacts and on social media by sharing or tweeting our
+[campaign page](https://www.crowdrise.com/tails-live).
+
+♥ Thank you! ♥
+
+What is Tails?
+--------------
+
+Tails is an entire operating system which preserves your privacy and
+provides anonymity out-of-the-box. With Tails, you can use the Internet
+anonymously and circumvent censorship. You'll be in control about the
+traces you want to leave and those that you'd rather see forgotten.
+Installed onto a USB key, Tails discreetly fits into your pocket.
+
+For the past 9 years, we've been working on making digital security
+accessible to those who need it most. Counting more than 20&thinsp;000 boots
+per day, we've proved that Tails is a reliable and successful tool that
+helps diverse people around the world to be safe online every day. But
+we think that the immense work we've done until now should have an even
+bigger impact on the world!
+
+Even if you're not a Tails user yourself, your donation will [[help human
+rights defenders, journalists, activists, victims of domestic violence
+and many others|who_are_you_helping/]] who rely on Tails every day.
+
+Another detail that makes our work awesome is that we contribute our
+improvements back to the free software community. When donating to
+Tails, you're supporting an entire ecosystem which we are part of.

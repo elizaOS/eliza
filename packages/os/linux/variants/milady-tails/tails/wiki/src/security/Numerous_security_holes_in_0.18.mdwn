@@ -1,0 +1,27 @@
+[[!meta date="Sat, 22 Jun 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.18"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.18.
+
+We **strongly** urge you to [[upgrade to Tails 0.19|news/version_0.19]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel
+   (
+   [MFSA 2013-49](https://www.mozilla.org/security/announce/2013/mfsa2013-49.html)
+   [MFSA 2013-50](https://www.mozilla.org/security/announce/2013/mfsa2013-50.html),
+   [MFSA 2013-51](https://www.mozilla.org/security/announce/2013/mfsa2013-51.html),
+   [MFSA 2013-53](https://www.mozilla.org/security/announce/2013/mfsa2013-53.html),
+   [MFSA 2013-54](https://www.mozilla.org/security/announce/2013/mfsa2013-54.html),
+   [MFSA 2013-55](https://www.mozilla.org/security/announce/2013/mfsa2013-55.html),
+   [MFSA 2013-56](https://www.mozilla.org/security/announce/2013/mfsa2013-56.html),
+   [MFSA 2013-59](https://www.mozilla.org/security/announce/2013/mfsa2013-59.html),
+   )
+ - tiff ([[!debsa2013 2698]])
+ - gnutls26 ([[!debsa2013 2697]])

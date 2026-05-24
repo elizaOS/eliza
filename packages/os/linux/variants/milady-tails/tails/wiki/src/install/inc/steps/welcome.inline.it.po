@@ -1,0 +1,487 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: la_r_go* <largo@tracciabi.li>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"new\" class=\"pc-clone mac-clone\">Welcome to your new Tails!</h1>\n"
+msgstr "<h1 id=\"new\" class=\"pc-clone mac-clone\">Un benvenuto al vostro nuovo Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image pc-clone mac-clone\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image pc-clone mac-clone\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"success\">\n"
+msgstr "<div class=\"success\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/start.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+msgstr ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/start.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div>\n"
+"  <p class=\"big\">You made it!</p>\n"
+msgstr ""
+"<div>\n"
+"  <p class=\"big\">Ce l'hai fatta!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>You managed to start <span class=\"pc-clone mac-clone\">your new</span> Tails on your computer!</p>\n"
+msgstr "  <p>Sei riuscito ad avviare <span class=\"pc-clone mac-clone\">il tuo nuovo</span> Tails sul tuo computer!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Congratulations on staying safe :)</p>\n"
+msgstr "  <p>Grazie di prenderti cura di te :)</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>To continue discovering Tails, read our [[documentation|doc]].</p>\n"
+msgstr "  <p>Per continuare a scoprire Tails, leggi la nostra [[documentation|doc]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"wi-fi\" class=\"step\">Test your Wi-Fi</h1>\n"
+msgstr "<h1 id=\"wi-fi\" class=\"step\">Verifica la tua connessione Wi-Fi</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Problems with Wi-Fi are unfortunately quite common in Tails and Linux in "
+"general. To test if your Wi-Fi interface works in Tails:"
+msgstr ""
+"I problemi con il Wi-Fi sono purtroppo abbastanza comuni in Tails e in Linux "
+"in generale. Per verificare se la tua interfaccia Wi-Fi funziona in Tails:"
+
+#. type: Bullet: '1. '
+msgid "Open the system menu in the top-right corner:"
+msgstr "Apri il menu di sistema in alto a destra:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img doc/first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img doc/first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click [[!img lib/go-next.png link=\"no\" class=\"symbolic\" alt=\"\"]] on "
+"the right of the **Wi-Fi** button."
+msgstr ""
+"Clicca [[!img lib/go-next.png link=\"no\" class=\"symbolic\" alt=\"\"]] "
+"sulla destra del tasto del **Wi-Fi**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   A list of available Wi-Fi networks appears below the **Wi-Fi** button.\n"
+msgstr ""
+"   Sotto il tasto **Wi-Fi** compare un elenco delle reti Wi-Fi disponibili.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After establishing a connection to a local network, the *Tor Connection* "
+"assistant appears to help you connect to the Tor network."
+msgstr ""
+"Dopo aver stabilito una connessione a una rete locale, appare l'assistente "
+"*Tor Connection* per aiutarti a connetterti alla rete Tor."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img doc/anonymous_internet/tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img doc/anonymous_internet/tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"next\">\n"
+msgstr "   <div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To learn more about the Tor network, go to [[Connecting to the Tor\n"
+"   network|doc/anonymous_internet/tor]].</p>\n"
+msgstr ""
+"   <p>Per saperne di più sulla rete Tor, consulta [[Connessione alla rete "
+"Tor\n"
+"      |doc/anonymous_internet/tor]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Troubleshooting Wi-Fi not working"
+msgstr "Risoluzione dei problemi relativi al Wi-Fi non operativo"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline.it\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "Choose **Wi-Fi Not Connected** and then <span class=\"guilabel\">Select "
+#~ "Network</span>."
+#~ msgstr ""
+#~ "Scegli **Wi-Fi Non Connesso** e poi <span class=\"guilabel\">Seleziona "
+#~ "Rete</span>."
+
+#, no-wrap
+#~ msgid "<h2 id=\"wi-fi\">Test your Wi-Fi</h2>\n"
+#~ msgstr "<h2 id=\"wi-fi\">Verifica il tuo Wi-F</h2>\n"
+
+#, no-wrap
+#~ msgid "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+#~ msgstr "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.boum.org/install/inc/success/start.png\">\n"
+#~ "  <source src=\"https://tails.boum.org/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+#~ "</video>\n"
+#~ msgstr ""
+#~ "<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.boum.org/install/inc/success/start.png\">\n"
+#~ "  <source src=\"https://tails.boum.org/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+#~ "</video>\n"
+
+#, no-wrap
+#~ msgid "  <p>Congratulations for staying safe :)</p>\n"
+#~ msgstr "  <p>Congratulazioni per la sicurezza :)</p>\n"
+
+#, no-wrap
+#~ msgid "<h1 id=\"create-persistence\" class=\"step\">Create a Persistent Storage (optional)</h1>\n"
+#~ msgstr "<h1 id=\"create-persistence\" class=\"step\">Crea un volume persistente cifrato (opzionale)</h1>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"step-image\">[[!img install/inc/infography/create-persistence.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr "<div class=\"step-image\">[[!img install/inc/infography/create-persistence.png link=\"no\" alt=\"\"]]</div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "You can optionally create an encrypted Persistent Storage in the\n"
+#~ "remaining free space on your\n"
+#~ "<span class=\"clone\">new</span>\n"
+#~ "Tails USB stick to store any of the following:\n"
+#~ msgstr ""
+#~ "Puoi opzionalmente creare uno *spazio di Archiviazione Persistente* nello\n"
+#~ "spazio rimasto libero nella\n"
+#~ "<span class=\"clone\">nuova</span>\n"
+#~ "chiavetta USB Tails per salvare alcuni dei seguenti dati:\n"
+
+#~ msgid "Personal files"
+#~ msgstr "File personali"
+
+#~ msgid "Some settings"
+#~ msgstr "Alcune impostazioni"
+
+#~ msgid "Additional software"
+#~ msgstr "Programmi aggiuntivi"
+
+#~ msgid "Encryption keys"
+#~ msgstr "Chiavi di cifratura"
+
+#~ msgid "The data in the Persistent Storage:"
+#~ msgstr "I dati nell'Archivio Persistente:"
+
+#~ msgid "Remains available across separate working sessions."
+#~ msgstr "Rimangono disponibili da una sessione di lavoro all'altra."
+
+#~ msgid "Is encrypted using a passphrase of your choice."
+#~ msgstr "Sono cifrati usando una passphrase da te scelta."
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The Persistent Storage is not hidden. An attacker in possession of\n"
+#~ "your USB stick can know that there is a Persistent Storage on it. Take into consideration\n"
+#~ "that you can be forced or tricked to give out its passphrase.</p>\n"
+#~ msgstr ""
+#~ "<p>L'Archivio Persistente non è nascosto. Un aggressore in possesso\n"
+#~ "della tua chiavetta USB può sapere che c'è un Archivio Persistente. Tieni presente che potresti essere forzato o ingannato e rivelare la tua passphrase.</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>It is possible to\n"
+#~ "unlock the Persistent Storage from other operating systems. But, doing\n"
+#~ "so might compromise the security provided by Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>È possibile\n"
+#~ "aprire l'Archivio Persistente da altri sistemi operativi, ma questo potrebbe compromettere\n"
+#~ "la sicurezza che Tails ti garantisce.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>For example, image thumbnails might be created and saved by the other operating\n"
+#~ "system. Or, the contents of files might be indexed by the other operating\n"
+#~ "system.</p>\n"
+#~ msgstr ""
+#~ "<p>Per esempio, le miniature delle immagini possono essere create e salvate dall'altro sistema\n"
+#~ "operativo. Oppure i contenuti dei files possono essere indicizzati dall'altro sistema\n"
+#~ "operativo.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Other operating systems should probably not be trusted to handle\n"
+#~ "sensitive information or leave no trace.</p>\n"
+#~ msgstr ""
+#~ "<p>Realisticamente, gli altri sistemi operativi non dovrebbero essere considerati affidabili per maneggiare\n"
+#~ "informazioni sensibili o per evitare di lasciare tracce.</p>\n"
+
+#, no-wrap
+#~ msgid "Create the Persistent Storage"
+#~ msgstr "Creare lo spazio dati persistente"
+
+#, no-wrap
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Configure persistent volume**</span>.\n"
+#~ msgstr ""
+#~ "1. Seleziona\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applicazioni**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Configura volume persistente**</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "1. Specify a passphrase of your choice in both the\n"
+#~ "**Passphrase** and <span class=\"guilabel\">Verify\n"
+#~ "Passphrase</span> text boxes.\n"
+#~ msgstr ""
+#~ "1. Specifica una passphrase a tua scelta nelle caselle di testo\n"
+#~ "**Frase segreta** e <span class=\"guilabel\">Verifica\n"
+#~ "la frase segreta</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>We recommend choosing a long passphrase made of five to seven random words.\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">See this article about memorizable and secure passphrases.</a></p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>Raccomandiamo di scegliere una passphrase composta da cinque fino a sette parole scelte a caso.\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Vedi questo articolo sulle passphrase memorizzabili e sicure.</a></p>\n"
+#~ "   </div>\n"
+
+#~ msgid "Click on the **Create** button."
+#~ msgstr "Fai clic sul bottone **Crea**."
+
+#~ msgid "Wait for the creation to finish."
+#~ msgstr "Attendi che il processo di creazione sia terminato."
+
+#~ msgid ""
+#~ "The list of features of the Persistent Storage appears. Each feature "
+#~ "corresponds to a set of files or settings that can be saved in the "
+#~ "Persistent Storage."
+#~ msgstr ""
+#~ "Viene visualizzato l'elenco delle funzioni dell'Archivio Persistente. "
+#~ "Ogni funzionalità corrisponde a un insieme di file o impostazioni che "
+#~ "possono essere salvati nell'Archivio Persistente."
+
+#, no-wrap
+#~ msgid ""
+#~ "   We recommend you to only turn on the Personal\n"
+#~ "   Data feature for the time being. You\n"
+#~ "   can turn on more features later on according to your needs.\n"
+#~ msgstr ""
+#~ "   Si consiglia di attivare solo la funzionalità\n"
+#~ "   Dati Personali per il momento.\n"
+#~ "   In seguito, in base alle tue esigenze, potrai attivare altre funzionalità.\n"
+
+#~ msgid "Click **Save**."
+#~ msgstr "Clicca **Salva**."
+
+#, no-wrap
+#~ msgid "Restart and unlock the Persistent Storage"
+#~ msgstr "Riavvia e attiva l' archivio persistente"
+
+#~ msgid ""
+#~ "Shut down the computer and restart on your <span class=\"clone\">new</"
+#~ "span> Tails USB stick."
+#~ msgstr ""
+#~ "Arresta il computer e riavvia sulla tua <span class=\"clone\">nuova</"
+#~ "span> chiavetta USB Tails."
+
+#~ msgid "In the Welcome Screen:"
+#~ msgstr "Nella schermata di Benvenuto:"
+
+#, no-wrap
+#~ msgid "   [[!img install/inc/screenshots/welcome_screen_with_persistence.png link=\"no\" alt=\"Welcome to Tails!\"]]\n"
+#~ msgstr "   [[!img install/inc/screenshots/welcome_screen_with_persistence.png link=\"no\" alt=\"Benvenuti in Tails!\"]]\n"
+
+#~ msgid ""
+#~ "Select your language and keyboard layout in the <span "
+#~ "class=\"guilabel\">Language & Region</span> section."
+#~ msgstr ""
+#~ "Seleziona la tua lingua e la tua disposizione tastiera nella sezione "
+#~ "**Language & Region**."
+
+#~ msgid ""
+#~ "In the **Encrypted Persistent Storage** section, enter your passphrase "
+#~ "and click **Unlock** to unlock the Persistent Storage for the current "
+#~ "working session."
+#~ msgstr ""
+#~ "Nella sezione** Archivio Persistente Cifrato** inserisci la tua "
+#~ "passphrase e clicca su **Sblocca** per sbloccare l'Archivio Persistente "
+#~ "per la sessione di lavoro corrente."
+
+#~ msgid "Click **Start Tails**."
+#~ msgstr "Clicca **Avvia Tails**."
+
+#~ msgid "After 15&ndash;30 seconds, the Tails desktop appears."
+#~ msgstr "Dopo 15&ndash;30 secondi, appare il desktop di Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "1. You can now save your personal files and working documents in the\n"
+#~ "**Persistent** folder. To open the\n"
+#~ "**Persistent** folder choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "1. Ora puoi salvare i tuoi file personali e i tuoi documenti di lavoro nella cartella\n"
+#~ "**Persistente**. Per aprire la cartella\n"
+#~ "**Persistente** seleziona\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Posizioni**&nbsp;▸\n"
+#~ "  **Persistente**</span>.\n"
+
+#, no-wrap
+#~ msgid "<div class=\"trophy\">\n"
+#~ msgstr "<div class=\"trophy\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>If you want to save some of your documents\n"
+#~ "and configuration in an encrypted storage on your <span class=\"clone\">new</span> Tails USB stick, follow\n"
+#~ "our instructions until the end. Otherwise, have a look at our\n"
+#~ "<span class=\"windows\">[[final recommendations|windows#recommendations]].</span>\n"
+#~ "<span class=\"mac\">[[final recommendations|mac#recommendations]].</span>\n"
+#~ "<span class=\"linux\">[[final recommendations|linux#recommendations]].</span>\n"
+#~ "<span class=\"expert\">[[final recommendations|expert#recommendations]].</span>\n"
+#~ "<span class=\"pc-clone\">[[final recommendations|clone#recommendations]].</span>\n"
+#~ "<span class=\"mac-clone\">[[final recommendations|clone/mac#recommendations]].</span>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<p>Se vuoi salvare alcuni dei tuoi documenti\n"
+#~ "e le configurazioni in un archivio cifrato sulla tua <span class=\"clone\">nuova</span> chiavetta USB Tails, segui\n"
+#~ "le nostre istruzioni fino alla fine. Altrimenti, dai un'occhiata alle nostre\n"
+#~ "<span class=\"windows\">[raccomandazioni finali|windows#recommendations]].</span>\n"
+#~ "<span class=\"mac\">[[raccomandazioni finali|mac#recommendations]].</span>\n"
+#~ "<span class=\"linux\">[[raccomandazioni finali|linus#recommendations]].</span>\n"
+#~ "<span class=\"expert\">[[raccomandazioni finali|expert#recommendations]].</span>\n"
+#~ "<span class=\"pc-clone\">[[raccomandazioni finali|clone#recommendations]].</span>\n"
+#~ "<span class=\"mac-clone\">[[raccomandazioni finali|mac#recommendations]].</span>\n"
+#~ "</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"trophy\" id=\"recommendations\">\n"
+#~ msgstr "<div class=\"trophy\" id=\"recommendations\">\n"
+
+#, no-wrap
+#~ msgid "<div class=\"state-image\">[[!img install/inc/infography/tails-usb-with-persistence.png link=\"no\" alt=\"Tails USB stick with Persistent Storage\"]]</div>\n"
+#~ msgstr "<div class=\"state-image\">[[!img install/inc/infography/tails-usb-persistence.png link=\"no\" alt=\"Chiavetta USB Tails con Archivio Persistente\"]]</div>\n"
+
+#, no-wrap
+#~ msgid "<p>You now have a complete Tails, congrats!</p>\n"
+#~ msgstr "<p>Complimenti, ora hai un Tails completo!</p>\n"
+
+#, no-wrap
+#~ msgid "<h3>Final recommendations</h3>\n"
+#~ msgstr "<h3>Raccomandazioni finali</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>You should regularly\n"
+#~ "[[make a backup of your Persistent Storage|doc/first_steps/persistence/backup]]\n"
+#~ "in case your Tails USB stick becomes lost or damaged.</p>\n"
+#~ msgstr "<p>Dovresti regolarmente [[fare un backup del tuo Archivio Persistente|doc/first_steps/persistence/backup]] nel caso che la tua chiavetta USB con Tails andasse persa o danneggiata.</p>\n"
+
+#, no-wrap
+#~ msgid "<p>We hope you enjoy using Tails :)</p>\n"
+#~ msgstr "<p>Ci auguriamo che usare Tails ti piacerà :)</p>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"warning\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>Tails does not protect you from everything! Have a look at our\n"
+#~ "[[warnings|doc/about/warnings]].</p>\n"
+#~ msgstr ""
+#~ "    <p>Tails non ti protegge da tutto! Dai una occhiata ai nostri\n"
+#~ "    [[avvertimenti|doc/about/warning]].</p>\n"
+
+#, no-wrap
+#~ msgid "  <div class=\"col-md-6\">\n"
+#~ msgstr "  <div class=\"col-md-6\">\n"
+
+#, no-wrap
+#~ msgid "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+#~ msgstr "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "    [[!img lib/apps/help-browser.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+#~ msgstr "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+
+#~ msgid ""
+#~ "    <p>If you face any problem, use the <span class=\"guilabel\">Report "
+#~ "an\n"
+#~ "    error</span> launcher on the Tails desktop or visit our [[support\n"
+#~ "    pages|support]].</p>\n"
+#~ msgstr ""
+#~ "    <p>Se incontri qualche problema, usa il link<span "
+#~ "class=\"guilabel\">Segnala un\n"
+#~ "    errore</span> sulla Scrivania (desktop) di Tails o visita le nostre "
+#~ "[[pagine\n"
+#~ "    di supporto|support]].</p>\n"
+
+#~ msgid "In *Tails Greeter*:"
+#~ msgstr "In *Tails Greeter*:"

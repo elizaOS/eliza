@@ -1,0 +1,885 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2024-10-15 21:09+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Revocation of the Tails signing key\"]]\n"
+msgstr "[[!meta title=\"Revocació de la clau de signatura de Tails\"]]\n"
+
+#. type: Plain text
+msgid ""
+"This document proposes a mechanism for the distribution and activation of "
+"the revocation certificate of the Tails signing key."
+msgstr ""
+"Aquest document proposa un mecanisme per a la distribució i activació del "
+"certificat de revocació de la clau de signatura de Tails."
+
+#. type: Title =
+#, no-wrap
+msgid "Status"
+msgstr "Estat"
+
+#. type: Plain text
+msgid "This document is obsolete."
+msgstr "Aquest document és obsolet."
+
+#. type: Plain text
+msgid ""
+"It will be simplified or removed by [[!tails_gitlab tails/summit/-/issues/"
+"36]]."
+msgstr ""
+"Serà simplificat o eliminat per [[!tails_gitlab tails/summit/-/issues/36]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Goals"
+msgstr "Objectius"
+
+#. type: Plain text
+msgid "Covered by the current proposal:"
+msgstr "Coberta per la proposta actual:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Prevent any single individual from revoking our signing key."
+msgid "Prevent any single individual from revoking our signing key."
+msgstr "- Evitar que qualsevol persona revoqui la nostra clau de signatura."
+
+#. type: Bullet: '- '
+msgid ""
+"Allow a coalition of people from the Board to revoke our signing key in case "
+"most of the people from the Board become unavailable."
+msgstr ""
+"Permetre que una coalició de persones de la Junta revoqui la nostra clau de "
+"signatura en cas que la majoria de la gent de la Junta no estigui disponible."
+
+#. type: Bullet: '- '
+msgid ""
+"Allow a coalition of people, not necessarily from the Board, to revoke our "
+"signing key in case everybody or almost everybody from the Board becomes "
+"unavailable."
+msgstr ""
+"Permetre que una coalició de persones, no necessàriament de la Junta, "
+"revoqui la nostra clau de signatura en cas que tots o gairebé tots els "
+"membres de la Junta no estiguin disponibles."
+
+#. type: Bullet: '- '
+msgid ""
+"Make it hard for a coalition of people not from the Board to revoke our "
+"signing key unless everybody or almost everybody from the Board becomes "
+"unavailable."
+msgstr ""
+"Dificultar que una coalició de persones que no formen part de la Junta "
+"revoqui la nostra clau de signatura tret que tothom o gairebé tots els "
+"membres de la Junta no estiguin disponibles."
+
+#. type: Bullet: '- '
+msgid ""
+"People not from the Board shouldn't know how the shares are spread and who "
+"has them."
+msgstr ""
+"La gent que no és de la Junta no hauria de saber com es distribueixen les "
+"accions i qui les té."
+
+#. type: Bullet: '- '
+msgid ""
+"People in possession of a share of the revocation certificate of the signing "
+"key should have instructions on how to use it if needed."
+msgstr ""
+"Les persones que tinguin una part del certificat de revocació de la clau de "
+"signatura haurien de tenir instruccions sobre com utilitzar-la si cal."
+
+#. type: Title =
+#, no-wrap
+msgid "Groups"
+msgstr "Grups"
+
+#. type: Plain text
+msgid "We define four complementary groups of trusted people:"
+msgstr "Definim quatre grups complementaris de persones de confiança:"
+
+#. type: Bullet: '  - '
+msgid "Group A: people from the Board themselves"
+msgstr "Grup A: persones de la mateixa Junta"
+
+#. type: Bullet: '  - '
+msgid "Group B"
+msgstr "Grup B"
+
+#. type: Bullet: '  - '
+msgid "Group C"
+msgstr "Grup C"
+
+#. type: Bullet: '  - '
+msgid "Group D"
+msgstr "Grup D"
+
+#. type: Plain text
+msgid ""
+"All these people should have an OpenPGP key and understand what a revocation "
+"certificate is."
+msgstr ""
+"Totes aquestes persones haurien de tenir una clau OpenPGP i entendre què és "
+"un certificat de revocació."
+
+#. type: Title =
+#, no-wrap
+msgid "Cryptographic shares"
+msgstr "Accions criptogràfiques"
+
+#. type: Plain text
+msgid ""
+"We generate a revocation certificate of the signing key and split it into a "
+"number of cryptographic shares, using for example Shamir's secret sharing "
+"scheme implemented by `gfshare`."
+msgstr ""
+"Generem un certificat de revocació de la clau de signatura i el dividim en "
+"una sèrie d'accions criptogràfiques, utilitzant, per exemple, l'esquema de "
+"compartició secreta de Shamir implementat per `gfshare`."
+
+#. type: Plain text
+msgid ""
+"The following combinations of people could get together and reassemble their "
+"shares to reconstruct a complete revocation certificate:"
+msgstr ""
+"Les següents combinacions de persones podrien reunir-se i reunir les seves "
+"accions per reconstruir un certificat de revocació complet:"
+
+#. type: Bullet: '  - '
+msgid "Three people from the Board: A{3}"
+msgstr "Tres persones de la Junta: A{3}"
+
+#. type: Bullet: '  - '
+msgid ""
+"Two people from the Board and one person not from the Board: A{2}+(B|C|D)"
+msgstr ""
+"Dues persones de la Junta i una persona de fora de la Junta: A{2}+(B|C|D)"
+
+#. type: Bullet: '  - '
+msgid ""
+"One person from the Board, and two people not from the Board but from two "
+"different groups: A+(B|C|D){2}"
+msgstr ""
+"Una persona de la Junta, i dues persones que no formin part de la Junta i "
+"siguin de dos grups diferents: A+(B|C|D){2}"
+
+#. type: Bullet: '  - '
+msgid ""
+"Three people not from the Board but from three different groups: (B+C+D){3}"
+msgstr ""
+"Tres persones de fora de la Junta però de tres grups diferents: (B+C+D){3}"
+
+#. type: Plain text
+msgid "We generate these shares:"
+msgstr "Generem aquestes accions:"
+
+#. type: Bullet: '  - '
+msgid "N shares, one for each person from the Board"
+msgstr "N accions, una per cada persona de la Junta"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group B"
+msgstr "1 acció per a persones del grup B"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group C"
+msgstr "1 acció per a persones del grup C"
+
+#. type: Bullet: '  - '
+msgid "1 share for people in group D"
+msgstr "1 acció per a persones del grup D"
+
+#. type: Title =
+#, no-wrap
+msgid "Who knows what"
+msgstr "Qui sap què"
+
+#. type: Bullet: '  - '
+msgid "People from the Board know the composition of each group"
+msgstr "La gent de la Junta coneix la composició de cada grup"
+
+#. type: Bullet: '  - '
+msgid "People not from the Board:"
+msgstr "Persones que no formen part de la Junta:"
+
+#. type: Bullet: '    - '
+msgid "Are explained in which circumstances they should revoke the signing key"
+msgstr ""
+"Se'ls explica en quines circumstàncies han de revocar la clau de signatura"
+
+#. type: Bullet: '    - '
+msgid ""
+"Are told to write to a certain contact email address if they decide to "
+"revoke the signing key"
+msgstr ""
+"Se'ls diu que escriguin a una adreça electrònica de contacte determinada si "
+"decideixen revocar la clau de signatura"
+
+#. type: Bullet: '    - '
+msgid ""
+"Are told that they need three different shares to reassemble the revocation "
+"certificate"
+msgstr ""
+"Se'ls diu que necessiten tres accions diferents per tornar a muntar el "
+"certificat de revocació"
+
+#. type: Title =
+#, no-wrap
+msgid "Infrastructure"
+msgstr "Infraestructura"
+
+#. type: Bullet: '  - '
+msgid "Everybody who owns a share is subscribed to a mailing list."
+msgstr "Tothom que posseeix una acció està subscrit a una llista de correu."
+
+#. type: Bullet: '  - '
+msgid ""
+"This mailing list is hosted on a trusted server different from boum.org to "
+"be more resilient than our usual communication channels."
+msgstr ""
+"Aquesta llista de correu està allotjada en un servidor de confiança diferent "
+"de boum.org per ser més resistent que els nostres canals de comunicació "
+"habituals."
+
+#. type: Bullet: '  - '
+msgid ""
+"Someone hosting the mailing list is part of group B, C, or D so they can "
+"ensure that the list keeps working even if it never used."
+msgstr ""
+"Algú que allotja la llista de correu forma part del grup B, C o D, de manera "
+"que es pot assegurar que la llista segueixi funcionant encara que no s'hagi "
+"utilitzat mai."
+
+#. type: Title =
+#, no-wrap
+msgid "Changing the members of the groups B, C, or D"
+msgstr "Canviar els membres dels grups B, C o D"
+
+#. type: Plain text
+msgid "To add someone to a given group:"
+msgstr "Per afegir algú a un grup determinat:"
+
+#. type: Bullet: '  - '
+msgid ""
+"Request someone from that group to send her share to the new person in the "
+"group."
+msgstr ""
+"Demaneu a algú d'aquest grup que enviï la seva part a la persona nova del "
+"grup."
+
+#. type: Plain text
+msgid "To remove someone from a given group:"
+msgstr "Per eliminar algú d'un grup determinat:"
+
+#. type: Bullet: '  - '
+msgid "Send new shares to everybody except to the person who is being removed."
+msgstr ""
+"Envieu noves accions a tothom, excepte a la persona que s'està eliminant."
+
+#. type: Bullet: '  - '
+msgid ""
+"Request everybody to delete their previous share and track this.  Once "
+"everybody in 2 groups amongst B, C, or D have deleted their share, it "
+"becomes impossible for them to reassemble the revocation certificate with "
+"the previous set of shares."
+msgstr ""
+"Demaneu a tothom que suprimeixi la seva acció anterior i que faci un "
+"seguiment. Un cop dos dels grups entre B, C o D hagin suprimit la seva "
+"quota, es fa impossible que tornin a reunir el certificat de revocació amb "
+"el conjunt d'accions anterior."
+
+#. type: Bullet: '  - '
+msgid "Let's hope that this doesn't happen very often :)"
+msgstr "Esperem que això no passi molt sovint"
+
+#. type: Title =
+#, no-wrap
+msgid "Expiry"
+msgstr "Expiració"
+
+#. type: Plain text
+msgid ""
+"There is no expiry date on revocation certificates. One way of cancelling "
+"the revocation power is to destroy all copies of shares of 2 groups amongst "
+"B, C, or D."
+msgstr ""
+"Els certificats de revocació no tenen data de caducitat. Una manera de "
+"cancel·lar el poder de revocació és destruir totes les còpies de les accions "
+"de 2 grups entre B, C o D."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"invitation\"></a>\n"
+msgstr "<a id=\"invitation\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Invitation email"
+msgstr "Correu electrònic d'invitació"
+
+#. type: Plain text
+msgid ""
+"Someone who has a personal trust relationship with the person being invited "
+"sends this email."
+msgstr ""
+"Algú que tingui una relació personal de confiança amb la persona convidada "
+"envia aquest correu electrònic."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: distribution\n"
+msgstr ""
+"<pre>\n"
+"Assumpte: distribució\n"
+
+#. type: Plain text
+msgid "Hi,"
+msgstr "Hola,"
+
+#. type: Plain text
+msgid ""
+"We want to propose you to be part of a distributed mechanism for the "
+"revocation certificate of the Tails signing key."
+msgstr ""
+"Volem proposar-vos formar part d'un mecanisme distribuït per al certificat "
+"de revocació de la clau de signatura de Tails."
+
+#. type: Plain text
+msgid ""
+"The idea is to distribute cryptographic shares of this revocation "
+"certificate to people that we trust. These cryptographic shares can be put "
+"together to reassemble the revocation certificate and revoke the Tails "
+"signing key. This may be needed in case something really bad happens to us "
+"and we are not able to do the revocation ourselves."
+msgstr ""
+"La idea és distribuir accions criptogràfiques d'aquest certificat de "
+"revocació a persones en qui confiem. Aquestes comparticions criptogràfiques "
+"es poden reunir per tornar a muntar el certificat de revocació i revocar la "
+"clau de signatura de Tails. Això pot ser necessari en cas que ens passi "
+"alguna cosa molt dolenta i no puguem fer la revocació nosaltres mateixos."
+
+#. type: Plain text
+msgid "Note: In all this document, 'us' refers to the Board."
+msgstr "Nota: en tot aquest document, «nosaltres» fa referència a la Junta."
+
+#. type: Plain text
+msgid "You can read a complete description of the distribution mechanism on:"
+msgstr "Podeu llegir una descripció completa del mecanisme de distribució a:"
+
+#. type: Plain text
+msgid "https://tails.net/doc/about/openpgp_keys/signing_key_revocation."
+msgstr ""
+"https://tails.net/doc/about/openpgp_keys/signing_key_revocation/"
+"index.ca.html."
+
+#. type: Plain text
+msgid ""
+"The recipe is public and the only secret component is the list of people who "
+"are in possession of the cryptographic material."
+msgstr ""
+"La recepta és pública i l'únic component secret és la llista de persones que "
+"estan en possessió del material criptogràfic."
+
+#. type: Plain text
+msgid ""
+"We are proposing this to you because we trust in both your technical "
+"abilities to store your share in a safe place and manipulate it as required. "
+"But also because we trust you as a human being to make informed judgment on "
+"when to use your share and act only in the interest of Tails."
+msgstr ""
+"Us ho proposem perquè confiem en les vostres capacitats tècniques per "
+"emmagatzemar la vostra participació en un lloc segur i manipular-la segons "
+"sigui necessari. Però també perquè confiem en tu com a ésser humà per "
+"decidir quan utilitzar la teva quota i actuar només en l'interès de Tails."
+
+#. type: Plain text
+msgid "The bad things that could happen if the mechanism fails are:"
+msgstr "Les coses dolentes que podrien passar si falla el mecanisme són:"
+
+#. type: Plain text
+msgid ""
+"A. The signing key is not revoked when it should be. This could allow "
+"possible attackers to distribute malicious Tails images or publish malicious "
+"information on our name."
+msgstr ""
+"A. La clau de signatura no es revoca quan hauria de ser revocada. Això "
+"podria permetre als possibles atacants distribuir imatges de Tails "
+"malicioses o publicar informació maliciosa amb el nostre nom."
+
+#. type: Plain text
+msgid ""
+"B. The signing key is revoked when it should not have been. This would "
+"prevent people from verifying our images with OpenPGP until we publish a new "
+"signing key and build trust in it."
+msgstr ""
+"B. La clau de signatura es revoca quan no hauria d'haver estat revocada. "
+"Això impediria que la gent verifiqui les nostres imatges amb OpenPGP fins "
+"que publiquem una nova clau de signatura i hi creem confiança."
+
+#. type: Title =
+#, no-wrap
+msgid "Distribution of the shares"
+msgstr "Distribució de les accions"
+
+#. type: Plain text
+msgid ""
+"Each person from the Board, group A, has a *different* share, A1, A2, ..., "
+"An."
+msgstr ""
+"Cada persona de la Junta, grup A, té una part *diferent*, A1, A2, …, An."
+
+#. type: Plain text
+msgid ""
+"On top of this, we defined three complementary groups, B, C, and D of "
+"trusted people who have a close relationship with Tails but different "
+"interests and different access to information about us. You are part of one "
+"of these groups."
+msgstr ""
+"A més, vam definir tres grups complementaris, B, C i D de persones de "
+"confiança que tenen una estreta relació amb Tails però amb interessos "
+"diferents i accés diferent a la informació sobre nosaltres. Formes part d'un "
+"d'aquests grups."
+
+#. type: Plain text
+msgid "Everybody in group B has an *identical* share B."
+msgstr "Tots els membres del grup B tenen una acció B *idèntica*."
+
+#. type: Plain text
+msgid "Everybody in group C has an *identical* share C."
+msgstr "Tothom del grup C té una acció C *idèntica*."
+
+#. type: Plain text
+msgid "Everybody in group D has an *identical* share D."
+msgstr "Tots els membres del grup D tenen una acció D *idèntica*."
+
+#. type: Plain text
+msgid ""
+"Three different shares are needed to reassemble the revocation certificate. "
+"For example, shares A1, A2, and A3, or shares A1, B, and C."
+msgstr ""
+"Es necessiten tres accions diferents per tornar a muntar el certificat de "
+"revocació. Per exemple, les accions A1, A2 i A3, o les accions A1, B i C."
+
+#. type: Title =
+#, no-wrap
+msgid "How to store your share"
+msgstr "Com emmagatzemar la vostra acció"
+
+#. type: Plain text
+msgid ""
+"Please keep your share in an encrypted storage and make it as hard as you "
+"can for untrusted people to get a copy of it."
+msgstr ""
+"Si us plau, guardeu la vostra acció en un emmagatzematge encriptat i feu que "
+"sigui tan difícil com sigui possible per a persones no fiables d'obtenir una "
+"còpia."
+
+#. type: Plain text
+msgid ""
+"You can rename the file as long as you keep the number in the file name of "
+"your share as it is needed to use the share."
+msgstr ""
+"Podeu canviar el nom del fitxer sempre que mantingueu el número al nom del "
+"fitxer de la vostra compartició, ja que és necessari per utilitzar-lo."
+
+#. type: Plain text
+msgid ""
+"Feel free to back up the file but we might also request you to delete it at "
+"some point and you should be able to know whether you still have a copy of "
+"it or not. It is all-right to lose your share as long as you tell us that "
+"you have lost it. It is actually worse to still have a copy of the share "
+"\"somewhere\" while thinking that you don't, than to lose it by mistake."
+msgstr ""
+"No dubteu a fer una còpia de seguretat del fitxer, però també us podem "
+"demanar que l'elimineu en algun moment i hauríeu de poder saber si encara en "
+"teniu una còpia o no. Està bé perdre la vostra part sempre que ens digueu "
+"que l'heu perdut. De fet, és pitjor tenir encara una còpia de la quota «en "
+"algun lloc» mentre penseu que no, que perdre-la per error."
+
+#. type: Plain text
+msgid ""
+"Don't hesitate to ask us if you need clarification on the technical aspects "
+"of this."
+msgstr ""
+"No dubteu a demanar-nos si necessiteu aclariments sobre els aspectes tècnics "
+"d'això."
+
+#. type: Title =
+#, no-wrap
+msgid "When to use your share"
+msgstr "Quan utilitzar la vostra acció"
+
+#. type: Plain text
+msgid "Everybody in possession of a share is subscribed to a mailing list."
+msgstr "Tothom en possessió d'una acció està subscrit a una llista de correu."
+
+#. type: Plain text
+msgid ""
+"If someone in possession of a share gets to learn about a very bad event "
+"that happened to many of us and really thinks that we are not capable of "
+"revoking the Tails signing key ourselves anymore, then this person should "
+"write to the mailing list explaining why she thinks that the signing key "
+"needs to be revoked."
+msgstr ""
+"Si algú en possessió d'una acció s'assabenta d'un esdeveniment molt dolent "
+"que ens ha passat a molts i realment pensa que ja no som capaços de revocar "
+"la clau de signatura de Tails nosaltres mateixos, llavors aquesta persona "
+"hauria d'escriure a la llista de correu explicant per què ella creu que s'ha "
+"de revocar la clau de signatura."
+
+#. type: Plain text
+msgid ""
+"Yes, there is no mathematically proven algorithm for this and here is where "
+"your judgment as a human being is needed. The description of the very bad "
+"event should be checked or backed by enough people to be plausible."
+msgstr ""
+"Sí, no hi ha cap algorisme provat matemàticament per a això i aquí és on es "
+"necessita el vostre judici com a ésser humà. La descripció de l'esdeveniment "
+"molt dolent ha de ser revisada o recolzada per persones suficients per ser "
+"plausible."
+
+#. type: Plain text
+msgid ""
+"People on the list who are also convinced that the signing key should be "
+"revoked share their shares until they have 3 different shares. Then they can "
+"assemble the revocation certificate and publish it to revoke the signing key."
+msgstr ""
+"Les persones de la llista que també estan convençudes que s'ha de revocar la "
+"clau de signatura comparteixen les seves accions fins a tenir 3 accions "
+"diferents. A continuació, poden reunir el certificat de revocació i publicar-"
+"lo per revocar la clau de signatura."
+
+#. type: Plain text
+msgid ""
+"Keep in mind that we could still revoke the signing key ourselves as long as "
+"three of us are able to communicate and gather their shares. So we only need "
+"your help if no more than two of us are still able to communicate."
+msgstr ""
+"Tingueu en compte que encara podríem revocar la clau de signatura nosaltres "
+"mateixos sempre que tres de nosaltres puguem comunicar-nos i reunir les "
+"nostres accions. Per tant, només necessitem la vostra ajuda si no podem "
+"comunicar-nos més de dos membres de la Junta."
+
+#. type: Plain text
+msgid ""
+"Unless you really want to start the key revocation process, do not write to "
+"this mailing list."
+msgstr ""
+"A menys que realment vulgueu iniciar el procés de revocació de claus, no "
+"escriviu a aquesta llista de correu."
+
+#. type: Title =
+#, no-wrap
+msgid "Further communications"
+msgstr "Més comunicacions"
+
+#. type: Plain text
+msgid ""
+"In case we need to communicate with you about this revocation mechanism in "
+"the future, we will always do it through the tails@boum.org mailing list. We "
+"might do so for example to:"
+msgstr ""
+"En cas que necessitem comunicar-nos amb vosaltres sobre aquest mecanisme de "
+"revocació en el futur, sempre ho farem a través de la llista de correu "
+"tails@boum.org. Ho podríem fer per exemple per:"
+
+#. type: Bullet: '  - '
+msgid "Ask you to send your share to a new member of your group."
+msgstr ""
+"Demanar-vos que envieu la vostra acció a un nou membre del vostre grup."
+
+#. type: Bullet: '  - '
+msgid ""
+"Ask you to delete your share. This could be needed to cancel the power of "
+"others people's share: as long as enough of you delete their shares, the few "
+"people that might not delete them would end up with unusable shares."
+msgstr ""
+"Demanar-vos que suprimiu la vostra acció. Això podria ser necessari per "
+"cancel·lar el poder de la compartició d'altres persones: sempre que suprimiu "
+"prou els seus recursos compartits, les poques persones que potser no les "
+"suprimiran acabaran amb comparticions inutilitzables."
+
+#. type: Plain text
+msgid ""
+"The tails@boum.org mailing list has its own OpenPGP key, which is signed by "
+"the Tails signing key itself:"
+msgstr ""
+"La llista de correu tails@boum.org té la seva pròpia clau OpenPGP, que està "
+"signada per la pròpia clau de signatura de Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    https://tails.net/tails-email.key\n"
+msgstr "    https://tails.net/tails-email.key\n"
+
+#. type: Plain text
+msgid "So, can we count on you for this?"
+msgstr "Aleshores, podem comptar amb tu per a això?"
+
+#. type: Plain text
+msgid ""
+"If you answer positively, we will send you your share and subscribe you to "
+"the mailing list."
+msgstr ""
+"Si responeu positivament, us enviarem la vostra acció i us subscriurem a la "
+"llista de correu."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"Thanks, and may the force be with you!\n"
+"</pre>\n"
+msgstr ""
+"Gràcies, i que la força us acompanyi!\n"
+"</pre>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Keeping the members of the groups B, C, and D up-to-date"
+msgstr "Mantenir al dia els membres dels grups B, C i D"
+
+#. type: Plain text
+msgid "At least every 2 years, we make sure that the mechanism still works:"
+msgstr ""
+"Com a mínim cada 2 anys, ens assegurem que el mecanisme encara funcioni:"
+
+#. type: Bullet: '1. '
+msgid ""
+"We review internally the list of members of each group and decide possible "
+"additions to, and removals from, each group."
+msgstr ""
+"Revisem internament la llista de membres de cada grup i decidim possibles "
+"addicions i eliminacions de cada grup."
+
+#. type: Bullet: '1. '
+msgid ""
+"We write to every individual member of each group to ask them to check that "
+"they still have their share and the number in the file name."
+msgstr ""
+"Escrivim a cada membre individual de cada grup per demanar-los que comprovin "
+"que encara tenen la seva part i el número al nom del fitxer."
+
+#. type: Bullet: '1. '
+msgid ""
+"We log in to the administration interface of the mailing list, make sure "
+"that it still exists, and is configured correctly."
+msgstr ""
+"Iniciem sessió a la interfície d'administració de la llista de correu, ens "
+"assegurem que encara existeix i que està configurada correctament."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"update\"></a>\n"
+msgstr "<a id=\"update\"></a>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Update email"
+msgstr "Correu electrònic d'actualització"
+
+#. type: Plain text
+msgid ""
+"We send these emails through tails@boum.org to avoid the need for a personal "
+"trust relationship between the person sending the mail and the recipient. We "
+"don't send shares from groups B, C, or D with tails@boum.org by doing so."
+msgstr ""
+"Enviem aquests correus electrònics a tails@boum.org per evitar la necessitat "
+"d'una relació de confiança personal entre la persona que envia el correu i "
+"el destinatari. No enviem accins dels grups B, C o D amb tails@boum.org fent-"
+"ho."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: update\n"
+msgstr ""
+"<pre>\n"
+"Assumpte: actualització\n"
+
+#. type: Plain text
+msgid ""
+"Some years ago, you agreed to be part of a distributed mechanism for the "
+"revocation certificate of the Tails signing key and we sent you a "
+"cryptographic share of this revocation certificate."
+msgstr ""
+"Fa uns anys, vau acceptar formar part d'un mecanisme distribuït per al "
+"certificat de revocació de la clau de signatura de Tails i us vam enviar una "
+"part criptogràfica d'aquest certificat de revocació."
+
+#. type: Plain text
+msgid "Today, we are asking you to:"
+msgstr "Avui us demanem que:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify the authenticity of this email, either by verifying that it is signed "
+"by the tails@boum.org mailing or by talking directly to someone from the "
+"Board."
+msgstr ""
+"Verifiqueu l'autenticitat d'aquest correu electrònic, ja sigui verificant "
+"que està signat pel correu tails@boum.org o parlant directament amb algú de "
+"la Junta."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The tails@boum.org mailing list has its own OpenPGP key, which is\n"
+"   signed by the Tails signing key itself:\n"
+msgstr ""
+"   La llista de correu tails@boum.org té la seva pròpia clau OpenPGP, que està\n"
+"   signada per la pròpia clau de signatura de Tails:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   https://tails.net/tails-email.key\n"
+msgstr "   https://tails.net/tails-email.key\n"
+
+#. type: Bullet: '2. '
+msgid "Confirm whether you still have in your possession:"
+msgstr "Confirmeu si encara teniu en el vostre poder:"
+
+#. type: Bullet: '   - '
+msgid "Your share of the revocation certificate."
+msgstr "La vostra part del certificat de revocació."
+
+#. type: Bullet: '   - '
+msgid "The number NNN in the file name of your share."
+msgstr "El número NNN del nom del fitxer de la vostra acció."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     The file was named tails-signing-key-revocation-cert.asc.NNN, where\n"
+"     NNN is a 3 digit number.\n"
+msgstr ""
+"     El fitxer s'anomenava tails-signing-key-revocation-cert.asc.NNN, on\n"
+"     NNN és un nombre de 3 dígits.\n"
+
+#. type: Plain text
+msgid ""
+"For the record, the address of the mailing list that you should write to in "
+"case you want to assemble the revocation certificate is:"
+msgstr ""
+"Perquè consti, l'adreça de la llista de correu a la qual hauríeu d'escriure "
+"en cas de voler muntar el certificat de revocació és:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    address@example.org\n"
+msgstr "    address@example.org\n"
+
+#. type: Plain text
+msgid ""
+"Do not write to this mailing list unless you really want to start the key "
+"revocation process."
+msgstr ""
+"No escriviu a aquesta llista de correu tret que realment vulgueu iniciar el "
+"procés de revocació de claus."
+
+#. type: Plain text
+msgid "We are also copying below a summary of the mechanism."
+msgstr "També copiem a continuació un resum del mecanisme."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"XXX: Copy the invitation email:\n"
+"XXX: - Include \"You can read a complete description of the distribution mechanism on:\"\n"
+"XXX: - Stop before \"So, can we count on you for this?\"\n"
+"</pre>\n"
+msgstr ""
+"XXX: Copieu el correu electrònic d'invitació:\n"
+"XXX: - Afegiu \"Podeu llegir una descripció completa del mecanisme de distribució a:\"\n"
+"XXX: - Atureu-vos abans de \"Podem comptar amb vosaltres per a això?\"\n"
+"</pre>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Adding a new member"
+msgstr "Afegir un nou membre"
+
+#. type: Bullet: '1. '
+msgid ""
+"Send the [[invitation email|signing_key_revocation#invitation]] to the new "
+"member."
+msgstr ""
+"Envieu el [[correu electrònic d'invitació|"
+"signing_key_revocation#invitation]] al nou membre."
+
+#. type: Bullet: '1. '
+msgid ""
+"If they agree, ask someone else from the same group to send them their share "
+"of the key."
+msgstr ""
+"Si hi estan d'acord, demaneu a una altra persona del mateix grup que li "
+"enviï la seva part de la clau."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Unfortunately, this reveals some membership information to these two\n"
+"   people.\n"
+msgstr ""
+"   Malauradament, això revela informació sobre la pertinença d'aquestes dues\n"
+"   persones.\n"
+
+#. type: Bullet: '1. '
+msgid "Ask the new member to confirm the reception of their share."
+msgstr "Demaneu al nou membre que confirmi la recepció de la seva acció."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"sharing\"></a>\n"
+msgstr "<a id=\"sharing\"></a>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Sharing email"
+msgstr "Correu electrònic de compartició"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<pre>\n"
+"Subject: sharing\n"
+msgstr ""
+"<pre>\n"
+"Assumpte: compartir\n"
+
+#. type: Plain text
+msgid "We asked someone else from your group to send you a copy of your share."
+msgstr ""
+"Hem demanat a una altra persona del vostre grup que us enviï una còpia de la "
+"vostra acció."
+
+#. type: Plain text
+msgid "Please tell us once you receive it."
+msgstr "Si us plau, digueu-nos-ho un cop la rebeu."
+
+#. type: Plain text
+msgid ""
+"The address of the mailing list that you should write to in case you want to "
+"assemble the revocation certificate is:"
+msgstr ""
+"L'adreça de la llista de correu a la qual hauríeu d'escriure en cas de voler "
+"muntar el certificat de revocació és:"

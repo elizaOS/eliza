@@ -1,0 +1,250 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-03 08:20+0000\n"
+"PO-Revision-Date: 2026-01-01 15:29+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div><h5>
+msgid "Tails"
+msgstr "Tails"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Home|index]]"
+msgstr "[[Inici|index]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[How Tails works|about]]"
+msgstr "[[Com funciona Tails|about]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install Tails|install]]"
+msgstr "[[Instal·lar Tails|install]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Documentation|doc]]"
+msgstr "[[Documentació|doc]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Support|support]]"
+msgstr "[[Assistència|support]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[News|news]]"
+msgstr "[[Notícies|news]]"
+
+#. type: Content of: <div><h5>
+msgid "Support"
+msgstr "Assistència"
+
+#. type: Content of: <div><ul><li>
+msgid "[[FAQs|support/faq]]"
+msgstr "[[Preguntes freqüents|support/faq]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Known issues|support/known_issues]]"
+msgstr "[[Problemes coneguts|support/known_issues]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Warnings|doc/about/warnings]]"
+msgstr "[[Avisos|doc/about/warnings]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Security advisories|security]]"
+msgstr "[[Avisos de seguretat|security]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Accessibility|doc/first_steps/accessibility]]"
+msgstr "[[Accessibilitat|doc/first_steps/accessibility]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Upgrade|doc/upgrade]]"
+msgstr "[[Actualitzar|doc/upgrade]]"
+
+#. type: Content of: <div><h5>
+msgid "Contribute"
+msgstr "Contribuir"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Contribute|contribute]]"
+msgstr "[[Contribuir|contribute]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Report an error|doc/first_steps/whisperback]]"
+msgstr "[[Informar d'un error|doc/first_steps/whisperback]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Translate|contribute/how/translate]]"
+msgstr "[[Traduir|contribute/how/translate]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Source code|contribute/how/code]]"
+msgstr "[[Codi font|contribute/how/code]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[!tails_gitlab tails/tails/-/issues desc=\"GitLab\"]]"
+msgstr "[[!tails_gitlab tails/tails/-/issues desc=\"GitLab\"]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Donate|donate]]"
+msgstr "[[Feu una donació|donate]]"
+
+#. type: Content of: <div><h5>
+msgid "About us"
+msgstr "Quant a nosaltres"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Contact|doc/about/contact]]"
+msgstr "[[Contacte|doc/about/contact]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Mission and values|contribute/mission]]"
+msgstr "[[Missió i valors|contribute/mission]]"
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"[[Social contract|https://community.torproject.org/policies/"
+"social_contract/]]"
+msgstr ""
+"[[Contracte social|https://community.torproject.org/policies/social_contract/"
+"]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Supporters|https://www.torproject.org/about/supporters/]]"
+msgstr "[[Patrocinadors|https://www.torproject.org/about/supporters/]]"
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"[[Code of conduct|https://community.torproject.org/policies/"
+"code_of_conduct/]]"
+msgstr ""
+"[[Codi de conducta|https://community.torproject.org/policies/code_of_conduct/"
+"]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[License|doc/about/license]]"
+msgstr "[[Llicència|doc/about/license]]"
+
+#. type: Content of: <div><ul><li>
+msgid "[[Jobs|jobs]]"
+msgstr "[[Feines|jobs]]"
+
+#. type: Content of: <div><h5>
+msgid "News"
+msgstr "Notícies"
+
+#. type: Content of: <div><p>
+msgid "Subscribe to our [[newsletter|news]]"
+msgstr "Subscriviu-vos al nostre [[butlletí|news]]"
+
+#. type: Content of: <div><form>
+msgid ""
+"<input aria-label=\"Email\" name=\"email\" value=\"\"/> <button aria-"
+"label=\"Subscribe\" type=\"submit\">Subscribe</button>"
+msgstr ""
+"<input aria-label=\"Email\" name=\"email\" value=\"\"/> <button aria-"
+"label=\"Subscribe\" type=\"submit\">Subscriu-me</button>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://forum.torproject.org\"><i class=\"fab fa-"
+"discourse\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://forum.torproject.org\"><i class=\"fab fa-"
+"discourse\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.facebook.com/TorProject/\"><i "
+"class=\"fab fa-facebook\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://www.facebook.com/TorProject/\"><i "
+"class=\"fab fa-facebook\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://mastodon.social/@torproject\" "
+"rel=\"me\"><i class=\"fab fa-mastodon\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://mastodon.social/@torproject\" "
+"rel=\"me\"><i class=\"fab fa-mastodon\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.instagram.com/torproject\"><i "
+"class=\"fab fa-instagram\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://www.instagram.com/torproject\"><i "
+"class=\"fab fa-instagram\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://twitter.com/Tails_live\"><i class=\"fab "
+"fa-twitter\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://twitter.com/Tails_live\"><i class=\"fab "
+"fa-twitter\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.linkedin.com/company/tor-"
+"project\"><i class=\"fab fa-linkedin\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://www.linkedin.com/company/tor-"
+"project\"><i class=\"fab fa-linkedin\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://github.com/torproject\"><i class=\"fab "
+"fa-github\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://github.com/torproject\"><i class=\"fab "
+"fa-github\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://t.me/torproject\"><i class=\"fab fa-"
+"telegram\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://t.me/torproject\"><i class=\"fab fa-"
+"telegram\"></i></a>"
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://gitlab.torproject.org/\"><i class=\"fab "
+"fa-gitlab\"></i></a>"
+msgstr ""
+"<a target=\"_blank\" href=\"https://gitlab.torproject.org/\"><i class=\"fab "
+"fa-gitlab\"></i></a>"
+
+#. type: Content of: <div>
+msgid "[[!img lib/tor-black.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr "[[!img lib/tor-black.png link=\"no\" class=\"svg\" alt=\"\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails is made by the <a href=\"https://torproject.org/\">Tor Project</a>."
+msgstr ""
+"Tails està fet pel <a href=\"https://torproject.org/ca/\">Projecte Tor</a>."
+
+#~ msgid "[[Sponsors|sponsors]]"
+#~ msgstr "[[Patrocinadors|sponsors]]"
+
+#~ msgid "[[Social contract|doc/about/social_contract]]"
+#~ msgstr "[[Contracte social|doc/about/social_contract]]"
+
+#~ msgid "[[Code of conduct|contribute/working_together/code_of_conduct]]"
+#~ msgstr "[[Codi de conducta|contribute/working_together/code_of_conduct]]"

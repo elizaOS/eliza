@@ -1,0 +1,185 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-03-14 17:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Cambiare la password dell' Archivio Persistente\"]]\n"
+
+#. type: Plain text
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr "Cambiare la frase d'accesso del tuo Archivio Persistente:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+"Scegli **App&nbsp;▸ Tails&nbsp;▸ Archiviazione persistente** per aprire le "
+"impostazioni dell'Archivio Persistente."
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+"Clicca sul tasto **Cambia frase d'accesso** a sinistra della barra del "
+"titolo."
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+"Inserisci l'attuale frase d'accesso nella casella di testo **Attuale frase "
+"d'accesso**."
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr ""
+"Inserisci la nuova frase d'accesso nella casella di testo **Nuova frase "
+"d'accesso**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+"   <div class=\"caution\">\n"
+"   <p>È impossibile recuperare la frase d'accesso se se la dimentichi!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Per aiutarti a ricordare la tua frase d'accesso, puoi scriverla su un pezzo di\n"
+"   carta, conservarla nel portafoglio per qualche giorno e distruggerla\n"
+"   una volta che la ricordi bene.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+"Inserisci nuovamente la nuova frase d'accesso nella casella di testo "
+"**Conferma nuova frase d'accesso**."
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr "Clicca **Cambia**."
+
+#. type: Plain text
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+"Ora puoi riavviare Tails e provare a sbloccare l' Archivio Persistente con "
+"la nuova frase d'accesso."
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "Start Tails and [[set up an administration password |doc/first_steps/"
+#~ "welcome_screen/administration_password]]."
+#~ msgstr ""
+#~ "Avvia Tails e [[imposta una password di amministrazione |doc/first_steps/"
+#~ "welcome_screen/administration_password]]."
+
+#, no-wrap
+#~ msgid "     In the Welcome Screen, keep the Persistent Storage locked.\n"
+#~ msgstr "     Nella schermata di benvenuto, mantieni bloccato l' Archivio Persistente.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  1. Open *Disks* from the menu\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Applications**&nbsp;▸\n"
+#~ "       **Utilities**&nbsp;▸\n"
+#~ "       **Disks**</span>.\n"
+#~ msgstr ""
+#~ "  1. Apri *Dischi* dal menù\n"
+#~ "    <span class=\"menuchoice\">\n"
+#~ "       **Applicazioni**&nbsp;▸\n"
+#~ "       **Utilità**&nbsp;▸\n"
+#~ "       **Dischi**</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "     *Disks* lists all the current storage\n"
+#~ "     devices in the left pane of the window. When you select one of these devices,\n"
+#~ "     detailed information about it is displayed in the right pane: its partitions,\n"
+#~ "     its brand, its size, etc.\n"
+#~ msgstr ""
+#~ "     *Dischi* elenca tutti i dispositivi\n"
+#~ "     di archiviazione nel pannello sinistro della finestra. Quando selezioni uno di questi dispositivi,\n"
+#~ "     nel pannello destro vengono visualizzate informazioni dettagliate su di esso: le sue partizioni,\n"
+#~ "     la sua marca, la sua dimensione, ecc.\n"
+
+#~ msgid ""
+#~ "Find which device is your Tails USB stick. It should have 2 partitions: "
+#~ "one labeled **Tails** and another one labeled **TailsData**, which "
+#~ "corresponds to the Persistent Storage."
+#~ msgstr ""
+#~ "Trova quale di questi dispositivi è la tua chiavetta USB Tails. Dovrebbe "
+#~ "avere 2 partizioni: una etichettata come **Tails** e l'altra come "
+#~ "**TailsData**, quest'ultima corrisponde all' Archivio Persistente."
+
+#~ msgid ""
+#~ "In the right pane, click on the Persistent Storage partition, labeled "
+#~ "**TailsData**."
+#~ msgstr ""
+#~ "Nel pannello destro, clicca sulla partizione dell' Archivio Persistente, "
+#~ "etichettata come **TailsData**."
+
+#~ msgid ""
+#~ "Click on <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Disks "
+#~ "context menu\" class=\"symbolic\" link=\"no\"]]</span> and choose <span "
+#~ "class=\"guilabel\">Change Passphrase…</span>."
+#~ msgstr ""
+#~ "Clicca su <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Menu "
+#~ "contestuale dei dischi\" class=\"symbolic\" link=\"no\"]]</span> e "
+#~ "seleziona **Modifica Passphrase…**."
+
+#~ msgid "Type your current passphrase and then type twice a new one."
+#~ msgstr ""
+#~ "Digita la tua passphrase attuale e poi digita due volte la nuova "
+#~ "passphrase."
+
+#~ msgid "Finally confirm by clicking **Change**."
+#~ msgstr "Infine conferma facendo click su **Modifica**."
+
+#~ msgid ""
+#~ "In the confirmation dialog, enter your administration password and click "
+#~ "**Authenticate**."
+#~ msgstr ""
+#~ "Nella finestra di conferma, inserisci la tua password di amministrazione "
+#~ "e fai clic su **Autentica**."

@@ -1,0 +1,21 @@
+inherit_from: ../.rubocop.yml
+
+Metrics/BlockLength:
+  AllowedMethods:
+    # Cucumber
+    - 'Given'
+    - 'When'
+    - 'Then'
+    - 'But'
+    - 'After'
+    - 'AfterConfiguration'
+    - 'Before'
+    - 'BeforeFeature'
+
+Naming/VariableName:
+  EnforcedStyle: snake_case
+  Enabled: false
+
+Style/GlobalVars:
+  Description: Our test suite relies heavily on this design pattern.
+  Enabled: false

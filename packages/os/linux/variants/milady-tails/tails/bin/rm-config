@@ -1,0 +1,355 @@
+#! /usr/bin/python3
+
+import argparse
+import hashlib
+import logging
+import re
+import shlex
+import subprocess
+import sys
+from pathlib import Path
+
+import yaml
+from voluptuous import Any, Schema
+from voluptuous.error import MultipleInvalid, Invalid
+from voluptuous.validators import (
+    And,
+    Date,
+    IsDir,
+    IsFile,
+    Match,
+    NotIn,
+)
+from xdg.BaseDirectory import xdg_config_home
+
+LOG_FORMAT = "%(levelname)s %(message)s"
+log = logging.getLogger()
+
+STAGES = [
+    "base",
+    "built-almost-final",
+    "finalized-changelog",
+    "reproduced-images",
+    "built-iuks",
+]
+
+# pylint: disable=E1120
+InputStr = And(str, NotIn(["FIXME"]))
+IsBuildManifest = And(IsFile(), Match(re.compile(r".*[.]build-manifest$")))
+IsIsoFile = And(IsFile(), Match(re.compile(r".*[.]iso$")))
+IsImgFile = And(IsFile(), Match(re.compile(r".*[.]img$")))
+
+STAGE_SCHEMA = {
+    "base": {
+        "tails_signature_key": InputStr,
+        "isos_git": IsDir(),
+        "isos": IsDir(),
+        "artifacts": IsDir(),
+        "master_checkout": IsDir(),
+        "release_checkout": IsDir(),
+        "tor_blog_checkout": IsDir(),
+        "version": InputStr,
+        "previous_version": InputStr,
+        "previous_stable_version": InputStr,
+        "next_planned_major_version": InputStr,
+        "second_next_planned_major_version": InputStr,
+        "next_planned_bugfix_version": InputStr,
+        "next_planned_version": InputStr,
+        "next_potential_emergency_version": InputStr,
+        "next_stable_changelog_version": InputStr,
+        "release_date": Date(),
+        "major_release": Any(0, 1),
+        "dist": Any("stable", "alpha"),
+        "release_branch": InputStr,
+        "tag": InputStr,
+        "previous_tag": InputStr,
+        "website_release_branch": InputStr,
+        "iuks_dir": IsDir(),
+        "iuks_hashes": InputStr,
+        "milestone": InputStr,
+        "tails_signature_key_long_id": InputStr,
+        "iuk_source_versions": InputStr,
+        "test_iuk_source_versions": InputStr,
+    },
+    "built-almost-final": {
+        "almost_final_build_manifest": IsBuildManifest,
+    },
+    "finalized-changelog": {
+        "source_date_epoch": int,
+    },
+    "reproduced-images": {
+        "matching_jenkins_images_build_id": int,
+    },
+    "built-iuks": {
+        "iso_path": IsIsoFile,
+        "img_path": IsImgFile,
+        "iso_sha256sum": str,
+        "img_sha256sum": str,
+        "iso_size_in_bytes": int,
+        "img_size_in_bytes": int,
+        "candidate_jenkins_iuks_build_id": int,
+        "iuks_hashes": IsFile(),
+    },
+}
+# pylint: enable=E1120
+
+
+def git_repo_root():
+    """Returns the root of the current Git repository as a Path object"""
+    return Path(
+        subprocess.check_output(
+            ["/usr/bin/git", "rev-parse", "--show-toplevel"],
+            encoding="utf8",
+        ).rstrip("\n"),
+    )
+
+
+def sha256_file(filename):
+    """Returns the hex-encoded SHA256 hash of FILENAME"""
+    sha256 = hashlib.sha256()
+    with open(filename, mode="rb") as input_fd:
+        content = input_fd.read()
+        sha256.update(content)
+    return sha256.hexdigest()
+
+
+class Config:
+    """Load, validate, generate, and output Release Management configuration"""
+
+    def __init__(self, stage: str):
+        self.stage = stage
+        self.config_files = [
+            git_repo_root() / "config/release_management/defaults.yml",
+            *list((Path(xdg_config_home) / "tails/release_management").glob("*.yml")),
+        ]
+        self.data = self.load_config_files()
+        self.data.update(self.generate_config())
+        log.debug("Configuration:\n%s", self.data)
+        try:
+            self.validate()
+        except Invalid:
+            sys.exit(1)
+
+    def load_config_files(self):
+        """
+        Load all relevant configuration files and return the resulting
+        configuration dict
+        """
+        data = {}
+        for config_file in self.config_files:
+            log.debug("Loading %s", config_file)
+            data.update(yaml.safe_load(open(config_file)))
+        return data
+
+    def generate_config(self):
+        """
+        Returns a dict of supplemental, programmatically-generated,
+        configuration.
+        """
+        version = self.data["version"]
+        tails_signature_key = self.data["tails_signature_key"]
+        tag = version.replace("~", "-")
+        release_branch = "testing" if self.data["major_release"] == 1 else "stable"
+        iuks_dir = Path(self.data["iuks_dir"])
+        iuks_dir.mkdir(parents=True, exist_ok=True)
+        iuk_hashes = Path(iuks_dir) / ("to_%s.sha256sum" % version)
+        iuk_source_versions = (
+            subprocess.check_output(
+                [git_repo_root() / "bin/iuk-source-versions", version],
+                encoding="utf8",
+            )
+            .rstrip("\n")
+            .split()
+        )
+        major_version_bump = int(self.data["version"].split(".")[0]) > int(
+            self.data["previous_stable_version"].split(".")[0]
+        )
+        # We provide upgrades from the previous stable release
+        # except for Debian major version bumps.
+        test_iuk_source_versions = set()
+        if (
+            not major_version_bump
+            and self.data["previous_stable_version"] in iuk_source_versions
+        ):
+            test_iuk_source_versions.add(self.data["previous_stable_version"])
+        # Additionally, we test the upgrade path from the last alpha/beta/RC,
+        # if any, unless it is in IGNORED_TAGS.
+        #
+        # If `previous_version` is a final release, it'll be equal to
+        # `previous_stable_version`, and then this operation will be
+        # a no-op (thanks to using a set), which is what we want.
+        # So we don't need to check whether `previous_version` is
+        # a alpha/beta/RC or a final release.
+        if self.data["previous_version"] in iuk_source_versions:
+            test_iuk_source_versions.add(self.data["previous_version"])
+        generated_config = {
+            "release_branch": release_branch,
+            "tag": tag,
+            "previous_tag": self.data["previous_version"].replace("~", "-"),
+            "website_release_branch": "web/release-%s" % tag,
+            "iuk_source_versions": " ".join(iuk_source_versions),
+            "test_iuk_source_versions": " ".join(test_iuk_source_versions),
+            "iuks_dir": str(iuks_dir),
+            "iuks_hashes": str(iuk_hashes),
+            "milestone": re.sub("~.*", "", self.data["version"]),
+            "tails_signature_key_long_id": tails_signature_key[24:],
+        }
+        if self.stage == "built-iuks":
+            iso_path = Path(self.data["isos"]) / (
+                f"tails-amd64-{version}/tails-amd64-{version}.iso"
+            )
+            img_path = Path(self.data["isos"]) / (
+                f"tails-amd64-{version}/tails-amd64-{version}.img"
+            )
+            generated_config.update(
+                {
+                    "iso_path": str(iso_path),
+                    "img_path": str(img_path),
+                    "iso_sha256sum": sha256_file(iso_path),
+                    "img_sha256sum": sha256_file(img_path),
+                    "iso_size_in_bytes": iso_path.stat().st_size,
+                    "img_size_in_bytes": img_path.stat().st_size,
+                },
+            )
+        return generated_config
+
+    def schema(self):
+        """
+        Returns a configuration validation schema function for
+        the current stage
+        """
+        schema = {}
+        for stage in STAGES:
+            schema.update(STAGE_SCHEMA[stage])
+            if stage == self.stage:
+                break
+        log.debug("Schema:\n%s", schema)
+        return Schema(schema, required=True)
+
+    def validate(self):
+        """Checks that the configuration is valid, else raise exception"""
+        schema = self.schema()
+        try:
+            schema(self.data)
+        except MultipleInvalid as exc:
+            for error in exc.errors:
+                print(f"ERROR: {error.path} {error}", file=sys.stderr)
+            raise
+        except Invalid as exc:
+            print(f"ERROR: {exc.path} {error}")
+            raise
+
+    def to_shell(self):
+        """
+        Returns shell commands that, if executed, would export the
+        configuration into the environment.
+        """
+        return (
+            "\n".join(
+                [
+                    f"export {k.upper()}={shlex.quote(str(v))}"
+                    for (k, v) in self.data.items()
+                ],
+            )
+            + "\n"
+        )
+
+
+def generate_boilerplate(stage: str):
+    """Generate boilerplate for STAGE"""
+    log.debug("Generating boilerplate for stage '%s'", stage)
+    with open(
+        git_repo_root() / ("config/release_management/templates/%s.yml" % stage),
+    ) as src, open(
+        Path(xdg_config_home) / "tails/release_management/current.yml",
+        "a",
+    ) as dst:
+        dst.write(src.read())
+
+
+def generate_environment(stage: str):
+    """
+    Prints to stdout the path to a file that contains commands
+    that export the configuration for STAGE to the environment.
+    """
+    log.debug("Generating environment for stage '%s'", stage)
+    config = Config(stage=stage)
+    print(config.to_shell())
+
+
+def validate_configuration(stage: str):
+    """Validate configuration for STAGE, raise exception if invalid"""
+    log.debug("Validating configuration for stage '%s'", stage)
+    Config(stage=stage)
+    log.info("Configuration is valid")
+
+
+def main():
+    """Command-line entry point"""
+    parser = argparse.ArgumentParser(
+        description="Query and manage Release Management configuration",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    subparsers = parser.add_subparsers(help="sub-command help", dest="command")
+
+    parser_generate_boilerplate = subparsers.add_parser(
+        "generate-boilerplate",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Creates a configuration file template that you will fill",
+    )
+    parser_generate_boilerplate.add_argument(
+        "--stage",
+        type=str,
+        action="store",
+        default="base",
+        choices=STAGES,
+        help="Select stage",
+    )
+    parser_generate_boilerplate.set_defaults(func=generate_boilerplate)
+
+    parser_validate_configuration = subparsers.add_parser(
+        "validate-configuration",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Validate configuration files",
+    )
+    parser_validate_configuration.add_argument(
+        "--stage",
+        type=str,
+        action="store",
+        default="base",
+        choices=STAGES,
+        help="Select stage",
+    )
+    parser_validate_configuration.set_defaults(func=validate_configuration)
+
+    parser_generate_environment = subparsers.add_parser(
+        "generate-environment",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        help="Creates a shell sourceable file with resulting environment",
+    )
+    parser_generate_environment.add_argument(
+        "--stage",
+        type=str,
+        action="store",
+        default="base",
+        choices=STAGES,
+        help="Select stage",
+    )
+    parser_generate_environment.set_defaults(func=generate_environment)
+
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    if args.command is None:
+        parser.print_help()
+    else:
+        args.func(stage=args.stage)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

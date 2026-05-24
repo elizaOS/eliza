@@ -1,0 +1,42 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2024-02-27 21:37+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To uninstall Tails from a USB stick, and use it for something else, you "
+#| "have to reset it."
+msgid ""
+"To uninstall Tails from a USB stick, and use it for something else, you have "
+"to format it."
+msgstr ""
+"Per desinstal·lar Tails d'un llapis USB i utilitzar-lo per a una altra cosa, "
+"l'heu de reinicialitzar."
+
+#. type: Plain text
+msgid ""
+"The content of the USB stick is lost in the operation, but an attacker might "
+"still be able to tell that Tails was installed on that USB stick using "
+"[[data recovery techniques|doc/encryption_and_privacy/secure_deletion]]."
+msgstr ""
+"El contingut del llapis USB es perd durant l'operació, però un atacant "
+"potser encara pot veure que Tails s'ha instal·lat en aquest llapis USB fent "
+"servir [[tècniques de recuperació de dades|doc/encryption_and_privacy/"
+"secure_deletion]]."

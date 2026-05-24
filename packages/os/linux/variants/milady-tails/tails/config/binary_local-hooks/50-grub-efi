@@ -1,0 +1,139 @@
+#! /bin/sh
+
+# Some of this file was adapted from the Debian Installer's
+# build/util/efi-image, which is:
+#
+# Copyright (C) 2010, 2011 Canonical Ltd.
+# Author: Colin Watson <cjwatson@ubuntu.com>
+#
+# This program is free software; you can redistribute it and/or modify it
+# under the terms of the GNU General Public License as published by the Free
+# Software Foundation; either version 2, or (at your option) any later
+# version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+# or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+# for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
+
+set -e
+
+# Including common functions
+. "${LB_BASE:-/usr/share/live/build}"/scripts/build.sh
+
+# Setting static variables
+# shellcheck disable=SC2034
+{
+    DESCRIPTION="$(Echo 'including GRUB EFI in the ISO filesystem')"
+    HELP=""
+    USAGE="${PROGRAM}"
+}
+
+# Reading configuration files
+Read_conffiles config/all config/bootstrap config/common config/binary
+# Import CMDLINE_APPEND, CMDLINE_APPEND_NON_REMOVABLE and TAILS_VERSION
+Read_conffiles config/variables
+Set_defaults
+
+# Safeguards
+[ "${LB_ARCHITECTURE}" = "amd64" ] || exit 0
+
+# Seems like we'll have work to do
+Echo_message 'including GRUB EFI in the ISO filesystem'
+
+grub_dir="binary/EFI/debian/grub"
+platforms="x86_64-efi i386-efi"
+
+efi_name() {
+    local platform="$1"
+    case "$platform" in
+    i386-efi)
+        echo IA32
+        ;;
+    x86_64-efi)
+        echo X64
+        ;;
+    *)
+        echo "E: invalid GRUB platform: $platform" >&2
+        exit 1
+        ;;
+    esac
+}
+
+grub_cpmodules() {
+    if [ -z "$1" ] || [ -z "$2" ]; then
+        echo "usage: $0 OUTPUT-DIRECTORY GRUB-PLATFORM"
+        return 1
+    fi
+
+    local outdir="$1"
+    local platform="$2"
+
+    # Copy over GRUB modules, except for those already built in.
+    cp -a "chroot/usr/lib/grub/$platform"/*.lst "$outdir/"
+    for x in "chroot/usr/lib/grub/$platform"/*.mod; do
+        # Some of these exclusions are based on knowledge of module
+        # dependencies.
+        case $(basename "$x" .mod) in
+        configfile | search | search_fs_file | search_fs_uuid | search_label | tar | part_gpt | linux | gzio)
+            # included in boot image
+            ;;
+        affs | afs | afs_be | befs | befs_be | minix | nilfs2 | sfs | zfs | zfsinfo)
+            # unnecessary filesystem modules
+            ;;
+        example_functional_test | functional_test | hello)
+            # other cruft
+            ;;
+        *)
+            cp -a "$x" "$outdir/"
+            ;;
+        esac
+    done
+}
+
+for platform in $platforms; do
+    echo "I: installing GRUB EFI for $platform"
+    efi_fallback_dir="binary/EFI/BOOT"
+    grub_module_dir="$grub_dir/$platform"
+    efi_name="$(efi_name "$platform")"
+
+    mkdir -p "$efi_fallback_dir"
+    signed_grub_src="chroot/usr/lib/grub/$platform-signed/grub$(echo "$efi_name" | tr '[:upper:]' '[:lower:]').efi.signed"
+    signed_shim_src="chroot/usr/lib/shim/shim$(echo "$efi_name" | tr '[:upper:]' '[:lower:]').efi.signed"
+    if [ -f "$signed_grub_src" ] && [ -f "$signed_shim_src" ]; then
+        echo "I: copying Debian-signed GRUB and shim EFI binaries for $efi_name"
+        cp "$signed_grub_src" "${efi_fallback_dir}/GRUB${efi_name}.EFI"
+        cp "$signed_shim_src" "${efi_fallback_dir}/BOOT${efi_name}.EFI"
+    else
+        if [ "$platform" = 'x86_64-efi' ]; then
+            echo "E: no signed GRUB or shim for ${efi_name}, aborting" >&2
+            exit 1
+        fi
+        echo "I: no signed GRUB or shim for ${efi_name}, generating an unsigned GRUB image"
+        Chroot chroot grub-mkimage -O "$platform" \
+            -o "/tmp/BOOT$efi_name.EFI" -p "/efi/debian/grub" \
+            search configfile normal tar fat part_gpt linux \
+            gzio
+        mv "chroot/tmp/BOOT$efi_name.EFI" "${efi_fallback_dir}/BOOT${efi_name}.EFI"
+    fi
+
+    cp chroot/usr/share/tails/bootx64.png "${efi_fallback_dir}/BOOT${efi_name}.PNG"
+
+    mkdir -p "$grub_module_dir"
+    grub_cpmodules "$grub_module_dir" "$platform"
+done
+
+# Append Tails version in the boot loader entry
+sed -i -E "s#TAILS_VERSION\b#${TAILS_VERSION}#g" "binary/EFI/debian/grub.cfg"
+
+# Append our custom kernel command-line parameters
+sed -i -E "s#CMDLINE_APPEND_NON_REMOVABLE\b#${CMDLINE_APPEND_NON_REMOVABLE}#g" "binary/EFI/debian/grub.cfg"
+sed -i -E "s#CMDLINE_APPEND\b#${CMDLINE_APPEND}#g" "binary/EFI/debian/grub.cfg"
+
+# Copy the configuration for 32-bit EFI, which looks there
+# due to -p "/efi/debian/grub"
+cp -a "binary/EFI/debian/grub.cfg" "binary/EFI/debian/grub/grub.cfg"

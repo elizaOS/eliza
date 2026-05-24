@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:34+0000\n"
+"PO-Revision-Date: 2026-04-25 09:18+0000\n"
+"Last-Translator: nihei <nihei@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails using Tails itself\"]]\n"
+msgstr "[[!meta title=\"Désinstaller Tails en utilisant Tails lui-même\"]]\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" "
+"sort=\"age\"]]\n"
+msgstr ""
+"[[!inline pages=\"doc/first_steps/uninstall.intro.fr\" raw=\"yes\" sort="
+"\"age\"]]\n"
+
+#. type: Plain text
+#, markdown-text
+msgid ""
+"You can generally uninstall a Tails USB stick while running Tails from that "
+"same USB stick."
+msgstr ""
+"Vous pouvez généralement désinstaller une clé USB Tails lorsque Tails "
+"fonctionne depuis cette même clé USB."
+
+#. type: Bullet: '1.  '
+#, markdown-text
+msgid "When starting Tails, add the `toram` boot option in the *Boot Loader*."
+msgstr ""
+"Lorsque vous démarrez Tails, ajoutez l'option de démarrage `toram` dans le *"
+"chargeur d'amorçage*."
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"    See [[modifying the boot options using the *Boot "
+"Loader*|advanced_topics/boot_options]].\n"
+msgstr ""
+"    Voir [[modifier les options de démarrage en utilisant le *chargeur "
+"d’amorçage*|advanced_topics/boot_options]].\n"
+
+#. type: Bullet: '1.  '
+#, markdown-text
+msgid ""
+"If Tails starts as usual, follow the instructions to [[uninstall Tails using "
+"Linux|linux]]."
+msgstr ""
+"Si Tails démarre comme habituellement, suivez les instructions pour "
+"[[désinstaller Tails en utilisant Linux|linux]]."
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"    If the system fails to start, the computer might not have enough memory "
+"to\n"
+"    use the `toram` boot option. Try with another computer, uninstall "
+"using\n"
+"    [[another operating system|uninstall]], or uninstall while running "
+"Tails\n"
+"    from another USB stick.\n"
+msgstr ""
+"    Si le système échoue à démarrer, l'ordinateur pourrait ne pas avoir "
+"assez de mémoire pour\n"
+"    utiliser l'option de démarrage `toram`. Essayez avec un autre "
+"ordinateur, désinstallez en utilisant\n"
+"    [[un autre système d'exploitation|uninstall]], ou désinstallez en "
+"utilisant un Tails\n"
+"    depuis une autre clé USB.\n"

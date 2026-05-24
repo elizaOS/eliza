@@ -1,0 +1,65 @@
+#!/bin/bash
+
+set -e
+set -u
+set -x
+
+GIT_TOPLEVEL_DIR=$(git rev-parse --show-toplevel)
+. "$GIT_TOPLEVEL_DIR"/auto/scripts/utils.sh
+
+OVERLAY=$(branch_name_to_suite "$(git_current_branch)")
+OVERLAY_FILE="${GIT_TOPLEVEL_DIR}/config/APT_overlays.d/${OVERLAY}"
+TICKET=$(git_current_branch | perl -p -E 's/.*?(\d{4,6}).*/$1/')
+
+usage() {
+    echo "Usage: $NAME [OPTION]
+Enables an APT overlay for the current topic branch.
+
+Options:
+  --print            Don't do anything, just print the name of the suite
+  --wait             Wait for the suite to be created on the server. This does *not* enable the APT overlay.
+  --enable           This is the normal behavior: enables an APT overlay
+  "
+}
+
+wait_suite_ready() {
+    url="https://deb.tails.boum.org/dists/${OVERLAY}"
+    while ! curl -s --fail "$url" > /dev/null
+    do
+        sleep 5
+    done
+}
+
+NAME=$(basename "${0}")
+LONGOPTS="wait,print,enable,help"
+if ! getopt -Qq -o "" --longoptions $LONGOPTS -n "${NAME}" -- "$@"
+then
+    echo "Use --help for usage information" >&2
+    exit 2
+fi
+OPTS=$(getopt -o "" --longoptions $LONGOPTS -n "${NAME}" -- "$@")
+eval set -- "$OPTS"
+while [ $# -gt 0 ]; do
+    case $1 in
+        --print)
+            echo "$OVERLAY"
+            exit 0
+            ;;
+        --wait)
+            wait_suite_ready
+            exit
+            ;;
+        --enable)
+            ;;
+        --help)
+            usage
+            exit 0
+            ;;
+    esac
+    shift
+done
+
+touch "${OVERLAY_FILE}"
+git add "${OVERLAY_FILE}"
+git commit -m "Enable the ${OVERLAY} APT overlay (refs: #${TICKET})."
+git show

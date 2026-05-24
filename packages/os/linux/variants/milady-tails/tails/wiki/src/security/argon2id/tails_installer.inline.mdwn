@@ -1,0 +1,33 @@
+[[!tag security/fixed]]
+
+   1. Plug in the new USB stick.
+
+   1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ Tails Cloner**.
+
+   1. Turn on the option **Clone the current Persistent Storage** below the
+      option **Clone the current Tails**.
+
+   1. Make sure that the new USB stick is selected in the **Target USB stick**
+      menu.
+
+   1. To start the cloning, click on the **Install** button.
+
+   1. Enter a passphrase for the Persistent Storage on the new USB stick in the
+      **Passphrase** text box.
+
+   1. Enter the same passphrase again in the **Confirm** text box.
+
+   1. Click **Continue**.
+
+   1. Read the warning message in the confirmation dialog.
+
+   1. Click **Delete All Data and Install** to confirm.
+
+      Cloning takes a few minutes.
+
+      <div class="bug">
+
+      <p>The progress bar usually freezes for some time
+      while synchronizing data on disk.</p>
+
+      </div>

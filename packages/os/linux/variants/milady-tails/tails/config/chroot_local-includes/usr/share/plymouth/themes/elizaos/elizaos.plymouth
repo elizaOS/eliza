@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=elizaOS
+Description=elizaOS boot splash
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/elizaos
+ScriptFile=/usr/share/plymouth/themes/elizaos/elizaos.script

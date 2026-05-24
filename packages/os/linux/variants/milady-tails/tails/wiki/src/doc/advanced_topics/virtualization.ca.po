@@ -1,0 +1,381 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Running Tails in a virtual machine\"]]\n"
+msgstr "[[!meta title=\"Executar Tails en una màquina virtual\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+msgid ""
+"It is sometimes convenient to be able to run Tails without having to restart "
+"your computer every time. This is possible using [[!wikipedia "
+"Virtual_machine desc=\"virtual machines\"]]."
+msgstr ""
+"De vegades és convenient poder executar Tails sense haver de reiniciar "
+"l'ordinador cada vegada. Això és possible utilitzant [[!wikipedia_ca "
+"Màquina_virtual desc=\"màquines virtuals\"]]."
+
+#. type: Plain text
+msgid ""
+"With virtual machines, it is possible to run Tails inside a *host* operating "
+"system. A virtual machine emulates a real computer and its operating system, "
+"called a *guest*, which appears in a window on the *host* operating system."
+msgstr ""
+"Amb les màquines virtuals, és possible executar Tails dins d'un sistema "
+"operatiu *amfitrió*. Una màquina virtual emula un ordinador real i el seu "
+"sistema operatiu, anomenat *convidat*, que apareix en una finestra del "
+"sistema operatiu *amfitrió*."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because, <i>VirtualBox</i> works pretty badly with Tails, we stopped\n"
+"advertising solutions for using virtual machines in Windows or macOS.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only present below 2 solutions for Linux: <i>GNOME Boxes</i> and\n"
+"<i>virt-manager</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"When running Tails in a virtual machine, you can use most features of Tails "
+"from your usual operating system, and you can use both Tails and your usual "
+"operating system in parallel, without the need to restart the computer."
+msgstr ""
+"Quan executeu Tails en una màquina virtual, podeu utilitzar la majoria de "
+"les funcions de Tails des del vostre sistema operatiu habitual, i podeu "
+"utilitzar tant Tails com el vostre sistema operatiu habitual en paral·lel, "
+"sense necessitat de reiniciar l'ordinador."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We do not currently provide a solution for running a virtual machine\n"
+"inside a Tails host.</p>\n"
+msgstr ""
+"<p>Actualment no oferim cap solució per executar una màquina virtual\n"
+"dins d'un amfitrió de Tails.</p>\n"
+
+#. type: Plain text
+msgid "This is how Tails looks when run in a virtual machine on a Debian host."
+msgstr "Així es veu Tails quan s'executa en una màquina virtual a Debian."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img tails-in-vm.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"security\"></a>\n"
+msgstr "<a id=\"security\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Security considerations"
+msgstr "Consideracions de seguretat"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Running Tails inside a virtual machine has various security\n"
+"implications. Depending on the host operating system and your security\n"
+"needs, running Tails in a virtual machine might be dangerous.</p>\n"
+msgstr ""
+"<p>L'execució de Tails dins d'una màquina virtual té diverses implicacions\n"
+"de seguretat. Depenent del sistema operatiu amfitrió i de les vostres necessitats\n"
+"de seguretat, executar Tails en una màquina virtual pot ser perillós.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"trustworthy\"></a>\n"
+msgstr "<a id=\"trustworthy\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Both the host operating system and the [[virtualization software|"
+"virtualization#software]] are able to monitor what you are doing in Tails."
+msgstr ""
+"Tant el sistema operatiu amfitrió com el [[programari de virtualització|"
+"virtualization#software]] són capaços de supervisar el que esteu fent a "
+"Tails."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "    If the host operating system is compromised with a software\n"
+#| "    keylogger or other malware, then it can break the security features\n"
+#| "    of Tails.\n"
+msgid ""
+"    If the host operating system is compromised with a software\n"
+"    keylogger or other malware, then it can break the security built into\n"
+"    Tails.\n"
+msgstr ""
+"    Si el sistema operatiu amfitrió està compromès amb un programari\n"
+"    enregistrador de tecles o un altre programari maliciós, llavors podria trencar les funcions de seguretat\n"
+"    de Tails.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"caution\">\n"
+msgstr "    <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if both the host operating\n"
+"    system and the virtualization software are trustworthy.</p>\n"
+msgstr ""
+"    <p>Només executeu Tails en una màquina virtual si tant el sistema operatiu amfitrió\n"
+"    com el programari de virtualització són fiables.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    </div>\n"
+msgstr "    </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "    <div class=\"attack\">\n"
+msgstr "    <div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>For example, when using virtual machines in Windows, <a\n"
+"    href=\"https://support.microsoft.com/en-us/windows/retrace-your-steps-with-recall-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c\"><i>Microsoft\n"
+"    Recall</i></a> might be taking regular screenshots of your activity.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"traces\"></a>\n"
+msgstr "<a id=\"traces\"></a>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"Traces of your Tails session are likely to be left on the local hard disk. "
+"For example, host operating systems usually use swapping (or *paging*) which "
+"copies part of the RAM to the hard disk."
+msgstr ""
+"És probable que es deixin rastres de la vostra sessió de Tails al disc dur "
+"local. Per exemple, els sistemes operatius amfitrió solen utilitzar "
+"l'intercanvi (o *paging*) que copia part de la memòria RAM al disc dur."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"    <p>Only run Tails in a virtual machine if leaving traces on the hard disk\n"
+"    is not a concern for you.</p>\n"
+msgstr ""
+"    <p>Només executeu Tails en una màquina virtual si deixar rastres al disc dur\n"
+"    no és una preocupació.</p>\n"
+
+#. type: Plain text
+msgid ""
+"This is why Tails warns you when it is running inside a virtual machine."
+msgstr ""
+"És per això que Tails us avisa quan s'està executant dins d'una màquina "
+"virtual."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>The Tails virtual machine does not modify the behaviour of the host\n"
+#| "operating system and the network traffic of the host is not anonymized. The MAC\n"
+#| "address of the computer is not modified by the [[MAC address\n"
+#| "anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+#| "when run in a virtual machine.</p>\n"
+msgid ""
+"<p>The Tails virtual machine does not modify the behavior of the host\n"
+"operating system and the network traffic of the host is not anonymized. The MAC\n"
+"address of the computer is not modified by the [[MAC address\n"
+"anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails\n"
+"when run in a virtual machine.</p>\n"
+msgstr "<p>La màquina virtual Tails no modifica el comportament del sistema operatiu amfitrió i el trànsit de xarxa de l'amfitrió no s'anonimitza. L'adreça MAC de l'ordinador no es modifica amb la funció [[Anonimat de l'adreça MAC|first_steps/welcome_screen/mac_spoofing]] de Tails quan s'executa en una màquina virtual.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"software\"></a>\n"
+msgstr "<a id=\"software\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Virtualization solutions"
+msgstr "Solucions de virtualització"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To run Tails inside a virtual machine, you need to have virtualization "
+#| "software installed on the host operating system.  Different "
+#| "virtualization software exists for Linux, Windows, and macOS."
+msgid ""
+"To run Tails inside a virtual machine, you need to have virtualization "
+"software installed on the host operating system.  Different virtualization "
+"software exists for Linux, Windows, and macOS.  Unfortunately, we only know "
+"of virtualization solutions for Linux that work well with Tails."
+msgstr ""
+"Per executar Tails dins d'una màquina virtual, cal que tingueu instal·lat el "
+"programari de virtualització al sistema operatiu amfitrió. Existeixen "
+"diferents programes de virtualització per a Linux, Windows i macOS."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We only mention Free Software, because we believe that it is a necessary\n"
+"condition to be trustworthy. Proprietary virtualization software exist, such as\n"
+"<i>VMWare</i>, but is not listed here on purpose.</p>\n"
+msgstr ""
+"<p>Només esmentem el Programari Lliure, perquè creiem que és\n"
+"una condició necessària per ser de confiança. Existeix programari de virtualització privatiu, com ara\n"
+"<i>VMWare</i>, però no apareix aquí a propòsit.</p>\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"***GNOME Boxes*** is only available on Linux. It has a simpler user "
+"interface than *virt-manager* but does not allow to use a Persistent Storage."
+msgstr ""
+"***Màquines de GNOME*** està disponible a Linux. Té una interfície d'usuari "
+"més senzilla que *virt-manager*, però no permet l'ús d'un Emmagatzematge "
+"Persistent."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *GNOME Boxes*|boxes]].\n"
+msgstr "    Vegeu com [[executar Tails al *Màquines de GNOME*|boxes]].\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"***virt-manager*** is only available on Linux. It has a more complex user "
+"interface than *GNOME Boxes* but allows to use a Persistent Storage, either "
+"by:"
+msgstr ""
+"***virt-manager*** només està disponible a Linux. Té una interfície d'usuari "
+"més complexa que *Màquines de GNOME*, però permet l'ús d'un Emmagatzematge "
+"Persistent, ja sigui per:"
+
+#. type: Bullet: '    - '
+msgid "Starting Tails from a USB stick."
+msgstr "Iniciar Tails des d'un llapis USB."
+
+#. type: Bullet: '    - '
+msgid ""
+"Creating a virtual USB storage volume saved as a single file on the host "
+"operating system."
+msgstr ""
+"Crear un volum d'emmagatzematge USB virtual desat com a fitxer únic al "
+"sistema operatiu amfitrió."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See [[running Tails in *virt-manager*|virt-manager]].\n"
+msgstr "    Consulteu com [[executar Tails a *virt-manager*|virt-manager]].\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>We are not recommending <i>VirtualBox</i> anymore because only basic\n"
+#~ "functionalities of Tails work in <i>VirtualBox</i>, for example, the display\n"
+#~ "size is limited to 800×600 pixels.</p>\n"
+#~ msgstr ""
+#~ "<p>Hem deixat de recomanar <i>VirtualBox</i> perquè només algunes\n"
+#~ "funcionalitats bàsiques de Tails funcionen a <i>VirtualBox</i>. Per exemple, la\n"
+#~ "resolució de la pantalla està limitada a 800×600 pixels.</p>\n"
+
+#, no-wrap
+#~ msgid "[[!img tails-in-vm.png class=\"screenshot\" alt=\"Tails desktop in a window on a Debian desktop\"]]\n"
+#~ msgstr "[[!img tails-in-vm.png class=\"screenshot\" alt=\"L'escriptori de Tails en una finestra en un escriptori Debian\"]]\n"
+
+#~ msgid ""
+#~ "***VirtualBox*** is available on Linux, Windows, and Mac. Its Free "
+#~ "Software version does not include support for USB devices and does not "
+#~ "allow to use a Persistent Storage."
+#~ msgstr ""
+#~ "***VirtualBox*** està disponible a Linux, Windows i Mac. La seva versió "
+#~ "de Programari Lliure no inclou suport per a dispositius USB i no permet "
+#~ "l'ús d'un Emmagatzematge Persistent."
+
+#, no-wrap
+#~ msgid "    See [[running Tails in *VirtualBox*|virtualbox]].\n"
+#~ msgstr "    Vegeu com [[executar Tails a *VirtualBox*|virtualbox]].\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The following list includes only free software as we believe that\n"
+#~ "this is a necessary condition for the software to be trustworthy. See the\n"
+#~ "[[previous warning|virtualization#trustworthy]] and our statement about\n"
+#~ "[[free software and public scrutiny|about/trust#free_software]].</p>\n"
+#~ msgstr ""
+#~ "<p>La llista següent inclou només programari lliure, ja que creiem que\n"
+#~ "aquesta és una condició necessària perquè el programari sigui fiable. Consulteu\n"
+#~ "l'[[advertència anterior|virtualization#trustworthy]] i la nostra declaració sobre el\n"
+#~ "[[programari lliure i el control públic|about/trust#free_software]].</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Proprietary virtualization software solutions exist such as <span\n"
+#~ "class=\"application\">VMWare</span> but are not listed here on\n"
+#~ "purpose.</p>\n"
+#~ msgstr ""
+#~ "<p>Existen solucions de programari de virtualització propietàries com ara <span\n"
+#~ "class=\"application\">VMWare</span> però no s'enumeren aquí a\n"
+#~ "propòsit.</p>\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virtualbox]]\n"
+#~ msgstr "    [[Vegeu la documentació corresponent.|virtualbox]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|boxes]]\n"
+#~ msgstr "    [[Veure la documentació corresponent.|boxes]]\n"
+
+#, no-wrap
+#~ msgid "    [[See the corresponding documentation.|virt-manager]]\n"
+#~ msgstr "    [[Vegeu la documentació corresponent.|virt-manager]]\n"

@@ -1,0 +1,21 @@
+[[!meta date="Sun, 28 Jun 2020 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 4.7"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.8|news/version_4.8]] fixes many security issues that affect
+Tails 4.7. You should [[upgrade to Tails 4.8|news/version_4.8]] as
+soon as possible.
+
+ - Tor Browser: MFSA to be announced
+ - Thunderbird: [[!mfsa 2020-22]]
+ - Linux: [[!cve CVE-2020-13974]], [[!cve CVE-2020-10766]],
+          [[!cve CVE-2020-10767]], [[!cve CVE-2020-10768]],
+          [[!cve CVE-2019-19462]], [[!cve CVE-2020-10732]],
+          [[!cve CVE-2020-10757]], [[!cve CVE-2020-0543]],
+          [[!cve CVE-2020-12464]], [[!cve CVE-2020-12770]],
+          [[!cve CVE-2020-10711]], [[!cve CVE-2020-13143]],
+          [[!cve CVE-2020-12655]], [[!cve CVE-2020-11884]]
+ - libgnutls30: [[!debsa2020 4697]]
+ - intel-microcode: [[!debsa2020  4701]].

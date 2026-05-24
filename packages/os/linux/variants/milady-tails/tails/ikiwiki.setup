@@ -1,0 +1,395 @@
+# -*- mode: yaml; -*-
+# IkiWiki::Setup::Yaml - YAML formatted setup file
+#
+# /!\ Checklist when updating this file:
+#
+# https://tails.net/contribute/how/website/production/
+#
+# name of the wiki
+wikiname: Tails
+# contact email for wiki
+adminemail: foundations@tails.net
+# users who are wiki admins
+adminuser: []
+# users who are banned from the wiki
+banned_users: []
+# where the source of the wiki is located
+srcdir: wiki/src
+# where to build the wiki
+destdir: config/chroot_local-includes/usr/share/doc/tails/website
+# base url to the wiki
+url: file:///usr/share/doc/tails/website
+# url to the ikiwiki.cgi
+cgiurl: ''
+# filename of cgi wrapper to generate
+cgi_wrapper: ''
+# mode for cgi_wrapper (can safely be made suid)
+cgi_wrappermode: 06755
+# try harder to produce deterministic output
+deterministic: 1
+# rcs backend to use
+rcs: ''
+# plugins to add to the default configuration
+add_plugins:
+  - favicon
+  - html
+  - htmlbalance
+  - img
+  - map
+  - meta
+  - pagestats
+  - pagetemplate
+  - po
+  - prettydate
+  - shortcut
+  - sidebar2
+  - tag
+  - toc
+  - toggle
+  - typography
+  - underlay
+# plugins to disable
+disable_plugins:
+  - editpage
+  - htmlscrubber
+  - lockedit
+  - openid
+  - passwordauth
+  - recentchanges
+  - signinedit
+# additional directory to search for template files
+# templatedir: /usr/share/ikiwiki/templates
+# base wiki source location
+# underlaydir: /usr/share/ikiwiki/basewiki
+# display verbose messages?
+verbose: 1
+# log to syslog?
+#syslog: 1
+# create output files named page/index.html?
+usedirs: 0
+# use '!'-prefixed preprocessor directives?
+prefix_directives: 1
+# use page/index.mdwn source files
+indexpages: 0
+# enable Discussion pages?
+discussion: 0
+# name of Discussion pages
+discussionpage: Discussion
+# generate HTML5? (experimental)
+html5: 1
+# only send cookies over SSL connections?
+sslcookie: 0
+# extension to use for new pages
+default_pageext: mdwn
+# extension to use for html files
+htmlext: html
+# strftime format string to display date
+timeformat: '%c'
+# UTF-8 locale to use
+locale: en_US.UTF-8
+# put user pages below specified page
+userdir: ''
+# how many backlinks to show before hiding excess (0 to show all)
+numbacklinks: 10
+# attempt to hardlink source files? (optimisation for large files)
+hardlink: 0
+# force ikiwiki to use a particular umask
+#umask: 022
+# group for wrappers to run in
+#wrappergroup: ikiwiki
+# extra library and plugin directory
+libdir: ''
+# environment variables
+ENV: {}
+# regexp of normally excluded files to include
+#include: '^\.htaccess$'
+# regexp of files that should be skipped
+exclude: '(^^contribute\/how\/promote\/material\/.*|\/discussion\..*|\/Discussion\..*|\.(ar|bg|fa|id|pl|sr_Latn|tr|zh|zh_TW)\.po$)'
+# specifies the characters that are allowed in source filenames
+wiki_file_chars: '-[:alnum:]+/._~'
+# allow symlinks in the path leading to the srcdir (potentially insecure)
+allow_symlinks_before_srcdir: 1
+
+######################################################################
+# core plugins
+#   (editpage, git, htmlscrubber, inline, link, meta, parentlinks)
+######################################################################
+
+# htmlscrubber plugin
+# PageSpec specifying pages not to scrub
+#htmlscrubber_skip: '!blueprint/*'
+
+# inline plugin
+# enable rss feeds by default?
+rss: 0
+# enable atom feeds by default?
+atom: 0
+# allow rss feeds to be used?
+#allowrss: 0
+# allow atom feeds to be used?
+#allowatom: 0
+# urls to ping (using XML-RPC) on feed update
+pingurl: []
+
+######################################################################
+# auth plugins
+#   (anonok, blogspam, httpauth, lockedit, moderatedcomments,
+#    opendiscussion, openid, passwordauth, signinedit)
+######################################################################
+
+# anonok plugin
+# PageSpec to limit which pages anonymous users can edit
+#anonok_pagespec: '*/discussion'
+
+# httpauth plugin
+# url to redirect to when authentication is needed
+#cgiauthurl: http://example.com/wiki/auth/ikiwiki.cgi
+# PageSpec of pages where only httpauth will be used for authentication
+#httpauth_pagespec: '!*/Discussion'
+
+# moderatedcomments plugin
+# PageSpec matching users or comment locations to moderate
+#moderate_pagespec: '*'
+
+# openid plugin
+# url pattern of openid realm (default is cgiurl)
+#openid_realm: ''
+# url to ikiwiki cgi to use for openid authentication (default is cgiurl)
+#openid_cgiurl: ''
+
+######################################################################
+# format plugins
+#   (creole, highlight, hnb, html, mdwn, otl, po, rawhtml, textile, txt)
+######################################################################
+
+# highlight plugin
+# types of source files to syntax highlight
+#tohighlight: .c .h .cpp .pl .py Makefile:make
+# location of highlight's filetypes.conf
+#filetypes_conf: /etc/highlight/filetypes.conf
+# location of highlight's langDefs directory
+#langdefdir: /usr/share/highlight/langDefs
+
+# mdwn plugin
+# enable multimarkdown features?
+#multimarkdown: 0
+
+# po plugin
+# master language (non-PO files)
+po_master_language: en|English
+# slave languages (translated via PO files) format: ll|Langname
+po_slave_languages:
+  - ca|Català
+  - de|Deutsch
+  - es|Español
+  - fr|Français
+  - it|Italiano
+  - pt|Português
+  - ru|Русский
+# PageSpec controlling which pages are translatable
+#
+# When updating this list, refer to the checklist in
+# https://tails.net/contribute/how/website/po_translatable_pages/
+po_translatable_pages: '!news/* and !news/*/* and !security/* and !security/*/* and (about or about/* or contribute or doc or doc/* or donate or donate/* or home or home/* or index or ioerror or latest or nav/* or news or sponsors or sandbox or security or support or support/* or torrents or install or install/* or misc/*)'
+# internal linking behavior (default/current/negotiated)
+po_link_to: current
+
+######################################################################
+# misc plugins
+#   (filecheck)
+######################################################################
+
+######################################################################
+# web plugins
+#   (404, attachment, comments, editdiff, edittemplate, getsource, google,
+#    goto, mirrorlist, remove, rename, repolist, search, theme, websetup,
+#    wmd)
+######################################################################
+
+# attachment plugin
+# enhanced PageSpec specifying what attachments are allowed
+#allowed_attachments: virusfree() and mimetype(image/*) and maxsize(50kb)
+# virus checker program (reads STDIN, returns nonzero if virus found)
+#virus_checker: clamdscan -
+
+# comments plugin
+# PageSpec of pages where comments are allowed
+#comments_pagespec: forum/*
+# PageSpec of pages where posting new comments is not allowed
+#comments_closed_pagespec: ''
+# Base name for comments, e.g. "comment_" for pages like "sandbox/comment_12"
+#comments_pagename: comment_
+# Interpret directives in comments?
+#comments_allowdirectives: 0
+# Allow anonymous commenters to set an author name?
+#comments_allowauthor: 0
+# commit comments to the VCS
+#comments_commit: 1
+
+# getsource plugin
+# Mime type for returned source.
+#getsource_mimetype: text/plain; charset=utf-8
+
+# repolist plugin
+# URIs of repositories containing the wiki's source
+#repositories:
+#  - svn://svn.example.org/wiki/trunk
+
+# search plugin
+# path to the omega cgi program
+#omega_cgi: /usr/lib/cgi-bin/omega/omega
+
+# theme plugin
+# name of theme to enable
+#theme: actiontabs
+
+# websetup plugin
+# list of plugins that cannot be enabled/disabled via the web interface
+#websetup_force_plugins: []
+# list of additional setup field keys to treat as unsafe
+#websetup_unsafe: []
+# show unsafe settings, read-only, in web interface?
+#websetup_show_unsafe: 1
+
+######################################################################
+# widget plugins
+#   (calendar, color, conditional, cutpaste, date, format, fortune,
+#    graphviz, haiku, img, linkmap, listdirectives, map, more, orphans,
+#    pagecount, pagestats, poll, polygen, postsparkline, progress,
+#    shortcut, sparkline, table, template, teximg, toc, toggle, version)
+######################################################################
+
+# calendar plugin
+# base of the archives hierarchy
+#archivebase: archives
+# PageSpec of pages to include in the archives; used by ikiwiki-calendar command
+#archive_pagespec: page(posts/*) and !*/Discussion
+
+# listdirectives plugin
+# directory in srcdir that contains directive descriptions
+#directive_description_dir: ikiwiki/directive
+
+# teximg plugin
+# Should teximg use dvipng to render, or dvips and convert?
+#teximg_dvipng: ''
+# LaTeX prefix for teximg plugin
+#teximg_prefix: |
+#  \documentclass{article}
+#  \usepackage[utf8]{inputenc}
+#  \usepackage{amsmath}
+#  \usepackage{amsfonts}
+#  \usepackage{amssymb}
+#  \pagestyle{empty}
+#  \begin{document}
+# LaTeX postfix for teximg plugin
+#teximg_postfix: '\end{document}'
+
+######################################################################
+# other plugins
+#   (aggregate, autoindex, brokenlinks, camelcase, ddate, embed, favicon,
+#    flattr, goodstuff, htmlbalance, localstyle, pagetemplate, pandoc,
+#    pingee, pinger, prettydate, recentchanges, recentchangesdiff,
+#    relativedate, rsync, sidebar, smiley, sortnaturally, tag,
+#    testpagespec, transient, underlay)
+######################################################################
+
+# aggregate plugin
+# enable aggregation to internal pages?
+#aggregateinternal: 1
+# allow aggregation to be triggered via the web?
+#aggregate_webtrigger: 0
+# cookie control
+#cookiejar:
+#  file: /home/user/.ikiwiki/cookies
+
+# autoindex plugin
+# commit autocreated index pages
+#autoindex_commit: 1
+
+# camelcase plugin
+# list of words to not turn into links
+#camelcase_ignore: []
+
+# flattr plugin
+# userid or user name to use by default for Flattr buttons
+#flattr_userid: joeyh
+
+# pandoc plugin
+# Path to pandoc executable
+#pandoc_command: /usr/bin/pandoc
+# File extension for Markdown files
+#pandoc_markdown_ext: mdwn
+# Enable Pandoc processing of LaTeX documents
+#pandoc_latex: 0
+# Enable Pandoc processing of reStructuredText documents
+#pandoc_rst: 0
+# Use smart quotes, dashes, and ellipses
+#pandoc_smart: 1
+# Output format (html, markdown or latex)
+#pandoc_output_format: html
+# Path depth of which LaTeX parts roots (e.g.: bla/part1 = depth 2)
+#pandoc_parts_at_depth: 1
+# Shift headers level depending on page depth (default: enabled for LaTeX output, disabled else)
+#pandoc_shift_headers: 1
+
+# pinger plugin
+# how many seconds to try pinging before timing out
+#pinger_timeout: 15
+
+# prettydate plugin
+# format to use to display date
+prettydateformat: '%Y-%m-%d'
+
+# recentchanges plugin
+# name of the recentchanges page
+#recentchangespage: recentchanges
+# number of changes to track
+#recentchangesnum: 100
+
+# rsync plugin
+# command to run to sync updated pages
+#rsync_command: rsync -qa --delete . user@host:/path/to/docroot/
+
+# sidebar plugin
+# show sidebar page on all pages?
+#global_sidebars: 1
+
+# tag plugin
+# parent page tags are located under
+tagbase: tags
+# autocreate new tag pages?
+#tag_autocreate: 1
+# commit autocreated tag pages
+#tag_autocreate_commit: 1
+
+# underlay plugin
+# extra underlay directories to add
+add_underlays:
+  - /home/amnesia/Persistent/Tails/promotion-material
+
+# sidebar2 plugin
+# https://ikiwiki.info/plugins/contrib/sidebar2/
+global_sidebars:
+  - banner
+  - /nav/banner
+  - "*"
+
+  - main
+  - /nav/main
+  - "*"
+
+  - doc
+  - /nav/doc
+  - "doc/*"
+
+  - footer
+  - /nav/footer
+  - "*"
+
+  - skip
+  - /nav/skip
+  - "*"
+
+#  - year-end
+#  - /nav/year-end
+#  - "*"

@@ -1,0 +1,195 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2023-07-29 21:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Arabic <http://translate.tails.net/projects/tails/"
+"reset_windows/ar/>\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 "
+"&& n%100<=10 ? 3 : n%100>=11 ? 4 : 5;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails using Windows\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/reset.intro.ar\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Erasing Tails from the USB stick"
+msgstr ""
+
+#. type: Plain text
+msgid "First, erase Tails from the USB stick:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start on Windows."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Start** [[!img lib/start.png alt=\"\" class=\"symbolic\" "
+"link=\"no\"]] button and open the *Settings* app."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the *Settings* app, choose **System&nbsp;▸ Storage&nbsp;▸ Advanced "
+"storage settings&nbsp;▸ Disk & volumes**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Plug in the Tails USB stick that you want to uninstall."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Identify the USB stick in the list of disks."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Identify the volume called **TAILS**, which has a FAT32 file system."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the Tails system partition on the USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Select the **Properties** button corresponding to the **TAILS** volume."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "In the properties of the **TAILS** volume, select **Delete**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      Windows gives no feedback after deletion.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select **Disks & volumes** to go back to the list of volumes."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"If there is a [[Persistent Storage|doc/persistent_storage]] on the USB "
+"stick, a volume called **(No label)** also appears on the USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the Tails Persistent Storage on the USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Select the **Properties** button corresponding to the **(No label)** volume."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "In the properties of the **(No label)** volume, select **Delete**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "The USB stick now has no volumes and is entirely unallocated."
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Creating a new partition on the USB stick"
+msgstr ""
+
+#. type: Plain text
+msgid "Then, create a new partition on the USB stick:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select the **Properties** button corresponding to the USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the properties of the USB stick, select **Convert to MBR**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Create Volume** button for the USB stick and choose **Create "
+"Simple Volume**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **New Volume** dialog, enter a label of your choice and select "
+"**Format**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Unplug the USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Close the *Settings* app."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Select the **Start** [[!img lib/start.png alt=\"\" class=\"symbolic\" "
+"link=\"no\"]] button and open the *File Explorer* app."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Plug back the USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Your new volume appears in the left sidebar of the *File Explorer*.\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "   <p class=\"command-windows\">diskpart</p>\n"
+#~ msgstr "Benutzung von *Diskpart*\n"
+
+#, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid "Troubleshooting\n"
+#~ msgstr "Fehlersuche\n"

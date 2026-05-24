@@ -1,0 +1,640 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-26 08:18+0100\n"
+"PO-Revision-Date: 2026-04-06 12:18+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Connecting to the Tor network\"]]\n"
+msgstr "[[!meta title=\"Connexió a la xarxa Tor\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2]]\n"
+msgstr "[[!toc startlevel=2]]\n"
+
+#. type: Plain text
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network."
+msgstr "Tot el que feu a Internet des de Tails passa per la xarxa Tor."
+
+#. type: Plain text
+msgid ""
+"Tor encrypts and anonymizes your connection by passing it through 3 relays. "
+"Tor relays are servers operated by different people and organizations around "
+"the world."
+msgstr ""
+"Tor encripta i anonimitza la vostra connexió passant-la per tres repetidors. "
+"Els repetidors de Tor són servidors operats per diferents persones i "
+"organitzacions d'arreu del món."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr "[[!img tor.png link=\"no\" class=\"svg\" alt=\"Una connexió Tor passa per tres repetidors i l'últim estableix la connexió real amb la destinació final\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid ""
+"To, hopefully, ease translations, this SVG embeds the font used in the "
+"labels \"Tor hides ...\":"
+msgstr ""
+"Per tal de facilitar les traduccions, aquest SVG inclou el tipus de lletra "
+"utilitzat a les etiquetes «Tor oculta…»:"
+
+#. type: Plain text
+msgid "To update it:"
+msgstr "Per actualitzar-lo:"
+
+#. type: Bullet: '1. '
+msgid "Convert the TTF file SourceSansPro-Semibold.ttf to Base64 using:"
+msgstr "Convertiu el fitxer TTF SourceSansPro-Semibold.ttf a Base64 amb:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   https://hellogreg.github.io/woff2base/\n"
+msgstr "   https://hellogreg.github.io/woff2base/\n"
+
+#. type: Bullet: '2. '
+msgid "Copy it to a <style> tag in the <defs> tag of the SVG."
+msgstr "Copieu-lo a una etiqueta <style> a l'etiqueta <defs> de l'SVG."
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+msgid ""
+"You cannot access the Internet from Tails until you are connected to Tor. "
+"For example, *Tor Browser* displays the error message `The proxy server is "
+"refusing connections` until you are connected to Tor."
+msgstr ""
+"No podeu accedir a Internet des de Tails fins que no us connecteu a Tor. Per "
+"exemple, el *Navegador Tor* mostra el missatge d'error `El servidor "
+"intermediari està rebutjant les connexions` fins que no us connecteu a Tor."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because Tor routes your Internet traffic through 3 relays\n"
+"before reaching its destination, the\n"
+"connection is slower than when you are not using Tor.</p>\n"
+msgstr ""
+"<p>Perquè Tor encamina el trànsit d'Internet a través de tres repetidors\n"
+"abans d'arribar al seu destí, la\n"
+"connexió és més lenta que quan no utilitzeu Tor.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our documentation on\n"
+"[[why Tor is slow|doc/anonymous_internet/tor/slow]].</p>\n"
+msgstr ""
+"<p>Consulteu la nostra documentació sobre\n"
+"[[per què Tor és lent|doc/anonymous_internet/tor/slow]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid "To connect to the Tor network:"
+msgstr "Per connectar-vos a la xarxa Tor:"
+
+#. type: Bullet: '1. '
+msgid "[[Connect to a local network|networkmanager]], wired, Wi-Fi, or mobile."
+msgstr ""
+"[[Connecteu-vos a una xarxa local|networkmanager]], per cable, Wi-Fi o mòbil."
+
+#. type: Bullet: '2. '
+msgid ""
+"The *Tor Connection* assistant appears to help you connect to the Tor "
+"network."
+msgstr ""
+"L'assistent de *Connexió Tor* apareix per ajudar a connectar-vos a la xarxa "
+"Tor."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '3. '
+msgid "Choose whether you want to:"
+msgstr "Trieu si voleu:"
+
+#. type: Bullet: '   - '
+msgid "Connect to Tor automatically"
+msgstr "Connectar-vos a Tor automàticament"
+
+#. type: Bullet: '   - '
+msgid "Hide to your local network that you are connecting to Tor"
+msgstr "Amagar a la vostra xarxa local que us esteu connectant a Tor"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The implications of both methods are detailed below.\n"
+msgstr "   Les implicacions d'ambdós mètodes es detallen a continuació.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"bridges\">Tor relays and bridges</h1>\n"
+msgid "<h2 id=\"bridges\">Tor relays and bridges</h2>\n"
+msgstr "<h1 id=\"bridges\">Repetidors de Tor i ponts</h1>\n"
+
+#. type: Bullet: '- '
+msgid "**Public Tor relays**"
+msgstr "**Repetidors de Tor públics**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Most of the time, your local network does not block access to the Tor network\n"
+"  and you can use a public relay as your first Tor relay.\n"
+msgstr ""
+"  La majoria de les vegades, la vostra xarxa local no bloqueja l'accés a la xarxa Tor\n"
+"  i podeu utilitzar un repetidor públic com a primer repetidor de Tor.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Using a public Tor relay as your first Tor relay makes it clear to your local\n"
+"  network that you are connecting to Tor, while still keeping your online\n"
+"  activity secure and anonymous.\n"
+msgstr ""
+"  L'ús d'un repetidor de Tor públic com a primer repetidor de Tor deixa clar a la vostra\n"
+"  xarxa local que us esteu connectant a Tor, tot mantenint la vostra activitat\n"
+"  en línia segura i anònima.\n"
+
+#. type: Bullet: '- '
+msgid "**Tor bridges**"
+msgstr "**Ponts de Tor**"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "  Tor bridges are secret Tor relays that keep your connection to the Tor\n"
+#| "  network hidden.\n"
+msgid "  Tor bridges are secret Tor relays that hide that you are connecting to Tor.\n"
+msgstr ""
+"  Els ponts de Tor són repetidors de Tor secrets que mantenen la vostra connexió amb la\n"
+"  xarxa Tor oculta.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Use a bridge as your first Tor relay if connecting to Tor is blocked or if\n"
+"  using Tor could look suspicious to someone who monitors your Internet\n"
+"  connection.\n"
+msgstr ""
+"  Utilitzeu un pont com a primer repetidor de Tor si la connexió a Tor està bloquejada o si\n"
+"  utilitzar Tor podria semblar sospitós a algú que controli la vostra connexió\n"
+"  a Internet.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  The technology used by Tor bridges is designed to circumvent censorship\n"
+"  where connections to Tor are blocked, for example in some countries with heavy censorship,\n"
+"  by some public networks, or by some parental controls.\n"
+msgstr ""
+"  La tecnologia que fan servir els ponts de Tor està dissenyada per eludir la censura\n"
+"  on les connexions a Tor estan bloquejades, per exemple en alguns països amb una forta censura,\n"
+"  a algunes xarxes públiques, o per alguns controls parentals.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  It does so by camouflaging your connection so it cannot be recognized as a\n"
+"  connection to Tor. As a consequence, the same technology can be used to hide\n"
+"  that you are using Tor if it could look suspicious to someone who monitors\n"
+"  your Internet connection.\n"
+msgstr ""
+"  Ho fa camuflant la vostra connexió perquè no es pugui reconèixer com a\n"
+"  connexió a Tor. Com a conseqüència, es pot utilitzar la mateixa tecnologia per amagar\n"
+"  que esteu utilitzant Tor si pot semblar sospitós a algú que supervisa\n"
+"  la vostra connexió a Internet.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  Tor bridges are often less reliable and slower than public Tor relays.\n"
+msgstr "  Els ponts de Tor sovint són menys fiables i més lents que els repetidors de Tor públics.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"automatic\">Connecting to Tor automatically</h1>\n"
+msgid "<h2 id=\"automatic\">Connecting to Tor automatically</h2>\n"
+msgstr "<h1 id=\"automatic\">Connectar-vos a Tor automàticament</h1>\n"
+
+#. type: Plain text
+msgid ""
+"We recommend connecting to Tor automatically if you are on a public Wi-Fi "
+"network or if many people in your country use Tor to circumvent censorship."
+msgstr ""
+"Us recomanem que us connecteu a Tor automàticament si esteu en una xarxa Wi-"
+"Fi pública o si moltes persones al vostre país utilitzen Tor per evitar la "
+"censura."
+
+#. type: Plain text
+msgid "When you choose this option:"
+msgstr "Quan trieu aquesta opció:"
+
+#. type: Bullet: '1. '
+msgid ""
+"First, Tails synchronizes the clock of the computer automatically, because a "
+"correct time is needed to be able to connect to the Tor network."
+msgstr ""
+"En primer lloc, Tails sincronitza el rellotge de l'ordinador automàticament, "
+"perquè es necessita una hora correcta per poder connectar-se a la xarxa Tor."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   Tails learns the current time by connecting to the captive portal detection\n"
+#| "   service of [Fedora](https://getfedora.org/), which is used by most Linux\n"
+#| "   distributions. This connection does not go through the Tor network and is an\n"
+#| "   exception to our policy of only making Internet connections through the Tor\n"
+#| "   network.\n"
+msgid ""
+"   Tails learns the current time by connecting to the captive portal detection\n"
+"   service of [Fedora](http://fedoraproject.org/static/hotspot.txt), which is used by most Linux\n"
+"   distributions. This connection does not go through the Tor network and is an\n"
+"   exception to our policy of only making Internet connections through the Tor\n"
+"   network.\n"
+msgstr ""
+"   Tails aprèn l'hora actual connectant-se al servei de detecció de portals\n"
+"   captius de [Fedora](https://getfedora.org/), que és utilitzat per la majoria de distribucions\n"
+"   Linux. Aquesta connexió no passa per la xarxa Tor i és una\n"
+"   excepció a la nostra política de fer connexions a Internet només a través de la\n"
+"   xarxa Tor.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"next\">\n"
+msgstr "   <div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>You can learn more about our security assessment of this time\n"
+"   synchronization in our [[design documentation about non-Tor\n"
+"   traffic|contribute/design/Tor_enforcement#non-tor-traffic]].</p>\n"
+msgstr ""
+"   <p>Podeu obtenir més informació sobre la nostra avaluació de seguretat d'aquesta\n"
+"   sincronització temporal a la nostra [[documentació de disseny sobre\n"
+"   trànsit fora de Tor|contribute/design/Tor_enforcement#non-tor-traffic]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you choose instead to [[hide that you are connecting to Tor|tor#hiding]],\n"
+"   you might have to fix the computer clock manually.\n"
+msgstr ""
+"   Si opteu per [[amagar que us connecteu a Tor|tor#hiding]],\n"
+"   potser haureu d'ajustar el rellotge de l'ordinador manualment.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"If Tails fails to synchronize the clock because you have to sign in to the "
+"network using a captive portal, an error screen is displayed that helps you "
+"do so."
+msgstr ""
+"Si Tails no pot sincronitzar el rellotge perquè heu iniciat sessió a la "
+"xarxa mitjançant un portal captiu, es mostrarà una pantalla d'error que us "
+"ajudarà a fer-ho."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   For detailed instructions, see how to [[sign in to the network using a\n"
+"   captive portal|unsafe_browser]].\n"
+msgstr ""
+"   Per obtenir instruccions detallades, vegeu com [[iniciar sessió a la xarxa mitjançant\n"
+"   un portal captiu|unsafe_browser]].\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Then, Tails tries different ways of connecting to Tor until it succeeds:"
+msgstr ""
+"Aleshores, Tails prova diferents maneres de connectar-vos a Tor fins que ho "
+"aconsegueix:"
+
+#. type: Bullet: '   1. '
+msgid ""
+"Tails tries to connect to Tor directly using **public relays**, without "
+"using a bridge."
+msgstr ""
+"Tails intenta connectar-vos a Tor directament mitjançant **repetidors "
+"públics**, sense utilitzar un pont."
+
+#. type: Bullet: '   1. '
+msgid ""
+"Tails tries to connect to Tor using one of the **default bridges**, already "
+"included in Tails, if connecting using public relays fails."
+msgstr ""
+"Tails intenta connectar-vos a Tor mitjançant un dels **ponts "
+"predeterminats**, ja inclosos a Tails, si falla la connexió mitjançant "
+"repetidors públics."
+
+#. type: Plain text
+#, no-wrap
+msgid "      <div class=\"note\">\n"
+msgstr "      <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      <p>Tails uses the [[default <i>obfs4</i> bridges from <i>Tor\n"
+"      Browser</i>|https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/tor-expert-bundle/pt_config.json?ref_type=heads]].</p>\n"
+msgstr ""
+"      <p>Tails utilitza els ponts [ <i>obfs4</i> predeterminats del <i>Navegador\n"
+"      Tor</i>|https://gitlab.torproject.org/tpo/applications/tor-browser-build/-/blob/main/projects/tor-expert-bundle/pt_config.json?ref_type=heads]]. </p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "      </div>\n"
+msgstr "      </div>\n"
+
+#. type: Bullet: '   1. '
+#, fuzzy
+#| msgid ""
+#| "If public relays and default bridges don't work, Tails asks you to "
+#| "configure a **custom bridge**, if connecting using the default bridges "
+#| "fails."
+msgid ""
+"If public relays and default bridges don't work, Tails asks you to configure "
+"a **custom bridge**."
+msgstr ""
+"Si els repetidors públics i els ponts predeterminats no funcionen, Tails us "
+"demana que configureu un **pont personalitzat**, si la connexió amb els "
+"ponts predeterminats falla."
+
+#. type: Plain text
+#, no-wrap
+msgid "      See [[configuring a Tor bridge|tor#bridge]] below.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Someone monitoring your Internet connection could identify these attempts as "
+"coming from a Tails user."
+msgstr ""
+"Algú que controli la vostra connexió a Internet podria identificar aquests "
+"intents com a provinents d'un usuari de Tails."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"hiding\">Hiding to your local network that you are connecting to Tor</h1>\n"
+msgid "<h2 id=\"hiding\">Hiding to your local network that you are connecting to Tor</h2>\n"
+msgstr "<h1 id=\"hiding\">Ocultar a la vostra xarxa local que us esteu connectant a Tor</h1>\n"
+
+#. type: Plain text
+msgid ""
+"You might need to go unnoticed if using Tor could look suspicious to someone "
+"who monitors your Internet connection."
+msgstr ""
+"És possible que hàgiu de passar desapercebut si utilitzar Tor pogués semblar "
+"sospitós per a algú que controli la vostra connexió a Internet."
+
+#. type: Plain text
+msgid ""
+"When you choose this option, Tails will only connect to Tor after you "
+"configure a custom Tor bridge. Bridges are secret Tor relays that hide that "
+"you are connecting to Tor."
+msgstr ""
+"Quan trieu aquesta opció, Tails només es connectarà a Tor després de "
+"configurar un pont de Tor personalitzat. Els ponts són repetidors de Tor "
+"secrets que amaguen que us esteu connectant a Tor."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is impossible to hide to the websites that you visit that you are using\n"
+"Tor, because the <a href=\"https://metrics.torproject.org/exonerator.html\">list\n"
+"of exit nodes of the Tor network</a> is public.</p>\n"
+msgstr ""
+"<p>És impossible amagar als llocs web que visiteu que esteu utilitzant\n"
+"Tor, perquè la llista <a href=\"https://metrics.torproject.org/exonerator.html\">\n"
+"dels nodes de sortida de la xarxa Tor</a> és pública.</p>\n"
+
+#. type: Plain text
+msgid ""
+"Our team is doing its best to help you connect to Tor using the most "
+"discreet types of Tor bridges. That is why, when you decide to hide that you "
+"are connecting to Tor:"
+msgstr ""
+"El nostre equip està fent tot el possible per ajudar a connectar-vos a Tor "
+"mitjançant els tipus més discrets de ponts de Tor. Per això, quan decidiu "
+"amagar que us connecteu a Tor:"
+
+#. type: Bullet: '- '
+msgid ""
+"Tails does not automatically detect whether you have to [[sign in to the "
+"network using a captive portal|unsafe_browser]]."
+msgstr ""
+"Tails no detecta automàticament si heu d'[[iniciar la sessió a la xarxa "
+"mitjançant un portal captiu|unsafe_browser]]."
+
+#. type: Bullet: '- '
+msgid "Default bridges are not available."
+msgstr "Els ponts per defecte no estan disponibles."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"bridges\">Tor relays and bridges</h1>\n"
+msgid "<h2 id=\"bridge\">Configuring a Tor bridge</h2>\n"
+msgstr "<h1 id=\"bridges\">Repetidors de Tor i ponts</h1>\n"
+
+#. type: Plain text
+msgid ""
+"When *Tor Connection* fails to connect to Tor using public relays and "
+"default bridges, select **Configure a Tor Bridge** from the error screen."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img bridge.png class=\"screenshot\" alt=\"Tor Connection: Configure a Tor bridge\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/tor/bridge.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/tor/bridge.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+msgid ""
+"To save the last Tor bridge that connected to Tor successfully, turn on the "
+"[[Tor Bridge|persistent_storage/configure#bridge]] feature of the Persistent "
+"Storage."
+msgstr ""
+"Per desar l'últim pont de Tor que s'ha connectat a Tor correctament, activeu "
+"la funció [[Pont de Tor|persistent_storage/configure#bridge]] de "
+"l'Emmagatzematge Persistent."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"troubleshoot-tor\">Troubleshooting connecting to Tor</h1>\n"
+msgid "<h2 id=\"troubleshoot-tor\">Troubleshooting connecting to Tor</h2>\n"
+msgstr "<h1 id=\"troubleshoot-tor\">Resolució de problemes de connexió a Tor</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>See our documentation on [[troubleshooting connecting to Tor|tor/troubleshoot]].</p>\n"
+msgstr "<p>Consulteu la nostra documentació sobre la [[resolució de problemes de connexió a Tor|tor/troubleshoot]].</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"status\">Viewing the status of Tor</h1>\n"
+msgid "<h2 id=\"status\">Viewing the status of Tor</h2>\n"
+msgstr "<h1 id=\"status\">Veure l'estat de Tor</h1>\n"
+
+#. type: Plain text
+msgid "The status of Tor appears as an onion icon in the notification area:"
+msgstr "L'estat de Tor apareix com una icona de ceba a l'àrea de notificació:"
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!img lib/symbolic/tor-connected.png alt=\"Onion icon\" link=\"no\" "
+"class=\"symbolic\"]] You are connected to Tor."
+msgstr ""
+"[[!img lib/symbolic/tor-connected.png alt=\"Icona d'Onion\" link=\"no\" "
+"class=\"symbolic\"]] Esteu connectat a Tor."
+
+#. type: Bullet: '  - '
+msgid ""
+"[[!img lib/symbolic/tor-disconnected.png alt=\"Onion icon that is crossed "
+"out\" link=\"no\" class=\"symbolic\"]] You are not connected to Tor."
+msgstr ""
+"[[!img lib/symbolic/tor-disconnected.png alt=\"Icona d'Onion amb una creu\" "
+"link=\"no\" class=\"symbolic\"]] No esteu connectat a Tor."
+
+#. type: Plain text
+msgid ""
+"To view the list of Tor circuits that are used by your different "
+"applications, click on the Tor status icon and choose **View Tor Circuits**. "
+"Learn more about [[managing Tor circuits|circuits]]."
+msgstr ""
+"Per a veure la llista de circuits de Tor que utilitzen les diferents "
+"aplicacions, feu clic a la icona d'estat de Tor i trieu **Mostra els "
+"circuits de Tor**. Més informació sobre la [[gestió de circuits de Tor|"
+"circuits]]."
+
+#, no-wrap
+#~ msgid "<p>In the future, we will make it easier to use a custom bridge by:</p>\n"
+#~ msgstr "<p>En el futur, facilitarem l'ús d'un pont personalitzat mitjançant:</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<ul>\n"
+#~ "<li>Allowing you to request a bridge from Tails by solving a CAPTCHA. ([[!tails_ticket 15331]])</li>\n"
+#~ "<li>Supporting <i>Snowflake</i> bridges. ([[!tails_ticket 5494]])</li>\n"
+#~ "</ul>\n"
+#~ msgstr ""
+#~ "<ul>\n"
+#~ "<li>Us permetrem sol·licitar un pont a Tails resolent un CAPTCHA. ([[!tails_ticket 15331]])</li>\n"
+#~ "<li>Compatibilitat amb ponts <i>Snowflake</i>. ([[!tails_ticket 5494]])</li>\n"
+#~ "</ul>\n"
+
+#~ msgid ""
+#~ "You can only use the types of bridges that our team considers discreet "
+#~ "enough."
+#~ msgstr ""
+#~ "Només podeu utilitzar els tipus de ponts que el nostre equip consideri "
+#~ "prou discrets."
+
+#, no-wrap
+#~ msgid "  Currently in Tails, only *obfs4* bridges hide that you are using Tor.\n"
+#~ msgstr "  Actualment a Tails, només els ponts *obfs4* amaguen que esteu utilitzant Tor.\n"
+
+#, no-wrap
+#~ msgid "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+#~ msgstr "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+
+#, no-wrap
+#~ msgid "  You will have to know the address of a custom bridge.\n"
+#~ msgstr "  Haureu de saber l'adreça d'un pont personalitzat.\n"
+
+#, no-wrap
+#~ msgid "  To request a custom bridge, you can either:\n"
+#~ msgstr "  Per sol·licitar un pont personalitzat, podeu:\n"
+
+#~ msgid ""
+#~ "Request a bridge on [https://bridges.torproject.org/](https://"
+#~ "bridges.torproject.org/bridges?transport=obfs4)."
+#~ msgstr ""
+#~ "Sol·licitar un pont a [https://bridges.torproject.org/](https://"
+#~ "bridges.torproject.org/bridges?transport=obfs4)."
+
+#, no-wrap
+#~ msgid ""
+#~ "     We recommend doing so before starting Tails and ideally from a different\n"
+#~ "     local network than the one on which you want to hide that you are using\n"
+#~ "     Tor.\n"
+#~ msgstr ""
+#~ "     Recomanem fer-ho abans d'iniciar Tails i, idealment, des d'una xarxa\n"
+#~ "     local diferent de la que vulgueu amagar que esteu utilitzant\n"
+#~ "     Tor.\n"
+
+#~ msgid ""
+#~ "Send an empty email to <a "
+#~ "href=\"mailto:bridges@torproject.org\">bridges@torproject.org</a> from a "
+#~ "Gmail or Riseup email address."
+#~ msgstr ""
+#~ "Envieu un correu electrònic buit a <a "
+#~ "href=\"mailto:bridges@torproject.org\">bridges@torproject.org</a> des "
+#~ "d'una adreça de correu electrònic de Gmail o Riseup."
+
+#, no-wrap
+#~ msgid "     For example, you can send the email from your phone and type the bridge in Tails.\n"
+#~ msgstr "     Per exemple, podeu enviar el correu electrònic des del vostre telèfon i escriure el pont a Tails.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "     Sending the email reveals to Gmail or Riseup that you are trying to\n"
+#~ "     connect to Tor but not to someone who monitors your Internet connection.\n"
+#~ msgstr ""
+#~ "     L'enviament del correu electrònic revela a Gmail o Riseup que esteu intentant\n"
+#~ "     connectar-vos a Tor però no a algú que controli la vostra connexió a Internet.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "     Even someone who knows your bridge cannot know what you are doing online\n"
+#~ "     from Tails.\n"
+#~ msgstr ""
+#~ "     Fins i tot algú que conegui el vostre pont no pot saber què feu en línia\n"
+#~ "     des de Tails.\n"

@@ -1,0 +1,11 @@
+[[!meta date="Sun, 12 Jan 2020 17:00:00 +0100"]]
+[[!meta title="Critical security vulnerability in Tails 4.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.2.2|news/version_4.2.2]] fixes a [[!mfsa 2020-03 desc="critical
+vulnerability"]] in *Tor Browser*, that affects Tails 4.2 and older.
+
+You should [[upgrade to Tails 4.2.2|news/version_4.2.2]] as
+soon as possible.
