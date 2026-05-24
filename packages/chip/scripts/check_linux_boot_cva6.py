@@ -259,6 +259,7 @@ def main() -> int:
         return 1
 
     # 2) Elaborate + run the cocotb sim.
+    COCOTB_DIR / sim_build
     if RESULTS_XML.exists():
         RESULTS_XML.unlink()
     sim_log = ROOT / f"build/reports/linux_boot_cva6.{stage_label}.sim.log"

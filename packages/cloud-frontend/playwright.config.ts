@@ -1,3 +1,4 @@
+import path from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 // When CLOUD_E2E_LIVE_URL is set we are testing the real deployed site, so we
@@ -7,6 +8,7 @@ const HOST = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
 const PORT = process.env.PLAYWRIGHT_PORT || "4173";
 const LOCAL_URL = process.env.PLAYWRIGHT_BASE_URL || `http://${HOST}:${PORT}`;
 const BASE_URL = LIVE_URL ?? LOCAL_URL;
+const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -17,10 +19,14 @@ export default defineConfig({
       maxDiffPixelRatio: 0.02,
     },
   },
+  outputDir: recording
+    ? path.resolve(import.meta.dirname, "../../e2e-recordings/cloud-frontend/test-results")
+    : "./test-results",
   use: {
     baseURL: BASE_URL,
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: recording ? "on" : "retain-on-failure",
+    screenshot: recording ? "on" : "only-on-failure",
+    video: recording ? "on" : "retain-on-failure",
   },
   webServer: LIVE_URL
     ? undefined

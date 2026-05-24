@@ -1416,6 +1416,9 @@ function LifeOpsWorkspaceInner() {
         </LifeOpsWorkspaceShell>
       }
       chat={<LifeOpsPageChat />}
+      chatCollapsed
+      chatDisabled
+      hideCollapseButton
     />
   );
 }

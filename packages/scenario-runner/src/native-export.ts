@@ -30,6 +30,9 @@ import { toRecord } from "./utils.js";
 const NATIVE_FORMAT = "eliza_native_v1" as const;
 const NATIVE_SCHEMA_VERSION = 1 as const;
 const GENERATE_TEXT_BOUNDARY = "vercel_ai_sdk.generateText" as const;
+export const SCENARIO_NATIVE_EXPORT_SCHEMA =
+  "eliza_scenario_native_export" as const;
+export const SCENARIO_NATIVE_EXPORT_VERSION = 1 as const;
 
 export interface NativeBoundaryRow {
   format: typeof NATIVE_FORMAT;
@@ -80,6 +83,25 @@ export interface NativeBoundaryRow {
   modelType?: string;
   provider?: string;
   metadata: Record<string, unknown>;
+}
+
+export interface ScenarioNativeExportManifest {
+  schema: typeof SCENARIO_NATIVE_EXPORT_SCHEMA;
+  schemaVersion: typeof SCENARIO_NATIVE_EXPORT_VERSION;
+  generatedAt: string;
+  runDir: string;
+  trajectoriesDir: string;
+  jsonlPath: string;
+  manifestPath: string;
+  counts: {
+    trajectoryFiles: number;
+    parsedTrajectories: number;
+    skippedFiles: number;
+    rows: number;
+  };
+  runIds: string[];
+  scenarioIds: string[];
+  agentIds: string[];
 }
 
 function isRecordedTrajectory(value: unknown): value is RecordedTrajectory {
@@ -306,6 +328,18 @@ function collectTrajectoryFiles(rootDir: string): string[] {
   return out.sort();
 }
 
+function defaultScenarioNativeManifestPath(outPath: string): string {
+  return outPath.endsWith(".jsonl")
+    ? `${outPath.slice(0, -".jsonl".length)}.manifest.json`
+    : `${outPath}.manifest.json`;
+}
+
+function addString(set: Set<string>, value: unknown): void {
+  if (typeof value === "string" && value.trim().length > 0) {
+    set.add(value.trim());
+  }
+}
+
 /**
  * Read every `RecordedTrajectory` JSON under `<runDir>/trajectories/` and write
  * the converted `eliza_native_v1` rows as JSONL to `outPath`. Returns the
@@ -320,22 +354,33 @@ export function exportScenarioNativeJsonl(
   const trajectoriesDir = path.join(runDir, "trajectories");
   const files = collectTrajectoryFiles(trajectoriesDir);
   const rows: NativeBoundaryRow[] = [];
+  const runIds = new Set<string>();
+  const scenarioIds = new Set<string>();
+  const agentIds = new Set<string>();
+  let parsedTrajectories = 0;
+  let skippedFiles = 0;
   for (const file of files) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(readFileSync(file, "utf-8"));
     } catch (err) {
+      skippedFiles += 1;
       logger.warn(
         `[scenario-runner] skipping unparseable trajectory file ${file}: ${err instanceof Error ? err.message : String(err)}`,
       );
       continue;
     }
     if (!isRecordedTrajectory(parsed)) {
+      skippedFiles += 1;
       logger.warn(
         `[scenario-runner] skipping non-trajectory JSON file ${file} (no trajectoryId/agentId/stages)`,
       );
       continue;
     }
+    parsedTrajectories += 1;
+    addString(runIds, parsed.runId);
+    addString(scenarioIds, parsed.scenarioId);
+    addString(agentIds, parsed.agentId);
     rows.push(...recordedTrajectoryToNativeRows(parsed));
   }
   mkdirSync(path.dirname(outPath), { recursive: true });
@@ -344,8 +389,28 @@ export function exportScenarioNativeJsonl(
       ? ""
       : `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`;
   writeFileSync(outPath, body, "utf-8");
+  const manifestPath = defaultScenarioNativeManifestPath(outPath);
+  const manifest: ScenarioNativeExportManifest = {
+    schema: SCENARIO_NATIVE_EXPORT_SCHEMA,
+    schemaVersion: SCENARIO_NATIVE_EXPORT_VERSION,
+    generatedAt: new Date().toISOString(),
+    runDir,
+    trajectoriesDir,
+    jsonlPath: outPath,
+    manifestPath,
+    counts: {
+      trajectoryFiles: files.length,
+      parsedTrajectories,
+      skippedFiles,
+      rows: rows.length,
+    },
+    runIds: [...runIds].sort(),
+    scenarioIds: [...scenarioIds].sort(),
+    agentIds: [...agentIds].sort(),
+  };
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, "utf-8");
   logger.info(
-    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath}`,
+    `[scenario-runner] wrote ${rows.length} eliza_native_v1 row(s) from ${files.length} trajectory file(s) → ${outPath} (manifest → ${manifestPath})`,
   );
   return rows.length;
 }

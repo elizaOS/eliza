@@ -202,7 +202,7 @@ The Advanced section contains specialized sub-tabs, each accessible via a second
 | **Skills** | `/skills` | Custom agent skills configuration. |
 | **Actions** | `/actions` | Custom agent actions -- create and edit custom action definitions. |
 | **Triggers** | `/triggers` | Scheduled and event-based automation management. |
-| **Fine-Tuning** | `/fine-tuning` | Dataset and model training workflows. |
+| **Fine-Tuning** | `/apps/fine-tuning` | Dataset and model training workflows. |
 | **Trajectories** | `/trajectories` | LLM call history viewer and analysis. Includes a detail view for individual trajectories. |
 | **Runtime** | `/runtime` | Deep runtime object introspection and load order inspection. |
 | **Databases** | `/database` | Browse database tables, media files, and vector stores. |

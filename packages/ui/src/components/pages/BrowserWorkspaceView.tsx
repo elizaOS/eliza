@@ -4,8 +4,6 @@ import {
   FolderOpen,
   PanelLeftClose,
   PanelLeftOpen,
-  PanelRightClose,
-  PanelRightOpen,
   Plus,
   RefreshCw,
   X,
@@ -41,7 +39,6 @@ import { Input } from "../ui/input";
 import {
   AppWorkspaceChrome,
   type AppWorkspaceChromeProps,
-  useAppWorkspaceChatChrome,
 } from "../workspace/AppWorkspaceChrome.js";
 import {
   decodeBase64ForPreview,
@@ -451,9 +448,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
   // collapsed past its rail, the rail's expand button can sit behind
   // the OOPIF and become unclickable.
   const [tabsSidebarCollapsed, setTabsSidebarCollapsed] = useState(false);
-  // Right-side chat pane chrome (from AppWorkspaceChrome). Null when this
-  // view is rendered outside the workspace chrome (e.g. in tests).
-  const chatChrome = useAppWorkspaceChatChrome();
   const [browserBridgeAvailable, setBrowserBridgeAvailable] = useState(false);
   const [browserBridgeLoading, setBrowserBridgeLoading] = useState(true);
   const [browserBridgeCompanions, setBrowserBridgeCompanions] = useState<
@@ -2401,39 +2395,6 @@ export function BrowserWorkspaceView(): React.JSX.Element {
       >
         <ExternalLink className="h-4 w-4" />
       </Button>
-      {/* Toggle the right-side page-scoped chat pane. Same reasoning as
-          the left sidebar toggle: the floating bottom-right dock button
-          (AppWorkspaceChatDockToggleButton) sits at `fixed bottom-2
-          right-2`, which the native OOPIF can paint over once it
-          renders, leaving no way to reopen the chat. */}
-      {chatChrome ? (
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 shrink-0"
-          aria-label={
-            chatChrome.isChatOpen
-              ? t("browserworkspace.CollapseChat", {
-                  defaultValue: "Collapse page chat",
-                })
-              : t("browserworkspace.OpenChat", {
-                  defaultValue: "Open page chat",
-                })
-          }
-          onClick={() =>
-            chatChrome.isChatOpen
-              ? chatChrome.collapseChat()
-              : chatChrome.openChat()
-          }
-          data-testid="browser-workspace-nav-chat-toggle"
-        >
-          {chatChrome.isChatOpen ? (
-            <PanelRightClose className="h-4 w-4" />
-          ) : (
-            <PanelRightOpen className="h-4 w-4" />
-          )}
-        </Button>
-      ) : null}
     </div>
   );
 
@@ -2836,6 +2797,9 @@ export function BrowserWorkspaceView(): React.JSX.Element {
         main={mainNode}
         chatScope="page-browser"
         pageScopedChatPaneProps={browserPageScopedChatPaneProps}
+        chatCollapsed
+        chatDisabled
+        hideCollapseButton
       />
       <ConfirmDialog {...vaultAutofillModalProps} />
       <ConfirmDialog {...walletActionModalProps} />

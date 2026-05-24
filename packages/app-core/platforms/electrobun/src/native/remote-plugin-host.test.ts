@@ -98,6 +98,31 @@ class FakeWorkerHandle implements RemotePluginWorkerHandle {
   }
 }
 
+type HostResponseMessage = Extract<
+  RemotePluginWorkerMessage,
+  { type: "host-response" }
+>;
+
+function waitForHostResponse(
+  worker: FakeWorkerHandle,
+  requestId: number,
+): Promise<HostResponseMessage> {
+  return new Promise((resolve, reject) => {
+    setTimeout(() => {
+      try {
+        const response = worker.messages.find(
+          (message): message is HostResponseMessage =>
+            message.type === "host-response" && message.requestId === requestId,
+        );
+        expect(response).toBeDefined();
+        resolve(response as HostResponseMessage);
+      } catch (error) {
+        reject(error);
+      }
+    }, 10);
+  });
+}
+
 describe("RemotePluginHost", () => {
   it("installs, lists, snapshots, and uninstalls remote plugins", () =>
     withTempDir((dir) => {
@@ -273,16 +298,25 @@ describe("RemotePluginHost", () => {
       });
     }));
 
-  it("dispatches dynamic view host requests for trusted workers", () =>
-    withTempDir((dir) => {
+  it("dispatches dynamic view host requests for trusted workers", async () =>
+    withTempDir(async (dir) => {
       const worker = new FakeWorkerHandle();
-      const opened: JsonValue[] = [];
+      const calls: Array<{ method: string; params: JsonValue | null }> = [];
       const dynamicViewHost: DynamicViewHost = {
-        register: async () => ({ ok: true }),
-        unregister: async () => ({ removed: true }),
-        list: async () => ({ views: [] }),
+        register: async (params) => {
+          calls.push({ method: "register", params: params ?? null });
+          return { id: "agent.run.trace", title: "Trace" };
+        },
+        unregister: async (params) => {
+          calls.push({ method: "unregister", params: params ?? null });
+          return { removed: true };
+        },
+        list: async () => {
+          calls.push({ method: "list", params: null });
+          return { views: [{ id: "agent.run.trace" }] };
+        },
         open: async (params) => {
-          opened.push(params ?? null);
+          calls.push({ method: "open", params: params ?? null });
           return {
             sessionId: "session-1",
             viewId: "agent.run.trace",
@@ -293,7 +327,152 @@ describe("RemotePluginHost", () => {
             updatedAt: "2026-05-17T00:00:00.000Z",
           };
         },
-        close: async () => ({ ok: true }),
+        close: async (params) => {
+          calls.push({ method: "close", params: params ?? null });
+          return { sessionId: "session-1", status: "closed" };
+        },
+        push: async (params) => {
+          calls.push({ method: "push", params: params ?? null });
+          return { ok: true, delivered: 1 };
+        },
+        sessions: async () => {
+          calls.push({ method: "sessions", params: null });
+          return { sessions: [{ sessionId: "session-1" }] };
+        },
+      };
+      const manager = new RemotePluginHost({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        dynamicViewHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      const requests = [
+        {
+          requestId: 14,
+          method: "dynamic-view-register",
+          params: {
+            manifest: {
+              id: "agent.run.trace",
+              title: "Trace",
+              source: "remote",
+              entrypoint: "remote://trace",
+              placement: "floating",
+            },
+            update: true,
+          },
+          expectedPayload: { id: "agent.run.trace" },
+        },
+        {
+          requestId: 15,
+          method: "dynamic-view-list",
+          expectedPayload: { views: [{ id: "agent.run.trace" }] },
+        },
+        {
+          requestId: 16,
+          method: "dynamic-view-open",
+          params: {
+            viewId: "agent.run.trace",
+            title: "Trace",
+            initialState: { runId: "run-1" },
+          },
+          expectedPayload: { sessionId: "session-1" },
+        },
+        {
+          requestId: 17,
+          method: "dynamic-view-push",
+          params: {
+            sessionId: "session-1",
+            event: "trace.event",
+            payload: { sequence: 1 },
+          },
+          expectedPayload: { ok: true, delivered: 1 },
+        },
+        {
+          requestId: 18,
+          method: "dynamic-view-sessions",
+          expectedPayload: { sessions: [{ sessionId: "session-1" }] },
+        },
+        {
+          requestId: 19,
+          method: "dynamic-view-close",
+          params: { sessionId: "session-1" },
+          expectedPayload: { sessionId: "session-1", status: "closed" },
+        },
+        {
+          requestId: 20,
+          method: "dynamic-view-unregister",
+          params: { viewId: "agent.run.trace" },
+          expectedPayload: { removed: true },
+        },
+      ] as const;
+
+      for (const request of requests) {
+        worker.emit({
+          type: "host-request",
+          requestId: request.requestId,
+          method: request.method,
+          ...("params" in request ? { params: request.params } : {}),
+        });
+        const response = await waitForHostResponse(worker, request.requestId);
+        expect(response).toMatchObject({
+          type: "host-response",
+          requestId: request.requestId,
+          success: true,
+          payload: request.expectedPayload,
+        });
+      }
+
+      expect(calls).toEqual([
+        {
+          method: "register",
+          params: {
+            manifest: {
+              id: "agent.run.trace",
+              title: "Trace",
+              source: "remote",
+              entrypoint: "remote://trace",
+              placement: "floating",
+            },
+            update: true,
+          },
+        },
+        { method: "list", params: null },
+        {
+          method: "open",
+          params: {
+            viewId: "agent.run.trace",
+            title: "Trace",
+            initialState: { runId: "run-1" },
+          },
+        },
+        {
+          method: "push",
+          params: {
+            sessionId: "session-1",
+            event: "trace.event",
+            payload: { sequence: 1 },
+          },
+        },
+        { method: "sessions", params: null },
+        { method: "close", params: { sessionId: "session-1" } },
+        { method: "unregister", params: { viewId: "agent.run.trace" } },
+      ]);
+    }));
+
+  it("returns dynamic view host request errors to trusted workers", async () =>
+    withTempDir(async (dir) => {
+      const worker = new FakeWorkerHandle();
+      const dynamicViewHost: DynamicViewHost = {
+        register: async () => {
+          throw new Error("manifest collision");
+        },
+        unregister: async () => ({ removed: true }),
+        list: async () => ({ views: [] }),
+        open: async () => ({ sessionId: "session-1" }),
+        close: async () => ({ sessionId: "session-1" }),
         push: async () => ({ ok: true }),
         sessions: async () => ({ sessions: [] }),
       };
@@ -308,30 +487,88 @@ describe("RemotePluginHost", () => {
 
       worker.emit({
         type: "host-request",
-        requestId: 14,
+        requestId: 21,
+        method: "dynamic-view-register",
+        params: { manifest: { id: "agent.run.trace" } },
+      });
+
+      const response = await waitForHostResponse(worker, 21);
+      expect(response).toMatchObject({
+        type: "host-response",
+        requestId: 21,
+        success: false,
+      });
+      expect(response.error).toContain("manifest collision");
+    }));
+
+  it("requires dynamic view host configuration and permission for dynamic view requests", async () =>
+    withTempDir(async (dir) => {
+      const missingHostWorker = new FakeWorkerHandle();
+      const missingHostManager = new RemotePluginHost({
+        storeRoot: join(dir, "missing-host-store"),
+        workerRunner: { start: () => missingHostWorker },
+        now: () => 1700000000000,
+      });
+      missingHostManager.installFromDirectory({
+        sourceDir: writePayload(dir),
+      });
+      missingHostManager.startWorker("bunny.search");
+
+      missingHostWorker.emit({
+        type: "host-request",
+        requestId: 22,
+        method: "dynamic-view-list",
+      });
+
+      const missingHostResponse = await waitForHostResponse(
+        missingHostWorker,
+        22,
+      );
+      expect(missingHostResponse).toMatchObject({
+        type: "host-response",
+        requestId: 22,
+        success: false,
+      });
+      expect(missingHostResponse.error).toContain(
+        "dynamic view host is not configured",
+      );
+
+      const deniedWorker = new FakeWorkerHandle();
+      const deniedManager = new RemotePluginHost({
+        storeRoot: join(dir, "permission-denied-store"),
+        workerRunner: { start: () => deniedWorker },
+        now: () => 1700000000000,
+        dynamicViewHost: {
+          register: async () => ({ ok: true }),
+          unregister: async () => ({ removed: true }),
+          list: async () => ({ views: [] }),
+          open: async () => ({ sessionId: "session-1" }),
+          close: async () => ({ sessionId: "session-1" }),
+          push: async () => ({ ok: true }),
+          sessions: async () => ({ sessions: [] }),
+        },
+      });
+      deniedManager.installFromDirectory({
+        sourceDir: writePayload(join(dir, "denied"), {
+          manageRemotePlugins: false,
+        }),
+      });
+      deniedManager.startWorker("bunny.search");
+
+      deniedWorker.emit({
+        type: "host-request",
+        requestId: 23,
         method: "dynamic-view-open",
         params: { viewId: "agent.run.trace" },
       });
 
-      return new Promise<void>((resolve, reject) => {
-        setTimeout(() => {
-          try {
-            const response = worker.messages.find(
-              (m) => m.type === "host-response" && m.requestId === 14,
-            );
-            expect(opened).toEqual([{ viewId: "agent.run.trace" }]);
-            expect(response).toMatchObject({
-              type: "host-response",
-              requestId: 14,
-              success: true,
-              payload: { sessionId: "session-1" },
-            });
-            resolve();
-          } catch (error) {
-            reject(error);
-          }
-        }, 10);
+      const deniedResponse = await waitForHostResponse(deniedWorker, 23);
+      expect(deniedResponse).toMatchObject({
+        type: "host-response",
+        requestId: 23,
+        success: false,
       });
+      expect(deniedResponse.error).toContain("manage-remote-plugins");
     }));
 
   it("dispatches trace host requests for trusted workers", () =>

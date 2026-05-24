@@ -34,7 +34,7 @@ nvidia-smi || echo "[job] WARN nvidia-smi unavailable"
 upload "$LOG_FILE" status/job.log.partial
 
 STATUS="UNKNOWN"
-# shellcheck disable=SC2317 # trap callback; ShellCheck does not see EXIT reachability.
+# shellcheck disable=SC2329 # invoked indirectly via `trap finish EXIT` below.
 finish() {
     echo "[job] STATUS=$STATUS end $(date -u +%FT%TZ)"
     echo "$STATUS" > "$RESULT_DIR/STATUS"
@@ -62,7 +62,7 @@ finish() {
 }
 trap finish EXIT
 
-cd "$PAYLOAD_ROOT" || exit
+cd "$PAYLOAD_ROOT" || exit 1
 chmod +x scripts/alphachip/*.sh 2>/dev/null || true
 
 # Self-contained build: hand build_container.sh the bundled lawful plc binary

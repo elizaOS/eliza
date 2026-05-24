@@ -262,6 +262,10 @@ const PROVIDER_ENV_KEYS: Record<
     altEnvKeys: ["Z_AI_API_KEY"],
     baseUrl: "https://api.z.ai/api/paas/v4",
   },
+  nearai: {
+    envKey: "NEARAI_API_KEY",
+    baseUrl: "https://cloud-api.near.ai/v1",
+  },
   moonshot: {
     envKey: "MOONSHOT_API_KEY",
     altEnvKeys: ["KIMI_API_KEY"],
@@ -529,6 +533,49 @@ export async function fetchVercelGatewayModels(
   }
 }
 
+/** Fetch NEAR AI Cloud models from its catalog endpoint. */
+export async function fetchNearAIModels(
+  apiKey: string,
+  baseUrl: string,
+): Promise<CachedModel[]> {
+  try {
+    const url = `${baseUrl.replace(/\/+$/, "")}/model/list`;
+    const headers: Record<string, string> = {};
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch(url, { headers });
+    if (!res.ok) return [];
+    const data = (await res.json()) as {
+      models?: Array<{
+        modelId: string;
+        metadata?: {
+          modelDisplayName?: string;
+          architecture?: { outputModalities?: string[] };
+        };
+      }>;
+    };
+    return (data.models ?? [])
+      .map((model) => {
+        const outputs = model.metadata?.architecture?.outputModalities ?? [];
+        const category = outputs.some(
+          (output) => output.toLowerCase() === "image",
+        )
+          ? "image"
+          : classifyModel(model.modelId);
+        return {
+          id: model.modelId,
+          name: model.metadata?.modelDisplayName ?? model.modelId,
+          category,
+        };
+      })
+      .sort((a, b) => a.id.localeCompare(b.id));
+  } catch (e: unknown) {
+    logger.warn(
+      `[model-catalog] Failed to fetch NEAR AI models: ${e instanceof Error ? e.message : e}`,
+    );
+    return [];
+  }
+}
+
 export async function fetchProviderModels(
   providerId: string,
   apiKey: string,
@@ -573,6 +620,11 @@ export async function fetchProviderModels(
         apiKey,
         baseUrl ?? "https://api.z.ai/api/paas/v4",
       );
+    case "nearai":
+      return fetchNearAIModels(
+        apiKey,
+        baseUrl ?? "https://cloud-api.near.ai/v1",
+      );
     case "moonshot":
       return fetchModelsREST(
         providerId,
@@ -614,6 +666,9 @@ export async function getOrFetchProvider(
     baseUrl =
       process.env.AI_GATEWAY_BASE_URL?.trim() ||
       "https://ai-gateway.vercel.sh/v1";
+  } else if (providerId === "nearai") {
+    baseUrl =
+      process.env.NEARAI_BASE_URL?.trim() || "https://cloud-api.near.ai/v1";
   }
 
   // Skip remote providers that need an API key when none is configured

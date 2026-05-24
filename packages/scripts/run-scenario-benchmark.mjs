@@ -4,8 +4,9 @@
  * Weekly benchmark harness for the executive-assistant and connector
  * certification scenarios.
  *
- * Loads scenario ids from the filesystem (test/scenarios/executive-assistant/
- * and test/scenarios/connector-certification/), invokes the
+ * Loads scenario ids from the filesystem
+ * (packages/test/scenarios/executive-assistant/ and
+ * packages/test/scenarios/connector-certification/), invokes the
  * `@elizaos/scenario-runner` CLI through packages/scripts/run-live-scenarios.mjs (which
  * enforces SKIP_REASON + judge thresholds), and emits a markdown report to
  * artifacts/benchmark-report.md plus the raw JSON at
@@ -27,17 +28,25 @@ import { fileURLToPath } from "node:url";
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
+  "..",
 );
-const EA_DIR = path.join(REPO_ROOT, "test", "scenarios", "executive-assistant");
+const EA_DIR = path.join(
+  REPO_ROOT,
+  "packages",
+  "test",
+  "scenarios",
+  "executive-assistant",
+);
 const CONNECTOR_DIR = path.join(
   REPO_ROOT,
+  "packages",
   "test",
   "scenarios",
   "connector-certification",
 );
 const SCENARIO_FILE_GLOBS = [
-  "test/scenarios/executive-assistant/*.scenario.ts",
-  "test/scenarios/connector-certification/*.scenario.ts",
+  "packages/test/scenarios/executive-assistant/*.scenario.ts",
+  "packages/test/scenarios/connector-certification/*.scenario.ts",
 ];
 const REPORT_JSON = path.join(
   REPO_ROOT,
@@ -94,9 +103,10 @@ const runnerEnv = {
   ...process.env,
   ELIZA_LIVE_TEST: "1",
   LIFEOPS_JUDGE_THRESHOLD: process.env.LIFEOPS_JUDGE_THRESHOLD ?? "0.8",
-  SCENARIO_ROOT: "test/scenarios",
+  SCENARIO_ROOT: "packages/test/scenarios",
   SCENARIO_FILTER: scenariosToRun.join(","),
   REPORT_PATH: REPORT_JSON,
+  RUN_DIR: path.join(REPO_ROOT, "artifacts", "scenario-runs", "benchmark"),
 };
 const enforceGateValue = (process.env.BENCHMARK_ENFORCE_GATE ?? "1")
   .trim()

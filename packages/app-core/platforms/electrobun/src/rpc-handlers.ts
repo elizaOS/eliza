@@ -119,6 +119,10 @@ import {
   readOnboardingOptionsViaHttp,
   readOnboardingStatusViaHttp,
 } from "./onboarding-rpc";
+import {
+  buildDynamicViewRpcHandlers,
+  buildWindowRpcHandlers,
+} from "./rpc-handler-slices";
 import { resolveRpcAgentPort } from "./rpc-port-resolver";
 import type { ElizaDesktopRPCSchema, StewardRpcStatus } from "./rpc-schema";
 import {
@@ -147,7 +151,6 @@ import {
   composeSubscriptionStatusSnapshot,
   readSubscriptionStatusViaHttp,
 } from "./subscription-rpc";
-import { isDetachedSurface } from "./surface-windows";
 import { createTraceHostForRuntime, getTraceService } from "./trace";
 import type { SendToWebview } from "./types.js";
 import {
@@ -155,14 +158,6 @@ import {
   readUpdateStatusViaHttp,
 } from "./update-rpc";
 import { createVoiceHostForRuntime, VoiceService } from "./voice";
-
-function normalizeRendererRoutePath(path: string): string {
-  const trimmed = path.trim();
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
-    throw new Error("desktopOpenAppWindow path must be a renderer route.");
-  }
-  return trimmed;
-}
 
 function createStewardStoppedStatus(error: string): StewardRpcStatus {
   return {
@@ -823,52 +818,9 @@ export function buildBunRpcHandlers({
     desktopOpenReleaseNotesWindow: async (
       params: Parameters<typeof desktop.openReleaseNotesWindow>[0],
     ) => desktop.openReleaseNotesWindow(params),
-    desktopOpenSettingsWindow: async (
-      params: { tabHint?: string } | undefined,
-    ) => {
-      desktop.openSettings(params?.tabHint);
-    },
-    desktopOpenSurfaceWindow: async (params: {
-      surface:
-        | "chat"
-        | "browser"
-        | "release"
-        | "triggers"
-        | "plugins"
-        | "connectors"
-        | "cloud";
-      browse?: string;
-      alwaysOnTop?: boolean;
-    }) => {
-      if (!isDetachedSurface(params.surface)) {
-        return null;
-      }
-      return desktop.openSurfaceWindow(
-        params.surface,
-        params.surface === "browser" ? params.browse : undefined,
-        params.alwaysOnTop === true,
-      );
-    },
-    desktopOpenAppWindow: async (params: {
-      slug?: string;
-      title: string;
-      path: string;
-      alwaysOnTop?: boolean;
-    }) =>
-      desktop.openAppWindow({
-        slug:
-          typeof params.slug === "string" && params.slug.length > 0
-            ? params.slug
-            : undefined,
-        title: params.title.trim() || getBrandConfig().appName,
-        path: normalizeRendererRoutePath(params.path),
-        alwaysOnTop: params.alwaysOnTop === true,
-      }),
-    desktopSetManagedWindowAlwaysOnTop: async (params: {
-      id: string;
-      flag: boolean;
-    }) => ({
-      success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
+    ...buildWindowRpcHandlers({
+      desktop,
+      appName: getBrandConfig().appName,
     }),
 
     // ---- Remote Plugins ----
@@ -905,17 +857,9 @@ export function buildBunRpcHandlers({
       remotePluginHost.invokeWorker(params),
     remotePluginTailWorkerEvents: async (params) =>
       remotePluginHost.tailWorkerEvents(params),
-    dynamicViewRegister: async (params) =>
-      dynamicViewRegistry.register(params.manifest, { update: params.update }),
-    dynamicViewUnregister: async (params) => ({
-      removed: dynamicViewRegistry.unregister(params.viewId),
-    }),
-    dynamicViewList: async () => ({ views: dynamicViewRegistry.list() }),
-    dynamicViewOpen: async (params) => dynamicViewSessions.open(params),
-    dynamicViewClose: async (params) => dynamicViewSessions.close(params),
-    dynamicViewPush: async (params) => dynamicViewSessions.push(params),
-    dynamicViewSessions: async () => ({
-      sessions: dynamicViewSessions.list(),
+    ...buildDynamicViewRpcHandlers({
+      registry: dynamicViewRegistry,
+      sessions: dynamicViewSessions,
     }),
     traceSessionStart: async (params) => traceService.startSession(params),
     traceSessionComplete: async (params) =>

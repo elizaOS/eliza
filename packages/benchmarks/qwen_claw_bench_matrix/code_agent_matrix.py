@@ -1,4 +1,4 @@
-"""QwenClawBench automated-slice wrapper for code-agent matrix comparisons."""
+"""QwenClawBench wrapper for code-agent matrix comparisons."""
 
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ from typing import Any
 from benchmarks.nl2repo.adapter_matrix import token_metrics_from_usage
 
 
-DATASET_VERSION = "qwenclawbench-v1.1-100-automated-slice"
+DATASET_VERSION = "qwenclawbench-v1.1-100-supported-slice-v2"
 DEFAULT_DATASET = "qwenclawbench-v1.1-100"
+SUPPORTED_GRADING_SCOPES = {"automated", "hybrid", "supported"}
 
 
 def _repo_root() -> Path:
@@ -107,13 +108,40 @@ def _safe_task_id(task_id: str) -> str:
     return "".join(char if char.isalnum() else "-" for char in task_id).strip("-") or "task"
 
 
-def load_tasks(*, dataset: str = DEFAULT_DATASET, max_tasks: int | None = None) -> list[Any]:
+def _task_in_scope(task: Any, grading_scope: str) -> bool:
+    if grading_scope == "automated":
+        return task.grading_type == "automated"
+    if grading_scope == "hybrid":
+        return task.grading_type == "hybrid"
+    if grading_scope == "supported":
+        return task.grading_type in {"automated", "hybrid"}
+    raise ValueError(f"Unsupported QwenClawBench grading scope: {grading_scope}")
+
+
+def load_tasks(
+    *,
+    dataset: str = DEFAULT_DATASET,
+    max_tasks: int | None = None,
+    grading_scope: str = "supported",
+) -> list[Any]:
     _add_paths()
     from lib_tasks import TaskLoader
 
     tasks_dir = _qwen_root() / "data" / dataset / "tasks"
-    tasks = [task for task in TaskLoader(tasks_dir).load_all_tasks() if task.grading_type == "automated"]
+    tasks = [
+        task
+        for task in TaskLoader(tasks_dir).load_all_tasks()
+        if _task_in_scope(task, grading_scope)
+    ]
     return tasks[:max_tasks] if max_tasks is not None else tasks
+
+
+def available_task_count(
+    *,
+    dataset: str = DEFAULT_DATASET,
+    grading_scope: str = "supported",
+) -> int:
+    return len(load_tasks(dataset=dataset, max_tasks=None, grading_scope=grading_scope))
 
 
 def _copy_workspace_files(task: Any, *, dataset: str, workspace: Path) -> None:
@@ -199,11 +227,47 @@ def _transcript_from_agent_result(agent_result: dict[str, Any], task: Any) -> li
     ]
 
 
-def _grade_task(task: Any, *, transcript: list[dict[str, Any]], workspace: Path) -> dict[str, Any]:
-    _add_paths()
-    from lib_grading import _grade_automated
+def _configure_judge_defaults(*, model_provider: str, model: str) -> None:
+    if model_provider == "cerebras":
+        if not os.environ.get("JUDGE_API_KEY") and os.environ.get("CEREBRAS_API_KEY"):
+            os.environ["JUDGE_API_KEY"] = os.environ["CEREBRAS_API_KEY"]
+        os.environ.setdefault("JUDGE_BASE_URL", "https://api.cerebras.ai/v1")
+    os.environ.setdefault("QWEN_CLAW_BENCH_JUDGE_MODEL", model)
+    os.environ.setdefault("QWEN_CLAW_BENCH_JUDGE_MAX_RETRIES", "2")
+    os.environ.setdefault("QWEN_CLAW_BENCH_JUDGE_RETRY_BASE_SECONDS", "1")
 
-    grade = _grade_automated(task, {"transcript": transcript, "workspace": str(workspace)})
+
+def _grade_task(
+    task: Any,
+    *,
+    transcript: list[dict[str, Any]],
+    workspace: Path,
+    model_provider: str,
+    model: str,
+    judge_model: str,
+    judge_timeout_seconds: int,
+) -> dict[str, Any]:
+    _add_paths()
+    import lib_grading
+
+    _configure_judge_defaults(model_provider=model_provider, model=model)
+    lib_grading.JUDGE_API_MAX_RETRIES = int(
+        os.environ.get("QWEN_CLAW_BENCH_JUDGE_MAX_RETRIES", "2")
+    )
+    lib_grading.JUDGE_API_RETRY_BASE_SECONDS = float(
+        os.environ.get("QWEN_CLAW_BENCH_JUDGE_RETRY_BASE_SECONDS", "1")
+    )
+    execution_result = {"transcript": transcript, "workspace": str(workspace)}
+    if task.grading_type == "automated":
+        grade = lib_grading._grade_automated(task, execution_result)
+    else:
+        grade = lib_grading.grade_task(
+            task=task,
+            execution_result=execution_result,
+            skill_dir=workspace,
+            judge_model=judge_model or model,
+            judge_timeout_seconds=judge_timeout_seconds,
+        )
     return grade.to_dict()
 
 
@@ -234,12 +298,45 @@ def _write_trajectory(
     return str(path)
 
 
-def _mock_results(tasks: list[Any]) -> list[dict[str, Any]]:
+def _mock_results(
+    tasks: list[Any],
+    *,
+    max_tasks: int | None,
+    trajectory_dir: Path | None,
+    grading_scope: str,
+) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
-    for task in tasks:
+    if not tasks:
+        return rows
+    total = max_tasks if max_tasks is not None else len(tasks)
+    for index in range(total):
+        task = tasks[index % len(tasks)]
+        task_id = task.task_id if index < len(tasks) else f"{task.task_id}__mock_{index + 1}"
+        transcript = [
+            {
+                "type": "message",
+                "message": {
+                    "role": "user",
+                    "content": [{"type": "text", "text": task.prompt}],
+                },
+            },
+            {
+                "type": "message",
+                "message": {
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": f"Mock QwenClawBench response for {task_id}"}],
+                },
+            },
+        ]
+        trajectory_path = _write_trajectory(
+            trajectory_dir=trajectory_dir,
+            task_id=task_id,
+            transcript=transcript,
+            agent_result={"usage": {}, "status": "mock"},
+        )
         rows.append(
             {
-                "task": task.task_id,
+                "task": task_id,
                 "status": "completed",
                 "success": True,
                 "score": 1.0,
@@ -247,13 +344,13 @@ def _mock_results(tasks: list[Any]) -> list[dict[str, Any]]:
                 "failed": 0,
                 "total": 1,
                 "grading": {
-                    "task_id": task.task_id,
+                    "task_id": task_id,
                     "score": 1.0,
                     "score_simple": 1.0,
                     "max_score": 1.0,
-                    "grading_type": "automated",
+                    "grading_type": task.grading_type,
                     "breakdown": {"mock": 1.0},
-                    "notes": "mock QwenClawBench automated slice result",
+                    "notes": f"mock QwenClawBench {grading_scope} slice result",
                 },
                 "token_metrics": {
                     "input_tokens": 0,
@@ -264,7 +361,7 @@ def _mock_results(tasks: list[Any]) -> list[dict[str, Any]]:
                     "cached_token_percent": None,
                     "llm_call_count": 0,
                 },
-                "trajectory_path": "",
+                "trajectory_path": trajectory_path,
             }
         )
     return rows
@@ -282,11 +379,23 @@ def run_qwen_claw_bench_matrix(
     command_template: str,
     timeout_seconds: int,
     mock: bool,
+    grading_scope: str,
+    judge_model: str,
+    judge_timeout_seconds: int,
 ) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
-    tasks = load_tasks(dataset=dataset, max_tasks=max_tasks)
+    tasks = load_tasks(
+        dataset=dataset,
+        max_tasks=None if mock else max_tasks,
+        grading_scope=grading_scope,
+    )
     if mock:
-        results = _mock_results(tasks)
+        results = _mock_results(
+            tasks,
+            max_tasks=max_tasks,
+            trajectory_dir=trajectory_dir,
+            grading_scope=grading_scope,
+        )
         return build_result(
             results=results,
             task_agent=task_agent,
@@ -294,6 +403,7 @@ def run_qwen_claw_bench_matrix(
             model=model,
             mode="mock",
             dataset=dataset,
+            grading_scope=grading_scope,
         )
     if not command_template:
         raise ValueError("QwenClawBench live mode requires an agent command template")
@@ -337,7 +447,15 @@ def run_qwen_claw_bench_matrix(
         stderr_path.write_text(completed.stderr or "", encoding="utf-8")
         agent_result = _read_agent_result(agent_result_path)
         transcript = _transcript_from_agent_result(agent_result, task)
-        grading = _grade_task(task, transcript=transcript, workspace=workspace)
+        grading = _grade_task(
+            task,
+            transcript=transcript,
+            workspace=workspace,
+            model_provider=model_provider,
+            model=model,
+            judge_model=judge_model,
+            judge_timeout_seconds=judge_timeout_seconds,
+        )
         score = float(grading.get("score") or 0.0)
         usage = agent_result.get("usage") if isinstance(agent_result, dict) else None
         token_metrics = token_metrics_from_usage(usage) if isinstance(usage, dict) else {}
@@ -375,6 +493,7 @@ def run_qwen_claw_bench_matrix(
         model=model,
         mode="live",
         dataset=dataset,
+        grading_scope=grading_scope,
     )
 
 
@@ -386,9 +505,11 @@ def build_result(
     model: str,
     mode: str,
     dataset: str,
+    grading_scope: str,
 ) -> dict[str, Any]:
     total = len(results)
     resolved = sum(float(item.get("score") or 0.0) for item in results)
+    available = available_task_count(dataset=dataset, grading_scope=grading_scope)
     return {
         "benchmark": "qwen_claw_bench",
         "adapter": task_agent,
@@ -397,6 +518,11 @@ def build_result(
         "mode": mode,
         "dataset_version": DATASET_VERSION,
         "dataset": dataset,
+        "grading_scope": grading_scope,
+        "available_task_count": available,
+        "coverage_note": (
+            f"local QwenClawBench {grading_scope} slice exposes {available} tasks"
+        ),
         "summary": {
             "total_instances": total,
             "resolved": resolved,
@@ -409,16 +535,19 @@ def build_result(
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run QwenClawBench automated tasks through a code-agent adapter.")
+    parser = argparse.ArgumentParser(description="Run QwenClawBench tasks through a code-agent adapter.")
     parser.add_argument("--task-agent", default="elizaos")
     parser.add_argument("--model-provider", default="cerebras")
     parser.add_argument("--model", default="gpt-oss-120b")
     parser.add_argument("--output", required=True)
     parser.add_argument("--trajectory-dir", default="")
     parser.add_argument("--dataset", default=DEFAULT_DATASET)
+    parser.add_argument("--grading-scope", choices=sorted(SUPPORTED_GRADING_SCOPES), default="supported")
     parser.add_argument("--max-tasks", type=int)
     parser.add_argument("--agent-command-template", default="")
     parser.add_argument("--timeout-seconds", type=int, default=7200)
+    parser.add_argument("--judge-model", default="")
+    parser.add_argument("--judge-timeout-seconds", type=int, default=1800)
     parser.add_argument("--mock", action="store_true")
     parser.add_argument("--no-docker", action="store_true", help="Accepted for matrix CLI parity.")
     parser.add_argument("--json", action="store_true")
@@ -445,6 +574,9 @@ def main(argv: list[str] | None = None) -> int:
         command_template=template,
         timeout_seconds=args.timeout_seconds,
         mock=bool(args.mock),
+        grading_scope=args.grading_scope,
+        judge_model=args.judge_model or args.model,
+        judge_timeout_seconds=args.judge_timeout_seconds,
     )
     result_path = Path(args.output) / "qwen-claw-bench-results.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True), encoding="utf-8")
@@ -457,4 +589,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

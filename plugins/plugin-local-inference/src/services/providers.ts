@@ -360,6 +360,22 @@ const ZAI_PROVIDER: ProviderDefinition = {
 	configureHref: "#ai-model",
 };
 
+const NEARAI_PROVIDER: ProviderDefinition = {
+	id: "nearai",
+	label: "NEAR AI Cloud",
+	kind: "cloud-api",
+	description:
+		"TEE-backed private inference via NEAR AI Cloud. Requires an API key.",
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
+	async getEnableState(): Promise<ProviderEnableState> {
+		const key = process.env.NEARAI_API_KEY?.trim();
+		return key
+			? { enabled: true, reason: "API key set" }
+			: { enabled: false, reason: "No API key" };
+	},
+	configureHref: "#ai-model",
+};
+
 const MOONSHOT_PROVIDER: ProviderDefinition = {
 	id: "moonshot",
 	label: "Kimi / Moonshot API",
@@ -390,6 +406,7 @@ export const BUILT_IN_PROVIDERS: readonly ProviderDefinition[] = [
 	OPENAI_PROVIDER,
 	DEEPSEEK_PROVIDER,
 	ZAI_PROVIDER,
+	NEARAI_PROVIDER,
 	MOONSHOT_PROVIDER,
 	GOOGLE_PROVIDER,
 	GROK_PROVIDER,

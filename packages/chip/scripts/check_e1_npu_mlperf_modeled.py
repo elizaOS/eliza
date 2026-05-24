@@ -56,14 +56,12 @@ def validate(report: dict[str, Any]) -> list[str]:
         problems.append("missing fidelity block")
     else:
         not_implemented = fidelity.get("not_implemented")
-        if not isinstance(not_implemented, list):
-            not_implemented_items: list[str] = []
+        if (
+            not isinstance(not_implemented, list)
+            or "official MLCommons C++ LoadGen" not in not_implemented
+        ):
             problems.append("fidelity block must explicitly reject official MLCommons claims")
-        else:
-            not_implemented_items = [item for item in not_implemented if isinstance(item, str)]
-        if "official MLCommons C++ LoadGen" not in not_implemented_items:
-            problems.append("fidelity block must explicitly reject official MLCommons claims")
-        if "Linux /dev/e1-npu target execution" not in not_implemented_items:
+        if "Linux /dev/e1-npu target execution" not in not_implemented:
             problems.append("fidelity block must separate modeled harness from Linux target proof")
 
     workload = report.get("workload")
@@ -172,8 +170,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(output, indent=2, sort_keys=True))
     else:
-        status = str(output["status"])
-        print(f"STATUS: {status.upper()} e1_npu_mlperf_modeled")
+        print(f"STATUS: {output['status'].upper()} e1_npu_mlperf_modeled")
         print(f"  report: {output['report']}")
         for problem in problems:
             print(f"  - {problem}")

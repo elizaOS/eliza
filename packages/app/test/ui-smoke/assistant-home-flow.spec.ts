@@ -1,0 +1,358 @@
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import { expect, type Page, type Route, test } from "@playwright/test";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
+
+const SCREENSHOT_DIR = path.join(
+  process.cwd(),
+  "aesthetic-audit-output",
+  "assistant-home-flow",
+);
+
+const VIEW_FIXTURES = [
+  {
+    id: "views-manager",
+    label: "Views",
+    description: "Browse and launch every available view",
+    path: "/views",
+    available: true,
+    pluginName: "core",
+    builtin: true,
+    tags: ["launcher"],
+    desktopTabEnabled: true,
+  },
+  {
+    id: "terminal",
+    label: "Terminal",
+    description: "Command-line view for agent work",
+    path: "/terminal",
+    available: true,
+    pluginName: "core",
+    builtin: true,
+    tags: ["terminal"],
+    desktopTabEnabled: true,
+  },
+  {
+    id: "wallet",
+    label: "Wallet",
+    description: "Wallet inventory and actions",
+    path: "/wallet",
+    available: true,
+    pluginName: "wallet",
+    tags: ["wallet"],
+    desktopTabEnabled: true,
+  },
+];
+
+async function fulfillJson(
+  route: Route,
+  body: Record<string, unknown>,
+): Promise<void> {
+  await route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify(body),
+  });
+}
+
+async function installAssistantFlowRoutes(page: Page): Promise<void> {
+  await installDefaultAppRoutes(page);
+  let conversationCreated = false;
+  const messages: Array<{
+    id: string;
+    role: "user" | "assistant";
+    text: string;
+    timestamp: number;
+  }> = [];
+  await page.route("**/api/views**", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/api/views/search") {
+      await fulfillJson(route, { results: VIEW_FIXTURES });
+      return;
+    }
+    await fulfillJson(route, { views: VIEW_FIXTURES });
+  });
+  await page.route("**/api/chat/**", async (route) => {
+    await fulfillJson(route, {
+      success: true,
+      id: "assistant-flow-message",
+      text: "Opening the right view now.",
+    });
+  });
+  await page.route("**/api/conversations", async (route) => {
+    const method = route.request().method();
+    const timestamp = new Date().toISOString();
+    if (method === "GET") {
+      await fulfillJson(route, {
+        conversations: conversationCreated
+          ? [
+              {
+                id: "assistant-home-conversation",
+                roomId: "assistant-home-room",
+                title: "Assistant home",
+                updatedAt: timestamp,
+                createdAt: timestamp,
+              },
+            ]
+          : [],
+      });
+      return;
+    }
+    if (method === "POST") {
+      conversationCreated = true;
+      await fulfillJson(route, {
+        conversation: {
+          id: "assistant-home-conversation",
+          roomId: "assistant-home-room",
+          title: "Assistant home",
+          updatedAt: timestamp,
+          createdAt: timestamp,
+        },
+      });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.route(
+    "**/api/conversations/assistant-home-conversation/messages",
+    async (route) => {
+      if (route.request().method() === "GET") {
+        await fulfillJson(route, { messages });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+  await page.route(
+    "**/api/conversations/assistant-home-conversation/messages/stream",
+    async (route) => {
+      const body = JSON.parse(route.request().postData() ?? "{}") as {
+        text?: string;
+      };
+      const userText = body.text?.trim() || "voice test";
+      const assistantText =
+        "I heard you. Opening the right view now and keeping voice ready.";
+      const now = Date.now();
+      messages.push(
+        {
+          id: `user-${now}`,
+          role: "user",
+          text: userText,
+          timestamp: now,
+        },
+        {
+          id: `assistant-${now}`,
+          role: "assistant",
+          text: assistantText,
+          timestamp: now + 1,
+        },
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body:
+          `data: ${JSON.stringify({
+            type: "token",
+            text: "I heard you.",
+            fullText: "I heard you.",
+          })}\n\n` +
+          `data: ${JSON.stringify({
+            type: "done",
+            fullText: assistantText,
+            agentName: "Eliza",
+          })}\n\n`,
+      });
+    },
+  );
+  await page.route("**/api/turns/assistant-home-room/abort", async (route) => {
+    await fulfillJson(route, {
+      aborted: true,
+      roomId: "assistant-home-room",
+      reason: "ui-chat-abort",
+    });
+  });
+  await page.route(
+    "**/api/conversations/assistant-home-conversation",
+    async (route) => {
+      if (route.request().method() === "PATCH") {
+        const timestamp = new Date().toISOString();
+        await fulfillJson(route, {
+          conversation: {
+            id: "assistant-home-conversation",
+            roomId: "assistant-home-room",
+            title: "Assistant home",
+            updatedAt: timestamp,
+            createdAt: timestamp,
+          },
+        });
+        return;
+      }
+      await route.fallback();
+    },
+  );
+}
+
+async function screenshot(page: Page, name: string): Promise<void> {
+  await mkdir(SCREENSHOT_DIR, { recursive: true });
+  await page.screenshot({
+    path: path.join(SCREENSHOT_DIR, `${name}.png`),
+    fullPage: false,
+  });
+}
+
+async function installHomeSpeechRecognitionShim(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    type ResultHandler = (event: unknown) => void;
+    const instances: Array<{
+      onresult: ResultHandler | null;
+      onend: (() => void) | null;
+      started: boolean;
+      stop: () => void;
+    }> = [];
+
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {},
+    });
+
+    function makeRecognition() {
+      const rec = {
+        continuous: false,
+        interimResults: false,
+        lang: "en-US",
+        onresult: null as ResultHandler | null,
+        onerror: null as ResultHandler | null,
+        onend: null as (() => void) | null,
+        started: false,
+        start() {
+          this.started = true;
+        },
+        stop() {
+          this.started = false;
+          this.onend?.();
+        },
+        abort() {
+          this.stop();
+        },
+      };
+      instances.push(rec);
+      return rec;
+    }
+
+    (
+      window as unknown as { webkitSpeechRecognition: unknown }
+    ).webkitSpeechRecognition = makeRecognition;
+    (window as unknown as { SpeechRecognition: unknown }).SpeechRecognition =
+      makeRecognition;
+    (window as unknown as Record<string, unknown>).__homeVoiceSimulate = (
+      text: string,
+      isFinal: boolean,
+    ) => {
+      const rec = instances[instances.length - 1];
+      if (!rec?.started) return false;
+      rec.onresult?.({
+        resultIndex: 0,
+        results: [
+          {
+            isFinal,
+            0: { transcript: text },
+          },
+        ],
+      });
+      return true;
+    };
+  });
+}
+
+test.describe("assistant home app flow", () => {
+  test("captures onboarding, assistant home, chat suppression, and view pill states", async ({
+    page,
+  }) => {
+    await installAssistantFlowRoutes(page);
+
+    await page.addInitScript(() => {
+      localStorage.clear();
+      sessionStorage.clear();
+      localStorage.setItem("eliza:voice:prefix-done", "1");
+    });
+    await page.route("**/api/onboarding/status", async (route) => {
+      await fulfillJson(route, { complete: false, cloudProvisioned: false });
+    });
+    await openAppPath(page, "/");
+    await expect(page.getByTestId("pre-agent-cloud-shell")).toBeVisible();
+    await screenshot(page, "01-onboarding-clouds");
+
+    await page.unroute("**/api/onboarding/status");
+    await seedAppStorage(page);
+    await installAssistantFlowRoutes(page);
+
+    await openAppPath(page, "/");
+    await expect(page.getByTestId("home-view")).toBeVisible();
+    await expect(page.getByTestId("home-chat-input")).toBeVisible();
+    await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+    await screenshot(page, "02-assistant-home-clouds");
+
+    await page.getByTestId("home-chat-input").fill("show me my views");
+    await expect(page.getByTestId("home-recent-chats")).toBeVisible();
+    await screenshot(page, "03-assistant-home-typing-recents");
+
+    await openAppPath(page, "/chat");
+    await expect(
+      page.locator('[data-testid="chat-composer-textarea"]'),
+    ).toBeVisible();
+    await expect(page.getByTestId("shell-home-pill")).toHaveCount(0);
+    await screenshot(page, "04-chat-pill-suppressed");
+
+    await openAppPath(page, "/views");
+    await expect(page.getByText("Views").first()).toBeVisible();
+    await expect(page.getByTestId("shell-home-pill")).toBeVisible();
+    await screenshot(page, "05-views-with-pill");
+
+    await page.getByTestId("shell-home-pill").click();
+    await expect(page.getByTestId("shell-assistant-overlay")).toBeVisible();
+    await expect(page.getByLabel("Message Eliza")).toBeVisible();
+    await screenshot(page, "06-views-pill-open");
+
+    await openAppPath(page, "/wallet");
+    await expect(page.getByTestId("shell-home-pill")).toBeVisible();
+    await screenshot(page, "07-wallet-view-with-pill");
+  });
+
+  test("drives the assistant home voice path with a scripted browser STT turn", async ({
+    page,
+  }) => {
+    await seedAppStorage(page);
+    await installHomeSpeechRecognitionShim(page);
+    await installAssistantFlowRoutes(page);
+
+    await openAppPath(page, "/");
+    await expect(page.getByTestId("home-view")).toBeVisible();
+
+    await page
+      .getByRole("button", { name: /start voice input/i })
+      .click({ timeout: 15_000 });
+    await expect(
+      page.getByRole("button", { name: /stop voice input/i }),
+    ).toBeVisible();
+
+    const accepted = await page.evaluate(() => {
+      const simulate = (
+        window as unknown as {
+          __homeVoiceSimulate?: (text: string, isFinal: boolean) => boolean;
+        }
+      ).__homeVoiceSimulate;
+      return simulate?.("show me my pinned views", true) ?? false;
+    });
+    expect(accepted, "home voice shim must receive the scripted turn").toBe(
+      true,
+    );
+
+    await expect(page.getByTestId("home-assistant-transcript")).toContainText(
+      "Opening the right view now and keeping voice ready",
+    );
+  });
+});

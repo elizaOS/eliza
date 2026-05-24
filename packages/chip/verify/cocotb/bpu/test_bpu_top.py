@@ -276,13 +276,14 @@ async def bpu_mispredict_restores_ras_from_resolved_checkpoint(dut):
     call_b_target = 0x8000_4000
     ret_pc = 0x8000_5000
     return_a = call_a_pc + 4
+    call_b_pc + 4
 
     # Train the FTB entries so later predictions speculatively push/pop RAS.
     await resolve(dut, call_a_pc, call_a_target, taken=True, kind=BR_CALL, misp=False)
     await resolve(dut, call_b_pc, call_b_target, taken=True, kind=BR_CALL, misp=False)
     await resolve(dut, ret_pc, return_a, taken=True, kind=BR_RET, misp=False)
 
-    # Predict two nested calls. Live speculative top now points at the younger call return.
+    # Predict two nested calls. Live speculative top now points past return_b.
     await predict(dut, call_a_pc)
     await predict(dut, call_b_pc)
 

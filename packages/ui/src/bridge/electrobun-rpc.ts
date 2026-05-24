@@ -182,6 +182,56 @@ export interface DesktopInstalledRemotePluginSnapshot {
   remoteUIs?: Record<string, { name: string; path: string }>;
 }
 
+export type DynamicViewPlacement =
+  | "canvas"
+  | "floating"
+  | "panel"
+  | "chat-inline"
+  | "tray"
+  | "debug";
+
+export type DynamicViewSource =
+  | "agent"
+  | "plugin"
+  | "remote"
+  | "system"
+  | "developer";
+
+export interface DynamicViewManifest {
+  id: string;
+  title: string;
+  description?: string;
+  source: DynamicViewSource;
+  entrypoint: string;
+  placement: DynamicViewPlacement;
+  permissions?: string[];
+  requiredRemotes?: string[];
+  eventSubscriptions?: Array<{ remoteId: string; events?: string[] }>;
+  invokeTargets?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export async function registerDynamicView(
+  manifest: DynamicViewManifest,
+  options?: { update?: boolean },
+): Promise<DynamicViewManifest | null> {
+  return invokeDesktopBridgeRequest<DynamicViewManifest>({
+    rpcMethod: "dynamicViewRegister",
+    ipcChannel: "dynamic-view:register",
+    params: { manifest, update: options?.update === true },
+  });
+}
+
+export async function unregisterDynamicView(
+  viewId: string,
+): Promise<{ removed: boolean } | null> {
+  return invokeDesktopBridgeRequest<{ removed: boolean }>({
+    rpcMethod: "dynamicViewUnregister",
+    ipcChannel: "dynamic-view:unregister",
+    params: { viewId },
+  });
+}
+
 export interface DesktopRemotePluginStoreSnapshot {
   version: 1;
   remotePlugins: DesktopInstalledRemotePluginSnapshot[];

@@ -2196,9 +2196,15 @@ function preferredFinalMessageFromToolOrModel(
 	modelMessage?: unknown,
 	fallback?: unknown,
 ): string | undefined {
+	// Evaluator/planner `messageToUser` is the authoritative composed reply when
+	// explicitly provided — that contract is documented at length in
+	// `tryGateEvaluator` and is the basis for the regression coverage in
+	// `planner-loop-user-facing-text.test.ts`. Only fall back to the tool's
+	// own `userFacingText` (single-result trajectories first, then any latest)
+	// when the model gave us nothing usable.
 	return (
-		singleSuccessfulUserFacingToolResultText(trajectory) ??
 		getNonEmptyString(modelMessage) ??
+		singleSuccessfulUserFacingToolResultText(trajectory) ??
 		latestToolResultText(trajectory) ??
 		getNonEmptyString(fallback)
 	);

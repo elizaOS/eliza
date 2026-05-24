@@ -1,9 +1,9 @@
 import { scenario } from "@elizaos/scenario-runner/schema";
-import { setScreenContextSamplerForTesting } from "../../../plugins/plugin-lifeops/src/activity-profile/service.ts";
+import { setScreenContextSamplerForTesting } from "../../../../plugins/plugin-lifeops/src/activity-profile/service.ts";
 import {
   LifeOpsScreenContextSampler,
   type LifeOpsScreenContextSummary,
-} from "../../../plugins/plugin-lifeops/src/lifeops/screen-context.ts";
+} from "../../../../plugins/plugin-lifeops/src/lifeops/screen-context.ts";
 
 class FixedScreenContextSampler extends LifeOpsScreenContextSampler {
   override async sample(

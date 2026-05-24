@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -158,9 +159,14 @@ async def run_mint_coding(
             "mint_summary": {"status": "mock", "best_configuration": "full"},
         }
 
+    max_tasks_per_subtask = max_tasks
+    if max_tasks is not None:
+        max_tasks_per_subtask = max(1, math.ceil(max_tasks / len(CODING_SUBTASKS)))
+
     config = MINTConfig(
         output_dir=str(output_dir),
-        max_tasks_per_subtask=max_tasks,
+        max_tasks_per_subtask=max_tasks_per_subtask,
+        max_total_tasks=max_tasks,
         timeout_per_task_ms=max(1, timeout_seconds) * 1000,
         subtasks=list(CODING_SUBTASKS),
         use_docker=use_docker,

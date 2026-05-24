@@ -21,9 +21,10 @@ import {
   getPriorityMetrics,
   getRubric,
   hasCustomRubric,
-} from "@feed/training/rubrics/index";
+} from "@feed/agents/rubrics/index";
 import { getFlag, getOption, parseArgs, wantsHelp } from "../lib/args.js";
 import { logger } from "../lib/logger.js";
+import { writeFeedTrajectoryExportManifest } from "../lib/training-artifacts.js";
 
 function createCliUsageError(message: string): Error {
   const error = new Error(message);
@@ -91,11 +92,37 @@ async function getDbImports() {
 }
 
 async function getTrainingImports() {
-  const trainingMod = await import("@feed/training");
+  const trainingMod = await import("@feed/agents/training");
+  const dependencyMod = await import("@feed/agents/dependencies");
   return {
-    archetypeScoringService: trainingMod.archetypeScoringService,
-    trajectoryMetricsExtractor: trainingMod.trajectoryMetricsExtractor,
-    configureTrainingDependencies: trainingMod.configureTrainingDependencies,
+    archetypeScoringService:
+      "archetypeScoringService" in trainingMod
+        ? trainingMod.archetypeScoringService
+        : {
+            scoreUnscoredTrajectories: async () => ({
+              scored: await trainingMod.rulerScoringService.scoreTrajectories(),
+              errors: 0,
+            }),
+          },
+    trajectoryMetricsExtractor:
+      "trajectoryMetricsExtractor" in trainingMod
+        ? trainingMod.trajectoryMetricsExtractor
+        : {
+            extractFromRaw: (trajectory: {
+              stepsJson: string;
+              finalPnL?: string | number | null;
+            }) => {
+              const steps = JSON.parse(trajectory.stepsJson || "[]");
+              return {
+                episodeLength: Array.isArray(steps) ? steps.length : 0,
+                finalPnL:
+                  typeof trajectory.finalPnL === "number"
+                    ? trajectory.finalPnL
+                    : Number(trajectory.finalPnL ?? 0) || 0,
+              };
+            },
+          },
+    configureTrainingDependencies: dependencyMod.configureTrainingDependencies,
   };
 }
 
@@ -414,8 +441,20 @@ async function exportForTraining(
   }
 
   await writeFile(exportPath, lines.join("\n"));
+  const manifest = await writeFeedTrajectoryExportManifest({
+    exportPath,
+    archetype,
+    trajectoryCount: scoredResult.length,
+    scenarioIds: scoredResult
+      .map((trajectory) => trajectory.scenarioId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+    agentIds: scoredResult
+      .map((trajectory) => trajectory.agentId)
+      .filter((id): id is string => typeof id === "string" && id.length > 0),
+  });
 
   logger.success(`Exported to: ${exportPath}`);
+  console.log(`Manifest: ${manifest.manifestPath}`);
 
   return { exported: scoredResult.length, path: exportPath };
 }
@@ -1457,7 +1496,7 @@ async function generateTrajectories(
   const archetypes = getAvailableArchetypes();
 
   const { db, trajectories } = await getDbImports();
-  const { generateSnowflakeId } = await import("@feed/training");
+  const { generateSnowflakeId } = await import("@feed/shared");
 
   logger.header("Multi-Archetype Trajectory Generator");
 

@@ -1193,6 +1193,7 @@ export function categorizePlugin(
     "perplexity",
     "minimax",
     "zai",
+    "nearai",
   ];
   const connectors = [
     "telegram",

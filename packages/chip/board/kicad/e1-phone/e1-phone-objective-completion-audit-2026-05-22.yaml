@@ -1,18 +1,15 @@
 schema: eliza.e1_phone_objective_completion_audit.v1
 status: blocked_objective_not_complete
 date: '2026-05-22'
-claim_boundary: Machine-generated completion audit for the user objective. This report
-  does not release fabrication, enclosure, factory, first-article, or end-to-end phone
-  readiness; it records current evidence and fail-closed blockers.
-objective: get the e1 chip and phone to fabrication ready, enclosure ready, end to
-  end phone ready
+claim_boundary: Machine-generated completion audit for the user objective. This report does not release fabrication, enclosure, factory, first-article, or end-to-end phone readiness; it records current evidence and fail-closed blockers.
+objective: get the e1 chip and phone to fabrication ready, enclosure ready, end to end phone ready
 source_artifacts:
-- board/kicad/e1-phone/artifact-manifest.yaml
-- board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
-- board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
-- board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
-- board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-- board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
+  - board/kicad/e1-phone/artifact-manifest.yaml
+  - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  - board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
+  - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
+  - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
 summary:
   objective_requirement_count: 3
   completed_requirement_count: 0
@@ -35,120 +32,117 @@ production_output_presence:
   missing_count: 56
   present: []
   missing:
-  - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  - board/kicad/e1-phone/production/bom
-  - board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
-  - board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
-  - board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
-  - board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
-  - board/kicad/e1-phone/production/first-article
-  - board/kicad/e1-phone/production/gerbers
-  - board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
-  - board/kicad/e1-phone/production/ipc-2581
-  - board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
-  - board/kicad/e1-phone/production/pdf/assembly.pdf
-  - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  - board/kicad/e1-phone/production/pos
-  - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
-  - board/kicad/e1-phone/production/reports/camera-capture-log.json
-  - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  - board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
-  - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  - board/kicad/e1-phone/production/reports/drc.json
-  - board/kicad/e1-phone/production/reports/erc.json
-  - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
-  - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
-  - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
-  - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
-  - board/kicad/e1-phone/production/reports/rf
-  - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
-  - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  - board/kicad/e1-phone/production/reports/si-pi
-  - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  - board/kicad/e1-phone/production/reports/zone-fill.json
-  - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
-  - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
-  - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
-  - board/kicad/e1-phone/production/step
-  - board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  - board/kicad/e1-phone/production/test/first-article-test-transcript.json
-  - board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
-  - board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
-  - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
-  - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
-  - board/kicad/e1-phone/production/test/probe-coordinates.csv
-  - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    - board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    - board/kicad/e1-phone/production/bom
+    - board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+    - board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+    - board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    - board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    - board/kicad/e1-phone/production/first-article
+    - board/kicad/e1-phone/production/gerbers
+    - board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+    - board/kicad/e1-phone/production/ipc-2581
+    - board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+    - board/kicad/e1-phone/production/pdf/assembly.pdf
+    - board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    - board/kicad/e1-phone/production/pos
+    - board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    - board/kicad/e1-phone/production/reports/camera-capture-log.json
+    - board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    - board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+    - board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    - board/kicad/e1-phone/production/reports/drc.json
+    - board/kicad/e1-phone/production/reports/erc.json
+    - board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    - board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    - board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    - board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    - board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    - board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+    - board/kicad/e1-phone/production/reports/rf
+    - board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    - board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    - board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    - board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    - board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+    - board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    - board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    - board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    - board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    - board/kicad/e1-phone/production/reports/si-pi
+    - board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    - board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    - board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    - board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    - board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    - board/kicad/e1-phone/production/reports/zone-fill.json
+    - board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+    - board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+    - board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+    - board/kicad/e1-phone/production/step
+    - board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    - board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    - board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+    - board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+    - board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    - board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    - board/kicad/e1-phone/production/test/probe-coordinates.csv
+    - board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
 objective_requirements:
-- id: fabrication_ready
-  required_evidence:
-  - schematic ERC clean or signed waivers
-  - routed KiCad PCB with production footprints and copper
-  - DRC clean or signed waivers
-  - Gerber or IPC-2581, drill, BOM, placement, assembly, stackup, and quote outputs
-  authoritative_sources:
-  - board/kicad/e1-phone/artifact-manifest.yaml
-  - board/kicad/e1-phone/routed-release-plan.yaml
-  - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
-  - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
-  - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
-  evidence_state: contradicts_completion
-  blocking_facts:
-  - artifact manifest routed_pcb gate is missing
-  - live PCB has 87 placeholder footprints
-  - live PCB has 0 routed segments and 0 filled zones
-  - production/factory burndown reports zero present fabrication outputs
-  complete: false
-- id: enclosure_ready
-  required_evidence:
-  - routed-board STEP with supplier 3D models
-  - clearance and tolerance stack using routed board geometry
-  - USB-C insertion load path, side-key load path, and physical-fit first article
-    evidence
-  - production enclosure handoff accepted by mechanical and factory owners
-  authoritative_sources:
-  - board/kicad/e1-phone/artifact-manifest.yaml
-  - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
-  - mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
-  evidence_state: contradicts_completion
-  blocking_facts:
-  - artifact manifest enclosure gate is missing
-  - blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
-  - blocked_enclosure_physical_fit_first_article_requires_routed_board_step_supplier_geometry_clearance_functional_logs_and_signed_traveler
-  - mechanical intake files are templates only and contain no signed routed-board
-    fit evidence
-  complete: false
-- id: end_to_end_phone_ready
-  required_evidence:
-  - selected display, camera, USB-C, power, side-key, cellular, Wi-Fi/Bluetooth, audio,
-    haptic, and split-interconnect hardware identities
-  - supplier response packs and samples accepted
-  - factory limits, first-article traveler, functional transcripts, RF logs, and traceability
-  - post-route validation across SI, PI, RF, power, thermal, enclosure, and manufacturing
-  authoritative_sources:
-  - board/kicad/e1-phone/end-to-end-readiness.yaml
-  - board/kicad/e1-phone/supplier-sample-release-gate.yaml
-  - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
-  - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
-  evidence_state: contradicts_completion
-  blocking_facts:
-  - supplier intake status is outbound_intake_templates_created_not_supplier_evidence
-  - supplier templates are outbound/intake scaffolds, not returned supplier evidence
-  - bench template status is template_manifest_fail_closed_no_release_evidence
-  - first-article logs and traveler are templates only, not executed evidence
-  complete: false
+  - id: fabrication_ready
+    required_evidence:
+      - schematic ERC clean or signed waivers
+      - routed KiCad PCB with production footprints and copper
+      - DRC clean or signed waivers
+      - Gerber or IPC-2581, drill, BOM, placement, assembly, stackup, and quote outputs
+    authoritative_sources:
+      - board/kicad/e1-phone/artifact-manifest.yaml
+      - board/kicad/e1-phone/routed-release-plan.yaml
+      - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
+      - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+      - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
+    evidence_state: contradicts_completion
+    blocking_facts:
+      - artifact manifest routed_pcb gate is missing
+      - live PCB has 87 placeholder footprints
+      - live PCB has 0 routed segments and 0 filled zones
+      - production/factory burndown reports zero present fabrication outputs
+    complete: false
+  - id: enclosure_ready
+    required_evidence:
+      - routed-board STEP with supplier 3D models
+      - clearance and tolerance stack using routed board geometry
+      - USB-C insertion load path, side-key load path, and physical-fit first article evidence
+      - production enclosure handoff accepted by mechanical and factory owners
+    authoritative_sources:
+      - board/kicad/e1-phone/artifact-manifest.yaml
+      - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+      - ../../mechanical/e1-phone/review/mechanical-intake-template-manifest-2026-05-22.yaml
+    evidence_state: contradicts_completion
+    blocking_facts:
+      - artifact manifest enclosure gate is missing
+      - blocked_requires_routed_kicad_step_supplier_3d_models_and_clearance_rerun
+      - blocked_enclosure_physical_fit_first_article_requires_routed_board_step_supplier_geometry_clearance_functional_logs_and_signed_traveler
+      - mechanical intake files are templates only and contain no signed routed-board fit evidence
+    complete: false
+  - id: end_to_end_phone_ready
+    required_evidence:
+      - selected display, camera, USB-C, power, side-key, cellular, Wi-Fi/Bluetooth, audio, haptic, and split-interconnect hardware identities
+      - supplier response packs and samples accepted
+      - factory limits, first-article traveler, functional transcripts, RF logs, and traceability
+      - post-route validation across SI, PI, RF, power, thermal, enclosure, and manufacturing
+    authoritative_sources:
+      - board/kicad/e1-phone/end-to-end-readiness.yaml
+      - board/kicad/e1-phone/supplier-sample-release-gate.yaml
+      - board/kicad/e1-phone/selected-hardware-first-article-execution.yaml
+      - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
+    evidence_state: contradicts_completion
+    blocking_facts:
+      - supplier intake status is outbound_intake_templates_created_not_supplier_evidence
+      - supplier templates are outbound/intake scaffolds, not returned supplier evidence
+      - bench template status is template_manifest_fail_closed_no_release_evidence
+      - first-article logs and traveler are templates only, not executed evidence
+    complete: false
 release_policy:
   fabrication_release_allowed: false
   enclosure_release_allowed: false
@@ -156,9 +150,9 @@ release_policy:
   end_to_end_release_allowed: false
   fail_closed_until_all_requirements_have_authoritative_evidence: true
 forbidden_claims:
-- fabrication_ready
-- enclosure_ready
-- factory_ready
-- first_article_passed
-- end_to_end_phone_ready
-- goal_complete
+  - fabrication_ready
+  - enclosure_ready
+  - factory_ready
+  - first_article_passed
+  - end_to_end_phone_ready
+  - goal_complete

@@ -23,3 +23,6 @@ node_modules/
 .DS_Store
 screenshots/
 .vite/
+
+# Aesthetic audit screenshot output (generated, not source of truth)
+aesthetic-audit-output/

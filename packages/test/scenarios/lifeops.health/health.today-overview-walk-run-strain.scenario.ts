@@ -9,7 +9,7 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { LifeOpsRepository } from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 
 export default scenario({
   id: "health.today-overview-walk-run-strain",

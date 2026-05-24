@@ -432,7 +432,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         options?.launchCompanionOverlay === true &&
         COMPANION_ENABLED &&
         APPS_ENABLED;
-      if (launchCompanionOverlay) {
+      if (launchCompanionOverlay && landingTab !== "home") {
         setActiveOverlayApp("@elizaos/plugin-companion");
         replaceNavigationPathForCompanionLaunch();
         setTab("apps");
@@ -598,7 +598,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
           }
           await ensureOnboardedAgentRunning(client);
 
-          completeOnboarding("chat", { launchCompanionOverlay: true });
+          completeOnboarding("home", { launchCompanionOverlay: true });
           return;
         }
 
@@ -756,7 +756,7 @@ export function useOnboardingCallbacks(deps: OnboardingCallbacksDeps) {
         }
         await ensureOnboardedAgentRunning(client);
 
-        completeOnboarding("chat", { launchCompanionOverlay: true });
+        completeOnboarding("home", { launchCompanionOverlay: true });
       } catch (err) {
         const message =
           err instanceof Error && err.message.trim()

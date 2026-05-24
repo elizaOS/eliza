@@ -1475,10 +1475,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
         raise ValueError("MLPerf inference SingleStream scenario missing p90 latency")
     if not is_json_number(offline.get("throughput_samples_per_second")):
         raise ValueError("MLPerf inference Offline scenario missing throughput")
-    if not is_json_number(energy) or not isinstance(energy, (int, float)):
-        raise ValueError("MLPerf inference modeled energy must be positive")
-    energy_value = float(energy)
-    if energy_value <= 0:
+    if not is_json_number(energy) or energy <= 0:
         raise ValueError("MLPerf inference modeled energy must be positive")
     npu_macs_total = summary.get("npu_macs_total")
     npu_commands_total = summary.get("npu_commands_total")
@@ -1498,7 +1495,7 @@ def parse_eliza_mlperf_inference(output: str) -> dict[str, Any]:
         "scenario_count": int(summary.get("scenario_count", len(scenarios))),
         "single_stream_p90_latency_ns": int(latency["p90"]),
         "offline_throughput_samples_per_second": float(offline["throughput_samples_per_second"]),
-        "energy_joules_per_inference": energy_value,
+        "energy_joules_per_inference": float(energy),
         "npu_macs_total": npu_macs_total,
         "npu_commands_total": npu_commands_total,
         "npu_cycles_total": npu_cycles_total,

@@ -121,4 +121,27 @@ describe("ContinuousChatToggle + useContinuousChat integration", () => {
     });
     expect(voice.startListening).not.toHaveBeenCalled();
   });
+
+  it("restores passive capture after an always-on turn completes", async () => {
+    const voice = makeVoiceState({
+      isListening: true,
+      captureMode: "passive",
+    });
+    const { rerender } = render(
+      <ToggleHarness voice={voice} initialMode="always-on" />,
+    );
+
+    expect(voice.startListening).not.toHaveBeenCalled();
+
+    const completedTurnVoice = {
+      ...voice,
+      isListening: false,
+      captureMode: "idle" as const,
+    };
+    rerender(
+      <ToggleHarness voice={completedTurnVoice} initialMode="always-on" />,
+    );
+
+    expect(completedTurnVoice.startListening).toHaveBeenCalledWith("passive");
+  });
 });

@@ -45,6 +45,7 @@ const AI_PROVIDERS = new Set([
   "perplexity",
   "minimax",
   "zai",
+  "nearai",
 ]);
 
 export const STREAMING_DESTINATIONS = new Set(["streaming"]);

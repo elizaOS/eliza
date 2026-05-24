@@ -3,15 +3,21 @@
  *   1. Check `requires` gates — skip with reason if a required plugin/credential
  *      isn't available.
  *   2. Run seed steps, including logical-clock steps like `advanceClock`.
- *   3. For each turn: execute `message`, `api`, or `tick`, capture response
- *      text/body/actions, and run per-turn assertions/judges.
+ *   3. For each turn: execute `message`, `action`, `api`, or `tick`, capture
+ *      response text/body/actions, and run per-turn assertions/judges.
  *   4. Run `finalChecks` via the handler registry.
  *   5. Aggregate + return a ScenarioReport.
  */
 
 import * as crypto from "node:crypto";
 import * as http from "node:http";
-import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  Action,
+  ActionResult,
+  AgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import {
   ChannelType,
   createMessageMemory,
@@ -1078,6 +1084,107 @@ async function executeMessageTurn(
   return { responseText, durationMs: Date.now() - startedAt };
 }
 
+async function executeActionTurn(
+  runtime: AgentRuntime,
+  turn: ScenarioTurn,
+  room: ScenarioRoomDefinition,
+  currentNow: Date,
+  turnTimeoutMs: number,
+): Promise<{
+  responseText: string;
+  responseBody: unknown;
+  durationMs: number;
+}> {
+  const actionName =
+    typeof turn.actionName === "string" && turn.actionName.trim().length > 0
+      ? turn.actionName.trim()
+      : turn.content !== null &&
+          typeof turn.content === "object" &&
+          typeof (turn.content as { action?: unknown }).action === "string"
+        ? String((turn.content as { action: string }).action).trim()
+        : "";
+  if (!actionName) {
+    throw new Error(
+      `[executor] action turn '${turn.name}' is missing actionName`,
+    );
+  }
+
+  const action = runtime.actions.find(
+    (candidate: Action) => candidate.name === actionName,
+  );
+  if (!action) {
+    throw new Error(
+      `[executor] action turn '${turn.name}' requested unknown action '${actionName}'`,
+    );
+  }
+
+  const text =
+    typeof turn.text === "string"
+      ? String(resolveScenarioTemplates(turn.text, currentNow))
+      : actionName;
+  const turnContent =
+    turn.content !== null && typeof turn.content === "object"
+      ? (turn.content as Record<string, unknown>)
+      : {};
+  const message: Memory = createMessageMemory({
+    id: crypto.randomUUID() as UUID,
+    entityId: room.userId,
+    roomId: room.roomId,
+    content: {
+      ...turnContent,
+      action: actionName,
+      text,
+      source: room.source,
+      channelType: room.channelType,
+    },
+  });
+  const options =
+    turn.options !== null && typeof turn.options === "object"
+      ? (turn.options as Record<string, unknown>)
+      : {};
+  const startedAt = Date.now();
+  let responseText = "";
+  const callback = async (content: { text?: string }): Promise<Memory[]> => {
+    if (content.text) responseText += content.text;
+    return [];
+  };
+  const timeoutMs =
+    typeof turn.timeoutMs === "number" ? turn.timeoutMs : turnTimeoutMs;
+  const validated = await withTimeout(
+    action.validate(runtime, message, undefined, options as never),
+    timeoutMs,
+    `validateAction(${turn.name})`,
+  );
+  if (!validated) {
+    throw new Error(
+      `[executor] action turn '${turn.name}' failed validation for '${actionName}'`,
+    );
+  }
+  const result = await withTimeout(
+    action.handler(
+      runtime,
+      message,
+      undefined,
+      options as never,
+      callback as never,
+    ),
+    timeoutMs,
+    `executeAction(${turn.name})`,
+  );
+  const actionResult = result as ActionResult | undefined;
+  if (!responseText && typeof actionResult?.text === "string") {
+    responseText = actionResult.text;
+  }
+  if (!responseText && typeof actionResult?.userFacingText === "string") {
+    responseText = actionResult.userFacingText;
+  }
+  return {
+    responseText,
+    responseBody: actionResult ?? null,
+    durationMs: Date.now() - startedAt,
+  };
+}
+
 async function executeApiTurn(args: {
   turn: ScenarioTurn;
   apiServer: ScenarioApiServer;
@@ -1193,7 +1300,7 @@ async function executeTickTurn(args: {
       : undefined;
   const startedAt = Date.now();
   const { executeLifeOpsSchedulerTask } = (await import(
-    "@elizaos/plugin-lifeops"
+    "@elizaos/plugin-lifeops/plugin"
   )) as {
     executeLifeOpsSchedulerTask: (
       runtime: AgentRuntime,
@@ -1486,7 +1593,12 @@ export async function runScenario(
 
     for (const turn of scenario.turns) {
       const kind = typeof turn.kind === "string" ? turn.kind : "message";
-      if (kind !== "message" && kind !== "api" && kind !== "tick") {
+      if (
+        kind !== "message" &&
+        kind !== "action" &&
+        kind !== "api" &&
+        kind !== "tick"
+      ) {
         report.turns.push({
           name: turn.name,
           kind,
@@ -1525,16 +1637,27 @@ export async function runScenario(
                   runtime,
                 })),
               }
-            : {
-                actionsCalled: [],
-                ...(await executeMessageTurn(
-                  runtime,
-                  turn,
-                  resolveTurnRoom(turn, rooms),
-                  logicalNow,
-                  opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
-                )),
-              };
+            : kind === "action"
+              ? {
+                  actionsCalled: [],
+                  ...(await executeActionTurn(
+                    runtime,
+                    turn,
+                    resolveTurnRoom(turn, rooms),
+                    logicalNow,
+                    opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                  )),
+                }
+              : {
+                  actionsCalled: [],
+                  ...(await executeMessageTurn(
+                    runtime,
+                    turn,
+                    resolveTurnRoom(turn, rooms),
+                    logicalNow,
+                    opts.turnTimeoutMs || DEFAULT_TURN_TIMEOUT_MS,
+                  )),
+                };
       let actionsThisTurn = interceptor.actions.slice(actionsBefore);
       // Synthesize an implicit REPLY capture when the runtime emitted text
       // via the message callback but the LLM failed to select REPLY in its

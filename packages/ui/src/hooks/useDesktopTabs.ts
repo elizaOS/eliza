@@ -63,7 +63,7 @@ function tabFromView(view: ViewRegistryEntry, pinned: boolean): DesktopTab {
 
 export interface UseDesktopTabsResult {
   tabs: DesktopTab[];
-  openTab(view: ViewRegistryEntry): void;
+  openTab(view: ViewRegistryEntry, options?: { pinned?: boolean }): void;
   closeTab(viewId: string): void;
   pinTab(viewId: string): void;
 }
@@ -80,17 +80,26 @@ export function useDesktopTabs(): UseDesktopTabsResult {
     persistPinnedTabs(tabs);
   }, [tabs]);
 
-  const openTab = useCallback((view: ViewRegistryEntry) => {
-    if (!isElectrobunRuntime()) return;
-    setTabs((current) => {
-      const exists = current.find((t) => t.viewId === view.id);
-      if (exists) {
-        // Tab already open — nothing to add, but promote to pinned if not yet.
-        return current;
-      }
-      return [...current, tabFromView(view, false)];
-    });
-  }, []);
+  const openTab = useCallback(
+    (view: ViewRegistryEntry, options?: { pinned?: boolean }) => {
+      if (!isElectrobunRuntime()) return;
+      setTabs((current) => {
+        const exists = current.find((t) => t.viewId === view.id);
+        const nextPinned = options?.pinned === true;
+        if (exists) {
+          return current.map((tab) =>
+            tab.viewId === view.id
+              ? {
+                  ...tabFromView(view, tab.pinned || nextPinned),
+                }
+              : tab,
+          );
+        }
+        return [...current, tabFromView(view, nextPinned)];
+      });
+    },
+    [],
+  );
 
   const closeTab = useCallback((viewId: string) => {
     if (!isElectrobunRuntime()) return;

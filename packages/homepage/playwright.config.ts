@@ -1,4 +1,7 @@
+import path from "node:path";
 import { defineConfig, devices } from "playwright/test";
+
+const recording = !!process.env.E2E_RECORD;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -9,10 +12,14 @@ export default defineConfig({
     timeout: 20000,
     toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
   },
+  outputDir: recording
+    ? path.resolve(import.meta.dirname, "../../e2e-recordings/homepage/test-results")
+    : "./test-results",
   use: {
     baseURL: "http://127.0.0.1:4444",
-    trace: "retain-on-failure",
-    screenshot: "only-on-failure",
+    trace: recording ? "on" : "retain-on-failure",
+    screenshot: recording ? "on" : "only-on-failure",
+    video: recording ? "on" : "retain-on-failure",
   },
   webServer: {
     command:

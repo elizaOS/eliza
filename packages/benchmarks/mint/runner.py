@@ -125,6 +125,8 @@ class MINTRunner:
             subtasks=self.config.subtasks,
             limit=self.config.max_tasks_per_subtask,
         )
+        if self.config.max_total_tasks is not None:
+            tasks = tasks[: max(0, int(self.config.max_total_tasks))]
         if not tasks:
             raise ValueError("No tasks loaded from dataset")
 

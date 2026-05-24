@@ -141,6 +141,78 @@ async function invokeTrainingExportRoute(
   return captured;
 }
 
+async function invokeTrainingCollectRoute(
+  trainingService: TrainingServiceLike,
+  body: Record<string, unknown>,
+): Promise<{ status: number; payload: unknown }> {
+  const captured: { status: number; payload: unknown } = {
+    status: 200,
+    payload: undefined,
+  };
+  const res = {} as http.ServerResponse;
+  const ctx: TrainingRouteContext = {
+    req: {
+      url: "/api/training/collect",
+      headers: { host: "localhost" },
+    } as http.IncomingMessage,
+    res,
+    method: "POST",
+    pathname: "/api/training/collect",
+    runtime: null,
+    trainingService,
+    isLoopbackHost: () => true,
+    readJsonBody: async <T extends object>() => body as T,
+    json: (_res, data, status = 200) => {
+      captured.status = status;
+      captured.payload = data;
+    },
+    error: (_res, message, status = 500) => {
+      captured.status = status;
+      captured.payload = { error: message };
+    },
+  };
+
+  const handled = await handleTrainingRoutes(ctx);
+  expect(handled).toBe(true);
+  return captured;
+}
+
+async function invokeTrainingCollectionsRoute(
+  trainingService: TrainingServiceLike,
+  query: URLSearchParams,
+): Promise<{ status: number; payload: unknown }> {
+  const captured: { status: number; payload: unknown } = {
+    status: 200,
+    payload: undefined,
+  };
+  const res = {} as http.ServerResponse;
+  const ctx: TrainingRouteContext = {
+    req: {
+      url: `/api/training/collections?${query.toString()}`,
+      headers: { host: "localhost" },
+    } as http.IncomingMessage,
+    res,
+    method: "GET",
+    pathname: "/api/training/collections",
+    runtime: null,
+    trainingService,
+    isLoopbackHost: () => true,
+    readJsonBody: async <T extends object>() => ({}) as T,
+    json: (_res, data, status = 200) => {
+      captured.status = status;
+      captured.payload = data;
+    },
+    error: (_res, message, status = 500) => {
+      captured.status = status;
+      captured.payload = { error: message };
+    },
+  };
+
+  const handled = await handleTrainingRoutes(ctx);
+  expect(handled).toBe(true);
+  return captured;
+}
+
 describe("trajectory export bundle", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
@@ -197,6 +269,7 @@ describe("trajectory export bundle", () => {
     });
     expect(bundle.manifest.paths.rawJsonlPath).toBeUndefined();
     expect(bundle.manifest.paths.sanitizedJsonlPath).toBeTruthy();
+    expect(bundle.manifest.paths.viewerHtmlPath).toBeTruthy();
     expect(bundle.manifest.privacy.applied).toBe(true);
     expect(bundle.manifest.privacy.redactionCount).toBeGreaterThanOrEqual(2);
     expect(bundle.manifest.tasks.response).toMatchObject({
@@ -210,6 +283,9 @@ describe("trajectory export bundle", () => {
     ) as typeof bundle.manifest;
     expect(manifestOnDisk.schema).toBe(TRAJECTORY_EXPORT_BUNDLE_SCHEMA);
     expect(manifestOnDisk.paths.rawJsonlPath).toBeUndefined();
+    expect(manifestOnDisk.paths.viewerHtmlPath).toBe(
+      bundle.manifest.paths.viewerHtmlPath,
+    );
 
     const sanitized = await readFile(
       bundle.manifest.paths.sanitizedJsonlPath!,
@@ -219,6 +295,15 @@ describe("trajectory export bundle", () => {
     expect(sanitized).not.toContain("37.7749, -122.4194");
     expect(sanitized).toContain("<REDACTED:openai-key>");
     expect(sanitized).toContain("[REDACTED_GEO]");
+
+    const viewer = await readFile(
+      bundle.manifest.paths.viewerHtmlPath!,
+      "utf8",
+    );
+    expect(viewer).toContain("Eliza Trajectory Export");
+    expect(viewer).toContain("Task Datasets");
+    expect(viewer).toContain("REDACTED:openai-key");
+    expect(viewer).not.toContain("sk-1234567890abcdef");
   });
 
   it("writes raw JSONL only when explicitly requested", async () => {
@@ -241,6 +326,11 @@ describe("trajectory export bundle", () => {
     expect(raw).toContain("sk-1234567890abcdef");
     expect(sanitized).not.toContain("sk-1234567890abcdef");
     expect(bundle.manifest.counts.rawTrajectoryRows).toBe(1);
+    const viewer = await readFile(
+      bundle.manifest.paths.viewerHtmlPath!,
+      "utf8",
+    );
+    expect(viewer).not.toContain("sk-1234567890abcdef");
   });
 
   it("builds route bundle exports with run lineage, raw opt-in, and task counts", async () => {
@@ -336,6 +426,7 @@ describe("trajectory export bundle", () => {
     });
     expect(payload.bundle.paths.rawJsonlPath).toBeTruthy();
     expect(payload.bundle.paths.sanitizedJsonlPath).toBeTruthy();
+    expect(payload.bundle.paths.viewerHtmlPath).toBeTruthy();
     expect(payload.bundle.counts.taskRows.response).toBe(1);
     expect(payload.bundle.counts.taskExamples).toBe(1);
     expect(payload.bundle.privacy.applied).toBe(true);
@@ -350,5 +441,120 @@ describe("trajectory export bundle", () => {
       "utf8",
     );
     expect(sanitized).not.toContain("sk-1234567890abcdef");
+  });
+
+  it("lets the training collection route pull natural runtime trajectories", async () => {
+    const outputDir = await makeTempDir();
+    const trajectory = withRunId(baseTrajectory(), "traj-natural-1", "run-1");
+    const listTrajectories = vi.fn<TrainingServiceLike["listTrajectories"]>(
+      async () => ({
+        trajectories: [{ id: "traj-natural-1" }],
+        total: 1,
+        offset: 0,
+        limit: 10,
+      }),
+    );
+    const getTrajectoryById = vi.fn<TrainingServiceLike["getTrajectoryById"]>(
+      async (trajectoryId: string) =>
+        trajectoryId === "traj-natural-1" ? trajectory : null,
+    );
+
+    const response = await invokeTrainingCollectRoute(
+      createTrainingService({
+        listTrajectories,
+        getTrajectoryById,
+      }),
+      {
+        outputDir,
+        includeHuggingFace: false,
+        includeFeed: false,
+        includeNaturalTrajectories: true,
+        includeScenarios: false,
+        includeEvalComparison: false,
+        includeActionBenchmark: false,
+        includeBenchmarkVsCerebras: false,
+        includeEliza1ModelRegistry: false,
+        includeEliza1BundleStage: false,
+        includeBenchmarkMatrix: false,
+        naturalTrajectories: {
+          limit: 10,
+          runId: "run-1",
+          tasks: ["response"],
+        },
+      },
+    );
+
+    expect(response.status).toBe(201);
+    expect(listTrajectories).toHaveBeenCalledWith({
+      limit: 10,
+      offset: 0,
+      runId: "run-1",
+    });
+    expect(getTrajectoryById).toHaveBeenCalledWith("traj-natural-1");
+    const payload = response.payload as {
+      readmePath: string;
+      manifest: {
+        readmePath: string;
+        steps: Array<{ id: string; status: string }>;
+        evidence: {
+          sourceSamples: {
+            natural: Array<{
+              trajectoryId: string | null;
+              input: unknown;
+              output: unknown;
+            }>;
+          };
+        };
+      };
+      analysis: { manifest: { counts: Record<string, number> } };
+    };
+    expect(payload.readmePath).toBe(join(outputDir, "README.md"));
+    expect(payload.manifest.readmePath).toBe(payload.readmePath);
+    expect(payload.manifest.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "natural_trajectories",
+          status: "succeeded",
+        }),
+        expect.objectContaining({
+          id: "eliza1_model_registry",
+          status: "skipped",
+        }),
+      ]),
+    );
+    expect(payload.analysis.manifest.counts.trajectoryBundles).toBe(1);
+    expect(payload.analysis.manifest.counts.trajectoryDatasets).toBe(2);
+    expect(payload.manifest.evidence.sourceSamples.natural).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          trajectoryId: "traj-natural-1",
+        }),
+      ]),
+    );
+    const readme = await readFile(payload.readmePath, "utf8");
+    expect(readme).toContain("# Eliza Training Collection");
+    expect(readme).toContain("analysis/index.html");
+    expect(readme).toContain("Natural");
+
+    const listResponse = await invokeTrainingCollectionsRoute(
+      createTrainingService({}),
+      new URLSearchParams({ root: outputDir, limit: "5" }),
+    );
+    expect(listResponse.status).toBe(200);
+    expect(listResponse.payload).toMatchObject({
+      root: outputDir,
+      collections: [
+        {
+          outputDir,
+          manifestPath: join(outputDir, "collection-manifest.json"),
+          readmePath: join(outputDir, "README.md"),
+          analysisIndexHtmlPath: join(outputDir, "analysis", "index.html"),
+          readinessStatus: expect.any(String),
+          dataSources: {
+            naturalTrajectoryBundles: 1,
+          },
+        },
+      ],
+    });
   });
 });

@@ -143,8 +143,8 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
   // 3. Boot the login page.
   await page.goto("/login");
 
-  // 4. Click the Ethereum button (label "Ethereum" — wallet-buttons.tsx).
-  await page.getByRole("button", { name: /^Ethereum$/i }).click();
+  // 4. Click the EVM button (label "EVM" — wallet-buttons.tsx).
+  await page.getByRole("button", { name: /^EVM$/i }).click();
 
   // 5. Wait until the bundle hands us a message to sign, then sign it on
   //    the test side with viem.

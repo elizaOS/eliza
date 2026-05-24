@@ -185,7 +185,7 @@ export RTL_PATH="$ISO/"
 export PATH="$SHIM:$PATH"
 export RISCV_CC="$SHIM/riscv-none-elf-gcc"
 export UVM_VERBOSITY="${UVM_VERBOSITY:-UVM_NONE}"
-DV_OPTS=(--issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY="$UVM_VERBOSITY")
+DV_OPTS="--issrun_opts=+tb_performance_mode+debug_disable=1+UVM_VERBOSITY=$UVM_VERBOSITY"
 
 # --- Run suites --------------------------------------------------------------
 run_testlist() {
@@ -193,10 +193,11 @@ run_testlist() {
     # $3.. = extra cva6.py args (e.g. --linker=...).
     local testlist="$1" odir="$2"
     shift 2
-    rm -rf "$OUT/${odir:?}"
+    rm -rf "${OUT:?}/$odir"
+    # shellcheck disable=SC2086 # DV_OPTS is an intentional list of CLI flags.
     ( cd "$CVA6/verif/sim" && \
       python3 cva6.py --testlist="$testlist" --target "$TARGET" \
-        --iss="$DV_SIMULATORS" --iss_yaml=cva6.yaml -o "$OUT/$odir" "${DV_OPTS[@]}" "$@" )
+        --iss="$DV_SIMULATORS" --iss_yaml=cva6.yaml -o "$OUT/$odir" $DV_OPTS "$@" )
 }
 
 # The riscv-arch-test / riscv-compliance suites need the LLVM compiler shim:

@@ -1,27 +1,51 @@
 {
   "id": "training",
-  "name": "Training",
-  "description": "Training jobs, datasets, models, blueprints, and trajectory routes for the agent.",
+  "name": "Fine Tuning",
+  "description": "Collect training data, inspect trajectories, run Eliza harness evals, benchmark model tiers, and manage fine-tuned models.",
   "npmName": "@elizaos/plugin-training",
   "source": "bundled",
-  "tags": ["training", "trajectories"],
+  "tags": [
+    "training",
+    "fine-tuning",
+    "trajectories",
+    "datasets",
+    "models",
+    "evals",
+    "benchmarks",
+    "analysis",
+    "data-collection"
+  ],
   "config": {},
   "render": {
-    "visible": false,
+    "visible": true,
     "pinTo": [],
     "style": "card",
-    "icon": "Zap",
-    "group": "Curated",
-    "groupOrder": 100,
-    "actions": []
+    "icon": "BrainCircuit",
+    "group": "Apps",
+    "groupOrder": 3,
+    "actions": ["launch", "configure"]
   },
   "resources": {},
   "dependsOn": [],
   "kind": "app",
   "subtype": "tool",
   "launch": {
-    "type": "server-launch",
-    "capabilities": ["training", "trajectories"],
+    "type": "internal-tab",
+    "target": "fine-tuning",
+    "capabilities": [
+      "training",
+      "fine-tuning",
+      "trajectories",
+      "datasets",
+      "models",
+      "evals",
+      "benchmarks",
+      "analysis",
+      "data-collection"
+    ],
+    "uiExtension": {
+      "detailPanelId": "plugin-dash-fine-tuning"
+    },
     "routePlugin": {
       "specifier": "@elizaos/plugin-training/setup-routes",
       "exportName": "trainingPlugin"

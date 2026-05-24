@@ -176,12 +176,10 @@ BIN0=$(build_image "${N0}")
 BIN1=$(build_image "${N1}")
 
 echo "[kunminghu-gem5] running CoreMark on XS-GEM5 KMHv3 (DiffTest vs NEMU), ITERATIONS=${N0} and ${N1}..."
-read -r CYC0 INS0 _ <<EOF0
-$(run_one "${N0}" "${BIN0}")
-EOF0
-read -r CYC1 INS1 IPC1 CPI1 <<EOF1
-$(run_one "${N1}" "${BIN1}")
-EOF1
+# shellcheck disable=SC2046 # intentional word-splitting of space-separated stats output.
+set -- $(run_one "${N0}" "${BIN0}"); CYC0=$1; INS0=$2
+# shellcheck disable=SC2046 # intentional word-splitting of space-separated stats output.
+set -- $(run_one "${N1}" "${BIN1}"); CYC1=$1; INS1=$2; IPC1=$3; CPI1=$4
 
 # Two-point startup-elimination regression -> timed-region CoreMark/MHz.
 read -r CYC_PER_ITER CMPERMHZ CMPERMHZ_WHOLE MULT <<EOF2

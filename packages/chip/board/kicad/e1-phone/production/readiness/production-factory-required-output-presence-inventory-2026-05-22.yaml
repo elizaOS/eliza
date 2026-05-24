@@ -1,9 +1,7 @@
 schema: eliza.e1_phone_production_factory_required_output_presence_inventory.v1
 status: blocked_fail_closed_required_outputs_missing
 date: '2026-05-22'
-claim_boundary: Presence-only inventory for production/factory required output paths in production-factory-output-burndown-2026-05-22.yaml.
-  Existing files or directories are not validated for correctness, signatures, freshness, supplier acceptance,
-  first-article pass status, or release readiness.
+claim_boundary: Presence-only inventory for production/factory required output paths in production-factory-output-burndown-2026-05-22.yaml. Existing files or directories are not validated for correctness, signatures, freshness, supplier acceptance, first-article pass status, or release readiness.
 inputs:
   production_factory_output_burndown: board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
   report_path: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
@@ -28,1188 +26,1188 @@ fail_closed_policy:
   presence_only_inventory_cannot_unlock_release: true
   missing_or_unvalidated_required_outputs_keep_release_blocked: true
 required_output_presence:
-- path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/bom
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/bom
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/first-article
-  source_fields:
-  - required_common_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/first-article
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/gerbers
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/gerbers
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/ipc-2581
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/ipc-2581
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pos
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/pos
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[1]
-  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[4]
-  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/drc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/drc.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/erc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/erc.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[9]
-  resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[10]
-  resolved_path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[11]
-  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/rf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[12]
-  resolved_path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[6]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[14]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[13]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[7]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  source_fields:
-  - required_common_outputs
-  - required_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[4]
-  - $.execution_burndown[6].required_outputs[15]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/si-pi
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/si-pi
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[5]
-  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[2]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[3]
-  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[8]
-  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/step
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/step
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[1]
-  - $.execution_burndown[5].required_common_outputs[2]
-  - $.execution_burndown[7].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[4]
-  - $.execution_burndown[5].required_common_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
-  source_fields:
-  - required_outputs
-  source_ids:
-  - factory_probe_coverage
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[2]
-  - $.execution_burndown[7].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[0]
-  - $.execution_burndown[5].required_common_outputs[3]
-  - $.execution_burndown[7].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - factory_probe_coverage
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[3]
-  - $.execution_burndown[7].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  present: false
-  artifact_kind: missing
+  - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/bom
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/bom
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/first-article
+    source_fields:
+      - required_common_outputs
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_common_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/first-article
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/gerbers
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/gerbers
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/ipc-2581
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/ipc-2581
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/assembly.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/pdf/assembly.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pos
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/pos
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[1]
+    resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[4]
+    resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[0]
+    resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/drc.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/reports/drc.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/erc.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/reports/erc.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[9]
+    resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[10]
+    resolved_path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[11]
+    resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[8]
+    resolved_path: board/kicad/e1-phone/production/reports/rf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[12]
+    resolved_path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[6]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[14]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[13]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[7]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    source_fields:
+      - required_common_outputs
+      - required_outputs
+    source_ids:
+      - first_article_transcript_and_traveler
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[5].required_common_outputs[4]
+      - $.execution_burndown[6].required_outputs[15]
+    resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[8]
+    resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/si-pi
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/reports/si-pi
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[5]
+    resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[2]
+    resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[3]
+    resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[8]
+    resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/zone-fill.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/step
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/step
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[1]
+      - $.execution_burndown[5].required_common_outputs[2]
+      - $.execution_burndown[7].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[4]
+      - $.execution_burndown[5].required_common_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    source_fields:
+      - required_outputs
+    source_ids:
+      - factory_probe_coverage
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[2]
+      - $.execution_burndown[7].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/probe-coordinates.csv
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[0]
+      - $.execution_burndown[5].required_common_outputs[3]
+      - $.execution_burndown[7].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/test/probe-coordinates.csv
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - factory_probe_coverage
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[3]
+      - $.execution_burndown[7].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    present: false
+    artifact_kind: missing
 missing_required_outputs:
-- path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/bom
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/bom
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/first-article
-  source_fields:
-  - required_common_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/first-article
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/gerbers
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/gerbers
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/ipc-2581
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/ipc-2581
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/pdf/assembly.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/pos
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/pos
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[1]
-  resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[4]
-  resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[0]
-  resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/drc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/drc.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/erc.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/erc.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[9]
-  resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[10]
-  resolved_path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[11]
-  resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/rf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[12]
-  resolved_path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[6]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[14]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[13]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[7]
-  resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  source_fields:
-  - required_common_outputs
-  - required_outputs
-  source_ids:
-  - first_article_transcript_and_traveler
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[5].required_common_outputs[4]
-  - $.execution_burndown[6].required_outputs[15]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[8]
-  resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/si-pi
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/reports/si-pi
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[5]
-  resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[2]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  source_fields:
-  - required_outputs
-  source_ids:
-  - production_release_reports
-  source_pointers:
-  - $.execution_burndown[6].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[3]
-  resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  source_fields:
-  - required_functional_transcripts
-  source_ids:
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[5].required_functional_transcripts[8]
-  resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/reports/zone-fill.json
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fabrication_outputs
-  source_pointers:
-  - $.execution_burndown[1].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
-  source_fields:
-  - required_outputs
-  source_ids:
-  - fab_assembler_quote_packs
-  source_pointers:
-  - $.execution_burndown[0].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/step
-  source_fields:
-  - required_outputs
-  source_ids:
-  - assembly_outputs
-  source_pointers:
-  - $.execution_burndown[2].required_outputs[7]
-  resolved_path: board/kicad/e1-phone/production/step
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[1]
-  - $.execution_burndown[5].required_common_outputs[2]
-  - $.execution_burndown[7].required_outputs[6]
-  resolved_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[4]
-  - $.execution_burndown[5].required_common_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[0]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[1]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[7].required_outputs[2]
-  resolved_path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
-  source_fields:
-  - required_outputs
-  source_ids:
-  - factory_probe_coverage
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[2]
-  - $.execution_burndown[7].required_outputs[4]
-  resolved_path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  source_fields:
-  - required_outputs
-  - required_common_outputs
-  source_ids:
-  - factory_probe_coverage
-  - first_article_transcript_and_traveler
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[0]
-  - $.execution_burndown[5].required_common_outputs[3]
-  - $.execution_burndown[7].required_outputs[3]
-  resolved_path: board/kicad/e1-phone/production/test/probe-coordinates.csv
-  present: false
-  artifact_kind: missing
-- path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  source_fields:
-  - required_outputs
-  source_ids:
-  - factory_probe_coverage
-  - test_fixture_outputs
-  source_pointers:
-  - $.execution_burndown[3].required_outputs[3]
-  - $.execution_burndown[7].required_outputs[5]
-  resolved_path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
-  present: false
-  artifact_kind: missing
+  - path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/pcb/e1-phone-mainboard-routed.kicad_pcb
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/bom
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/bom
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/dfm/assembler-dfa-report.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/dfm/stencil-aperture-review.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/fab-quote/assembler-commercial-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/fab-quote/fabricator-commercial-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/first-article
+    source_fields:
+      - required_common_outputs
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_common_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/first-article
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/gerbers
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/gerbers
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/gerbers/nc-drill-and-slots
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/ipc-2581
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/ipc-2581
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/pdf/aoi-xray-cleaning-inspection-notes.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/assembly.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/pdf/assembly.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/pdf/split-interconnect-assembly.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/pos
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/pos
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/reports/board-optimization-scorecard.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[1]
+    resolved_path: board/kicad/e1-phone/production/reports/camera-capture-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[4]
+    resolved_path: board/kicad/e1-phone/production/reports/charger-cc-cv-cycle.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/reports/display-camera-oem-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[0]
+    resolved_path: board/kicad/e1-phone/production/reports/display-touch-bringup-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/drc.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/reports/drc.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/erc.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/reports/erc.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[9]
+    resolved_path: board/kicad/e1-phone/production/reports/escape-density-via-count.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/reports/external-interface-design-review.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/reports/module-host-integration-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[10]
+    resolved_path: board/kicad/e1-phone/production/reports/power-sequence-bringup-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[11]
+    resolved_path: board/kicad/e1-phone/production/reports/power-thermal/rail-efficiency-and-soak.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/reports/radio-module-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[8]
+    resolved_path: board/kicad/e1-phone/production/reports/rf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[12]
+    resolved_path: board/kicad/e1-phone/production/reports/rf-antenna-coexistence-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[6]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/cellular-conducted.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[14]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/coexistence-matrix.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[13]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/vna-s11-s21.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[7]
+    resolved_path: board/kicad/e1-phone/production/reports/rf/wifi-bt-conducted.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/reports/route-feasibility-density.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    source_fields:
+      - required_common_outputs
+      - required_outputs
+    source_ids:
+      - first_article_transcript_and_traveler
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[5].required_common_outputs[4]
+      - $.execution_burndown[6].required_outputs[15]
+    resolved_path: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[8]
+    resolved_path: board/kicad/e1-phone/production/reports/routed-courtyard-utilization.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/reports/schematic-symbol-footprint-closure.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/si-pi
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/reports/si-pi
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[5]
+    resolved_path: board/kicad/e1-phone/production/reports/side-key-force-travel-wake-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[2]
+    resolved_path: board/kicad/e1-phone/production/reports/usb-c-pd-attach-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    source_fields:
+      - required_outputs
+    source_ids:
+      - production_release_reports
+    source_pointers:
+      - $.execution_burndown[6].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/reports/usb-sidekey-integration.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[3]
+    resolved_path: board/kicad/e1-phone/production/reports/usb2-adb-fastboot-attach-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    source_fields:
+      - required_functional_transcripts
+    source_ids:
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[5].required_functional_transcripts[8]
+    resolved_path: board/kicad/e1-phone/production/reports/wifi-bt-firmware-identity-log.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/reports/zone-fill.json
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fabrication_outputs
+    source_pointers:
+      - $.execution_burndown[1].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/reports/zone-fill.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/stackup/coupon-geometry.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/stackup/fabricator-stackup.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+    source_fields:
+      - required_outputs
+    source_ids:
+      - fab_assembler_quote_packs
+    source_pointers:
+      - $.execution_burndown[0].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/stackup/field-solved-impedance-table.csv
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/step
+    source_fields:
+      - required_outputs
+    source_ids:
+      - assembly_outputs
+    source_pointers:
+      - $.execution_burndown[2].required_outputs[7]
+    resolved_path: board/kicad/e1-phone/production/step
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[1]
+      - $.execution_burndown[5].required_common_outputs[2]
+      - $.execution_burndown[7].required_outputs[6]
+    resolved_path: board/kicad/e1-phone/production/test/factory-test-limits.yaml
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[4]
+      - $.execution_burndown[5].required_common_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/test/first-article-test-transcript.json
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[0]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/ict-or-flying-probe-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[1]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/rf-shield-box-calibration-quote.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[7].required_outputs[2]
+    resolved_path: board/kicad/e1-phone/production/test/fixture-quote/traceability-and-programming-flow.pdf
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    source_fields:
+      - required_outputs
+    source_ids:
+      - factory_probe_coverage
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[2]
+      - $.execution_burndown[7].required_outputs[4]
+    resolved_path: board/kicad/e1-phone/production/test/ict-or-flying-probe-program
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/probe-coordinates.csv
+    source_fields:
+      - required_outputs
+      - required_common_outputs
+    source_ids:
+      - factory_probe_coverage
+      - first_article_transcript_and_traveler
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[0]
+      - $.execution_burndown[5].required_common_outputs[3]
+      - $.execution_burndown[7].required_outputs[3]
+    resolved_path: board/kicad/e1-phone/production/test/probe-coordinates.csv
+    present: false
+    artifact_kind: missing
+  - path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    source_fields:
+      - required_outputs
+    source_ids:
+      - factory_probe_coverage
+      - test_fixture_outputs
+    source_pointers:
+      - $.execution_burndown[3].required_outputs[3]
+      - $.execution_burndown[7].required_outputs[5]
+    resolved_path: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
+    present: false
+    artifact_kind: missing
 present_required_outputs: []
 forbidden_claims:
-- production_ready
-- production_factory_release_ready
-- fabrication_ready
-- assembly_ready
-- manufacturing_ready
-- dfm_ready
-- dfa_approved
-- stackup_approved
-- impedance_closed
-- bom_avl_ready
-- selected_fabricator_ready
-- selected_assembler_ready
-- fixture_ready
-- factory_test_ready
-- probe_map_released
-- first_article_ready
-- selected_hardware_first_article_ready
-- first_article_limits_ready
-- rf_calibration_ready
-- enclosure_physical_fit_verified
-- enclosure_ready
-- end_to_end_phone_ready
+  - production_ready
+  - production_factory_release_ready
+  - fabrication_ready
+  - assembly_ready
+  - manufacturing_ready
+  - dfm_ready
+  - dfa_approved
+  - stackup_approved
+  - impedance_closed
+  - bom_avl_ready
+  - selected_fabricator_ready
+  - selected_assembler_ready
+  - fixture_ready
+  - factory_test_ready
+  - probe_map_released
+  - first_article_ready
+  - selected_hardware_first_article_ready
+  - first_article_limits_ready
+  - rf_calibration_ready
+  - enclosure_physical_fit_verified
+  - enclosure_ready
+  - end_to_end_phone_ready

@@ -21,6 +21,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type Page, test } from "@playwright/test";
+import sharp from "sharp";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -211,13 +212,23 @@ interface PageReport {
   radiusViolations: RadiusViolation[];
   buttonHovers: ButtonHover[];
   paletteViolations: string[];
+  screenshotIssues: string[];
   loadOk: boolean;
   loadError?: string;
+}
+
+interface ScreenshotQuality {
+  width: number;
+  height: number;
+  sampledPixels: number;
+  colorBuckets: number;
+  dominantRatio: number;
 }
 
 const FRAGMENT_DIR = path.join(OUT_ROOT, "_fragments");
 
 test.beforeAll(() => {
+  fs.rmSync(FRAGMENT_DIR, { recursive: true, force: true });
   for (const v of VIEWPORTS) {
     fs.mkdirSync(path.join(OUT_ROOT, v.name), { recursive: true });
   }
@@ -319,15 +330,22 @@ function buildContactSheet(reports: PageReport[]): string {
     const cards = list
       .map((r) => {
         const issues: string[] = [];
+        const consoleErrors = r.consoleErrors ?? [];
+        const failedRequests = r.failedRequests ?? [];
+        const radiusViolations = r.radiusViolations ?? [];
+        const paletteViolations = r.paletteViolations ?? [];
+        const screenshotIssues = r.screenshotIssues ?? [];
         if (!r.loadOk) issues.push(`LOAD FAIL: ${r.loadError ?? "unknown"}`);
-        if (r.consoleErrors.length)
-          issues.push(`${r.consoleErrors.length} console errors`);
-        if (r.failedRequests.length)
-          issues.push(`${r.failedRequests.length} failed requests`);
-        if (r.radiusViolations.length)
-          issues.push(`${r.radiusViolations.length} radius violations`);
-        if (r.paletteViolations.length)
-          issues.push(`${r.paletteViolations.length} palette violations`);
+        if (consoleErrors.length)
+          issues.push(`${consoleErrors.length} console errors`);
+        if (failedRequests.length)
+          issues.push(`${failedRequests.length} failed requests`);
+        if (radiusViolations.length)
+          issues.push(`${radiusViolations.length} radius violations`);
+        if (paletteViolations.length)
+          issues.push(`${paletteViolations.length} palette violations`);
+        if (screenshotIssues.length)
+          issues.push(`${screenshotIssues.length} screenshot issues`);
         const issueHtml = issues.length
           ? `<div class="issues">${issues.map((i) => `<div>! ${i}</div>`).join("")}</div>`
           : `<div class="ok">ok clean</div>`;
@@ -438,6 +456,69 @@ function paletteCheckSingle(label: string, color: string): string | null {
   if (bucket(color) === "blue")
     return `${label}: blue color present (${color})`;
   return null;
+}
+
+async function analyzeScreenshot(buffer: Buffer): Promise<ScreenshotQuality> {
+  const { data, info } = await sharp(buffer)
+    .ensureAlpha()
+    .resize({ width: 96, height: 96, fit: "inside", withoutEnlargement: true })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const buckets = new Map<string, number>();
+  for (let i = 0; i < data.length; i += 4) {
+    const key = [
+      Math.round(data[i] / 16),
+      Math.round(data[i + 1] / 16),
+      Math.round(data[i + 2] / 16),
+      Math.round(data[i + 3] / 16),
+    ].join(",");
+    buckets.set(key, (buckets.get(key) ?? 0) + 1);
+  }
+
+  const sampledPixels = info.width * info.height;
+  const dominantCount = Math.max(0, ...buckets.values());
+  return {
+    width: info.width,
+    height: info.height,
+    sampledPixels,
+    colorBuckets: buckets.size,
+    dominantRatio: sampledPixels === 0 ? 1 : dominantCount / sampledPixels,
+  };
+}
+
+function screenshotQualityIssues(
+  label: string,
+  quality: ScreenshotQuality,
+): string[] {
+  const issues: string[] = [];
+  if (quality.sampledPixels === 0) {
+    issues.push(`${label}: screenshot is empty`);
+  }
+  if (quality.colorBuckets <= 1) {
+    issues.push(`${label}: screenshot is one color`);
+  } else if (quality.colorBuckets <= 2 && quality.dominantRatio > 0.995) {
+    issues.push(
+      `${label}: screenshot is effectively one color (${quality.colorBuckets} color buckets, ${Math.round(
+        quality.dominantRatio * 1000,
+      ) / 10}% dominant)`,
+    );
+  }
+  return issues;
+}
+
+async function captureAuditedScreenshot(
+  page: Page,
+  outputPath: string,
+  label: string,
+): Promise<string[]> {
+  const buffer = await page.screenshot({
+    fullPage: true,
+    timeout: 15_000,
+  });
+  fs.writeFileSync(outputPath, buffer);
+  const quality = await analyzeScreenshot(buffer);
+  return screenshotQualityIssues(label, quality);
 }
 
 async function auditPage(
@@ -694,6 +775,7 @@ async function auditPage(
 for (const viewport of VIEWPORTS) {
   test.describe(`aesthetic audit — ${viewport.name}`, () => {
     test.use({ viewport: { width: viewport.width, height: viewport.height } });
+    test.setTimeout(75_000);
 
     for (const route of ROUTES) {
       test(`${route.slug} (${viewport.name})`, async ({ page, context }) => {
@@ -784,8 +866,36 @@ for (const viewport of VIEWPORTS) {
               return empty({ keys: [], total: 0 });
             if (/\/containers(\/auth)?($|\?|\/[^/]+$)/.test(url))
               return empty({ containers: [] });
+            if (/\/eliza\/agents($|\?)/.test(url))
+              return empty({ success: true, data: [] });
+            if (/\/eliza\/agents\/[^/?]+/.test(url))
+              return empty({
+                success: true,
+                data: {
+                  id: "e2e-fixture",
+                  agentName: "E2E Test Agent",
+                  status: "running",
+                  databaseStatus: "connected",
+                  lastBackupAt: null,
+                  lastHeartbeatAt: new Date().toISOString(),
+                  errorMessage: null,
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString(),
+                  token_address: null, token_chain: null, token_name: null, token_ticker: null,
+                  bridgeUrl: null,
+                  errorCount: 0,
+                  walletAddress: null, walletProvider: null, walletStatus: "none",
+                  adminDetails: null,
+                },
+              });
+            if (/\/my-agents\/characters/.test(url))
+              return empty({ success: true, data: { characters: [] } });
+            if (/\/my-agents\/saved/.test(url))
+              return empty({ success: true, data: { agents: [] } });
+            if (/\/my-agents\/claim-affiliate-characters/.test(url))
+              return empty({ success: true, claimed: [] });
             if (/\/agents(\/[^/]+)?($|\?)/.test(url))
-              return empty({ agents: [] });
+              return empty([]);
             if (/\/apps(\/[^/]+)?($|\?)/.test(url)) return empty({ apps: [] });
             if (/\/mcps($|\?)/.test(url)) return empty({ mcps: [] });
             if (/\/documents\/query/.test(url))
@@ -807,6 +917,17 @@ for (const viewport of VIEWPORTS) {
                 },
                 bySource: [],
                 recentEarnings: [],
+                limits: {
+                  minRedemptionUsd: 10,
+                  maxSingleRedemptionUsd: 1000,
+                  userDailyLimitUsd: 1000,
+                  userHourlyLimitUsd: 250,
+                },
+                eligibility: {
+                  canRedeem: false,
+                  reason: "Minimum redemption is $10.00. You have $0.00 available.",
+                  dailyLimitRemaining: 1000,
+                },
               });
             if (/\/redemptions\/status/.test(url))
               return empty({
@@ -820,12 +941,17 @@ for (const viewport of VIEWPORTS) {
               });
             if (/\/redemptions/.test(url))
               return empty({ redemptions: [], total: 0 });
-            if (/\/affiliates|\/referrals/.test(url))
+            if (/\/affiliates/.test(url))
               return empty({
-                referrals: [],
-                stats: { totalEarned: 0, totalReferred: 0 },
-                total_referrals: 0,
+                code: {
+                  id: "aff_test",
+                  code: "TEST123",
+                  markup_percent: "20.00",
+                  is_active: true,
+                },
               });
+            if (/\/referrals/.test(url))
+              return empty({ code: "REF123", total_referrals: 0, is_active: true });
             if (/\/quotas\/usage/.test(url))
               return empty({
                 quotas: {},
@@ -835,6 +961,26 @@ for (const viewport of VIEWPORTS) {
               return empty({ transactions: [], total: 0 });
 
             // Billing surfaces
+            if (/\/billing\/settings/.test(url))
+              return empty({
+                settings: {
+                  autoTopUp: {
+                    enabled: false,
+                    amount: null,
+                    threshold: null,
+                    paymentMethodId: null,
+                  },
+                  payAsYouGo: {
+                    enabled: false,
+                  },
+                  limits: {
+                    minTopUpAmount: 5,
+                    maxTopUpAmount: 500,
+                    minThreshold: 1,
+                    maxThreshold: 100,
+                  },
+                },
+              });
             if (/\/credits\/balance/.test(url))
               return empty({ balance: 0, currency: "USD" });
             if (/\/billing/.test(url))
@@ -1068,16 +1214,24 @@ for (const viewport of VIEWPORTS) {
               });
             if (/\/admin\/metrics/.test(url))
               return empty({
-                dailyTrend: [],
+                dau: 0,
+                wau: 0,
+                mau: 0,
+                newSignupsToday: 0,
+                newSignups7d: 0,
+                avgMessagesPerUser: 0,
                 platformBreakdown: {},
+                platformDistribution: [],
+                oauthRate: {
+                  total_users: 0,
+                  connected_users: 0,
+                  rate: 0,
+                  ratePercent: 0,
+                  byService: {},
+                },
+                dailyTrend: [],
                 retentionCohorts: [],
                 retentionRates: [],
-                oauthMetrics: { granted: 0, revoked: 0, providers: [] },
-                summary: {
-                  totalUsers: 0,
-                  totalMessages: 0,
-                  averageMessagesPerUser: "0",
-                },
               });
             if (/\/admin\//.test(url)) return empty({ items: [], metrics: {} });
 
@@ -1128,6 +1282,7 @@ for (const viewport of VIEWPORTS) {
           radiusViolations: [],
           buttonHovers: [],
           paletteViolations: [],
+          screenshotIssues: [],
           loadOk: false,
         };
 
@@ -1162,10 +1317,13 @@ for (const viewport of VIEWPORTS) {
           await page.waitForTimeout(600);
           const audit = await auditPage(page, route.path);
           Object.assign(report, audit, { loadOk: true });
-          await page.screenshot({
-            path: path.join(OUT_ROOT, viewport.name, `${route.slug}.png`),
-            fullPage: true,
-          });
+          report.screenshotIssues.push(
+            ...(await captureAuditedScreenshot(
+              page,
+              path.join(OUT_ROOT, viewport.name, `${route.slug}.png`),
+              `${route.slug} ${viewport.name} rest`,
+            )),
+          );
 
           // Hover screenshot: hover the first visible primary button.
           const primary = page
@@ -1183,7 +1341,13 @@ for (const viewport of VIEWPORTS) {
                 viewport.name,
                 `${route.slug}--hover.png`,
               );
-              await page.screenshot({ path: hoverPath, fullPage: true });
+              report.screenshotIssues.push(
+                ...(await captureAuditedScreenshot(
+                  page,
+                  hoverPath,
+                  `${route.slug} ${viewport.name} hover`,
+                )),
+              );
               report.hoverScreenshot = `${viewport.name}/${route.slug}--hover.png`;
             } catch {
               // Hovering failed (off-screen, detached, etc.) — not a fatal
@@ -1195,6 +1359,9 @@ for (const viewport of VIEWPORTS) {
         }
 
         persistReport(report);
+        if (report.screenshotIssues.length > 0) {
+          throw new Error(report.screenshotIssues.join("\n"));
+        }
       });
     }
   });

@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ACTION_BENCHMARK_REPORT_SCHEMA,
+  buildBenchmarkReportArtifact,
   caseMatches,
   parsePlannedActionsFromResponse,
   pickObservedAction,
+  type ActionBenchmarkReport,
 } from "./action-selection-runner.ts";
 
 describe("action selection benchmark scoring helpers", () => {
@@ -294,5 +297,73 @@ describe("action selection benchmark scoring helpers", () => {
     );
 
     expect(planned).toEqual([]);
+  });
+
+  it("builds a compact JSON artifact without embedding raw trajectories", () => {
+    const report: ActionBenchmarkReport = {
+      total: 1,
+      passed: 1,
+      failed: 0,
+      accuracy: 1,
+      byTag: {
+        message: { total: 1, passed: 1, accuracy: 1 },
+      },
+      latency: { avg: 42, p50: 42, p95: 42 },
+      failures: [],
+      results: [
+        {
+          case: {
+            id: "message-route",
+            userMessage: "send David the update",
+            expectedAction: "MESSAGE",
+            tags: ["message"],
+          },
+          plannerPass: true,
+          plannedAction: "MESSAGE",
+          actualAction: "MESSAGE",
+          selectionPass: true,
+          executionPass: true,
+          pass: true,
+          latencyMs: 42,
+          trajectoryPath: "action-benchmark-report/cases/message-route.json",
+          trajectory: {
+            startedAt: 1,
+            endedAt: 2,
+            durationMs: 1,
+            roomId: "00000000-0000-4000-8000-000000000001",
+            userId: "00000000-0000-4000-8000-000000000002",
+            transcript: [],
+            agentTrajectory: { llmCalls: [], providerSnapshots: [] },
+            actions: [],
+            events: [],
+            memoriesWritten: [],
+            metadata: {},
+          },
+        },
+      ],
+    };
+
+    const artifact = buildBenchmarkReportArtifact(report, {
+      generatedAt: "2026-01-02T03:00:00.000Z",
+      trajectoryDir: "action-benchmark-report",
+      reportMarkdownPath: "action-benchmark-report.md",
+    });
+
+    expect(artifact.schema).toBe(ACTION_BENCHMARK_REPORT_SCHEMA);
+    expect(artifact.summary).toMatchObject({
+      total: 1,
+      passed: 1,
+      failed: 0,
+      accuracy: 1,
+      plannerAccuracy: 1,
+      executionAccuracy: 1,
+    });
+    expect(artifact.results[0]).toMatchObject({
+      caseId: "message-route",
+      expectedAction: "MESSAGE",
+      actualAction: "MESSAGE",
+      trajectoryPath: "action-benchmark-report/cases/message-route.json",
+    });
+    expect(JSON.stringify(artifact)).not.toContain("agentTrajectory");
   });
 });

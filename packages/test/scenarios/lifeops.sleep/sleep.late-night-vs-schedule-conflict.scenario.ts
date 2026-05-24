@@ -9,11 +9,11 @@ import {
   type ScenarioContext,
   scenario,
 } from "@elizaos/scenario-runner/schema";
-import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
+import { LifeOpsRepository } from "../../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,
   sqlQuote,
-} from "../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
+} from "../../../../plugins/plugin-lifeops/src/lifeops/sql.ts";
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 
 const LATE_BEDTIME_UTC = "2025-11-04T08:00:00.000Z"; // 01:00 Pacific

@@ -31,6 +31,7 @@ export type ProviderId =
   | "anthropic"
   | "openai"
   | "deepseek"
+  | "nearai"
   | "zai"
   | "moonshot"
   | "grok"

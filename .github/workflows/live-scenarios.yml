@@ -1,6 +1,6 @@
 # Live Scenario Runner (nightly)
 #
-# Executes the 22 executive-assistant scenarios and 15 connector certification
+# Executes the executive-assistant and connector certification
 # scenarios against a live LLM runtime with real connector credentials and
 # uploads the JSON report. Scheduled/default dispatch runs are report-only
 # while this catalog is still being hardened; manual dispatch can opt into
@@ -226,6 +226,7 @@ jobs:
           SCENARIO_ENFORCE_GATE: ${{ inputs.enforce_gate && '1' || '0' }}
           SKIP_REASON: ${{ inputs.skip_reason }}
           REPORT_PATH: artifacts/lifeops-scenario-report.json
+          RUN_DIR: artifacts/scenario-runs/live
         run: node packages/scripts/run-live-scenarios.mjs
 
       - name: Upload scenario report
@@ -233,6 +234,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: lifeops-scenario-report
-          path: artifacts/lifeops-scenario-report.json
+          path: |
+            artifacts/lifeops-scenario-report.json
+            artifacts/scenario-runs/live/
           if-no-files-found: warn
           retention-days: 30
