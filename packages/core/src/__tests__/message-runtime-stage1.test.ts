@@ -411,6 +411,120 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("routes short chat-entity identity lookups through recall instead of simple guessing", async () => {
+		const runtime = makeRuntime([
+			JSON.stringify({
+				processMessage: "RESPOND",
+				plan: {
+					contexts: ["simple"],
+					reply: "Queuebot is just the same assistant you've seen before.",
+					simple: true,
+					requiresTool: false,
+				},
+				extract: {
+					facts: [],
+					relationships: [],
+					addressedTo: [],
+				},
+			}),
+			JSON.stringify({
+				thought: "Identity lookup should be grounded in recalled chat context.",
+				toolCalls: [],
+				messageToUser:
+					"I don't have enough recalled chat context to identify queuebot.",
+			}),
+		]);
+		runtime.actions = [
+			{
+				name: "MESSAGE",
+				contexts: ["messaging", "memory"],
+				description: "Search and inspect stored conversation messages.",
+				validate: async () => true,
+				handler: async () => ({ success: true }),
+			},
+		] as never;
+		runtime.composeState = vi.fn(async () => ({
+			values: { availableContexts: "simple, general, memory, messaging" },
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nrecent provider text",
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "",
+		})) as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: [
+					"[Recent channel context]",
+					"e2e: queuebot came up earlier in the channel.",
+					"",
+					"[Discord #general | NUBot test server] @e2e (Sat 05/23/2026 10:25 UTC): assistant (@1490833425802854491) who is queuebot?",
+				].join("\n"),
+				source: "discord",
+			}),
+			state: {
+				values: { availableContexts: "simple, general, memory, messaging" },
+				data: {},
+				text: "",
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("planned_reply");
+		const plannerCall = useModelCalls(runtime)[1]?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
+		expect(plannerUserContent).toContain("identity_lookup_policy");
+		expect(plannerUserContent).toContain('"candidateActions":["MESSAGE"]');
+		expect(plannerUserContent).toContain("routing through recall context");
+		expect(plannerUserContent).not.toContain(
+			"Queuebot is just the same assistant",
+		);
+		if (result.kind === "planned_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"I don't have enough recalled chat context to identify queuebot.",
+			);
+		}
+	});
+
+	it("does not reroute ordinary public identity questions through recall", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Barack Obama is a former U.S. president.",
+				extra: { requiresTool: false },
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "assistant (@1490833425802854491) who is obama?",
+				source: "discord",
+			}),
+			state: {
+				values: { availableContexts: "simple, general, memory, messaging" },
+				data: {},
+				text: "",
+			},
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"Barack Obama is a former U.S. president.",
+			);
+		}
+		expect(useModelCalls(runtime)).toHaveLength(1);
+	});
+
 	it("does not treat the agent's own attachment ack as a user follow-up anchor", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -2100,6 +2214,98 @@ android smoke model works`,
 		);
 	});
 
+	it("keeps speaker names on structured prior dialogue", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "I see the prior chat context.",
+				extra: { requiresTool: false },
+			}),
+		]);
+		const state: State = {
+			values: {
+				availableContexts: "simple, general",
+			},
+			data: {
+				providers: {
+					RECENT_MESSAGES: {
+						text: "# Conversation Messages\nprovider text should not render",
+						data: {
+							recentMessages: [
+								{
+									id: "00000000-0000-0000-0000-00000000bb01" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000bb11" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 1,
+									content: {
+										text: "Hey, nice to meet shebotdick.",
+										source: "discord",
+									},
+									metadata: {
+										type: "message",
+										sender: {
+											id: "discord-botdick",
+											name: "botdick",
+											username: "botdick",
+										},
+									},
+								},
+								{
+									id: "00000000-0000-0000-0000-00000000bb02" as UUID,
+									entityId: "00000000-0000-0000-0000-00000000bb12" as UUID,
+									agentId: runtime.agentId,
+									roomId: "00000000-0000-0000-0000-000000001111" as UUID,
+									createdAt: 2,
+									content: {
+										text: "i was asking about shedick",
+										source: "discord",
+									},
+									metadata: {
+										type: "message",
+										sender: {
+											id: "discord-1gig",
+											name: "1gig",
+											username: "1gig",
+										},
+									},
+								},
+							],
+						},
+						providerName: "RECENT_MESSAGES",
+					},
+				},
+			},
+			text: "fallback text should not be needed",
+		};
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "whats the compatibility between her and botdick",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const userContent = params.messages?.[1]?.content ?? "";
+		expect(userContent).not.toContain("# Conversation Messages");
+		expect(userContent).not.toContain("provider text should not render");
+		expect(userContent).toContain(
+			"prior_message:user:\nbotdick: Hey, nice to meet shebotdick.",
+		);
+		expect(userContent).toContain(
+			"prior_message:user:\n1gig: i was asking about shedick",
+		);
+		expect(userContent).toContain(
+			"message:user:\nwhats the compatibility between her and botdick",
+		);
+	});
+
 	it("recomposes planner state with selected context providers but excludes catalogs", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
@@ -2729,5 +2935,34 @@ android smoke model works`,
 			action,
 		});
 		expect(runtime.useModel).toHaveBeenCalledTimes(1);
+	});
+
+	it("renders direct-message instructions that forbid ungrounded simple replies and phantom action claims", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "Hi.",
+			}),
+		]);
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({ channelType: ChannelType.DM }),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		const firstCall = useModelCalls(runtime)[0];
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent =
+			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain(
+			'Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context.',
+		);
+		expect(systemContent).toContain(
+			"Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content.",
+		);
 	});
 });

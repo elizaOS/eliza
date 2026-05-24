@@ -1599,6 +1599,61 @@ function asProviderRecord(value: unknown):
 	};
 }
 
+function asPlainRecord(value: unknown): Record<string, unknown> | undefined {
+	if (!value || typeof value !== "object" || Array.isArray(value)) {
+		return undefined;
+	}
+	return value as Record<string, unknown>;
+}
+
+function cleanPriorDialogueSpeakerName(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	const normalized = value.trim().split(/\s+/).join(" ");
+	if (!normalized) return undefined;
+	return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
+}
+
+function senderIdentityName(value: unknown): string | undefined {
+	const record = asPlainRecord(value);
+	if (!record) return undefined;
+	return (
+		cleanPriorDialogueSpeakerName(record.name) ??
+		cleanPriorDialogueSpeakerName(record.username) ??
+		cleanPriorDialogueSpeakerName(record.tag)
+	);
+}
+
+function priorDialogueSpeakerName(memory: Memory): string | undefined {
+	const metadata = asPlainRecord(memory.metadata);
+	const content = asPlainRecord(memory.content);
+	const contentMetadata = asPlainRecord(content?.metadata);
+	const sender =
+		senderIdentityName(metadata?.sender) ??
+		senderIdentityName(contentMetadata?.sender);
+	if (sender) return sender;
+	for (const record of [metadata, contentMetadata, content]) {
+		const name =
+			cleanPriorDialogueSpeakerName(record?.entityName) ??
+			cleanPriorDialogueSpeakerName(record?.senderName) ??
+			cleanPriorDialogueSpeakerName(record?.authorName) ??
+			cleanPriorDialogueSpeakerName(record?.displayName) ??
+			cleanPriorDialogueSpeakerName(record?.userName) ??
+			cleanPriorDialogueSpeakerName(record?.username) ??
+			cleanPriorDialogueSpeakerName(record?.name);
+		if (name) return name;
+	}
+	return undefined;
+}
+
+function priorDialogueContent(text: string, speaker?: string): string {
+	if (!speaker) return text;
+	const trimmedStart = text.trimStart();
+	if (trimmedStart.toLowerCase().startsWith(`${speaker.toLowerCase()}:`)) {
+		return text;
+	}
+	return `${speaker}: ${text}`;
+}
+
 function appendPriorDialogueEvents(
 	events: ContextEvent[],
 	runtime: IAgentRuntime,
@@ -1657,6 +1712,7 @@ function appendPriorDialogueEvents(
 	for (const memory of dialogue) {
 		const text = getUserMessageText(memory);
 		if (!text) continue;
+		const speakerName = priorDialogueSpeakerName(memory);
 		events.push({
 			id: `history:${memory.id}`,
 			type: "segment",
@@ -1665,11 +1721,12 @@ function appendPriorDialogueEvents(
 			segment: {
 				id: `history:${memory.id}`,
 				label: "prior_message:user",
-				content: text,
+				content: priorDialogueContent(text, speakerName),
 				stable: false,
 				metadata: {
 					roomId: memory.roomId,
 					entityId: memory.entityId,
+					...(speakerName ? { speakerName } : {}),
 				},
 			},
 		});
@@ -2667,6 +2724,44 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				],
 			}),
 		},
+		{
+			name: "core.contextual_identity_lookup_requires_recall",
+			description:
+				"Routes short chat-entity identity lookups through memory/messaging instead of letting Stage 1 guess from the simple shortcut.",
+			priority: 20,
+			shouldRun: ({ message, messageHandler }) =>
+				!isSubAgentCompletionArtifact(message) &&
+				isSimpleMessageHandlerShortcut(messageHandler) &&
+				extractContextualIdentityLookupSubject(
+					getUserMessageText(message) ?? "",
+				) !== null,
+			evaluate: ({ runtime, message }) => {
+				const subject = extractContextualIdentityLookupSubject(
+					getUserMessageText(message) ?? "",
+				);
+				const messageAction = findRuntimeActionByNames(runtime, ["MESSAGE"]);
+				return {
+					setContexts: ["general", "memory", "messaging"],
+					...(messageAction
+						? {
+								addCandidateActions: [messageAction.name],
+							}
+						: {}),
+					clearReply: true,
+					addContextSlices: [
+						[
+							"identity_lookup_policy:",
+							`The current user is asking who/what "${subject ?? "the named subject"}" is in context.`,
+							"Ground the answer in recent messages, memory, or message-search results before identifying the subject.",
+							"If recalled context does not identify a chat-local subject, say that plainly instead of inventing a relationship; only use public knowledge when the subject is clearly a public entity.",
+						].join("\n"),
+					],
+					debug: [
+						`short identity lookup for "${subject ?? "unknown"}"; routing through recall context before answering`,
+					],
+				};
+			},
+		},
 	];
 
 /**
@@ -2710,6 +2805,8 @@ direct/private rules:
 - Ordinary chat, static knowledge, creative writing, rewriting, translation, brainstorming, and short explanations should use contexts=["simple"] and put the final answer in replyText.
 - For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 - Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
+- Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If the message refers to a specific name, person, nickname, or thing you cannot identify from the visible context, choose a non-simple context (such as general or memory) instead of guessing.
+- Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible context, say so plainly.
 - For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
 - contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
@@ -3431,6 +3528,122 @@ function looksLikeCompleteDirectReply(replyText: string): boolean {
 	return (
 		/[.!?。！？]$/u.test(normalized) || normalized.split(/\s+/u).length >= 8
 	);
+}
+
+function isSimpleMessageHandlerShortcut(
+	messageHandler: MessageHandlerResult,
+): boolean {
+	if (messageHandler.processMessage !== "RESPOND") return false;
+	if (messageHandler.plan.requiresTool === true) return false;
+	const contexts = messageHandler.plan.contexts ?? [];
+	const nonSimpleContexts = contexts.filter(
+		(context) => context !== SIMPLE_CONTEXT_ID,
+	);
+	return (
+		nonSimpleContexts.length === 0 &&
+		(messageHandler.plan.candidateActions?.length ?? 0) === 0
+	);
+}
+
+const CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES = [
+	"who is ",
+	"who are ",
+	"who was ",
+	"who were ",
+	"who's ",
+	"whos ",
+	"what is ",
+	"what was ",
+	"what's ",
+	"whats ",
+	"tell me about ",
+	"do you know ",
+	"do you remember ",
+	"what do you know about ",
+] as const;
+
+const CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS = new Set([
+	"he",
+	"her",
+	"him",
+	"i",
+	"it",
+	"me",
+	"she",
+	"that",
+	"them",
+	"they",
+	"this",
+	"us",
+	"we",
+	"you",
+]);
+
+function removeLeadingPlatformAddress(text: string): string {
+	let cleaned = text
+		.replace(/<@!?\d+>/gu, " ")
+		.replace(/\s+/gu, " ")
+		.trim();
+	const displayAddressRe = /(?:^|[\s:])[^:\n]{0,96}\(@\d+\)\s+/gu;
+	let displayAddressEnd = -1;
+	for (
+		let displayAddressMatch = displayAddressRe.exec(cleaned);
+		displayAddressMatch !== null;
+		displayAddressMatch = displayAddressRe.exec(cleaned)
+	) {
+		displayAddressEnd = displayAddressRe.lastIndex;
+	}
+	if (displayAddressEnd > 0) {
+		cleaned = cleaned.slice(displayAddressEnd).trim();
+	}
+	return cleaned;
+}
+
+function cleanContextualLookupSubject(subject: string): string {
+	return subject
+		.replace(/[\s?.!]+$/gu, "")
+		.replace(/^["'`“”‘’]+|["'`“”‘’]+$/gu, "")
+		.replace(
+			/\s+(?:in|from|on)\s+(?:this\s+)?(?:chat|channel|thread|server)$/iu,
+			"",
+		)
+		.trim();
+}
+
+function isShortContextualLookupSubject(subject: string): boolean {
+	const normalized = subject.toLowerCase();
+	if (!normalized || CONTEXTUAL_IDENTITY_PRONOUN_SUBJECTS.has(normalized)) {
+		return false;
+	}
+	const words = normalized.split(/\s+/u).filter(Boolean);
+	if (words.length === 0 || words.length > 3) return false;
+	if (subject.length > 48) return false;
+	if (/^[0-9\s.,:+*/=()-]+$/u.test(subject)) return false;
+	const looksLikeLocalName =
+		/[@_\-0-9]/u.test(subject) ||
+		/\b(?:bot|agent|ai)\b/iu.test(subject) ||
+		/^[a-z][a-z0-9_-]{6,}$/u.test(subject);
+	return looksLikeLocalName;
+}
+
+function lastNonEmptyLine(text: string): string {
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	for (let index = lines.length - 1; index >= 0; index -= 1) {
+		const line = lines[index]?.trim();
+		if (line) return line;
+	}
+	return text.trim();
+}
+
+function extractContextualIdentityLookupSubject(text: string): string | null {
+	const cleaned = removeLeadingPlatformAddress(lastNonEmptyLine(text));
+	const lower = cleaned.toLowerCase();
+	for (const prefix of CONTEXTUAL_IDENTITY_LOOKUP_PREFIXES) {
+		if (!lower.startsWith(prefix)) continue;
+		const subject = cleanContextualLookupSubject(cleaned.slice(prefix.length));
+		return isShortContextualLookupSubject(subject) ? subject : null;
+	}
+	return null;
 }
 
 function shouldPreferCompleteDirectReply(args: {
@@ -5111,11 +5324,17 @@ export async function runV5MessageRuntimeStage1(args: {
 			preselectedActions: exposedPlannerActions,
 			actionSurface,
 		});
+		const responseHandlerContextSlices = stringArrayProperty(
+			(messageHandler.plan as { contextSlices?: unknown }).contextSlices,
+		);
 		const plannerContextWithDecision = appendContextEvent(plannerContext, {
 			id: `message-handler:${messageHandlerEndedAt}`,
 			type: "message_handler",
 			source: "message-service",
 			createdAt: messageHandlerEndedAt,
+			...(responseHandlerContextSlices.length > 0
+				? { content: responseHandlerContextSlices.join("\n\n") }
+				: {}),
 			metadata: {
 				processMessage: messageHandler.processMessage,
 				plan: {
@@ -5125,6 +5344,9 @@ export async function runV5MessageRuntimeStage1(args: {
 						: {}),
 					candidateActions: getMessageHandlerCandidateActions(messageHandler),
 					parentActionHints: getMessageHandlerParentActionHints(messageHandler),
+					...(responseHandlerContextSlices.length > 0
+						? { contextSlices: responseHandlerContextSlices }
+						: {}),
 					...(messageHandler.plan.reply !== undefined
 						? { reply: messageHandler.plan.reply }
 						: {}),
