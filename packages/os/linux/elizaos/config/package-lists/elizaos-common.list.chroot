@@ -28,6 +28,14 @@ libgl1-mesa-dri
 libegl1
 fonts-dejavu-core
 
+# First-boot interactive setup wizard (language / timezone / persistence
+# intent). Whiptail's pure-TUI newt-based menus work on /dev/tty1 before
+# the kiosk grabs the seat; locales generates the chosen LANG; tzdata
+# carries the zoneinfo db for timedatectl set-timezone.
+whiptail
+locales
+tzdata
+
 # elizaOS runtime dependencies.
 ca-certificates
 curl

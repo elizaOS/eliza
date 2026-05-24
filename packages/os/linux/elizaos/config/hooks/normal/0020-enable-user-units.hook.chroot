@@ -10,6 +10,7 @@
 set -eu
 
 chmod 0755 /usr/local/lib/elizaos/first-boot.sh \
+           /usr/local/lib/elizaos/first-boot-wizard.sh \
            /usr/lib/elizaos/wait-agent-health.sh \
            /usr/lib/elizaos/run-terminal-tui-smoke.sh \
            /usr/local/lib/elizaos/start-kiosk \

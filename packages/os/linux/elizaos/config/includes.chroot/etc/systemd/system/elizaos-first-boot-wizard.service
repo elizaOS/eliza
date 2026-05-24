@@ -1,0 +1,27 @@
+[Unit]
+Description=elizaOS first-boot interactive setup wizard (language / timezone / persistence intent)
+DefaultDependencies=no
+After=systemd-tmpfiles-setup.service local-fs.target
+Before=getty@tty1.service elizaos-first-boot.service multi-user.target
+ConditionPathExists=!/var/lib/elizaos/.first-boot-wizard-complete
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/elizaos/first-boot-wizard.sh
+StandardInput=tty
+StandardOutput=tty
+StandardError=journal+console
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+# Honor the same non-interactive escape hatch the wizard itself checks for:
+# scripted builds / CI / qemu smoke tests set ELIZAOS_NONINTERACTIVE=1 (via
+# /etc/environment or the kernel cmdline → systemd ImportCredential) so the
+# wizard records defaults and exits without blocking multi-user.target.
+Environment=ELIZAOS_NONINTERACTIVE=0
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

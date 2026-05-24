@@ -108,7 +108,10 @@ visudo -cf "${SUDOERS}"
 
 # Enable services. First-boot is system-level; app launcher + chat
 # overlay are user units enabled by /etc/skel/.config/systemd/user
-# (created by hook 0030).
+# (created by hook 0030). The first-boot WIZARD runs before getty@tty1
+# so the locale/timezone/persistence-intent prompts land on the active
+# console before autologin grabs it.
+systemctl enable elizaos-first-boot-wizard.service || true
 systemctl enable elizaos-first-boot.service || true
 systemctl enable elizaos-agent.service || true
 systemctl enable elizaos-terminal-tui-smoke.service || true
