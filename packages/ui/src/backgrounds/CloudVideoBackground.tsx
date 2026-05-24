@@ -224,7 +224,7 @@ export function CloudVideoBackground({
           }}
         />
       ) : null}
-      {animated && loadVideo ? (
+      {animated ? (
         <video
           ref={videoRef}
           autoPlay
@@ -243,7 +243,7 @@ export function CloudVideoBackground({
             width: "100%",
             height: "100%",
             objectFit: "cover",
-            opacity: videoReady ? 1 : 0,
+            opacity: loadVideo && videoReady ? 1 : 0,
             transition: "opacity 700ms ease",
             zIndex: 1,
           }}
