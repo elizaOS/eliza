@@ -25,6 +25,7 @@ PKG_ROOT = Path(__file__).resolve().parents[1]
 if str(PKG_ROOT) not in sys.path:
     sys.path.insert(0, str(PKG_ROOT))
 
+from eliza_robot.curriculum.goal_checker import GoalChecker, TelemetrySample  # noqa: E402
 from eliza_robot.profiles.schema import list_profiles, load_profile  # noqa: E402
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy  # noqa: E402
 from eliza_robot.rl.text_conditioned.profile_env import (  # noqa: E402
@@ -80,14 +81,62 @@ def _fit_action(action: np.ndarray, dim: int) -> np.ndarray:
     return np.concatenate([action, np.zeros(dim - action.shape[0], dtype=np.float32)])
 
 
-def _roll_one(env, policy, task_id: str, *, max_steps: int) -> tuple[float, int]:
-    obs, _ = env.reset(seed=int(np.random.randint(2**31 - 1)))
+def _optional_float(value) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not np.isfinite(out):
+        return None
+    return out
+
+
+def _telemetry_sample_from_info(t_s: float, info: dict) -> TelemetrySample:
+    return TelemetrySample(
+        t_s=t_s,
+        torso_x_m=_optional_float(info.get("root_x")),
+        torso_y_m=_optional_float(info.get("root_y")),
+        torso_z_m=_optional_float(info.get("torso_z")),
+        yaw_rad=_optional_float(info.get("root_yaw")),
+        extra={"stand_height_m": info.get("stand_height_m")},
+    )
+
+
+def _roll_one(env, policy, task_id: str, *, max_steps: int) -> dict:
+    original_tasks = env.active_tasks
+    task = next(t for t in original_tasks if t.id == task_id)
+    env.active_tasks = [task]
+    try:
+        obs, _ = env.reset(seed=int(np.random.randint(2**31 - 1)))
+    finally:
+        env.active_tasks = original_tasks
     # Force the requested task by overriding the random pick.
-    env._current_task = next(t for t in env.active_tasks if t.id == task_id)  # noqa: SLF001
+    env._current_task = task  # noqa: SLF001
     env._current_embed = env.embeddings[task_id].reduced_embed.astype(np.float32)  # noqa: SLF001
+    if hasattr(env, "_root_pose_summary"):
+        pose = env._root_pose_summary()  # noqa: SLF001
+        env._episode_start_x = pose["x"]  # noqa: SLF001
+        env._episode_start_y = pose["y"]  # noqa: SLF001
+        env._episode_start_yaw = pose["yaw"]  # noqa: SLF001
+        env._episode_start_torso_z = pose["z"]  # noqa: SLF001
     obs = env._build_obs()  # noqa: SLF001
+    checker = GoalChecker(task, episode_start_t_s=0.0)
+    last_info = {
+        "root_x": getattr(env, "_episode_start_x", 0.0),
+        "root_y": getattr(env, "_episode_start_y", 0.0),
+        "root_yaw": getattr(env, "_episode_start_yaw", 0.0),
+        "torso_z": getattr(env, "_episode_start_torso_z", 0.0),
+        "stand_height_m": getattr(env, "_stand_height_m", None),
+    }
+    last_result = checker.update(_telemetry_sample_from_info(0.0, last_info))
     total = 0.0
     steps = 0
+    terminated = False
+    truncated = False
+    traces = {
+        "torso_z": [],
+        "delta_y": [],
+    }
     for _ in range(max_steps):
         if policy is None:
             action = np.zeros(env.action_space.shape, dtype=np.float32)
@@ -95,12 +144,38 @@ def _roll_one(env, policy, task_id: str, *, max_steps: int) -> tuple[float, int]
             proprio_dim = int(policy.manifest.proprio_dim or (policy.manifest.obs_dim - policy.manifest.pca_dim))
             action, _ = policy.act(task_id, obs[:proprio_dim], deterministic=True)
             action = _fit_action(action, int(env.action_space.shape[0]))
-        obs, r, term, trunc, _ = env.step(action)
+        obs, r, term, trunc, info = env.step(action)
         total += float(r)
         steps += 1
+        last_info = info
+        for key in traces:
+            value = _optional_float(info.get(key))
+            if value is not None:
+                traces[key].append(value)
+        last_result = checker.update(
+            _telemetry_sample_from_info(steps * env.config.control_dt_s, info)
+        )
+        terminated = bool(term)
+        truncated = bool(trunc)
         if term or trunc:
             break
-    return total, steps
+    return {
+        "reward": total,
+        "steps": steps,
+        "terminated": terminated,
+        "truncated": truncated,
+        "success": bool(last_result.success),
+        "failed": bool(last_result.failed),
+        "reason": last_result.reason,
+        "final_delta_x": float(_optional_float(last_info.get("delta_x")) or 0.0),
+        "final_delta_y": float(_optional_float(last_info.get("delta_y")) or 0.0),
+        "final_delta_yaw": float(_optional_float(last_info.get("delta_yaw")) or 0.0),
+        "final_torso_z": float(_optional_float(last_info.get("torso_z")) or 0.0),
+        "min_torso_z": min(traces["torso_z"]) if traces["torso_z"] else None,
+        "max_abs_lateral_drift": (
+            max(abs(v) for v in traces["delta_y"]) if traces["delta_y"] else None
+        ),
+    }
 
 
 def _roll_one_asimov_mjx(env, policy, task_id: str, *, max_steps: int, seed: int) -> tuple[float, int]:
@@ -253,16 +328,34 @@ def evaluate(
     for task_id in tasks:
         rewards = []
         survivals = []
+        successes = []
+        failures = []
+        delta_x = []
+        delta_y = []
+        delta_yaw = []
+        torso_z = []
         for _ in range(episodes):
-            r, s = _roll_one(env, policy, task_id, max_steps=max_steps)
-            rewards.append(r)
-            survivals.append(s)
+            rollout = _roll_one(env, policy, task_id, max_steps=max_steps)
+            rewards.append(float(rollout["reward"]))
+            survivals.append(int(rollout["steps"]))
+            successes.append(bool(rollout["success"]))
+            failures.append(bool(rollout["failed"]))
+            delta_x.append(float(rollout["final_delta_x"]))
+            delta_y.append(float(rollout["final_delta_y"]))
+            delta_yaw.append(float(rollout["final_delta_yaw"]))
+            torso_z.append(float(rollout["final_torso_z"]))
         per_task[task_id] = {
             "mean_reward": float(np.mean(rewards)),
             "std_reward": float(np.std(rewards)),
             "min_reward": float(np.min(rewards)),
             "max_reward": float(np.max(rewards)),
             "mean_steps_survived": float(np.mean(survivals)),
+            "success_rate": float(np.mean(successes)),
+            "failure_rate": float(np.mean(failures)),
+            "mean_final_delta_x_m": float(np.mean(delta_x)),
+            "mean_final_delta_y_m": float(np.mean(delta_y)),
+            "mean_final_delta_yaw_rad": float(np.mean(delta_yaw)),
+            "mean_final_torso_z_m": float(np.mean(torso_z)),
             "episodes": episodes,
         }
     return {
@@ -276,6 +369,9 @@ def evaluate(
         "tasks": per_task,
         "mean_reward_overall": float(
             np.mean([per_task[t]["mean_reward"] for t in tasks])
+        ),
+        "mean_success_rate_overall": float(
+            np.mean([per_task[t]["success_rate"] for t in tasks])
         ),
     }
 

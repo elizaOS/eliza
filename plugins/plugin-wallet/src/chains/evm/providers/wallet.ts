@@ -272,7 +272,11 @@ export class WalletProvider {
         managedRpc.providerName === "elizacloud" ? chain.rpcUrls.default.http[0] : null;
 
       // If Cloud RPC already failed with an auth error for this chain, go straight to fallback.
-      if (managedRpc.providerName === "elizacloud" && fallbackRpcUrl && this._cloudRpcDisabled.has(chainName)) {
+      if (
+        managedRpc.providerName === "elizacloud" &&
+        fallbackRpcUrl &&
+        this._cloudRpcDisabled.has(chainName)
+      ) {
         return http(fallbackRpcUrl);
       }
 

@@ -475,6 +475,7 @@ def main() -> int:
             production_presence_sources = (
                 ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml",
+                ROOT / "board/kicad/e1-phone/manufacturing-closure.yaml",
             )
             first_article_sources = (
                 ROOT
@@ -496,6 +497,9 @@ def main() -> int:
                 / "board/kicad/e1-phone/production/sourcing/"
                 "supplier-evidence-outbound-intake-manifest-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
+                ROOT
+                / "board/kicad/e1-phone/production/readiness/"
+                "production-factory-required-output-presence-inventory-2026-05-22.yaml",
                 ROOT / "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
                 ROOT
                 / "board/kicad/e1-phone/production/test/"

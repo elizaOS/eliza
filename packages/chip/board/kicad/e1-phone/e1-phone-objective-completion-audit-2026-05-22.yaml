@@ -11,6 +11,7 @@ source_artifacts:
 - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
 - board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml
 - board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
+- board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
 - board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
 - board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml
 summary:
@@ -21,6 +22,9 @@ summary:
   enclosure_ready: false
   end_to_end_phone_ready: false
   goal_complete: false
+  manufacturing_closure_release_output_count: 0
+  manufacturing_closure_blocked_candidate_output_file_count: 47
+  manufacturing_closure_has_blocked_candidate_outputs: true
 live_pcb_evidence:
   board_file: packages/chip/board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb
   footprint_count: 87
@@ -109,7 +113,8 @@ objective_requirements:
   - artifact manifest routed_pcb gate is missing
   - live PCB has 87 placeholder footprints
   - live PCB has 0 routed segments and 0 filled zones
-  - production/factory burndown reports zero present fabrication outputs
+  - manufacturing closure reports zero release outputs
+  - 'blocked candidate output files present but release_credit remains false: 47'
   complete: false
 - id: enclosure_ready
   required_evidence:

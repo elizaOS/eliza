@@ -54,7 +54,10 @@ function joinAssetPath(basePath: string, filename: string): string {
   return base ? `${base}/${name}` : `/${name}`;
 }
 
-function cloudLoopSources(basePath: string, speed: CloudVideoSpeed): VideoSource[] {
+function cloudLoopSources(
+  basePath: string,
+  speed: CloudVideoSpeed,
+): VideoSource[] {
   const variants = [
     { size: "1080p", media: "(min-width: 1440px)" },
     { size: "720p", media: "(min-width: 768px)" },

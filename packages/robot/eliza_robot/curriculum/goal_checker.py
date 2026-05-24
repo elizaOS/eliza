@@ -119,132 +119,175 @@ class GoalChecker:
         """Returns (predicate-currently-holds, hold-window-required, reason)."""
         crit = self.task.success
         hold = float(crit.get("hold_s", 0.0))
+        matched = False
+        reasons: list[str] = []
+        stand_height_raw = sample.extra.get("stand_height_m")
+        stand_height_m = float(stand_height_raw) if stand_height_raw is not None else None
 
-        # Generic torso-height bracket (stand/sit/lie/get_up).
-        if "torso_z_min_m" in crit or "torso_z_max_m" in crit:
+        def fail() -> tuple[bool, float, str]:
+            return False, hold, ""
+
+        # All declared predicates are conjunctive. Height alone must not pass
+        # walking, waving, or squatting tasks that also declare motion criteria.
+        if (
+            "torso_z_min_m" in crit
+            or "torso_z_max_m" in crit
+            or "torso_z_min_ratio" in crit
+            or "torso_z_max_ratio" in crit
+        ):
+            matched = True
             if sample.torso_z_m is None:
-                return False, hold, ""
+                return fail()
             lo = float(crit.get("torso_z_min_m", -math.inf))
             hi = float(crit.get("torso_z_max_m", math.inf))
-            if lo <= sample.torso_z_m <= hi:
-                return True, hold, f"torso_z={sample.torso_z_m:.3f}m in [{lo}, {hi}]"
-            return False, hold, ""
+            if "torso_z_min_ratio" in crit:
+                if stand_height_m is None:
+                    return fail()
+                lo = max(lo, stand_height_m * float(crit["torso_z_min_ratio"]))
+            if "torso_z_max_ratio" in crit:
+                if stand_height_m is None:
+                    return fail()
+                hi = min(hi, stand_height_m * float(crit["torso_z_max_ratio"]))
+            if not lo <= sample.torso_z_m <= hi:
+                return fail()
+            reasons.append(f"torso_z={sample.torso_z_m:.3f}m in [{lo:.3f}, {hi:.3f}]")
 
-        # delta_x_m_min / delta_x_m_max (walk forward / backward).
+        window_s = float(crit.get("window_s", self.task.max_episode_s))
         if "delta_x_m_min" in crit and self._init_x_m is not None:
+            matched = True
             min_delta = float(crit["delta_x_m_min"])
             if sample.torso_x_m is None:
-                return False, hold, ""
+                return fail()
             dx = sample.torso_x_m - self._init_x_m
-            ok = dx >= min_delta and not crit.get("no_fall", False) or (
-                dx >= min_delta and not sample.is_walking is None
-            )
-            # The simple form: just check dx and window.
-            window_s = float(crit.get("window_s", self.task.max_episode_s))
-            if dx >= min_delta and elapsed <= window_s + 0.5:
-                return True, hold, f"Δx={dx:.3f}m ≥ {min_delta}"
-            return False, hold, ""
+            if not (dx >= min_delta and elapsed <= window_s + 0.5):
+                return fail()
+            reasons.append(f"Δx={dx:.3f}m ≥ {min_delta}")
 
         if "delta_x_m_max" in crit and self._init_x_m is not None:
+            matched = True
             max_delta = float(crit["delta_x_m_max"])
             if sample.torso_x_m is None:
-                return False, hold, ""
+                return fail()
             dx = sample.torso_x_m - self._init_x_m
-            if dx <= max_delta:
-                return True, hold, f"Δx={dx:.3f}m ≤ {max_delta}"
-            return False, hold, ""
+            if not dx <= max_delta:
+                return fail()
+            reasons.append(f"Δx={dx:.3f}m ≤ {max_delta}")
 
         if "delta_y_m_min" in crit and self._init_y_m is not None:
+            matched = True
             if sample.torso_y_m is None:
-                return False, hold, ""
+                return fail()
             dy = sample.torso_y_m - self._init_y_m
             min_delta = float(crit["delta_y_m_min"])
-            if dy >= min_delta:
-                return True, hold, f"Δy={dy:.3f}m ≥ {min_delta}"
-            return False, hold, ""
+            if not dy >= min_delta:
+                return fail()
+            reasons.append(f"Δy={dy:.3f}m ≥ {min_delta}")
 
         if "delta_y_m_max" in crit and self._init_y_m is not None:
+            matched = True
             if sample.torso_y_m is None:
-                return False, hold, ""
+                return fail()
             dy = sample.torso_y_m - self._init_y_m
             max_delta = float(crit["delta_y_m_max"])
-            if dy <= max_delta:
-                return True, hold, f"Δy={dy:.3f}m ≤ {max_delta}"
-            return False, hold, ""
+            if not dy <= max_delta:
+                return fail()
+            reasons.append(f"Δy={dy:.3f}m ≤ {max_delta}")
+
+        if "max_lateral_drift_m" in crit and self._init_y_m is not None:
+            matched = True
+            if sample.torso_y_m is None:
+                return fail()
+            dy = sample.torso_y_m - self._init_y_m
+            limit = float(crit["max_lateral_drift_m"])
+            if abs(dy) > limit:
+                return fail()
+            reasons.append(f"|Δy|={abs(dy):.3f}m ≤ {limit}")
 
         if "delta_yaw_rad_min" in crit and self._init_yaw_rad is not None:
+            matched = True
             if sample.yaw_rad is None:
-                return False, hold, ""
+                return fail()
             dyaw = _wrap_pi(sample.yaw_rad - self._init_yaw_rad)
-            if dyaw >= float(crit["delta_yaw_rad_min"]):
-                return True, hold, f"Δyaw={math.degrees(dyaw):.1f}°"
-            return False, hold, ""
+            if not dyaw >= float(crit["delta_yaw_rad_min"]):
+                return fail()
+            reasons.append(f"Δyaw={math.degrees(dyaw):.1f}°")
 
         if "delta_yaw_rad_max" in crit and self._init_yaw_rad is not None:
+            matched = True
             if sample.yaw_rad is None:
-                return False, hold, ""
+                return fail()
             dyaw = _wrap_pi(sample.yaw_rad - self._init_yaw_rad)
-            if dyaw <= float(crit["delta_yaw_rad_max"]):
-                return True, hold, f"Δyaw={math.degrees(dyaw):.1f}°"
-            return False, hold, ""
+            if not dyaw <= float(crit["delta_yaw_rad_max"]):
+                return fail()
+            reasons.append(f"Δyaw={math.degrees(dyaw):.1f}°")
 
         if "abs_delta_yaw_rad_min" in crit and self._init_yaw_rad is not None:
+            matched = True
             if sample.yaw_rad is None:
-                return False, hold, ""
+                return fail()
             adyaw = abs(_wrap_pi(sample.yaw_rad - self._init_yaw_rad))
-            if adyaw >= float(crit["abs_delta_yaw_rad_min"]):
-                return True, hold, f"|Δyaw|={math.degrees(adyaw):.1f}°"
-            return False, hold, ""
+            if not adyaw >= float(crit["abs_delta_yaw_rad_min"]):
+                return fail()
+            reasons.append(f"|Δyaw|={math.degrees(adyaw):.1f}°")
 
         if "head_tilt_min_rad" in crit:
-            if sample.head_tilt_rad >= float(crit["head_tilt_min_rad"]):
-                return True, hold, f"head_tilt={sample.head_tilt_rad:.2f}"
-            return False, hold, ""
+            matched = True
+            if sample.head_tilt_rad < float(crit["head_tilt_min_rad"]):
+                return fail()
+            reasons.append(f"head_tilt={sample.head_tilt_rad:.2f}")
 
         if "head_tilt_max_rad" in crit:
-            if sample.head_tilt_rad <= float(crit["head_tilt_max_rad"]):
-                return True, hold, f"head_tilt={sample.head_tilt_rad:.2f}"
-            return False, hold, ""
+            matched = True
+            if sample.head_tilt_rad > float(crit["head_tilt_max_rad"]):
+                return fail()
+            reasons.append(f"head_tilt={sample.head_tilt_rad:.2f}")
 
         if "distance_to_target_m_max" in crit:
+            matched = True
             if sample.target_distance_m is None:
-                return False, hold, ""
-            if sample.target_distance_m <= float(crit["distance_to_target_m_max"]):
-                return True, hold, f"dist={sample.target_distance_m:.3f}m"
-            return False, hold, ""
+                return fail()
+            if sample.target_distance_m > float(crit["distance_to_target_m_max"]):
+                return fail()
+            reasons.append(f"dist={sample.target_distance_m:.3f}m")
 
         if "gripper_separation_max_m" in crit:
+            matched = True
             if sample.gripper_separation_m is None:
-                return False, hold, ""
-            if sample.gripper_separation_m <= float(crit["gripper_separation_max_m"]):
-                return True, hold, f"gripper_sep={sample.gripper_separation_m:.3f}m"
-            return False, hold, ""
+                return fail()
+            if sample.gripper_separation_m > float(crit["gripper_separation_max_m"]):
+                return fail()
+            reasons.append(f"gripper_sep={sample.gripper_separation_m:.3f}m")
 
         # Arm-oscillation detector for wave_left / wave_right tasks.
         for prefix, jname in (("l_sho_pitch_oscillation", "l_sho_pitch"),
                               ("r_sho_pitch_oscillation", "r_sho_pitch")):
             if crit.get(prefix):
+                matched = True
                 cycles = self._count_oscillation_cycles(jname)
-                if cycles >= int(crit.get("cycles_min", 1)):
-                    return True, hold, f"{jname} cycles={cycles}"
-                return False, hold, ""
+                if cycles < int(crit.get("cycles_min", 1)):
+                    return fail()
+                reasons.append(f"{jname} cycles={cycles}")
 
         if "squat_cycles_min" in crit:
+            matched = True
             # Detect torso_z oscillation around the initial standing height.
             cycles = self._count_torso_z_cycles()
-            if cycles >= int(crit["squat_cycles_min"]):
-                return True, hold, f"squat cycles={cycles}"
-            return False, hold, ""
+            if cycles < int(crit["squat_cycles_min"]):
+                return fail()
+            reasons.append(f"squat cycles={cycles}")
 
         if "pushup_count_min" in crit:
+            matched = True
             cycles = self._count_torso_z_cycles(min_amplitude=0.04)
-            if cycles >= int(crit["pushup_count_min"]):
-                return True, hold, f"pushup cycles={cycles}"
-            return False, hold, ""
+            if cycles < int(crit["pushup_count_min"]):
+                return fail()
+            reasons.append(f"pushup cycles={cycles}")
 
         # If nothing matched, treat as "always fail" so the task spec has
         # to be explicit. Tighter than failing silently.
-        return False, hold, "no matching predicate"
+        if not matched:
+            return False, hold, "no matching predicate"
+        return True, hold, "; ".join(reasons)
 
     # ------------------------------------------------------------------
     def _count_oscillation_cycles(self, joint: str, min_amplitude: float = 0.6) -> int:

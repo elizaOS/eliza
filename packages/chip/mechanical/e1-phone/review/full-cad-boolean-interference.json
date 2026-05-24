@@ -5505,5 +5505,5 @@
   "release_blocker_category": "none",
   "release_blocker_count": 0,
   "next_action": "Release-ready boolean evidence requires zero unintentional clashes against routed board STEP and supplier B-rep models.",
-  "wall_seconds": 14.01
+  "wall_seconds": 11.32
 }

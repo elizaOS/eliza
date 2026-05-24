@@ -163,13 +163,16 @@ def run_post_training_validation(
             capture_output=True,
             check=False,
         )
+        parsed = _parse_json(proc.stdout)
+        if parsed is None and "scripts/verify_brax_text_policy.py" in command:
+            parsed = _load_json(job_dir / "inference_check.json")
         steps.append(
             {
                 "argv": command,
                 "returncode": proc.returncode,
                 "stdout": proc.stdout,
                 "stderr": proc.stderr,
-                "parsed": _parse_json(proc.stdout),
+                "parsed": parsed,
                 "passed": proc.returncode == 0,
             }
         )

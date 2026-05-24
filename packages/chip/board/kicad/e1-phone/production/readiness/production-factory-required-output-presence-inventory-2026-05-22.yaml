@@ -8,6 +8,7 @@ inputs:
   production_factory_output_burndown: board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml
   report_path: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
   factory_output_candidate_manifest: board/kicad/e1-phone/production/factory-output-candidate-manifest-2026-05-22.yaml
+  manufacturing_closure: board/kicad/e1-phone/manufacturing-closure.yaml
   source_schema: eliza.e1_phone_production_factory_output_burndown.v1
   source_status: blocked_production_factory_output_burndown_requires_quotes_routed_outputs_assembly_fixture_first_article_reports_and_final_release_evidence
   source_date: 2026-05-22
@@ -21,6 +22,10 @@ summary:
   candidate_manifest_cad_connection_assembly_manifest_terminal_marker_count: 42
   candidate_manifest_cad_connection_assembly_manifest_solid_step_part_count: 63
   candidate_manifest_cad_connection_assembly_manifest_missing_solid_step_part_count: 0
+  manufacturing_closure_has_production_outputs: false
+  manufacturing_closure_release_output_count: 0
+  manufacturing_closure_has_blocked_candidate_outputs: true
+  manufacturing_closure_blocked_candidate_output_file_count: 47
   all_required_output_paths_present: true
   release_state: blocked_fail_closed
 fail_closed_policy:

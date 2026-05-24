@@ -50,6 +50,22 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
+  "full_agent_shard_sweep_ref": {
+    "baseline_weighted_mpki": 4.119273,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 3.012804,
+    "command": "make bpu-sweep-full-agent-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "69fc3524179c4e4e6eff6034c8abefd79d620a0aa875c5a8b125cd4868a8e863",
+    "trace_filter": [
+      "agent_decode",
+      "agent_loop"
+    ]
+  },
   "full_browser_build_crypto_shard_sweep_ref": {
     "baseline_weighted_mpki": 50.151481,
     "best_config": "h2p_lowconf_only",
@@ -138,7 +154,7 @@
       "kernel_syscall_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-24T06:09:11.182035+00:00",
+  "generated_at_utc": "2026-05-24T06:30:28.279306+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -251,7 +267,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "8e050038affa556b08cf410a1f9413e5b795f496",
+  "source_revision": "596b1929a16f971da093a7ef16a8f871453b6b20",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -260,7 +276,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "0200edbde528cef0a48690115751fd8eb065a8a86f89517addabc64517d610f9"
+      "sha256": "08aaf84ecf5bb3f99e25457930ff31c22953d13c3dd67397e77ad2de7435a0e4"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",

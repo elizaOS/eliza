@@ -62,8 +62,8 @@ validation_rows:
   present: true
   artifact_kind: file
   parsed_kind: yaml
-  file_size_bytes: 2615
-  sha256: 38947f0ff202d03ea06841e503a4bf926419f8676236f3aa5aa527d7cf5f2e93
+  file_size_bytes: 2669
+  sha256: 64b66db8f9194578ad75248418553ff313e8b849bd5e93c2860e94782ccda177
   required_content_fields:
   - artifact_id
   - board_serial
@@ -10539,8 +10539,8 @@ present_but_blocked_rows:
   present: true
   artifact_kind: file
   parsed_kind: yaml
-  file_size_bytes: 2615
-  sha256: 38947f0ff202d03ea06841e503a4bf926419f8676236f3aa5aa527d7cf5f2e93
+  file_size_bytes: 2669
+  sha256: 64b66db8f9194578ad75248418553ff313e8b849bd5e93c2860e94782ccda177
   required_content_fields:
   - artifact_id
   - board_serial

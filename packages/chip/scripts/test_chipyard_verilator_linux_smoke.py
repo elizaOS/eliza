@@ -436,6 +436,30 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in timeout_progress["next_step"]:
         raise AssertionError(f"expected timeout-cycle guidance, got {timeout_progress}")
 
+    wall_timeout_progress = smoke.classify_smoke_progress(
+        "OpenSBI v1.8.1\n"
+        "Linux version 6.12.\n"
+        "[    0.000000] Initmem setup node 0 [mem 0x0000000080000000-0x000000008bffffff]\n"
+        "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "exit_code": "124",
+            "timeout_after_seconds": "3600",
+            "last_progress_marker": (
+                "[    0.000000] Initmem setup node 0 "
+                "[mem 0x0000000080000000-0x000000008bffffff]"
+            ),
+        },
+    )
+    if wall_timeout_progress["stage"] != "linux_early_boot_then_wall_timeout":
+        raise AssertionError(f"expected Linux wall-timeout stage, got {wall_timeout_progress}")
+    if (
+        "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in wall_timeout_progress["next_step"]
+        or "Initmem setup node 0" not in wall_timeout_progress["next_step"]
+    ):
+        raise AssertionError(f"expected wall-timeout guidance with Initmem marker, got {wall_timeout_progress}")
+
     no_dramsim_no_uart = smoke.classify_smoke_progress(
         "eliza-evidence: disable_dramsim=1\n"
         "eliza-evidence: raw_transcript_end\n"

@@ -51,6 +51,10 @@ def main() -> int:
     production_burndown = load_yaml(
         BOARD_ROOT / "production-factory-output-burndown-2026-05-22.yaml"
     )
+    production_presence = load_yaml(
+        BOARD_ROOT
+        / "production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml"
+    )
     mechanical_burndown = load_yaml(
         BOARD_ROOT / "enclosure-mechanical-release-burndown-2026-05-22.yaml"
     )
@@ -88,7 +92,11 @@ def main() -> int:
                 f"artifact manifest routed_pcb gate is {release_gates['routed_pcb']['status']}",
                 f"live PCB has {route_counts['placeholder_footprint_count']} placeholder footprints",
                 f"live PCB has {route_counts['segment_count']} routed segments and {route_counts['filled_zone_count']} filled zones",
-                "production/factory burndown reports zero present fabrication outputs",
+                "manufacturing closure reports zero release outputs",
+                (
+                    "blocked candidate output files present but release_credit remains false: "
+                    f"{production_presence['summary']['manufacturing_closure_blocked_candidate_output_file_count']}"
+                ),
             ],
             "complete": False,
         },
@@ -156,6 +164,7 @@ def main() -> int:
             "board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/production/sourcing/supplier-evidence-outbound-intake-manifest-2026-05-22.yaml",
             "board/kicad/e1-phone/production-factory-output-burndown-2026-05-22.yaml",
+            "board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml",
             "board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml",
             "board/kicad/e1-phone/production/test/bench-first-article-template-manifest-2026-05-22.yaml",
         ],
@@ -171,6 +180,17 @@ def main() -> int:
             "enclosure_ready": False,
             "end_to_end_phone_ready": False,
             "goal_complete": False,
+            "manufacturing_closure_release_output_count": production_presence["summary"][
+                "manufacturing_closure_release_output_count"
+            ],
+            "manufacturing_closure_blocked_candidate_output_file_count": (
+                production_presence["summary"][
+                    "manufacturing_closure_blocked_candidate_output_file_count"
+                ]
+            ),
+            "manufacturing_closure_has_blocked_candidate_outputs": production_presence[
+                "summary"
+            ]["manufacturing_closure_has_blocked_candidate_outputs"],
         },
         "live_pcb_evidence": {
             "board_file": route_inventory["inputs"]["board_file"],

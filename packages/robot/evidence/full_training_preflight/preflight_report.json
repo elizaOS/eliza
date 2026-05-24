@@ -1,6 +1,6 @@
 {
   "schema": "robot-end-to-end-full-training-preflight-v1",
-  "created_at": "2026-05-24T06:13:09Z",
+  "created_at": "2026-05-24T06:47:27Z",
   "ok": true,
   "package_root": "/home/shaw/milady/eliza/packages/robot",
   "out_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
@@ -82,7 +82,7 @@
     "curriculum": {
       "version": 2,
       "task_count": 22,
-      "content_sha256": "cd524c5bf5fce957d4a1eb591db02290952e09a5a54953e6c7c3a53599d5debe",
+      "content_sha256": "fd2996d54679cc2ce62e2ae4d04707f2942975a455b60248eb7426f43c890b58",
       "duplicate_ids": [],
       "text_variant_collisions": []
     },
@@ -92,11 +92,7 @@
     "dataset_warning_count": 1,
     "unsupported_future_task_count": 13
   },
-  "multi_robot_readiness": {
-    "ok": true,
-    "alberta_ok": true,
-    "video_ok": true
-  },
+  "multi_robot_readiness": null,
   "launch_order": [
     "scripts/00_local_preflight.sh",
     "scripts/10_nebius_train_alberta.sh",

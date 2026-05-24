@@ -2165,6 +2165,11 @@ def classify_smoke_progress(
     sim_timeout = isinstance(sim_failures, list) and any(
         "timeout" in str(failure) for failure in sim_failures
     )
+    wrapper_timeout = (
+        str(log_metadata.get("exit_code") or "") == "124"
+        or "[timeout-wrapper]" in log_text
+        and "status=timeout" in log_text
+    )
     if "Linux version" in observable_text:
         if sim_timeout:
             return {
@@ -2173,6 +2178,20 @@ def classify_smoke_progress(
                     "rerun the generated AP smoke with a larger "
                     "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
                     "to reach Linux command line/initramfs markers"
+                ),
+            }
+        if wrapper_timeout:
+            last_progress = str(log_metadata.get("last_progress_marker") or "").strip()
+            progress_detail = f"; last progress marker: {last_progress}" if last_progress else ""
+            return {
+                "stage": "linux_early_boot_then_wall_timeout",
+                "next_step": (
+                    "generated AP reached the Linux banner but the smoke wrapper hit "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS before accepted command-line/"
+                    "initramfs/userspace markers appeared"
+                    f"{progress_detail}; increase the wall-clock budget only if the "
+                    "same marker is still making forward progress, otherwise debug "
+                    "the Linux early memory/platform handoff"
                 ),
             }
         return {

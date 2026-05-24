@@ -375,7 +375,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
         "right_foot_ankle",
         "left_knee_shin",
         "right_knee_shin",
-        "torso_front_chest",
+        "torso_chest_core_shell",
         "front_pelvis",
         "rear_pelvis_bridge",
         "left_rear_hip_fairing",
@@ -435,6 +435,12 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
         / min(left_foot_ankle["total_solid_volume_cm3"], right_foot_ankle["total_solid_volume_cm3"])
     )
     assert foot_volume_ratio < 2.0
+    assert subassembly_raw["foot_ankle_balance"]["verdict"] == "pass"
+    assert subassembly_raw["foot_ankle_balance"]["mounted_robot_bodies"] == [
+        "left_ankle_roll_link",
+        "right_ankle_roll_link",
+    ]
+    assert subassembly_raw["foot_ankle_balance"]["left_right_volume_ratio"] < 2.0
     assert subassembly_raw["source_body_subassemblies"]["right_knee_shin"]["mounted_robot_bodies"] == [
         "right_knee_link"
     ]

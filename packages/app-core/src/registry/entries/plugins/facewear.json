@@ -104,11 +104,7 @@
     "icon": "Glasses",
     "group": "hardware",
     "groupOrder": 8,
-    "actions": [
-      "enable",
-      "configure",
-      "launch"
-    ]
+    "actions": ["enable", "configure", "launch"]
   },
   "resources": {
     "homepage": "https://elizaos.ai",

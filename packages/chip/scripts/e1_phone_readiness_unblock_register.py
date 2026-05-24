@@ -277,6 +277,17 @@ def main() -> int:
             "non_release_acceptance_artifact_count": sum(
                 len(item["non_release_acceptance_artifacts"]) for item in blockers
             ),
+            "production_presence_release_output_count": production_presence["summary"][
+                "manufacturing_closure_release_output_count"
+            ],
+            "production_presence_blocked_candidate_output_file_count": (
+                production_presence["summary"][
+                    "manufacturing_closure_blocked_candidate_output_file_count"
+                ]
+            ),
+            "production_presence_has_blocked_candidate_outputs": production_presence[
+                "summary"
+            ]["manufacturing_closure_has_blocked_candidate_outputs"],
             "fabrication_ready": False,
             "enclosure_ready": False,
             "end_to_end_phone_ready": False,

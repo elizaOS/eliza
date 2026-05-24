@@ -144,6 +144,7 @@ riscv64-gui-kiosk-iso-check:
 arm64-gui-kiosk-iso-check:
 	scripts/check-riscv64-gui-kiosk-iso.py \
 	    --arch arm64 \
+	    $(if $(ISO),--iso "$(ISO)",) \
 	    --out "$(ARM64_GUI_KIOSK_REPORT)"
 
 arm64-qemu-virt-boot:

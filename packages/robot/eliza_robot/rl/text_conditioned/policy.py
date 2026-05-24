@@ -190,6 +190,8 @@ class TextConditionedPolicy:
         _, task_embed, _ = self.resolve_task(text)
         output_dim = int(output_dim or self.manifest.output_dim)
         proprio_dim = int(self.manifest.proprio_dim or (self.manifest.obs_dim - task_embed.shape[0]))
+        model_obs_dim = int(getattr(self._model, "observation_dim", self.manifest.obs_dim))
+        task_embed = _pad_or_trim(task_embed, max(0, model_obs_dim - proprio_dim))
         if proprio.shape[0] < proprio_dim:
             proprio = np.concatenate([
                 proprio.astype(np.float32),
@@ -252,6 +254,14 @@ class _BraxPPOModelAdapter:
             with open(pkl_path, "rb") as f:
                 params = pickle.load(f)
 
+        self.observation_dim = manifest.obs_dim
+        try:
+            normalizer_mean = getattr(params[0], "mean", None)
+            if isinstance(normalizer_mean, dict) and manifest.policy_obs_key in normalizer_mean:
+                self.observation_dim = int(normalizer_mean[manifest.policy_obs_key].shape[0])
+        except Exception:
+            pass
+
         # Build the same network the trainer used.
         preprocess = (
             running_statistics.normalize
@@ -259,13 +269,19 @@ class _BraxPPOModelAdapter:
             else lambda x, _: x
         )
         asymmetric_obs = manifest.value_obs_key != manifest.policy_obs_key
+        critic_obs_dim = int(manifest.critic_obs_dim or manifest.obs_dim)
+        if self.observation_dim != manifest.obs_dim:
+            critic_obs_dim = max(
+                self.observation_dim,
+                critic_obs_dim - (manifest.obs_dim - self.observation_dim),
+            )
         observation_size = (
             {
-                manifest.policy_obs_key: manifest.obs_dim,
-                manifest.value_obs_key: int(manifest.critic_obs_dim or manifest.obs_dim),
+                manifest.policy_obs_key: self.observation_dim,
+                manifest.value_obs_key: critic_obs_dim,
             }
             if asymmetric_obs
-            else manifest.obs_dim
+            else self.observation_dim
         )
         networks = ppo_networks.make_ppo_networks(
             observation_size=observation_size,

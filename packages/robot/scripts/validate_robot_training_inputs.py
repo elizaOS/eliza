@@ -39,18 +39,23 @@ SUPPORTED_REWARD_KEYS = {
     "target_yaw_rate_rad_s",
     "target_yaw_change_rad",
     "torso_height_target_m",
+    "torso_height_target_ratio",
     "torso_height_tolerance_m",
+    "torso_height_tolerance_ratio",
     "upright_weight",
     "velocity_track_weight",
     "yaw_track_weight",
     "gait_phase_weight",
     "action_rate_weight",
     "energy_weight",
+    "progress_weight",
 }
 
 SUPPORTED_SUCCESS_KEYS = {
     "torso_z_min_m",
     "torso_z_max_m",
+    "torso_z_min_ratio",
+    "torso_z_max_ratio",
     "hold_s",
     "fall_pitch_rad",
     "fall_roll_rad",
@@ -77,7 +82,7 @@ def _task_support(task) -> tuple[bool, list[str]]:
         reasons.append(f"unsupported_reward_keys={unsupported_reward}")
     if unsupported_success:
         reasons.append(f"unsupported_success_keys={unsupported_success}")
-    if task.init_state not in (None, "stand"):
+    if task.init_state not in (None, "stand", "sit", "crouch"):
         reasons.append(f"unsupported_init_state={task.init_state!r}")
     return not reasons, reasons
 

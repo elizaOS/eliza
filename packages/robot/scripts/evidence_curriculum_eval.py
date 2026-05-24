@@ -122,6 +122,7 @@ async def _evaluate_task(
     checker = GoalChecker(task, episode_start_t_s=t0)
     divergence_samples: list[float] = []
     sim_frames_for_video: list[np.ndarray] = []
+    last_result = None
 
     cfg = InferenceLoopConfig(
         hz=policy_hz,
@@ -130,9 +131,15 @@ async def _evaluate_task(
     )
 
     async def _watch():
+        nonlocal last_result
         frame_period = 1.0 / fps
         next_frame = time.time()
         t_end = time.time() + episode_s
+        stand_height_m = None
+        try:
+            stand_height_m = float(sim_env.get_robot_position()[2])
+        except Exception:
+            pass
         while time.time() < t_end:
             now = time.time()
             if now < next_frame:
@@ -159,8 +166,9 @@ async def _evaluate_task(
                     torso_z_m=float(pos[2]),
                     yaw_rad=float(sim_env.get_robot_yaw()),
                     joint_positions=sim_pos,
+                    extra={"stand_height_m": stand_height_m},
                 )
-                checker.update(sample)
+                last_result = checker.update(sample)
             except Exception:
                 pass
 
@@ -178,9 +186,8 @@ async def _evaluate_task(
         await _watch()
         await inference_task
 
-        last_result = checker.update(TelemetrySample(t_s=time.time()))
-        success_prog = bool(last_result.success)
-        reason = last_result.reason or ""
+        success_prog = bool(last_result.success) if last_result is not None else False
+        reason = (last_result.reason or "") if last_result is not None else "no telemetry samples"
     except Exception as exc:
         traceback.print_exc()
         return TaskResult(

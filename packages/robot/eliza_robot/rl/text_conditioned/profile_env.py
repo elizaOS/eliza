@@ -14,6 +14,7 @@ Asimov-specific `TextConditionedAsimovEnv` so the unified training CLI in
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import math
 from pathlib import Path
 
 import gymnasium as gym
@@ -151,6 +152,10 @@ class TextConditionedProfileEnv(gym.Env):
         self._current_embed = np.zeros(self.config.pca_dim, dtype=np.float32)
         self._previous_action = np.zeros(self._action_dim, dtype=np.float32)
         self._step_count = 0
+        self._episode_start_x = 0.0
+        self._episode_start_y = 0.0
+        self._episode_start_yaw = 0.0
+        self._episode_start_torso_z = 0.0
         # Per-profile fall envelope. The robot is "fallen" when the torso
         # drops below 60% of standing height OR pitches/rolls past 0.8 rad.
         # Standing height comes from the profile's gait spec — for AiNex
@@ -236,19 +241,85 @@ class TextConditionedProfileEnv(gym.Env):
         self._ensure_model()
         import mujoco
 
+        task = self.active_tasks[self.np_random.integers(len(self.active_tasks))]
         mujoco.mj_resetData(self._model, self._data)
         # Snap key 0 (typically "stand"/"home") if available.
         if self._model.nkey > 0:
             mujoco.mj_resetDataKeyframe(self._model, self._data, 0)
+        self._apply_task_init_state(task)
         if self.config.domain_rand:
             self._apply_domain_randomization()
         mujoco.mj_forward(self._model, self._data)
         self._previous_action.fill(0.0)
+        self._prev_action.fill(0.0)
         self._step_count = 0
-        task = self.active_tasks[self.np_random.integers(len(self.active_tasks))]
         self._current_task = task
         self._current_embed = self.embeddings[task.id].reduced_embed.astype(np.float32)
+        pose = self._root_pose_summary()
+        self._episode_start_x = pose["x"]
+        self._episode_start_y = pose["y"]
+        self._episode_start_yaw = pose["yaw"]
+        self._episode_start_torso_z = pose["z"]
         return self._build_obs(), {"task_id": task.id, "task_tier": task.tier}
+
+    def _apply_task_init_state(self, task: TaskSpec) -> None:
+        """Apply light-weight curriculum reset states before mj_forward().
+
+        These are intentionally simple and profile-generic. They are not a
+        replacement for authored keyframes, but they make the training problem
+        structurally honest: a sit-to-stand task starts low instead of already
+        standing, and future prone tasks can fail loudly until their reset state
+        is promoted from approximation to profile keyframe.
+        """
+        init_state = task.init_state
+        if init_state in (None, "stand"):
+            return
+        root = self._root_qpos_idx
+        if init_state in {"sit", "crouch"} and self._data.qpos.size > root + 2:
+            extra = task.model_extra or {}
+            if "init_torso_z_m" in extra:
+                target_z = float(extra["init_torso_z_m"])
+            else:
+                target_z = self._stand_height_m * float(
+                    extra.get("init_torso_height_ratio", 0.65)
+                )
+            self._data.qpos[root + 2] = target_z
+            self._set_named_joint_if_present(("hip_pitch",), -0.45)
+            self._set_named_joint_if_present(("knee",), 0.85)
+            self._set_named_joint_if_present(("ank_pitch", "ankle_pitch"), -0.35)
+            return
+        if init_state == "prone" and self._data.qpos.size > root + 6:
+            extra = task.model_extra or {}
+            if "init_torso_z_m" in extra:
+                target_z = float(extra["init_torso_z_m"])
+            else:
+                target_z = self._stand_height_m * float(
+                    extra.get("init_torso_height_ratio", 0.25)
+                )
+            self._data.qpos[root + 2] = target_z
+            # MuJoCo free-joint quaternion [w, x, y, z], rotate 90deg about X.
+            self._data.qpos[root + 3: root + 7] = np.array(
+                [math.sqrt(0.5), math.sqrt(0.5), 0.0, 0.0],
+                dtype=self._data.qpos.dtype,
+            )
+            return
+        raise ValueError(
+            f"task {task.id!r} requests unsupported init_state={init_state!r}"
+        )
+
+    def _set_named_joint_if_present(
+        self,
+        name_fragments: tuple[str, ...],
+        value: float,
+    ) -> None:
+        for joint, qpos_idx in zip(
+            self.profile.kinematics.joints,
+            self._profile_joint_qpos_idx,
+            strict=True,
+        ):
+            lowered = joint.name.lower()
+            if any(fragment in lowered for fragment in name_fragments):
+                self._data.qpos[qpos_idx] = float(np.clip(value, joint.lower_rad, joint.upper_rad))
 
     def _apply_domain_randomization(self) -> None:
         """Resample friction / mass / COM / damping / motor gear around the
@@ -304,10 +375,17 @@ class TextConditionedProfileEnv(gym.Env):
             mujoco.mj_step(self._model, self._data)
         self._step_count += 1
         obs = self._build_obs()
-        torso_z, upright_proj = self._root_pose_summary()
-        terminated = bool(torso_z < self._fall_z_threshold or upright_proj < 0.0)
+        pose = self._root_pose_summary()
+        torso_z = pose["z"]
+        upright_proj = pose["upright_proj"]
+        fall_z_threshold = self._fall_z_threshold_for_current_task()
+        terminated = bool(torso_z < fall_z_threshold or upright_proj < 0.0)
         truncated = self._step_count >= self.config.episode_steps
-        reward = self._reward(clipped, torso_z=torso_z, upright_proj=upright_proj, fell=terminated)
+        reward = self._reward(clipped, pose=pose, fell=terminated)
+        elapsed_s = max(self._step_count * self.config.control_dt_s, 1e-6)
+        dx = pose["x"] - self._episode_start_x
+        dy = pose["y"] - self._episode_start_y
+        dyaw = _wrap_pi(pose["yaw"] - self._episode_start_yaw)
         return (
             obs,
             float(reward),
@@ -317,8 +395,27 @@ class TextConditionedProfileEnv(gym.Env):
                 "task_id": self._current_task.id,
                 "torso_z": torso_z,
                 "upright_proj": upright_proj,
+                "root_x": pose["x"],
+                "root_y": pose["y"],
+                "root_yaw": pose["yaw"],
+                "delta_x": dx,
+                "delta_y": dy,
+                "delta_yaw": dyaw,
+                "vx": dx / elapsed_s,
+                "vy": dy / elapsed_s,
+                "yaw_rate": dyaw / elapsed_s,
+                "init_torso_z": self._episode_start_torso_z,
+                "stand_height_m": self._stand_height_m,
+                "fall_threshold": fall_z_threshold,
             },
         )
+
+    def _fall_z_threshold_for_current_task(self) -> float:
+        if self._current_task is None:
+            return self._fall_z_threshold
+        if self._current_task.init_state in {"sit", "crouch", "prone"}:
+            return min(self._fall_z_threshold, max(0.03, 0.75 * self._episode_start_torso_z))
+        return self._fall_z_threshold
 
     def _write_joint_targets(self, action_targets: np.ndarray) -> None:
         """Write controls for all profiled joints.
@@ -358,8 +455,10 @@ class TextConditionedProfileEnv(gym.Env):
                 ctrl = float(np.clip(ctrl, lo, hi))
             self._data.ctrl[aid] = ctrl
 
-    def _root_pose_summary(self) -> tuple[float, float]:
+    def _root_pose_summary(self) -> dict[str, float]:
         root = self._root_qpos_idx
+        root_x = float(self._data.qpos[root]) if self._data.qpos.size > root else 0.0
+        root_y = float(self._data.qpos[root + 1]) if self._data.qpos.size > root + 1 else 0.0
         torso_z = float(self._data.qpos[root + 2]) if self._data.qpos.size > root + 2 else 0.0
         # Body tilt: project gravity into the torso frame. xyaxes derived
         # from the free joint orientation; if quat is [w,x,y,z] then
@@ -367,9 +466,20 @@ class TextConditionedProfileEnv(gym.Env):
         if self._data.qpos.size >= root + 7:
             qw, qx, qy, qz = (float(self._data.qpos[root + i]) for i in (3, 4, 5, 6))
             upright_proj = 1.0 - 2.0 * (qx * qx + qy * qy)
+            yaw = math.atan2(
+                2.0 * (qw * qz + qx * qy),
+                1.0 - 2.0 * (qy * qy + qz * qz),
+            )
         else:
             upright_proj = 1.0
-        return torso_z, upright_proj
+            yaw = 0.0
+        return {
+            "x": root_x,
+            "y": root_y,
+            "z": torso_z,
+            "yaw": yaw,
+            "upright_proj": upright_proj,
+        }
 
     def render(self):
         return None
@@ -405,8 +515,7 @@ class TextConditionedProfileEnv(gym.Env):
         self,
         action: np.ndarray,
         *,
-        torso_z: float,
-        upright_proj: float,
+        pose: dict[str, float],
         fell: bool,
     ) -> float:
         """Composite reward shaped to discourage the "fall-fast, collect
@@ -426,6 +535,9 @@ class TextConditionedProfileEnv(gym.Env):
         """
         assert self._current_task is not None
         r = self._current_task.reward
+        crit = self._current_task.success
+        torso_z = pose["z"]
+        upright_proj = pose["upright_proj"]
         vx_target = float(r.get("target_velocity_x_m_s", 0.0))
         vy_target = float(r.get("target_velocity_y_m_s", 0.0))
         yaw_target = float(r.get("target_yaw_rate_rad_s", 0.0))
@@ -437,26 +549,77 @@ class TextConditionedProfileEnv(gym.Env):
         vx_actual = float(self._data.qvel[root_v]) if self._data.qvel.size > root_v else 0.0
         vy_actual = float(self._data.qvel[root_v + 1]) if self._data.qvel.size > root_v + 1 else 0.0
         yaw_actual = float(self._data.qvel[root_v + 5]) if self._data.qvel.size > root_v + 5 else 0.0
-        velocity_track = (
-            np.exp(-2.0 * (vx_actual - vx_target) ** 2)
-            + np.exp(-2.0 * (vy_actual - vy_target) ** 2)
-            + np.exp(-2.0 * (yaw_actual - yaw_target) ** 2)
-        ) / 3.0
+        velocity_terms: list[float] = []
+        if "target_velocity_x_m_s" in r:
+            velocity_terms.append(float(np.exp(-2.0 * (vx_actual - vx_target) ** 2)))
+        if "target_velocity_y_m_s" in r:
+            velocity_terms.append(float(np.exp(-2.0 * (vy_actual - vy_target) ** 2)))
+        if "target_yaw_rate_rad_s" in r:
+            velocity_terms.append(float(np.exp(-2.0 * (yaw_actual - yaw_target) ** 2)))
+        velocity_track = float(np.mean(velocity_terms)) if velocity_terms else 0.0
+        height_target = float(
+            r.get(
+                "torso_height_target_m",
+                self._stand_height_m * float(r.get("torso_height_target_ratio", 1.0)),
+            )
+        )
+        height_tol = float(
+            r.get(
+                "torso_height_tolerance_m",
+                self._stand_height_m * float(r.get("torso_height_tolerance_ratio", 0.12)),
+            )
+        )
+        height_tol = max(height_tol, 1e-3)
         height_track = float(
-            np.exp(-4.0 * (torso_z - self._stand_height_m) ** 2)
+            np.exp(-((torso_z - height_target) ** 2) / (2.0 * height_tol * height_tol))
         )
         upright_bonus = float(max(0.0, upright_proj))
         action_rate = float(np.mean((action - self._prev_action) ** 2))
         energy = float(np.mean(action**2))
+        elapsed_s = max(self._step_count * self.config.control_dt_s, 1e-6)
+        dx = pose["x"] - self._episode_start_x
+        dy = pose["y"] - self._episode_start_y
+        dyaw = _wrap_pi(pose["yaw"] - self._episode_start_yaw)
+        progress = 0.0
+        if "delta_x_m_min" in crit:
+            progress += _clamped_ratio(dx, float(crit["delta_x_m_min"]))
+        if "delta_x_m_max" in crit:
+            progress += _clamped_ratio(-dx, abs(float(crit["delta_x_m_max"])))
+        if "delta_y_m_min" in crit:
+            progress += _clamped_ratio(dy, float(crit["delta_y_m_min"]))
+        if "delta_y_m_max" in crit:
+            progress += _clamped_ratio(-dy, abs(float(crit["delta_y_m_max"])))
+        if "delta_yaw_rad_min" in crit:
+            progress += _clamped_ratio(dyaw, float(crit["delta_yaw_rad_min"]))
+        if "delta_yaw_rad_max" in crit:
+            progress += _clamped_ratio(-dyaw, abs(float(crit["delta_yaw_rad_max"])))
+        if "abs_delta_yaw_rad_min" in crit:
+            progress += _clamped_ratio(abs(dyaw), float(crit["abs_delta_yaw_rad_min"]))
+        if "target_yaw_change_rad" in r:
+            progress += _clamped_ratio(abs(dyaw), abs(float(r["target_yaw_change_rad"])))
+        if "progress_weight" in r and self._episode_start_torso_z != 0.0:
+            needed = max(height_target - self._episode_start_torso_z, 1e-3)
+            progress += _clamped_ratio(torso_z - self._episode_start_torso_z, needed) * float(
+                r["progress_weight"]
+            )
+        lateral_penalty = 0.0
+        if "max_lateral_drift_m" in crit:
+            excess = max(0.0, abs(dy) - float(crit["max_lateral_drift_m"]))
+            lateral_penalty = 2.0 * excess
         alive = 1.0
         reward = (
             alive
             + 1.0 * height_track
-            + 1.0 * velocity_track
-            + 0.5 * upright_bonus
-            - 0.01 * action_rate
-            - 0.001 * energy
+            + float(r.get("velocity_track_weight", 0.0)) * velocity_track
+            + float(r.get("upright_weight", 0.5)) * upright_bonus
+            + progress
+            + float(r.get("action_rate_weight", -0.01)) * action_rate
+            + float(r.get("energy_weight", -0.001)) * energy
+            - lateral_penalty
         )
+        fall_z_threshold = self._fall_z_threshold_for_current_task()
+        if torso_z < fall_z_threshold:
+            reward -= max(0.0, fall_z_threshold - torso_z) * 20.0
         if fell:
             reward -= 10.0
         return float(reward)
@@ -489,6 +652,16 @@ def _actuator_id_for_joint(model, joint_id: int, joint_name: str) -> int:
         ):
             return int(candidate)
     return -1
+
+
+def _wrap_pi(angle: float) -> float:
+    return math.atan2(math.sin(angle), math.cos(angle))
+
+
+def _clamped_ratio(value: float, target: float) -> float:
+    if target <= 0:
+        return 0.0
+    return float(np.clip(value / target, 0.0, 1.0))
 
 
 def make_text_conditioned_env(

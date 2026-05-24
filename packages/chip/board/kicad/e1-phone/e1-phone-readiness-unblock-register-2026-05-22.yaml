@@ -19,6 +19,9 @@ summary:
   acceptance_artifact_count: 174
   missing_acceptance_artifact_count: 0
   non_release_acceptance_artifact_count: 170
+  production_presence_release_output_count: 0
+  production_presence_blocked_candidate_output_file_count: 47
+  production_presence_has_blocked_candidate_outputs: true
   fabrication_ready: false
   enclosure_ready: false
   end_to_end_phone_ready: false

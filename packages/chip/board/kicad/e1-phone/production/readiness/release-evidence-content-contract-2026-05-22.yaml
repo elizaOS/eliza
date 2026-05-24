@@ -23,6 +23,9 @@ summary:
   supplier_required_evidence_count: 221
   routed_required_output_path_count: 46
   production_required_output_path_count: 56
+  production_manufacturing_closure_release_output_count: 0
+  production_manufacturing_closure_blocked_candidate_output_file_count: 47
+  production_manufacturing_closure_has_blocked_candidate_outputs: true
   first_article_required_non_template_row_count: 61
   mechanical_missing_release_ready_evidence_count: 5
   local_kicad_cad_traceability_status: local_traceability_complete_not_release
@@ -170,6 +173,10 @@ content_contracts:
 - id: production_factory_outputs
   source_report: board/kicad/e1-phone/production/readiness/production-factory-required-output-presence-inventory-2026-05-22.yaml
   covered_required_output_path_count: 56
+  manufacturing_closure_has_production_outputs: false
+  manufacturing_closure_release_output_count: 0
+  manufacturing_closure_has_blocked_candidate_outputs: true
+  manufacturing_closure_blocked_candidate_output_file_count: 47
   factory_candidate_cad_connection_assembly_manifest: mechanical/e1-phone/out/assembly-manifest.json
   factory_candidate_cad_connection_assembly_manifest_part_count: 222
   factory_candidate_cad_connection_assembly_manifest_terminal_marker_count: 42

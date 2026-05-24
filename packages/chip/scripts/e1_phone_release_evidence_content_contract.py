@@ -480,6 +480,18 @@ def build_contract_rows(
             "covered_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
+            "manufacturing_closure_has_production_outputs": production_presence["summary"][
+                "manufacturing_closure_has_production_outputs"
+            ],
+            "manufacturing_closure_release_output_count": production_presence["summary"][
+                "manufacturing_closure_release_output_count"
+            ],
+            "manufacturing_closure_has_blocked_candidate_outputs": production_presence[
+                "summary"
+            ]["manufacturing_closure_has_blocked_candidate_outputs"],
+            "manufacturing_closure_blocked_candidate_output_file_count": production_presence[
+                "summary"
+            ]["manufacturing_closure_blocked_candidate_output_file_count"],
             "factory_candidate_cad_connection_assembly_manifest": (
                 factory_cad_connection_assembly["assembly_manifest"]
             ),
@@ -772,6 +784,19 @@ def build_report(
             "production_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
+            "production_manufacturing_closure_release_output_count": (
+                production_presence["summary"]["manufacturing_closure_release_output_count"]
+            ),
+            "production_manufacturing_closure_blocked_candidate_output_file_count": (
+                production_presence["summary"][
+                    "manufacturing_closure_blocked_candidate_output_file_count"
+                ]
+            ),
+            "production_manufacturing_closure_has_blocked_candidate_outputs": (
+                production_presence["summary"][
+                    "manufacturing_closure_has_blocked_candidate_outputs"
+                ]
+            ),
             "first_article_required_non_template_row_count": first_article["summary"][
                 "required_non_template_row_count"
             ],

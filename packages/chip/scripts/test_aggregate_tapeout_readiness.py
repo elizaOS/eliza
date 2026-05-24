@@ -124,6 +124,48 @@ class EvidenceLineTests(unittest.TestCase):
         )
 
 
+class E1PhoneBoardPackageArtifactClassifierTests(unittest.TestCase):
+    def test_inline_blocked_candidate_pdf_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            pdf_path = Path(tmp_text) / "rf-calibration-procedure.pdf"
+            pdf_path.write_bytes(
+                b"%PDF-1.4\n"
+                b"% rf_calibration_procedure_candidate: "
+                b"blocked local factory candidate, not release evidence\n"
+                b"%%EOF\n"
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(pdf_path))
+            self.assertFalse(board_package.is_release_artifact_present(pdf_path))
+
+    def test_supplier_return_csv_placeholder_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            csv_path = Path(tmp_text) / "pinout-or-pad-map.csv"
+            csv_path.write_text(
+                "artifact_id,disposition,release_credit,notes\n"
+                "display_touch:pinout_or_pad_map,"
+                "blocked_pending_supplier_return,false,"
+                "placeholder for supplier return\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(csv_path))
+            self.assertFalse(board_package.is_release_artifact_present(csv_path))
+
+    def test_supplier_return_text_placeholder_is_not_release_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_text:
+            step_path = Path(tmp_text) / "supplier-model.step"
+            step_path.write_text(
+                "E1 phone supplier-return placeholder\n"
+                "release_credit: false\n"
+                "This is not supplier evidence. Replace with signed supplier artifact.\n",
+                encoding="utf-8",
+            )
+
+            self.assertTrue(board_package.is_blocked_candidate_artifact(step_path))
+            self.assertFalse(board_package.is_release_artifact_present(step_path))
+
+
 class BuildReportTests(unittest.TestCase):
     def _result(self, status: agg.Status) -> agg.GateResult:
         return agg.GateResult(

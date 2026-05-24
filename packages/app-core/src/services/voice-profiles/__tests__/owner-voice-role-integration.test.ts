@@ -146,7 +146,9 @@ describe("voice metadata on messages", () => {
     // Voice alone is intentionally insufficient for OWNER grant (< 0.6)
     expect(conf.score).toBeGreaterThan(0.2);
     expect(conf.score).toBeLessThan(0.6);
-    expect(conf.reasons).toContain(`voice-similarity:${voiceSimilarity.toFixed(2)}`);
+    expect(conf.reasons).toContain(
+      `voice-similarity:${voiceSimilarity.toFixed(2)}`,
+    );
   });
 
   it("message with low voice confidence for OWNER profile fails the gate", () => {
@@ -274,7 +276,9 @@ describe("InMemoryVoiceProfileStore OWNER lookup", () => {
 
     // With high device trust + voice match, score is meaningful but not enough alone
     expect(conf.score).toBeGreaterThan(0.25);
-    expect(conf.reasons.some((r) => r.startsWith("voice-similarity:"))).toBe(true);
+    expect(conf.reasons.some((r) => r.startsWith("voice-similarity:"))).toBe(
+      true,
+    );
     expect(conf.reasons).toContain("device-trust:high");
   });
 });
@@ -307,7 +311,9 @@ describe("scoreOwnerConfidence role grant decision", () => {
     });
     expect(result.score).toBeGreaterThanOrEqual(threshold);
     expect(result.reasons).toContain("challenge-recently-passed");
-    expect(result.reasons.some((r) => r.startsWith("voice-similarity:"))).toBe(true);
+    expect(result.reasons.some((r) => r.startsWith("voice-similarity:"))).toBe(
+      true,
+    );
   });
 
   it("recent auth + voice contributes a significant score", () => {
@@ -491,7 +497,9 @@ describe("resolveOwnershipRole integration point", () => {
     // The voiceProfileId in untrustedContent.metadata is IGNORED
     expect(untrustedContent.metadata.voiceProfileId).toBe("owner-001");
     // But this field is not in the connector-stamped trusted layer
-    expect(JSON.stringify(trustedConnectorMetadata)).not.toContain("voiceProfileId");
+    expect(JSON.stringify(trustedConnectorMetadata)).not.toContain(
+      "voiceProfileId",
+    );
     expect(JSON.stringify(trustedConnectorMetadata)).not.toContain("owner-001");
   });
 });
@@ -523,7 +531,8 @@ describe("end-to-end voice→role scenarios", () => {
       challengeRecentlyPassed: true, // OWNER also answered challenge phrase
     });
 
-    const roleGranted = profileIsOwner && voiceThresholdPassed && conf.score >= 0.6;
+    const roleGranted =
+      profileIsOwner && voiceThresholdPassed && conf.score >= 0.6;
     expect(roleGranted).toBe(true);
     expect(conf.reasons).toContain("challenge-recently-passed");
   });
