@@ -366,7 +366,10 @@ def build_report() -> dict[str, Any]:
     if isinstance(expected_clock_period_raw, (int, float, str)):
         try:
             expected_clock_period = float(expected_clock_period_raw)
-        except (TypeError, ValueError):
+        except ValueError:
+            # The isinstance guard above already excludes types that would
+            # raise TypeError; only ValueError (bad numeric string like "abc")
+            # remains.
             expected_clock_period = None
     if expected_clock_period is None:
         # CLOCK_PERIOD missing or unparseable in config — fail closed as a
