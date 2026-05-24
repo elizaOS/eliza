@@ -113,6 +113,35 @@ describe("prompt templates (src/index.ts)", () => {
       "phantom-action-claim rule should bind the prohibition to actual tool execution this turn",
     );
   });
+
+  it("messageHandlerTemplate routes visible attachment references through ATTACHMENT and ignores generic verbs in unrelated questions", () => {
+    // Regression coverage for the structural rule that replaced the
+    // regex-list-based attachment-inspection evaluator. Without this rule
+    // Stage 1 used to be hijacked by a post-Stage-1 evaluator whose
+    // VISUAL_INSPECTION_RE matched any use of "read"/"view"/"describe"/
+    // "analyze"/"inspect"/"open" whenever any attachment lingered in state,
+    // turning normal dev questions like "how do I read a file in node?" into
+    // 2 MB / $0.09 / 3-iteration planner trajectories.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const body = src.match(messageHandlerTemplateRe)[1];
+    assert.match(
+      body,
+      /provider:ATTACHMENTS/,
+      "attachment rule should reference the ATTACHMENTS provider explicitly by name",
+    );
+    assert.match(
+      body,
+      /route through the ATTACHMENT action/,
+      "attachment rule should direct routing through the ATTACHMENT action",
+    );
+    assert.match(
+      body,
+      /Generic verbs like "read", "view", "describe", "open" used in unrelated questions/,
+      "attachment rule should disclaim generic-verb false positives",
+    );
+  });
 });
 
 describe("build scripts", () => {

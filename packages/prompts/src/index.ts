@@ -690,6 +690,8 @@ For simple requests, replyText is the final answer itself, not a description of 
 
 Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible prior_message / reply_reference / provider context, say so plainly instead of fabricating an action.
 
+When the current user message is asking about an attachment that is visible in provider:ATTACHMENTS (image, photo, screenshot, PDF, document, video, audio) — either by naming the attachment type or by referring to it with a pronoun like "this/that/it" — choose a non-simple context (such as media or messaging) and route through the ATTACHMENT action to actually read the attachment instead of guessing at its contents. Generic verbs like "read", "view", "describe", "open" used in unrelated questions (for example "how do I read a file in node") do not by themselves indicate an attachment-inspection request; only treat them as such when the message clearly refers to a visible attachment.
+
 Platform mention/reply target/channel/room/connector alone can still be simple when only chat reply needed.
 
 Never simple when message:
