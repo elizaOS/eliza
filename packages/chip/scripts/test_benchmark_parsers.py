@@ -699,6 +699,12 @@ def test_e1_npu_nnapi_proof_check_preserves_missing_proof_blocker() -> None:
         blocker.get("blocked_reason") == "missing_e1_npu_nnapi_accelerator" for blocker in blockers
     ):
         raise AssertionError(json.dumps(status, indent=2))
+    findings = status.get("findings", [])
+    if not any(
+        finding.get("code") == "e1_npu_nnapi_e1_npu_nnapi_accelerator_missing"
+        for finding in findings
+    ):
+        raise AssertionError(json.dumps(status, indent=2))
 
 
 def test_e1_npu_nnapi_proof_rejects_tops_and_capture_command_drift() -> None:

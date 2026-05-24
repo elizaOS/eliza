@@ -328,5 +328,27 @@
       "seed": 1001
     }
   ],
-  "generated_at": "2026-05-22T14:00:28"
+  "generated_at": "2026-05-22T14:00:28",
+  "adaptation": {
+    "alberta": {
+      "mean_new_task_gain": 26.41663750431673,
+      "min_new_task_gain": 21.23144834692321,
+      "tasks_with_positive_gain": 5.0,
+      "task_count": 5.0,
+      "mean_final_minus_best": -3.0883197987374285,
+      "min_final_minus_best": -15.441598993687142,
+      "first_task_retention_delta": -15.441598993687142,
+      "seeds": 2
+    },
+    "ppo": {
+      "mean_new_task_gain": 28.64771527050786,
+      "min_new_task_gain": 18.64442042373672,
+      "tasks_with_positive_gain": 5.0,
+      "task_count": 5.0,
+      "mean_final_minus_best": -7.410296965199606,
+      "min_final_minus_best": -14.314247629579462,
+      "first_task_retention_delta": -6.962428792977406,
+      "seeds": 2
+    }
+  }
 }

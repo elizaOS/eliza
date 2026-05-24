@@ -23,6 +23,16 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def iso_boot_artifacts(missing: list[str] | None = None) -> dict:
+    missing = missing or []
+    found = {
+        key: f"dummy/{key}"
+        for key in updater._load_qemu_smoke_module().REQUIRED_ISO_BOOT_ARTIFACTS
+        if key not in missing
+    }
+    return {"found": found, "missing": missing}
+
+
 class UpdateMultiarchBootMatrixTests(unittest.TestCase):
     def test_promotes_valid_riscv64_qemu_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +113,7 @@ class UpdateMultiarchBootMatrixTests(unittest.TestCase):
                         "markers_found": list(updater._load_qemu_smoke_module().REQUIRED_MARKERS),
                         "markers_missing": [],
                         "forbidden_markers_present": [],
+                        "iso_boot_artifacts": iso_boot_artifacts(),
                         "provenance": "qemu_virt",
                     }
                 )
@@ -146,6 +157,7 @@ class UpdateMultiarchBootMatrixTests(unittest.TestCase):
                             "markers_found": list(updater._load_qemu_smoke_module().REQUIRED_MARKERS),
                             "markers_missing": [],
                             "forbidden_markers_present": [],
+                            "iso_boot_artifacts": iso_boot_artifacts(),
                             "provenance": "qemu_virt",
                         },
                     }
@@ -190,6 +202,7 @@ class UpdateMultiarchBootMatrixTests(unittest.TestCase):
                     "elizaos-tui-ready",
                 ],
                 "forbidden_markers_present": [],
+                "iso_boot_artifacts": iso_boot_artifacts(),
                 "provenance": "qemu_virt",
             }
             evidence_path.write_text(json.dumps(evidence) + "\n", encoding="utf-8")

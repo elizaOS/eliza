@@ -46,6 +46,31 @@ class ChipOsEnvironmentPreflightTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["findings"], 0)
 
+    def test_missing_aosp_smoke_envs_include_capture_hints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            aosp = repo / "aosp"
+            aosp.mkdir()
+            with mock.patch.object(preflight, "REPO", repo), mock.patch.object(
+                preflight,
+                "ENV_DEFAULT_PATHS",
+                {"AOSP_DIR": (aosp,)},
+            ), mock.patch.object(preflight, "TOOL_DEFAULT_PATHS", {}):
+                report = preflight.build_report(env={}, which=lambda _name: "/bin/tool")
+
+        env_rows = {row["name"]: row for row in report["environment"]}
+        qemu_hint = env_rows["AOSP_QEMU_SMOKE_COMMAND"]["command_hint"]
+        renode_hint = env_rows["AOSP_RENODE_SMOKE_COMMAND"]["command_hint"]
+        self.assertEqual(qemu_hint["capture_mode"], "qemu-smoke")
+        self.assertIn("capture-aosp-evidence.sh", qemu_hint["capture_command"])
+        self.assertIn(str(aosp), qemu_hint["capture_command"])
+        self.assertIn("AOSP_QEMU_SMOKE_COMMAND=", qemu_hint["suggested_export"])
+        self.assertEqual(renode_hint["capture_mode"], "renode-smoke")
+
+        findings = {finding["code"]: finding for finding in report["findings"]}
+        self.assertIn("capture_command", findings["missing_env_aosp_qemu_smoke_command"])
+        self.assertIn("suggested_export", findings["missing_env_aosp_renode_smoke_command"])
+
     def test_preflight_covers_android_agent_payload_and_release_tools(self) -> None:
         tools = {spec.name for spec in preflight.TOOLS}
         paths = {spec.ident for spec in preflight.PATHS}

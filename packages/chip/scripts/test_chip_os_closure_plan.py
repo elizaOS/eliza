@@ -74,6 +74,21 @@ class ChipOsClosurePlanTests(unittest.TestCase):
             root = Path(tmp)
             matrix = root / "matrix.json"
             inventory = root / "inventory.json"
+            source_report = root / "build/reports/qemu_virt_smoke.json"
+            write_json(
+                source_report,
+                {
+                    "findings": [
+                        {
+                            "code": "qemu_source_finding",
+                            "message": "source report message",
+                            "next_step": "source report next step",
+                            "capture_command": "run qemu capture",
+                            "suggested_export": "export QEMU=1",
+                        }
+                    ]
+                },
+            )
             write_json(
                 matrix,
                 {
@@ -125,6 +140,11 @@ class ChipOsClosurePlanTests(unittest.TestCase):
         self.assertIn("qemu_source_finding", codes)
         self.assertNotIn("proven_inventory_detail", codes)
         self.assertNotIn("should_not_lead", codes)
+        source_row = next(row for row in first["top_blocker_codes"] if row["code"] == "qemu_source_finding")
+        self.assertEqual(source_row["message"], "source report message")
+        self.assertEqual(source_row["next_step"], "source report next step")
+        self.assertEqual(source_row["capture_command"], "run qemu capture")
+        self.assertEqual(source_row["suggested_export"], "export QEMU=1")
 
     def test_all_proven_closes_phases(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

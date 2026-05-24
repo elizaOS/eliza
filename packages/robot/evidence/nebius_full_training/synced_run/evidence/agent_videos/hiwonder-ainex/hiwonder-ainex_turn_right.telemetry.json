@@ -1,0 +1,37 @@
+{
+  "profile": "hiwonder-ainex",
+  "label": "turn right",
+  "task_id": "turn_right",
+  "policy_source": "sb3_smoke",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.15,
+  "torso_z": {
+    "min": 0.23637564580729475,
+    "max": 0.27787594392164006,
+    "final": 0.2425573377181782,
+    "mean": 0.2442985748209024
+  },
+  "upright_proj": {
+    "min": 0.9974133808167539,
+    "max": 0.9999996317902244,
+    "final": 0.9974133808167539,
+    "mean": 0.9987986514135458
+  },
+  "reward": {
+    "min": 3.284559573447131,
+    "max": 3.378098872672831,
+    "final": 3.3225074145004156,
+    "mean": 3.326594338093192
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

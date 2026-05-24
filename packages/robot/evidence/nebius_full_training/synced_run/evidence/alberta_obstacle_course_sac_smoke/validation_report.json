@@ -1,0 +1,384 @@
+{
+  "ok": true,
+  "benchmark_dir": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_obstacle_course_sac_smoke",
+  "expected_env": "obstacle_course",
+  "min_seeds": 1,
+  "min_steps_per_task": 40,
+  "min_tasks": 2,
+  "checks": {
+    "benchmark_dir": true,
+    "json": true,
+    "markdown": true,
+    "plot": true,
+    "demo_json": true,
+    "demo_video": true,
+    "schema": true,
+    "expected_env": true,
+    "seeds": true,
+    "steps_per_task": true,
+    "tasks": true,
+    "result_count": true,
+    "learner_seed_pairs": true,
+    "learner_seed_coverage": true,
+    "summary_learners": true,
+    "result_learners": true,
+    "matrix_shapes": true,
+    "metrics": true,
+    "alberta_acc_gte_ppo": true,
+    "alberta_forgetting_lte_ppo": true
+  },
+  "deltas": {
+    "alberta_acc_minus_ppo": 0.05409976077830436,
+    "alberta_forgetting_minus_ppo": -0.06920233567957801
+  },
+  "required_deltas": {
+    "require_alberta_acc_gte_ppo": true,
+    "require_alberta_forgetting_lte_ppo": true
+  },
+  "required_artifacts": {
+    "require_plot": true,
+    "require_demo_video": true
+  },
+  "demo": {
+    "schema": "robot-alberta-obstacle-demo-v1",
+    "ok": true,
+    "benchmark_dir": "/home/shaw/milady/eliza/packages/robot/evidence/alberta_obstacle_course_sac_smoke",
+    "video": "evidence/alberta_obstacle_course_sac_smoke/obstacle_course_demo.mp4",
+    "video_bytes": 119369,
+    "fps": 12,
+    "frames": 24,
+    "n_tasks": 2,
+    "learners": [
+      "alberta",
+      "ppo",
+      "sac"
+    ],
+    "adaptation": {
+      "alberta": {
+        "mean_new_task_gain": 0.37373728675706264,
+        "min_new_task_gain": 0.2730216055008085,
+        "tasks_with_positive_gain": 2.0,
+        "task_count": 2.0,
+        "mean_final_minus_best": 0.0,
+        "min_final_minus_best": 0.0,
+        "first_task_retention_delta": 0.0,
+        "seeds": 1
+      },
+      "ppo": {
+        "mean_new_task_gain": 0.3456482977908972,
+        "min_new_task_gain": 0.33168322851920296,
+        "tasks_with_positive_gain": 2.0,
+        "task_count": 2.0,
+        "mean_final_minus_best": -0.034601167839789004,
+        "min_final_minus_best": -0.06920233567957801,
+        "first_task_retention_delta": -0.06920233567957801,
+        "seeds": 1
+      },
+      "sac": {
+        "mean_new_task_gain": 0.0,
+        "min_new_task_gain": 0.0,
+        "tasks_with_positive_gain": 0.0,
+        "task_count": 2.0,
+        "mean_final_minus_best": 0.0,
+        "min_final_minus_best": 0.0,
+        "first_task_retention_delta": 0.0,
+        "seeds": 1
+      }
+    },
+    "learner_results": {
+      "alberta": {
+        "seed": 1000,
+        "metrics": {
+          "acc": 0.46124355407353557,
+          "bwt": 0.0,
+          "forgetting": 0.0,
+          "fwt": 0.0,
+          "final_per_task": [
+            0.34956391238974893,
+            0.5729231957573222
+          ],
+          "diagonal_per_task": [
+            0.34956391238974893,
+            0.5729231957573222
+          ]
+        },
+        "baseline": [
+          0.07654230688894041,
+          0.09847022774400538
+        ],
+        "matrix": [
+          [
+            0.34956391238974893,
+            0.09847022774400538
+          ],
+          [
+            0.34956391238974893,
+            0.5729231957573222
+          ]
+        ]
+      },
+      "ppo": {
+        "seed": 1000,
+        "metrics": {
+          "acc": 0.4071437932952312,
+          "bwt": -0.06920233567957801,
+          "forgetting": 0.06920233567957801,
+          "fwt": -0.03965518737517264,
+          "final_per_task": [
+            0.3709660511197074,
+            0.44332153547075503
+          ],
+          "diagonal_per_task": [
+            0.4401683867992854,
+            0.44332153547075503
+          ]
+        },
+        "baseline": [
+          0.08055501973669396,
+          0.1116383069515521
+        ],
+        "matrix": [
+          [
+            0.4401683867992854,
+            0.07198311957637946
+          ],
+          [
+            0.3709660511197074,
+            0.44332153547075503
+          ]
+        ]
+      },
+      "sac": {
+        "seed": 1000,
+        "metrics": {
+          "acc": 0.04574846772309646,
+          "bwt": 0.0,
+          "forgetting": 0.0,
+          "fwt": 0.0,
+          "final_per_task": [
+            0.09668687964227879,
+            -0.005189944196085874
+          ],
+          "diagonal_per_task": [
+            0.09668687964227879,
+            -0.005189944196085874
+          ]
+        },
+        "baseline": [
+          0.09668687964227879,
+          -0.005189944196085874
+        ],
+        "matrix": [
+          [
+            0.09668687964227879,
+            -0.005189944196085874
+          ],
+          [
+            0.09668687964227879,
+            -0.005189944196085874
+          ]
+        ]
+      }
+    },
+    "alberta": {
+      "seed": 1000,
+      "metrics": {
+        "acc": 0.46124355407353557,
+        "bwt": 0.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          0.34956391238974893,
+          0.5729231957573222
+        ],
+        "diagonal_per_task": [
+          0.34956391238974893,
+          0.5729231957573222
+        ]
+      },
+      "baseline": [
+        0.07654230688894041,
+        0.09847022774400538
+      ],
+      "matrix": [
+        [
+          0.34956391238974893,
+          0.09847022774400538
+        ],
+        [
+          0.34956391238974893,
+          0.5729231957573222
+        ]
+      ]
+    },
+    "ppo": {
+      "seed": 1000,
+      "metrics": {
+        "acc": 0.4071437932952312,
+        "bwt": -0.06920233567957801,
+        "forgetting": 0.06920233567957801,
+        "fwt": -0.03965518737517264,
+        "final_per_task": [
+          0.3709660511197074,
+          0.44332153547075503
+        ],
+        "diagonal_per_task": [
+          0.4401683867992854,
+          0.44332153547075503
+        ]
+      },
+      "baseline": [
+        0.08055501973669396,
+        0.1116383069515521
+      ],
+      "matrix": [
+        [
+          0.4401683867992854,
+          0.07198311957637946
+        ],
+        [
+          0.3709660511197074,
+          0.44332153547075503
+        ]
+      ]
+    },
+    "sac": {
+      "seed": 1000,
+      "metrics": {
+        "acc": 0.04574846772309646,
+        "bwt": 0.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          0.09668687964227879,
+          -0.005189944196085874
+        ],
+        "diagonal_per_task": [
+          0.09668687964227879,
+          -0.005189944196085874
+        ]
+      },
+      "baseline": [
+        0.09668687964227879,
+        -0.005189944196085874
+      ],
+      "matrix": [
+        [
+          0.09668687964227879,
+          -0.005189944196085874
+        ],
+        [
+          0.09668687964227879,
+          -0.005189944196085874
+        ]
+      ]
+    },
+    "visual_review": {
+      "reviewed_at": "2026-05-24T00:20:45.818278Z",
+      "reviewer": "codex",
+      "contact_sheet": "evidence/alberta_obstacle_course_sac_smoke/obstacle_course_demo_review_contact.jpg",
+      "verdict": "good",
+      "review_notes": "Contact sheet shows Alberta, PPO, and SAC side by side. Alberta adapts to the new obstacle task and keeps task 0 stable; PPO shows task-0 drop; SAC remains low/flat in this smoke run."
+    }
+  },
+  "config": {
+    "env_kind": "obstacle_course",
+    "n_tasks": 2,
+    "n_joints": 6,
+    "steps_per_task": 40,
+    "eval_episodes": 1,
+    "seeds": 1,
+    "gamma": 0.5,
+    "actor_step_size": 0.01,
+    "critic_step_size": 0.02,
+    "actor_lamda": 0.7,
+    "critic_lamda": 0.7,
+    "log_sigma_init": -1.0,
+    "embed_dim": 16,
+    "n_prototypes": 192,
+    "gate_temperature": 0.1,
+    "proprio_random_dim": 64,
+    "obstacle_episode_steps": 30,
+    "learners": [
+      "alberta",
+      "ppo",
+      "sac"
+    ]
+  },
+  "summary": {
+    "alberta": {
+      "acc": {
+        "mean": 0.46124355407353557,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": 0.4071437932952312,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": -0.06920233567957801,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.06920233567957801,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": -0.03965518737517264,
+        "std": 0.0
+      }
+    },
+    "sac": {
+      "acc": {
+        "mean": 0.04574846772309646,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    }
+  },
+  "seed_coverage": {
+    "alberta": [
+      1000
+    ],
+    "ppo": [
+      1000
+    ],
+    "sac": [
+      1000
+    ]
+  },
+  "configured_learners": [
+    "alberta",
+    "ppo",
+    "sac"
+  ],
+  "required_learners": [
+    "alberta",
+    "ppo"
+  ]
+}

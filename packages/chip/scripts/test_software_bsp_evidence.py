@@ -108,16 +108,16 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             "aosp BSP scaffold check passed; external evidence remains BLOCKED.",
             result.stdout,
         )
-        # The fail-closed external-evidence breakdown still lists the
-        # missing logs with their capture/validate commands, even in
-        # scaffold-only mode — that's the whole point of fail-closed
-        # surfacing per `packages/chip/CLAUDE.md`.
-        self.assertIn("aosp BSP external evidence blocked:", result.stdout)
+        # Scaffold-only mode does not fail on external logs, but it still
+        # surfaces the pending evidence contracts with capture/validate
+        # commands for targets that are not release-ready.
+        self.assertIn("aosp BSP external evidence pending", result.stdout)
+        self.assertIn("u-boot BSP external evidence pending", result.stdout)
         self.assertIn(
-            "missing docs/evidence/buildroot/eliza_e1_defconfig.log",
+            "missing docs/evidence/linux/u_boot_eliza_build.log",
             result.stdout,
         )
-        self.assertIn("BSP BLOCKED:", result.stdout)
+        self.assertNotIn("BSP check failed", result.stdout)
 
     def test_require_evidence_fails_closed_on_missing_external_logs(self) -> None:
         result = subprocess.run(
@@ -127,20 +127,18 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             capture_output=True,
         )
 
-        # With --require-evidence and no external evidence captured for
-        # any target, every supported target must fail closed.
+        # With --require-evidence, targets with captured PASS logs may pass,
+        # while targets with missing or invalid external evidence must fail
+        # closed.
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        for target in check_software_bsp.TARGETS:
-            with self.subTest(target=target):
-                self.assertIn(f"{target} BSP check failed", result.stdout)
+        self.assertIn("buildroot BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("linux BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("opensbi BSP scaffold and evidence checks passed.", result.stdout)
+        self.assertIn("u-boot BSP check failed", result.stdout)
+        self.assertIn("aosp BSP check failed", result.stdout)
+        self.assertIn("u-boot BSP BLOCKED: missing evidence", result.stdout)
+        self.assertIn("aosp BSP BLOCKED: external evidence", result.stdout)
 
-    @unittest.skip(
-        "blocked: check_software_bsp.py does not declare a 'u-boot' target. "
-        "The capture-plan side (docs/sw/u-boot/capture-u-boot-evidence.sh) "
-        "exists, but the corresponding TARGETS entry, status helper, and "
-        "argparse choice are absent. Un-skip when u-boot is added to "
-        "check_software_bsp.TARGETS."
-    )
     def test_status_helper_reports_missing_external_logs(self) -> None:
         result = subprocess.run(
             [sys.executable, "scripts/check_software_bsp.py", "status", "u-boot"],
@@ -208,14 +206,6 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
             result.stdout,
         )
 
-    @unittest.skip(
-        "blocked: check_software_bsp.py 'capture-plan' does not accept "
-        "'u-boot' as a target. The capture script "
-        "docs/sw/u-boot/capture-u-boot-evidence.sh exists, but the BSP "
-        "checker has no u-boot wiring (no TARGETS['u-boot'], no --u-boot "
-        "argparse option). Un-skip when u-boot is added to "
-        "check_software_bsp.TARGETS."
-    )
     def test_capture_plan_renders_exact_uboot_commands(self) -> None:
         result = subprocess.run(
             [

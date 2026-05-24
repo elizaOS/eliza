@@ -4,7 +4,7 @@
   "mechanical_sweep_fraction": 0.65,
   "minimum_non_adjacent_clearance_mm": 1.485,
   "worst_pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
-  "blocker_count": 9,
+  "blocker_count": 3,
   "top_blockers": [
     {
       "pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
@@ -73,289 +73,49 @@
       ]
     },
     {
-      "pose": "left_hip_roll_joint_low__left_knee_joint_low",
-      "clearance_mm": 6.886,
-      "target_mm": 18.0,
-      "shortfall_mm": 11.114,
-      "part": "left_shin_front_armor",
-      "region": "legs",
-      "part_body": "left_knee_link",
-      "base_body": "right_knee_link",
-      "base_geom": "geom_47",
-      "base_geom_type": "mesh",
-      "body_tree_distance": 8,
-      "part_sample_point_m": [
-        0.0665,
-        -0.06689,
-        0.31827
-      ],
-      "base_sample_point_m": [
-        0.06658,
-        -0.07367,
-        0.31945
-      ],
-      "part_to_base_vector_m": [
-        8e-05,
-        -0.00678,
-        0.00119
-      ],
-      "part_to_base_vector_mm": [
-        0.083,
-        -6.782,
-        1.188
-      ]
-    },
-    {
-      "pose": "right_hip_yaw_joint_low__right_knee_joint_low",
-      "clearance_mm": 11.048,
-      "target_mm": 18.0,
-      "shortfall_mm": 6.952,
-      "part": "left_foot_top_shell",
-      "region": "feet_ankles",
-      "part_body": "left_ankle_roll_link",
-      "base_body": "right_ankle_roll_link",
-      "base_geom": "geom_58",
-      "base_geom_type": "sphere",
-      "body_tree_distance": 12,
-      "part_sample_point_m": [
-        0.09089,
-        0.07433,
-        0.01944
-      ],
-      "base_sample_point_m": [
-        0.09763,
-        0.07755,
-        0.02758
-      ],
-      "part_to_base_vector_m": [
-        0.00674,
-        0.00322,
-        0.00814
-      ],
-      "part_to_base_vector_mm": [
-        6.741,
-        3.219,
-        8.14
-      ]
-    },
-    {
       "pose": "right_hip_roll_joint_high",
-      "clearance_mm": 15.554,
+      "clearance_mm": 17.199,
       "target_mm": 18.0,
-      "shortfall_mm": 2.446,
-      "part": "left_shin_shell",
+      "shortfall_mm": 0.801,
+      "part": "right_shin_shell",
       "region": "legs",
-      "part_body": "left_knee_link",
-      "base_body": "right_knee_link",
-      "base_geom": "geom_47",
+      "part_body": "right_knee_link",
+      "base_body": "left_knee_link",
+      "base_geom": "geom_18",
       "base_geom_type": "mesh",
       "body_tree_distance": 8,
       "part_sample_point_m": [
-        0.02065,
-        0.06697,
-        0.24861
+        0.01553,
+        0.11056,
+        0.32475
       ],
       "base_sample_point_m": [
-        0.00961,
-        0.07648,
-        0.25406
+        0.01471,
+        0.1261,
+        0.33207
       ],
       "part_to_base_vector_m": [
-        -0.01104,
-        0.0095,
-        0.00545
+        -0.00082,
+        0.01554,
+        0.00732
       ],
       "part_to_base_vector_mm": [
-        -11.043,
-        9.502,
-        5.449
-      ]
-    },
-    {
-      "pose": "left_hip_yaw_joint_high__left_knee_joint_high",
-      "clearance_mm": 15.614,
-      "target_mm": 18.0,
-      "shortfall_mm": 2.386,
-      "part": "left_shin_front_armor",
-      "region": "legs",
-      "part_body": "left_knee_link",
-      "base_body": "right_knee_link",
-      "base_geom": "geom_47",
-      "base_geom_type": "mesh",
-      "body_tree_distance": 8,
-      "part_sample_point_m": [
-        0.06527,
-        -0.08168,
-        0.35558
-      ],
-      "base_sample_point_m": [
-        0.05936,
-        -0.06795,
-        0.3511
-      ],
-      "part_to_base_vector_m": [
-        -0.00592,
-        0.01374,
-        -0.00448
-      ],
-      "part_to_base_vector_mm": [
-        -5.915,
-        13.737,
-        -4.483
-      ]
-    },
-    {
-      "pose": "left_hip_roll_joint_low",
-      "clearance_mm": 16.564,
-      "target_mm": 18.0,
-      "shortfall_mm": 1.436,
-      "part": "left_shin_front_armor",
-      "region": "legs",
-      "part_body": "left_knee_link",
-      "base_body": "right_knee_link",
-      "base_geom": "geom_47",
-      "base_geom_type": "mesh",
-      "body_tree_distance": 8,
-      "part_sample_point_m": [
-        0.0782,
-        -0.06543,
-        0.33822
-      ],
-      "base_sample_point_m": [
-        0.06298,
-        -0.07197,
-        0.33852
-      ],
-      "part_to_base_vector_m": [
-        -0.01521,
-        -0.00654,
-        0.0003
-      ],
-      "part_to_base_vector_mm": [
-        -15.215,
-        -6.542,
-        0.301
-      ]
-    },
-    {
-      "pose": "right_shoulder_yaw_joint_high",
-      "clearance_mm": 17.203,
-      "target_mm": 18.0,
-      "shortfall_mm": 0.797,
-      "part": "left_forearm_outer_blade",
-      "region": "arms",
-      "part_body": "left_elbow_link",
-      "base_body": "right_wrist_roll_link",
-      "base_geom": "geom_134",
-      "base_geom_type": "mesh",
-      "body_tree_distance": 9,
-      "part_sample_point_m": [
-        0.08936,
-        0.13713,
-        0.78007
-      ],
-      "base_sample_point_m": [
-        0.08916,
-        0.12015,
-        0.78285
-      ],
-      "part_to_base_vector_m": [
-        -0.0002,
-        -0.01697,
-        0.00279
-      ],
-      "part_to_base_vector_mm": [
-        -0.203,
-        -16.975,
-        2.786
-      ]
-    },
-    {
-      "pose": "left_shoulder_yaw_joint_low",
-      "clearance_mm": 17.666,
-      "target_mm": 18.0,
-      "shortfall_mm": 0.334,
-      "part": "right_forearm_outer_blade",
-      "region": "arms",
-      "part_body": "right_elbow_link",
-      "base_body": "left_wrist_roll_link",
-      "base_geom": "geom_117",
-      "base_geom_type": "mesh",
-      "body_tree_distance": 9,
-      "part_sample_point_m": [
-        0.10069,
-        -0.13463,
-        0.77367
-      ],
-      "base_sample_point_m": [
-        0.10075,
-        -0.11697,
-        0.77438
-      ],
-      "part_to_base_vector_m": [
-        6e-05,
-        0.01765,
-        0.00071
-      ],
-      "part_to_base_vector_mm": [
-        0.057,
-        17.652,
-        0.71
+        -0.819,
+        15.543,
+        7.318
       ]
     }
   ],
   "regions": {
     "legs": {
-      "blocker_count": 4,
-      "minimum_clearance_mm": 6.886,
+      "blocker_count": 1,
+      "minimum_clearance_mm": 17.199,
       "parts": {
-        "left_shin_front_armor": {
-          "blocker_count": 3,
-          "minimum_clearance_mm": 6.886,
-          "poses": [
-            "left_hip_roll_joint_low",
-            "left_hip_yaw_joint_high__left_knee_joint_high",
-            "left_hip_roll_joint_low__left_knee_joint_low"
-          ]
-        },
-        "left_shin_shell": {
+        "right_shin_shell": {
           "blocker_count": 1,
-          "minimum_clearance_mm": 15.554,
+          "minimum_clearance_mm": 17.199,
           "poses": [
             "right_hip_roll_joint_high"
-          ]
-        }
-      }
-    },
-    "arms": {
-      "blocker_count": 2,
-      "minimum_clearance_mm": 17.203,
-      "parts": {
-        "right_forearm_outer_blade": {
-          "blocker_count": 1,
-          "minimum_clearance_mm": 17.666,
-          "poses": [
-            "left_shoulder_yaw_joint_low"
-          ]
-        },
-        "left_forearm_outer_blade": {
-          "blocker_count": 1,
-          "minimum_clearance_mm": 17.203,
-          "poses": [
-            "right_shoulder_yaw_joint_high"
-          ]
-        }
-      }
-    },
-    "feet_ankles": {
-      "blocker_count": 1,
-      "minimum_clearance_mm": 11.048,
-      "parts": {
-        "left_foot_top_shell": {
-          "blocker_count": 1,
-          "minimum_clearance_mm": 11.048,
-          "poses": [
-            "right_hip_yaw_joint_low__right_knee_joint_low"
           ]
         }
       }

@@ -150,8 +150,8 @@ emit() {
 		# eliza/packages/scripts/distro-android/boot-validate.mjs (reachable
 		# as `boot-validate.mjs --expected-abi <abi>`); the brand-config
 		# mjs validator owns the x86_64/arm64/riscv64 image path. This gate
-		# keeps its own host-side copy because it targets the chip
-		# ai.elizaos.app product without going through a distro-android brand
+		# keeps its own host-side copy because it targets the configured chip
+		# agent product without going through a distro-android brand
 		# config, and pairs the triad with the kernel.log / manifest /
 		# evidence-emission assertions the mjs validator does not perform.
 		# Keep the two in sync.

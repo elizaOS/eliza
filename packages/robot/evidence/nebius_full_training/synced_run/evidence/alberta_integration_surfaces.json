@@ -1,0 +1,52 @@
+{
+  "schema": "robot-alberta-integration-surfaces-v1",
+  "ok": true,
+  "package_root": "/home/shaw/milady/eliza/packages/robot",
+  "checks": {
+    "dependency": true,
+    "source_override": true,
+    "modules": true,
+    "public_exports": true,
+    "console_scripts": true,
+    "files": true
+  },
+  "modules": {
+    "eliza_robot.rl.alberta.agent": true,
+    "eliza_robot.rl.alberta.baselines": true,
+    "eliza_robot.rl.alberta.benchmark": true,
+    "eliza_robot.rl.alberta.continual_env": true,
+    "eliza_robot.rl.alberta.features": true,
+    "eliza_robot.rl.alberta.loop": true,
+    "eliza_robot.rl.alberta.metrics": true,
+    "eliza_robot.rl.alberta.obstacle_course": true,
+    "eliza_robot.rl.alberta.train_robot": true
+  },
+  "public_exports": {
+    "AlbertaContinualController": true,
+    "AlbertaControllerConfig": true,
+    "FeatureConfig": true,
+    "FeatureMap": true,
+    "JointReachEnv": true,
+    "ObstacleCourseEnv": true,
+    "train_online": true,
+    "evaluate": true,
+    "compute_continual_metrics": true
+  },
+  "console_scripts": {
+    "eliza-robot-train-alberta": true,
+    "eliza-robot-benchmark-alberta": true,
+    "eliza-robot-generate-alberta-report": true,
+    "eliza-robot-render-alberta-obstacle-demo": true,
+    "eliza-robot-validate-alberta-benchmark": true,
+    "eliza-robot-validate-alberta-checkpoint": true,
+    "eliza-robot-validate-alberta-vendoring": true,
+    "eliza-robot-validate-alberta-integration": true,
+    "eliza-robot-audit-alberta-objective": true
+  },
+  "files": {
+    "README": true,
+    "package_init": true,
+    "train_robot": true,
+    "benchmark": true
+  }
+}

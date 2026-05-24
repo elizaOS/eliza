@@ -114,6 +114,18 @@ run `--version` and `-e`, but fails script-file entrypoints before it can load
 `agent-bundle.js`. The current `evidence/riscv64_agent_runtime_smoke.json`
 records the Node-mode staged artifact check; it is not full ISO boot evidence.
 
+GUI/kiosk payload checks are per-arch and fail closed until an ISO is recorded
+in `evidence/multiarch_boot_matrix.json`:
+
+```sh
+make -C packages/os/linux/elizaos riscv64-gui-kiosk-iso-check
+make -C packages/os/linux/elizaos arm64-gui-kiosk-iso-check
+```
+
+The current riscv64 report passes as a static squashfs payload check. The arm64
+report is intentionally blocked until a real arm64 ISO and boot evidence are
+produced.
+
 `make build` runs `lb config` → `lb build` → verify → checksum → manifest
 inside the builder container (`Dockerfile`). A clean build pulls multi-GB
 from Debian mirrors and takes 30+ minutes; do not run it from an
@@ -171,13 +183,13 @@ agent-health, and terminal TUI markers.
 
 This is the active, canonical Linux build. The build pipeline, multi-arch
 config, branding overlay, `secure` hardening profile, and release-manifest
-gate are in the tree. The checked-in riscv64 release manifest is intentionally
-`planned`: promotion remains blocked until a local build fills artifact
-metadata and archives qemu-virt, GRUB EFI, local curl health, agent-ready, and
-terminal TUI smoke transcripts. The existing `evidence/qemu_virt_boot.json`
-records the prior local qemu-virt summary only; it is not promoted release
-evidence without its matching transcript and ISO artifact. amd64 and arm64
-still need produced ISO evidence before release promotion. See
+gate are in the tree. The checked-in riscv64 boot row is promoted from
+`evidence/qemu_virt_boot.json`, whose matching transcript and ISO artifact are
+`evidence/qemu_virt_boot_20260524T030430Z.transcript.log` and
+`out/elizaos-linux-riscv64-default-20260524T030430Z.iso`; that run proves
+qemu-virt EDK2/OpenSBI -> GRUB EFI -> Linux plus local curl health,
+agent-ready, and terminal TUI markers. arm64 still needs produced ISO evidence
+before full multi-arch release promotion. See
 `packages/os/CLAUDE.md` for the distribution-channel and promotion policy.
 
 ## License

@@ -110,7 +110,15 @@ def _blend_loft_sections(base_sections: list[dict[str, Any]], target_sections: l
 
 def _blend_part_fields(spec: dict[str, Any], target: dict[str, Any], blend: float) -> list[str]:
     changed: list[str] = []
-    vector_fields = {"center", "scale", "top_scale", "aesthetic_scale", "center_offset"}
+    vector_fields = {
+        "center",
+        "scale",
+        "top_scale",
+        "aesthetic_scale",
+        "center_offset",
+        "centerline_radii_yz",
+        "tube_radii_x_radial",
+    }
     scalar_fields = {"radius", "tube_radius", "height"}
     for field in sorted(vector_fields):
         if field not in target:
@@ -417,6 +425,48 @@ def _section_loft(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
     return _paint(mesh, rgba)
 
 
+def _annular_loft_x(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
+    """Parametric hollow cuff around the local X axis.
+
+    `section_loft` creates capped solids, which is wrong for wrist collars.
+    This keeps the cuff as an annular CAD primitive with explicit centerline
+    and tube radii that can be morphed numerically without filling the wrist.
+    """
+    ry, rz = [float(x) for x in spec["centerline_radii_yz"][:2]]
+    tube_x, tube_radial = [float(x) for x in spec["tube_radii_x_radial"][:2]]
+    major_segments = int(spec.get("major_segments", 48))
+    minor_segments = int(spec.get("minor_segments", 12))
+    vertices: list[list[float]] = []
+    for i in range(major_segments):
+        u = 2 * math.pi * i / major_segments
+        cu = math.cos(u)
+        su = math.sin(u)
+        for j in range(minor_segments):
+            v = 2 * math.pi * j / minor_segments
+            cv = math.cos(v)
+            sv = math.sin(v)
+            vertices.append(
+                [
+                    tube_x * sv,
+                    (ry + tube_radial * cv) * cu,
+                    (rz + tube_radial * cv) * su,
+                ]
+            )
+    faces: list[list[int]] = []
+    for i in range(major_segments):
+        ni = (i + 1) % major_segments
+        for j in range(minor_segments):
+            nj = (j + 1) % minor_segments
+            a = i * minor_segments + j
+            b = ni * minor_segments + j
+            c = ni * minor_segments + nj
+            d = i * minor_segments + nj
+            faces.append([a, b, c])
+            faces.append([a, c, d])
+    mesh = trimesh.Trimesh(vertices=np.asarray(vertices, dtype=float), faces=np.asarray(faces, dtype=int), process=True)
+    return _paint(mesh, rgba)
+
+
 def _source_mesh_vertices(spec: dict[str, Any]) -> np.ndarray:
     source = _resolve_project_path(str(spec["mesh_source"]))
     if not source.is_file():
@@ -709,6 +759,85 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _reference_image_metadata(path: Path) -> dict[str, Any]:
+    image = Image.open(path)
+    return {
+        "path": str(path),
+        "exists": True,
+        "width": image.width,
+        "height": image.height,
+        "bytes": path.stat().st_size,
+        "sha256": _sha256(path),
+    }
+
+
+def _reference_mesh_metadata(path: Path) -> dict[str, Any]:
+    loaded = trimesh.load(path, force="scene")
+    meshes = []
+    if isinstance(loaded, trimesh.Scene):
+        meshes = [g for g in loaded.geometry.values() if isinstance(g, trimesh.Trimesh)]
+        mesh = trimesh.util.concatenate(meshes) if meshes else None
+    else:
+        mesh = loaded
+        meshes = [mesh]
+    if mesh is None:
+        return {
+            "path": str(path),
+            "exists": True,
+            "mesh_count": 0,
+            "vertices": 0,
+            "faces": 0,
+            "bytes": path.stat().st_size,
+            "sha256": _sha256(path),
+        }
+    extents = np.asarray(mesh.extents, dtype=float)
+    return {
+        "path": str(path),
+        "exists": True,
+        "mesh_count": len(meshes),
+        "vertices": int(len(mesh.vertices)),
+        "faces": int(len(mesh.faces)),
+        "bounds_m": np.asarray(mesh.bounds, dtype=float).round(5).tolist(),
+        "extents_m": extents.round(5).tolist(),
+        "height_axis": "y",
+        "height_m": round(float(extents[1]), 5),
+        "unitree_r1_height_reference_m": 1.23,
+        "scale_to_r1_height": round(1.23 / float(extents[1]), 5) if extents[1] else None,
+        "bytes": path.stat().st_size,
+        "sha256": _sha256(path),
+    }
+
+
+def _optional_face_reference_assets(params: dict[str, Any]) -> dict[str, Any]:
+    candidates = {
+        "face_closeup_jpeg": Path("/home/shaw/Downloads/Gh3Tr5RW4AAu-gY.jpeg"),
+        "full_body_jpeg": Path("/home/shaw/Downloads/GhXVM_0bgAAw5r7.jpeg"),
+        "source_front_glb": Path("/home/shaw/Downloads/eliza_front.glb"),
+        "project_front_png": _concept_reference_path(params),
+        "project_front_glb": _concept_reference_mesh_path(params),
+    }
+    assets: dict[str, Any] = {}
+    for name, path in candidates.items():
+        if path is None:
+            assets[name] = {"path": None, "exists": False}
+            continue
+        if not path.is_file():
+            assets[name] = {"path": str(path), "exists": False}
+            continue
+        if path.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+            assets[name] = _reference_image_metadata(path)
+        elif path.suffix.lower() in {".glb", ".gltf", ".obj", ".stl"}:
+            assets[name] = _reference_mesh_metadata(path)
+        else:
+            assets[name] = {
+                "path": str(path),
+                "exists": True,
+                "bytes": path.stat().st_size,
+                "sha256": _sha256(path),
+            }
+    return assets
+
+
 def write_concept_reference_report(params: dict[str, Any]) -> dict[str, Any]:
     image_path = _concept_reference_path(params)
     mesh_path = _concept_reference_mesh_path(params)
@@ -880,6 +1009,8 @@ def _part_mesh(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
         mesh = _face([float(x) for x in spec["scale"]], rgba)
     elif shape == "torus_x":
         mesh = _torus(float(spec["radius"]), float(spec["tube_radius"]), "x", spec.get("scale"), rgba)
+    elif shape == "annular_loft_x":
+        mesh = _annular_loft_x(spec, rgba)
     elif shape == "torus_y":
         mesh = _torus(float(spec["radius"]), float(spec["tube_radius"]), "y", spec.get("scale"), rgba)
     elif shape == "torus_z":
@@ -1006,6 +1137,21 @@ def _cq_shape_from_spec(cq: Any, spec: dict[str, Any]) -> Any:
         solid = cylinder(float(spec["radius"]), float(spec["height"]), "z")
     elif shape == "torus_x":
         solid = cq.Solid.makeTorus(float(spec["radius"]), float(spec["tube_radius"]), (0, 0, 0), (1, 0, 0))
+    elif shape == "annular_loft_x":
+        ry, rz = [float(x) for x in spec["centerline_radii_yz"][:2]]
+        tube_x, tube_radial = [float(x) for x in spec["tube_radii_x_radial"][:2]]
+        path_radius = max((ry + rz) / 2.0, 1e-6)
+        tube_norm = max(tube_radial / path_radius, 1e-6)
+        solid = cq.Solid.makeTorus(1.0, tube_norm, (0, 0, 0), (1, 0, 0)).transformGeometry(
+            cq.Matrix(
+                [
+                    [tube_x / tube_norm, 0, 0, 0],
+                    [0, ry, 0, 0],
+                    [0, 0, rz, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
+        )
     elif shape == "torus_y":
         solid = cq.Solid.makeTorus(float(spec["radius"]), float(spec["tube_radius"]), (0, 0, 0), (0, 1, 0))
     elif shape == "torus_z":
@@ -2050,6 +2196,7 @@ def write_face_alignment_report(
     non_adjacent_values = [
         value["non_adjacent_mm"] for value in per_part_clearance.values() if value["non_adjacent_mm"] is not None
     ]
+    reference_assets = _optional_face_reference_assets(params)
     face_visual_finish = params.get("materials", {}).get("face_shell", {}).get("visual_finish", {})
     parametric_face = face.source_kind == "parametric_donor_face_grid"
     report = {
@@ -2062,6 +2209,27 @@ def write_face_alignment_report(
             "source", "eliza_front_reference.png visible-face proportions, excluding hair and glasses"
         ),
         "face_shell_source": face.source_asset,
+        "reference_assets": reference_assets,
+        "source_robot_subassemblies": {
+            "neck_carrier": {
+                "parts": ["head_mount_neck_black"],
+                "mounted_robot_bodies": ["torso_link"],
+                "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL", "torso_collision.stl"],
+                "role": "black underbody carrier between R1 torso/head envelope and the donor-derived face",
+            },
+            "face_plate_details": {
+                "parts": ["face_shell", "left_eye_insert", "right_eye_insert", "lip_insert"],
+                "mounted_robot_bodies": ["torso_link"],
+                "oem_baseline_meshes": ["head_yaw_link.STL", "head_pitch_link.STL"],
+                "role": "visible hard-plastic face plate and seated detail inserts",
+            },
+            "hair_reference_only": {
+                "parts": [],
+                "mounted_robot_bodies": [],
+                "oem_baseline_meshes": [],
+                "role": "hair is retained as silhouette/reference context only and is not generated as robot geometry",
+            },
+        },
         "face_shell_bounds_mm": np.round(bounds * 1000, 3).tolist(),
         "face_shell_extents_mm": np.round(extents * 1000, 3).tolist(),
         "aesthetic_depth_verdict": "pass" if face_depth_check["within_tolerance"] else "needs-work",
@@ -2095,6 +2263,24 @@ def write_face_alignment_report(
             ),
             "visual_finish": face_visual_finish,
             "collision_mesh_changed": parametric_face,
+        },
+        "hair_reference_policy": {
+            "generated_geometry": False,
+            "params_no_hair": bool(params.get("style", {}).get("no_hair", False)),
+            "alignment_use": "silhouette/context only; do not create hair mesh, ponytail mass, or collision volume",
+            "reference_inputs": [
+                name for name, asset in reference_assets.items() if asset.get("exists")
+            ],
+        },
+        "wrist_collision_policy": {
+            "classification": "controller keepout or wrist/forearm geometry issue, not a face-surfacing target",
+            "face_geometry_can_close_wrist_rows": False,
+            "controlled_part": "face_shell",
+            "controlled_base_body_suffix": "wrist_roll_link",
+            "required_resolution": (
+                "Use head-protection keepout, joint-limit policy, or wrist/forearm redesign for wrist-roll rows; "
+                "do not flatten or shrink the donor-derived face solely to satisfy extreme wrist sweep contact."
+            ),
         },
         "note": (
             "Face alignment uses the donor-derived parametric face shell plus separate eye/lip inserts. "
@@ -2751,7 +2937,7 @@ def write_parametric_reconstruction_audit(
         shape_counts[shape] = shape_counts.get(shape, 0) + 1
         shell_part = part.role in shell_roles
         step_path = STEP_ROOT / f"{part.name}.step"
-        has_section_params = shape in {"section_loft", "donor_face_grid_loft"}
+        has_section_params = shape in {"section_loft", "donor_face_grid_loft", "annular_loft_x"}
         has_simple_parameters = shape in {
             "ellipsoid",
             "capsule_z",
@@ -2830,6 +3016,102 @@ def _part_region(name: str) -> str:
     if any(token in name for token in ["head", "face", "eye", "lip", "neck"]):
         return "neck_head_face"
     return "unclassified"
+
+
+def _part_subassembly(name: str) -> str:
+    side = "left" if name.startswith("left_") else ("right" if name.startswith("right_") else None)
+    if name == "torso_chest_shell":
+        return "torso_chest_core_shell"
+    if side and any(token in name for token in ["chest_contour", "chest_outer", "chest_vent"]):
+        return f"{side}_chest_side_panel"
+    if any(token in name for token in ["chest_upper_bridge", "chest_lower_bridge", "chest_sensor", "chest_panel_seam", "under_bust"]):
+        return "central_chest_bridge_trim"
+    if any(token in name for token in ["abdomen", "rib", "torso_abdomen"]):
+        return "waist_abdomen_panel"
+    if any(token in name for token in ["back", "spine"]):
+        return "rear_torso_back_panel"
+    if side and any(token in name for token in ["foot"]):
+        return f"{side}_foot_ankle"
+    if any(token in name for token in ["rear_hip", "glute"]):
+        return "rear_pelvis_glute"
+    if side and any(token in name for token in ["thigh"]):
+        return f"{side}_hip_upper_leg"
+    if side and any(token in name for token in ["shin"]):
+        return f"{side}_knee_shin"
+    if side and any(token in name for token in ["shoulder"]):
+        return f"{side}_shoulder"
+    if side and any(token in name for token in ["upper_arm"]):
+        return f"{side}_upper_arm"
+    if side and "wrist_separated_cuff" in name:
+        return f"{side}_wrist_cuff"
+    if side and "forearm" in name:
+        return f"{side}_forearm"
+    if side and "wrist" in name:
+        return f"{side}_wrist"
+    if any(token in name for token in ["pelvis_front", "pelvis_center", "pelvis_lower"]):
+        return "front_pelvis"
+    if any(token in name for token in ["rear_seat"]):
+        return "rear_pelvis_glute"
+    if any(token in name for token in ["head", "neck"]):
+        return "neck_carrier"
+    if any(token in name for token in ["face", "eye", "lip"]):
+        return "face_plate_details"
+    if any(token in name for token in ["torso"]):
+        return "torso_chest_core_shell"
+    return _part_region(name)
+
+
+def _configured_source_subassemblies(params: dict[str, Any]) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+    part_to_subassembly: dict[str, str] = {}
+    configured: dict[str, dict[str, Any]] = {}
+    for name, spec in params.get("source_robot_subassemblies", {}).items():
+        if not isinstance(spec, dict):
+            continue
+        part_names = [str(part_name) for part_name in spec.get("parts", [])]
+        configured[str(name)] = {
+            "region": spec.get("region"),
+            "source_robot_anchor": spec.get("source_robot_anchor", {}),
+            "parts": part_names,
+        }
+        for part_name in part_names:
+            part_to_subassembly[part_name] = str(name)
+    return part_to_subassembly, configured
+
+
+def _subassembly_split_strategy(name: str) -> str:
+    strategies = {
+        "torso_chest_core_shell": "single torso-mounted cosmetic shell following torso_collision and waist_yaw anchors",
+        "central_chest_bridge_trim": "centerline bridge and black inset trim; keep as separate color/material inserts",
+        "left_chest_side_panel": "left mirrored chest side armor panel with local black vent insert",
+        "right_chest_side_panel": "right mirrored chest side armor panel with local black vent insert",
+        "waist_abdomen": "configured waist abdomen source assembly anchored to torso_link and waist yaw/roll OEM meshes",
+        "waist_abdomen_panel": "waist-mounted abdomen underbody, center armor, and horizontal rib inserts",
+        "rear_torso_back_panel": "rear spine armor with separate black channel and side cut inserts",
+        "left_hip_upper_leg": "left hip-yaw mounted thigh sleeve and armor only; pelvis rear fairings stay in rear_pelvis_glute",
+        "right_hip_upper_leg": "right hip-yaw mounted thigh sleeve and armor only; pelvis rear fairings stay in rear_pelvis_glute",
+        "left_knee_shin": "left knee-link mounted shin sleeve plus front and side armor skins",
+        "right_knee_shin": "right knee-link mounted shin sleeve plus front and side armor skins",
+        "left_foot_ankle": "left ankle-roll mounted boot upper, toe cap, outsole band, and rear heel block",
+        "right_foot_ankle": "right ankle-roll mounted boot upper, toe cap, outsole band, and rear heel block",
+        "front_pelvis": "configured front pelvis armor shell and plates anchored to pelvis_link",
+        "rear_pelvis_bridge": "configured rear pelvis bridge anchored to pelvis_link",
+        "left_rear_hip_fairing": "configured left posterior hip fairing anchored to pelvis with left hip source context",
+        "right_rear_hip_fairing": "configured right posterior hip fairing anchored to pelvis with right hip source context",
+        "left_glute_backside": "configured left glute/backside skin anchored to pelvis_link",
+        "right_glute_backside": "configured right glute/backside skin anchored to pelvis_link",
+        "rear_pelvis_glute": "fallback pelvis-mounted rear seat, rear hip, and glute fairing grouping",
+        "left_shoulder": "left shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
+        "right_shoulder": "right shoulder cap and fastener indexed to shoulder pitch/roll OEM anchors",
+        "left_upper_arm": "left upper-arm sleeve and armor mounted to the shoulder-yaw source body",
+        "right_upper_arm": "right upper-arm sleeve and armor mounted to the shoulder-yaw source body",
+        "left_forearm": "left forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
+        "right_forearm": "right forearm sleeve, blade, and inner detail mounted to elbow link before wrist-roll motion",
+        "left_wrist_cuff": "left slim cuff mounted to forearm end with left_wrist_roll_link reserved as a keepout, not a cosmetic mount",
+        "right_wrist_cuff": "right slim cuff mounted to forearm end with right_wrist_roll_link reserved as a keepout, not a cosmetic mount",
+        "neck_carrier": "torso_link-mounted black neck carrier following R1 head_yaw/head_pitch and torso_collision envelopes",
+        "face_plate_details": "torso_link-mounted donor-derived face plate and seated eye/lip inserts tied to R1 head envelope references",
+    }
+    return strategies.get(name, "source-body-mounted bodykit subassembly")
 
 
 def write_part_review_report(
@@ -2948,6 +3230,389 @@ def write_part_review_report(
     return report
 
 
+def write_subassembly_volume_report(
+    params: dict[str, Any],
+    parts: list[Part],
+    mjcf_path: Path,
+    fit: dict[str, Any],
+    panel_gap: dict[str, Any],
+    stress_blockers: dict[str, Any],
+) -> dict[str, Any]:
+    """Group the flat bodykit part list into source-robot-connected assemblies.
+
+    This is intentionally evidence-oriented: it does not claim final mount
+    design, but it proves which robot bodies and OEM mesh references each
+    generated shell is tied to and records the local/world volume envelope.
+    """
+    model = mujoco.MjModel.from_xml_path(str(mjcf_path))
+    data = mujoco.MjData(model)
+    _set_home_pose(model, data, params)
+    regions = ["feet_ankles", "legs", "hips_torso_chest_back", "arms", "neck_head_face"]
+    grouped: dict[str, list[Part]] = {region: [] for region in regions}
+    subassembly_grouped: dict[str, list[Part]] = {}
+    spec_by_name = {str(spec.get("name")): spec for spec in params.get("parts", []) if isinstance(spec, dict)}
+    configured_part_subassemblies, configured_subassemblies = _configured_source_subassemblies(params)
+    for part in parts:
+        grouped.setdefault(_part_region(part.name), []).append(part)
+        subassembly_name = configured_part_subassemblies.get(part.name, _part_subassembly(part.name))
+        subassembly_grouped.setdefault(subassembly_name, []).append(part)
+
+    per_part_clearance = fit.get("per_part_clearance_mm", {})
+    per_part_non_mounted_clearance = fit.get("per_part_non_mounted_clearance_mm", {})
+    per_part_non_adjacent_clearance = fit.get("per_part_non_adjacent_clearance_mm", {})
+    panel_rows = panel_gap.get("worst_pairs", [])
+    stress_rows = stress_blockers.get("top_blockers", [])
+    worker_by_region = {
+        "feet_ankles": "feet_ankles_worker",
+        "legs": "legs_knees_shins_worker",
+        "hips_torso_chest_back": "hips_pelvis_torso_worker",
+        "arms": "arms_shoulders_wrists_worker",
+        "neck_head_face": "neck_head_face_worker",
+    }
+
+    def assembly_row(
+        name: str,
+        assembly_parts: list[Part],
+        *,
+        broad_region: str | None,
+        configured_spec: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        part_rows = []
+        world_vertices = []
+        volume_by_material: dict[str, float] = {}
+        volume_by_role: dict[str, float] = {}
+        body_to_parts: dict[str, list[str]] = {}
+        body_to_source_meshes: dict[str, set[str]] = {}
+        source_meshes: set[str] = set()
+        disconnected_parts = []
+        body_anchor_roles: dict[str, set[str]] = {}
+        body_connection_methods: dict[str, set[str]] = {}
+        for part in assembly_parts:
+            spec = spec_by_name.get(part.name, {})
+            source_anchor = spec.get("source_robot_anchor", {}) if isinstance(spec, dict) else {}
+            local_volume_cm3 = float(abs(part.mesh.volume) * 1_000_000)
+            surface_area_cm2 = float(part.mesh.area * 10_000)
+            extents_mm = np.asarray(part.mesh.extents, dtype=float) * 1000
+            body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, part.body)
+            body_origin_world = np.asarray(data.xpos[body_id], dtype=float) if body_id >= 0 else np.zeros(3)
+            world_mesh = _body_world_mesh(model, data, part.body, part.mesh)
+            if len(world_mesh.vertices):
+                world_vertices.append(np.asarray(world_mesh.vertices, dtype=float))
+                centroid_to_body_origin_mm = (np.asarray(world_mesh.centroid, dtype=float) - body_origin_world) * 1000
+            else:
+                centroid_to_body_origin_mm = np.zeros(3)
+            step_path = STEP_ROOT / f"{part.name}.step"
+            anchor_source_body = str(source_anchor.get("source_body", part.body))
+            anchor_source_mesh = str(
+                source_anchor.get("source_mesh", part.oem_baseline_meshes[0] if part.oem_baseline_meshes else "")
+            )
+            anchor_role = str(source_anchor.get("anchor_role", "source_body_offset_shell"))
+            connection_method = str(source_anchor.get("connection_method", "offset_shell_to_oem_body_envelope"))
+            source_connected = (
+                bool(part.body)
+                and bool(part.oem_baseline_meshes)
+                and anchor_source_body == part.body
+                and (not anchor_source_mesh or anchor_source_mesh in part.oem_baseline_meshes)
+            )
+            if not source_connected:
+                disconnected_parts.append(part.name)
+            body_to_parts.setdefault(part.body, []).append(part.name)
+            body_to_source_meshes.setdefault(part.body, set()).update(part.oem_baseline_meshes)
+            body_anchor_roles.setdefault(part.body, set()).add(anchor_role)
+            body_connection_methods.setdefault(part.body, set()).add(connection_method)
+            source_meshes.update(part.oem_baseline_meshes)
+            volume_by_material[part.material] = volume_by_material.get(part.material, 0.0) + local_volume_cm3
+            volume_by_role[part.role] = volume_by_role.get(part.role, 0.0) + local_volume_cm3
+            part_rows.append(
+                {
+                    "name": part.name,
+                    "body": part.body,
+                    "role": part.role,
+                    "material": part.material,
+                    "source_kind": part.source_kind,
+                    "source_robot_connected": source_connected,
+                    "source_subassembly": name,
+                    "source_robot_anchor": {
+                        "source_body": anchor_source_body,
+                        "source_mesh": anchor_source_mesh,
+                        "anchor_role": anchor_role,
+                        "connection_method": connection_method,
+                        "body_origin_world_m": [round(float(x), 5) for x in body_origin_world],
+                        "part_centroid_to_body_origin_mm": [
+                            round(float(x), 3) for x in centroid_to_body_origin_mm
+                        ],
+                    },
+                    "oem_baseline_meshes": list(part.oem_baseline_meshes),
+                    "local_bbox_mm": [round(float(x), 3) for x in extents_mm],
+                    "solid_volume_cm3": round(local_volume_cm3, 4),
+                    "surface_area_cm2": round(surface_area_cm2, 4),
+                    "step": str(step_path),
+                    "step_solid_exported": step_path.is_file(),
+                }
+            )
+
+        if world_vertices:
+            combined = np.vstack(world_vertices)
+            world_min = combined.min(axis=0)
+            world_max = combined.max(axis=0)
+            world_extent_mm = (world_max - world_min) * 1000
+            world_bbox = {
+                "min_m": [round(float(x), 5) for x in world_min],
+                "max_m": [round(float(x), 5) for x in world_max],
+                "extents_mm": [round(float(x), 3) for x in world_extent_mm],
+            }
+        else:
+            world_bbox = {"min_m": None, "max_m": None, "extents_mm": None}
+
+        total_volume = sum(row["solid_volume_cm3"] for row in part_rows)
+        configured_anchor = dict((configured_spec or {}).get("source_robot_anchor", {}))
+        expected_mounts = set()
+        if configured_anchor.get("mounted_body"):
+            expected_mounts.add(str(configured_anchor["mounted_body"]))
+        expected_mounts.update(str(body) for body in configured_anchor.get("mounted_bodies", []))
+        expected_meshes = {str(mesh) for mesh in configured_anchor.get("oem_baseline_meshes", [])}
+        keepout_bodies = {str(body) for body in configured_anchor.get("keepout_bodies", [])}
+        keepout_meshes = {str(mesh) for mesh in configured_anchor.get("keepout_oem_meshes", [])}
+        mounted_bodies = set(body_to_parts)
+        configured_anchor_connected = (
+            bool(configured_anchor)
+            and bool(expected_mounts)
+            and expected_mounts.issubset(mounted_bodies)
+            and expected_meshes.issubset(source_meshes)
+        )
+        source_subassembly_anchor = None
+        if configured_anchor:
+            source_subassembly_anchor = {
+                "mounted_body": configured_anchor.get("mounted_body"),
+                "mounted_bodies": sorted(expected_mounts),
+                "source_bodies": [str(body) for body in configured_anchor.get("source_bodies", [])],
+                "keepout_bodies": sorted(keepout_bodies),
+                "oem_baseline_meshes": sorted(expected_meshes),
+                "keepout_oem_meshes": sorted(keepout_meshes),
+                "anchor_role": configured_anchor.get("anchor_role"),
+                "connection_method": configured_anchor.get("connection_method"),
+                "anchor_connected": configured_anchor_connected,
+            }
+        source_robot_anchors = [
+            {
+                "mounted_unitree_body": body,
+                "reference_oem_meshes": sorted(meshes),
+                "anchor_roles": sorted(body_anchor_roles.get(body, [])),
+                "connection_methods": sorted(body_connection_methods.get(body, [])),
+                "anchored_parts": sorted(body_to_parts.get(body, [])),
+                "anchor_status": "connected" if meshes else "body-mounted-without-oem-reference",
+            }
+            for body, meshes in sorted(body_to_source_meshes.items())
+        ]
+        part_names = {part.name for part in assembly_parts}
+        clearance_values = [
+            float(per_part_clearance[name]) for name in part_names if name in per_part_clearance
+        ]
+        non_mounted_clearance_values = [
+            float(per_part_non_mounted_clearance[name])
+            for name in part_names
+            if name in per_part_non_mounted_clearance
+        ]
+        non_adjacent_clearance_values = [
+            float(per_part_non_adjacent_clearance[name])
+            for name in part_names
+            if name in per_part_non_adjacent_clearance
+        ]
+        assembly_panel_rows = [
+            row
+            for row in panel_rows
+            if row.get("part_a") in part_names or row.get("part_b") in part_names
+        ]
+        assembly_stress_rows = [row for row in stress_rows if row.get("part") in part_names]
+        return {
+            "name": name,
+            "broad_region": broad_region,
+            "worker_package": worker_by_region.get(broad_region or name, f"{name}_worker"),
+            "panel_split_strategy": _subassembly_split_strategy(name),
+            "configured_source_subassembly": configured_spec is not None,
+            "source_subassembly_anchor": source_subassembly_anchor,
+            "part_count": len(assembly_parts),
+            "total_solid_volume_cm3": round(float(total_volume), 4),
+            "volume_by_material_cm3": {k: round(v, 4) for k, v in sorted(volume_by_material.items())},
+            "volume_by_role_cm3": {k: round(v, 4) for k, v in sorted(volume_by_role.items())},
+            "mounted_robot_bodies": sorted(body_to_parts),
+            "body_to_parts": {k: sorted(v) for k, v in sorted(body_to_parts.items())},
+            "source_robot_anchors": source_robot_anchors,
+            "oem_baseline_meshes": sorted(source_meshes),
+            "source_connected_part_count": sum(1 for row in part_rows if row["source_robot_connected"]),
+            "disconnected_parts": disconnected_parts,
+            "world_bbox_home_pose": world_bbox,
+            "fit_review": {
+                "minimum_bodykit_to_base_clearance_mm": (
+                    round(min(clearance_values), 3) if clearance_values else None
+                ),
+                "minimum_non_mounted_clearance_mm": (
+                    round(min(non_mounted_clearance_values), 3) if non_mounted_clearance_values else None
+                ),
+                "minimum_non_adjacent_clearance_mm": (
+                    round(min(non_adjacent_clearance_values), 3) if non_adjacent_clearance_values else None
+                ),
+                "dynamic_clearance_target_mm": fit.get("required_dynamic_clearance_mm"),
+            },
+            "panel_gap_review": {
+                "verdict": panel_gap.get("verdict"),
+                "worst_pairs": assembly_panel_rows[:5],
+                "pairs_below_gap_gate": sum(1 for row in assembly_panel_rows if row.get("below_gap_gate")),
+            },
+            "mechanical_stress_review": {
+                "verdict": "pass" if not assembly_stress_rows else "needs-work",
+                "blocker_count": len(assembly_stress_rows),
+                "blockers": assembly_stress_rows,
+            },
+            "parts": sorted(part_rows, key=lambda row: row["name"]),
+            "connection_review": (
+                "source-anchor-connected-parametric-subassembly"
+                if configured_spec is not None and configured_anchor_connected and assembly_parts and not disconnected_parts
+                else "source-connected-parametric-subassembly"
+                if configured_spec is None and assembly_parts and not disconnected_parts
+                else "needs-source-connection-review"
+            ),
+            "mount_design_status": "needs-fastener-boss-rib-insert-detail",
+        }
+
+    assemblies: dict[str, Any] = {}
+    for region in regions:
+        assemblies[region] = assembly_row(region, grouped.get(region, []), broad_region=region)
+
+    source_body_subassemblies = {
+        name: assembly_row(
+            name,
+            assembly_parts,
+            broad_region=(
+                configured_subassemblies.get(name, {}).get("region")
+                or (_part_region(assembly_parts[0].name) if assembly_parts else None)
+            ),
+            configured_spec=configured_subassemblies.get(name),
+        )
+        for name, assembly_parts in sorted(subassembly_grouped.items())
+    }
+    reference_assets = _optional_face_reference_assets(params)
+    reference_only_subassemblies = {
+        "hair_reference_alignment": {
+            "name": "hair_reference_alignment",
+            "broad_region": "neck_head_face",
+            "worker_package": worker_by_region["neck_head_face"],
+            "part_count": 0,
+            "total_solid_volume_cm3": 0.0,
+            "mounted_robot_bodies": [],
+            "source_robot_anchors": [],
+            "oem_baseline_meshes": [],
+            "generated_geometry": False,
+            "params_no_hair": bool(params.get("style", {}).get("no_hair", False)),
+            "reference_assets": {
+                name: asset
+                for name, asset in reference_assets.items()
+                if name in {"face_closeup_jpeg", "full_body_jpeg", "source_front_glb", "project_front_png", "project_front_glb"}
+            },
+            "alignment_use": (
+                "Hair is retained only as reference context for head silhouette and face framing. "
+                "No hair, ponytail, glasses, or related collision volume is generated."
+            ),
+            "connection_review": "reference-only-no-generated-robot-subassembly",
+            "mount_design_status": "not-applicable-reference-only",
+        }
+    }
+    for name, configured_spec in sorted(configured_subassemblies.items()):
+        if name in source_body_subassemblies or configured_spec.get("parts"):
+            continue
+        configured_anchor = dict(configured_spec.get("source_robot_anchor", {}))
+        reference_only_subassemblies[name] = {
+            "name": name,
+            "broad_region": configured_spec.get("region"),
+            "worker_package": worker_by_region.get(str(configured_spec.get("region")), f"{name}_worker"),
+            "part_count": 0,
+            "total_solid_volume_cm3": 0.0,
+            "mounted_robot_bodies": [],
+            "source_subassembly_anchor": {
+                "mounted_body": configured_anchor.get("mounted_body"),
+                "mounted_bodies": [],
+                "source_bodies": [str(body) for body in configured_anchor.get("source_bodies", [])],
+                "keepout_bodies": [str(body) for body in configured_anchor.get("keepout_bodies", [])],
+                "oem_baseline_meshes": [str(mesh) for mesh in configured_anchor.get("oem_baseline_meshes", [])],
+                "keepout_oem_meshes": [str(mesh) for mesh in configured_anchor.get("keepout_oem_meshes", [])],
+                "anchor_role": configured_anchor.get("anchor_role"),
+                "connection_method": configured_anchor.get("connection_method"),
+                "anchor_connected": bool(configured_anchor.get("keepout_bodies") or configured_anchor.get("source_bodies")),
+            },
+            "source_robot_anchors": [],
+            "oem_baseline_meshes": [str(mesh) for mesh in configured_anchor.get("oem_baseline_meshes", [])],
+            "generated_geometry": False,
+            "connection_review": "reference-only-source-keepout",
+            "mount_design_status": "not-applicable-reference-only",
+        }
+
+    report = {
+        "verdict": (
+            "pass"
+            if all(
+                assembly["part_count"] > 0 and not assembly["disconnected_parts"]
+                for assembly in assemblies.values()
+            )
+            else "needs-work"
+        ),
+        "units": {
+            "volume": "cm^3",
+            "surface_area": "cm^2",
+            "bbox": "mm unless key suffix is _m",
+        },
+        "robot_source_model": str(R1_MJCF),
+        "step_root": str(STEP_ROOT),
+        "configured_source_subassemblies": sorted(configured_subassemblies),
+        "regional_subassemblies": assemblies,
+        "source_body_subassemblies": source_body_subassemblies,
+        "reference_only_subassemblies": reference_only_subassemblies,
+        "subassemblies": source_body_subassemblies,
+        "worker_work_packages": {
+            worker_by_region[region]: {
+                "broad_region": region,
+                "regional_volume_cm3": assemblies[region]["total_solid_volume_cm3"],
+                "source_body_subassemblies": [
+                    name
+                    for name, assembly in source_body_subassemblies.items()
+                    if assembly["broad_region"] == region
+                ],
+                "mounted_robot_bodies": sorted(
+                    {
+                        body
+                        for assembly in source_body_subassemblies.values()
+                        if assembly["broad_region"] == region
+                        for body in assembly["mounted_robot_bodies"]
+                    }
+                ),
+                "open_stress_blockers": sum(
+                    assembly["mechanical_stress_review"]["blocker_count"]
+                    for assembly in source_body_subassemblies.values()
+                    if assembly["broad_region"] == region
+                ),
+                "review_contract": (
+                    "Own these source-body-mounted subassemblies as connected replacement shells. "
+                    "Preserve source robot body anchors, STEP export, volume accounting, fit clearance, "
+                    "panel-gap gates, and mechanical-stress blocker evidence."
+                ),
+            }
+            for region in regions
+        },
+        "total_solid_volume_cm3": round(
+            float(sum(assembly["total_solid_volume_cm3"] for assembly in assemblies.values())),
+            4,
+        ),
+        "note": (
+            "Subassembly grouping is evidence that parts are mounted to source robot bodies and "
+            "reference OEM meshes. Wrist cuffs are forearm-end collars with wrist-roll bodies "
+            "reserved as moving keepouts, and configured hand subassemblies are source keepouts "
+            "because this bodykit pass does not generate cosmetic hand shells. It is not final "
+            "fastening, screw-boss, insert, or molded-rib design."
+        ),
+    }
+    (REVIEW_ROOT / "subassembly-volume-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
 def write_manufacturing_outputs(
     params: dict[str, Any],
     parts: list[Part],
@@ -2958,6 +3623,7 @@ def write_manufacturing_outputs(
     reconstruction_audit: dict[str, Any],
     part_review: dict[str, Any],
     face_alignment: dict[str, Any],
+    subassembly_report: dict[str, Any],
 ) -> None:
     REVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     layout_rows = []
@@ -3018,6 +3684,7 @@ def write_manufacturing_outputs(
         "step_export": step_report,
         "design_source_audit": source_audit,
         "parametric_reconstruction_audit": reconstruction_audit,
+        "subassembly_volume_report": subassembly_report,
         "print_layout": layout_rows,
         "dfm_rules": dfm_rules,
         "parts": [
@@ -3139,6 +3806,7 @@ def write_manufacturing_outputs(
         "- `base-cad-reconstruction-report.json`",
         "- `panel-gap-validation.json`",
         "- `part-review-report.json`",
+        "- `subassembly-volume-report.json`",
         "- `face-alignment-validation.json`",
         "- `mechanical-stress-blockers.json`",
         "- `head-keepout-policy.json`",
@@ -3167,6 +3835,8 @@ def main() -> int:
     source_audit = write_design_source_audit(params, parts)
     reconstruction_audit = write_parametric_reconstruction_audit(params, parts, step_report, base_reconstruction)
     part_review = write_part_review_report(parts, fit, panel_gap, face_alignment)
+    stress_blockers = write_mechanical_stress_blocker_report(params, fit)
+    subassembly_report = write_subassembly_volume_report(params, parts, mjcf, fit, panel_gap, stress_blockers)
     assembled = export_assembled_bodykit(mjcf, parts)
     renders = [] if args.skip_render else render_review(mjcf)
     video = None if args.skip_video or args.skip_render else render_orbit_video(mjcf)
@@ -3181,8 +3851,8 @@ def main() -> int:
         reconstruction_audit,
         part_review,
         face_alignment,
+        subassembly_report,
     )
-    stress_blockers = write_mechanical_stress_blocker_report(params, fit)
     print(
         json.dumps(
             {

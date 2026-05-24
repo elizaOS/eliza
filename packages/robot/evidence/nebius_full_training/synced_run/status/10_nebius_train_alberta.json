@@ -1,0 +1,9 @@
+{
+  "schema": "robot-nebius-stage-status-v1",
+  "stage": "10_nebius_train_alberta",
+  "script": "/root/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
+  "state": "running",
+  "started_at": "2026-05-24T03:53:06.459515Z",
+  "heartbeat_at": "2026-05-24T04:03:07.946983Z",
+  "log": "/root/robot/logs/10_nebius_train_alberta.log"
+}

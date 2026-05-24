@@ -184,6 +184,18 @@ export async function handleBatchTextEmbedding(
       }
 
       if (!response.ok) {
+        // Auth errors (401/403) are non-recoverable with the current key —
+        // throw so the router can fall through to the next provider (e.g.
+        // local inference) instead of silently returning zero-vectors that
+        // corrupt the embedding store. Commandment 8: don't hide broken
+        // pipelines behind fallback values.
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(
+            `[BatchEmbeddings] Authentication failed (${response.status}). ` +
+            `Check ELIZAOS_CLOUD_API_KEY or ELIZAOS_CLOUD_EMBEDDING_API_KEY — ` +
+            `the current key is not authorized for the embedding endpoint.`
+          );
+        }
         logger.error(`[BatchEmbeddings] API error: ${response.status} - ${response.statusText}`);
         for (const item of batch) {
           results[item.originalIndex] = createErrorVector(embeddingDimension, 0.4);
@@ -223,6 +235,11 @@ export async function handleBatchTextEmbedding(
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      // Re-throw auth errors so the router can fall through to another
+      // provider instead of silently inserting zero-vectors.
+      if (message.includes("Authentication failed")) {
+        throw error;
+      }
       logger.error(`[BatchEmbeddings] Error: ${message}`);
       for (const item of batch) {
         results[item.originalIndex] = createErrorVector(embeddingDimension, 0.6);

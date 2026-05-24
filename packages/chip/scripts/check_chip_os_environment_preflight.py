@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -32,6 +33,14 @@ class EnvSpec:
     name: str
     purpose: str
     required_for: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class CommandEnvHint:
+    mode: str
+    placeholder: str
+    evidence_log: str
+    purpose: str
 
 
 @dataclass(frozen=True)
@@ -112,6 +121,27 @@ ENVS = (
         ("generated_ap_linux_boot",),
     ),
 )
+
+COMMAND_ENV_HINTS = {
+    "AOSP_QEMU_SMOKE_COMMAND": CommandEnvHint(
+        mode="qemu-smoke",
+        placeholder="/exact/qemu-system-riscv64 smoke command for this checkout",
+        evidence_log="packages/chip/docs/evidence/android/qemu_riscv64_smoke.log",
+        purpose=(
+            "capture-aosp-evidence.sh qemu-smoke evals this command inside the AOSP "
+            "checkout and records the bounded virtual-device transcript"
+        ),
+    ),
+    "AOSP_RENODE_SMOKE_COMMAND": CommandEnvHint(
+        mode="renode-smoke",
+        placeholder="/exact/renode smoke command for this checkout",
+        evidence_log="packages/chip/docs/evidence/android/renode_e1_soc_smoke.log",
+        purpose=(
+            "capture-aosp-evidence.sh renode-smoke evals this command inside the AOSP "
+            "checkout and records the bounded virtual-device transcript"
+        ),
+    ),
+}
 
 ENV_DEFAULT_PATHS = {
     "AOSP_DIR": (Path("/home/shaw/aosp"),),
@@ -227,14 +257,18 @@ def rel(path: Path) -> str:
         return str(path)
 
 
-def finding(code: str, message: str, evidence: str, next_step: str) -> dict[str, Any]:
-    return {
+def finding(
+    code: str, message: str, evidence: str, next_step: str, **extra: Any
+) -> dict[str, Any]:
+    row = {
         "code": code,
         "severity": "blocker",
         "message": message,
         "evidence": evidence,
         "next_step": next_step,
     }
+    row.update(extra)
+    return row
 
 
 def check_tools(
@@ -281,31 +315,58 @@ def default_env_value(name: str) -> str:
     return ""
 
 
+def aosp_dir_for_hints(env: dict[str, str]) -> str:
+    return env.get("AOSP_DIR", "") or default_env_value("AOSP_DIR") or "/path/to/aosp"
+
+
+def command_env_hint(name: str, value: str, aosp_dir: str) -> dict[str, Any]:
+    hint = COMMAND_ENV_HINTS[name]
+    script = ROOT / "sw/aosp-device/capture-aosp-evidence.sh"
+    command_value = value or hint.placeholder
+    quoted_value = shlex.quote(command_value)
+    quoted_aosp = shlex.quote(aosp_dir)
+    script_path = rel(script)
+    capture_command = f"{name}={quoted_value} {script_path} {quoted_aosp} {hint.mode}"
+    return {
+        "capture_mode": hint.mode,
+        "capture_command": capture_command,
+        "suggested_export": f"export {name}={quoted_value}",
+        "evidence_log": hint.evidence_log,
+        "hint_purpose": hint.purpose,
+    }
+
+
 def check_env(env: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     rows: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
+    aosp_dir = aosp_dir_for_hints(env)
     for spec in ENVS:
         explicit_value = env.get(spec.name, "")
         inferred_value = "" if explicit_value else default_env_value(spec.name)
         value = explicit_value or inferred_value
         present = bool(value)
-        rows.append(
-            {
-                "name": spec.name,
-                "present": present,
-                "value": value,
-                "source": "env" if explicit_value else ("repo-default" if inferred_value else "missing"),
-                "purpose": spec.purpose,
-                "required_for": list(spec.required_for),
-            }
-        )
+        row = {
+            "name": spec.name,
+            "present": present,
+            "value": value,
+            "source": "env" if explicit_value else ("repo-default" if inferred_value else "missing"),
+            "purpose": spec.purpose,
+            "required_for": list(spec.required_for),
+        }
+        if spec.name in COMMAND_ENV_HINTS:
+            row["command_hint"] = command_env_hint(spec.name, value, aosp_dir)
+        rows.append(row)
         if not present:
+            extra = {}
+            if spec.name in COMMAND_ENV_HINTS:
+                extra = command_env_hint(spec.name, value, aosp_dir)
             findings.append(
                 finding(
                     f"missing_env_{spec.name.lower()}",
                     f"{spec.name} is not set",
                     spec.name,
                     f"Set {spec.name} to the concrete artifact, checkout, or smoke command required for {', '.join(spec.required_for)}.",
+                    **extra,
                 )
             )
     return rows, findings

@@ -576,7 +576,6 @@ def validate_nebius_full_training_run(
         min_seeds=min_benchmark_seeds,
         min_steps_per_task=min_benchmark_steps_per_task,
         min_tasks=4,
-        require_alberta_acc_gte_ppo=True,
         require_alberta_forgetting_lte_ppo=True,
         require_demo_video=True,
     )

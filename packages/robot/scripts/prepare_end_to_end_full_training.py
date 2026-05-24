@@ -113,7 +113,10 @@ def _make_scripts(
     _write_executable(
         train_alberta,
         _shell_header()
-        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps {alberta_steps} --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0\n",
+        + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
+        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0\n",
     )
     scripts["train_alberta"] = str(train_alberta)
 
@@ -121,6 +124,8 @@ def _make_scripts(
     _write_executable(
         compare_backends,
         _shell_header()
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
         + f"uv run eliza-robot-compare-backends --profile {profile_id} --tasks {tasks_s} --steps {backend_compare_steps} --eval-episodes 5 --max-steps 200 --out-root evidence/backend_compare/{profile_id}\n"
         + f"uv run eliza-robot-validate-backend-comparison evidence/backend_compare/{profile_id} --expected-profile {profile_id} --min-steps {backend_compare_steps} --min-eval-mean-steps 20 > evidence/backend_compare/{profile_id}/validation_report.json\n",
     )
@@ -130,18 +135,40 @@ def _make_scripts(
     _write_executable(
         continual,
         _shell_header()
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
         + f"uv run eliza-robot-benchmark-alberta --env joint_reach --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_joint_reach\n"
         + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_joint_reach --expected-env joint_reach --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo > evidence/alberta_joint_reach/validation_report.json\n"
         + f"uv run eliza-robot-benchmark-alberta --env obstacle_course --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_obstacle_course\n"
         + "uv run eliza-robot-render-alberta-obstacle-demo evidence/alberta_obstacle_course\n"
-        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
+        + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_obstacle_course --expected-env obstacle_course --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-forgetting-lte-ppo --require-demo-video > evidence/alberta_obstacle_course/validation_report.json\n"
     )
     scripts["continual_benchmarks"] = str(continual)
 
     brax = scripts_dir / "40_nebius_brax_baseline.sh"
     _write_executable(
         brax,
-        _shell_header() + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
+        _shell_header()
+        + "unset CUDA_VISIBLE_DEVICES\n"
+        + "unset JAX_PLATFORM_NAME\n"
+        + "export JAX_PLATFORMS=\"${BRAX_JAX_PLATFORMS:-cuda,cpu}\"\n"
+        + "if [[ \"${BRAX_REQUIRE_GPU:-1}\" == \"1\" ]]; then\n"
+        + "  for attempt in $(seq 1 30); do\n"
+        + "    if nvidia-smi -L >/dev/null 2>&1 && uv run python - <<'PY'\n"
+        + "import jax\n"
+        + "raise SystemExit(0 if jax.default_backend() == 'gpu' and jax.devices('gpu') else 1)\n"
+        + "PY\n"
+        + "    then\n"
+        + "      break\n"
+        + "    fi\n"
+        + "    if [[ \"$attempt\" == \"30\" ]]; then\n"
+        + "      echo \"Brax/MJX requested GPU, but CUDA was not ready after $attempt attempts\" >&2\n"
+        + "      exit 70\n"
+        + "    fi\n"
+        + "    sleep 10\n"
+        + "  done\n"
+        + "fi\n"
+        + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
     )
     scripts["brax_baseline"] = str(brax)
 
@@ -150,9 +177,10 @@ def _make_scripts(
     _write_executable(
         post,
         _shell_header()
-        + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps {alberta_steps} --require-domain-rand --require-inference\n"
-        + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps {alberta_steps} --require-inference-check\n"
-        + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps {alberta_steps} --require-production --max-steps 2\n"
+        + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-domain-rand --require-inference\n"
+        + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-inference-check\n"
+        + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps \"$ALBERTA_STREAMING_STEPS\" --require-production --max-steps 2\n"
         + f"uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes 5 --max-steps 200\n"
         + f"uv run python scripts/evidence_text_to_action_e2e.py --checkpoint {checkpoint} --profile {profile_id} --no-real\n"
         + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --out evidence/agent_videos --max-steps 200 --policy-checkpoint {checkpoint}\n"
@@ -201,7 +229,7 @@ write_files:
       fi
       : "${NEBIUS_TRAINING_S3_URI:?set NEBIUS_TRAINING_S3_URI to s3://bucket/run-id}"
       export NEBIUS_S3_ENDPOINT="${NEBIUS_S3_ENDPOINT:-https://storage.eu-north1.nebius.cloud}"
-      export ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/eliza/packages/robot}"
+      export ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/robot}"
       export MUJOCO_GL="${MUJOCO_GL:-egl}"
       export JAX_PLATFORMS="${JAX_PLATFORMS:-cuda,cpu}"
       export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
@@ -216,7 +244,8 @@ write_files:
       fi
       aws --endpoint-url "${NEBIUS_S3_ENDPOINT}" s3 cp "${NEBIUS_TRAINING_S3_URI%/}/payload.tar.gz" /root/robot-full/payload.tar.gz --only-show-errors
       tar -xzf /root/robot-full/payload.tar.gz -C /root
-      mkdir -p /home/shaw/milady
+      mkdir -p /root/eliza/packages /home/shaw/milady
+      ln -sfn /root/robot /root/eliza/packages/robot
       ln -sfn /root/eliza /home/shaw/milady/eliza
       cd "${ELIZA_ROBOT_PACKAGE_ROOT}"
       chmod +x evidence/full_training_preflight/scripts/*.sh evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh || true

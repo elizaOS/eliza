@@ -140,6 +140,7 @@
     "jsdom": "^29.0.0",
     "pathe": "^2.0.3",
     "rollup-plugin-visualizer": "^7.0.1",
+    "sharp": "^0.34.5",
     "tailwindcss": "^4.1.18",
     "typescript": "^6.0.3",
     "vite": "^8.0.0",

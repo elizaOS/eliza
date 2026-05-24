@@ -1,0 +1,10 @@
+{
+  "started_at": "2026-05-24T03:45:28Z",
+  "target_instance_id": "computeinstance-e00x4sqmx07qwehxrc",
+  "target_disk_id": "computedisk-e00te9qnayns1bsz15",
+  "actions": [
+    {"name":"delete_instance","ok":true,"output":{  "id": "computeoperation-e00cc7jrb26pj3t60c",  "description": "Delete Instance",  "created_at": "2026-05-24T03:45:28.307448Z",  "finished_at": "2026-05-24T03:45:48.146734Z",  "resource_id": "computeinstance-e00x4sqmx07qwehxrc",  "status": {},  "progress_tracker": {    "description": "Deleting instance",    "started_at": "2026-05-24T03:45:28.307448Z",    "finished_at": "2026-05-24T03:45:48.146734Z"  }}},
+    {"name":"delete_disk","ok":true,"output":{  "id": "computeoperation-e00yzgw64ky261e4jm",  "description": "Delete Disk",  "created_at": "2026-05-24T03:45:49.656332Z",  "finished_at": "2026-05-24T03:45:58.819120Z",  "resource_id": "computedisk-e00te9qnayns1bsz15",  "status": {},  "progress_tracker": {    "description": "Deleting disk",    "started_at": "2026-05-24T03:45:49.656332Z",    "finished_at": "2026-05-24T03:45:58.819120Z"  }}}
+  ],
+  "finished_at": "2026-05-24T03:45:59Z"
+}

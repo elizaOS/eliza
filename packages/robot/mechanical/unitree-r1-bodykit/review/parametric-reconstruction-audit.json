@@ -1,5 +1,5 @@
 {
-  "verdict": "needs-work",
+  "verdict": "pass",
   "bodykit_parts": 71,
   "step_export_status": "exported",
   "step_exported_count": 71,
@@ -7,80 +7,73 @@
   "base_reconstructed_assets": 43,
   "official_base_step_source_available": false,
   "source_kind_counts": {
+    "parametric_annular_loft": 2,
     "parametric_donor_face_grid": 1,
-    "parametric_loft": 19,
-    "primitive": 51
+    "parametric_loft": 51,
+    "primitive": 17
   },
   "shape_counts": {
-    "box": 29,
-    "capsule_y": 3,
-    "capsule_z": 1,
+    "annular_loft_x": 2,
+    "box": 12,
     "cylinder_x": 2,
     "donor_face_grid_loft": 1,
-    "ellipsoid": 9,
-    "section_loft": 19,
-    "tapered_box": 5,
-    "torus_x": 2
+    "ellipsoid": 3,
+    "section_loft": 51
   },
-  "morph_ready_count": 24,
-  "primitive_shell_count": 34,
-  "primitive_shell_parts": [
-    "chest_upper_bridge_armor",
-    "chest_lower_bridge_armor",
-    "rear_back_spine_plate",
-    "abdomen_center_armor",
-    "pelvis_center_plate",
-    "pelvis_lower_nose_plate",
-    "rear_seat_bridge_armor",
-    "left_rear_hip_fairing",
-    "right_rear_hip_fairing",
-    "left_rear_glute_armor_skin",
-    "right_rear_glute_armor_skin",
-    "left_upper_arm_outer_blade",
-    "left_upper_arm_front_armor",
-    "right_upper_arm_outer_blade",
-    "right_upper_arm_front_armor",
-    "left_forearm_outer_blade",
-    "left_wrist_separated_cuff",
-    "right_forearm_outer_blade",
-    "right_wrist_separated_cuff",
-    "left_thigh_front_armor",
-    "left_thigh_side_armor",
-    "right_thigh_front_armor",
-    "right_thigh_side_armor",
-    "left_shin_front_armor",
-    "left_shin_side_armor",
-    "right_shin_front_armor",
-    "right_shin_side_armor",
-    "left_foot_toe_armor",
-    "left_foot_sole_black",
-    "left_foot_heel_black",
-    "right_foot_top_shell",
-    "right_foot_toe_armor",
-    "right_foot_sole_black",
-    "right_foot_heel_black"
-  ],
+  "morph_ready_count": 54,
+  "primitive_shell_count": 0,
+  "primitive_shell_parts": [],
   "morph_ready_parts": [
+    "abdomen_center_armor",
+    "chest_lower_bridge_armor",
+    "chest_upper_bridge_armor",
     "face_shell",
     "head_mount_neck_black",
     "left_chest_contour_armor",
     "left_chest_outer_armor_skin",
+    "left_foot_heel_black",
+    "left_foot_sole_black",
+    "left_foot_toe_armor",
     "left_foot_top_shell",
     "left_forearm_outer_blade",
     "left_forearm_shell",
+    "left_rear_glute_armor_skin",
+    "left_rear_hip_fairing",
+    "left_shin_front_armor",
     "left_shin_shell",
+    "left_shin_side_armor",
     "left_shoulder_cap",
+    "left_thigh_front_armor",
     "left_thigh_shell",
+    "left_thigh_side_armor",
+    "left_upper_arm_front_armor",
+    "left_upper_arm_outer_blade",
     "left_upper_arm_shell",
     "left_wrist_separated_cuff",
+    "pelvis_center_plate",
     "pelvis_front_shell",
+    "pelvis_lower_nose_plate",
+    "rear_back_spine_plate",
+    "rear_seat_bridge_armor",
     "right_chest_contour_armor",
     "right_chest_outer_armor_skin",
+    "right_foot_heel_black",
+    "right_foot_sole_black",
+    "right_foot_toe_armor",
+    "right_foot_top_shell",
     "right_forearm_outer_blade",
     "right_forearm_shell",
+    "right_rear_glute_armor_skin",
+    "right_rear_hip_fairing",
+    "right_shin_front_armor",
     "right_shin_shell",
+    "right_shin_side_armor",
     "right_shoulder_cap",
+    "right_thigh_front_armor",
     "right_thigh_shell",
+    "right_thigh_side_armor",
+    "right_upper_arm_front_armor",
+    "right_upper_arm_outer_blade",
     "right_upper_arm_shell",
     "right_wrist_separated_cuff",
     "torso_abdomen_black",
@@ -111,36 +104,36 @@
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "torso_link",
-      "shape": "capsule_y",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "chest_lower_bridge_armor",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "torso_link",
-      "shape": "capsule_y",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "chest_sensor_black",
@@ -149,7 +142,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -164,7 +159,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -251,7 +248,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -266,7 +265,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -281,7 +282,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -294,18 +297,18 @@
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "torso_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "rear_spine_black_channel",
@@ -314,7 +317,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -329,7 +334,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -344,7 +351,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -376,19 +385,19 @@
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "torso_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "waist_yaw_link.STL",
         "waist_roll_link.STL",
         "torso_collision.stl"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "abdomen_panel_rib_1",
@@ -397,7 +406,11 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -412,7 +425,11 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -442,119 +459,119 @@
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "pelvis_lower_nose_plate",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "capsule_z",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "rear_seat_bridge_armor",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "capsule_y",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_rear_hip_fairing",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_rear_hip_fairing",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_rear_glute_armor_skin",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_rear_glute_armor_skin",
       "region": "hips_torso_chest_back",
       "role": "armor",
       "body": "pelvis",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "head_mount_neck_black",
@@ -600,7 +617,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -615,7 +635,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -630,7 +653,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -663,7 +689,10 @@
       "body": "left_shoulder_pitch_link",
       "shape": "cylinder_x",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_shoulder_pitch_link.STL",
+        "left_shoulder_roll_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -696,7 +725,10 @@
       "body": "right_shoulder_pitch_link",
       "shape": "cylinder_x",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_shoulder_pitch_link.STL",
+        "right_shoulder_roll_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -726,34 +758,34 @@
       "region": "arms",
       "role": "armor",
       "body": "left_shoulder_yaw_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_upper_arm_front_armor",
       "region": "arms",
       "role": "armor",
       "body": "left_shoulder_yaw_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_upper_arm_shell",
@@ -777,34 +809,34 @@
       "region": "arms",
       "role": "armor",
       "body": "right_shoulder_yaw_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_upper_arm_front_armor",
       "region": "arms",
       "role": "armor",
       "body": "right_shoulder_yaw_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_forearm_shell",
@@ -828,17 +860,17 @@
       "region": "arms",
       "role": "armor",
       "body": "left_elbow_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_forearm_inner_detail",
@@ -847,7 +879,9 @@
       "body": "left_elbow_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -860,17 +894,17 @@
       "region": "arms",
       "role": "underbody",
       "body": "left_elbow_link",
-      "shape": "torus_x",
-      "source_kind": "primitive",
+      "shape": "annular_loft_x",
+      "source_kind": "parametric_annular_loft",
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_forearm_shell",
@@ -894,17 +928,17 @@
       "region": "arms",
       "role": "armor",
       "body": "right_elbow_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_forearm_inner_detail",
@@ -913,7 +947,9 @@
       "body": "right_elbow_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -926,17 +962,17 @@
       "region": "arms",
       "role": "underbody",
       "body": "right_elbow_link",
-      "shape": "torus_x",
-      "source_kind": "primitive",
+      "shape": "annular_loft_x",
+      "source_kind": "parametric_annular_loft",
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_thigh_shell",
@@ -962,34 +998,34 @@
       "region": "legs",
       "role": "armor",
       "body": "left_hip_yaw_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_thigh_side_armor",
       "region": "legs",
       "role": "armor",
       "body": "left_hip_yaw_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_thigh_shell",
@@ -1015,34 +1051,34 @@
       "region": "legs",
       "role": "armor",
       "body": "right_hip_yaw_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_thigh_side_armor",
       "region": "legs",
       "role": "armor",
       "body": "right_hip_yaw_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_shin_shell",
@@ -1067,34 +1103,34 @@
       "region": "legs",
       "role": "armor",
       "body": "left_knee_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_knee_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_shin_side_armor",
       "region": "legs",
       "role": "armor",
       "body": "left_knee_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_knee_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_shin_shell",
@@ -1109,7 +1145,7 @@
       ],
       "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
-      "has_morph_history": false,
+      "has_morph_history": true,
       "has_section_parameters": true,
       "uses_simple_primitive_parameters": false,
       "next_reconstruction_step": "carry forward into morph/control optimization"
@@ -1119,34 +1155,34 @@
       "region": "legs",
       "role": "armor",
       "body": "right_knee_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_knee_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_shin_side_armor",
       "region": "legs",
       "role": "armor",
       "body": "right_knee_link",
-      "shape": "box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_knee_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
+      "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_foot_top_shell",
@@ -1170,119 +1206,119 @@
       "region": "feet_ankles",
       "role": "armor",
       "body": "left_ankle_roll_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_foot_sole_black",
       "region": "feet_ankles",
       "role": "underbody",
       "body": "left_ankle_roll_link",
-      "shape": "tapered_box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "left_foot_heel_black",
       "region": "feet_ankles",
       "role": "underbody",
       "body": "left_ankle_roll_link",
-      "shape": "tapered_box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_foot_top_shell",
       "region": "feet_ankles",
       "role": "armor",
       "body": "right_ankle_roll_link",
-      "shape": "tapered_box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_foot_toe_armor",
       "region": "feet_ankles",
       "role": "armor",
       "body": "right_ankle_roll_link",
-      "shape": "ellipsoid",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_foot_sole_black",
       "region": "feet_ankles",
       "role": "underbody",
       "body": "right_ankle_roll_link",
-      "shape": "tapered_box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     },
     {
       "part": "right_foot_heel_black",
       "region": "feet_ankles",
       "role": "underbody",
       "body": "right_ankle_roll_link",
-      "shape": "tapered_box",
-      "source_kind": "primitive",
+      "shape": "section_loft",
+      "source_kind": "parametric_loft",
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
       "step_solid_exported": true,
-      "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
-      "has_morph_history": false,
-      "has_section_parameters": false,
-      "uses_simple_primitive_parameters": true,
-      "next_reconstruction_step": "sample OEM/reference mesh on fixed grid and replace primitive with section_loft or specialized face/body loft"
+      "reconstruction_status": "morph-ready-section-loft",
+      "has_morph_history": true,
+      "has_section_parameters": true,
+      "uses_simple_primitive_parameters": false,
+      "next_reconstruction_step": "carry forward into morph/control optimization"
     }
   ]
 }

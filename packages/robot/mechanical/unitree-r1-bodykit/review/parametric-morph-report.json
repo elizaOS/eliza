@@ -1,6 +1,6 @@
 {
   "verdict": "pass",
-  "applied_count": 11,
+  "applied_count": 39,
   "skipped_count": 0,
   "applied": [
     {
@@ -98,6 +98,150 @@
     },
     {
       "morph": "feminine_compact_v1",
+      "part": "chest_upper_bridge_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0075,
+              "target": 0.0058,
+              "delta": -0.0017,
+              "percent": -22.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0075,
+              "target": 0.0058,
+              "delta": -0.0017,
+              "percent": -22.667
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.009,
+              "target": 0.007,
+              "delta": -0.002,
+              "percent": -22.222
+            },
+            {
+              "axis_index": 1,
+              "base": 0.009,
+              "target": 0.007,
+              "delta": -0.002,
+              "percent": -22.222
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0075,
+              "target": 0.0058,
+              "delta": -0.0017,
+              "percent": -22.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0075,
+              "target": 0.0058,
+              "delta": -0.0017,
+              "percent": -22.667
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "chest_lower_bridge_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0068,
+              "target": 0.0052,
+              "delta": -0.0016,
+              "percent": -23.529
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0068,
+              "target": 0.0052,
+              "delta": -0.0016,
+              "percent": -23.529
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0062,
+              "delta": -0.0018,
+              "percent": -22.5
+            },
+            {
+              "axis_index": 1,
+              "base": 0.008,
+              "target": 0.0062,
+              "delta": -0.0018,
+              "percent": -22.5
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0068,
+              "target": 0.0052,
+              "delta": -0.0016,
+              "percent": -23.529
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0068,
+              "target": 0.0052,
+              "delta": -0.0016,
+              "percent": -23.529
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
       "part": "pelvis_front_shell",
       "blend": 1.0,
       "kind": "section_loft",
@@ -162,6 +306,222 @@
               "target": 0.042,
               "delta": -0.002,
               "percent": -4.545
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "abdomen_center_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0025,
+              "target": 0.002,
+              "delta": -0.0005,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0085,
+              "target": 0.0075,
+              "delta": -0.001,
+              "percent": -11.765
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.003,
+              "target": 0.0024,
+              "delta": -0.0006,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.01,
+              "target": 0.009,
+              "delta": -0.001,
+              "percent": -10.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0025,
+              "target": 0.002,
+              "delta": -0.0005,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0085,
+              "target": 0.0075,
+              "delta": -0.001,
+              "percent": -11.765
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "pelvis_center_plate",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.0028,
+              "delta": -0.0007,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.013,
+              "target": 0.011,
+              "delta": -0.002,
+              "percent": -15.385
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0034,
+              "delta": -0.0006,
+              "percent": -15.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.014,
+              "delta": -0.002,
+              "percent": -12.5
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.0028,
+              "delta": -0.0007,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.013,
+              "target": 0.011,
+              "delta": -0.002,
+              "percent": -15.385
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "pelvis_lower_nose_plate",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": -0.024,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.017,
+              "target": 0.014,
+              "delta": -0.003,
+              "percent": -17.647
+            },
+            {
+              "axis_index": 1,
+              "base": 0.017,
+              "target": 0.014,
+              "delta": -0.003,
+              "percent": -17.647
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.024,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
             }
           ]
         }
@@ -625,9 +985,9 @@
         {
           "axis_index": 1,
           "base": -0.045,
-          "target": -0.044,
-          "delta": 0.001,
-          "percent": -2.222
+          "target": -0.052,
+          "delta": -0.007,
+          "percent": 15.556
         },
         {
           "axis_index": 2,
@@ -640,71 +1000,1934 @@
     },
     {
       "morph": "feminine_compact_v1",
+      "part": "left_shin_front_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.032,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.0014,
+              "delta": -0.0021,
+              "percent": -60.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0075,
+              "target": 0.0028,
+              "delta": -0.0047,
+              "percent": -62.667
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0052,
+              "target": 0.0022,
+              "delta": -0.003,
+              "percent": -57.692
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0105,
+              "target": 0.0042,
+              "delta": -0.0063,
+              "percent": -60.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.032,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.0014,
+              "delta": -0.0021,
+              "percent": -60.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0075,
+              "target": 0.0028,
+              "delta": -0.0047,
+              "percent": -62.667
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": 0.066,
+          "target": 0.055,
+          "delta": -0.011,
+          "percent": -16.667
+        },
+        {
+          "axis_index": 1,
+          "base": -0.024,
+          "target": -0.03,
+          "delta": -0.006,
+          "percent": 25.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.168,
+          "target": -0.168,
+          "delta": 0.0,
+          "percent": -0.0
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_shin_shell",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.009,
+              "delta": -0.002,
+              "percent": -18.182
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0022,
+              "delta": -0.0008,
+              "percent": -26.667
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.015,
+              "target": 0.0125,
+              "delta": -0.0025,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.004,
+              "target": 0.003,
+              "delta": -0.001,
+              "percent": -25.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.009,
+              "delta": -0.002,
+              "percent": -18.182
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0022,
+              "delta": -0.0008,
+              "percent": -26.667
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.004,
+          "target": -0.004,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 1,
+          "base": 0.048,
+          "target": 0.048,
+          "delta": 0.0,
+          "percent": 0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.12,
+          "target": -0.12,
+          "delta": 0.0,
+          "percent": -0.0
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "rear_back_spine_plate",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.004,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.036,
+              "target": 0.032,
+              "delta": -0.004,
+              "percent": -11.111
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.014,
+              "target": 0.0115,
+              "delta": -0.0025,
+              "percent": -17.857
+            },
+            {
+              "axis_index": 1,
+              "base": 0.044,
+              "target": 0.038,
+              "delta": -0.006,
+              "percent": -13.636
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.004,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.036,
+              "target": 0.032,
+              "delta": -0.004,
+              "percent": -11.111
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "rear_seat_bridge_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "y",
+          "position_delta": 0.005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "y",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "y",
+          "position_delta": -0.005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_rear_hip_fairing",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.008,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.022,
+              "target": 0.017,
+              "delta": -0.005,
+              "percent": -22.727
+            },
+            {
+              "axis_index": 1,
+              "base": 0.018,
+              "target": 0.013,
+              "delta": -0.005,
+              "percent": -27.778
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.026,
+              "target": 0.02,
+              "delta": -0.006,
+              "percent": -23.077
+            },
+            {
+              "axis_index": 1,
+              "base": 0.022,
+              "target": 0.015,
+              "delta": -0.007,
+              "percent": -31.818
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.008,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.015,
+              "delta": -0.005,
+              "percent": -25.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.011,
+              "delta": -0.005,
+              "percent": -31.25
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_rear_hip_fairing",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.006,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.017,
+              "target": 0.012,
+              "delta": -0.005,
+              "percent": -29.412
+            },
+            {
+              "axis_index": 1,
+              "base": 0.013,
+              "target": 0.008,
+              "delta": -0.005,
+              "percent": -38.462
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.014,
+              "delta": -0.006,
+              "percent": -30.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.01,
+              "delta": -0.006,
+              "percent": -37.5
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.006,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.016,
+              "target": 0.011,
+              "delta": -0.005,
+              "percent": -31.25
+            },
+            {
+              "axis_index": 1,
+              "base": 0.012,
+              "target": 0.008,
+              "delta": -0.004,
+              "percent": -33.333
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_rear_glute_armor_skin",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.009,
+              "delta": -0.007,
+              "percent": -43.75
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.011,
+              "delta": -0.009,
+              "percent": -45.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0028,
+              "target": 0.0014,
+              "delta": -0.0014,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.008,
+              "delta": -0.008,
+              "percent": -50.0
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.072,
+          "target": -0.06,
+          "delta": 0.012,
+          "percent": -16.667
+        },
+        {
+          "axis_index": 1,
+          "base": 0.05,
+          "target": 0.05,
+          "delta": 0.0,
+          "percent": 0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.078,
+          "target": -0.11,
+          "delta": -0.032,
+          "percent": 41.026
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_rear_glute_armor_skin",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.009,
+              "delta": -0.007,
+              "percent": -43.75
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.011,
+              "delta": -0.009,
+              "percent": -45.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0028,
+              "target": 0.0014,
+              "delta": -0.0014,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.008,
+              "delta": -0.008,
+              "percent": -50.0
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.072,
+          "target": -0.06,
+          "delta": 0.012,
+          "percent": -16.667
+        },
+        {
+          "axis_index": 1,
+          "base": -0.05,
+          "target": -0.05,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.078,
+          "target": -0.11,
+          "delta": -0.032,
+          "percent": 41.026
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_upper_arm_outer_blade",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0028,
+              "target": 0.0022,
+              "delta": -0.0006,
+              "percent": -21.429
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.0026,
+              "delta": -0.0009,
+              "percent": -25.714
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0028,
+              "target": 0.0022,
+              "delta": -0.0006,
+              "percent": -21.429
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_upper_arm_front_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0038,
+              "target": 0.0032,
+              "delta": -0.0006,
+              "percent": -15.789
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.005,
+              "target": 0.004,
+              "delta": -0.001,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.009,
+              "target": 0.0075,
+              "delta": -0.0015,
+              "percent": -16.667
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0038,
+              "target": 0.0032,
+              "delta": -0.0006,
+              "percent": -15.789
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_upper_arm_outer_blade",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0028,
+              "target": 0.0022,
+              "delta": -0.0006,
+              "percent": -21.429
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.0026,
+              "delta": -0.0009,
+              "percent": -25.714
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0028,
+              "target": 0.0022,
+              "delta": -0.0006,
+              "percent": -21.429
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_upper_arm_front_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0038,
+              "target": 0.0032,
+              "delta": -0.0006,
+              "percent": -15.789
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.005,
+              "target": 0.004,
+              "delta": -0.001,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.009,
+              "target": 0.0075,
+              "delta": -0.0015,
+              "percent": -16.667
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0038,
+              "target": 0.0032,
+              "delta": -0.0006,
+              "percent": -15.789
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_thigh_front_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.004,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.014,
+              "delta": -0.002,
+              "percent": -12.5
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.008,
+              "delta": -0.002,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.017,
+              "delta": -0.003,
+              "percent": -15.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.004,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.008,
+              "target": 0.0065,
+              "delta": -0.0015,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.014,
+              "delta": -0.002,
+              "percent": -12.5
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_thigh_side_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.013,
+              "target": 0.011,
+              "delta": -0.002,
+              "percent": -15.385
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.0028,
+              "delta": -0.0007,
+              "percent": -20.0
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.016,
+              "target": 0.013,
+              "delta": -0.003,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0045,
+              "target": 0.0035,
+              "delta": -0.001,
+              "percent": -22.222
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.013,
+              "target": 0.011,
+              "delta": -0.002,
+              "percent": -15.385
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.0028,
+              "delta": -0.0007,
+              "percent": -20.0
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_thigh_front_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0034,
+              "delta": -0.0006,
+              "percent": -15.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.005,
+              "target": 0.0042,
+              "delta": -0.0008,
+              "percent": -16.0
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.005,
+              "target": 0.0042,
+              "delta": -0.0008,
+              "percent": -16.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0065,
+              "target": 0.0052,
+              "delta": -0.0013,
+              "percent": -20.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0034,
+              "delta": -0.0006,
+              "percent": -15.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.005,
+              "target": 0.0042,
+              "delta": -0.0008,
+              "percent": -16.0
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_thigh_side_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.0055,
+              "delta": -0.0055,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.014,
+              "target": 0.007,
+              "delta": -0.007,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.004,
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.0055,
+              "delta": -0.0055,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.008,
+          "target": -0.008,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 1,
+          "base": 0.058,
+          "target": 0.07,
+          "delta": 0.012,
+          "percent": 20.69
+        },
+        {
+          "axis_index": 2,
+          "base": -0.076,
+          "target": -0.076,
+          "delta": 0.0,
+          "percent": -0.0
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_foot_toe_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0032,
+              "target": 0.0026,
+              "delta": -0.0006,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0032,
+              "target": 0.0026,
+              "delta": -0.0006,
+              "percent": -18.75
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0032,
+              "delta": -0.0008,
+              "percent": -20.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.004,
+              "target": 0.0032,
+              "delta": -0.0008,
+              "percent": -20.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0032,
+              "target": 0.0026,
+              "delta": -0.0006,
+              "percent": -18.75
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0032,
+              "target": 0.0026,
+              "delta": -0.0006,
+              "percent": -18.75
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_foot_sole_black",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0015,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.108,
+              "target": 0.064,
+              "delta": -0.044,
+              "percent": -40.741
+            },
+            {
+              "axis_index": 1,
+              "base": 0.034,
+              "target": 0.022,
+              "delta": -0.012,
+              "percent": -35.294
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.112,
+              "target": 0.068,
+              "delta": -0.044,
+              "percent": -39.286
+            },
+            {
+              "axis_index": 1,
+              "base": 0.036,
+              "target": 0.024,
+              "delta": -0.012,
+              "percent": -33.333
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.0015,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.094,
+              "target": 0.058,
+              "delta": -0.036,
+              "percent": -38.298
+            },
+            {
+              "axis_index": 1,
+              "base": 0.028,
+              "target": 0.019,
+              "delta": -0.009,
+              "percent": -32.143
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_foot_heel_black",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.018,
+              "target": 0.01,
+              "delta": -0.008,
+              "percent": -44.444
+            },
+            {
+              "axis_index": 1,
+              "base": 0.022,
+              "target": 0.012,
+              "delta": -0.01,
+              "percent": -45.455
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.012,
+              "delta": -0.008,
+              "percent": -40.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.025,
+              "target": 0.014,
+              "delta": -0.011,
+              "percent": -44.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.014,
+              "target": 0.009,
+              "delta": -0.005,
+              "percent": -35.714
+            },
+            {
+              "axis_index": 1,
+              "base": 0.018,
+              "target": 0.011,
+              "delta": -0.007,
+              "percent": -38.889
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_foot_top_shell",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "x",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.003,
+              "delta": -0.0005,
+              "percent": -14.286
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "x",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.018,
+              "target": 0.016,
+              "delta": -0.002,
+              "percent": -11.111
+            },
+            {
+              "axis_index": 1,
+              "base": 0.006,
+              "target": 0.005,
+              "delta": -0.001,
+              "percent": -16.667
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "x",
+          "position_delta": -0.004,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.018,
+              "delta": -0.002,
+              "percent": -10.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.006,
+              "delta": -0.001,
+              "percent": -14.286
+            }
+          ]
+        },
+        {
+          "section_index": 3,
+          "axis": "x",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.011,
+              "target": 0.01,
+              "delta": -0.001,
+              "percent": -9.091
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0035,
+              "target": 0.003,
+              "delta": -0.0005,
+              "percent": -14.286
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_foot_toe_armor",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.001,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0085,
+              "target": 0.0055,
+              "delta": -0.003,
+              "percent": -35.294
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0085,
+              "target": 0.0055,
+              "delta": -0.003,
+              "percent": -35.294
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.01,
+              "target": 0.0065,
+              "delta": -0.0035,
+              "percent": -35.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.01,
+              "target": 0.0065,
+              "delta": -0.0035,
+              "percent": -35.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.001,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0085,
+              "target": 0.0055,
+              "delta": -0.003,
+              "percent": -35.294
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0085,
+              "target": 0.0055,
+              "delta": -0.003,
+              "percent": -35.294
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_foot_sole_black",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.0005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.104,
+              "target": 0.07,
+              "delta": -0.034,
+              "percent": -32.692
+            },
+            {
+              "axis_index": 1,
+              "base": 0.032,
+              "target": 0.024,
+              "delta": -0.008,
+              "percent": -25.0
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.108,
+              "target": 0.074,
+              "delta": -0.034,
+              "percent": -31.481
+            },
+            {
+              "axis_index": 1,
+              "base": 0.034,
+              "target": 0.026,
+              "delta": -0.008,
+              "percent": -23.529
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.0005,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.09,
+              "target": 0.062,
+              "delta": -0.028,
+              "percent": -31.111
+            },
+            {
+              "axis_index": 1,
+              "base": 0.026,
+              "target": 0.02,
+              "delta": -0.006,
+              "percent": -23.077
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_foot_heel_black",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.015,
+              "target": 0.01,
+              "delta": -0.005,
+              "percent": -33.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.018,
+              "target": 0.012,
+              "delta": -0.006,
+              "percent": -33.333
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.016,
+              "target": 0.012,
+              "delta": -0.004,
+              "percent": -25.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.014,
+              "delta": -0.006,
+              "percent": -30.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.002,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.012,
+              "target": 0.009,
+              "delta": -0.003,
+              "percent": -25.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.011,
+              "delta": -0.005,
+              "percent": -31.25
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
       "part": "left_forearm_outer_blade",
       "blend": 1.0,
-      "kind": "part_fields",
-      "fields": [
-        "scale"
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0025,
+              "target": 0.0012,
+              "delta": -0.0013,
+              "percent": -52.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.005,
+              "target": 0.0035,
+              "delta": -0.0015,
+              "percent": -30.0
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.0015,
+              "delta": -0.002,
+              "percent": -57.143
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.0042,
+              "delta": -0.0028,
+              "percent": -40.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0022,
+              "target": 0.0011,
+              "delta": -0.0011,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0048,
+              "target": 0.0032,
+              "delta": -0.0016,
+              "percent": -33.333
+            }
+          ]
+        }
       ],
-      "field_deltas": {
-        "scale": [
-          {
-            "axis_index": 0,
-            "base": 0.026,
-            "target": 0.026,
-            "delta": 0.0,
-            "percent": 0.0
-          },
-          {
-            "axis_index": 1,
-            "base": 0.003,
-            "target": 0.0015,
-            "delta": -0.0015,
-            "percent": -50.0
-          },
-          {
-            "axis_index": 2,
-            "base": 0.0065,
-            "target": 0.0042,
-            "delta": -0.0023,
-            "percent": -35.385
-          }
-        ]
-      }
+      "center_delta": []
     },
     {
       "morph": "feminine_compact_v1",
       "part": "right_forearm_outer_blade",
       "blend": 1.0,
-      "kind": "part_fields",
-      "fields": [
-        "scale"
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0028,
+              "target": 0.0016,
+              "delta": -0.0012,
+              "percent": -42.857
+            },
+            {
+              "axis_index": 1,
+              "base": 0.0052,
+              "target": 0.0042,
+              "delta": -0.001,
+              "percent": -19.231
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0035,
+              "target": 0.002,
+              "delta": -0.0015,
+              "percent": -42.857
+            },
+            {
+              "axis_index": 1,
+              "base": 0.007,
+              "target": 0.005,
+              "delta": -0.002,
+              "percent": -28.571
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "x",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0023,
+              "target": 0.0015,
+              "delta": -0.0008,
+              "percent": -34.783
+            },
+            {
+              "axis_index": 1,
+              "base": 0.005,
+              "target": 0.0038,
+              "delta": -0.0012,
+              "percent": -24.0
+            }
+          ]
+        }
       ],
-      "field_deltas": {
-        "scale": [
-          {
-            "axis_index": 0,
-            "base": 0.028,
-            "target": 0.028,
-            "delta": 0.0,
-            "percent": 0.0
-          },
-          {
-            "axis_index": 1,
-            "base": 0.0035,
-            "target": 0.002,
-            "delta": -0.0015,
-            "percent": -42.857
-          },
-          {
-            "axis_index": 2,
-            "base": 0.007,
-            "target": 0.005,
-            "delta": -0.002,
-            "percent": -28.571
-          }
-        ]
-      }
+      "center_delta": []
     },
     {
       "morph": "feminine_compact_v1",
@@ -712,44 +2935,40 @@
       "blend": 1.0,
       "kind": "part_fields",
       "fields": [
-        "scale",
-        "radius",
-        "tube_radius"
+        "centerline_radii_yz",
+        "tube_radii_x_radial"
       ],
       "field_deltas": {
-        "radius": {
-          "base": 0.018,
-          "target": 0.0145,
-          "delta": -0.0035,
-          "percent": -19.444
-        },
-        "tube_radius": {
-          "base": 0.0025,
-          "target": 0.0016,
-          "delta": -0.0009,
-          "percent": -36.0
-        },
-        "scale": [
+        "centerline_radii_yz": [
           {
             "axis_index": 0,
-            "base": 0.92,
-            "target": 0.92,
-            "delta": 0.0,
-            "percent": 0.0
+            "base": 0.01008,
+            "target": 0.00609,
+            "delta": -0.00399,
+            "percent": -39.583
           },
           {
             "axis_index": 1,
-            "base": 0.56,
-            "target": 0.42,
-            "delta": -0.14,
-            "percent": -25.0
+            "base": 0.01008,
+            "target": 0.00609,
+            "delta": -0.00399,
+            "percent": -39.583
+          }
+        ],
+        "tube_radii_x_radial": [
+          {
+            "axis_index": 0,
+            "base": 0.0023,
+            "target": 0.001472,
+            "delta": -0.000828,
+            "percent": -36.0
           },
           {
-            "axis_index": 2,
-            "base": 0.56,
-            "target": 0.42,
-            "delta": -0.14,
-            "percent": -25.0
+            "axis_index": 1,
+            "base": 0.0014,
+            "target": 0.000672,
+            "delta": -0.000728,
+            "percent": -52.0
           }
         ]
       }
@@ -760,44 +2979,64 @@
       "blend": 1.0,
       "kind": "part_fields",
       "fields": [
-        "scale",
-        "radius",
-        "tube_radius"
+        "center",
+        "centerline_radii_yz",
+        "tube_radii_x_radial"
       ],
       "field_deltas": {
-        "radius": {
-          "base": 0.018,
-          "target": 0.0155,
-          "delta": -0.0025,
-          "percent": -13.889
-        },
-        "tube_radius": {
-          "base": 0.0022,
-          "target": 0.0018,
-          "delta": -0.0004,
-          "percent": -18.182
-        },
-        "scale": [
+        "center": [
           {
             "axis_index": 0,
-            "base": 0.92,
-            "target": 0.92,
+            "base": 0.07,
+            "target": 0.07,
             "delta": 0.0,
             "percent": 0.0
           },
           {
             "axis_index": 1,
-            "base": 0.6,
-            "target": 0.48,
-            "delta": -0.12,
-            "percent": -20.0
+            "base": 0.022,
+            "target": 0.02,
+            "delta": -0.002,
+            "percent": -9.091
           },
           {
             "axis_index": 2,
-            "base": 0.6,
-            "target": 0.48,
-            "delta": -0.12,
-            "percent": -20.0
+            "base": -0.006,
+            "target": -0.006,
+            "delta": 0.0,
+            "percent": -0.0
+          }
+        ],
+        "centerline_radii_yz": [
+          {
+            "axis_index": 0,
+            "base": 0.0108,
+            "target": 0.00744,
+            "delta": -0.00336,
+            "percent": -31.111
+          },
+          {
+            "axis_index": 1,
+            "base": 0.0108,
+            "target": 0.00744,
+            "delta": -0.00336,
+            "percent": -31.111
+          }
+        ],
+        "tube_radii_x_radial": [
+          {
+            "axis_index": 0,
+            "base": 0.002024,
+            "target": 0.001656,
+            "delta": -0.000368,
+            "percent": -18.182
+          },
+          {
+            "axis_index": 1,
+            "base": 0.00132,
+            "target": 0.000864,
+            "delta": -0.000456,
+            "percent": -34.545
           }
         ]
       }
@@ -821,12 +3060,40 @@
       },
       "applied_parts": [
         "torso_chest_shell",
+        "chest_upper_bridge_armor",
+        "chest_lower_bridge_armor",
         "left_chest_contour_armor",
         "right_chest_contour_armor",
         "left_chest_outer_armor_skin",
         "right_chest_outer_armor_skin",
+        "abdomen_center_armor",
         "pelvis_front_shell",
+        "pelvis_center_plate",
+        "pelvis_lower_nose_plate",
+        "rear_back_spine_plate",
+        "rear_seat_bridge_armor",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_rear_glute_armor_skin",
+        "right_rear_glute_armor_skin",
+        "left_upper_arm_outer_blade",
+        "left_upper_arm_front_armor",
+        "right_upper_arm_outer_blade",
+        "right_upper_arm_front_armor",
+        "left_thigh_front_armor",
+        "left_thigh_side_armor",
+        "right_thigh_front_armor",
+        "right_thigh_side_armor",
+        "left_foot_toe_armor",
+        "left_foot_sole_black",
+        "left_foot_heel_black",
+        "right_foot_top_shell",
+        "right_foot_toe_armor",
+        "right_foot_sole_black",
+        "right_foot_heel_black",
         "left_shin_shell",
+        "left_shin_front_armor",
+        "right_shin_shell",
         "left_forearm_outer_blade",
         "right_forearm_outer_blade",
         "left_wrist_separated_cuff",

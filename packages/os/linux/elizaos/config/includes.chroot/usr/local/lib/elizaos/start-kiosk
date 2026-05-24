@@ -8,18 +8,19 @@
 # the elizaOS application in place.
 #
 # Surface selection:
-#   - amd64/arm64: the Electrobun app (/opt/elizaos/app/elizaos) launched in
-#     kiosk shell mode. It runs its OWN self-contained embedded runtime
+#   - Electrobun-capable images: the app (/opt/elizaos/app/elizaos) launches in
+#     kiosk shell mode and runs its OWN self-contained embedded runtime
 #     (Resources/app/eliza-dist, full node_modules baked) — its tested launch
 #     path — so we do NOT set ELIZA_DESKTOP_API_BASE (that would force external
 #     mode against a separate agent service) and we do NOT pre-wait on agent
 #     health: the app renders the kiosk shell + chat pill immediately and brings
 #     its runtime up behind a connecting state. The separate elizaos-agent
-#     service is masked on these arches (see the app-local-mode hook) so nothing
-#     competes for :31337.
-#   - riscv64 (no Electrobun prebuild): a WebKitGTK kiosk (epiphany application
-#     mode) rendering the agent's web UI, which is served by the separate
-#     elizaos-agent.service — so that path waits for agent health first.
+#     service is masked when this binary is present (see the app-local-mode
+#     hook) so nothing competes for :31337.
+#   - Images without an Electrobun binary, including current arm64 and riscv64
+#     agent-bundle builds: a WebKitGTK kiosk (epiphany application mode)
+#     rendering the agent's web UI, which is served by the separate
+#     elizaos-agent.service, so that path waits for agent health first.
 #
 # Fail-closed: if neither surface can start, exit non-zero and let systemd
 # surface the failure. No silent drop to a desktop or shell.

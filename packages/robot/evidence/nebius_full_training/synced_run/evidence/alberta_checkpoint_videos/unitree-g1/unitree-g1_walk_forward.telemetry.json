@@ -1,0 +1,37 @@
+{
+  "profile": "unitree-g1",
+  "label": "walk forward",
+  "task_id": "walk_forward",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+  "steps_requested": 30,
+  "steps_executed": 30,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 30,
+  "done_reason": "truncated",
+  "fall_threshold": 0.474,
+  "torso_z": {
+    "min": 0.7905462275948902,
+    "max": 0.7915913698633134,
+    "final": 0.7914653146575328,
+    "mean": 0.7914818109507241
+  },
+  "upright_proj": {
+    "min": 0.9994722728502468,
+    "max": 0.9999994021325519,
+    "final": 0.9994722728502468,
+    "mean": 0.9997723050389306
+  },
+  "reward": {
+    "min": 3.4228412901430882,
+    "max": 3.4972002911330975,
+    "final": 3.4937466448762953,
+    "mean": 3.492426829033875
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

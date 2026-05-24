@@ -28,6 +28,9 @@ def test_valid_report_passes() -> None:
     errors = check_software_bsp_scope.validate_report(report)
     if errors:
         raise AssertionError(errors)
+    targets = {target.get("target") for target in report["targets"]}
+    if "u-boot" not in targets:
+        raise AssertionError(f"software BSP scope must include U-Boot target: {targets}")
     print("PASS valid software BSP scope report")
 
 
@@ -60,6 +63,21 @@ def test_blocker_removal_fails() -> None:
     mutated["blocked_until_real_evidence"] = ["AOSP log"]
     expect_error(mutated, "blocked real-evidence")
     print("PASS blocker removal rejected")
+
+
+def test_uboot_capture_plan_is_release_scoped() -> None:
+    report = check_software_bsp_scope.build_report()
+    check = next(
+        item
+        for item in report["checks"]
+        if item["id"] == "capture_plans_cover_external_build_boot_and_runtime_evidence"
+    )
+    if check["status"] != "pass":
+        raise AssertionError(check)
+    blockers = "\n".join(report["blocked_until_real_evidence"])
+    if "OpenSBI-to-U-Boot boot-chain" not in blockers:
+        raise AssertionError(blockers)
+    print("PASS U-Boot capture plan and blockers covered")
 
 
 def test_structured_findings_cover_external_evidence_gaps() -> None:
@@ -103,6 +121,7 @@ def main() -> None:
     test_release_claim_flip_fails()
     test_all_target_evidence_pass_fails_until_release_claim_allows_it()
     test_blocker_removal_fails()
+    test_uboot_capture_plan_is_release_scoped()
     test_structured_findings_cover_external_evidence_gaps()
     test_unstructured_check_status_fails()
     test_scaffold_removal_fails()

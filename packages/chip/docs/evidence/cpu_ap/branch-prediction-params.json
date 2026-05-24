@@ -7,16 +7,16 @@
     "evidence_class": "cbp5_train_traces_only",
     "model": {
       "accuracy_claim": false,
-      "aggregate_mpki": 41.315421,
+      "aggregate_mpki": 25.015513,
       "android_claim": false,
       "cbp5_claim": false,
       "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
-      "generated_at_utc": "2026-05-23T23:54:30.363771+00:00",
+      "generated_at_utc": "2026-05-24T04:19:18.820305+00:00",
       "harness": "behavioural-bpu-model",
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "12f8a7e0d0667ad09de6d65b46b37a083d6e3467e7b2899cdf325b3a3410ec16",
+      "sha256": "9770dc14e0977ffd64c8cade1c0a2d6f670fa4b1583a2a89eae2c2ccaa63c317",
       "spec2017_claim": false,
       "target_2028_mpki": 4.0,
       "target_met": false,
@@ -24,16 +24,16 @@
     },
     "rtl": {
       "accuracy_claim": false,
-      "aggregate_mpki": 33.84841,
+      "aggregate_mpki": 33.583253,
       "android_claim": false,
       "cbp5_claim": false,
       "command": "make mpki-eval-rtl",
-      "generated_at_utc": "2026-05-23T23:31:57.896472+00:00",
+      "generated_at_utc": "2026-05-24T04:17:48.828039+00:00",
       "harness": "cocotb-rtl-bpu_top",
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "d41e584f74fe5cc2322887fa7fb610cd7fc16085faaa0893673470027db2679b",
+      "sha256": "f83dc408212f3cb62b217f063cd6c1b14a867e5e764a91808d8c329eaea175bc",
       "spec2017_claim": false,
       "target_2028_mpki": 4.0,
       "target_met": false,
@@ -50,7 +50,95 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-24T03:42:02.895496+00:00",
+  "full_browser_build_crypto_shard_sweep_ref": {
+    "baseline_weighted_mpki": 50.151481,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 48.57611,
+    "command": "make bpu-sweep-full-browser-build-crypto-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "da5a98716edf1ca7618dae172887331bd83e8eb795e478d3ac06946d8de478f6",
+    "trace_filter": [
+      "browser_layout_proxy",
+      "build_compiler_proxy",
+      "crypto_packet_proxy"
+    ]
+  },
+  "full_compression_shard_sweep_ref": {
+    "baseline_weighted_mpki": 103.691058,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 102.247902,
+    "command": "make bpu-sweep-full-compression-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "72a8daa7cfa83cce8895f815b7f564c135194ff0f33d12db6911b44d698fc953",
+    "trace_filter": [
+      "compression_proxy"
+    ]
+  },
+  "full_io_media_shard_sweep_ref": {
+    "baseline_weighted_mpki": 40.207626,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 39.470746,
+    "command": "make bpu-sweep-full-io-media-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "4c2923eecb0063024505b1cc15c222652c3ae835aff9a12f99401b9a3c0baa5e",
+    "trace_filter": [
+      "audio_frames",
+      "file_tlv",
+      "http_parser",
+      "text_log",
+      "video_blocks"
+    ]
+  },
+  "full_proxy_shard_sweep_ref": {
+    "baseline_weighted_mpki": 49.5413,
+    "best_config": "baseline",
+    "best_weighted_mpki": 49.5413,
+    "command": "make bpu-sweep-full-proxy-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "4d7401fda6dcb2948835b4a436f4ab7d99b71def02cd33f1ee9709ce011610bd",
+    "trace_filter": [
+      "gpu_irq_fence_scheduler_proxy",
+      "gpu_memory_residency_proxy",
+      "mobile_ui_frame_scheduler_proxy",
+      "nn_delegate_fallback_proxy",
+      "wasm_jit_osr_proxy"
+    ]
+  },
+  "full_system_gpu_shard_sweep_ref": {
+    "baseline_weighted_mpki": 38.06661,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 37.625487,
+    "command": "make bpu-sweep-full-system-gpu-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_system_gpu_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "eb79b01615d78602010451d55a4f7d8999e87f8a8a136e3a4b3c7cf26c8e947e",
+    "trace_filter": [
+      "database_btree_proxy",
+      "gc_runtime_proxy",
+      "gpu_control_proxy",
+      "kernel_syscall_proxy"
+    ]
+  },
+  "generated_at_utc": "2026-05-24T06:09:11.182035+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -64,6 +152,7 @@
     "H2P_ENABLE": 1,
     "H2P_ENTRIES": 1024,
     "H2P_HIST_LEN": 48,
+    "H2P_LOWCONF_ONLY": 0,
     "H2P_META_CTR_W": 3,
     "H2P_META_ENABLE": 0,
     "H2P_META_ENTRIES": 1024,
@@ -162,7 +251,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "8114d5ad08231dd58e5e8f78613a4ae13e0bce70",
+  "source_revision": "8e050038affa556b08cf410a1f9413e5b795f496",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -171,7 +260,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "d755f9c0c855410454914e9ce183f99154585145220b92401ca150f7cbb0d393"
+      "sha256": "0200edbde528cef0a48690115751fd8eb065a8a86f89517addabc64517d610f9"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -188,9 +277,9 @@
   },
   "status": "clean",
   "sweep_results_ref": {
-    "baseline_weighted_mpki": 52.925003,
-    "best_config": "pre_ittage_hist_long",
-    "best_weighted_mpki": 52.921923,
+    "baseline_weighted_mpki": 55.212159,
+    "best_config": "baseline",
+    "best_weighted_mpki": 55.212159,
     "command": "make bpu-sweep",
     "harness": "behavioural-bpu-model",
     "ittage_evidence_counters": [
@@ -208,22 +297,22 @@
     "path": "docs/evidence/cpu_ap/bpu_sweep_results.json",
     "present": true,
     "schema": "eliza.bpu_sweep.v1",
-    "sha256": "3f4b8665257c9fcd8f217e5e3654ebf1c3c8f7b0835425d7faae4151c5f99c1c",
+    "sha256": "5852b422b3b5e053d279cfd35cb0efd5de874ed7bdc9386d7ebdc075c5657eff",
     "window_mode": "stratified"
   },
   "synthetic_mpki_results_ref": {
     "accuracy_claim": false,
-    "aggregate_mpki": 66.119029,
+    "aggregate_mpki": 65.011626,
     "android_claim": false,
     "cbp5_claim": false,
     "command": "make mpki-eval-rtl",
     "comparison_table": "docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md",
-    "generated_at_utc": "2026-05-23T23:30:07.211632+00:00",
+    "generated_at_utc": "2026-05-24T04:15:34.221566+00:00",
     "harness": "cocotb-rtl-bpu_top",
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "6bc0a18ebf32cd018ac28d7cda4fc5cc19b53bc76d3dc700ed579dcb3dde0c7a",
+    "sha256": "8319e510059758003e4593b0f0cd4d790e54a3e8de4ec50b89997e777c4003be",
     "spec2017_claim": false,
     "target_2028_mpki": 4.0,
     "target_met": false,
@@ -267,7 +356,7 @@
     "cocotb": {
       "path": "build/reports/bpu/cocotb-aggregate.json",
       "present": true,
-      "sha256": "74e8628cdaa038271d4e506734d2451cc2a871ad3c6fc93162ca577de4d005ac"
+      "sha256": "0d4e0e19865504cee98e692c694723e496bf3247ec0e7fef6974ed4891b689dd"
     },
     "formal": {
       "path": "build/reports/bpu/formal-status.yaml",
@@ -282,16 +371,25 @@
   },
   "workload_mpki_results_ref": {
     "accuracy_claim": false,
-    "aggregate_mpki": 89.789235,
+    "aggregate_mpki": 93.796454,
     "android_claim": false,
+    "branch_replay_cap": 5000,
+    "branch_replay_window_mode": "prefix",
     "cbp5_claim": false,
     "command": "ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=5000 TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh",
-    "generated_at_utc": "2026-05-24T02:25:45.039231+00:00",
+    "full_trace_replay": false,
+    "generated_at_utc": "2026-05-24T04:25:05.495505+00:00",
     "harness": "cocotb-rtl-bpu_top",
+    "instruction_replay_fraction": 0.003823,
     "path": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
     "present": true,
+    "replay_fraction": 0.00391,
+    "replayed_branch_count": 100000,
+    "replayed_instruction_count": 581216,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "a41ead79cf0e44ca486e67a69bcd71d0a8c1aeb4eaacf7afe9b4e12be95d018b",
+    "sha256": "01ff5cd6f1eda75929966dd084fead8bae55b31a32d46ffaf34a6e4acd814035",
+    "source_branch_count": 25574792,
+    "source_instruction_count": 152035912,
     "spec2017_claim": false,
     "trace_class": "qemu_rv64_workload",
     "v8_claim": false,
@@ -375,6 +473,13 @@
       },
       {
         "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.087878,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 56897,
+        "workload": "gpu_memory_residency_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
         "replay_fraction": 0.00646,
         "replayed_branch_count": 5000,
         "trace_branch_count": 774042,
@@ -386,6 +491,13 @@
         "replayed_branch_count": 5000,
         "trace_branch_count": 66821,
         "workload": "kernel_syscall_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.070501,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 70921,
+        "workload": "nn_delegate_fallback_proxy"
       },
       {
         "reason": "RTL workload evidence is prefix-only below 10% of the trace",
@@ -402,5 +514,53 @@
         "workload": "video_blocks"
       }
     ]
+  },
+  "workload_trace_manifest_ref": {
+    "command": "make bpu-workload-trace-manifest-check",
+    "harness": "qemu-rv64-execlog-trace-index",
+    "path": "docs/evidence/cpu_ap/bpu-workload-trace-manifest.json",
+    "present": true,
+    "production_external_suites": [
+      {
+        "missing_dependency": "SPEC CPU2017 license and RV64 executable traces",
+        "name": "spec2017_intrate",
+        "required_for_claims": [
+          "spec2017_claim",
+          "workload_mpki_claim"
+        ],
+        "status": "missing_external_trace"
+      },
+      {
+        "missing_dependency": "AOSP/Cuttlefish RV64 system-server, launcher, and app traces",
+        "name": "aosp_system_server_and_launcher",
+        "required_for_claims": [
+          "android_claim",
+          "workload_mpki_claim"
+        ],
+        "status": "missing_external_trace"
+      },
+      {
+        "missing_dependency": "JetStream/Speedometer-class RV64 browser and JS-engine traces",
+        "name": "browser_js_engine",
+        "required_for_claims": [
+          "v8_claim",
+          "workload_mpki_claim"
+        ],
+        "status": "missing_external_trace"
+      },
+      {
+        "missing_dependency": "real mobile GPU driver/runtime command submission traces",
+        "name": "production_gpu_driver_runtime",
+        "required_for_claims": [
+          "workload_mpki_claim"
+        ],
+        "status": "missing_external_trace"
+      }
+    ],
+    "schema": "eliza.bpu_workload_trace_manifest.v1",
+    "sha256": "ae673cc529b4551912320a4f74995baa0904d102f64fb8b42b3ea171d3c3ec1d",
+    "total_branch_count": 25574792,
+    "total_instruction_count": 152035912,
+    "trace_count": 20
   }
 }

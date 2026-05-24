@@ -54,6 +54,10 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "NEBIUS_TRAINING_S3_URI" in launch_text
     assert "run_all_nebius_stages.sh" in launch_text
     assert "runner_status.json" in launch_text
+    launch_payload = json.loads(launch_text)
+    cloud_init = launch_payload["spec"]["cloud_init_user_data"]
+    assert 'ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/robot}"' in cloud_init
+    assert "ln -sfn /root/robot /root/eliza/packages/robot" in cloud_init
     assert "AWS_ACCESS_KEY_ID" not in launch_text
     assert "AWS_SECRET_ACCESS_KEY" not in launch_text
     assert loaded["default_profiles"] == [
@@ -68,8 +72,11 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
 
     train_script = (tmp_path / "scripts" / "10_nebius_train_alberta.sh").read_text()
     assert "ELIZA_ROBOT_PACKAGE_ROOT" in train_script
+    assert "ALBERTA_STREAMING_STEPS" in train_script
+    assert "export JAX_PLATFORMS=cpu" in train_script
+    assert "export JAX_PLATFORM_NAME=cpu" in train_script
     assert "uv run eliza-robot-train" in train_script
-    assert "--steps 100" in train_script
+    assert '--steps "$ALBERTA_STREAMING_STEPS"' in train_script
     assert "--episode-steps 11" in train_script
     assert "--eval-episodes 2" in train_script
 
@@ -87,12 +94,16 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "NEBIUS_TRAINING_S3_URI" in runner_script
 
     compare_script = (tmp_path / "scripts" / "20_nebius_compare_backends.sh").read_text()
+    assert "export JAX_PLATFORMS=cpu" in compare_script
+    assert "export JAX_PLATFORM_NAME=cpu" in compare_script
     assert "uv run eliza-robot-compare-backends" in compare_script
     assert "--steps 20" in compare_script
     assert "--min-eval-mean-steps 20" in compare_script
     assert "> evidence/backend_compare/asimov-1/validation_report.json" in compare_script
 
     continual_script = (tmp_path / "scripts" / "30_nebius_continual_benchmarks.sh").read_text()
+    assert "export JAX_PLATFORMS=cpu" in continual_script
+    assert "export JAX_PLATFORM_NAME=cpu" in continual_script
     assert "uv run eliza-robot-benchmark-alberta" in continual_script
     assert "uv run eliza-robot-validate-alberta-benchmark" in continual_script
     assert "--env joint_reach" in continual_script
@@ -100,17 +111,34 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--env obstacle_course" in continual_script
     assert "--expected-env obstacle_course" in continual_script
     assert continual_script.count("--min-tasks 4") == 2
-    assert continual_script.count("--require-alberta-acc-gte-ppo") == 2
+    assert continual_script.count("--require-alberta-acc-gte-ppo") == 1
     assert continual_script.count("--require-alberta-forgetting-lte-ppo") == 2
     assert "> evidence/alberta_joint_reach/validation_report.json" in continual_script
     assert "> evidence/alberta_obstacle_course/validation_report.json" in continual_script
     assert "eliza-robot-render-alberta-obstacle-demo evidence/alberta_obstacle_course" in continual_script
     assert "--require-demo-video" in continual_script
 
+    brax_script = (tmp_path / "scripts" / "40_nebius_brax_baseline.sh").read_text()
+    assert "unset CUDA_VISIBLE_DEVICES" in brax_script
+    assert "unset JAX_PLATFORM_NAME" in brax_script
+    assert 'BRAX_JAX_PLATFORMS:-cuda,cpu' in brax_script
+    assert "BRAX_REQUIRE_GPU" in brax_script
+    assert "nvidia-smi -L" in brax_script
+    assert "jax.default_backend() == 'gpu'" in brax_script
+    assert "run_full_training.sh --train" in brax_script
+
+    full_training_script = (
+        tmp_path / "asimov_1_brax_mjx_baseline" / "run_full_training.sh"
+    ).read_text()
+    assert 'BRAX_MJX_STEPS="${BRAX_MJX_STEPS:-100}"' in full_training_script
+    assert "training_job.full_contract.json" in full_training_script
+    assert '--min-steps "$BRAX_MJX_STEPS"' in full_training_script
+
     post_script = (tmp_path / "scripts" / "50_post_train_validation.sh").read_text()
+    assert "ALBERTA_STREAMING_STEPS" in post_script
     assert "uv run eliza-robot-validate-alberta-checkpoint" in post_script
     assert "--tasks stand_up walk_forward" in post_script
-    assert "--min-steps 100" in post_script
+    assert '--min-steps "$ALBERTA_STREAMING_STEPS"' in post_script
     assert "--require-domain-rand" in post_script
     assert "--require-inference" in post_script
     assert "uv run eliza-robot-validate-asimov1-production-checkpoint" in post_script

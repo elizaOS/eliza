@@ -1,0 +1,37 @@
+{
+  "profile": "unitree-r1",
+  "label": "walk forward",
+  "task_id": "walk_forward",
+  "policy_source": "zero_action",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.444,
+  "torso_z": {
+    "min": 0.7393067532804892,
+    "max": 0.7419965443537505,
+    "final": 0.7393067532804892,
+    "mean": 0.7412388717448447
+  },
+  "upright_proj": {
+    "min": 0.9903888938142437,
+    "max": 0.9999999626795327,
+    "final": 0.9903888938142437,
+    "mean": 0.9971690391406707
+  },
+  "reward": {
+    "min": 3.495138882733033,
+    "max": 3.49975357284058,
+    "final": 3.495138882733033,
+    "mean": 3.4979548642750395
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

@@ -81,11 +81,12 @@ else
     fi
 fi
 
-if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "riscv64" ]; then
+if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "riscv64" ] ||
+    [ "$(dpkg --print-architecture 2>/dev/null || true)" = "arm64" ]; then
     mkdir -p "${INSTALL}/app/node_modules"
     for module in undici ws node-fetch; do
         if [ ! -d "/usr/share/nodejs/${module}" ]; then
-            echo "ERROR: riscv64 Node fallback requires Debian ${module} at /usr/share/nodejs/${module}." >&2
+            echo "ERROR: Node fallback requires Debian ${module} at /usr/share/nodejs/${module}." >&2
             exit 1
         fi
         ln -sfn "/usr/share/nodejs/${module}" "${INSTALL}/app/node_modules/${module}"

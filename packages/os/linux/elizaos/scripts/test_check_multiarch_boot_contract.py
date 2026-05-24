@@ -36,6 +36,78 @@ def sha256_bytes(data: bytes) -> str:
 
 
 class MultiarchBootContractTests(unittest.TestCase):
+    def write_minimal_kiosk_contract_tree(self, root: Path, common_packages: str) -> None:
+        files = {
+            "config/package-lists/elizaos-common.list.chroot": common_packages,
+            "config/hooks/normal/0025-enable-graphical-session.hook.chroot": (
+                "systemctl set-default graphical.target\n"
+                "systemctl mask --force gdm3.service\n"
+                "systemctl enable seatd.service\n"
+                "systemctl enable elizaos-kiosk.service\n"
+            ),
+            "config/includes.chroot/etc/systemd/system/elizaos-kiosk.service": (
+                "Environment=LIBSEAT_BACKEND=seatd\n"
+                "ExecStart=/usr/local/lib/elizaos/start-cage\n"
+                "SupplementaryGroups=input render video seat\n"
+                "WantedBy=graphical.target\n"
+            ),
+            "config/includes.chroot/usr/local/lib/elizaos/start-cage": (
+                "pick_renderer() { :; }\n"
+                "driver=virtio_gpu\n"
+                "grim /tmp/kiosk.png\n"
+                "exec /usr/bin/cage -s -- /usr/local/lib/elizaos/start-kiosk\n"
+            ),
+            "config/includes.chroot/usr/local/lib/elizaos/start-kiosk": (
+                "export LIBGL_ALWAYS_SOFTWARE=1\n"
+                "export WEBKIT_DISABLE_DMABUF_RENDERER=1\n"
+                "curl -fsS http://127.0.0.1:31337/api/health\n"
+                "exec epiphany-browser --application-mode http://127.0.0.1:31337/\n"
+            ),
+            "config/includes.chroot/etc/modules-load.d/elizaos-virtio-gpu.conf": (
+                "virtio_pci\nvirtio_gpu\n"
+            ),
+            "config/includes.chroot/etc/systemd/system/elizaos-kiosk-capture.service": (
+                "ConditionKernelCommandLine=elizaos.capture_dir=\n"
+                "Before=elizaos-kiosk.service\n"
+            ),
+        }
+        for rel, text in files.items():
+            path = root / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text, encoding="utf-8")
+
+    def test_kiosk_gui_contract_accepts_graphical_boot_wiring(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_minimal_kiosk_contract_tree(
+                root,
+                "\n".join(gate.KIOSK_PACKAGE_REQUIREMENTS) + "\n",
+            )
+            errors: list[str] = []
+            with mock.patch.object(gate, "ROOT", root):
+                gate.validate_kiosk_gui_contract(errors)
+        self.assertEqual(errors, [])
+
+    def test_kiosk_gui_contract_rejects_missing_capture_and_gpu_support(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.write_minimal_kiosk_contract_tree(root, "cage\nseatd\n")
+            (root / "config/includes.chroot/etc/modules-load.d/elizaos-virtio-gpu.conf").write_text(
+                "virtio_pci\n",
+                encoding="utf-8",
+            )
+            (root / "config/includes.chroot/etc/systemd/system/elizaos-kiosk-capture.service").write_text(
+                "Before=multi-user.target\n",
+                encoding="utf-8",
+            )
+            errors: list[str] = []
+            with mock.patch.object(gate, "ROOT", root):
+                gate.validate_kiosk_gui_contract(errors)
+        joined = "\n".join(errors)
+        self.assertIn("libwebkit2gtk-4.1-0", joined)
+        self.assertIn("virtio GPU modules", joined)
+        self.assertIn("kiosk capture service", joined)
+
     def test_runtime_matrix_rejects_fallback_agent_and_missing_arch(self) -> None:
         matrix = {
             "architectures": [

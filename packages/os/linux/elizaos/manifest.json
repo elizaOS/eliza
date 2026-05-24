@@ -8,12 +8,12 @@
     "hypervisor": "qemu-virt",
     "firmware": "qemu-efi-riscv64/EDK2 + OpenSBI"
   },
-  "filename": "elizaos-linux-riscv64-planned.iso",
+  "filename": "elizaos-linux-riscv64-default-20260524T030430Z.iso",
   "downloadUrl": null,
-  "status": "planned",
-  "sizeBytes": null,
-  "sha256": null,
-  "notes": "elizaOS Live riscv64 release manifest skeleton; promotion is blocked until a local build fills artifact metadata and qemu-virt, GRUB EFI RISC-V, and elizaOS agent boot evidence are collected with archived transcripts.",
+  "status": "candidate",
+  "sizeBytes": 879058944,
+  "sha256": "0816de4b5b8ea33698a22d07e42d51b756b70a5b1831b2640e640b5b30aed1a2",
+  "notes": "elizaOS Live riscv64 candidate built locally with native PostgreSQL pgvector, kiosk GUI boot, agent health, and terminal TUI smoke verified under qemu-virt.",
   "validation": {
     "requiredEvidence": [
       "qemu-virt-boot",
@@ -24,18 +24,23 @@
     "evidence": [
       {
         "id": "qemu-virt-boot",
-        "status": "missing",
-        "path": null
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot_20260524T030430Z.json"
       },
       {
         "id": "grub-efi-riscv64-boot",
-        "status": "missing",
-        "path": null
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot_20260524T030430Z.json"
       },
       {
         "id": "elizaos-agent-live",
-        "status": "missing",
-        "path": null
+        "status": "collected",
+        "path": "evidence/qemu_virt_boot_20260524T030430Z.json"
+      },
+      {
+        "id": "riscv64-agent-runtime",
+        "status": "collected",
+        "path": "evidence/riscv64_agent_runtime_smoke.json"
       }
     ]
   }

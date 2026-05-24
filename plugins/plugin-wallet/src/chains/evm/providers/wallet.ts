@@ -109,6 +109,8 @@ export class WalletProvider {
   private _account: PrivateKeyAccount;
   private readonly _runtime: IAgentRuntime;
   private readonly _rpcConfigs: Record<string, ChainRpcConfig>;
+  /** Chains where Cloud RPC returned a non-transient auth error (401/403) and should not be retried this session. */
+  private readonly _cloudRpcDisabled = new Set<string>();
 
   constructor(
     accountOrPrivateKey: PrivateKeyAccount | `0x${string}`,
@@ -269,6 +271,11 @@ export class WalletProvider {
       const fallbackRpcUrl =
         managedRpc.providerName === "elizacloud" ? chain.rpcUrls.default.http[0] : null;
 
+      // If Cloud RPC already failed with an auth error for this chain, go straight to fallback.
+      if (managedRpc.providerName === "elizacloud" && fallbackRpcUrl && this._cloudRpcDisabled.has(chainName)) {
+        return http(fallbackRpcUrl);
+      }
+
       return http(managedRpc.rpcUrl, {
         fetchFn:
           managedRpc.providerName === "elizacloud" && fallbackRpcUrl
@@ -281,9 +288,18 @@ export class WalletProvider {
                     return response;
                   }
 
-                  logger.warn(
-                    `[WalletProvider] Eliza Cloud RPC failed for ${chainName}: ${fallbackReason}. Falling back to ${fallbackRpcUrl}.`
-                  );
+                  // For auth errors (401/403), disable Cloud RPC for this chain for the
+                  // rest of the session so we stop retrying and spamming warnings.
+                  if (response.status === 401 || response.status === 403) {
+                    this._cloudRpcDisabled.add(chainName);
+                    logger.warn(
+                      `[WalletProvider] Eliza Cloud RPC returned ${response.status} for ${chainName}. Disabling Cloud RPC for this chain and falling back to ${fallbackRpcUrl} for the rest of this session.`
+                    );
+                  } else {
+                    logger.warn(
+                      `[WalletProvider] Eliza Cloud RPC failed for ${chainName}: ${fallbackReason}. Falling back to ${fallbackRpcUrl}.`
+                    );
+                  }
 
                   return await fetch(fallbackRpcUrl, {
                     ...init,

@@ -42,6 +42,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     morph_report = BODYKIT_ROOT / "review" / "parametric-morph-report.json"
     base_reconstruction = BODYKIT_ROOT / "review" / "base-cad-reconstruction-report.json"
     reconstruction_audit = BODYKIT_ROOT / "review" / "parametric-reconstruction-audit.json"
+    subassembly_report = BODYKIT_ROOT / "review" / "subassembly-volume-report.json"
     step_dir = BODYKIT_ROOT / "out" / "step"
     base_reconstruction_step_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "step"
     base_reconstruction_param_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "params"
@@ -67,6 +68,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert morph_report.is_file()
     assert base_reconstruction.is_file()
     assert reconstruction_audit.is_file()
+    assert subassembly_report.is_file()
     assert concept_reference.is_file()
 
     model = mujoco.MjModel.from_xml_path(str(mjcf))
@@ -133,6 +135,23 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert manifest_raw["face_alignment_validation"]["verdict"] == face_alignment_raw["verdict"]
     assert face_alignment_raw["verdict"] == "pass"
     assert face_alignment_raw["face_shell_source"].endswith("eliza_face_donor.stl")
+    assert face_alignment_raw["reference_assets"]["face_closeup_jpeg"]["exists"] is True
+    assert face_alignment_raw["reference_assets"]["full_body_jpeg"]["exists"] is True
+    assert face_alignment_raw["reference_assets"]["source_front_glb"]["exists"] is True
+    assert face_alignment_raw["source_robot_subassemblies"]["neck_carrier"]["mounted_robot_bodies"] == [
+        "torso_link"
+    ]
+    assert face_alignment_raw["source_robot_subassemblies"]["face_plate_details"]["parts"] == [
+        "face_shell",
+        "left_eye_insert",
+        "right_eye_insert",
+        "lip_insert",
+    ]
+    assert face_alignment_raw["source_robot_subassemblies"]["hair_reference_only"]["parts"] == []
+    assert face_alignment_raw["hair_reference_policy"]["generated_geometry"] is False
+    assert face_alignment_raw["hair_reference_policy"]["params_no_hair"] is True
+    assert face_alignment_raw["wrist_collision_policy"]["face_geometry_can_close_wrist_rows"] is False
+    assert "wrist/forearm" in face_alignment_raw["wrist_collision_policy"]["required_resolution"]
     assert face_alignment_raw["minimum_neck_head_face_non_mounted_clearance_mm"] >= 0
     assert face_alignment_raw["minimum_neck_head_face_non_adjacent_clearance_mm"] >= 0
     assert face_alignment_raw["face_shell_depth_check"]["minimum_mm"] >= 12.0
@@ -232,8 +251,9 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert torso_morph["kind"] == "section_loft"
     assert torso_morph["section_deltas"][0]["scale_delta"][1]["percent"] < 0
     arm_morph = next(row for row in morph_raw["applied"] if row["part"] == "left_forearm_outer_blade")
-    assert arm_morph["kind"] == "part_fields"
-    assert arm_morph["field_deltas"]["scale"][1]["percent"] < 0
+    assert arm_morph["kind"] == "section_loft"
+    assert arm_morph["section_deltas"][0]["axis"] == "x"
+    assert arm_morph["section_deltas"][0]["scale_delta"][0]["percent"] < 0
     dfm_raw = json.loads(dfm.read_text())
     assert dfm_raw["verdict"] == "prototype-fit-check-ready"
     assert dfm_raw["prototype_fit_ready"] is True
@@ -275,19 +295,195 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert Path(torso_reconstruction["step"]).is_file()
     assert Path(torso_reconstruction["parameters"]).is_file()
     reconstruction_audit_raw = json.loads(reconstruction_audit.read_text())
-    assert reconstruction_audit_raw["verdict"] == "needs-work"
+    subassembly_raw = json.loads(subassembly_report.read_text())
+    assert reconstruction_audit_raw["verdict"] == "pass"
     assert reconstruction_audit_raw["step_exported_count"] == step_raw["exported_count"]
     assert reconstruction_audit_raw["base_reconstructed_assets"] == base_reconstruction_raw["reconstructed_count"]
     assert reconstruction_audit_raw["official_base_step_source_available"] is False
-    assert reconstruction_audit_raw["primitive_shell_count"] > 0
-    assert "chest_upper_bridge_armor" in reconstruction_audit_raw["primitive_shell_parts"]
+    assert reconstruction_audit_raw["primitive_shell_count"] == 0
+    assert reconstruction_audit_raw["primitive_shell_parts"] == []
+    assert "left_rear_hip_fairing" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_rear_hip_fairing" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_rear_glute_armor_skin" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_rear_glute_armor_skin" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_wrist_separated_cuff" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_wrist_separated_cuff" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_side_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_shin_side_armor" in reconstruction_audit_raw["morph_ready_parts"]
     assert "left_chest_contour_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "left_foot_top_shell" not in reconstruction_audit_raw["primitive_shell_parts"]
     assert "torso_chest_shell" in reconstruction_audit_raw["morph_ready_parts"]
     assert "left_chest_contour_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_foot_top_shell" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_forearm_outer_blade" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_forearm_outer_blade" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_front_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_shin_front_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_front_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "right_shin_front_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "rear_back_spine_plate" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "rear_back_spine_plate" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert subassembly_raw["source_body_subassemblies"]["neck_carrier"]["mounted_robot_bodies"] == [
+        "torso_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["neck_carrier"]["total_solid_volume_cm3"] > 0
+    assert subassembly_raw["source_body_subassemblies"]["face_plate_details"]["mounted_robot_bodies"] == [
+        "torso_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["face_plate_details"]["total_solid_volume_cm3"] > 0
+    assert (
+        subassembly_raw["reference_only_subassemblies"]["hair_reference_alignment"]["total_solid_volume_cm3"]
+        == 0.0
+    )
+    assert subassembly_raw["reference_only_subassemblies"]["hair_reference_alignment"]["generated_geometry"] is False
+    assert subassembly_raw["reference_only_subassemblies"]["hair_reference_alignment"]["params_no_hair"] is True
+    for part_name in [
+        "abdomen_center_armor",
+        "pelvis_center_plate",
+        "pelvis_lower_nose_plate",
+        "chest_upper_bridge_armor",
+        "chest_lower_bridge_armor",
+        "rear_seat_bridge_armor",
+        "left_upper_arm_outer_blade",
+        "right_upper_arm_outer_blade",
+        "left_upper_arm_front_armor",
+        "right_upper_arm_front_armor",
+    ]:
+        assert part_name in reconstruction_audit_raw["morph_ready_parts"]
+        assert part_name not in reconstruction_audit_raw["primitive_shell_parts"]
     assert any(
         row["part"] == "face_shell" and row["reconstruction_status"] == "morph-ready-section-loft"
         for row in reconstruction_audit_raw["parts"]
     )
+    assert manifest_raw["subassembly_volume_report"]["verdict"] == subassembly_raw["verdict"]
+    assert subassembly_raw["verdict"] == "pass"
+    assert subassembly_raw["total_solid_volume_cm3"] > 0
+    assert len(subassembly_raw["source_body_subassemblies"]) >= 10
+    assert {
+        "feet_ankles_worker",
+        "legs_knees_shins_worker",
+        "hips_pelvis_torso_worker",
+        "arms_shoulders_wrists_worker",
+        "neck_head_face_worker",
+    }.issubset(subassembly_raw["worker_work_packages"])
+    for assembly_name in [
+        "left_forearm",
+        "right_forearm",
+        "left_wrist_cuff",
+        "right_wrist_cuff",
+        "left_foot_ankle",
+        "right_foot_ankle",
+        "left_knee_shin",
+        "right_knee_shin",
+        "torso_front_chest",
+        "front_pelvis",
+        "rear_pelvis_bridge",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_glute_backside",
+        "right_glute_backside",
+        "face_plate_details",
+    ]:
+        assembly = subassembly_raw["source_body_subassemblies"][assembly_name]
+        assert assembly["part_count"] > 0
+        assert assembly["total_solid_volume_cm3"] > 0
+        assert assembly["mounted_robot_bodies"]
+        assert assembly["source_robot_anchors"]
+        assert assembly["world_bbox_home_pose"]["extents_mm"]
+        assert assembly["worker_package"]
+        assert assembly["fit_review"]["minimum_non_mounted_clearance_mm"] is not None
+        assert assembly["panel_gap_review"]["verdict"] == "pass"
+        assert "blocker_count" in assembly["mechanical_stress_review"]
+        assert all(part["step_solid_exported"] for part in assembly["parts"])
+        assert all(part["source_robot_connected"] for part in assembly["parts"])
+        assert assembly["source_subassembly_anchor"]["anchor_connected"] is True
+    assert subassembly_raw["source_body_subassemblies"]["left_foot_ankle"]["mounted_robot_bodies"] == [
+        "left_ankle_roll_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["right_foot_ankle"]["mounted_robot_bodies"] == [
+        "right_ankle_roll_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["left_wrist_cuff"]["mounted_robot_bodies"] == [
+        "left_elbow_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["left_wrist_cuff"]["source_subassembly_anchor"][
+        "keepout_bodies"
+    ] == ["left_wrist_roll_link"]
+    assert subassembly_raw["source_body_subassemblies"]["right_wrist_cuff"]["source_subassembly_anchor"][
+        "keepout_oem_meshes"
+    ] == ["right_wrist_roll_link.STL"]
+    assert (
+        subassembly_raw["reference_only_subassemblies"]["left_hand_keepout"]["connection_review"]
+        == "reference-only-source-keepout"
+    )
+    assert subassembly_raw["reference_only_subassemblies"]["left_hand_keepout"]["source_subassembly_anchor"][
+        "keepout_bodies"
+    ] == ["left_wrist_roll_link"]
+    assert subassembly_raw["reference_only_subassemblies"]["right_hand_keepout"]["generated_geometry"] is False
+    left_foot_ankle = subassembly_raw["source_body_subassemblies"]["left_foot_ankle"]
+    right_foot_ankle = subassembly_raw["source_body_subassemblies"]["right_foot_ankle"]
+    for foot_ankle in [left_foot_ankle, right_foot_ankle]:
+        assert foot_ankle["configured_source_subassembly"] is True
+        assert foot_ankle["source_subassembly_anchor"]["anchor_connected"] is True
+        assert foot_ankle["source_robot_anchors"]
+        assert {"dorsal_boot_upper", "toe_cap", "outsole_band", "rear_heel_block"}.issubset(
+            set(foot_ankle["source_robot_anchors"][0]["anchor_roles"])
+        )
+        assert all(part["source_robot_anchor"]["source_body"] == part["body"] for part in foot_ankle["parts"])
+    foot_volume_ratio = (
+        max(left_foot_ankle["total_solid_volume_cm3"], right_foot_ankle["total_solid_volume_cm3"])
+        / min(left_foot_ankle["total_solid_volume_cm3"], right_foot_ankle["total_solid_volume_cm3"])
+    )
+    assert foot_volume_ratio < 2.0
+    assert subassembly_raw["source_body_subassemblies"]["right_knee_shin"]["mounted_robot_bodies"] == [
+        "right_knee_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["left_hip_upper_leg"]["mounted_robot_bodies"] == [
+        "left_hip_yaw_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["right_hip_upper_leg"]["mounted_robot_bodies"] == [
+        "right_hip_yaw_link"
+    ]
+    assert "left_shin_side_armor" in {
+        part["name"] for part in subassembly_raw["source_body_subassemblies"]["left_knee_shin"]["parts"]
+    }
+    assert "left_rear_hip_fairing" not in {
+        part["name"] for part in subassembly_raw["source_body_subassemblies"]["left_hip_upper_leg"]["parts"]
+    }
+    assert {
+        "waist_abdomen",
+        "front_pelvis",
+        "rear_pelvis_bridge",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_glute_backside",
+        "right_glute_backside",
+        "left_hip_upper_leg",
+        "right_hip_upper_leg",
+    }.issubset(set(subassembly_raw["configured_source_subassemblies"]))
+    for assembly_name in [
+        "waist_abdomen",
+        "front_pelvis",
+        "rear_pelvis_bridge",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_glute_backside",
+        "right_glute_backside",
+        "left_hip_upper_leg",
+        "right_hip_upper_leg",
+    ]:
+        assembly = subassembly_raw["source_body_subassemblies"][assembly_name]
+        assert assembly["configured_source_subassembly"] is True
+        assert assembly["connection_review"] == "source-anchor-connected-parametric-subassembly"
+        assert assembly["source_subassembly_anchor"]["anchor_connected"] is True
+        assert all(part["source_subassembly"] == assembly_name for part in assembly["parts"])
+    assert subassembly_raw["source_body_subassemblies"]["front_pelvis"]["mounted_robot_bodies"] == ["pelvis"]
+    assert subassembly_raw["source_body_subassemblies"]["rear_pelvis_bridge"]["mounted_robot_bodies"] == ["pelvis"]
+    assert subassembly_raw["source_body_subassemblies"]["left_glute_backside"]["mounted_robot_bodies"] == ["pelvis"]
+    assert subassembly_raw["source_body_subassemblies"]["right_glute_backside"]["mounted_robot_bodies"] == ["pelvis"]
+    assert "right_rear_hip_fairing" not in {
+        part["name"] for part in subassembly_raw["source_body_subassemblies"]["right_hip_upper_leg"]["parts"]
+    }
 
     forbidden = ("Make" + "Human", "make" + "human", "M" + "PFB", "m" + "pfb")
     checked_suffixes = {".py", ".yaml", ".yml", ".md", ".json", ".csv", ".obj", ".mtl"}
@@ -316,6 +512,32 @@ def test_tapered_box_primitive_exports_mesh_and_step() -> None:
     assert len(mesh.vertices) == 8
     assert len(mesh.faces) == 12
     assert pytest.approx(mesh.extents[0], rel=0.2) == 0.20
+
+    cadquery = pytest.importorskip("cadquery")
+    solid = generator._cq_shape_from_spec(cadquery, spec)
+    assert solid.Volume() > 0
+
+
+def test_axis_x_section_loft_exports_mesh_and_step() -> None:
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    import generate_unitree_r1_bodykit as generator
+
+    spec = {
+        "name": "test_x_axis_foot_loft",
+        "shape": "section_loft",
+        "center": [0.047, -0.016, -0.050],
+        "axis": "x",
+        "sections": [
+            {"x": -0.096, "scale": [0.012, 0.0035]},
+            {"x": -0.030, "scale": [0.018, 0.0060]},
+            {"x": 0.040, "scale": [0.020, 0.0070]},
+            {"x": 0.096, "scale": [0.011, 0.0035]},
+        ],
+    }
+    mesh = generator._part_mesh(spec, [1.0, 0.3, 0.0, 1.0])
+    assert mesh.extents[0] > mesh.extents[1]
+    assert mesh.extents[0] > mesh.extents[2]
+    assert mesh.extents[0] > 0.18
 
     cadquery = pytest.importorskip("cadquery")
     solid = generator._cq_shape_from_spec(cadquery, spec)
