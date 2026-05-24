@@ -2,7 +2,7 @@
   "profile": "unitree-r1",
   "label": "stand up",
   "task_id": "stand_up",
-  "policy_source": "zero_action",
+  "policy_source": "scripted_smoke",
   "steps_requested": 40,
   "steps_executed": 40,
   "terminated": false,
@@ -25,13 +25,44 @@
   "reward": {
     "min": 3.488926960877624,
     "max": 3.499849897456488,
-    "final": 3.4897137897545143,
+    "final": 3.4897137897545147,
     "mean": 3.4925402893372963
   },
+  "delta_x_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_y_m": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "delta_yaw_rad": {
+    "min": null,
+    "max": null,
+    "final": null,
+    "mean": null
+  },
+  "action_norm": {
+    "min": 0.0,
+    "max": 0.0,
+    "final": 0.0,
+    "mean": 0.0
+  },
+  "nonzero_action_steps": 0,
+  "attempted_action": true,
+  "goal_success": false,
+  "goal_failed": false,
+  "goal_reason": "",
   "rollout_ok": true,
   "checks": {
     "no_termination": true,
     "torso_above_fall_threshold": true,
-    "upright_positive": true
+    "upright_positive": true,
+    "attempted_action": true,
+    "goal_success": false
   }
 }

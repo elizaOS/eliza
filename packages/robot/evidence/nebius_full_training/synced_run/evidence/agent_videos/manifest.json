@@ -1,5 +1,5 @@
 {
-  "started_at": "2026-05-23T23:35:02Z",
+  "started_at": "2026-05-24T07:24:55Z",
   "commands": [
     "stand up",
     "walk forward",
@@ -8,48 +8,49 @@
   ],
   "record_combined": true,
   "preserve_state_between_commands": false,
-  "policy_checkpoint": null,
+  "policy_checkpoint": "/root/robot/checkpoints/asimov_1_alberta_full",
   "profiles": [
     {
-      "profile": "unitree-r1",
+      "profile": "asimov-1",
       "videos": [
-        "unitree-r1_combined_actions.mp4",
-        "unitree-r1_stand_up.mp4",
-        "unitree-r1_turn_left.mp4",
-        "unitree-r1_turn_right.mp4",
-        "unitree-r1_walk_forward.mp4"
+        "asimov-1_combined_actions.mp4",
+        "asimov-1_stand_up.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_walk_forward.mp4"
       ],
       "telemetry": [
-        "unitree-r1_combined_actions.telemetry.json",
-        "unitree-r1_stand_up.telemetry.json",
-        "unitree-r1_turn_left.telemetry.json",
-        "unitree-r1_turn_right.telemetry.json",
-        "unitree-r1_walk_forward.telemetry.json"
+        "asimov-1_combined_actions.telemetry.json",
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_turn_right.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json"
       ],
       "expected_videos": [
-        "unitree-r1_stand_up.mp4",
-        "unitree-r1_walk_forward.mp4",
-        "unitree-r1_turn_left.mp4",
-        "unitree-r1_turn_right.mp4",
-        "unitree-r1_combined_actions.mp4"
+        "asimov-1_stand_up.mp4",
+        "asimov-1_walk_forward.mp4",
+        "asimov-1_turn_left.mp4",
+        "asimov-1_turn_right.mp4",
+        "asimov-1_combined_actions.mp4"
       ],
       "expected_telemetry": [
-        "unitree-r1_stand_up.telemetry.json",
-        "unitree-r1_walk_forward.telemetry.json",
-        "unitree-r1_turn_left.telemetry.json",
-        "unitree-r1_turn_right.telemetry.json",
-        "unitree-r1_combined_actions.telemetry.json"
+        "asimov-1_stand_up.telemetry.json",
+        "asimov-1_walk_forward.telemetry.json",
+        "asimov-1_turn_left.telemetry.json",
+        "asimov-1_turn_right.telemetry.json",
+        "asimov-1_combined_actions.telemetry.json"
       ],
       "missing_videos": [],
       "missing_telemetry": [],
-      "combined_video": "unitree-r1_combined_actions.mp4",
+      "combined_video": "asimov-1_combined_actions.mp4",
       "combined_present": true,
-      "policy_checkpoint": null,
+      "policy_checkpoint": "/root/robot/checkpoints/asimov_1_alberta_full",
+      "scripted_smoke": false,
       "stdout_tail": "",
-      "stderr_tail": "[viewer] executing task=turn_right ('turn right')\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-r1/unitree-r1_turn_right.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-r1/unitree-r1_turn_right.telemetry.json\n[viewer] saved /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-r1/unitree-r1_combined_actions.mp4\n[viewer] saved telemetry /home/shaw/milady/eliza/packages/robot/evidence/agent_videos/unitree-r1/unitree-r1_combined_actions.telemetry.json",
+      "stderr_tail": "  self.pid = _fork_exec(\n[viewer] saved /root/robot/evidence/agent_videos/asimov-1/asimov-1_turn_right.mp4\n[viewer] saved telemetry /root/robot/evidence/agent_videos/asimov-1/asimov-1_turn_right.telemetry.json\n[viewer] saved /root/robot/evidence/agent_videos/asimov-1/asimov-1_combined_actions.mp4\n[viewer] saved telemetry /root/robot/evidence/agent_videos/asimov-1/asimov-1_combined_actions.telemetry.json",
       "exit_code": 0,
       "ok": true,
-      "wall_clock_s": 8.17
+      "wall_clock_s": 109.82
     },
     {
       "profile": "hiwonder-ainex",
@@ -86,48 +87,7 @@
       "combined_video": "hiwonder-ainex_combined_actions.mp4",
       "combined_present": true,
       "policy_checkpoint": null,
-      "stdout_tail": "",
-      "stderr_tail": "",
-      "exit_code": null,
-      "ok": true,
-      "wall_clock_s": 0.0,
-      "manifest_source": "existing_files"
-    },
-    {
-      "profile": "asimov-1",
-      "videos": [
-        "asimov-1_combined_actions.mp4",
-        "asimov-1_stand_up.mp4",
-        "asimov-1_turn_left.mp4",
-        "asimov-1_turn_right.mp4",
-        "asimov-1_walk_forward.mp4"
-      ],
-      "telemetry": [
-        "asimov-1_combined_actions.telemetry.json",
-        "asimov-1_stand_up.telemetry.json",
-        "asimov-1_turn_left.telemetry.json",
-        "asimov-1_turn_right.telemetry.json",
-        "asimov-1_walk_forward.telemetry.json"
-      ],
-      "expected_videos": [
-        "asimov-1_stand_up.mp4",
-        "asimov-1_walk_forward.mp4",
-        "asimov-1_turn_left.mp4",
-        "asimov-1_turn_right.mp4",
-        "asimov-1_combined_actions.mp4"
-      ],
-      "expected_telemetry": [
-        "asimov-1_stand_up.telemetry.json",
-        "asimov-1_walk_forward.telemetry.json",
-        "asimov-1_turn_left.telemetry.json",
-        "asimov-1_turn_right.telemetry.json",
-        "asimov-1_combined_actions.telemetry.json"
-      ],
-      "missing_videos": [],
-      "missing_telemetry": [],
-      "combined_video": "asimov-1_combined_actions.mp4",
-      "combined_present": true,
-      "policy_checkpoint": null,
+      "scripted_smoke": true,
       "stdout_tail": "",
       "stderr_tail": "",
       "exit_code": null,
@@ -170,6 +130,7 @@
       "combined_video": "unitree-g1_combined_actions.mp4",
       "combined_present": true,
       "policy_checkpoint": null,
+      "scripted_smoke": true,
       "stdout_tail": "",
       "stderr_tail": "",
       "exit_code": null,
@@ -212,6 +173,50 @@
       "combined_video": "unitree-h1_combined_actions.mp4",
       "combined_present": true,
       "policy_checkpoint": null,
+      "scripted_smoke": true,
+      "stdout_tail": "",
+      "stderr_tail": "",
+      "exit_code": null,
+      "ok": true,
+      "wall_clock_s": 0.0,
+      "manifest_source": "existing_files"
+    },
+    {
+      "profile": "unitree-r1",
+      "videos": [
+        "unitree-r1_combined_actions.mp4",
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_turn_left.mp4",
+        "unitree-r1_turn_right.mp4",
+        "unitree-r1_walk_forward.mp4"
+      ],
+      "telemetry": [
+        "unitree-r1_combined_actions.telemetry.json",
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_turn_left.telemetry.json",
+        "unitree-r1_turn_right.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json"
+      ],
+      "expected_videos": [
+        "unitree-r1_stand_up.mp4",
+        "unitree-r1_walk_forward.mp4",
+        "unitree-r1_turn_left.mp4",
+        "unitree-r1_turn_right.mp4",
+        "unitree-r1_combined_actions.mp4"
+      ],
+      "expected_telemetry": [
+        "unitree-r1_stand_up.telemetry.json",
+        "unitree-r1_walk_forward.telemetry.json",
+        "unitree-r1_turn_left.telemetry.json",
+        "unitree-r1_turn_right.telemetry.json",
+        "unitree-r1_combined_actions.telemetry.json"
+      ],
+      "missing_videos": [],
+      "missing_telemetry": [],
+      "combined_video": "unitree-r1_combined_actions.mp4",
+      "combined_present": true,
+      "policy_checkpoint": null,
+      "scripted_smoke": true,
       "stdout_tail": "",
       "stderr_tail": "",
       "exit_code": null,

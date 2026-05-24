@@ -1,0 +1,47 @@
+{
+  "schema": "robot-nebius-stage-status-v1",
+  "stage": "30_nebius_continual_benchmarks",
+  "script": "/root/robot/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh",
+  "state": "complete",
+  "started_at": "2026-05-24T06:01:14.092534Z",
+  "heartbeat_at": "2026-05-24T06:01:28.972118Z",
+  "log": "/root/robot/logs/30_nebius_continual_benchmarks.log",
+  "ended_at": "2026-05-24T06:01:28.972118Z",
+  "returncode": 0,
+  "upload_results": [
+    {
+      "ok": true,
+      "source": "/root/robot/logs",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
+      "returncode": 0,
+      "stdout_tail": "Completed 5.8 KiB/5.8 KiB (390.5 KiB/s) with 1 file(s) remaining\nupload: logs/30_nebius_continual_benchmarks.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/30_nebius_continual_benchmarks.log\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/status",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
+      "returncode": 0,
+      "stdout_tail": "Completed 441 Bytes/829 Bytes (31.9 KiB/s) with 2 file(s) remaining\nupload: status/30_nebius_continual_benchmarks.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/30_nebius_continual_benchmarks.json\nCompleted 441 Bytes/829 Bytes (31.9 KiB/s) with 1 file(s) remaining\nCompleted 829 Bytes/829 Bytes (21.2 KiB/s) with 1 file(s) remaining\nupload: status/runner_status.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/runner_status.json\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/checkpoints",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+      "returncode": 0,
+      "stdout_tail": "",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/evidence",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
+      "returncode": 0,
+      "stdout_tail": "Completed 2.5 KiB/~126.9 KiB (126.2 KiB/s) with ~4 file(s) remaining (calculating...)\nupload: evidence/alberta_joint_reach/validation_report.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/alberta_joint_reach/validation_report.json\nCompleted 2.5 KiB/~126.9 KiB (126.2 KiB/s) with ~3 file(s) remaining (calculating...)\nCompleted 3.5 KiB/127.9 KiB (97.6 KiB/s) with 4 file(s) remaining                    \nupload: evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/scripts/30_nebius_continual_benchmarks.sh\nCompleted 3.5 KiB/127.9 KiB (97.6 KiB/s) with 3 file(s) remaining\nCompleted 12.1 KiB/127.9 KiB (268.2 KiB/s) with 3 file(s) remaining\nupload: evidence/alberta_obstacle_course/validation_report.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/alberta_obstacle_course/validation_report.json\nCompleted 12.1 KiB/127.9 KiB (268.2 KiB/s) with 2 file(s) remaining\nCompleted 17.8 KiB/127.9 KiB (388.0 KiB/s) with 2 file(s) remaining\nupload: evidence/alberta_obstacle_course/obstacle_course_demo.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/alberta_obstacle_course/obstacle_course_demo.json\nCompleted 17.8 KiB/127.9 KiB (388.0 KiB/s) with 1 file(s) remaining\nCompleted 127.9 KiB/127.9 KiB (2.7 MiB/s) with 1 file(s) remaining \nupload: evidence/alberta_obstacle_course/obstacle_course_demo.mp4 to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/alberta_obstacle_course/obstacle_course_demo.mp4\n",
+      "stderr_tail": ""
+    }
+  ],
+  "upload_ok": true,
+  "final_status_upload_ok": true
+}

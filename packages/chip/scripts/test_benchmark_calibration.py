@@ -15,8 +15,9 @@ RUNNER = ROOT / "benchmarks/run_benchmarks.py"
 BLOCKED_METADATA = ROOT / "benchmarks/metadata/strict-blocked-template.json"
 LOCAL_HOST_METADATA = ROOT / "benchmarks/metadata/local-host-smoke.json"
 spec = importlib.util.spec_from_file_location("run_benchmarks", RUNNER)
+assert spec is not None
 bench = importlib.util.module_from_spec(spec)
-assert spec and spec.loader
+assert spec.loader
 spec.loader.exec_module(bench)
 
 

@@ -2,8 +2,46 @@
   "schema": "robot-nebius-stage-status-v1",
   "stage": "10_nebius_train_alberta",
   "script": "/root/robot/evidence/full_training_preflight/scripts/10_nebius_train_alberta.sh",
-  "state": "running",
-  "started_at": "2026-05-24T03:53:06.459515Z",
-  "heartbeat_at": "2026-05-24T04:03:07.946983Z",
-  "log": "/root/robot/logs/10_nebius_train_alberta.log"
+  "state": "complete",
+  "started_at": "2026-05-24T06:51:42.088991Z",
+  "heartbeat_at": "2026-05-24T06:52:10.205560Z",
+  "log": "/root/robot/logs/10_nebius_train_alberta.log",
+  "ended_at": "2026-05-24T06:52:10.205560Z",
+  "returncode": 0,
+  "upload_results": [
+    {
+      "ok": true,
+      "source": "/root/robot/logs",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs",
+      "returncode": 0,
+      "stdout_tail": "Completed 2.3 KiB/2.3 KiB (156.5 KiB/s) with 1 file(s) remaining\nupload: logs/10_nebius_train_alberta.log to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/logs/10_nebius_train_alberta.log\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/status",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status",
+      "returncode": 0,
+      "stdout_tail": "Completed 420 Bytes/808 Bytes (27.1 KiB/s) with 2 file(s) remaining\nupload: status/10_nebius_train_alberta.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/10_nebius_train_alberta.json\nCompleted 420 Bytes/808 Bytes (27.1 KiB/s) with 1 file(s) remaining\nCompleted 808 Bytes/808 Bytes (33.2 KiB/s) with 1 file(s) remaining\nupload: status/runner_status.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/status/runner_status.json\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/checkpoints",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints",
+      "returncode": 0,
+      "stdout_tail": "Completed 2.8 KiB/257.9 KiB (146.3 KiB/s) with 2 file(s) remaining\nupload: checkpoints/asimov_1_alberta_full/manifest.json to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints/asimov_1_alberta_full/manifest.json\nCompleted 2.8 KiB/257.9 KiB (146.3 KiB/s) with 1 file(s) remaining\nCompleted 257.9 KiB/257.9 KiB (7.6 MiB/s) with 1 file(s) remaining\nupload: checkpoints/asimov_1_alberta_full/alberta_policy.npz to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/checkpoints/asimov_1_alberta_full/alberta_policy.npz\n",
+      "stderr_tail": ""
+    },
+    {
+      "ok": true,
+      "source": "/root/robot/evidence",
+      "dest": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence",
+      "returncode": 0,
+      "stdout_tail": "Completed 2.4 KiB/2.4 KiB (154.0 KiB/s) with 1 file(s) remaining\nupload: evidence/full_training_preflight/scripts/50_post_train_validation.sh to s3://robot-rl-results-1779358330/robot-full-clean-1779556360/evidence/full_training_preflight/scripts/50_post_train_validation.sh\n",
+      "stderr_tail": ""
+    }
+  ],
+  "upload_ok": true,
+  "final_status_upload_ok": true
 }

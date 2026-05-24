@@ -1,0 +1,49 @@
+{
+  "job": "asimov-1-text-conditioned-mjx-brax",
+  "mjcf_xml": "/root/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "mjcf_xml_sha256": "1e305ce102054083008668782031a60e00797da7425538ec554e2fde424f7f2e",
+  "asset_manifest": "/root/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+  "asset_manifest_sha256": "fbfcd24562484b71e801176df593ade8c8e0ea56c5ef760217136b39732cd930",
+  "active_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "observation_delay_steps": {
+    "left_leg": 1,
+    "right_leg": 2
+  },
+  "ppo": {
+    "algorithm": "brax_ppo",
+    "num_timesteps": 1024,
+    "num_envs": 128,
+    "num_evals": 1,
+    "learning_rate": 0.0003,
+    "reward_scaling": 1.0,
+    "normalize_observations": true,
+    "action_repeat": 1,
+    "unroll_length": 20,
+    "num_minibatches": 32,
+    "num_updates_per_batch": 4,
+    "discounting": 0.97,
+    "entropy_cost": 0.01,
+    "batch_size": 256,
+    "max_grad_norm": 1.0,
+    "policy_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "value_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "policy_obs_key": "state",
+    "value_obs_key": "privileged_state"
+  }
+}

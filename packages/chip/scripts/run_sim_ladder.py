@@ -76,7 +76,8 @@ def structured_findings(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
             }
         )
-        for artifact in evidence["missing_artifacts"]:
+        missing_list = missing if isinstance(missing, list) else []
+        for artifact in missing_list:
             findings.append(
                 {
                     "code": (

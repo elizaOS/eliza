@@ -1,0 +1,28 @@
+{
+  "regime": "smoke_sb3_ppo",
+  "profile_id": "asimov-1",
+  "profile_version": "1.0.0",
+  "curriculum_version": 2,
+  "active_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "obs_dim": 77,
+  "action_dim": 12,
+  "output_dim": 25,
+  "proprio_dim": 45,
+  "text_dim": 32,
+  "pca_dim": 32,
+  "requested_total_steps": 30000,
+  "total_steps": 30208,
+  "domain_rand": true,
+  "wall_clock_s": 50.98,
+  "seed": 0,
+  "ckpt": "policy.zip",
+  "encoder_model": "sentence-transformers/all-MiniLM-L6-v2"
+}

@@ -1,0 +1,112 @@
+{
+  "regime": "alberta_streaming",
+  "curriculum_version": 2,
+  "pca_dim": 32,
+  "active_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "obs_dim": 77,
+  "action_dim": 12,
+  "output_dim": 25,
+  "profile_id": "asimov-1",
+  "profile_version": "1.0.0",
+  "proprio_dim": 45,
+  "text_dim": 32,
+  "ckpt": "alberta_policy.npz",
+  "requested_total_steps": 7000,
+  "steps_per_task": 1000,
+  "total_steps": 7000,
+  "episode_steps": 200,
+  "eval_episodes": 3,
+  "seed": 0,
+  "domain_rand": true,
+  "controller": {
+    "gamma": 0.5,
+    "actor_step_size": 0.005,
+    "critic_step_size": 0.01,
+    "actor_lamda": 0.8,
+    "critic_lamda": 0.8,
+    "log_sigma_init": -1.0,
+    "log_sigma_min": -5.0,
+    "log_sigma_max": 0.5,
+    "action_low": -1.0,
+    "action_high": 1.0,
+    "obgd_kappa": 2.0,
+    "normalize": false,
+    "normalizer_decay": 0.999,
+    "decouple_global_bias": true,
+    "features": {
+      "mode": "sparse_gated",
+      "embed_dim": 32,
+      "n_prototypes": 64,
+      "gate_hard": true,
+      "gate_temperature": 0.1,
+      "proprio_random_dim": 32,
+      "random_dim": 256,
+      "scale": 1.0,
+      "seed": 0
+    }
+  },
+  "trained_at": "2026-05-24T06:52:09",
+  "history": [
+    {
+      "phase": 0,
+      "task": "stand_up",
+      "train_episodes": 22,
+      "train_mean_return": 126.26261409390894,
+      "eval_mean_return": 104.55725468467381
+    },
+    {
+      "phase": 1,
+      "task": "walk_forward",
+      "train_episodes": 24,
+      "train_mean_return": 111.0112742263215,
+      "eval_mean_return": 110.20944357718714
+    },
+    {
+      "phase": 2,
+      "task": "walk_backward",
+      "train_episodes": 23,
+      "train_mean_return": 119.95906068271248,
+      "eval_mean_return": 133.26967806305458
+    },
+    {
+      "phase": 3,
+      "task": "sidestep_left",
+      "train_episodes": 21,
+      "train_mean_return": 130.64620711241898,
+      "eval_mean_return": 118.14056556346746
+    },
+    {
+      "phase": 4,
+      "task": "sidestep_right",
+      "train_episodes": 23,
+      "train_mean_return": 122.62412791999179,
+      "eval_mean_return": 114.53671595615333
+    },
+    {
+      "phase": 5,
+      "task": "turn_left",
+      "train_episodes": 23,
+      "train_mean_return": 117.51312838310054,
+      "eval_mean_return": 113.20175019632956
+    },
+    {
+      "phase": 6,
+      "task": "turn_right",
+      "train_episodes": 24,
+      "train_mean_return": 116.18345990190255,
+      "eval_mean_return": 115.92085401479751
+    }
+  ],
+  "mjcf_xml": "/root/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "mjcf_xml_sha256": "1e305ce102054083008668782031a60e00797da7425538ec554e2fde424f7f2e",
+  "asset_manifest": "/root/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+  "asset_manifest_sha256": "fbfcd24562484b71e801176df593ade8c8e0ea56c5ef760217136b39732cd930"
+}

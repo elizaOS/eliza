@@ -1,0 +1,66 @@
+{
+  "ok": true,
+  "comparison_dir": "/root/robot/evidence/backend_compare/asimov-1",
+  "expected_profile": "asimov-1",
+  "min_steps": 30000,
+  "min_eval_mean_steps": 20.0,
+  "checks": {
+    "comparison_dir": true,
+    "json": true,
+    "markdown": true,
+    "profile": true,
+    "tasks": true,
+    "steps": true,
+    "eval_config": true,
+    "baseline_eval": true,
+    "alberta_present": true,
+    "alberta_validation": true,
+    "alberta_eval": true,
+    "alberta_delta_vs_untrained": true,
+    "ppo_present": true,
+    "ppo_eval": true,
+    "ppo_delta_vs_untrained": true,
+    "mean_rewards": true,
+    "alberta_vs_ppo_delta": true,
+    "winner": true,
+    "winner_consistent": true,
+    "eval_rollout_depth": true
+  },
+  "profile_id": "asimov-1",
+  "tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "steps": 30000,
+  "eval_config": {
+    "seed": 0,
+    "pca_dim": 32,
+    "episode_steps": 200,
+    "eval_episodes": 5,
+    "max_steps": 200,
+    "domain_rand": true
+  },
+  "winner_by_mean_reward": "ppo",
+  "deltas": {
+    "baseline_mean_reward": 251.5049904876888,
+    "alberta_mean_reward": 165.82098109095026,
+    "ppo_mean_reward": 194.84353875491988,
+    "alberta_minus_ppo_mean_reward": -29.02255766396962,
+    "alberta_minus_untrained_mean_reward": -85.68400939673853,
+    "ppo_minus_untrained_mean_reward": -56.66145173276891,
+    "expected_winner_by_mean_reward": "ppo"
+  },
+  "survival": {
+    "baseline_min_mean_steps_survived": 79.0,
+    "alberta_min_mean_steps_survived": 56.0,
+    "ppo_min_mean_steps_survived": 65.0,
+    "min_mean_steps_survived": 56.0,
+    "mean_mean_steps_survived": 67.61904761904762,
+    "survival_values_present": true
+  }
+}

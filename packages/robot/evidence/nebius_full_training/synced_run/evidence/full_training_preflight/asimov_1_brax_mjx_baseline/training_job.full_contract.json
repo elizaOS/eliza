@@ -1,0 +1,239 @@
+{
+  "job": "asimov-1-text-conditioned-mjx-brax",
+  "profile_id": "asimov-1",
+  "output_dir": "/root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
+  "mjcf_xml": "/root/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+  "mjcf_xml_sha256": "1e305ce102054083008668782031a60e00797da7425538ec554e2fde424f7f2e",
+  "asset_manifest": "/root/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+  "asset_manifest_sha256": "fbfcd24562484b71e801176df593ade8c8e0ea56c5ef760217136b39732cd930",
+  "control_hz": 50.0,
+  "physics_hz": 200.0,
+  "actor_observation_layout": [
+    {
+      "name": "gyro",
+      "dim": 3
+    },
+    {
+      "name": "gravity",
+      "dim": 3
+    },
+    {
+      "name": "velocity_command",
+      "dim": 3
+    },
+    {
+      "name": "leg_joint_position",
+      "dim": 12
+    },
+    {
+      "name": "leg_joint_velocity",
+      "dim": 12
+    },
+    {
+      "name": "previous_leg_action",
+      "dim": 12
+    }
+  ],
+  "actor_observation_dim": 45,
+  "critic_observation_dim": 86,
+  "critic_observation_layout": [
+    {
+      "name": "actor_state",
+      "dim": 77
+    },
+    {
+      "name": "ground_truth_base_linear_velocity",
+      "dim": 3
+    },
+    {
+      "name": "root_height",
+      "dim": 1
+    },
+    {
+      "name": "root_angular_momentum",
+      "dim": 3
+    },
+    {
+      "name": "toe_contact_proxy",
+      "dim": 2
+    }
+  ],
+  "leg_action_dim": 12,
+  "output_dim": 25,
+  "joint_order": [
+    "left_hip_pitch_joint",
+    "left_hip_roll_joint",
+    "left_hip_yaw_joint",
+    "left_knee_joint",
+    "left_ankle_pitch_joint",
+    "left_ankle_roll_joint",
+    "right_hip_pitch_joint",
+    "right_hip_roll_joint",
+    "right_hip_yaw_joint",
+    "right_knee_joint",
+    "right_ankle_pitch_joint",
+    "right_ankle_roll_joint",
+    "left_shoulder_pitch_joint",
+    "left_shoulder_roll_joint",
+    "left_shoulder_yaw_joint",
+    "left_elbow_joint",
+    "left_wrist_yaw_joint",
+    "right_shoulder_pitch_joint",
+    "right_shoulder_roll_joint",
+    "right_shoulder_yaw_joint",
+    "right_elbow_joint",
+    "right_wrist_yaw_joint",
+    "waist_yaw_joint",
+    "neck_pitch_joint",
+    "neck_yaw_joint"
+  ],
+  "active_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "observation_delay_steps": {
+    "left_leg": 1,
+    "right_leg": 2
+  },
+  "observation_delay_groups": {
+    "left_leg": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "right_leg": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  },
+  "ppo": {
+    "algorithm": "brax_ppo",
+    "num_timesteps": 150000000,
+    "num_envs": 8192,
+    "num_evals": 10,
+    "learning_rate": 0.0003,
+    "reward_scaling": 1.0,
+    "normalize_observations": true,
+    "action_repeat": 1,
+    "unroll_length": 20,
+    "num_minibatches": 32,
+    "num_updates_per_batch": 4,
+    "discounting": 0.97,
+    "entropy_cost": 0.01,
+    "batch_size": 256,
+    "max_grad_norm": 1.0,
+    "policy_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "value_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "policy_obs_key": "state",
+    "value_obs_key": "privileged_state"
+  },
+  "trainer_entrypoint": "eliza_robot.sim.mujoco.asimov_mjx_training:train_from_job",
+  "runner": "scripts/run_asimov1_full_training.py",
+  "domain_randomization": {
+    "encoder_zero_offset_rad": [
+      -0.02,
+      0.02
+    ],
+    "pd_gain_scale": [
+      0.9,
+      1.1
+    ]
+  },
+  "manifest_template": {
+    "regime": "brax_ppo",
+    "profile_id": "asimov-1",
+    "curriculum_version": 2,
+    "pca_dim": 32,
+    "active_tasks": [
+      "stand_up",
+      "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
+      "turn_left",
+      "turn_right"
+    ],
+    "obs_dim": 77,
+    "proprio_dim": 45,
+    "text_dim": 32,
+    "critic_obs_dim": 86,
+    "policy_obs_key": "state",
+    "value_obs_key": "privileged_state",
+    "action_dim": 12,
+    "output_dim": 25,
+    "policy_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "value_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "observation_delay_steps": {
+      "left_leg": 1,
+      "right_leg": 2
+    },
+    "observation_delay_groups": {
+      "left_leg": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "right_leg": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    "normalize_observations": true,
+    "ckpt": "policy_brax.pkl",
+    "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "total_steps": 150000000,
+    "seed": 0,
+    "training_job": "asimov-1-text-conditioned-mjx-brax"
+  },
+  "expected_artifacts": [
+    "policy_brax.pkl",
+    "manifest.json",
+    "metrics.json",
+    "config.json",
+    "inference_check.json",
+    "full_training_run.json"
+  ],
+  "validation_commands": [
+    "uv run python scripts/run_asimov1_full_training.py --job-dir /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --check-only",
+    "uv run python scripts/verify_brax_text_policy.py --ckpt /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim 86 --require-policy-obs-key state --require-value-obs-key privileged_state",
+    "uv run python scripts/validate_asimov1_production_checkpoint.py /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --min-steps 150000000 --require-inference-check",
+    "uv run python scripts/validate_asimov1_full_training_run.py /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline/full_training_run.json --job-dir /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline",
+    "uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
+    "uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint /root/robot/evidence/full_training_preflight/asimov_1_brax_mjx_baseline --require-asimov-model-provenance"
+  ]
+}

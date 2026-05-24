@@ -381,8 +381,8 @@ def test_promoted_ittage_tag_path_mix_does_not_regress_key_diagnostics():
     prior_geo["ITTAGE_PATH_HISTORY_BITS"] = 0
     prior_geo["ITTAGE_PATH_HISTORY_TOKEN_BITS"] = 6
 
-    baseline_misp = 0
-    prior_misp = 0
+    baseline_misp: int | float = 0
+    prior_misp: int | float = 0
     for generator in (
         SYNTHETIC_GENERATORS["v8_indirect_dispatch"],
         synthetic_command_buffer_validation,

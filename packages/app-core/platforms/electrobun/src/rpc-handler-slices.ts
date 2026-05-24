@@ -7,10 +7,8 @@ import type {
   DynamicViewRegisterParams,
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
-import {
-  isDetachedSurface,
-  type ManagedWindowSnapshot,
-} from "./surface-windows";
+import type { DesktopManagedWindowSnapshot } from "./rpc-schema";
+import { isDetachedSurface } from "./surface-windows";
 
 type DetachedWindowSurface =
   | "chat"
@@ -27,13 +25,13 @@ interface WindowRpcDesktop {
     surface: DetachedWindowSurface,
     browse?: string,
     alwaysOnTop?: boolean,
-  ): Promise<ManagedWindowSnapshot>;
+  ): Promise<DesktopManagedWindowSnapshot | null>;
   openAppWindow(options: {
     slug?: string;
     title: string;
     path: string;
     alwaysOnTop?: boolean;
-  }): Promise<ManagedWindowSnapshot>;
+  }): Promise<DesktopManagedWindowSnapshot | null>;
   setManagedWindowAlwaysOnTop(id: string, flag: boolean): boolean;
 }
 

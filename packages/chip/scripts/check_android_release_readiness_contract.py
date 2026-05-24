@@ -900,10 +900,14 @@ def _launcher_runtime_payload_gaps(
     expected_target_label: str | None = None,
 ) -> list[str]:
     gaps: list[str] = []
-    app = payload.get("app") if isinstance(payload.get("app"), dict) else {}
-    agent = payload.get("agent") if isinstance(payload.get("agent"), dict) else {}
-    device = payload.get("device") if isinstance(payload.get("device"), dict) else {}
-    logs = payload.get("logs") if isinstance(payload.get("logs"), dict) else {}
+    _app = payload.get("app")
+    app: dict[str, object] = _app if isinstance(_app, dict) else {}
+    _agent = payload.get("agent")
+    agent: dict[str, object] = _agent if isinstance(_agent, dict) else {}
+    _device = payload.get("device")
+    device: dict[str, object] = _device if isinstance(_device, dict) else {}
+    _logs = payload.get("logs")
+    logs: dict[str, object] = _logs if isinstance(_logs, dict) else {}
     package_name = app.get("package_name")
     if payload.get("status") != "PASS":
         gaps.append(f"status={payload.get('status')!r}")

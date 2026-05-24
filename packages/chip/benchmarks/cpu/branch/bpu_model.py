@@ -1368,7 +1368,7 @@ class BPUSimulator:
         return self.counters["misp"] * 1000.0 / instruction_count
 
     def stats(self) -> dict[str, int | float]:
-        out = dict(self.counters)
+        out: dict[str, int | float] = dict(self.counters)
         for key, value in self.ittage.counters.items():
             out[f"ittage_{key}"] = int(value)
         return out

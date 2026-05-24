@@ -84,6 +84,7 @@ async def _validate_asimov_server_command_surface() -> dict[str, Any]:
                 ("native_velocity", "asimov.velocity", {"vx_mps": 0.2, "vy_mps": -0.1, "yaw_rad_s": 0.5}),
                 ("walk_set_alias", "walk.set", {"x": 0.2, "y": -0.1, "yaw": 0.5}),
                 ("walk_command_stop", "walk.command", {"action": "stop"}),
+                ("mode_stand_after_stop", "asimov.mode", {"mode": "STAND"}),
                 ("walk_command_velocity", "walk.command", {"vx_mps": 0.1, "vy_mps": 0.0, "yaw_rad_s": 0.2}),
                 ("action_play_stand", "action.play", {"name": "stand"}),
                 ("trajectory", "asimov.trajectory", {"positions": [0.01] * ASIMOV1_FULL_ACTION_DIM}),

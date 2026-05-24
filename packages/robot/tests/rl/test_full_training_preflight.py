@@ -139,6 +139,7 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "POST_TRAIN_EVAL_EPISODES" in post_script
     assert "POST_TRAIN_EVAL_MAX_STEPS" in post_script
     assert "POST_TRAIN_VIDEO_MAX_STEPS" in post_script
+    assert "POST_TRAIN_SKIP_EVAL" in post_script
     assert "export JAX_PLATFORMS=cpu" in post_script
     assert "export JAX_PLATFORM_NAME=cpu" in post_script
     assert "unset CUDA_VISIBLE_DEVICES" in post_script
@@ -155,7 +156,9 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--profile asimov-1 --no-real" in post_script
     assert '--episodes "$POST_TRAIN_EVAL_EPISODES"' in post_script
     assert '--max-steps "$POST_TRAIN_EVAL_MAX_STEPS"' in post_script
+    assert 'if [[ "$POST_TRAIN_SKIP_EVAL" != "1" ]]' in post_script
     assert "record_agent_videos.py --profiles asimov-1" in post_script
+    assert "rm -rf evidence/agent_videos evidence/video_review" in post_script
     assert '--max-steps "$POST_TRAIN_VIDEO_MAX_STEPS"' in post_script
     assert "--policy-checkpoint checkpoints/asimov_1_alberta_full" in post_script
     assert "eliza-robot-generate-alberta-report" in post_script

@@ -1145,8 +1145,8 @@ def build_l5_l6_report(
     for finding in gate_report.get("findings", []):
         if not isinstance(finding, dict):
             continue
-        name = finding.get("name")
-        if name in entry_names or finding.get("status") == "pass":
+        finding_name = finding.get("name")
+        if finding_name in entry_names or finding.get("status") == "pass":
             continue
         entries.append(report_gate_entry(finding))
 
@@ -1183,9 +1183,10 @@ def validate_l5_l6_report(report: dict[str, Any]) -> list[str]:
         if not isinstance(entry, dict):
             errors.append("l5/l6 report entry must be an object")
             continue
-        name = entry.get("name")
+        name: str = entry.get("name", "")
         if not isinstance(name, str) or not name:
             errors.append("l5/l6 report entry missing name")
+            name = "<unknown>"
         elif name in seen_names:
             errors.append(f"l5/l6 report duplicate entry: {name}")
         else:
