@@ -89,6 +89,49 @@ STEP_COMPONENT_PATTERNS: dict[str, tuple[str, ...]] = {
     "wiring_or_service_access": ("wire", "cable", "connector", "harness", "service"),
 }
 
+SUPPLIER_CODE_CLASSIFICATIONS: dict[str, dict[str, Any]] = {
+    "1600-0515-0006": {
+        "family": "bearing_or_ring",
+        "component_type": "bearing or bearing subcomponent in 1602 pillow-block assembly",
+        "classification_status": "geometry_inferred_from_step_assembly",
+        "datasheet_backed": False,
+        "source": "STEP product metadata groups this code with 1602-0032-0006 pillow-block geometry",
+        "source_url": None,
+    },
+    "1602-0032-0006": {
+        "family": "bearing_or_ring",
+        "component_type": "6 mm bore pillow block with press-fit bearing",
+        "classification_status": "classified_from_vendor_catalog",
+        "datasheet_backed": True,
+        "source": "ServoCity/goBILDA pillow-block catalog",
+        "source_url": "https://www.servocity.com/gobilda-pillow-blocks/",
+    },
+    "2806-0005-0004": {
+        "family": "fastener_or_thread",
+        "component_type": "M5 x 0.8 mm cup-point set screw, 4 mm length",
+        "classification_status": "classified_from_vendor_catalog",
+        "datasheet_backed": True,
+        "source": "ServoCity set-screw catalog",
+        "source_url": "https://www.servocity.com/set-screws/",
+    },
+    "2920-0001-0006": {
+        "family": "bearing_or_ring",
+        "component_type": "6 mm bore steel set-screw shaft collar",
+        "classification_status": "classified_from_vendor_catalog",
+        "datasheet_backed": True,
+        "source": "ServoCity collars catalog",
+        "source_url": "https://www.servocity.com/collars/",
+    },
+    "91390A117": {
+        "family": "fastener_or_thread",
+        "component_type": "M5 x 0.8 mm cup-point set screw, 5 mm length",
+        "classification_status": "classified_from_cross_reference",
+        "datasheet_backed": True,
+        "source": "McMaster-equivalent DIN 916 / ISO 4029 set-screw listing",
+        "source_url": "https://www.mcmaster.com/products/set-screws/specifications-met~iso-4029/",
+    },
+}
+
 _STEP_FILE_NAME_RE = re.compile(r"FILE_NAME\s*\(\s*'([^']+)'")
 _STEP_PRODUCT_RE = re.compile(r"PRODUCT\s*\(\s*'([^']+)'")
 _LOCAL_ASV_NAME_RE = re.compile(
@@ -381,6 +424,26 @@ def _supplier_code_link_growth_summary(
     return sorted(records, key=lambda item: (-float(item["max_required_extent_growth_m"]), item["link"]))
 
 
+def _supplier_code_classification(supplier_code: str) -> dict[str, Any]:
+    classification = SUPPLIER_CODE_CLASSIFICATIONS.get(supplier_code)
+    if classification is None:
+        return {
+            "supplier_code": supplier_code,
+            "family": None,
+            "component_type": None,
+            "classification_status": "supplier_code_unclassified",
+            "datasheet_backed": False,
+            "source": None,
+            "source_url": None,
+            "classification_required_for_acceptance": True,
+        }
+    return {
+        "supplier_code": supplier_code,
+        **classification,
+        "classification_required_for_acceptance": True,
+    }
+
+
 def _step_product_metadata(path: str) -> dict[str, Any]:
     source = Path(path)
     metadata = {
@@ -536,8 +599,7 @@ def _vendor_summary(
                     for link in record.get("referenced_by_links", [])
                 }
             ),
-            "classification_status": "supplier_code_unclassified",
-            "classification_required_for_acceptance": True,
+            "classification": _supplier_code_classification(supplier_code),
         }
         for supplier_code, records in sorted(records_by_supplier_code.items())
     ]
@@ -602,12 +664,29 @@ def _vendor_summary(
             ),
             default=0.0,
         )
+        target["classification"]["geometry_loaded_count"] = target["geometry_loaded_count"]
+        target["classification"]["geometry_failed_count"] = target["geometry_failed_count"]
+        target["classification"]["generated_link_fit_checked_count"] = target[
+            "generated_link_fit_checked_count"
+        ]
+        target["classification"]["generated_link_fit_fail_count"] = target[
+            "generated_link_fit_fail_count"
+        ]
     supplier_code_link_growth_summary = _supplier_code_link_growth_summary(
         supplier_code_targets
     )
     supplier_code_growth_links = [
         record for record in supplier_code_link_growth_summary if record["requires_growth"]
     ]
+    classified_supplier_code_targets = [
+        target
+        for target in supplier_code_targets
+        if target["classification"].get("family")
+    ]
+    supplier_code_family_counts: dict[str, int] = {}
+    for target in classified_supplier_code_targets:
+        family = str(target["classification"]["family"])
+        supplier_code_family_counts[family] = supplier_code_family_counts.get(family, 0) + 1
 
     return {
         "unique_vendor_envelopes": len(unique_by_path),
@@ -620,7 +699,10 @@ def _vendor_summary(
         "vendor_envelopes_with_step_product_metadata": len(metadata_records),
         "vendor_envelopes_with_supplier_codes": len(supplier_code_records),
         "unique_vendor_supplier_codes": len(records_by_supplier_code),
-        "unclassified_vendor_supplier_codes": len(supplier_code_targets),
+        "classified_vendor_supplier_codes": len(classified_supplier_code_targets),
+        "unclassified_vendor_supplier_codes": len(supplier_code_targets)
+        - len(classified_supplier_code_targets),
+        "supplier_code_family_counts": dict(sorted(supplier_code_family_counts.items())),
         "supplier_code_geometry_loaded_paths": sum(
             int(target["geometry_loaded_count"]) for target in supplier_code_targets
         ),
