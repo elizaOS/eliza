@@ -11,6 +11,7 @@
  */
 
 import { createGroq } from "@ai-sdk/groq";
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { IAgentRuntime } from "@elizaos/core";
 import { GROQ_MODELS } from "@feed/shared";
 import { generateText } from "ai";
@@ -103,33 +104,46 @@ export async function callGroqDirect(params: {
     }
   }
 
-  // Resolve API key: prefer GROQ_API_KEY, fall back to ELIZACLOUD_API_KEY
-  const apiKey =
+  const groqKey =
     getRuntimeSetting(params.runtime, "GROQ_API_KEY") ||
-    process.env.GROQ_API_KEY ||
-    getRuntimeSetting(params.runtime, "ELIZACLOUD_API_KEY") ||
-    process.env.ELIZACLOUD_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "No API key for inference — set GROQ_API_KEY or ELIZACLOUD_API_KEY",
-    );
-  }
-
+    process.env.GROQ_API_KEY;
   const elizacloudKey =
     getRuntimeSetting(params.runtime, "ELIZACLOUD_API_KEY") ||
     process.env.ELIZACLOUD_API_KEY;
-  const isElizaCloud = !!elizacloudKey;
+  const cerebrasKey =
+    getRuntimeSetting(params.runtime, "CEREBRAS_API_KEY") ||
+    process.env.CEREBRAS_API_KEY;
+  const apiKey = groqKey || elizacloudKey || cerebrasKey;
+  if (!apiKey) {
+    throw new Error(
+      "No API key for inference — set GROQ_API_KEY, ELIZACLOUD_API_KEY, or CEREBRAS_API_KEY",
+    );
+  }
 
-  const groq = createGroq({
-    apiKey,
-    baseURL: resolveGroqBaseURL(params.runtime),
-    ...(isElizaCloud ? { headers: { "X-API-Key": apiKey } } : {}),
-  });
-
-  const model = resolveGroqModel({
-    modelSize: params.modelSize,
-    runtime: params.runtime,
-  });
+  const isElizaCloud = Boolean(elizacloudKey && !groqKey);
+  const isCerebras = Boolean(cerebrasKey && !groqKey && !elizacloudKey);
+  const model = isCerebras
+    ? (getRuntimeSetting(params.runtime, "CEREBRAS_MODEL") ||
+      process.env.CEREBRAS_MODEL ||
+      "gpt-oss-120b")
+    : resolveGroqModel({
+        modelSize: params.modelSize,
+        runtime: params.runtime,
+      });
+  const languageModel = isCerebras
+    ? createOpenAICompatible({
+        apiKey,
+        baseURL:
+          getRuntimeSetting(params.runtime, "CEREBRAS_BASE_URL") ||
+          process.env.CEREBRAS_BASE_URL ||
+          "https://api.cerebras.ai/v1",
+        name: "cerebras",
+      }).chatModel(model)
+    : createGroq({
+        apiKey,
+        baseURL: resolveGroqBaseURL(params.runtime),
+        ...(isElizaCloud ? { headers: { "X-API-Key": apiKey } } : {}),
+      }).languageModel(model);
 
   const startTime = Date.now();
 
@@ -138,7 +152,7 @@ export async function callGroqDirect(params: {
 
   const result = await Promise.race([
     generateText({
-      model: groq.languageModel(model),
+      model: languageModel,
       prompt: params.prompt,
       system: params.system,
       temperature: params.temperature ?? 0.7,

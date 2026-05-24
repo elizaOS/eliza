@@ -445,7 +445,7 @@ function SelfHostCTA() {
             </Link>
             <Link
               to="/dashboard/earnings"
-              className="inline-flex items-center gap-2 px-4 py-2 border border-white/20 hover:border-[var(--brand-orange)]/50 text-white/80 hover:text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 text-white/80 hover:bg-foreground hover:text-background text-sm font-mono transition-colors"
             >
               <Coins className="h-4 w-4" />
               View Earnings

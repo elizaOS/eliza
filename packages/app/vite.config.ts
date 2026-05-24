@@ -1181,8 +1181,8 @@ export default defineConfig({
           "plugins/plugin-wifi/src/register.ts",
         ],
         [
-          "@elizaos/plugin-hearwear/register",
-          "plugins/plugin-hearwear/src/register.ts",
+          "@elizaos/plugin-facewear/register",
+          "plugins/plugin-facewear/src/register.ts",
         ],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),

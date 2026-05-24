@@ -189,10 +189,6 @@ function CloudHero({ children }: { children: ReactNode }) {
   return (
     <section className="band hero-cloud" data-hero="cloud">
       <CloudVideoBackground
-        basePath={BRAND_PATHS.clouds}
-        speed="4x"
-        poster={BRAND_PATHS.poster}
-        posterSrcSet={`${BRAND_PATHS.poster480} 640w, ${BRAND_PATHS.poster} 960w`}
         className="cloud-background"
         style={{
           position: "absolute",

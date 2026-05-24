@@ -12,9 +12,6 @@ function StewardLoginSectionFallback() {
 function LoginBackground({ children }: { children: React.ReactNode }) {
   return (
     <CloudVideoBackground
-      basePath={BRAND_PATHS.clouds}
-      speed="4x"
-      poster={BRAND_PATHS.poster}
       scrim={0.82}
       scrimColor="rgba(0,0,0,1)"
       className="theme-cloud min-h-screen bg-black text-white"
@@ -56,14 +53,14 @@ export default function LoginPage() {
           By signing in, you agree to the{" "}
           <Link
             to="/terms-of-service"
-            className="text-white transition-colors hover:text-[var(--brand-orange)]"
+            className="text-white transition-colors hover:opacity-80"
           >
             Terms
           </Link>{" "}
           and{" "}
           <Link
             to="/privacy-policy"
-            className="text-white transition-colors hover:text-[var(--brand-orange)]"
+            className="text-white transition-colors hover:opacity-80"
           >
             Privacy Policy
           </Link>

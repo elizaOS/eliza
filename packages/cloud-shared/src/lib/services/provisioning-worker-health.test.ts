@@ -17,16 +17,39 @@ async function withEnv<T>(extra: Record<string, string>, fn: () => Promise<T>): 
 }
 
 describe("provisioning worker health (Redis heartbeat)", () => {
+  // These tests drive env via runWithCloudBindingsAsync (ALS), so process.env
+  // must start clean — but we snapshot and restore rather than delete outright,
+  // otherwise NODE_ENV=test leaks away and pollutes later files in the shared
+  // `bun test` process (e.g. crypto.test.ts resolving the steward KMS backend).
+  const MANAGED_ENV_KEYS = [
+    "NODE_ENV",
+    "REQUIRE_PROVISIONING_WORKER",
+    "MOCK_REDIS",
+  ] as const;
+  const savedEnv: Record<string, string | undefined> = {};
+
+  const clearManagedEnv = () => {
+    for (const key of MANAGED_ENV_KEYS) {
+      delete process.env[key];
+    }
+  };
+
   beforeEach(() => {
-    delete process.env.NODE_ENV;
-    delete process.env.REQUIRE_PROVISIONING_WORKER;
-    delete process.env.MOCK_REDIS;
+    for (const key of MANAGED_ENV_KEYS) {
+      savedEnv[key] = process.env[key];
+    }
+    clearManagedEnv();
   });
 
   afterEach(() => {
-    delete process.env.NODE_ENV;
-    delete process.env.REQUIRE_PROVISIONING_WORKER;
-    delete process.env.MOCK_REDIS;
+    for (const key of MANAGED_ENV_KEYS) {
+      const value = savedEnv[key];
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
   });
 
   it("returns unhealthy when no heartbeat has been published", async () => {

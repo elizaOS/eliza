@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 import {
   NobleG1Transport,
   SmartglassesService,
-} from "@elizaos/plugin-hearwear";
+} from "@elizaos/plugin-facewear";
 import {
   createHardwareEvidenceReport,
   markHardwareMicrophoneCommand,

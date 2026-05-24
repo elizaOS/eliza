@@ -10,20 +10,20 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default:
-          "border border-accent/45 bg-accent/15 text-accent-fg dark:text-accent hover:border-accent/70 hover:bg-accent/25",
+          "bg-accent/15 text-accent-fg dark:text-accent hover:bg-foreground hover:text-background",
         surface:
-          "border border-border bg-card text-muted-strong hover:border-border-strong hover:bg-bg-hover hover:text-txt",
+          "bg-card text-muted-strong hover:bg-foreground hover:text-background",
         surfaceAccent:
-          "border border-accent/30 bg-accent-subtle text-txt-strong hover:border-accent/50 hover:bg-accent/20",
+          "bg-accent-subtle text-txt-strong hover:bg-foreground hover:text-background",
         surfaceDestructive:
-          "border border-danger/30 bg-destructive-subtle text-danger hover:border-danger/50 hover:bg-destructive/15",
+          "bg-destructive-subtle text-danger hover:bg-foreground hover:text-background",
         destructive:
-          "border border-destructive/45 bg-destructive text-destructive-fg hover:border-destructive/75 hover:bg-destructive/90",
+          "bg-destructive text-destructive-fg hover:bg-foreground hover:text-background",
         outline:
-          "border border-border bg-card text-txt hover:border-border-strong hover:bg-bg-hover",
+          "bg-card text-txt hover:bg-foreground hover:text-background",
         secondary:
-          "border border-border bg-bg-accent text-txt hover:border-border-strong hover:bg-bg-hover",
-        ghost: "text-muted-strong hover:bg-bg-accent hover:text-txt",
+          "bg-bg-accent text-txt hover:bg-foreground hover:text-background",
+        ghost: "text-muted-strong hover:bg-surface hover:text-txt",
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {

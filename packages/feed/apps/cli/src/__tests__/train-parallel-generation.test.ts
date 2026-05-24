@@ -58,10 +58,35 @@ const dbFrom = mock(() => ({ where: dbWhere }));
 const dbSelect = mock(() => ({ from: dbFrom }));
 
 mock.module("@feed/db", () => ({
+  actorState: {},
+  aliasedTable: mock(() => ({})),
+  and: (...args: unknown[]) => args,
+  asSystem: () => ({}),
+  asUser: () => ({}),
+  chatParticipants: {},
+  chats: {},
   closeDatabase,
-  db: { select: dbSelect },
-  eq: () => ({}),
-  inArray: () => ({}),
+  comments: {},
+  db: {
+    select: dbSelect,
+    insert: mock(() => ({ values: mock(async () => undefined) })),
+    transaction: mock(async () => undefined),
+  },
+  desc: (...args: unknown[]) => args,
+  dmAcceptances: {},
+  eq: (a: unknown, b: unknown) => ({ a, b }),
+  follows: {},
+  groupMembers: {},
+  groups: {},
+  gte: (...args: unknown[]) => args,
+  inArray: (...args: unknown[]) => args,
+  isNull: (...args: unknown[]) => args,
+  messages: {},
+  perpPositions: {},
+  posts: {},
+  reactions: {},
+  shares: {},
+  sql: {},
   trajectories: {
     trajectoryId: "trajectoryId",
     agentId: "agentId",
@@ -74,6 +99,9 @@ mock.module("@feed/db", () => ({
     metricsJson: "metricsJson",
   },
   users: {},
+  withTransaction: mock(async (callback: (tx: unknown) => Promise<unknown>) =>
+    callback({}),
+  ),
 }));
 
 mock.module("@feed/agents/dependencies", () => ({

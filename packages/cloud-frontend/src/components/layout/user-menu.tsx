@@ -113,7 +113,7 @@ class UserMenuErrorBoundary extends Component<
           // Fallback: direct link to account page in case dropdown fails
           <Link
             to="/dashboard/account"
-            className="flex items-center justify-center h-8 w-8 md:h-10 md:w-10 border border-white/10 bg-white/5 hover:border-orange-500/50 hover:bg-white/10 transition-colors opacity-80"
+            className="flex items-center justify-center h-8 w-8 md:h-10 md:w-10 bg-white/5 hover:bg-white/10 transition-colors opacity-80"
             title="Account Settings"
           >
             <UserCircle className="h-5 w-5 text-white" />

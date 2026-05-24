@@ -26,10 +26,10 @@ const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../..",
 );
-const appXrRoot = resolve(repoRoot, "apps/app-xr");
+const appXrRoot = resolve(repoRoot, "plugins/plugin-facewear/app-xr");
 const hearwearAndroidRoot = resolve(
   repoRoot,
-  "plugins/plugin-hearwear/native/android",
+  "plugins/plugin-facewear/native/android",
 );
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -155,7 +155,7 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
   "plugins/plugin-training/src/setup-routes.ts",
-  "plugins/plugin-hearwear/src/index.ts",
+  "plugins/plugin-facewear/src/index.ts",
 ] as const;
 
 // ── tests ─────────────────────────────────────────────────────────────────────

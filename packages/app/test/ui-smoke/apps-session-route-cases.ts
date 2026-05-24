@@ -108,7 +108,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     timeoutMs: 90_000,
   },
   {
-    name: "hearwear app window",
+    name: "facewear app window",
     path: "/apps/hearwear",
     readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
     timeoutMs: 90_000,

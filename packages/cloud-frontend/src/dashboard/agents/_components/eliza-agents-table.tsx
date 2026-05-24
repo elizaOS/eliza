@@ -643,7 +643,7 @@ export function ElizaAgentsTable({
                           <div className="flex flex-wrap items-center gap-2">
                             <a
                               href={`/dashboard/agents/${sb.id}`}
-                              className="font-medium text-white hover:text-[var(--brand-orange)] transition-colors"
+                              className="font-medium text-white hover:opacity-75 transition-opacity"
                             >
                               {sb.agent_name ?? "Unnamed Agent"}
                             </a>
@@ -741,7 +741,7 @@ export function ElizaAgentsTable({
                                 <button
                                   type="button"
                                   onClick={() => openWebUIWithPairing(sb.id)}
-                                  className="p-2 text-white/30 hover:text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/10 transition-colors"
+                                  className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors"
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </button>
@@ -777,7 +777,7 @@ export function ElizaAgentsTable({
                                   type="button"
                                   onClick={() => handleSuspend(sb.id)}
                                   disabled={busy}
-                                  className="p-2 text-white/30 hover:text-orange-400 hover:bg-orange-500/10 transition-colors disabled:opacity-30"
+                                  className="p-2 text-white/30 hover:text-white hover:bg-white/10 transition-colors disabled:opacity-30"
                                 >
                                   <Pause className="h-4 w-4" />
                                 </button>
@@ -900,7 +900,7 @@ export function ElizaAgentsTable({
                       <button
                         type="button"
                         onClick={() => openWebUIWithPairing(sb.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/10 transition-colors border border-[var(--brand-orange)]/30"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-white/5 transition-colors"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Web UI
@@ -923,7 +923,7 @@ export function ElizaAgentsTable({
                         type="button"
                         onClick={() => handleSuspend(sb.id)}
                         disabled={busy}
-                        className="py-2 px-3 text-orange-400 hover:bg-orange-500/10 transition-colors border border-orange-500/20 disabled:opacity-30"
+                        className="py-2 px-3 text-orange-400 hover:bg-white/5 transition-colors disabled:opacity-30"
                       >
                         <Pause className="h-3.5 w-3.5" />
                       </button>

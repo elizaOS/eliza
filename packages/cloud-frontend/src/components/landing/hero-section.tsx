@@ -1,6 +1,5 @@
 "use client";
 
-import { BRAND_PATHS } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -13,9 +12,6 @@ export default function HeroSection() {
 
   return (
     <CloudVideoBackground
-      basePath={BRAND_PATHS.clouds}
-      speed="4x"
-      poster={BRAND_PATHS.poster}
       scrim={0.18}
       scrimColor="rgba(255,255,255,1)"
       style={{ minHeight: "100svh" }}

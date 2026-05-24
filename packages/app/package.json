@@ -53,8 +53,8 @@
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
     "build:web": "node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build",
-    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds",
-    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds"
+    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos",
+    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --background-videos"
   },
   "dependencies": {
     "@capacitor/android": "8.3.4",
@@ -109,7 +109,7 @@
     "@elizaos/plugin-polymarket-app": "workspace:*",
     "@elizaos/plugin-scape": "workspace:*",
     "@elizaos/plugin-shopify-ui": "workspace:*",
-    "@elizaos/plugin-hearwear": "workspace:*",
+    "@elizaos/plugin-facewear": "workspace:*",
     "@elizaos/plugin-steward-app": "workspace:*",
     "@elizaos/plugin-task-coordinator": "workspace:*",
     "@elizaos/plugin-training": "workspace:*",

@@ -202,7 +202,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="secondary"
               size="sm"
-              className="shrink-0 bg-[var(--brand-orange)]/15 hover:bg-[var(--brand-orange)]/25 text-white border-[var(--brand-orange)]/30"
+              className="shrink-0 bg-white/10 hover:bg-foreground hover:text-background text-white"
               onClick={() => refetchReferral()}
             >
               Retry
@@ -243,7 +243,7 @@ export function AffiliatesPageClient() {
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0 bg-[var(--brand-orange)]/15 hover:bg-[var(--brand-orange)]/25 text-white border-[var(--brand-orange)]/30"
+                className="shrink-0 bg-white/10 hover:bg-foreground hover:text-background text-white"
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {

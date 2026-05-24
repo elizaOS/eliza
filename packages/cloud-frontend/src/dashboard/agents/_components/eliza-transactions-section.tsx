@@ -327,8 +327,8 @@ export function ElizaTransactionsSection({
               onClick={handleLoadMore}
               disabled={loadingMore}
               className="inline-flex items-center gap-2 px-4 py-2 font-mono text-[11px] tracking-wide
-                text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 border border-[var(--brand-orange)]/20 hover:border-[var(--brand-orange)]/40
-                transition-colors disabled:opacity-40"
+                text-[var(--brand-orange)] hover:opacity-75
+                transition-opacity disabled:opacity-40"
             >
               {loadingMore ? (
                 <>

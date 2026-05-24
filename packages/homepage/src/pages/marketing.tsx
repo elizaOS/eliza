@@ -176,9 +176,6 @@ export default function MarketingPage() {
       <main id="main">
         <section className="brand-section brand-section--cloud app-hero">
           <CloudVideoBackground
-            speed="4x"
-            basePath={BRAND_PATHS.clouds}
-            poster={BRAND_PATHS.poster}
             style={{
               position: "absolute",
               inset: 0,

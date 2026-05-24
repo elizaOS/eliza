@@ -258,10 +258,7 @@ function matchingWrappedRuns(row, wrappedRuns) {
     return (
       runCommand === rowCommand ||
       runCommand === rootScriptCommand ||
-      (cwdScriptCommand && runCommand === cwdScriptCommand) ||
-      runCommand.includes(rowCommand) ||
-      runCommand.includes(rootScriptCommand) ||
-      (cwdScriptCommand && runCommand.includes(cwdScriptCommand))
+      (cwdScriptCommand && runCommand === cwdScriptCommand)
     );
   });
 }

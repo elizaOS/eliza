@@ -1,0 +1,135 @@
+{
+  "id": "facewear",
+  "name": "Facewear",
+  "description": "Unified hearwear integration for Meta Quest, XReal, Apple Vision Pro, and Even Realities G1/G2 whole-headset pairing, display text, microphone audio, side-tap mic control, bridge Wi-Fi setup, and diagnostics.",
+  "npmName": "@elizaos/plugin-facewear",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": [
+    "facewear",
+    "xr",
+    "smartglasses",
+    "wearable",
+    "even-realities",
+    "g1",
+    "g2",
+    "display",
+    "microphone",
+    "bluetooth",
+    "wifi"
+  ],
+  "config": {
+    "FACEWEAR_SMARTGLASSES_TRANSPORT": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "default": "auto",
+      "label": "Smartglasses Transport",
+      "help": "Preferred Even Realities transport: auto, even-bridge, web-bluetooth, or noble.",
+      "advanced": false,
+      "options": [
+        {
+          "value": "auto",
+          "label": "Auto",
+          "description": "Use an injected transport, native bridge, Web Bluetooth, then Noble in order."
+        },
+        {
+          "value": "even-bridge",
+          "label": "Native Bridge",
+          "description": "Use an iOS, Android, desktop, EvenHub, or Mentra bridge exposed by the host."
+        },
+        {
+          "value": "web-bluetooth",
+          "label": "Web Bluetooth",
+          "description": "Use browser BLE pairing for direct G1 access."
+        },
+        {
+          "value": "noble",
+          "label": "Noble BLE",
+          "description": "Use Node/Bun BLE through the optional Noble transport."
+        }
+      ]
+    },
+    "FACEWEAR_SCAN_TIMEOUT_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": 10000,
+      "label": "Scan Timeout",
+      "help": "BLE scan timeout in milliseconds for Noble-based direct G1 connections.",
+      "advanced": true,
+      "min": 0,
+      "unit": "ms"
+    },
+    "FACEWEAR_AUTO_INIT": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": true,
+      "label": "Auto Init",
+      "help": "Send G1 connection-ready init packets after connecting.",
+      "advanced": false
+    },
+    "FACEWEAR_INIT_MODE": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "default": "lens-specific",
+      "label": "Init Mode",
+      "help": "Connection-ready init mode: lens-specific, official same-init, or Android F4 same-init.",
+      "advanced": true,
+      "options": [
+        {
+          "value": "lens-specific",
+          "label": "Lens Specific",
+          "description": "Send 0x4D 0x01 to the left lens and 0xF4 0x01 to the right lens."
+        },
+        {
+          "value": "official",
+          "label": "iOS Same Init",
+          "description": "Send 0x4D 0x01 to both lenses, matching EvenDemoApp iOS."
+        },
+        {
+          "value": "android-f4",
+          "label": "Android F4 Same Init",
+          "description": "Send 0xF4 0x01 to both lenses, matching EvenDemoApp Android."
+        }
+      ]
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Glasses",
+    "group": "hardware",
+    "groupOrder": 8,
+    "actions": [
+      "enable",
+      "configure",
+      "launch"
+    ]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media",
+  "launch": {
+    "type": "internal-tab",
+    "target": "facewear",
+    "capabilities": [
+      "facewear",
+      "xr-view-host",
+      "smartglasses",
+      "wearable-display",
+      "wearable-microphone",
+      "whole-headset-pairing",
+      "side-tap-microphone-control",
+      "wifi-provisioning"
+    ],
+    "curatedSlug": "facewear"
+  }
+}

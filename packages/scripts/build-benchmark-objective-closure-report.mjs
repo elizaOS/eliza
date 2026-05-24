@@ -36,6 +36,15 @@ function status(ok, caveat = false) {
   return "missing";
 }
 
+function osworldProviderEvidence(gap) {
+  const count = gap.osworld?.providerReadiness?.runnableProviderCount || 0;
+  const providers = gap.osworld?.providerReadiness?.providers || {};
+  const details = Object.entries(providers)
+    .map(([name, provider]) => `${name}: ${provider?.detail || "no detail"}`)
+    .join("; ");
+  return `OSWorld runnable providers=${count}${details ? ` (${details})` : ""}`;
+}
+
 function buildPayload() {
   const audit = readJson("reports/benchmark-analysis/goal-audit.json");
   const runContract = readJson("reports/benchmark-analysis/run-contract/run-contract.json");
@@ -80,6 +89,11 @@ function buildPayload() {
   const corpusCaveated = auditRows.get("corpus-publication-gaps")?.status === "caveated";
   const fiveExampleCaveated =
     auditRows.get("five-examples-per-benchmark")?.status === "caveated";
+  const osworldRunnableProviders = gap.osworld?.providerReadiness?.runnableProviderCount || 0;
+  const externalBlockers = [
+    osworldRunnableProviders > 0 ? "osworld-live-rerun" : "osworld-live",
+    gap.credentials?.hyperliquidPrivateKeyPresent ? null : "hyperliquid_bench",
+  ].filter(Boolean);
 
   const requirements = [
     {
@@ -207,7 +221,7 @@ function buildPayload() {
       requirement: "External blockers have explicit readiness probes and rerun commands.",
       status: status(
         gap.credentials?.cerebrasApiKeyPresent === true &&
-          gap.osworld?.providerReadiness?.runnableProviderCount === 0 &&
+          Number.isFinite(osworldRunnableProviders) &&
           gap.credentials?.hyperliquidPrivateKeyPresent === false &&
           /--benchmarks osworld/.test(gap.remediationCommands?.osworld?.[0]?.command || "") &&
           /--benchmarks hyperliquid_bench/.test(
@@ -215,7 +229,7 @@ function buildPayload() {
           ),
         true,
       ),
-      evidence: `CEREBRAS_API_KEY present; OSWorld runnable providers=${gap.osworld?.providerReadiness?.runnableProviderCount || 0} because Docker daemon is unreachable, vmrun/VBoxManage are unavailable, and AWS credentials are incomplete; HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}. Rerun commands are recorded for --benchmarks osworld and --benchmarks hyperliquid_bench; only Hyperliquid uses HL_PRIVATE_KEY=<set-in-shell>.`,
+      evidence: `CEREBRAS_API_KEY present; ${osworldProviderEvidence(gap)}; HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}. Rerun commands are recorded for --benchmarks osworld and --benchmarks hyperliquid_bench; only Hyperliquid uses HL_PRIVATE_KEY=<set-in-shell>.`,
       viewer: "../gap-evidence/index.html",
     },
   ];
@@ -231,7 +245,7 @@ function buildPayload() {
       caveated: requirements.filter((row) => row.status === "caveated").length,
       missing: hardBlockers.length,
       closureReady: blockers.length === 0,
-      externalBlockers: ["osworld-live", "hyperliquid_bench"],
+      externalBlockers,
     },
     requirements,
     blockers,

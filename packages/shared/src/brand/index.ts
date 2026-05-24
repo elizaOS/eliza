@@ -77,11 +77,6 @@ export const BRAND_PATHS = {
   concepts: "/brand/concepts",
   background: "/brand/background",
   favicons: "/brand/favicons",
-  clouds: "/clouds",
-  poster: "/clouds/poster-960.jpg",
-  poster480: "/clouds/poster-640.jpg",
-  posterJpegFallback: "/clouds/poster.jpg",
-  cloudBackgroundPoster: "/brand/background/clouds_background.jpg",
 } as const;
 
 export const BRAND_FAVICONS = {
@@ -107,46 +102,6 @@ export const CLOUD_BACKGROUND_ASSETS = {
   source1080pMp4: "/brand/background/Clouds_Loop_HQ_1080p.mp4",
   sourceMobile480pMp4: "/brand/background/Clouds_Loop_Mobile_480p.mp4",
 } as const;
-
-/**
- * Cloud video manifest — one entry per (speed, height, codec). Used by the
- * `<CloudVideoBackground>` component in `@elizaos/ui` to build a `<source>`
- * list with media queries.
- */
-export const CLOUD_VIDEO_VARIANTS = {
-  "1x": [
-    { src: "clouds_1x_1080p.webm", type: "video/webm", minWidth: 1920 },
-    { src: "clouds_1x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
-    { src: "clouds_1x_720p.webm", type: "video/webm", minWidth: 1024 },
-    { src: "clouds_1x_720p.mp4", type: "video/mp4", minWidth: 1024 },
-    { src: "clouds_1x_480p.webm", type: "video/webm", minWidth: 640 },
-    { src: "clouds_1x_480p.mp4", type: "video/mp4", minWidth: 640 },
-    { src: "clouds_1x_360p.webm", type: "video/webm" },
-    { src: "clouds_1x_360p.mp4", type: "video/mp4" },
-  ],
-  "4x": [
-    { src: "clouds_4x_1080p.webm", type: "video/webm", minWidth: 1920 },
-    { src: "clouds_4x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
-    { src: "clouds_4x_720p.webm", type: "video/webm", minWidth: 1024 },
-    { src: "clouds_4x_720p.mp4", type: "video/mp4", minWidth: 1024 },
-    { src: "clouds_4x_480p.webm", type: "video/webm", minWidth: 640 },
-    { src: "clouds_4x_480p.mp4", type: "video/mp4", minWidth: 640 },
-    { src: "clouds_4x_360p.webm", type: "video/webm" },
-    { src: "clouds_4x_360p.mp4", type: "video/mp4" },
-  ],
-  "8x": [
-    { src: "clouds_8x_1080p.webm", type: "video/webm", minWidth: 1920 },
-    { src: "clouds_8x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
-    { src: "clouds_8x_720p.webm", type: "video/webm", minWidth: 1024 },
-    { src: "clouds_8x_720p.mp4", type: "video/mp4", minWidth: 1024 },
-    { src: "clouds_8x_480p.webm", type: "video/webm", minWidth: 640 },
-    { src: "clouds_8x_480p.mp4", type: "video/mp4", minWidth: 640 },
-    { src: "clouds_8x_360p.webm", type: "video/webm" },
-    { src: "clouds_8x_360p.mp4", type: "video/mp4" },
-  ],
-} as const;
-
-export type CloudVideoSpeed = keyof typeof CLOUD_VIDEO_VARIANTS;
 
 /**
  * The canonical logo variants. File names match `assets/logos/`. Pick the

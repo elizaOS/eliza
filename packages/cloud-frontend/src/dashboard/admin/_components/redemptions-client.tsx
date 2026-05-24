@@ -420,7 +420,7 @@ export function AdminRedemptionsClient() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(r.user_id)}
-                      className="text-white/80 text-xs hover:text-[var(--brand-orange)] flex items-center gap-1"
+                      className="text-white/80 text-xs hover:text-white flex items-center gap-1"
                     >
                       {truncateAddress(r.user_id)}
                       <Copy className="h-3 w-3 opacity-50" />
@@ -443,7 +443,7 @@ export function AdminRedemptionsClient() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(r.payout_address)}
-                      className="text-white/80 text-xs hover:text-[var(--brand-orange)] flex items-center gap-1"
+                      className="text-white/80 text-xs hover:text-white flex items-center gap-1"
                     >
                       {truncateAddress(r.payout_address)}
                       <Copy className="h-3 w-3 opacity-50" />

@@ -66,9 +66,9 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		"xr-session",
 		{
 			reason:
-				"Hearwear and XR plugins expose the same XR session service contract for different runtime surfaces; only the enabled plugin registers its implementation.",
+				"Facewear and XR plugins expose the same XR session service contract for different runtime surfaces; only the enabled plugin registers its implementation.",
 			classes: new Set([
-				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-facewear/src/services/xr-session-service.ts:XRSessionService",
 				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
 			]),
 		},
@@ -136,9 +136,9 @@ const duplicateServiceTypeAllowlist = new Map<string, AllowlistEntry>([
 		"xr-session",
 		{
 			reason:
-				"plugin-hearwear keeps the plugin-xr session contract so headset clients and parity tests use the same service slot.",
+				"plugin-facewear keeps the plugin-xr session contract so headset clients and parity tests use the same service slot.",
 			classes: new Set([
-				"plugins/plugin-hearwear/src/services/xr-session-service.ts:XRSessionService",
+				"plugins/plugin-facewear/src/services/xr-session-service.ts:XRSessionService",
 				"plugins/plugin-xr/src/services/xr-session-service.ts:XRSessionService",
 			]),
 		},

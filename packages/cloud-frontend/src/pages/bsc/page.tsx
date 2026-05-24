@@ -69,9 +69,6 @@ export default function BscPromoPage() {
         />
       </Helmet>
       <CloudVideoBackground
-        basePath={BRAND_PATHS.clouds}
-        speed="4x"
-        poster={BRAND_PATHS.poster}
         scrim={0.18}
         scrimColor="rgba(255,255,255,1)"
         className="theme-clouds min-h-screen bg-white font-poppins text-black"

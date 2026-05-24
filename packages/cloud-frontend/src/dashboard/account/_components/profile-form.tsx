@@ -560,8 +560,8 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   onDrop={handleDrop}
                   className={`flex items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
                     isDragging
-                      ? "border-[var(--brand-orange)] bg-[var(--brand-orange)]/10"
-                      : "border-white/20 hover:border-[var(--brand-orange)]/50 hover:bg-[var(--brand-orange)]/5"
+                      ? "border-white/50 bg-white/10"
+                      : "border-white/20 hover:border-white/40 hover:bg-white/5"
                   }`}
                 >
                   {isDragging ? (

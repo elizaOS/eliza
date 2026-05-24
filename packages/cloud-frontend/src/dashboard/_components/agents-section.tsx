@@ -49,7 +49,7 @@ export function AgentsSection({ agents, className }: AgentsSectionProps) {
           <div className="flex items-center gap-2">
             <Link
               to="/dashboard/my-agents"
-              className="text-xl font-semibold text-white transition-colors duration-200 hover:text-orange-500"
+              className="text-xl font-semibold text-white transition-opacity duration-200 hover:opacity-75"
             >
               My Agent
             </Link>

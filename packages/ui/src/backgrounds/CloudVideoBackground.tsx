@@ -1,8 +1,4 @@
-import {
-  BRAND_PATHS,
-  CLOUD_VIDEO_VARIANTS,
-  type CloudVideoSpeed,
-} from "@elizaos/shared/brand";
+import { CLOUD_BACKGROUND_ASSETS } from "@elizaos/shared/brand";
 import {
   type CSSProperties,
   type ReactNode,
@@ -12,23 +8,21 @@ import {
 } from "react";
 
 export type CloudVideoBackgroundProps = {
-  /** Path prefix where the optimized cloud video files are hosted. */
-  basePath?: string;
-  /** Playback speed variant. Slower variants are perceived as more cinematic. */
-  speed?: CloudVideoSpeed;
-  /** Static image shown before the video can play. Prefer WebP. */
+  /** Static image shown immediately, before the video can play. */
   poster?: string;
-  /** Responsive poster candidates for the real image layer. */
-  posterSrcSet?: string;
-  /** Sizes descriptor for the poster image. */
-  posterSizes?: string;
-  /** Whether to add a high-priority image preload hint for the poster. */
+  /** Cloud loop video for desktop / wide viewports. */
+  videoSrc?: string;
+  /** Smaller cloud loop for narrow viewports (cellular friendly). */
+  videoSrcMobile?: string;
+  /** Max viewport width (px) that receives the mobile rendition. */
+  mobileMaxWidth?: number;
+  /** Add a high-priority preload hint for the poster image. */
   preloadPoster?: boolean;
-  /** Whether to load and play the video layer. */
+  /** Whether to load and play the video layer at all. */
   animated?: boolean;
   /** Optional dark/light overlay scrim over the video (0–1). */
   scrim?: number;
-  /** Scrim color. Default black; switch to white over the blue/orange themes. */
+  /** Scrim color. Default black. */
   scrimColor?: string;
   /** Extra content rendered above the video, beneath children. */
   overlay?: ReactNode;
@@ -39,20 +33,18 @@ export type CloudVideoBackgroundProps = {
 };
 
 /**
- * Full-bleed background that plays the optimized cloud loop video.
+ * Full-bleed cloud background.
  *
- * Assumes the optimized cloud video files have been deployed alongside the
- * site at `{basePath}/clouds_<speed>_<height>p.{mp4,webm}`. Mobile devices
- * receive smaller renditions through `<source media>` queries; respects
- * `prefers-reduced-motion` by pausing the video and falling back to the
- * poster image.
+ * Shows the poster image immediately, then — once the client has finished
+ * loading everything else (document `complete`) — streams and plays the cloud
+ * loop video, cross-fading it in over the poster. Respects
+ * `prefers-reduced-motion` by skipping the video entirely.
  */
 export function CloudVideoBackground({
-  basePath = "/clouds",
-  speed = "4x",
-  poster = BRAND_PATHS.poster,
-  posterSrcSet,
-  posterSizes = "100vw",
+  poster = CLOUD_BACKGROUND_ASSETS.poster,
+  videoSrc = CLOUD_BACKGROUND_ASSETS.source1080pMp4,
+  videoSrcMobile = CLOUD_BACKGROUND_ASSETS.sourceMobile480pMp4,
+  mobileMaxWidth = 640,
   preloadPoster = true,
   animated = true,
   scrim = 0,
@@ -65,9 +57,6 @@ export function CloudVideoBackground({
   const videoRef = useRef<HTMLVideoElement>(null);
   const [loadVideo, setLoadVideo] = useState(false);
   const [videoReady, setVideoReady] = useState(false);
-  const base = basePath.replace(/\/$/, "");
-  const resolvedPosterSrcSet =
-    posterSrcSet ?? `${base}/poster-640.jpg 640w, ${base}/poster-960.jpg 960w`;
 
   useEffect(() => {
     if (!preloadPoster || typeof document === "undefined" || !poster) return;
@@ -80,52 +69,52 @@ export function CloudVideoBackground({
     link.as = "image";
     link.href = poster;
     link.setAttribute("fetchpriority", "high");
-    if (resolvedPosterSrcSet) {
-      link.setAttribute("imagesrcset", resolvedPosterSrcSet);
-    }
-    if (posterSizes) {
-      link.setAttribute("imagesizes", posterSizes);
-    }
     document.head.appendChild(link);
     return () => {
       link.remove();
     };
-  }, [poster, posterSizes, preloadPoster, resolvedPosterSrcSet]);
+  }, [poster, preloadPoster]);
 
+  // Poster first, video second: hold the video layer back until the rest of
+  // the client has finished loading, and pause on reduced-motion.
   useEffect(() => {
-    if (!animated) {
+    if (!animated || typeof window === "undefined") {
       setLoadVideo(false);
       setVideoReady(false);
-      videoRef.current?.pause();
       return;
     }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
-    let frame = 0;
-    const apply = () => {
+    let timer = 0;
+    const start = () => {
       if (reduced.matches) {
         setLoadVideo(false);
         setVideoReady(false);
         videoRef.current?.pause();
-      } else {
-        frame = window.requestAnimationFrame(() => setLoadVideo(true));
+        return;
       }
+      // Defer a beat past `load` so first paint stays on the poster and the
+      // video fetch never competes with the initial app load.
+      timer = window.setTimeout(() => setLoadVideo(true), 120);
     };
-    apply();
-    reduced.addEventListener("change", apply);
+    const onReady = () => start();
+    reduced.addEventListener("change", start);
+    if (document.readyState === "complete") {
+      start();
+    } else {
+      window.addEventListener("load", onReady, { once: true });
+    }
     return () => {
-      window.cancelAnimationFrame(frame);
-      reduced.removeEventListener("change", apply);
+      window.clearTimeout(timer);
+      window.removeEventListener("load", onReady);
+      reduced.removeEventListener("change", start);
     };
   }, [animated]);
-
-  useEffect(() => {
-    setVideoReady(false);
-  }, []);
 
   useEffect(() => {
     const v = videoRef.current;
     if (!loadVideo || !v) return;
     try {
+      v.load();
       const p = v.play();
       if (p && typeof (p as Promise<void>).catch === "function") {
         (p as Promise<void>).catch(() => {
@@ -133,11 +122,10 @@ export function CloudVideoBackground({
         });
       }
     } catch {
-      /* jsdom and some browsers can reject media playback synchronously. */
+      /* jsdom and some browsers reject media playback synchronously. */
     }
   }, [loadVideo]);
 
-  const sources = CLOUD_VIDEO_VARIANTS[speed];
   const fallbackBackground =
     "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.95) 0 7rem, rgba(255,255,255,0.42) 7.1rem 12rem, transparent 12.1rem), radial-gradient(circle at 82% 24%, rgba(255,255,255,0.82) 0 5rem, rgba(255,255,255,0.34) 5.1rem 9rem, transparent 9.1rem), linear-gradient(180deg, #80caff 0%, #bde9ff 42%, #f7c38d 100%)";
 
@@ -147,6 +135,7 @@ export function CloudVideoBackground({
       style={{
         position: "relative",
         width: "100%",
+        height: "100%",
         overflow: "hidden",
         background: fallbackBackground,
         ...style,
@@ -155,8 +144,6 @@ export function CloudVideoBackground({
       {poster ? (
         <img
           src={poster}
-          srcSet={resolvedPosterSrcSet}
-          sizes={posterSizes}
           alt=""
           aria-hidden="true"
           loading="eager"
@@ -173,14 +160,14 @@ export function CloudVideoBackground({
           }}
         />
       ) : null}
-      {animated ? (
+      {animated && loadVideo ? (
         <video
           ref={videoRef}
           autoPlay
           loop
           muted
           playsInline
-          preload={loadVideo ? "metadata" : "none"}
+          preload="auto"
           poster={poster}
           disableRemotePlayback
           disablePictureInPicture
@@ -197,18 +184,14 @@ export function CloudVideoBackground({
             zIndex: 1,
           }}
         >
-          {sources.map((s) => (
+          {videoSrcMobile ? (
             <source
-              key={`${s.src}-${s.type}`}
-              src={`${base}/${s.src}`}
-              type={s.type}
-              media={
-                "minWidth" in s
-                  ? `(min-width: ${(s as { minWidth: number }).minWidth}px)`
-                  : undefined
-              }
+              src={videoSrcMobile}
+              type="video/mp4"
+              media={`(max-width: ${mobileMaxWidth}px)`}
             />
-          ))}
+          ) : null}
+          <source src={videoSrc} type="video/mp4" />
         </video>
       ) : null}
       {scrim > 0 ? (
@@ -219,21 +202,22 @@ export function CloudVideoBackground({
             inset: 0,
             background: scrimColor,
             opacity: scrim,
-            zIndex: 1,
+            zIndex: 2,
           }}
         />
       ) : null}
       {overlay ? (
-        <div style={{ position: "absolute", inset: 0, zIndex: 2 }}>
+        <div style={{ position: "absolute", inset: 0, zIndex: 3 }}>
           {overlay}
         </div>
       ) : null}
       <div
         style={{
           position: "relative",
-          zIndex: 3,
-          minHeight: "inherit",
+          zIndex: 4,
+          width: "100%",
           height: "100%",
+          minHeight: "inherit",
         }}
       >
         {children}

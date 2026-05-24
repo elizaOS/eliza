@@ -75,6 +75,12 @@ function buildPayload() {
     byId(remediationRows, "real-llm-e2e-tests"),
   ].filter(Boolean);
   const osworldProviders = osworldProviderDetails(gap.osworld?.providerReadiness);
+  const osworldRunnableProviders = gap.osworld?.providerReadiness?.runnableProviderCount || 0;
+  const hyperliquidBlocked = !gap.credentials?.hyperliquidPrivateKeyPresent;
+  const rerunBlockedBy = compactList([
+    osworldRunnableProviders > 0 ? "osworld-live-rerun" : "external-osworld",
+    hyperliquidBlocked ? "external-hyperliquid" : null,
+  ]);
 
   const gates = [
     {
@@ -103,13 +109,17 @@ function buildPayload() {
     },
     {
       id: "external-osworld",
-      status: gap.osworld?.providerReadiness?.runnableProviderCount > 0 ? "proven" : "blocked-external",
+      status: osworldRunnableProviders > 0 ? "proven" : "blocked-external",
       evidence: `OSWorld runnable providers: ${gap.osworld?.providerReadiness?.runnableProviderCount || 0}.`,
-      summary: "OSWorld live evidence is blocked until at least one local or cloud execution provider is runnable.",
+      summary: osworldRunnableProviders > 0
+        ? "An OSWorld execution provider is reachable; the live scored OSWorld benchmark still needs a rerun before objective closure."
+        : "OSWorld live evidence is blocked until at least one local or cloud execution provider is runnable.",
       blockerKind: "external-runtime-provider",
       blockerDetails: osworldProviders,
       nextActions: compactList([
-        "Start Docker or another OSWorld-compatible provider, or configure AWS credentials for the cloud provider path.",
+        osworldRunnableProviders > 0
+          ? null
+          : "Start Docker or another OSWorld-compatible provider, or configure AWS credentials for the cloud provider path.",
         "Rerun the recorded OSWorld benchmark command once a provider is available.",
       ]),
       href: "../gap-evidence/osworld-live-readiness.html",
@@ -134,14 +144,14 @@ function buildPayload() {
         ? "caveated"
         : "missing",
       evidence: `${rerunBatches.summary?.runnableCommands || 0} runnable commands in ${rerunBatches.summary?.batchCount || 0} batch scripts; ${rerunBatches.summary?.blockedCommands || 0} commands excluded due to external blockers.`,
-      summary: "Rerun scripts are generated for all locally runnable coverage; only OSWorld and Hyperliquid are intentionally excluded until their external gates clear.",
+      summary: "Rerun scripts are generated for all locally runnable coverage; OSWorld live scoring and Hyperliquid publication remain separated until their rerun or credential prerequisites clear.",
       commandBreakdown: {
         benchmarkCommands: rerunBatches.summary?.benchmarkCommands || 0,
         corpusCommands: rerunBatches.summary?.corpusCommands || 0,
         scenarioCommands: rerunBatches.summary?.scenarioCommands || 0,
         liveE2eCommands: rerunBatches.summary?.liveE2eCommands || 0,
       },
-      blockedBy: ["external-osworld", "external-hyperliquid"],
+      blockedBy: rerunBlockedBy,
       href: "../rerun-batches/index.html",
     },
     {

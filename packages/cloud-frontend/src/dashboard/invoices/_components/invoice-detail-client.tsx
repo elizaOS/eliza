@@ -58,7 +58,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
           style={{ fontFamily: "var(--font-roboto-mono)" }}
         >
-          <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[var(--brand-orange)]/50 transition-all duration-200">
+          <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-black/40 group-hover:bg-white/10 transition-all duration-200">
             <ArrowLeft className="h-4 w-4" />
           </div>
           <span className="font-medium">Back to Billing</span>

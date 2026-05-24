@@ -9,22 +9,22 @@ const steps = [
   {
     label: "Hearwear plugin lint",
     command: "bun",
-    args: ["run", "--cwd", "plugins/plugin-hearwear", "lint"],
+    args: ["run", "--cwd", "plugins/plugin-facewear", "lint"],
   },
   {
     label: "Hearwear plugin typecheck",
     command: "bun",
-    args: ["run", "--cwd", "plugins/plugin-hearwear", "typecheck"],
+    args: ["run", "--cwd", "plugins/plugin-facewear", "typecheck"],
   },
   {
     label: "Hearwear plugin tests",
     command: "bun",
-    args: ["run", "--cwd", "plugins/plugin-hearwear", "test"],
+    args: ["run", "--cwd", "plugins/plugin-facewear", "test"],
   },
   {
     label: "Hearwear app registration verification",
     command: "bun",
-    args: ["run", "--cwd", "plugins/plugin-hearwear", "verify:app"],
+    args: ["run", "--cwd", "plugins/plugin-facewear", "verify:app"],
   },
   {
     label: "smartglasses example software verification",

@@ -313,7 +313,7 @@ h3 {
 }
 
 .button-dark:hover {
-  background: var(--brand-orange);
+  background: var(--brand-white);
   color: var(--brand-black);
 }
 
@@ -323,7 +323,7 @@ h3 {
 }
 
 .hero-cloud .button:hover {
-  background: var(--brand-orange);
+  background: var(--brand-white);
   color: var(--brand-black);
 }
 
@@ -333,8 +333,8 @@ h3 {
 }
 
 .hero-cloud .button-dark:hover {
-  background: var(--brand-blue);
-  color: var(--brand-white);
+  background: var(--brand-white);
+  color: var(--brand-black);
 }
 
 .icon {
@@ -887,7 +887,8 @@ h3 {
 
 .email-row button:hover,
 .oauth-row a:hover {
-  background: var(--brand-orange);
+  background: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .checkout-message {

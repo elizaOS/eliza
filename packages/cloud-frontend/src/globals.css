@@ -854,7 +854,6 @@ button:not(:disabled),
 
 .btn-premium:hover {
   transform: translateY(-2px);
-  box-shadow: 0 10px 40px -10px rgba(var(--accent-rgb), 0.4);
 }
 
 /* Noise texture overlay - only use on elements that already have position set */
@@ -1728,7 +1727,8 @@ button:not(:disabled),
   border: none;
 }
 .stwd-eliza-login .stwd-login__btn--passkey:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: var(--bg);
+  color: var(--text);
   opacity: 1;
 }
 
@@ -1737,7 +1737,6 @@ button:not(:disabled),
 .stwd-eliza-login .stwd-login__btn--siwe {
   height: 2.75rem;
   background: var(--bg-accent);
-  border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   color: var(--text);
   font-size: 0.875rem;
@@ -1757,7 +1756,6 @@ button:not(:disabled),
 .stwd-eliza-login .stwd-login__btn--google {
   height: 2.75rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-xs);
   color: #fafafa;
   font-size: 0.875rem;
@@ -1772,7 +1770,6 @@ button:not(:disabled),
 .stwd-eliza-login .stwd-login__btn--discord {
   height: 2.75rem;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: var(--radius-xs);
   color: #fafafa;
   font-size: 0.875rem;

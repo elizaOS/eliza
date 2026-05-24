@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import { expect, type Locator, type Page, type Route } from "@playwright/test";
 
 // One real bundled VRM (gzipped glTF) shipped under packages/app/dist/vrms/.
 // The preview server serves the SPA + the real `vrms/eliza-N.vrm.gz` files, but
@@ -31,6 +31,35 @@ function bundledVrmGz(): Buffer | null {
   }
   cachedVrmGz = null;
   return cachedVrmGz;
+}
+
+function contentTypeForAsset(pathname: string): string {
+  if (pathname.endsWith(".svg")) return "image/svg+xml";
+  if (pathname.endsWith(".png")) return "image/png";
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+  if (pathname.endsWith(".ico")) return "image/x-icon";
+  return "application/octet-stream";
+}
+
+async function fulfillPublicAsset(route: Route): Promise<boolean> {
+  const url = new URL(route.request().url());
+  const relativePath = decodeURIComponent(url.pathname.replace(/^\/+/, ""));
+  if (
+    !relativePath.startsWith("brand/") &&
+    !relativePath.startsWith("app-heroes/")
+  ) {
+    return false;
+  }
+  const assetPath = resolve(process.cwd(), "public", relativePath);
+  if (!existsSync(assetPath)) return false;
+  await route.fulfill({
+    status: 200,
+    headers: { "content-type": contentTypeForAsset(relativePath) },
+    body: readFileSync(assetPath),
+  });
+  return true;
 }
 
 const ROOT_TIMEOUT_MS = 20_000;
@@ -433,6 +462,11 @@ function emptyWalletTradingProfile(url: URL) {
 
 /** Installs baseline API routes for smoke tests before flow-specific overrides. */
 export async function installDefaultAppRoutes(page: Page): Promise<void> {
+  await page.route(/\/(?:brand|app-heroes)\//, async (route) => {
+    if (await fulfillPublicAsset(route)) return;
+    await route.fallback();
+  });
+
   // VRM assets (vrms/<slug>.vrm.gz + vrms/previews|backgrounds/<slug>.png) —
   // the preview server doesn't carry the runtime boot-config's vrmAssets, so
   // resolveAppAssetUrl(`vrms/...`) 404s. Serve a real bundled VRM (so the

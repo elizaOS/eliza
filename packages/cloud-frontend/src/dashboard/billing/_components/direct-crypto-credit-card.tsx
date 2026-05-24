@@ -449,7 +449,7 @@ export function DirectCryptoCreditCard({
     : "bg-accent text-accent-foreground";
   const unselectedSegmentClassName = isCloudSurface
     ? "text-black/58 hover:bg-black/[0.06] hover:text-black"
-    : "text-muted-foreground hover:bg-bg-hover hover:text-txt";
+    : "text-muted-foreground hover:bg-surface hover:text-txt";
   const infoTileClassName = isCloudSurface
     ? "border-black/10 bg-black/[0.03]"
     : "border-border bg-bg-muted";

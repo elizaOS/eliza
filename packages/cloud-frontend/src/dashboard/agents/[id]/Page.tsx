@@ -142,7 +142,7 @@ export default function AgentDetailPage() {
             to="/dashboard/agents"
             className="group flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
           >
-            <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[var(--brand-orange)]/40 transition-colors">
+            <div className="flex items-center justify-center w-7 h-7 bg-black/40 group-hover:bg-white/10 transition-colors">
               <ArrowLeft className="h-3.5 w-3.5" />
             </div>
             <span>
@@ -156,7 +156,7 @@ export default function AgentDetailPage() {
             {agent.status === "running" && (
               <Link
                 to={`/dashboard/agents/${agent.id}/chat`}
-                className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-[var(--brand-orange)] bg-[var(--brand-orange)] text-black hover:bg-[var(--brand-orange)]/90 transition-colors"
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium bg-[var(--brand-orange)] text-black hover:bg-foreground hover:text-background transition-colors"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
                 {t("cloud.agents.detail.chat", { defaultValue: "Chat" })}

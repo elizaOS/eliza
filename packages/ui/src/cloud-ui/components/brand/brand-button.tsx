@@ -10,19 +10,19 @@ import * as React from "react";
 import { cn } from "../../lib/utils";
 
 const brandButtonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm border border-transparent text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 cursor-pointer",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-sm text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0 cursor-pointer",
   {
     variants: {
       variant: {
         primary:
-          "bg-accent text-accent-foreground hover:bg-accent-hover active:bg-accent-muted",
+          "bg-accent text-accent-foreground hover:bg-background hover:text-foreground active:bg-background/90",
         ghost:
-          "bg-transparent text-txt/70 hover:border-border hover:bg-bg-hover hover:text-txt",
+          "bg-transparent text-txt/70 hover:bg-surface hover:text-txt",
         outline:
-          "border-border bg-bg-elevated text-txt hover:border-border-strong hover:bg-bg-hover",
-        icon: "h-10 w-10 border-border bg-bg-elevated hover:border-border-strong hover:bg-bg-hover",
+          "bg-bg-elevated text-txt hover:bg-foreground hover:text-background",
+        icon: "h-10 w-10 bg-bg-elevated hover:bg-foreground hover:text-background",
         "icon-primary":
-          "size-10 aspect-square border-accent/30 bg-accent-subtle text-accent hover:border-accent/60 hover:bg-accent/20 active:bg-accent/25 disabled:bg-bg-muted disabled:border-border disabled:opacity-50",
+          "size-10 aspect-square bg-accent-subtle text-accent hover:bg-foreground hover:text-background active:bg-foreground/90 disabled:bg-bg-muted disabled:opacity-50",
       },
       size: {
         sm: "h-8 px-3 text-xs",

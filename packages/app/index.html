@@ -211,12 +211,11 @@
     body {
       margin: 0;
       padding: 0;
-      /* FOUC fallback. Paint the canonical brand field (blue #0B35F1 with
-         the white face mark) before React mounts so desktop (Electrobun) and
-         web hand off from GRUB/Plymouth/launch branding into the same brand
-         blue instead of a black flash. --bg is set by the active theme as
+      /* FOUC fallback. Paint the dark chat shell before React mounts so
+         desktop (Electrobun) and web hand off into the same dark surface
+         instead of a foreign-color flash. --bg is set by the active theme as
          soon as styles load, so the chat shell still takes over cleanly. */
-      background-color: var(--bg, #0B35F1);
+      background-color: var(--bg, #000000);
       color: var(--text, #e8e8ec);
       font-family: var(--font-sans, "Poppins", "Poppins", Arial, system-ui, sans-serif);
       -webkit-font-smoothing: antialiased;
@@ -231,7 +230,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background-color: #0B35F1;
+      background-color: #FF5800;
     }
     #brand-splash img {
       width: 128px;

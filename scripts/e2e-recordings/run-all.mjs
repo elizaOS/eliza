@@ -38,7 +38,7 @@ const PACKAGES = [
   // Use stub stack so recordings work without real API keys
   { name: 'app',            configDir: 'packages/app',            script: 'test:e2e',
     recordEnv: { ELIZA_UI_SMOKE_FORCE_STUB: '1' } },
-  { name: 'app-xr',         configDir: 'apps/app-xr',            script: 'test:e2e' },
+  { name: 'app-xr',         configDir: 'plugins/plugin-facewear/app-xr', script: 'test:e2e' },
 ];
 
 // ─── CLI argument parsing ────────────────────────────────────────────────────

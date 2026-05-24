@@ -264,7 +264,7 @@ export function OnboardingOverlay() {
                   variant="ghost"
                   size="sm"
                   onClick={prevStep}
-                  className="text-muted hover:bg-bg-hover hover:text-txt"
+                  className="text-muted hover:bg-surface hover:text-txt"
                 >
                   <ChevronLeft className="h-4 w-4 mr-1" />
                   Back

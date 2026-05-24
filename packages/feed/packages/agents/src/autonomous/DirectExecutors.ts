@@ -1311,15 +1311,30 @@ export async function executeDirectPost(
   // Record topic coverage for future diversity checks
   topicDiversityService.recordTopicCoverage(agentUserId, cleanContent);
 
-  // Generate and store tags
-  const tags: GeneratedTag[] = await generateTagsFromPost(cleanContent);
-  if (tags.length > 0) {
-    await storeTagsForPost(postId, tags);
-  }
+  // Generate and store tags asynchronously. Optional tag generation should not
+  // make a successfully persisted autonomous action fail.
+  void generateTagsFromPost(cleanContent)
+    .then(async (tags: GeneratedTag[]) => {
+      if (tags.length > 0) {
+        await storeTagsForPost(postId, tags);
+      }
+      logger.info(
+        `[DirectExecutor] Post tagged: ${postId}`,
+        { tags: tags.length },
+        "DirectExecutors",
+      );
+    })
+    .catch((error: Error) => {
+      logger.warn(
+        `[DirectExecutor] Failed to tag post`,
+        { postId, error: String(error) },
+        "DirectExecutors",
+      );
+    });
 
   logger.info(
     `[DirectExecutor] Post created: ${postId}`,
-    { tags: tags.length },
+    undefined,
     "DirectExecutors",
   );
 

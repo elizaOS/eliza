@@ -77,7 +77,7 @@ export const xrConnectRoute: Route = {
   type: "GET",
   path: "/xr/connect",
   description:
-    "Returns an HTML page with a QR code to connect an XR headset. Set XR_APP_URL env var (or run `bun run connect` in apps/app-xr) to show the correct public URL.",
+    "Returns an HTML page with a QR code to connect an XR headset. Set XR_APP_URL env var (or run `bun run connect` in plugins/plugin-facewear/app-xr) to show the correct public URL.",
   routeHandler: async (_ctx) => {
     const url = getAppUrl();
     return {
