@@ -1,0 +1,1 @@
+{"algorithm": "brax_ppo", "contract_only": true, "num_envs": 2, "num_timesteps": 8, "seed": 11}

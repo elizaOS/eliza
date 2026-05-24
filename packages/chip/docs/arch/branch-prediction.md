@@ -69,7 +69,7 @@ rationale.
 | SC_ENTRIES_TABLE | 1024 | 512 | Doubled SC capacity for low-confidence TAGE corrections. |
 | SC_THRESH_INIT | 6 | optional | Lower SC threshold from the `sc_wide_thresh6` finalist. |
 | SC_LOCAL_HISTORY_BITS | 8 | optional | Local-history fold in the SC index; full-trace check improved weighted MPKI by 0.0163 versus disabled. |
-| H2P_ENABLE | 1 | optional | Perceptron/H2P-style sidecar is enabled after the capped GPU-weighted sweep; disabling it regresses weighted MPKI by 1.5204. |
+| H2P_ENABLE | 1 | optional | Perceptron/H2P-style sidecar is enabled after the capped GPU-weighted sweep; disabling it regresses weighted MPKI by 1.3510 on the expanded trace set. |
 | H2P_ENTRIES | 1024 | optional | PC-indexed signed-weight rows for the H2P sidecar; promoted after the stratified sweep beat the prior 512-row geometry by 0.3599 weighted MPKI. |
 | H2P_HIST_LEN | 48 | optional | Global-history dot-product length for the H2P sidecar; shorter than the prior 64-bit schedule to reduce stale phase correlation. |
 | H2P_TARGET_HIST_LEN | 0 | optional | Sweepable target-history feature slice for multi-perspective H2P; default-off after the expanded GPU/general workload sweep. |
@@ -232,14 +232,25 @@ privileges and no Docker:
    and writes a `.btrace.json` to the gitignored `external/workload-traces/`.
 
 Capture with `make bpu-workload-trace` (`MODE=1` for the decode-heavy variant).
-The checked workload inventory currently contains fifteen QEMU-RV64 traces:
+The checked workload inventory currently contains twenty QEMU-RV64 traces:
 `agent_loop`, `agent_decode`, `http_parser`, `text_log`, `file_tlv`,
 `video_blocks`, `audio_frames`, `build_compiler_proxy`, `compression_proxy`,
 `crypto_packet_proxy`, `database_btree_proxy`, `gpu_control_proxy`,
-`browser_layout_proxy`, `kernel_syscall_proxy`, and `gc_runtime_proxy`. The RTL
-workload evidence file `mpki_results_workload_rtl.json` replays all fifteen as
+`browser_layout_proxy`, `kernel_syscall_proxy`, `gc_runtime_proxy`,
+`gpu_memory_residency_proxy`, `gpu_irq_fence_scheduler_proxy`,
+`nn_delegate_fallback_proxy`, `mobile_ui_frame_scheduler_proxy`, and
+`wasm_jit_osr_proxy`. The RTL workload evidence file
+`mpki_results_workload_rtl.json` replays all twenty as
 deterministic prefixes with `branch_replay_cap=5000`; this is coverage evidence
 for the real-trace ingestion path, not a full-trace MPKI claim.
+The committed provenance index
+`docs/evidence/cpu_ap/bpu-workload-trace-manifest.json` hashes every staged
+`.btrace.json`, records the full source instruction/branch counts, and names the
+still-missing external suites: SPEC2017, AOSP system/server UI, browser/JS
+engine, and production GPU driver/runtime traces. `make
+bpu-workload-trace-manifest-check` validates the index, and
+`make branch-prediction-check` cross-checks it against
+`mpki_results_workload_rtl.json`.
 
 The `.btrace.json` row schema now preserves BPU context fields alongside every
 branch (`asid`, `vmid`, `priv`, `secure`, and `workload_class`). The capture
@@ -253,13 +264,19 @@ an aggregate MPKI win.
 
 Current RTL workload replay is **capped-prefix coverage evidence**, not a
 full-trace target-met result. The checked `mpki_results_workload_rtl.json`
-aggregate is 89.806403 MPKI across fifteen deterministic 5,000-branch prefixes
-(`branch_replay_cap=5000`); `agent_decode` is 76.494079 MPKI and `agent_loop`
-is 58.575982 MPKI. Full-trace, low-MPKI workload claims remain disabled until
+aggregate is 93.796454 MPKI across twenty deterministic 5,000-branch prefixes
+(`branch_replay_cap=5000`); `agent_decode` is 82.622383 MPKI, `agent_loop` is
+58.606924 MPKI, and the new GPU/mobile/NN/WASM proxies are included in the
+same RTL artifact. The artifact now records `replay_fraction=0.003910`
+(`100,000` replayed branches out of `25,574,792` source branches) plus
+per-workload replay fractions, so the capped/full boundary is visible in the
+load-bearing JSON rather than only in prose. Full-trace, low-MPKI workload
+claims remain disabled until
 uncapped RTL replay evidence is generated and passes the branch-prediction gate.
 Use `make mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified` or the shortcut
 `make mpki-eval-rtl-stratified` for capped RTL replay that samples early,
-middle, and late trace phases instead of the deterministic prefix.
+middle, and late trace phases instead of the deterministic prefix. Use
+`make mpki-eval-rtl-full` for the uncapped RTL replay path (`WORKLOAD_MAXBR=0`).
 
 ## Geometry tuning sweep
 
@@ -273,6 +290,12 @@ RTL proposal.
 For capped turnaround runs, `WINDOW_MODE=windows`, `stratified`, or `all` makes
 the harness evaluate middle/late/stratified slices instead of only a prefix,
 which gives GPU/control and phase-change traces a better anti-overfit signal.
+Use `make bpu-sweep-full` for the full-trace model sweep path (`MAXBR=0`), and
+pass `CONFIGS="baseline <candidate> ..."` to keep long sweeps focused.
+The checked full-trace shard target, `make bpu-sweep-full-proxy-shard`, runs
+baseline versus `h2p_off` over the five new GPU/mobile/NN/WASM proxy traces
+without a branch cap and writes
+`docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json`.
 
 The synthetic set is deliberately broad enough to catch overfitting: regular
 GPU tile loops, SIMT divergence/reconvergence, GPU command processing and
@@ -282,8 +305,13 @@ barriers, alias thrash, phase changes, workload-class phase aliasing, dual
 in-block branches, and RAS exception/tail-call mismatches.
 
 The current checked behavioural sweep is a capped optimisation aid, not a
-full-trace claim. It uses stratified `max_branches_per_trace=1000` windows in
-`docs/evidence/cpu_ap/bpu_sweep_results.json`; lower weighted MPKI is better.
+full-trace claim. It uses stratified `max_branches_per_trace=1000` windows over
+the expanded twenty-trace QEMU workload set, synthetic hard shapes, and CBP-5
+samples in `docs/evidence/cpu_ap/bpu_sweep_results.json`; lower weighted MPKI
+is better. The separate full-proxy shard is uncapped (`max_branches_per_trace=0`)
+and currently keeps baseline ahead of `h2p_off` (`49.5413` versus `49.5932`
+weighted MPKI), but it covers only the five proxy traces and is not a substitute
+for a full twenty-trace sweep or uncapped RTL replay.
 The artifact also records ITTAGE hit, target-used, weak-yield, update,
 allocation, weak-target replacement, victim replacement, provider-eviction, and
 useful-aging counters per trace and in per-config totals so indirect-target
@@ -294,15 +322,14 @@ are visible in every checked sweep:
 
 | Config | Weighted MPKI | Δ vs baseline | bpu_pkg.sv change |
 | --- | --- | --- | --- |
-| `pre_ittage_hist_long` | 52.9219 | -0.0031 | shorter ITTAGE history study; fails the production reach gate |
-| `baseline` | 52.9250 | — | promoted SC, ITTAGE, loop, H2P, and L2 steering geometry |
-| `pre_h2p_big_t36` | 53.2818 | +0.3599 | previous 512-entry, 64-history H2P geometry |
-| `h2p_off` | 54.4423 | +1.5204 | disable H2P |
-| `h2p_lowconf_only` | 53.6201 | +0.6982 | restrict H2P overrides to weak TAGE providers |
-| `h2p_mp_big_t50` | 53.0165 | +0.0915 | larger multi-perspective H2P study candidate |
-| `timing_slow_dir_deferred` | 55.0615 | +2.1365 | defer SC/H2P/local direction overrides to model a slower sidecar path |
-| `timing_ittage_deferred` | 56.0595 | +3.1345 | defer same-event ITTAGE target use |
-| `timing_all_slow_deferred` | 58.1960 | +5.2710 | defer both direction sidecars and same-event ITTAGE targets |
+| `baseline` | 55.2122 | — | promoted SC, ITTAGE, loop, H2P, and L2 steering geometry |
+| `h2p_default` | 55.2122 | +0.0000 | explicit baseline H2P geometry cross-check |
+| `l2_ftb_big` | 55.2122 | +0.0000 | 16K-entry L2 FTB study candidate |
+| `combo_algo_geo_dual_fetch` | 55.2122 | +0.0000 | combined algorithm/geometry/two-ahead study candidate |
+| `sc_bias_default` | 55.2416 | +0.0294 | enable SC PC-bias bank |
+| `tage6_tables` | 55.3010 | +0.0889 | six tagged TAGE tables |
+| `h2p_meta_t1` | 55.3619 | +0.1498 | enable per-PC H2P meta chooser |
+| `h2p_off` | 56.5632 | +1.3510 | disable H2P |
 
 **Decision: keep the promoted `ITTAGE_TARGET_HISTORY_SHIFT=8`, production-reach
 ITTAGE histories, 1024-row H2P geometry, and SC-wide/threshold-6 geometry as the current RTL baseline.** The
@@ -364,15 +391,13 @@ feature bit, with saturating +/-1 training.
 Target-history and path-history feature slices are implemented as
 `H2P_TARGET_HIST_LEN`/`H2P_PATH_HIST_LEN`, but remain zero in the production
 default: the expanded sweep found the multi-perspective variants regressed GPU
-reconvergence/control traces. The latest stratified sweep promotes the
-1024-row, 48-history base H2P geometry: the prior 512-row, 64-history geometry
-is `+0.3599` weighted MPKI worse, while disabling H2P is `+1.5204` worse. The
-multi-perspective `h2p_mp_big_t50` study candidate is still `+0.0915` worse and
-regresses hash-probe inline-cache, GPU nested reconvergence, and GPU warp
-divergence. An RTL/model `H2P_META_*` chooser can gate H2P until it earns
-per-PC trust, and `H2P_LOWCONF_ONLY` can restrict the sidecar to weak TAGE
-providers, but both remain default-off because the checked stratified sweep
-regressed the broader mix.
+reconvergence/control traces. The latest expanded stratified sweep keeps the
+1024-row, 48-history base H2P geometry: disabling H2P regresses the broader
+mix by `+1.3510` weighted MPKI, while the `h2p_meta_t1` chooser is `+0.1498`
+worse. An RTL/model `H2P_META_*` chooser can gate H2P until it earns per-PC
+trust, and `H2P_LOWCONF_ONLY` can restrict the sidecar to weak TAGE providers,
+but both remain default-off because the checked stratified sweep regressed the
+broader mix.
 
 IMLI-style loop-iteration history is also implemented as package-visible
 `LOOP_IMLI_*` RTL/model geometry. The best current capped candidate,
@@ -555,14 +580,15 @@ downstream fetch logic can accept both lanes.
 | Cocotb regression | `make cocotb-bpu` | `build/reports/bpu/cocotb-aggregate.json` (target-module aggregate); raw XMLs live under `verify/cocotb/bpu/results/*.xml` and may include auxiliary debug/MPKI runs. |
 | SymbiYosys formal | `make formal-bpu` | `build/reports/bpu/formal-status.yaml` |
 | MPKI eval (RTL, cocotb) | `make mpki-eval-rtl` | `docs/evidence/cpu_ap/mpki_results_synthetic.json` |
-| QEMU-RV64 workload prefix replay (RTL, cocotb) | `ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=5000 ... TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh` | `docs/evidence/cpu_ap/mpki_results_workload_rtl.json` |
+| QEMU-RV64 workload replay (RTL, cocotb) | `make mpki-eval-rtl`, `make mpki-eval-rtl-stratified`, `make mpki-eval-rtl-full` | `docs/evidence/cpu_ap/mpki_results_workload_rtl.json` |
 | MPKI eval (model only) | `make mpki-eval-model` | `benchmarks/results/branch-prediction-mpki-model.json` |
 | Full MPKI evidence refresh | `make branch-prediction-refresh` | Regenerates model/RTL MPKI evidence, then runs `make branch-prediction-check` |
 | E1 RTL vs CVA6 model MPKI | `make bpu-vs-cva6-mpki-rtl` | `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` |
 | MPKI vs CBP-5 table | — | `docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md` |
 | Behavioural model unit tests | `make bpu-model-test` | pytest (TAGE-SC-L+ITTAGE model) |
 | Real RV64 workload trace | `make bpu-workload-trace` | `external/workload-traces/<name>.btrace.json` |
-| Geometry tuning sweep | `make bpu-sweep` | `docs/evidence/cpu_ap/bpu_sweep_results.json`, `…_leaderboard.md` |
+| Geometry tuning sweep | `make bpu-sweep`, `make bpu-sweep-full` | `docs/evidence/cpu_ap/bpu_sweep_results.json`, `…_leaderboard.md` |
+| Full proxy shard sweep | `make bpu-sweep-full-proxy-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json`, `…_leaderboard.md` |
 
 ## Files
 

@@ -201,7 +201,7 @@ write_files:
       fi
       : "${NEBIUS_TRAINING_S3_URI:?set NEBIUS_TRAINING_S3_URI to s3://bucket/run-id}"
       export NEBIUS_S3_ENDPOINT="${NEBIUS_S3_ENDPOINT:-https://storage.eu-north1.nebius.cloud}"
-      export ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/eliza/packages/robot}"
+      export ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/robot}"
       export MUJOCO_GL="${MUJOCO_GL:-egl}"
       export JAX_PLATFORMS="${JAX_PLATFORMS:-cuda,cpu}"
       export XLA_PYTHON_CLIENT_PREALLOCATE="${XLA_PYTHON_CLIENT_PREALLOCATE:-false}"
@@ -216,7 +216,8 @@ write_files:
       fi
       aws --endpoint-url "${NEBIUS_S3_ENDPOINT}" s3 cp "${NEBIUS_TRAINING_S3_URI%/}/payload.tar.gz" /root/robot-full/payload.tar.gz --only-show-errors
       tar -xzf /root/robot-full/payload.tar.gz -C /root
-      mkdir -p /home/shaw/milady
+      mkdir -p /root/eliza/packages /home/shaw/milady
+      ln -sfn /root/robot /root/eliza/packages/robot
       ln -sfn /root/eliza /home/shaw/milady/eliza
       cd "${ELIZA_ROBOT_PACKAGE_ROOT}"
       chmod +x evidence/full_training_preflight/scripts/*.sh evidence/full_training_preflight/asimov_1_brax_mjx_baseline/run_full_training.sh || true

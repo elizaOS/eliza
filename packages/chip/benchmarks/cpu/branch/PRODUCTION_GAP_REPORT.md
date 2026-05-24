@@ -253,21 +253,20 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
      a compact multi-perspective corrector when evidence justifies it. The
      model exposes the same `h2p_*` sweep knobs.
    - Default decision: enable H2P with 1024 rows, 48 global-history features,
-     and threshold 36. The latest stratified sweep baseline is `52.9219`
-     weighted MPKI. The previous 512-row, 64-history geometry is `+0.3599`
-     worse, and `h2p_off` is `+1.5204` worse. Multi-perspective H2P, H2P meta,
-     and low-confidence-only H2P are implemented and sweepable, but remain
-     default-off because the current checked variants regress the broader
-     GPU/control and runtime mix.
+     and threshold 36. The latest expanded stratified sweep baseline is
+     `55.2122` weighted MPKI over the twenty-trace QEMU workload set plus
+     synthetic hard shapes and CBP-5 samples; `h2p_off` is `+1.3510` worse.
+     Multi-perspective H2P, H2P meta, and low-confidence-only H2P are
+     implemented and sweepable, but remain default-off because the current
+     checked variants regress the broader GPU/control and runtime mix.
    - Tests: `test_h2p_corrector_can_override_base_direction_when_confident`,
      `test_h2p_model_uses_rtl_bias_plus_feature_weights`,
      `test_h2p_multi_perspective_target_history_can_split_same_pc`,
      `test_h2p_lowconf_only_blocks_high_confidence_base_override`, and
      `test_h2p_corrector_enabled_by_default_after_sweep` cover the model.
      A post-promotion stratified 1000-branch smoke sweep keeps baseline ahead
-     of `h2p_mp_big_t50` (`52.9219` versus `53.0134` weighted MPKI), so
-     multi-perspective H2P remains a study candidate rather than production
-     default.
+     of `h2p_meta_t1` (`55.2122` versus `55.3619` weighted MPKI), so
+     meta-gated H2P remains a study candidate rather than production default.
      An RTL/model `H2P_META_*` chooser is also implemented and sweepable; it
      blocks H2P overrides until the sidecar has beaten base direction for that
      PC. After adding `btb_confidence_churn` and the broader QEMU-RV64
@@ -618,16 +617,28 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    remaining production gap is a staged RTL timing implementation or physical
    timing signoff that preserves the same effective sidecar/target latency.
 5. **Real workload evidence depth**: synthetic coverage now spans 37
-   generators, and `mpki_results_workload_rtl.json` replays all fifteen
+   generators, and `mpki_results_workload_rtl.json` replays all twenty
    available QEMU-RV64 `.btrace.json` workloads through RTL with a recorded
    `branch_replay_cap=5000`. The added `system_mix.c` traces cover
    compiler/build, compression, crypto packet handling, database/B-tree, and
    GPU-control command-buffer/fence behavior plus browser/layout,
-   kernel/syscall-heavy, and GC/runtime control paths. That closes the previous
-   two-trace RTL evidence hole and broadens general CPU/GPU-control coverage,
-   but it is prefix coverage rather than a full-trace MPKI claim. Real
-   production GPU traces and uncapped/full-trace captures remain evidence gaps
-   before promoting any currently default-off predictor knobs.
+   kernel/syscall-heavy, GC/runtime control paths, GPU memory residency,
+   GPU IRQ/fence scheduling, NN delegate fallback, mobile UI frame scheduling,
+   and WASM/JIT OSR behavior. That closes the previous two-trace RTL evidence
+   hole and broadens general CPU/GPU-control/mobile-runtime coverage, but it is
+   prefix coverage rather than a full-trace MPKI claim. Real production GPU
+   traces and uncapped/full-trace captures remain evidence gaps before
+   promoting any currently default-off predictor knobs.
+   The RTL workload artifact now records replay coverage directly:
+   `100,000` replayed branches out of `25,574,792` source branches
+   (`replay_fraction=0.003910`), with per-workload replay fractions and
+   `full_trace_replay=false` required by the branch-prediction gate.
+   `docs/evidence/cpu_ap/bpu-workload-trace-manifest.json` now makes that
+   boundary machine-checkable: it hashes all twenty staged `.btrace.json`
+   traces, records `152,035,912` source instructions and `25,574,792` source
+   branches, and explicitly lists the missing SPEC2017, AOSP, browser/JS, and
+   production GPU trace suites. The branch-prediction gate now requires this
+   manifest and cross-checks it against the RTL workload replay artifact.
    The sweep harness now supports prefix/middle/late/stratified capped windows
    through `--window-mode` / `WINDOW_MODE`, so optimisation runs can sample
    non-prefix phases without rewriting trace files. The `.btrace.json` schema,
@@ -640,7 +651,15 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    RTL workload replay exposes the same phase-sampling control through
    `make mpki-eval-rtl WORKLOAD_WINDOW_MODE=stratified`; the
    `mpki-eval-rtl-stratified` shortcut is available for capped early/middle/late
-   replay without editing environment variables.
+   replay without editing environment variables. `make mpki-eval-rtl-full` and
+   `make bpu-sweep-full` are now explicit uncapped aliases, and the Makefile
+   forwards `WORKLOAD_MAXBR`, `WORKLOAD_WINDOW_MODE`, `MAXBR`, `WINDOW_MODE`,
+   and `CONFIGS` to the underlying harnesses so long validation runs are
+   reproducible from command logs. `make bpu-sweep-full-proxy-shard` now records
+   an uncapped five-trace GPU/mobile/NN/WASM proxy shard; baseline beats
+   `h2p_off` there (`49.5413` versus `49.5932` weighted MPKI), but the full
+   twenty-trace model sweep and uncapped RTL replay remain open production
+   evidence gaps.
 6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an

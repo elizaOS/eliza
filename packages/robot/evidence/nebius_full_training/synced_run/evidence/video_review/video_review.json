@@ -6,14 +6,22 @@
     "samples": 5,
     "min_frames": 5,
     "min_nonblank_ratio": 0.05,
-    "min_mean_frame_delta": 0.01
+    "min_mean_frame_delta": 0.01,
+    "min_visual_progress": 0.0,
+    "require_telemetry": true
   },
-  "video_count": 20,
+  "manual_annotations": {
+    "path": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/manual_frame_review.json",
+    "loaded": true,
+    "count": 10
+  },
+  "video_count": 25,
   "videos": [
     {
       "profile": "asimov-1",
+      "action": "combined_actions",
       "video": "asimov-1/asimov-1_combined_actions.mp4",
-      "bytes": 211794,
+      "bytes": 302348,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_combined_actions_contact.jpg",
       "checks": {
         "open": true,
@@ -21,7 +29,22 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "command_count": 4,
+        "failed_commands": []
       },
       "open": true,
       "frame_count": 160,
@@ -30,12 +53,21 @@
       "height": 240,
       "sampled_frames": 5,
       "nonblank_ratio": 0.9375,
-      "mean_luma": 111.44177604166666,
-      "mean_frame_delta": 1.7969401180744171,
-      "ok": true
+      "mean_luma": 111.57844010416666,
+      "mean_frame_delta": 1.1249120831489563,
+      "normalized_frame_delta": 0.004411419933917476,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.004411419933917476,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show a nonblank robot sequence across the combined action script with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "asimov-1",
+      "action": "stand_up",
       "video": "asimov-1/asimov-1_stand_up.mp4",
       "bytes": 94772,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_stand_up_contact.jpg",
@@ -45,7 +77,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "torso_z": {
+          "min": 0.6276375671107455,
+          "max": 0.6322463535181174,
+          "final": 0.6322463535181174,
+          "mean": 0.6296108652656484
+        },
+        "upright_proj": {
+          "min": 0.9868647231660302,
+          "max": 0.9999990726811666,
+          "final": 0.9868647231660302,
+          "mean": 0.9977601602109166
+        },
+        "reward": {
+          "min": 3.4583592168716377,
+          "max": 3.4986502158142296,
+          "final": 3.4583592168716377,
+          "mean": 3.490206471546604
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -56,12 +119,21 @@
       "nonblank_ratio": 0.9375,
       "mean_luma": 111.42798177083334,
       "mean_frame_delta": 1.1866536289453506,
-      "ok": true
+      "normalized_frame_delta": 0.004653543642922944,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.004653543642922944,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "asimov-1",
+      "action": "turn_left",
       "video": "asimov-1/asimov-1_turn_left.mp4",
-      "bytes": 45524,
+      "bytes": 92717,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_turn_left_contact.jpg",
       "checks": {
         "open": true,
@@ -69,7 +141,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "torso_z": {
+          "min": 0.6276459354111448,
+          "max": 0.6327618388783293,
+          "final": 0.6327618388783293,
+          "mean": 0.6299865431041664
+        },
+        "upright_proj": {
+          "min": 0.9862088905384392,
+          "max": 0.999999891611934,
+          "final": 0.9862088905384392,
+          "mean": 0.9975525292381656
+        },
+        "reward": {
+          "min": 3.2767194549524774,
+          "max": 3.346141947610551,
+          "final": 3.312156560675194,
+          "mean": 3.326285215422966
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -78,14 +181,23 @@
       "height": 240,
       "sampled_frames": 5,
       "nonblank_ratio": 0.9375,
-      "mean_luma": 111.40157552083333,
-      "mean_frame_delta": 0.2124739522114396,
-      "ok": true
+      "mean_luma": 111.42516145833333,
+      "mean_frame_delta": 1.125449225306511,
+      "normalized_frame_delta": 0.004413526373751023,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.004413526373751023,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn left` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "asimov-1",
+      "action": "turn_right",
       "video": "asimov-1/asimov-1_turn_right.mp4",
-      "bytes": 34826,
+      "bytes": 93662,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_turn_right_contact.jpg",
       "checks": {
         "open": true,
@@ -93,7 +205,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "torso_z": {
+          "min": 0.6276237576945227,
+          "max": 0.6323491870316661,
+          "final": 0.6323491870316661,
+          "mean": 0.6297164977818073
+        },
+        "upright_proj": {
+          "min": 0.9876218693723045,
+          "max": 0.9999992698299658,
+          "final": 0.9876218693723045,
+          "mean": 0.9978521881956972
+        },
+        "reward": {
+          "min": 3.284555914882679,
+          "max": 3.3484164248403063,
+          "final": 3.284555914882679,
+          "mean": 3.31400290640266
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -102,14 +245,23 @@
       "height": 240,
       "sampled_frames": 5,
       "nonblank_ratio": 0.9375,
-      "mean_luma": 111.39040625,
-      "mean_frame_delta": 0.05141601571813226,
-      "ok": true
+      "mean_luma": 111.42331510416666,
+      "mean_frame_delta": 1.1717252731323242,
+      "normalized_frame_delta": 0.004595001071107154,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.004595001071107154,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn right` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "asimov-1",
+      "action": "walk_forward",
       "video": "asimov-1/asimov-1_walk_forward.mp4",
-      "bytes": 113237,
+      "bytes": 93393,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/asimov-1_asimov-1_walk_forward_contact.jpg",
       "checks": {
         "open": true,
@@ -117,7 +269,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.378,
+        "torso_z": {
+          "min": 0.6276094971589496,
+          "max": 0.6321637362466933,
+          "final": 0.6321637362466933,
+          "mean": 0.6294995045612504
+        },
+        "upright_proj": {
+          "min": 0.9895458816812719,
+          "max": 0.999998911500484,
+          "final": 0.9895458816812719,
+          "mean": 0.9982295111040236
+        },
+        "reward": {
+          "min": 3.4400225836413805,
+          "max": 3.4882964080875483,
+          "final": 3.4400225836413805,
+          "mean": 3.475296700473212
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -126,14 +309,23 @@
       "height": 240,
       "sampled_frames": 5,
       "nonblank_ratio": 0.9375,
-      "mean_luma": 111.90860677083333,
-      "mean_frame_delta": 3.3867382407188416,
-      "ok": true
+      "mean_luma": 111.41207552083333,
+      "mean_frame_delta": 1.142190769314766,
+      "normalized_frame_delta": 0.004479179487508886,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.004479179487508886,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `walk forward` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "hiwonder-ainex",
+      "action": "combined_actions",
       "video": "hiwonder-ainex/hiwonder-ainex_combined_actions.mp4",
-      "bytes": 148177,
+      "bytes": 261516,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_combined_actions_contact.jpg",
       "checks": {
         "open": true,
@@ -141,7 +333,22 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "command_count": 4,
+        "failed_commands": []
       },
       "open": true,
       "frame_count": 160,
@@ -149,13 +356,22 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 1.0,
-      "mean_luma": 56.342416666666665,
-      "mean_frame_delta": 1.0093652233481407,
-      "ok": true
+      "nonblank_ratio": 0.9999973958333334,
+      "mean_luma": 56.3837890625,
+      "mean_frame_delta": 0.6968587189912796,
+      "normalized_frame_delta": 0.002732779290161881,
+      "foreground_centroid_path": 1.0465046036266063e-06,
+      "mean_foreground_mask_delta": 6.510416666666667e-06,
+      "visual_progress": 0.002732779290161881,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show a nonblank robot sequence across the combined action script with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "hiwonder-ainex",
+      "action": "stand_up",
       "video": "hiwonder-ainex/hiwonder-ainex_stand_up.mp4",
       "bytes": 78058,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_stand_up_contact.jpg",
@@ -165,7 +381,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "torso_z": {
+          "min": 0.23637564580729475,
+          "max": 0.27787594392164006,
+          "final": 0.2425573377181782,
+          "mean": 0.2442985748209024
+        },
+        "upright_proj": {
+          "min": 0.9974133808167539,
+          "max": 0.9999996317902244,
+          "final": 0.9974133808167539,
+          "mean": 0.9987986514135458
+        },
+        "reward": {
+          "min": 3.487772051869153,
+          "max": 3.4998897147612067,
+          "final": 3.4983423854166835,
+          "mean": 3.4970838814939222
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -176,12 +423,21 @@
       "nonblank_ratio": 0.9999869791666667,
       "mean_luma": 56.401664062500004,
       "mean_frame_delta": 1.367392584681511,
-      "ok": true
+      "normalized_frame_delta": 0.005362323861496121,
+      "foreground_centroid_path": 1.033163722043752e-05,
+      "mean_foreground_mask_delta": 3.255208333333333e-05,
+      "visual_progress": 0.005362323861496121,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "hiwonder-ainex",
+      "action": "turn_left",
       "video": "hiwonder-ainex/hiwonder-ainex_turn_left.mp4",
-      "bytes": 39420,
+      "bytes": 78058,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_left_contact.jpg",
       "checks": {
         "open": true,
@@ -189,7 +445,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "torso_z": {
+          "min": 0.23637564580729475,
+          "max": 0.27787594392164006,
+          "final": 0.2425573377181782,
+          "mean": 0.2442985748209024
+        },
+        "upright_proj": {
+          "min": 0.9974133808167539,
+          "max": 0.9999996317902244,
+          "final": 0.9974133808167539,
+          "mean": 0.9987986514135458
+        },
+        "reward": {
+          "min": 3.280845085003417,
+          "max": 3.3745503191833537,
+          "final": 3.3322613613565233,
+          "mean": 3.328962702714867
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -197,15 +484,24 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 1.0,
-      "mean_luma": 56.389192708333326,
-      "mean_frame_delta": 0.19535807147622108,
-      "ok": true
+      "nonblank_ratio": 0.9999869791666667,
+      "mean_luma": 56.401664062500004,
+      "mean_frame_delta": 1.367392584681511,
+      "normalized_frame_delta": 0.005362323861496121,
+      "foreground_centroid_path": 1.033163722043752e-05,
+      "mean_foreground_mask_delta": 3.255208333333333e-05,
+      "visual_progress": 0.005362323861496121,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn left` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "hiwonder-ainex",
+      "action": "turn_right",
       "video": "hiwonder-ainex/hiwonder-ainex_turn_right.mp4",
-      "bytes": 34666,
+      "bytes": 78058,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_turn_right_contact.jpg",
       "checks": {
         "open": true,
@@ -213,7 +509,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "torso_z": {
+          "min": 0.23637564580729475,
+          "max": 0.27787594392164006,
+          "final": 0.2425573377181782,
+          "mean": 0.2442985748209024
+        },
+        "upright_proj": {
+          "min": 0.9974133808167539,
+          "max": 0.9999996317902244,
+          "final": 0.9974133808167539,
+          "mean": 0.9987986514135458
+        },
+        "reward": {
+          "min": 3.284559573447131,
+          "max": 3.378098872672831,
+          "final": 3.3225074145004156,
+          "mean": 3.326594338093192
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -221,15 +548,24 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 1.0,
-      "mean_luma": 56.3726953125,
-      "mean_frame_delta": 0.11776692792773247,
-      "ok": true
+      "nonblank_ratio": 0.9999869791666667,
+      "mean_luma": 56.401664062500004,
+      "mean_frame_delta": 1.367392584681511,
+      "normalized_frame_delta": 0.005362323861496121,
+      "foreground_centroid_path": 1.033163722043752e-05,
+      "mean_foreground_mask_delta": 3.255208333333333e-05,
+      "visual_progress": 0.005362323861496121,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn right` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "hiwonder-ainex",
+      "action": "walk_forward",
       "video": "hiwonder-ainex/hiwonder-ainex_walk_forward.mp4",
-      "bytes": 51239,
+      "bytes": 78058,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/hiwonder-ainex_hiwonder-ainex_walk_forward_contact.jpg",
       "checks": {
         "open": true,
@@ -237,7 +573,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.15,
+        "torso_z": {
+          "min": 0.23637564580729475,
+          "max": 0.27787594392164006,
+          "final": 0.2425573377181782,
+          "mean": 0.2442985748209024
+        },
+        "upright_proj": {
+          "min": 0.9974133808167539,
+          "max": 0.9999996317902244,
+          "final": 0.9974133808167539,
+          "mean": 0.9987986514135458
+        },
+        "reward": {
+          "min": 3.4760664560272976,
+          "max": 3.4941476625550694,
+          "final": 3.4908603265950933,
+          "mean": 3.488449872768707
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -245,15 +612,24 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 1.0,
-      "mean_luma": 56.41551041666666,
-      "mean_frame_delta": 0.41581054776906967,
-      "ok": true
+      "nonblank_ratio": 0.9999869791666667,
+      "mean_luma": 56.401664062500004,
+      "mean_frame_delta": 1.367392584681511,
+      "normalized_frame_delta": 0.005362323861496121,
+      "foreground_centroid_path": 1.033163722043752e-05,
+      "mean_foreground_mask_delta": 3.255208333333333e-05,
+      "visual_progress": 0.005362323861496121,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `walk forward` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-g1",
+      "action": "combined_actions",
       "video": "unitree-g1/unitree-g1_combined_actions.mp4",
-      "bytes": 221028,
+      "bytes": 238844,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_combined_actions_contact.jpg",
       "checks": {
         "open": true,
@@ -261,7 +637,22 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "command_count": 4,
+        "failed_commands": []
       },
       "open": true,
       "frame_count": 160,
@@ -269,13 +660,22 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9999401041666667,
-      "mean_luma": 62.5658046875,
-      "mean_frame_delta": 0.952591136097908,
-      "ok": true
+      "nonblank_ratio": 0.9999505208333334,
+      "mean_luma": 62.55943489583333,
+      "mean_frame_delta": 0.9100227653980255,
+      "normalized_frame_delta": 0.0035687167270510804,
+      "foreground_centroid_path": 5.02710939173619e-05,
+      "mean_foreground_mask_delta": 6.510416666666667e-05,
+      "visual_progress": 0.0035687167270510804,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show a nonblank robot sequence across the combined action script with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-g1",
+      "action": "stand_up",
       "video": "unitree-g1/unitree-g1_stand_up.mp4",
       "bytes": 78170,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_stand_up_contact.jpg",
@@ -285,7 +685,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "torso_z": {
+          "min": 0.7905239121632436,
+          "max": 0.7916096096819312,
+          "final": 0.7915386488904997,
+          "mean": 0.7915082254183294
+        },
+        "upright_proj": {
+          "min": 0.9999109437981999,
+          "max": 0.999999999673554,
+          "final": 0.999936947611773,
+          "mean": 0.9999572771921688
+        },
+        "reward": {
+          "min": 3.4994123159961465,
+          "max": 3.4999432089318896,
+          "final": 3.4998451211492174,
+          "mean": 3.499711427914849
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -296,12 +727,21 @@
       "nonblank_ratio": 0.9999375,
       "mean_luma": 62.57282552083333,
       "mean_frame_delta": 0.6372330635786057,
-      "ok": true
+      "normalized_frame_delta": 0.0024989531905043358,
+      "foreground_centroid_path": 4.8496309387861465e-05,
+      "mean_foreground_mask_delta": 6.184895833333333e-05,
+      "visual_progress": 0.0024989531905043358,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `stand up` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-g1",
+      "action": "turn_left",
       "video": "unitree-g1/unitree-g1_turn_left.mp4",
-      "bytes": 64537,
+      "bytes": 79655,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_turn_left_contact.jpg",
       "checks": {
         "open": true,
@@ -309,31 +749,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
       },
-      "open": true,
-      "frame_count": 40,
-      "fps": 30.0,
-      "width": 320,
-      "height": 240,
-      "sampled_frames": 5,
-      "nonblank_ratio": 0.9999479166666667,
-      "mean_luma": 62.57488541666667,
-      "mean_frame_delta": 0.41658202558755875,
-      "ok": true
-    },
-    {
-      "profile": "unitree-g1",
-      "video": "unitree-g1/unitree-g1_turn_right.mp4",
-      "bytes": 69347,
-      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_turn_right_contact.jpg",
-      "checks": {
-        "open": true,
-        "frame_count": true,
-        "sampled_frames": true,
-        "nonblank": true,
-        "motion_or_camera_change": true,
-        "contact_sheet": true
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "torso_z": {
+          "min": 0.7905235170388669,
+          "max": 0.7916054239077854,
+          "final": 0.7915300096781357,
+          "mean": 0.7915005272916622
+        },
+        "upright_proj": {
+          "min": 0.9999124709725061,
+          "max": 0.9999999944055004,
+          "final": 0.9999379897969715,
+          "mean": 0.9999583151976339
+        },
+        "reward": {
+          "min": 3.3266474272362014,
+          "max": 3.3400130239793135,
+          "final": 3.3295856734142784,
+          "mean": 3.330468082952005
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -342,14 +789,87 @@
       "height": 240,
       "sampled_frames": 5,
       "nonblank_ratio": 0.999953125,
-      "mean_luma": 62.554036458333336,
-      "mean_frame_delta": 0.48440754413604736,
-      "ok": true
+      "mean_luma": 62.5728046875,
+      "mean_frame_delta": 0.6754459664225578,
+      "normalized_frame_delta": 0.002648807711461011,
+      "foreground_centroid_path": 2.5293636657865906e-05,
+      "mean_foreground_mask_delta": 5.533854166666667e-05,
+      "visual_progress": 0.002648807711461011,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn left` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-g1",
+      "action": "turn_right",
+      "video": "unitree-g1/unitree-g1_turn_right.mp4",
+      "bytes": 64906,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "torso_z": {
+          "min": 0.7905222816048529,
+          "max": 0.791603922284875,
+          "final": 0.7915993542574827,
+          "mean": 0.7915477642578048
+        },
+        "upright_proj": {
+          "min": 0.9999849841579058,
+          "max": 0.9999996615081301,
+          "final": 0.9999954653155145,
+          "mean": 0.9999963796846971
+        },
+        "reward": {
+          "min": 3.320095376294566,
+          "max": 3.3325419627170194,
+          "final": 3.328341244331252,
+          "mean": 3.3276349934294998
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9999505208333334,
+      "mean_luma": 62.5494453125,
+      "mean_frame_delta": 0.4187662750482559,
+      "normalized_frame_delta": 0.0016422206864637487,
+      "foreground_centroid_path": 3.992804296371538e-05,
+      "mean_foreground_mask_delta": 3.90625e-05,
+      "visual_progress": 0.0016422206864637487,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `turn right` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-g1",
+      "action": "walk_forward",
       "video": "unitree-g1/unitree-g1_walk_forward.mp4",
-      "bytes": 73066,
+      "bytes": 73482,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-g1_unitree-g1_walk_forward_contact.jpg",
       "checks": {
         "open": true,
@@ -357,7 +877,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.474,
+        "torso_z": {
+          "min": 0.7905228819924062,
+          "max": 0.791609882833807,
+          "final": 0.791568424139695,
+          "mean": 0.7915308574765972
+        },
+        "upright_proj": {
+          "min": 0.9999523207852687,
+          "max": 0.9999999770300082,
+          "final": 0.9999642265808317,
+          "mean": 0.9999771911598316
+        },
+        "reward": {
+          "min": 3.4905069913126225,
+          "max": 3.494446211428924,
+          "final": 3.494446211428924,
+          "mean": 3.4920541655676716
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -365,15 +916,24 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9999453125000001,
-      "mean_luma": 62.57019270833333,
-      "mean_frame_delta": 0.5406022146344185,
-      "ok": true
+      "nonblank_ratio": 0.9999583333333334,
+      "mean_luma": 62.569007812500004,
+      "mean_frame_delta": 0.559641920030117,
+      "normalized_frame_delta": 0.0021946741961965375,
+      "foreground_centroid_path": 4.426662114262354e-05,
+      "mean_foreground_mask_delta": 4.2317708333333335e-05,
+      "visual_progress": 0.0021946741961965375,
+      "ok": true,
+      "manual_frame_review": null,
+      "verdict": "good",
+      "review_notes": "Sampled frames show nonblank robot motion for `walk forward` with measurable frame-to-frame or centroid progress.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-h1",
+      "action": "combined_actions",
       "video": "unitree-h1/unitree-h1_combined_actions.mp4",
-      "bytes": 288273,
+      "bytes": 579768,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-h1_unitree-h1_combined_actions_contact.jpg",
       "checks": {
         "open": true,
@@ -381,7 +941,22 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "command_count": 4,
+        "failed_commands": []
       },
       "open": true,
       "frame_count": 160,
@@ -389,15 +964,27 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9998880208333333,
-      "mean_luma": 76.15348177083334,
-      "mean_frame_delta": 2.372164659202099,
-      "ok": true
+      "nonblank_ratio": 0.9997838541666667,
+      "mean_luma": 74.06986718750001,
+      "mean_frame_delta": 2.1846809834241867,
+      "normalized_frame_delta": 0.008567376405585046,
+      "foreground_centroid_path": 8.332641073047531e-05,
+      "mean_foreground_mask_delta": 0.0003971354166666667,
+      "visual_progress": 0.008567376405585046,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled combined-action frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-h1",
+      "action": "stand_up",
       "video": "unitree-h1/unitree-h1_stand_up.mp4",
-      "bytes": 174683,
+      "bytes": 150983,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-h1_unitree-h1_stand_up_contact.jpg",
       "checks": {
         "open": true,
@@ -405,7 +992,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "torso_z": {
+          "min": 0.8162696388971046,
+          "max": 0.9790726378156356,
+          "final": 0.8162696388971046,
+          "mean": 0.920153386717795
+        },
+        "upright_proj": {
+          "min": 0.8083653358195764,
+          "max": 0.9999936232143947,
+          "final": 0.8083653358195764,
+          "mean": 0.9566608663470089
+        },
+        "reward": {
+          "min": 2.730803728667327,
+          "max": 3.4911000104387853,
+          "final": 2.8076728019572412,
+          "mean": 3.2858780659831686
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -413,15 +1031,27 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9998072916666667,
-      "mean_luma": 74.76333333333334,
-      "mean_frame_delta": 3.5858887434005737,
-      "ok": true
+      "nonblank_ratio": 0.9998046875,
+      "mean_luma": 73.97119531249999,
+      "mean_frame_delta": 2.8223209381103516,
+      "normalized_frame_delta": 0.011067925247491575,
+      "foreground_centroid_path": 4.448145905233614e-05,
+      "mean_foreground_mask_delta": 0.0003548177083333333,
+      "visual_progress": 0.011067925247491575,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows H1 remains upright through the sampled stand-up preview; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-h1",
+      "action": "turn_left",
       "video": "unitree-h1/unitree-h1_turn_left.mp4",
-      "bytes": 46164,
+      "bytes": 145677,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-h1_unitree-h1_turn_left_contact.jpg",
       "checks": {
         "open": true,
@@ -429,7 +1059,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "torso_z": {
+          "min": 0.8028898276939356,
+          "max": 0.9790656240940231,
+          "final": 0.8028898276939356,
+          "mean": 0.9170702584392811
+        },
+        "upright_proj": {
+          "min": 0.7775642548987205,
+          "max": 0.9999947833976204,
+          "final": 0.7775642548987205,
+          "mean": 0.9498280595450735
+        },
+        "reward": {
+          "min": 2.8751799051566054,
+          "max": 3.414123063420854,
+          "final": 2.8751799051566054,
+          "mean": 3.162210899465923
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -437,15 +1098,27 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9998880208333333,
-      "mean_luma": 76.99869010416667,
-      "mean_frame_delta": 0.1665266938507557,
-      "ok": true
+      "nonblank_ratio": 0.9998489583333333,
+      "mean_luma": 73.96648177083334,
+      "mean_frame_delta": 2.717919886112213,
+      "normalized_frame_delta": 0.010658509357302797,
+      "foreground_centroid_path": 4.101768426830207e-05,
+      "mean_foreground_mask_delta": 0.00030924479166666665,
+      "visual_progress": 0.010658509357302797,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled turn-left frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-h1",
+      "action": "turn_right",
       "video": "unitree-h1/unitree-h1_turn_right.mp4",
-      "bytes": 45803,
+      "bytes": 146570,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-h1_unitree-h1_turn_right_contact.jpg",
       "checks": {
         "open": true,
@@ -453,7 +1126,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "torso_z": {
+          "min": 0.8020039036385864,
+          "max": 0.9792107697969665,
+          "final": 0.8020039036385864,
+          "mean": 0.9173981703426402
+        },
+        "upright_proj": {
+          "min": 0.7733055322016202,
+          "max": 0.9999914408223328,
+          "final": 0.7733055322016202,
+          "mean": 0.9476833313359947
+        },
+        "reward": {
+          "min": 2.5487063911384302,
+          "max": 3.387115696802648,
+          "final": 2.5487063911384302,
+          "mean": 3.0766374076815723
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -461,15 +1165,27 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9998828124999999,
-      "mean_luma": 77.00889062499999,
-      "mean_frame_delta": 0.14767252653837204,
-      "ok": true
+      "nonblank_ratio": 0.999828125,
+      "mean_luma": 73.92063541666667,
+      "mean_frame_delta": 2.691116511821747,
+      "normalized_frame_delta": 0.010553398085575478,
+      "foreground_centroid_path": 4.844610811614389e-05,
+      "mean_foreground_mask_delta": 0.00031901041666666666,
+      "visual_progress": 0.010553398085575478,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled turn-right frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
     },
     {
       "profile": "unitree-h1",
+      "action": "walk_forward",
       "video": "unitree-h1/unitree-h1_walk_forward.mp4",
-      "bytes": 74573,
+      "bytes": 146297,
       "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-h1_unitree-h1_walk_forward_contact.jpg",
       "checks": {
         "open": true,
@@ -477,7 +1193,38 @@
         "sampled_frames": true,
         "nonblank": true,
         "motion_or_camera_change": true,
-        "contact_sheet": true
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.612,
+        "torso_z": {
+          "min": 0.8158840551423676,
+          "max": 0.9790341346267388,
+          "final": 0.8158840551423676,
+          "mean": 0.9198883796250115
+        },
+        "upright_proj": {
+          "min": 0.8069073711494977,
+          "max": 0.999995379342487,
+          "final": 0.8069073711494977,
+          "mean": 0.9566315626152726
+        },
+        "reward": {
+          "min": 2.7310908926287683,
+          "max": 3.4744878144716496,
+          "final": 2.8091370356461938,
+          "mean": 3.259549804041278
+        }
       },
       "open": true,
       "frame_count": 40,
@@ -485,10 +1232,410 @@
       "width": 320,
       "height": 240,
       "sampled_frames": 5,
-      "nonblank_ratio": 0.9999140625,
-      "mean_luma": 76.86065104166667,
-      "mean_frame_delta": 0.8205729052424431,
-      "ok": true
+      "nonblank_ratio": 0.9997682291666667,
+      "mean_luma": 73.97838541666667,
+      "mean_frame_delta": 2.760660767555237,
+      "normalized_frame_delta": 0.01082612065707936,
+      "foreground_centroid_path": 7.240860717712622e-05,
+      "mean_foreground_mask_delta": 0.00044921874999999997,
+      "visual_progress": 0.01082612065707936,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled walk-forward frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "combined_actions",
+      "video": "unitree-r1/unitree-r1_combined_actions.mp4",
+      "bytes": 321797,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-r1_unitree-r1_combined_actions_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 160,
+        "steps_requested": 160,
+        "terminated": null,
+        "truncated": null,
+        "first_done_step": null,
+        "fall_threshold": null,
+        "command_count": 4,
+        "failed_commands": []
+      },
+      "open": true,
+      "frame_count": 160,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9291666666666668,
+      "mean_luma": 57.48665885416666,
+      "mean_frame_delta": 1.0278417691588402,
+      "normalized_frame_delta": 0.0040307520359170205,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.0040307520359170205,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled combined-action frames after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "stand_up",
+      "video": "unitree-r1/unitree-r1_stand_up.mp4",
+      "bytes": 95672,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-r1_unitree-r1_stand_up_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "torso_z": {
+          "min": 0.7393067532804892,
+          "max": 0.7419965443537505,
+          "final": 0.7393067532804892,
+          "mean": 0.7412388717448447
+        },
+        "upright_proj": {
+          "min": 0.9903888938142437,
+          "max": 0.9999999626795327,
+          "final": 0.9903888938142437,
+          "mean": 0.9971690391406707
+        },
+        "reward": {
+          "min": 3.488926960877624,
+          "max": 3.499849897456488,
+          "final": 3.4897137897545143,
+          "mean": 3.4925402893372963
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9291666666666668,
+      "mean_luma": 57.558940104166666,
+      "mean_frame_delta": 1.5517350435256958,
+      "normalized_frame_delta": 0.00608523546480665,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.00608523546480665,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled stand-up preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "turn_left",
+      "video": "unitree-r1/unitree-r1_turn_left.mp4",
+      "bytes": 95763,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-r1_unitree-r1_turn_left_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "torso_z": {
+          "min": 0.7393067532804892,
+          "max": 0.7419965443537505,
+          "final": 0.7393067532804892,
+          "mean": 0.7412388717448447
+        },
+        "upright_proj": {
+          "min": 0.9903888938142437,
+          "max": 0.9999999626795327,
+          "final": 0.9903888938142437,
+          "mean": 0.9971690391406707
+        },
+        "reward": {
+          "min": 3.3178489551236083,
+          "max": 3.3287638678826923,
+          "final": 3.318643929165712,
+          "mean": 3.321460018633607
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9291666666666668,
+      "mean_luma": 57.562226562499994,
+      "mean_frame_delta": 1.5514909029006958,
+      "normalized_frame_delta": 0.006084278050590964,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.006084278050590964,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled turn-left preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "turn_right",
+      "video": "unitree-r1/unitree-r1_turn_right.mp4",
+      "bytes": 95763,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-r1_unitree-r1_turn_right_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "torso_z": {
+          "min": 0.7393067532804892,
+          "max": 0.7419965443537505,
+          "final": 0.7393067532804892,
+          "mean": 0.7412388717448447
+        },
+        "upright_proj": {
+          "min": 0.9903888938142437,
+          "max": 0.9999999626795327,
+          "final": 0.9903888938142437,
+          "mean": 0.9971690391406707
+        },
+        "reward": {
+          "min": 3.317839804161796,
+          "max": 3.3287707644638806,
+          "final": 3.3186184893773514,
+          "mean": 3.321455397510335
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9291666666666668,
+      "mean_luma": 57.562226562499994,
+      "mean_frame_delta": 1.5514909029006958,
+      "normalized_frame_delta": 0.006084278050590964,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.006084278050590964,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled turn-right preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "profile": "unitree-r1",
+      "action": "walk_forward",
+      "video": "unitree-r1/unitree-r1_walk_forward.mp4",
+      "bytes": 95763,
+      "contact_sheet": "/home/shaw/milady/eliza/packages/robot/evidence/video_review/unitree-r1_unitree-r1_walk_forward_contact.jpg",
+      "checks": {
+        "open": true,
+        "frame_count": true,
+        "sampled_frames": true,
+        "nonblank": true,
+        "motion_or_camera_change": true,
+        "action_progress": true,
+        "contact_sheet": true,
+        "telemetry_present": true,
+        "telemetry_rollout_ok": true
+      },
+      "telemetry": {
+        "present": true,
+        "ok": true,
+        "steps_executed": 40,
+        "steps_requested": 40,
+        "terminated": false,
+        "truncated": true,
+        "first_done_step": 40,
+        "fall_threshold": 0.444,
+        "torso_z": {
+          "min": 0.7393067532804892,
+          "max": 0.7419965443537505,
+          "final": 0.7393067532804892,
+          "mean": 0.7412388717448447
+        },
+        "upright_proj": {
+          "min": 0.9903888938142437,
+          "max": 0.9999999626795327,
+          "final": 0.9903888938142437,
+          "mean": 0.9971690391406707
+        },
+        "reward": {
+          "min": 3.495138882733033,
+          "max": 3.49975357284058,
+          "final": 3.495138882733033,
+          "mean": 3.4979548642750395
+        }
+      },
+      "open": true,
+      "frame_count": 40,
+      "fps": 30.0,
+      "width": 320,
+      "height": 240,
+      "sampled_frames": 5,
+      "nonblank_ratio": 0.9291666666666668,
+      "mean_luma": 57.562226562499994,
+      "mean_frame_delta": 1.5514909029006958,
+      "normalized_frame_delta": 0.006084278050590964,
+      "foreground_centroid_path": 0.0,
+      "mean_foreground_mask_delta": 0.0,
+      "visual_progress": 0.006084278050590964,
+      "ok": true,
+      "manual_frame_review": {
+        "reviewer": "codex",
+        "reviewed_contact_sheet": true
+      },
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled walk-forward preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
     }
-  ]
+  ],
+  "min_visual_progress": 0.0016422206864637487,
+  "mean_visual_progress": 0.005573210766502456,
+  "min_mean_frame_delta": 0.4187662750482559,
+  "mean_mean_frame_delta": 1.421168745458126,
+  "min_normalized_frame_delta": 0.0016422206864637487,
+  "mean_normalized_frame_delta": 0.005573210766502456,
+  "min_foreground_centroid_path": 0.0,
+  "mean_foreground_centroid_path": 2.161236107596754e-05,
+  "min_mean_foreground_mask_delta": 0.0,
+  "mean_mean_foreground_mask_delta": 8.919270833333332e-05,
+  "min_nonblank_ratio": 0.9291666666666668,
+  "mean_nonblank_ratio": 0.9732824999999999,
+  "profiles": [
+    "asimov-1",
+    "hiwonder-ainex",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1"
+  ],
+  "actions": [
+    "combined_actions",
+    "stand_up",
+    "turn_left",
+    "turn_right",
+    "walk_forward"
+  ],
+  "all_videos_reviewed_good": true,
+  "telemetry": {
+    "required": true,
+    "present_count": 25,
+    "ok_count": 25,
+    "failed_count": 0
+  },
+  "profile_action_matrix": {
+    "asimov-1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "hiwonder-ainex": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-g1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-h1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ],
+    "unitree-r1": [
+      "combined_actions",
+      "stand_up",
+      "turn_left",
+      "turn_right",
+      "walk_forward"
+    ]
+  }
 }

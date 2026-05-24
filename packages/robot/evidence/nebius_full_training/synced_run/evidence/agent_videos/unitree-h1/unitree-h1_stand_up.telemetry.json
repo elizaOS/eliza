@@ -1,0 +1,37 @@
+{
+  "profile": "unitree-h1",
+  "label": "stand up",
+  "task_id": "stand_up",
+  "policy_source": "sb3_smoke",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.612,
+  "torso_z": {
+    "min": 0.8162696388971046,
+    "max": 0.9790726378156356,
+    "final": 0.8162696388971046,
+    "mean": 0.920153386717795
+  },
+  "upright_proj": {
+    "min": 0.8083653358195764,
+    "max": 0.9999936232143947,
+    "final": 0.8083653358195764,
+    "mean": 0.9566608663470089
+  },
+  "reward": {
+    "min": 2.730803728667327,
+    "max": 3.4911000104387853,
+    "final": 2.8076728019572412,
+    "mean": 3.2858780659831686
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

@@ -96,6 +96,11 @@ WORKLOAD_NAMES = (
     "browser_layout_proxy",
     "kernel_syscall_proxy",
     "gc_runtime_proxy",
+    "gpu_memory_residency_proxy",
+    "gpu_irq_fence_scheduler_proxy",
+    "nn_delegate_fallback_proxy",
+    "mobile_ui_frame_scheduler_proxy",
+    "wasm_jit_osr_proxy",
 )
 
 SYNTHETIC_SWEEP_WORKLOADS = (
@@ -156,6 +161,11 @@ DEFAULT_WEIGHTS = {
     "browser_layout_proxy": 1.25,
     "kernel_syscall_proxy": 1.25,
     "gc_runtime_proxy": 1.25,
+    "gpu_memory_residency_proxy": 1.35,
+    "gpu_irq_fence_scheduler_proxy": 1.35,
+    "nn_delegate_fallback_proxy": 1.2,
+    "mobile_ui_frame_scheduler_proxy": 1.25,
+    "wasm_jit_osr_proxy": 1.2,
     # Synthetic traces keep the objective honest around known hard shapes.
     # GPU-oriented traces get enough weight to steer tie-breaks without
     # overpowering the real RV64 and CBP-5 references.
@@ -628,9 +638,12 @@ def load_traces(
     max_branches: int,
     weights: dict[str, float],
     window_mode: str = "prefix",
+    include_traces: set[str] | None = None,
 ) -> list[LoadedTrace]:
     traces: list[LoadedTrace] = []
     for name in WORKLOAD_NAMES:
+        if include_traces is not None and name not in include_traces:
+            continue
         p = WORKLOAD_DIR / f"{name}.btrace.json"
         if not p.is_file():
             continue
@@ -639,8 +652,10 @@ def load_traces(
             _windowed_traces(name, events, inst, max_branches, weights.get(name, 1.0), window_mode)
         )
     for name in SYNTHETIC_SWEEP_WORKLOADS:
-        events = list(SYNTHETIC_GENERATORS[name]())
         key = f"synthetic:{name}"
+        if include_traces is not None and key not in include_traces and name not in include_traces:
+            continue
+        events = list(SYNTHETIC_GENERATORS[name]())
         traces.extend(
             _windowed_traces(
                 key,
@@ -652,8 +667,10 @@ def load_traces(
             )
         )
     for p in sorted(CBP5_DIR.glob("*.gz")):
-        events, stats = read_cbp5_with_count(p)
         key = f"cbp5:{p.stem}"
+        if include_traces is not None and key not in include_traces and p.stem not in include_traces:
+            continue
+        events, stats = read_cbp5_with_count(p)
         traces.extend(
             _windowed_traces(
                 key,
@@ -744,6 +761,7 @@ def write_leaderboard(
     traces: list[LoadedTrace],
     ranking: list[str],
     max_branches: int,
+    path: Path = LEADERBOARD_MD,
 ) -> None:
     base = results["baseline"]["weighted_mpki"]
     lines = [
@@ -803,8 +821,8 @@ def write_leaderboard(
         "```",
         "",
     ]
-    LEADERBOARD_MD.parent.mkdir(parents=True, exist_ok=True)
-    LEADERBOARD_MD.write_text("\n".join(lines) + "\n")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines) + "\n")
 
 
 def _print_summary(results: dict[str, dict], ranking: list[str]) -> None:
@@ -856,6 +874,27 @@ def main() -> int:
         action="store_true",
         help="do not write evidence or leaderboard files",
     )
+    ap.add_argument(
+        "--include-traces",
+        nargs="*",
+        default=None,
+        help=(
+            "optional trace-name filter for sharded sweeps; names may be raw "
+            "workload names, synthetic:<name>, or cbp5:<stem>"
+        ),
+    )
+    ap.add_argument(
+        "--output",
+        type=Path,
+        default=SWEEP_JSON,
+        help=f"evidence JSON output path (default: {SWEEP_JSON.relative_to(ROOT)})",
+    )
+    ap.add_argument(
+        "--leaderboard-output",
+        type=Path,
+        default=LEADERBOARD_MD,
+        help=f"leaderboard markdown output path (default: {LEADERBOARD_MD.relative_to(ROOT)})",
+    )
     args = ap.parse_args()
 
     for name in args.configs:
@@ -866,11 +905,12 @@ def main() -> int:
         args.configs = ["baseline", *args.configs]
     selected = {k: CONFIGS[k] for k in args.configs}
 
+    include_traces = set(args.include_traces) if args.include_traces is not None else None
     print(
         "eliza-bpu-sweep: loading traces "
         f"(cap={args.max_branches or 'full'}, window_mode={args.window_mode})"
     )
-    traces = load_traces(args.max_branches, DEFAULT_WEIGHTS, args.window_mode)
+    traces = load_traces(args.max_branches, DEFAULT_WEIGHTS, args.window_mode, include_traces)
     if not traces:
         print("STATUS: BLOCKED bpu.sweep - no traces found", file=sys.stderr)
         return 2
@@ -894,6 +934,7 @@ def main() -> int:
         "harness": "behavioural-bpu-model",
         "max_branches_per_trace": args.max_branches,
         "window_mode": args.window_mode,
+        "trace_filter": sorted(include_traces) if include_traces is not None else None,
         "trace_set": [
             {
                 "name": t.name,
@@ -916,9 +957,9 @@ def main() -> int:
         "results": results,
     }
     if not args.print_only:
-        EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
-        SWEEP_JSON.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
-        write_leaderboard(results, traces, ranking, args.max_branches)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(envelope, indent=2, sort_keys=True) + "\n")
+        write_leaderboard(results, traces, ranking, args.max_branches, args.leaderboard_output)
 
     print("\neliza-bpu-sweep: ranking (weighted MPKI)")
     for i, name in enumerate(ranking, 1):
@@ -928,7 +969,8 @@ def main() -> int:
     if args.print_only:
         print(f"\neliza-bpu-sweep: status=PASS best={best} (print-only)")
     else:
-        print(f"\neliza-bpu-sweep: status=PASS best={best} -> {SWEEP_JSON.relative_to(ROOT)}")
+        out_display = args.output if args.output.is_absolute() else ROOT / args.output
+        print(f"\neliza-bpu-sweep: status=PASS best={best} -> {out_display.relative_to(ROOT)}")
     return 0
 
 

@@ -54,6 +54,10 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "NEBIUS_TRAINING_S3_URI" in launch_text
     assert "run_all_nebius_stages.sh" in launch_text
     assert "runner_status.json" in launch_text
+    launch_payload = json.loads(launch_text)
+    cloud_init = launch_payload["spec"]["cloud_init_user_data"]
+    assert 'ELIZA_ROBOT_PACKAGE_ROOT="${ELIZA_ROBOT_PACKAGE_ROOT:-/root/robot}"' in cloud_init
+    assert "ln -sfn /root/robot /root/eliza/packages/robot" in cloud_init
     assert "AWS_ACCESS_KEY_ID" not in launch_text
     assert "AWS_SECRET_ACCESS_KEY" not in launch_text
     assert loaded["default_profiles"] == [

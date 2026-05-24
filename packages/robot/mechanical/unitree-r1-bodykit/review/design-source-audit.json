@@ -21,7 +21,7 @@
       "part": "chest_upper_bridge_armor",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -35,7 +35,7 @@
       "part": "chest_lower_bridge_armor",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -160,7 +160,7 @@
       "part": "rear_back_spine_plate",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "torso_collision.stl",
@@ -222,7 +222,7 @@
       "part": "abdomen_center_armor",
       "role": "armor",
       "body": "torso_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "waist_yaw_link.STL",
@@ -272,7 +272,7 @@
       "part": "pelvis_center_plate",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -285,7 +285,7 @@
       "part": "pelvis_lower_nose_plate",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -298,7 +298,7 @@
       "part": "rear_seat_bridge_armor",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -488,7 +488,7 @@
       "part": "left_upper_arm_outer_blade",
       "role": "armor",
       "body": "left_shoulder_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
@@ -501,7 +501,7 @@
       "part": "left_upper_arm_front_armor",
       "role": "armor",
       "body": "left_shoulder_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
@@ -527,7 +527,7 @@
       "part": "right_upper_arm_outer_blade",
       "role": "armor",
       "body": "right_shoulder_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
@@ -540,7 +540,7 @@
       "part": "right_upper_arm_front_armor",
       "role": "armor",
       "body": "right_shoulder_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
@@ -566,7 +566,7 @@
       "part": "left_forearm_outer_blade",
       "role": "armor",
       "body": "left_elbow_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
@@ -616,7 +616,7 @@
       "part": "right_forearm_outer_blade",
       "role": "armor",
       "body": "right_elbow_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
@@ -668,7 +668,7 @@
       "part": "left_thigh_front_armor",
       "role": "armor",
       "body": "left_hip_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
@@ -681,7 +681,7 @@
       "part": "left_thigh_side_armor",
       "role": "armor",
       "body": "left_hip_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
@@ -709,7 +709,7 @@
       "part": "right_thigh_front_armor",
       "role": "armor",
       "body": "right_hip_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
@@ -722,7 +722,7 @@
       "part": "right_thigh_side_armor",
       "role": "armor",
       "body": "right_hip_yaw_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
@@ -749,7 +749,7 @@
       "part": "left_shin_front_armor",
       "role": "armor",
       "body": "left_knee_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_knee_link.STL"
@@ -789,7 +789,7 @@
       "part": "right_shin_front_armor",
       "role": "armor",
       "body": "right_knee_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_knee_link.STL"
@@ -828,7 +828,7 @@
       "part": "left_foot_toe_armor",
       "role": "armor",
       "body": "left_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -841,7 +841,7 @@
       "part": "left_foot_sole_black",
       "role": "underbody",
       "body": "left_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -854,7 +854,7 @@
       "part": "left_foot_heel_black",
       "role": "underbody",
       "body": "left_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
@@ -867,7 +867,7 @@
       "part": "right_foot_top_shell",
       "role": "armor",
       "body": "right_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -880,7 +880,7 @@
       "part": "right_foot_toe_armor",
       "role": "armor",
       "body": "right_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -893,7 +893,7 @@
       "part": "right_foot_sole_black",
       "role": "underbody",
       "body": "right_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
@@ -906,7 +906,7 @@
       "part": "right_foot_heel_black",
       "role": "underbody",
       "body": "right_ankle_roll_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"

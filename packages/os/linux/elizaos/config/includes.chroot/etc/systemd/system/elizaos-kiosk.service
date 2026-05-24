@@ -6,11 +6,11 @@ Documentation=https://elizaos.ai/
 # else competes for the seat.
 After=systemd-user-sessions.service seatd.service
 Wants=seatd.service
-# No dependency on elizaos-agent.service: on amd64/arm64 the Electrobun app
-# runs its own embedded runtime (and the separate agent service is masked); on
-# riscv64 start-kiosk waits for the agent's health itself before launching
-# epiphany. Hard-requiring the agent here would block the GUI on a backend that
-# is intentionally absent (amd64) or slow (riscv64).
+# No hard dependency on elizaos-agent.service: when an Electrobun app is
+# present, it runs its own embedded runtime and the separate agent service is
+# masked; otherwise start-kiosk waits for the agent's health itself before
+# launching epiphany. Hard-requiring the agent here would block the GUI on a
+# backend that is intentionally absent or slow.
 # Bind a tty so the compositor owns a real VT and input devices.
 After=getty@tty1.service
 Conflicts=getty@tty1.service

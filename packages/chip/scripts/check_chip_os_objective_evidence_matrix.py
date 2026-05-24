@@ -110,9 +110,16 @@ REQUIREMENTS: tuple[Requirement, ...] = (
     Requirement(
         "software_bsp_external_evidence",
         "linux",
-        "Buildroot, Linux, OpenSBI, and AOSP BSP scaffolds are backed by external build/boot evidence.",
+        "Buildroot, Linux, OpenSBI, U-Boot, and AOSP BSP scaffolds are backed by external build/boot evidence.",
         "software_bsp_scope.json",
-        closure_evidence="Software BSP scope report status=pass only after external Buildroot image, Linux kernel/DTB/boot, OpenSBI handoff, AOSP boot/compatibility, CTS/VTS, NNAPI, and release-claim evidence are all present.",
+        closure_evidence="Software BSP scope report status=pass only after external Buildroot image, Linux kernel/DTB/boot, OpenSBI handoff, U-Boot boot-chain, AOSP boot/compatibility, CTS/VTS, NNAPI, and release-claim evidence are all present.",
+    ),
+    Requirement(
+        "linux_multiarch_gui_parity",
+        "linux",
+        "Debian arm64 and riscv64 ISO builds both carry the graphical kiosk payload and have promoted multiarch boot evidence.",
+        "linux_multiarch_gui_parity.json",
+        closure_evidence="Linux multiarch GUI parity report status=pass with arm64 and riscv64 GUI/kiosk ISO reports passing and each architecture promoted to candidate in the multiarch boot matrix with ISO plus boot evidence.",
     ),
     Requirement(
         "software_bsp_scaffold_inventory",

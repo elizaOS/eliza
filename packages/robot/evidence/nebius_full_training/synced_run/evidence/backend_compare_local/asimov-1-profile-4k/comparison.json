@@ -1,0 +1,459 @@
+{
+  "profile_id": "asimov-1",
+  "tasks": [
+    "stand_up",
+    "walk_forward",
+    "turn_left",
+    "turn_right"
+  ],
+  "steps": 4000,
+  "seed": 7,
+  "pca_dim": 32,
+  "episode_steps": 120,
+  "eval_episodes": 4,
+  "max_steps": 120,
+  "domain_rand": true,
+  "wall_clock_s": 107.96,
+  "baseline": {
+    "profile_id": "asimov-1",
+    "env": "profile_mujoco",
+    "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/alberta_text_conditioned",
+    "policy": "untrained_zero",
+    "env_action_dim": 12,
+    "policy_action_dim": 0,
+    "policy_output_dim": 0,
+    "tasks": {
+      "stand_up": {
+        "mean_reward": 255.51904971352187,
+        "std_reward": 0.0,
+        "min_reward": 255.51904971352187,
+        "max_reward": 255.51904971352187,
+        "mean_steps_survived": 79.0,
+        "episodes": 4
+      },
+      "walk_forward": {
+        "mean_reward": 253.93853132079676,
+        "std_reward": 0.0,
+        "min_reward": 253.93853132079676,
+        "max_reward": 253.93853132079676,
+        "mean_steps_survived": 79.0,
+        "episodes": 4
+      },
+      "turn_left": {
+        "mean_reward": 241.989072553419,
+        "std_reward": 0.0,
+        "min_reward": 241.989072553419,
+        "max_reward": 241.989072553419,
+        "mean_steps_survived": 79.0,
+        "episodes": 4
+      },
+      "turn_right": {
+        "mean_reward": 242.0187519106248,
+        "std_reward": 0.0,
+        "min_reward": 242.0187519106248,
+        "max_reward": 242.0187519106248,
+        "mean_steps_survived": 79.0,
+        "episodes": 4
+      }
+    },
+    "mean_reward_overall": 248.3663513745906
+  },
+  "alberta": {
+    "checkpoint": "evidence/backend_compare_local/asimov-1-profile-4k/alberta",
+    "manifest": {
+      "regime": "alberta_streaming",
+      "curriculum_version": 2,
+      "pca_dim": 32,
+      "active_tasks": [
+        "stand_up",
+        "walk_forward",
+        "turn_left",
+        "turn_right"
+      ],
+      "obs_dim": 77,
+      "action_dim": 12,
+      "output_dim": 25,
+      "profile_id": "asimov-1",
+      "profile_version": "1.0.0",
+      "proprio_dim": 45,
+      "text_dim": 32,
+      "ckpt": "alberta_policy.npz",
+      "requested_total_steps": 4000,
+      "steps_per_task": 1000,
+      "total_steps": 4000,
+      "episode_steps": 120,
+      "eval_episodes": 4,
+      "seed": 7,
+      "domain_rand": true,
+      "controller": {
+        "gamma": 0.5,
+        "actor_step_size": 0.005,
+        "critic_step_size": 0.01,
+        "actor_lamda": 0.8,
+        "critic_lamda": 0.8,
+        "log_sigma_init": -1.0,
+        "log_sigma_min": -5.0,
+        "log_sigma_max": 0.5,
+        "action_low": -1.0,
+        "action_high": 1.0,
+        "obgd_kappa": 2.0,
+        "normalize": false,
+        "normalizer_decay": 0.999,
+        "decouple_global_bias": true,
+        "features": {
+          "mode": "sparse_gated",
+          "embed_dim": 32,
+          "n_prototypes": 64,
+          "gate_hard": true,
+          "gate_temperature": 0.1,
+          "proprio_random_dim": 32,
+          "random_dim": 256,
+          "scale": 1.0,
+          "seed": 7
+        }
+      },
+      "trained_at": "2026-05-23T11:13:54",
+      "history": [
+        {
+          "phase": 0,
+          "task": "stand_up",
+          "train_episodes": 13,
+          "train_mean_return": 213.73234654390677,
+          "eval_mean_return": 255.927990165435
+        },
+        {
+          "phase": 1,
+          "task": "walk_forward",
+          "train_episodes": 16,
+          "train_mean_return": 176.88343321843837,
+          "eval_mean_return": 185.97101781035337
+        },
+        {
+          "phase": 2,
+          "task": "turn_left",
+          "train_episodes": 17,
+          "train_mean_return": 167.68766710567732,
+          "eval_mean_return": 166.77944173792173
+        },
+        {
+          "phase": 3,
+          "task": "turn_right",
+          "train_episodes": 19,
+          "train_mean_return": 144.8342001821264,
+          "eval_mean_return": 133.08752360160202
+        }
+      ],
+      "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+      "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+      "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+      "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415"
+    },
+    "validation": {
+      "ok": true,
+      "checkpoint": "/home/shaw/milady/eliza/packages/robot/evidence/backend_compare_local/asimov-1-profile-4k/alberta",
+      "profile_id": "asimov-1",
+      "required_tasks": [
+        "stand_up",
+        "walk_forward",
+        "turn_left",
+        "turn_right"
+      ],
+      "min_steps": 4000,
+      "total_steps": 4000,
+      "requested_total_steps": 4000,
+      "checks": {
+        "checkpoint_dir": true,
+        "manifest": true,
+        "regime": true,
+        "profile_id": true,
+        "profile_loads": true,
+        "profile_version": true,
+        "curriculum_version": true,
+        "policy_artifact": true,
+        "ckpt_name": true,
+        "active_tasks": true,
+        "unique_active_tasks": true,
+        "required_tasks": true,
+        "pca_text_dim": true,
+        "obs_layout": true,
+        "action_dim": true,
+        "output_dim": true,
+        "output_covers_action": true,
+        "total_steps": true,
+        "requested_total_steps": true,
+        "steps_per_task": true,
+        "not_tiny_validation": true,
+        "not_validation_checkpoint": true,
+        "not_marked_non_production": true,
+        "domain_rand": true,
+        "controller": true,
+        "history": true,
+        "inference": true
+      },
+      "manifest": {
+        "regime": "alberta_streaming",
+        "curriculum_version": 2,
+        "pca_dim": 32,
+        "active_tasks": [
+          "stand_up",
+          "walk_forward",
+          "turn_left",
+          "turn_right"
+        ],
+        "obs_dim": 77,
+        "action_dim": 12,
+        "output_dim": 25,
+        "profile_id": "asimov-1",
+        "profile_version": "1.0.0",
+        "proprio_dim": 45,
+        "text_dim": 32,
+        "ckpt": "alberta_policy.npz",
+        "requested_total_steps": 4000,
+        "steps_per_task": 1000,
+        "total_steps": 4000,
+        "episode_steps": 120,
+        "eval_episodes": 4,
+        "seed": 7,
+        "domain_rand": true,
+        "controller": {
+          "gamma": 0.5,
+          "actor_step_size": 0.005,
+          "critic_step_size": 0.01,
+          "actor_lamda": 0.8,
+          "critic_lamda": 0.8,
+          "log_sigma_init": -1.0,
+          "log_sigma_min": -5.0,
+          "log_sigma_max": 0.5,
+          "action_low": -1.0,
+          "action_high": 1.0,
+          "obgd_kappa": 2.0,
+          "normalize": false,
+          "normalizer_decay": 0.999,
+          "decouple_global_bias": true,
+          "features": {
+            "mode": "sparse_gated",
+            "embed_dim": 32,
+            "n_prototypes": 64,
+            "gate_hard": true,
+            "gate_temperature": 0.1,
+            "proprio_random_dim": 32,
+            "random_dim": 256,
+            "scale": 1.0,
+            "seed": 7
+          }
+        },
+        "trained_at": "2026-05-23T11:13:54",
+        "history": [
+          {
+            "phase": 0,
+            "task": "stand_up",
+            "train_episodes": 13,
+            "train_mean_return": 213.73234654390677,
+            "eval_mean_return": 255.927990165435
+          },
+          {
+            "phase": 1,
+            "task": "walk_forward",
+            "train_episodes": 16,
+            "train_mean_return": 176.88343321843837,
+            "eval_mean_return": 185.97101781035337
+          },
+          {
+            "phase": 2,
+            "task": "turn_left",
+            "train_episodes": 17,
+            "train_mean_return": 167.68766710567732,
+            "eval_mean_return": 166.77944173792173
+          },
+          {
+            "phase": 3,
+            "task": "turn_right",
+            "train_episodes": 19,
+            "train_mean_return": 144.8342001821264,
+            "eval_mean_return": 133.08752360160202
+          }
+        ],
+        "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+        "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+        "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+        "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415"
+      },
+      "profile_error": null,
+      "inference_report": {
+        "ok": true,
+        "results": [
+          {
+            "prompt": "stand_up",
+            "matched_task": "stand_up",
+            "shape": [
+              25
+            ],
+            "finite": true
+          },
+          {
+            "prompt": "walk_forward",
+            "matched_task": "walk_forward",
+            "shape": [
+              25
+            ],
+            "finite": true
+          },
+          {
+            "prompt": "turn_left",
+            "matched_task": "turn_left",
+            "shape": [
+              25
+            ],
+            "finite": true
+          },
+          {
+            "prompt": "turn_right",
+            "matched_task": "turn_right",
+            "shape": [
+              25
+            ],
+            "finite": true
+          }
+        ]
+      }
+    },
+    "eval": {
+      "profile_id": "asimov-1",
+      "env": "profile_mujoco",
+      "checkpoint": "evidence/backend_compare_local/asimov-1-profile-4k/alberta",
+      "policy": "alberta_streaming",
+      "env_action_dim": 12,
+      "policy_action_dim": 12,
+      "policy_output_dim": 25,
+      "tasks": {
+        "stand_up": {
+          "mean_reward": 169.7608211947708,
+          "std_reward": 0.0,
+          "min_reward": 169.7608211947708,
+          "max_reward": 169.7608211947708,
+          "mean_steps_survived": 59.0,
+          "episodes": 4
+        },
+        "walk_forward": {
+          "mean_reward": 165.63219212198675,
+          "std_reward": 0.0,
+          "min_reward": 165.63219212198675,
+          "max_reward": 165.63219212198675,
+          "mean_steps_survived": 58.0,
+          "episodes": 4
+        },
+        "turn_left": {
+          "mean_reward": 171.17803337104138,
+          "std_reward": 0.0,
+          "min_reward": 171.17803337104138,
+          "max_reward": 171.17803337104138,
+          "mean_steps_survived": 59.0,
+          "episodes": 4
+        },
+        "turn_right": {
+          "mean_reward": 133.30838280093198,
+          "std_reward": 0.0,
+          "min_reward": 133.30838280093198,
+          "max_reward": 133.30838280093198,
+          "mean_steps_survived": 49.0,
+          "episodes": 4
+        }
+      },
+      "mean_reward_overall": 159.96985737218273
+    },
+    "delta_vs_untrained": {
+      "stand_up": -85.75822851875105,
+      "walk_forward": -88.30633919881001,
+      "turn_left": -70.81103918237761,
+      "turn_right": -108.7103691096928
+    }
+  },
+  "ppo": {
+    "checkpoint": "evidence/backend_compare_local/asimov-1-profile-4k/ppo",
+    "manifest": {
+      "regime": "smoke_sb3_ppo",
+      "profile_id": "asimov-1",
+      "profile_version": "1.0.0",
+      "curriculum_version": 2,
+      "active_tasks": [
+        "stand_up",
+        "walk_forward",
+        "turn_left",
+        "turn_right"
+      ],
+      "obs_dim": 77,
+      "action_dim": 12,
+      "output_dim": 25,
+      "proprio_dim": 45,
+      "text_dim": 32,
+      "pca_dim": 32,
+      "requested_total_steps": 4000,
+      "total_steps": 4096,
+      "domain_rand": true,
+      "wall_clock_s": 87.59,
+      "seed": 7,
+      "ckpt": "policy.zip",
+      "encoder_model": "sentence-transformers/all-MiniLM-L6-v2"
+    },
+    "eval": {
+      "profile_id": "asimov-1",
+      "env": "profile_mujoco",
+      "checkpoint": "evidence/backend_compare_local/asimov-1-profile-4k/ppo",
+      "policy": "smoke_sb3_ppo",
+      "env_action_dim": 12,
+      "policy_action_dim": 12,
+      "policy_output_dim": 25,
+      "tasks": {
+        "stand_up": {
+          "mean_reward": 253.5156136356199,
+          "std_reward": 0.0,
+          "min_reward": 253.5156136356199,
+          "max_reward": 253.5156136356199,
+          "mean_steps_survived": 79.0,
+          "episodes": 4
+        },
+        "walk_forward": {
+          "mean_reward": 252.46807849878888,
+          "std_reward": 0.0,
+          "min_reward": 252.46807849878888,
+          "max_reward": 252.46807849878888,
+          "mean_steps_survived": 79.0,
+          "episodes": 4
+        },
+        "turn_left": {
+          "mean_reward": 244.6578725800917,
+          "std_reward": 0.0,
+          "min_reward": 244.6578725800917,
+          "max_reward": 244.6578725800917,
+          "mean_steps_survived": 80.0,
+          "episodes": 4
+        },
+        "turn_right": {
+          "mean_reward": 239.08339849074753,
+          "std_reward": 0.0,
+          "min_reward": 239.08339849074753,
+          "max_reward": 239.08339849074753,
+          "mean_steps_survived": 78.0,
+          "episodes": 4
+        }
+      },
+      "mean_reward_overall": 247.431240801312
+    },
+    "delta_vs_untrained": {
+      "stand_up": -2.0034360779019664,
+      "walk_forward": -1.4704528220078714,
+      "turn_left": 2.6688000266726988,
+      "turn_right": -2.9353534198772593
+    }
+  },
+  "alberta_vs_ppo_delta": {
+    "mean_reward_overall": -87.46138342912926,
+    "tasks": {
+      "stand_up": -83.75479244084909,
+      "walk_forward": -86.83588637680214,
+      "turn_left": -73.47983920905031,
+      "turn_right": -105.77501568981555
+    }
+  },
+  "winner_by_mean_reward": "ppo"
+}

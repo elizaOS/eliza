@@ -66,6 +66,7 @@ PHASES: tuple[Phase, ...] = (
         "Bind the Linux fork and Eliza agent to the chip/AP target",
         (
             "software_bsp_external_evidence",
+            "linux_multiarch_gui_parity",
             "linux_fork_chip_boot",
             "cross_fork_agent_payload_static_contract",
             "linux_agent_liveness",
@@ -120,6 +121,44 @@ def inventory_codes(inventory: dict[str, Any]) -> dict[str, list[dict[str, Any]]
     return by_report
 
 
+def source_report_path(source_report: str, fallback_base: Path) -> Path:
+    path = Path(source_report)
+    if path.is_absolute():
+        return path
+    fallback_path = fallback_base / path
+    if fallback_path.is_file():
+        return fallback_path
+    repo_path = ROOT / path
+    if repo_path.is_file():
+        return repo_path
+    return fallback_path
+
+
+def report_findings(
+    rows: list[dict[str, Any]], fallback_base: Path
+) -> dict[str, dict[str, dict[str, Any]]]:
+    reports = sorted({str(row.get("source_report")) for row in rows if row.get("source_report")})
+    by_report: dict[str, dict[str, dict[str, Any]]] = {}
+    for source in reports:
+        path = source_report_path(source, fallback_base)
+        if not path.is_file():
+            continue
+        try:
+            report = read_json(path)
+        except (OSError, json.JSONDecodeError):
+            continue
+        findings = report.get("findings", [])
+        if not isinstance(findings, list):
+            continue
+        for entry in findings:
+            if not isinstance(entry, dict):
+                continue
+            code = entry.get("code")
+            if isinstance(code, str):
+                by_report.setdefault(source, {})[code] = entry
+    return by_report
+
+
 def requirement_rows(matrix: dict[str, Any]) -> dict[str, dict[str, Any]]:
     rows = matrix.get("requirements", [])
     return {
@@ -129,18 +168,49 @@ def requirement_rows(matrix: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def blocker_code_row(
+    *,
+    code: str,
+    source_report: Any,
+    message: Any,
+    next_step: Any,
+    detail: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    row = {
+        "code": code,
+        "source_report": source_report,
+        "message": message,
+        "next_step": next_step,
+    }
+    if detail:
+        for key in (
+            "capture_mode",
+            "capture_command",
+            "suggested_export",
+            "evidence_log",
+            "hint_purpose",
+        ):
+            if key in detail:
+                row[key] = detail[key]
+    return row
+
+
 def phase_row(
     phase: Phase,
     requirements: dict[str, dict[str, Any]],
     blockers_by_report: dict[str, list[dict[str, Any]]],
+    findings_by_report: dict[str, dict[str, dict[str, Any]]],
 ) -> dict[str, Any]:
     req_rows = [requirements[ident] for ident in phase.requirement_ids if ident in requirements]
     open_rows = [row for row in req_rows if row.get("proof_state") not in {"proven"}]
     source_reports = sorted(
         {str(row.get("source_report")) for row in req_rows if row.get("source_report")}
     )
+    open_source_reports = sorted(
+        {str(row.get("source_report")) for row in open_rows if row.get("source_report")}
+    )
     blocker_entries: list[dict[str, Any]] = []
-    for source in source_reports:
+    for source in open_source_reports:
         blocker_entries.extend(blockers_by_report.get(source, []))
     top_codes = []
     seen: set[str] = set()
@@ -150,27 +220,31 @@ def phase_row(
             continue
         seen.add(code)
         top_codes.append(
-            {
-                "code": code,
-                "source_report": entry.get("source_report"),
-                "message": entry.get("message"),
-                "next_step": entry.get("next_step"),
-            }
+            blocker_code_row(
+                code=code,
+                source_report=entry.get("source_report"),
+                message=entry.get("message"),
+                next_step=entry.get("next_step"),
+                detail=entry,
+            )
         )
         if len(top_codes) >= 12:
             break
-    for row in req_rows:
+    for row in open_rows:
+        source_report = str(row.get("source_report") or "")
         for code in row.get("source_finding_codes", []):
             if not isinstance(code, str) or code in seen:
                 continue
             seen.add(code)
+            detail = findings_by_report.get(source_report, {}).get(code)
             top_codes.append(
-                {
-                    "code": code,
-                    "source_report": row.get("source_report"),
-                    "message": row.get("description"),
-                    "next_step": row.get("closure_evidence"),
-                }
+                blocker_code_row(
+                    code=code,
+                    source_report=row.get("source_report"),
+                    message=(detail or {}).get("message", row.get("description")),
+                    next_step=(detail or {}).get("next_step", row.get("closure_evidence")),
+                    detail=detail,
+                )
             )
             if len(top_codes) >= 12:
                 break
@@ -194,8 +268,19 @@ def phase_row(
             }
             for row in req_rows
         ],
+        "open_requirements": [
+            {
+                "id": row.get("id"),
+                "proof_state": row.get("proof_state"),
+                "source_report": row.get("source_report"),
+                "current_status": row.get("current_status"),
+                "description": row.get("description"),
+            }
+            for row in open_rows
+        ],
         "open_requirement_count": len(open_rows),
         "source_reports": source_reports,
+        "open_source_reports": open_source_reports,
         "top_blocker_codes": top_codes,
     }
 
@@ -205,7 +290,8 @@ def build_plan(matrix_path: Path, inventory_path: Path) -> dict[str, Any]:
     inventory = read_json(inventory_path)
     requirements = requirement_rows(matrix)
     blockers = inventory_codes(inventory)
-    phases = [phase_row(phase, requirements, blockers) for phase in PHASES]
+    findings = report_findings(list(requirements.values()), matrix_path.parent)
+    phases = [phase_row(phase, requirements, blockers, findings) for phase in PHASES]
     blocked_phases = [phase for phase in phases if phase["state"] != "closed"]
     first_blocked = blocked_phases[0]["id"] if blocked_phases else None
     return {

@@ -26,6 +26,7 @@ CAPTURE_COMMANDS = {
     ),
     "dma_trace": "adb shell cat /sys/bus/platform/devices/10020000.npu/dma_trace",
 }
+DEFAULT_STATUS_JSON = Path("build/reports/e1_npu_nnapi_proof_readiness.json")
 
 
 def repo_root() -> Path:
@@ -38,7 +39,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--config", type=Path, default=Path("benchmarks/configs/benchmark_plan.json")
     )
     parser.add_argument(
-        "--status-json", type=Path, help="Optional output path for the readiness JSON."
+        "--status-json",
+        type=Path,
+        default=DEFAULT_STATUS_JSON,
+        help=(
+            "Output path for the readiness JSON. Defaults to "
+            "build/reports/e1_npu_nnapi_proof_readiness.json."
+        ),
     )
     parser.add_argument(
         "--allow-host-smoke-tools",
@@ -128,6 +135,44 @@ def adb_state(probe: dict[str, Any] | None) -> str:
     return str(probe.get("blocked_reason", "adb_unavailable"))
 
 
+def blocker_code(blocker: dict[str, Any]) -> str:
+    raw = blocker.get("blocker_id") or blocker.get("blocked_reason") or blocker.get("name")
+    text = str(raw or "nnapi_proof_blocker")
+    cleaned = "".join(char.lower() if char.isalnum() else "_" for char in text)
+    parts = [part for part in cleaned.split("_") if part]
+    return "e1_npu_nnapi_" + ("_".join(parts[:10]) or "proof_blocker")
+
+
+def structured_findings(local_blockers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for blocker in local_blockers:
+        code = blocker_code(blocker)
+        if code in seen:
+            continue
+        seen.add(code)
+        name = str(blocker.get("name", "NNAPI proof blocker"))
+        reason = str(blocker.get("blocked_reason", "unavailable"))
+        findings.append(
+            {
+                "code": code,
+                "severity": "blocker",
+                "message": f"{name} is blocked: {reason}",
+                "evidence": {
+                    "name": blocker.get("name"),
+                    "kind": blocker.get("kind"),
+                    "blocked_reason": blocker.get("blocked_reason"),
+                    "blocker_id": blocker.get("blocker_id"),
+                },
+                "next_step": blocker.get(
+                    "resolution",
+                    "Capture the required e1-npu NNAPI target proof and rerun make e1-npu-nnapi-proof-check.",
+                ),
+            }
+        )
+    return findings
+
+
 def main(argv: list[str]) -> int:
     root = repo_root()
     sys.path.insert(0, str(root))
@@ -211,17 +256,15 @@ def main(argv: list[str]) -> int:
         "proof_artifact": artifact_status,
         "dependencies": dependencies,
         "local_blockers": local_blockers,
+        "findings": structured_findings(local_blockers),
         "adb_probe": probe,
         "required_capture_commands": CAPTURE_COMMANDS,
     }
 
     output = json.dumps(status, indent=2, sort_keys=True) + "\n"
-    if args.status_json:
-        status_path = (
-            args.status_json if args.status_json.is_absolute() else root / args.status_json
-        )
-        status_path.parent.mkdir(parents=True, exist_ok=True)
-        status_path.write_text(output, encoding="utf-8")
+    status_path = args.status_json if args.status_json.is_absolute() else root / args.status_json
+    status_path.parent.mkdir(parents=True, exist_ok=True)
+    status_path.write_text(output, encoding="utf-8")
     print(output, end="")
     return 0 if status["proof_valid"] else 2
 

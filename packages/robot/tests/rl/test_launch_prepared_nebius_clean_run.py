@@ -31,7 +31,15 @@ def test_launch_prepared_clean_run_creates_disk_instance_and_injects_env(
     _write_json(tmp_run / "disk-create.json", {"disk": True})
     _write_json(
         tmp_run / "instance-create.template.json",
-        {"spec": {"boot_disk": {"existing_disk": {"id": "<disk-id>"}}}},
+        {
+            "spec": {
+                "boot_disk": {
+                    "attach_mode": "read_write",
+                    "existing_disk": {"id": "<disk-id>"},
+                },
+                "recovery_policy": "fail",
+            }
+        },
     )
     secret = tmp_path / "secret.env"
     secret.write_text(
@@ -94,6 +102,8 @@ def test_launch_prepared_clean_run_creates_disk_instance_and_injects_env(
     assert report["runtime_env_injected"] is True
     instance_request = json.loads((tmp_run / "instance-create.json").read_text())
     assert instance_request["spec"]["boot_disk"]["existing_disk"]["id"] == "disk-1"
+    assert instance_request["spec"]["boot_disk"]["attach_mode"] == "READ_WRITE"
+    assert instance_request["spec"]["recovery_policy"] == "FAIL"
     ssh_injections = [kwargs.get("input", "") for cmd, kwargs in calls if cmd[0] == "ssh"]
     assert any("NEBIUS_TRAINING_S3_URI=s3://bucket/robot-full-clean-test" in item for item in ssh_injections)
     assert any("AWS_SECRET_ACCESS_KEY=secret" in item for item in ssh_injections)

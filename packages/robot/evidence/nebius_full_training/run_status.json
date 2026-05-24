@@ -37,9 +37,9 @@
     "00_local_preflight.log"
   ],
   "completed_stage_count": 1,
-  "disk_id": "computedisk-e00te9qnayns1bsz15",
+  "disk_id": "computedisk-e00bef82gpgk1qgx5y",
   "failure_marker": false,
-  "instance_id": "computeinstance-e00x4sqmx07qwehxrc",
+  "instance_id": "computeinstance-e00vp47p03jxxtqev3",
   "instance_state": {
     "redacted_report": "evidence/nebius_full_training/instance_state_redacted.json",
     "state": "STOPPED",
@@ -162,7 +162,7 @@
     "stale": true
   },
   "schema": "robot-nebius-run-status-v1",
-  "state": "STOPPED",
+  "state": "launched",
   "success_marker": false,
   "total_stage_count": 6,
   "training_comparison_report": {
@@ -179,11 +179,25 @@
     "ok": false,
     "report": "evidence/nebius_full_training/synced_run/training_comparison_report.json"
   },
-  "payload_sha256": "19d61cd72d34917444dfb55085f1d46a664f8794074934e806072066911c80f2",
-  "payload_bytes": 159760666,
+  "payload_sha256": "b56d418224647e4daba44de1cfe552f858b935ebdeca833679450246f8cbeb4e",
+  "payload_bytes": 161428332,
   "payload_uploaded": true,
-  "payload_uploaded_at": "2026-05-24T02:24:15Z",
-  "payload_refreshed_at": "2026-05-24T02:24:15Z",
-  "payload_refreshed_for": "post_auth_retry_report_audit_refresh",
-  "payload_contains_latest_alberta_report": true
+  "payload_uploaded_at": "2026-05-24T03:53:53Z",
+  "payload_refreshed_at": "2026-05-24T03:53:53Z",
+  "payload_refreshed_for": "include_alberta_sibling_and_cloud_path_fix",
+  "payload_contains_latest_alberta_report": true,
+  "payload_contains_alberta_sibling": true,
+  "compute_created": true,
+  "instance_name": "robot-full-clean-1779556360-h200",
+  "public_ip": "89.169.120.252",
+  "ssh_ready": true,
+  "runtime_env_injected": true,
+  "nebius_auth": {
+    "ok": true,
+    "reason": "nebius_cli_auth_ok",
+    "timeout_seconds": 20,
+    "auth_prompt_detected": false,
+    "redacted": true
+  },
+  "launched_at": "2026-05-24T03:49:59.927667Z"
 }

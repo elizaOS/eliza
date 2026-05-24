@@ -232,8 +232,9 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert torso_morph["kind"] == "section_loft"
     assert torso_morph["section_deltas"][0]["scale_delta"][1]["percent"] < 0
     arm_morph = next(row for row in morph_raw["applied"] if row["part"] == "left_forearm_outer_blade")
-    assert arm_morph["kind"] == "part_fields"
-    assert arm_morph["field_deltas"]["scale"][1]["percent"] < 0
+    assert arm_morph["kind"] == "section_loft"
+    assert arm_morph["section_deltas"][0]["axis"] == "x"
+    assert arm_morph["section_deltas"][0]["scale_delta"][0]["percent"] < 0
     dfm_raw = json.loads(dfm.read_text())
     assert dfm_raw["verdict"] == "prototype-fit-check-ready"
     assert dfm_raw["prototype_fit_ready"] is True
@@ -280,10 +281,34 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert reconstruction_audit_raw["base_reconstructed_assets"] == base_reconstruction_raw["reconstructed_count"]
     assert reconstruction_audit_raw["official_base_step_source_available"] is False
     assert reconstruction_audit_raw["primitive_shell_count"] > 0
-    assert "chest_upper_bridge_armor" in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "left_rear_hip_fairing" in reconstruction_audit_raw["primitive_shell_parts"]
     assert "left_chest_contour_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "left_foot_top_shell" not in reconstruction_audit_raw["primitive_shell_parts"]
     assert "torso_chest_shell" in reconstruction_audit_raw["morph_ready_parts"]
     assert "left_chest_contour_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_foot_top_shell" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_forearm_outer_blade" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_forearm_outer_blade" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_front_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_shin_front_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_front_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "right_shin_front_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
+    assert "rear_back_spine_plate" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "rear_back_spine_plate" not in reconstruction_audit_raw["primitive_shell_parts"]
+    for part_name in [
+        "abdomen_center_armor",
+        "pelvis_center_plate",
+        "pelvis_lower_nose_plate",
+        "chest_upper_bridge_armor",
+        "chest_lower_bridge_armor",
+        "rear_seat_bridge_armor",
+        "left_upper_arm_outer_blade",
+        "right_upper_arm_outer_blade",
+        "left_upper_arm_front_armor",
+        "right_upper_arm_front_armor",
+    ]:
+        assert part_name in reconstruction_audit_raw["morph_ready_parts"]
+        assert part_name not in reconstruction_audit_raw["primitive_shell_parts"]
     assert any(
         row["part"] == "face_shell" and row["reconstruction_status"] == "morph-ready-section-loft"
         for row in reconstruction_audit_raw["parts"]
@@ -316,6 +341,32 @@ def test_tapered_box_primitive_exports_mesh_and_step() -> None:
     assert len(mesh.vertices) == 8
     assert len(mesh.faces) == 12
     assert pytest.approx(mesh.extents[0], rel=0.2) == 0.20
+
+    cadquery = pytest.importorskip("cadquery")
+    solid = generator._cq_shape_from_spec(cadquery, spec)
+    assert solid.Volume() > 0
+
+
+def test_axis_x_section_loft_exports_mesh_and_step() -> None:
+    sys.path.insert(0, str(PKG_ROOT / "scripts"))
+    import generate_unitree_r1_bodykit as generator
+
+    spec = {
+        "name": "test_x_axis_foot_loft",
+        "shape": "section_loft",
+        "center": [0.047, -0.016, -0.050],
+        "axis": "x",
+        "sections": [
+            {"x": -0.096, "scale": [0.012, 0.0035]},
+            {"x": -0.030, "scale": [0.018, 0.0060]},
+            {"x": 0.040, "scale": [0.020, 0.0070]},
+            {"x": 0.096, "scale": [0.011, 0.0035]},
+        ],
+    }
+    mesh = generator._part_mesh(spec, [1.0, 0.3, 0.0, 1.0])
+    assert mesh.extents[0] > mesh.extents[1]
+    assert mesh.extents[0] > mesh.extents[2]
+    assert mesh.extents[0] > 0.18
 
     cadquery = pytest.importorskip("cadquery")
     solid = generator._cq_shape_from_spec(cadquery, spec)

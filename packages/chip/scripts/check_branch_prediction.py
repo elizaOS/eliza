@@ -35,6 +35,9 @@ MANIFEST_PATH = ROOT / "docs/generators/xiangshan/eliza-kunminghu-manifest.json"
 EVIDENCE_PATH = ROOT / "docs/evidence/cpu_ap/branch-prediction-params.json"
 TARGET_2028_MPKI = 4.0
 CBP5_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/cbp5-trace-manifest.json"
+WORKLOAD_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/bpu-workload-trace-manifest.json"
+FULL_PROXY_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json"
+FULL_IO_MEDIA_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -42,6 +45,60 @@ FALSE_CLAIM_STALE_PHRASES = (
     "claims are supported",
     "only the cbp-5 claim is supported",
 )
+REQUIRED_QEMU_WORKLOAD_TRACES = {
+    "agent_decode",
+    "agent_loop",
+    "audio_frames",
+    "browser_layout_proxy",
+    "build_compiler_proxy",
+    "compression_proxy",
+    "crypto_packet_proxy",
+    "database_btree_proxy",
+    "file_tlv",
+    "gc_runtime_proxy",
+    "gpu_irq_fence_scheduler_proxy",
+    "gpu_control_proxy",
+    "gpu_memory_residency_proxy",
+    "http_parser",
+    "kernel_syscall_proxy",
+    "mobile_ui_frame_scheduler_proxy",
+    "nn_delegate_fallback_proxy",
+    "text_log",
+    "video_blocks",
+    "wasm_jit_osr_proxy",
+}
+REQUIRED_PRODUCTION_EXTERNAL_SUITES = {
+    "spec2017_intrate": {
+        "required_for_claims": {"spec2017_claim", "workload_mpki_claim"},
+        "missing_dependency_contains": "SPEC CPU2017",
+    },
+    "aosp_system_server_and_launcher": {
+        "required_for_claims": {"android_claim", "workload_mpki_claim"},
+        "missing_dependency_contains": "AOSP",
+    },
+    "browser_js_engine": {
+        "required_for_claims": {"v8_claim", "workload_mpki_claim"},
+        "missing_dependency_contains": "browser",
+    },
+    "production_gpu_driver_runtime": {
+        "required_for_claims": {"workload_mpki_claim"},
+        "missing_dependency_contains": "GPU",
+    },
+}
+REQUIRED_FULL_PROXY_SHARD_TRACES = {
+    "gpu_memory_residency_proxy",
+    "gpu_irq_fence_scheduler_proxy",
+    "nn_delegate_fallback_proxy",
+    "mobile_ui_frame_scheduler_proxy",
+    "wasm_jit_osr_proxy",
+}
+REQUIRED_FULL_IO_MEDIA_SHARD_TRACES = {
+    "http_parser",
+    "text_log",
+    "file_tlv",
+    "video_blocks",
+    "audio_frames",
+}
 
 # The minimum thresholds the BPU geometry must satisfy to support a 2028
 # phone-class application processor claim. Values come from the SOTA report
@@ -87,6 +144,7 @@ EVIDENCE_SCALARS = {
     "H2P_ENABLE",
     "H2P_ENTRIES",
     "H2P_HIST_LEN",
+    "H2P_LOWCONF_ONLY",
     "H2P_META_CTR_W",
     "H2P_META_ENABLE",
     "H2P_META_ENTRIES",
@@ -419,6 +477,170 @@ def validate_cbp5_trace_manifest(failures: list[str]) -> None:
             failures.append(f"{prefix}.workload_class is invalid")
 
 
+def validate_workload_trace_manifest(
+    failures: list[str],
+    expected_workloads: dict[str, object] | None = None,
+) -> None:
+    path = ROOT / WORKLOAD_TRACE_MANIFEST_REL
+    if not path.is_file():
+        failures.append(f"missing workload trace provenance manifest: {path.relative_to(ROOT)}")
+        return
+    data = read_json_object(path, failures)
+    if data is None:
+        return
+    artifact = str(path.relative_to(ROOT))
+    if data.get("schema") != "eliza.bpu_workload_trace_manifest.v1":
+        failures.append(f"{artifact} schema must be eliza.bpu_workload_trace_manifest.v1")
+    parse_artifact_timestamp(data, artifact, failures)
+    if data.get("trace_dir") != "external/workload-traces":
+        failures.append(f"{artifact} trace_dir must be external/workload-traces")
+        trace_dir = ROOT / "external/workload-traces"
+    else:
+        trace_dir = ROOT / str(data["trace_dir"])
+    if data.get("evidence_class") != "qemu_rv64_workload_trace_manifest":
+        failures.append(f"{artifact} evidence_class must be qemu_rv64_workload_trace_manifest")
+    if data.get("phone_claim_allowed") is not False:
+        failures.append(f"{artifact} phone_claim_allowed must be exactly false")
+    if data.get("release_claim_allowed") is not False:
+        failures.append(f"{artifact} release_claim_allowed must be exactly false")
+    missing = data.get("missing_required_local_trace_names")
+    if missing != []:
+        failures.append(f"{artifact} missing_required_local_trace_names must be empty")
+    required = set(data.get("required_local_trace_names", []))
+    if required != REQUIRED_QEMU_WORKLOAD_TRACES:
+        failures.append(f"{artifact} required_local_trace_names does not match gate list")
+
+    suites = data.get("production_external_suites")
+    if not isinstance(suites, list) or not suites:
+        failures.append(f"{artifact} production_external_suites must be a non-empty list")
+    else:
+        seen_suites: set[str] = set()
+        for index, suite in enumerate(suites):
+            prefix = f"{artifact}.production_external_suites[{index}]"
+            if not isinstance(suite, dict):
+                failures.append(f"{prefix} must be an object")
+                continue
+            name = suite.get("name")
+            if not isinstance(name, str) or not name:
+                failures.append(f"{prefix}.name must be a non-empty string")
+                continue
+            if name in seen_suites:
+                failures.append(f"{prefix}.name duplicates external suite {name}")
+            seen_suites.add(name)
+            expected = REQUIRED_PRODUCTION_EXTERNAL_SUITES.get(name)
+            if expected is None:
+                failures.append(f"{prefix}.name is not in the required external suite list")
+                continue
+            if suite.get("status") != "missing_external_trace":
+                failures.append(f"{prefix}.status must be missing_external_trace")
+            claims = suite.get("required_for_claims")
+            if not isinstance(claims, list) or not claims:
+                failures.append(f"{prefix}.required_for_claims must be a non-empty list")
+            elif set(claims) != expected["required_for_claims"]:
+                failures.append(f"{prefix}.required_for_claims does not match required claims")
+            missing_dependency = suite.get("missing_dependency")
+            if not isinstance(missing_dependency, str) or not missing_dependency.strip():
+                failures.append(f"{prefix}.missing_dependency must be a non-empty string")
+            elif str(expected["missing_dependency_contains"]) not in missing_dependency:
+                failures.append(
+                    f"{prefix}.missing_dependency must describe {expected['missing_dependency_contains']}"
+                )
+        missing_suites = sorted(set(REQUIRED_PRODUCTION_EXTERNAL_SUITES) - seen_suites)
+        extra_suites = sorted(seen_suites - set(REQUIRED_PRODUCTION_EXTERNAL_SUITES))
+        if missing_suites:
+            failures.append(
+                f"{artifact} production_external_suites missing required suites: {missing_suites}"
+            )
+        if extra_suites:
+            failures.append(
+                f"{artifact} production_external_suites has unexpected suites: {extra_suites}"
+            )
+
+    traces = data.get("traces")
+    if not isinstance(traces, list) or not traces:
+        failures.append(f"{artifact} traces must be a non-empty list")
+        return
+    seen: set[str] = set()
+    for index, trace in enumerate(traces):
+        prefix = f"{artifact}.traces[{index}]"
+        if not isinstance(trace, dict):
+            failures.append(f"{prefix} must be an object")
+            continue
+        name = trace.get("name")
+        filename = trace.get("filename")
+        if not isinstance(name, str) or not name:
+            failures.append(f"{prefix}.name must be a non-empty string")
+            continue
+        if name in seen:
+            failures.append(f"{prefix}.name duplicates {name}")
+        seen.add(name)
+        if not isinstance(filename, str) or filename != f"{name}.btrace.json":
+            failures.append(f"{prefix}.filename must be {name}.btrace.json")
+            continue
+        trace_path = trace_dir / filename
+        if not trace_path.is_file():
+            failures.append(f"{prefix} missing trace file: {trace_path.relative_to(ROOT)}")
+            continue
+        if trace.get("bytes") != trace_path.stat().st_size:
+            failures.append(f"{prefix}.bytes does not match staged trace")
+        expected_sha = trace.get("sha256")
+        if not isinstance(expected_sha, str) or len(expected_sha) != 64:
+            failures.append(f"{prefix}.sha256 must be a SHA-256 hex digest")
+        elif sha256_path(trace_path) != expected_sha:
+            failures.append(f"{prefix}.sha256 does not match staged trace")
+        for field in ("instruction_count", "branch_count"):
+            if not isinstance(trace.get(field), int) or trace[field] <= 0:
+                failures.append(f"{prefix}.{field} must be a positive integer")
+        if trace.get("trace_class") != "qemu_rv64_workload":
+            failures.append(f"{prefix}.trace_class must be qemu_rv64_workload")
+        buckets = trace.get("coverage_buckets")
+        if not isinstance(buckets, list) or not buckets:
+            failures.append(f"{prefix}.coverage_buckets must be a non-empty list")
+    missing_trace_names = sorted(REQUIRED_QEMU_WORKLOAD_TRACES - seen)
+    if missing_trace_names:
+        failures.append(f"{artifact} missing required traces: " + ", ".join(missing_trace_names))
+    if expected_workloads is not None:
+        expected_workload_names = set(expected_workloads)
+        missing_from_manifest = sorted(expected_workload_names - seen)
+        extra_in_manifest = sorted(seen - expected_workload_names)
+        if missing_from_manifest:
+            failures.append(
+                f"{artifact} missing workloads from mpki_results_workload_rtl.json: "
+                + ", ".join(missing_from_manifest)
+            )
+        if extra_in_manifest:
+            failures.append(
+                f"{artifact} has traces absent from mpki_results_workload_rtl.json: "
+                + ", ".join(extra_in_manifest)
+            )
+        for trace in traces:
+            if not isinstance(trace, dict):
+                continue
+            name = trace.get("name")
+            if not isinstance(name, str) or name not in expected_workloads:
+                continue
+            workload = expected_workloads[name]
+            if not isinstance(workload, dict):
+                failures.append(f"mpki_results_workload_rtl.json workload {name} must be an object")
+                continue
+            manifest_inst = trace.get("instruction_count")
+            replay_inst = workload.get("source_instruction_count")
+            if replay_inst != manifest_inst:
+                failures.append(
+                    f"mpki_results_workload_rtl.json workload {name} "
+                    f"source_instruction_count {replay_inst!r} does not match "
+                    f"{artifact} instruction_count {manifest_inst!r}"
+                )
+            manifest_branches = trace.get("branch_count")
+            replay_branches = workload.get("source_branch_count")
+            if replay_branches != manifest_branches:
+                failures.append(
+                    f"mpki_results_workload_rtl.json workload {name} "
+                    f"source_branch_count {replay_branches!r} does not match "
+                    f"{artifact} branch_count {manifest_branches!r}"
+                )
+
+
 def numeric_aggregate_mpki(
     data: dict[str, object],
     artifact: str,
@@ -598,6 +820,58 @@ def validate_sweep_evidence(
                 )
 
 
+def validate_full_trace_shard_sweep(
+    failures: list[str],
+    relpath: str,
+    required_traces: set[str],
+) -> None:
+    path = ROOT / relpath
+    artifact = relpath
+    if not path.is_file():
+        failures.append(f"missing full-trace shard sweep: {artifact}")
+        return
+    data = read_json_object(path, failures)
+    if data is None:
+        return
+    validate_sweep_evidence(data, artifact, failures)
+    if data.get("max_branches_per_trace") != 0:
+        failures.append(f"{artifact} max_branches_per_trace must be 0 for full-trace shard")
+    if data.get("window_mode") != "prefix":
+        failures.append(f"{artifact} window_mode must be prefix for full-trace shard")
+    trace_filter = data.get("trace_filter")
+    if set(trace_filter or []) != required_traces:
+        failures.append(f"{artifact} trace_filter must match required full shard")
+    trace_set = data.get("trace_set")
+    if not isinstance(trace_set, list) or not trace_set:
+        failures.append(f"{artifact} trace_set must be a non-empty list")
+    else:
+        names = {row.get("name") for row in trace_set if isinstance(row, dict)}
+        if names != required_traces:
+            failures.append(f"{artifact} trace_set names must match required full shard")
+        for row in trace_set:
+            if not isinstance(row, dict):
+                failures.append(f"{artifact} trace_set rows must be objects")
+                continue
+            if not isinstance(row.get("branches"), int) or row["branches"] <= 0:
+                failures.append(f"{artifact} trace_set row {row.get('name')} branches must be positive")
+            if not isinstance(row.get("instructions"), int) or row["instructions"] <= 0:
+                failures.append(
+                    f"{artifact} trace_set row {row.get('name')} instructions must be positive"
+                )
+    results = data.get("results")
+    if isinstance(results, dict):
+        if not {"baseline", "h2p_off"}.issubset(results):
+            failures.append(f"{artifact} must include baseline and h2p_off configs")
+        baseline = results.get("baseline")
+        h2p_off = results.get("h2p_off")
+        if isinstance(baseline, dict) and isinstance(h2p_off, dict):
+            base_mpki = baseline.get("weighted_mpki")
+            off_mpki = h2p_off.get("weighted_mpki")
+            if isinstance(base_mpki, (int, float)) and isinstance(off_mpki, (int, float)):
+                if float(base_mpki) > float(off_mpki):
+                    failures.append(f"{artifact} baseline must not regress versus h2p_off")
+
+
 def validate_workload_class_bucket_promotion(
     data: dict[str, object],
     artifact: str,
@@ -652,6 +926,89 @@ def validate_workload_class_bucket_promotion(
         )
 
 
+def validate_workload_replay_coverage(
+    data: dict[str, object],
+    artifact: str,
+    failures: list[str],
+) -> None:
+    workloads = data.get("workloads")
+    if not isinstance(workloads, dict) or not workloads:
+        failures.append(f"{artifact} workloads must be a non-empty object")
+        return
+
+    source_branch_total = 0
+    replayed_branch_total = 0
+    source_inst_total = 0
+    replayed_inst_total = 0
+    all_full = True
+    for name, workload in workloads.items():
+        prefix = f"{artifact}.workloads[{name}]"
+        if not isinstance(workload, dict):
+            failures.append(f"{prefix} must be an object")
+            continue
+        source_branches = workload.get("source_branch_count")
+        replayed_branches = workload.get("branch_count")
+        source_inst = workload.get("source_instruction_count")
+        replayed_inst = workload.get("instruction_count")
+        replay_fraction = workload.get("replay_fraction")
+        instruction_replay_fraction = workload.get("instruction_replay_fraction")
+        full_trace_replay = workload.get("full_trace_replay")
+        if not isinstance(source_branches, int) or source_branches <= 0:
+            failures.append(f"{prefix}.source_branch_count must be a positive integer")
+            continue
+        if not isinstance(replayed_branches, int) or replayed_branches <= 0:
+            failures.append(f"{prefix}.branch_count must be a positive integer")
+            continue
+        if replayed_branches > source_branches:
+            failures.append(f"{prefix}.branch_count cannot exceed source_branch_count")
+        expected_fraction = round(replayed_branches / source_branches, 6)
+        if replay_fraction != expected_fraction:
+            failures.append(
+                f"{prefix}.replay_fraction {replay_fraction!r} does not match "
+                f"branch_count/source_branch_count {expected_fraction!r}"
+            )
+        if not isinstance(source_inst, int) or source_inst <= 0:
+            failures.append(f"{prefix}.source_instruction_count must be a positive integer")
+            continue
+        if not isinstance(replayed_inst, int) or replayed_inst <= 0:
+            failures.append(f"{prefix}.instruction_count must be a positive integer")
+            continue
+        expected_inst_fraction = round(replayed_inst / source_inst, 6)
+        if instruction_replay_fraction != expected_inst_fraction:
+            failures.append(
+                f"{prefix}.instruction_replay_fraction {instruction_replay_fraction!r} "
+                f"does not match instruction_count/source_instruction_count "
+                f"{expected_inst_fraction!r}"
+            )
+        expected_full = replayed_branches == source_branches
+        if full_trace_replay is not expected_full:
+            failures.append(f"{prefix}.full_trace_replay must be {expected_full}")
+        all_full = all_full and expected_full
+        source_branch_total += source_branches
+        replayed_branch_total += replayed_branches
+        source_inst_total += source_inst
+        replayed_inst_total += replayed_inst
+
+    expected_top = {
+        "source_branch_count": source_branch_total,
+        "replayed_branch_count": replayed_branch_total,
+        "source_instruction_count": source_inst_total,
+        "replayed_instruction_count": replayed_inst_total,
+        "replay_fraction": round(replayed_branch_total / source_branch_total, 6)
+        if source_branch_total
+        else 0.0,
+        "instruction_replay_fraction": round(replayed_inst_total / source_inst_total, 6)
+        if source_inst_total
+        else 0.0,
+        "full_trace_replay": all_full,
+    }
+    for key, expected in expected_top.items():
+        if data.get(key) != expected:
+            failures.append(f"{artifact} {key} must be {expected!r}")
+    if data.get("branch_replay_cap") is None and data.get("full_trace_replay") is not True:
+        failures.append(f"{artifact} branch_replay_cap null requires full_trace_replay true")
+
+
 def artifact_metric_ref(path: Path, data: dict[str, object] | None) -> dict[str, object]:
     ref: dict[str, object] = {"path": str(path.relative_to(ROOT)), "present": path.is_file()}
     if path.is_file():
@@ -670,6 +1027,19 @@ def artifact_metric_ref(path: Path, data: dict[str, object] | None) -> dict[str,
         aggregate_mpki = ref.get("aggregate_mpki")
         if isinstance(aggregate_mpki, (int, float)):
             ref["target_met"] = float(aggregate_mpki) <= float(target)
+    for key in (
+        "branch_replay_cap",
+        "branch_replay_window_mode",
+        "source_branch_count",
+        "replayed_branch_count",
+        "replay_fraction",
+        "source_instruction_count",
+        "replayed_instruction_count",
+        "instruction_replay_fraction",
+        "full_trace_replay",
+    ):
+        if key in data:
+            ref[key] = data[key]
     policy = data.get("claim_policy")
     if isinstance(policy, dict):
         for key in (
@@ -695,6 +1065,28 @@ def load_json_object_if_present(path: Path) -> dict[str, object] | None:
     except json.JSONDecodeError:
         return None
     return data if isinstance(data, dict) else None
+
+
+def full_trace_shard_sweep_ref(relpath: str, command: str) -> dict[str, object]:
+    path = ROOT / relpath
+    ref: dict[str, object] = {
+        "path": str(path.relative_to(ROOT)),
+        "schema": "eliza.bpu_sweep.v1",
+        "harness": "behavioural-bpu-model",
+        "command": command,
+        "present": path.is_file(),
+    }
+    if not path.is_file():
+        return ref
+    shard_data = load_json_object_if_present(path)
+    ref["sha256"] = sha256_path(path)
+    if shard_data is not None:
+        ref["max_branches_per_trace"] = shard_data.get("max_branches_per_trace")
+        ref["trace_filter"] = shard_data.get("trace_filter")
+        ref["best_config"] = shard_data.get("best_config")
+        ref["best_weighted_mpki"] = shard_data.get("best_weighted_mpki")
+        ref["baseline_weighted_mpki"] = shard_data.get("baseline_weighted_mpki")
+    return ref
 
 
 def evaluate(values: dict[str, int | list[int]]) -> tuple[str, list[str]]:
@@ -738,6 +1130,9 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
         ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
         ROOT / "docs/evidence/cpu_ap/bpu_sweep_results.json",
+        ROOT / WORKLOAD_TRACE_MANIFEST_REL,
+        ROOT / FULL_PROXY_SHARD_SWEEP_REL,
+        ROOT / FULL_IO_MEDIA_SHARD_SWEEP_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -775,6 +1170,16 @@ def evaluate_evidence_artifacts() -> list[str]:
         data = read_json_object(sweep_path, failures)
         if data is not None:
             validate_sweep_evidence(data, "bpu_sweep_results.json", failures)
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_PROXY_SHARD_SWEEP_REL,
+        REQUIRED_FULL_PROXY_SHARD_TRACES,
+    )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_IO_MEDIA_SHARD_SWEEP_REL,
+        REQUIRED_FULL_IO_MEDIA_SHARD_TRACES,
+    )
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
     if cbp5_model_path.is_file():
@@ -832,6 +1237,7 @@ def evaluate_evidence_artifacts() -> list[str]:
 
     workload_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
     workload_trace_dir = ROOT / "external/workload-traces"
+    workloads_for_manifest: dict[str, object] | None = None
     if workload_mpki_path.is_file():
         data = read_json_object(workload_mpki_path, failures)
     else:
@@ -846,7 +1252,10 @@ def evaluate_evidence_artifacts() -> list[str]:
         if data.get("evidence_class") != "qemu_rv64_workload":
             failures.append(f"{artifact} evidence_class must be qemu_rv64_workload")
         validate_bpu_claim_boundary(data, artifact, "qemu_rv64_workload", failures)
+        validate_workload_replay_coverage(data, artifact, failures)
         workloads = data.get("workloads", {})
+        if isinstance(workloads, dict):
+            workloads_for_manifest = workloads
         if workload_trace_dir.is_dir():
             expected = {
                 path.name[: -len(".btrace.json")]
@@ -884,6 +1293,7 @@ def evaluate_evidence_artifacts() -> list[str]:
                 "mpki_results_workload_rtl.json cannot assert full-trace workload MPKI claims "
                 "while branch_replay_cap is non-null"
             )
+    validate_workload_trace_manifest(failures, workloads_for_manifest)
     failures.extend(evaluate_verification_reports())
     return failures
 
@@ -1003,25 +1413,24 @@ def verification_report_refs() -> dict[str, dict[str, object]]:
 def workload_replay_warnings(workload_mpki_path: Path) -> list[dict[str, object]]:
     if not workload_mpki_path.is_file():
         return []
-    workload_trace_dir = ROOT / "external/workload-traces"
-    if not workload_trace_dir.is_dir():
-        return []
     data = json.loads(workload_mpki_path.read_text(encoding="utf-8"))
     workloads = data.get("workloads", {})
     warnings: list[dict[str, object]] = []
-    for trace_path in sorted(workload_trace_dir.glob("*.btrace.json")):
-        name = trace_path.name[: -len(".btrace.json")]
-        workload = workloads.get(name)
+    if not isinstance(workloads, dict):
+        return warnings
+    for name, workload in sorted(workloads.items()):
         if not isinstance(workload, dict):
             continue
-        trace_data = json.loads(trace_path.read_text(encoding="utf-8"))
-        total_branches = trace_data.get("branch_count")
+        total_branches = workload.get("source_branch_count")
         replayed_branches = workload.get("branch_count")
+        replay_fraction = workload.get("replay_fraction")
         if not isinstance(total_branches, int) or total_branches <= 0:
             continue
         if not isinstance(replayed_branches, int):
             continue
-        fraction = replayed_branches / total_branches
+        fraction = float(replay_fraction) if isinstance(replay_fraction, (int, float)) else (
+            replayed_branches / total_branches
+        )
         if fraction < 0.10:
             warnings.append(
                 {
@@ -1076,6 +1485,25 @@ def build_evidence(
         synthetic_mpki_ref["present"] = False
 
     workload_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_workload_rtl.json"
+    workload_trace_manifest_path = ROOT / WORKLOAD_TRACE_MANIFEST_REL
+    workload_trace_manifest_ref: dict[str, object] = {
+        "path": str(workload_trace_manifest_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_workload_trace_manifest.v1",
+        "harness": "qemu-rv64-execlog-trace-index",
+        "command": "make bpu-workload-trace-manifest-check",
+        "present": workload_trace_manifest_path.is_file(),
+    }
+    if workload_trace_manifest_path.is_file():
+        manifest_data = load_json_object_if_present(workload_trace_manifest_path)
+        workload_trace_manifest_ref["sha256"] = sha256_path(workload_trace_manifest_path)
+        workload_trace_manifest_ref["trace_count"] = manifest_data.get("trace_count")
+        workload_trace_manifest_ref["total_instruction_count"] = manifest_data.get(
+            "total_instruction_count"
+        )
+        workload_trace_manifest_ref["total_branch_count"] = manifest_data.get("total_branch_count")
+        workload_trace_manifest_ref["production_external_suites"] = manifest_data.get(
+            "production_external_suites"
+        )
     workload_mpki_ref: dict[str, str | bool] = {
         "path": str(workload_mpki_path.relative_to(ROOT)),
         "schema": "eliza.bpu_mpki.v1",
@@ -1118,6 +1546,15 @@ def build_evidence(
         sweep_ref["max_branches_per_trace"] = sweep_data.get("max_branches_per_trace")
         sweep_ref["window_mode"] = sweep_data.get("window_mode")
         sweep_ref["ittage_evidence_counters"] = sweep_data.get("ittage_evidence_counters")
+
+    full_proxy_shard_ref = full_trace_shard_sweep_ref(
+        FULL_PROXY_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-proxy-shard",
+    )
+    full_io_media_shard_ref = full_trace_shard_sweep_ref(
+        FULL_IO_MEDIA_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-io-media-shard",
+    )
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
@@ -1192,7 +1629,10 @@ def build_evidence(
         },
         "synthetic_mpki_results_ref": synthetic_mpki_ref,
         "workload_mpki_results_ref": workload_mpki_ref,
+        "workload_trace_manifest_ref": workload_trace_manifest_ref,
         "sweep_results_ref": sweep_ref,
+        "full_proxy_shard_sweep_ref": full_proxy_shard_ref,
+        "full_io_media_shard_sweep_ref": full_io_media_shard_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

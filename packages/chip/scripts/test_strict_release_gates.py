@@ -111,13 +111,13 @@ def main() -> int:
             required_tokens=("STATUS: BLOCKED sota_parity",),
         ),
         Check(
-            name="software bsp evidence blocks missing external Android/Linux logs",
+            name="software bsp evidence blocks missing external boot and Android logs",
             command=["python3", "scripts/check_software_bsp.py", "all", "--require-evidence"],
             expected_codes={1},
             required_tokens=(
                 "aosp BSP BLOCKED",
                 "cuttlefish_riscv64_smoke.log",
-                "linux BSP BLOCKED",
+                "u-boot BSP BLOCKED",
             ),
         ),
         Check(

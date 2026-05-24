@@ -1,6 +1,6 @@
 {
   "schema": "eliza.os.linux.multiarch_boot_matrix.v1",
-  "updated_at": "2026-05-23T18:35:59Z",
+  "updated_at": "2026-05-24T05:22:00Z",
   "claim_boundary": "current_repository_evidence_matrix_not_physical_silicon_claim",
   "debian_riscv64_port_contract": {
     "architecture": "riscv64",
@@ -45,21 +45,21 @@
     },
     {
       "arch": "riscv64",
-      "status": "blocked-current-iso-boot",
-      "iso": "out/elizaos-linux-riscv64-default-20260523T173927Z.iso",
-      "sha256": "80b52c4a1e6dca62fad97274a61d31de1bab130e7c4ef21ed6b48ed400b8ea21",
+      "status": "candidate",
+      "iso": "out/elizaos-linux-riscv64-default-20260524T030430Z.iso",
+      "sha256": "0816de4b5b8ea33698a22d07e42d51b756b70a5b1831b2640e640b5b30aed1a2",
       "evidence": "evidence/qemu_virt_boot.json",
       "proves": [
         "Debian live ISO boots under qemu-system-riscv64 -M virt through EDK2/OpenSBI",
         "GRUB EFI path is visible in transcript",
-        "fresh riscv64 ISO enters OpenSBI under repo-pinned qemu-system-riscv64 -M virt",
-        "fresh riscv64 ISO enters EDK2 UEFI firmware",
-        "fresh riscv64 ISO reaches GRUB EFI menu",
-        "fresh riscv64 ISO starts the Linux EFI stub",
-        "kernel serial transcript includes Linux version"
+        "ISO contains Debian riscv64 GRUB EFI boot artifacts",
+        "kernel serial transcript includes Linux version",
+        "first boot completed",
+        "guest-side curl reached http://127.0.0.1:31337/api/health",
+        "agent readiness marker reported",
+        "terminal TUI smoke marker reported"
       ],
       "gaps": [
-        "current riscv64 ISO reaches Linux under repo-pinned QEMU, but agent health and TUI readiness remain blocked; rebuild from the current staged runtime artifacts and recapture before candidate promotion",
         "not E1 chip/AP target evidence",
         "not physical silicon evidence"
       ],
@@ -73,13 +73,17 @@
     },
     {
       "arch": "arm64",
-      "status": "missing-current-iso-evidence",
-      "iso": null,
-      "sha256": null,
+      "status": "blocked-current-iso-boot",
+      "iso": "out/elizaos-linux-arm64-default-20260524T043628Z.iso",
+      "sha256": "9a6f6ef0c555855a035daeeae8e0816020659f5b6f676295c800e86c5a1ea934",
       "evidence": null,
-      "proves": [],
+      "proves": [
+        "Debian arm64 live ISO builds with linux-image-arm64 and GRUB EFI packages",
+        "ISO static GUI/kiosk payload check passed"
+      ],
       "gaps": [
-        "arm64 ISO build and boot evidence still need to be collected"
+        "arm64 QEMU boot evidence still needs to be collected",
+        "guest-side agent health and terminal TUI readiness still need arm64 runtime evidence"
       ],
       "runtime_artifacts": {
         "bun": "artifacts/arm64/bun",

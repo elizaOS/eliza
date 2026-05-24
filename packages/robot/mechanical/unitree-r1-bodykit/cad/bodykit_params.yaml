@@ -83,12 +83,35 @@ morphs:
       chest_outer_y_scale: 1.12
     applied_parts:
       - torso_chest_shell
+      - chest_upper_bridge_armor
+      - chest_lower_bridge_armor
       - left_chest_contour_armor
       - right_chest_contour_armor
       - left_chest_outer_armor_skin
       - right_chest_outer_armor_skin
+      - abdomen_center_armor
       - pelvis_front_shell
+      - pelvis_center_plate
+      - pelvis_lower_nose_plate
+      - rear_back_spine_plate
+      - rear_seat_bridge_armor
+      - left_upper_arm_outer_blade
+      - left_upper_arm_front_armor
+      - right_upper_arm_outer_blade
+      - right_upper_arm_front_armor
+      - left_thigh_front_armor
+      - left_thigh_side_armor
+      - right_thigh_front_armor
+      - right_thigh_side_armor
+      - left_foot_toe_armor
+      - left_foot_sole_black
+      - left_foot_heel_black
+      - right_foot_top_shell
+      - right_foot_toe_armor
+      - right_foot_sole_black
+      - right_foot_heel_black
       - left_shin_shell
+      - left_shin_front_armor
       - left_forearm_outer_blade
       - right_forearm_outer_blade
       - left_wrist_separated_cuff
@@ -100,11 +123,36 @@ morphs:
           - {z: -0.040, scale: [0.050, 0.064]}
           - {z: 0.045, scale: [0.063, 0.078]}
           - {z: 0.120, scale: [0.039, 0.058]}
+      chest_upper_bridge_armor:
+        sections:
+          - {y: -0.066, scale: [0.0058, 0.0058]}
+          - {y: 0.000, scale: [0.0070, 0.0070]}
+          - {y: 0.066, scale: [0.0058, 0.0058]}
+      chest_lower_bridge_armor:
+        sections:
+          - {y: -0.057, scale: [0.0052, 0.0052]}
+          - {y: 0.000, scale: [0.0062, 0.0062]}
+          - {y: 0.057, scale: [0.0052, 0.0052]}
       pelvis_front_shell:
         sections:
           - {z: -0.050, scale: [0.025, 0.029]}
           - {z: -0.010, scale: [0.043, 0.047]}
           - {z: 0.050, scale: [0.037, 0.042]}
+      abdomen_center_armor:
+        sections:
+          - {z: -0.030, scale: [0.0020, 0.0075]}
+          - {z: 0.000, scale: [0.0024, 0.0090]}
+          - {z: 0.030, scale: [0.0020, 0.0075]}
+      pelvis_center_plate:
+        sections:
+          - {z: -0.028, scale: [0.0028, 0.011]}
+          - {z: 0.000, scale: [0.0034, 0.014]}
+          - {z: 0.028, scale: [0.0028, 0.011]}
+      pelvis_lower_nose_plate:
+        sections:
+          - {z: -0.054, scale: [0.010, 0.010]}
+          - {z: 0.000, scale: [0.014, 0.014]}
+          - {z: 0.054, scale: [0.010, 0.010]}
       left_chest_contour_armor:
         center: [0.122, 0.064, 0.205]
         sections:
@@ -135,16 +183,114 @@ morphs:
           - {z: -0.078, scale: [0.013, 0.0035]}
           - {z: 0.000, scale: [0.018, 0.005]}
           - {z: 0.078, scale: [0.013, 0.0035]}
-    part_targets:
+      left_shin_front_armor:
+        center: [0.066, -0.024, -0.168]
+        sections:
+          - {z: -0.056, scale: [0.0026, 0.0055]}
+          - {z: 0.000, scale: [0.0042, 0.0080]}
+          - {z: 0.056, scale: [0.0026, 0.0055]}
+      rear_back_spine_plate:
+        sections:
+          - {z: -0.108, scale: [0.0100, 0.032]}
+          - {z: 0.000, scale: [0.0115, 0.038]}
+          - {z: 0.108, scale: [0.0100, 0.032]}
+      rear_seat_bridge_armor:
+        sections:
+          - {y: -0.056, scale: [0.011, 0.011]}
+          - {y: 0.000, scale: [0.013, 0.013]}
+          - {y: 0.056, scale: [0.011, 0.011]}
+      left_upper_arm_outer_blade:
+        sections:
+          - {z: -0.034, scale: [0.0065, 0.0022]}
+          - {z: 0.000, scale: [0.0080, 0.0026]}
+          - {z: 0.034, scale: [0.0065, 0.0022]}
+      left_upper_arm_front_armor:
+        sections:
+          - {z: -0.022, scale: [0.0032, 0.0060]}
+          - {z: 0.000, scale: [0.0040, 0.0075]}
+          - {z: 0.022, scale: [0.0032, 0.0060]}
+      right_upper_arm_outer_blade:
+        sections:
+          - {z: -0.034, scale: [0.0065, 0.0022]}
+          - {z: 0.000, scale: [0.0080, 0.0026]}
+          - {z: 0.034, scale: [0.0065, 0.0022]}
+      right_upper_arm_front_armor:
+        sections:
+          - {z: -0.022, scale: [0.0032, 0.0060]}
+          - {z: 0.000, scale: [0.0040, 0.0075]}
+          - {z: 0.022, scale: [0.0032, 0.0060]}
+      left_thigh_front_armor:
+        sections:
+          - {z: -0.060, scale: [0.0065, 0.014]}
+          - {z: 0.000, scale: [0.0080, 0.017]}
+          - {z: 0.060, scale: [0.0065, 0.014]}
+      left_thigh_side_armor:
+        sections:
+          - {z: -0.038, scale: [0.011, 0.0028]}
+          - {z: 0.000, scale: [0.013, 0.0035]}
+          - {z: 0.038, scale: [0.011, 0.0028]}
+      right_thigh_front_armor:
+        sections:
+          - {z: -0.040, scale: [0.0034, 0.0042]}
+          - {z: 0.000, scale: [0.0042, 0.0052]}
+          - {z: 0.040, scale: [0.0034, 0.0042]}
+      right_thigh_side_armor:
+        sections:
+          - {z: -0.032, scale: [0.0095, 0.0024]}
+          - {z: 0.000, scale: [0.0115, 0.0030]}
+          - {z: 0.032, scale: [0.0095, 0.0024]}
+      left_foot_toe_armor:
+        sections:
+          - {z: -0.0025, scale: [0.0026, 0.0026]}
+          - {z: 0.0000, scale: [0.0032, 0.0032]}
+          - {z: 0.0025, scale: [0.0026, 0.0026]}
+      left_foot_sole_black:
+        sections:
+          - {z: -0.0030, scale: [0.064, 0.022]}
+          - {z: 0.0000, scale: [0.068, 0.024]}
+          - {z: 0.0030, scale: [0.058, 0.019]}
+      left_foot_heel_black:
+        sections:
+          - {z: -0.008, scale: [0.010, 0.012]}
+          - {z: 0.000, scale: [0.012, 0.014]}
+          - {z: 0.008, scale: [0.009, 0.011]}
+      right_foot_top_shell:
+        sections:
+          - {z: -0.010, scale: [0.072, 0.022]}
+          - {z: 0.000, scale: [0.074, 0.023]}
+          - {z: 0.010, scale: [0.058, 0.018]}
+      right_foot_toe_armor:
+        sections:
+          - {z: -0.004, scale: [0.0055, 0.0055]}
+          - {z: 0.000, scale: [0.0065, 0.0065]}
+          - {z: 0.004, scale: [0.0055, 0.0055]}
+      right_foot_sole_black:
+        sections:
+          - {z: -0.0035, scale: [0.070, 0.024]}
+          - {z: 0.000, scale: [0.074, 0.026]}
+          - {z: 0.0035, scale: [0.062, 0.020]}
+      right_foot_heel_black:
+        sections:
+          - {z: -0.008, scale: [0.010, 0.012]}
+          - {z: 0.000, scale: [0.012, 0.014]}
+          - {z: 0.008, scale: [0.009, 0.011]}
       left_forearm_outer_blade:
-        scale: [0.026, 0.0015, 0.0042]
+        sections:
+          - {x: -0.026, scale: [0.0012, 0.0035]}
+          - {x: 0.000, scale: [0.0015, 0.0042]}
+          - {x: 0.026, scale: [0.0011, 0.0032]}
       right_forearm_outer_blade:
-        scale: [0.028, 0.0020, 0.0050]
+        sections:
+          - {x: -0.028, scale: [0.0016, 0.0042]}
+          - {x: 0.000, scale: [0.0020, 0.0050]}
+          - {x: 0.028, scale: [0.0015, 0.0038]}
+    part_targets:
       left_wrist_separated_cuff:
         radius: 0.0145
         tube_radius: 0.0016
         scale: [0.92, 0.42, 0.42]
       right_wrist_separated_cuff:
+        center: [0.070, 0.020, -0.006]
         radius: 0.0155
         tube_radius: 0.0018
         scale: [0.92, 0.48, 0.48]
@@ -168,20 +314,28 @@ parts:
     body: torso_link
     role: armor
     material: orange_armor
-    shape: capsule_y
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
     center: [0.112, 0.0, 0.232]
-    radius: 0.009
-    height: 0.132
+    axis: y
+    sections:
+      - {y: -0.066, scale: [0.0075, 0.0075]}
+      - {y: 0.000, scale: [0.0090, 0.0090]}
+      - {y: 0.066, scale: [0.0075, 0.0075]}
   - name: chest_lower_bridge_armor
     body: torso_link
     role: armor
     material: orange_armor
-    shape: capsule_y
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
     center: [0.106, 0.0, 0.158]
-    radius: 0.008
-    height: 0.114
+    axis: y
+    sections:
+      - {y: -0.057, scale: [0.0068, 0.0068]}
+      - {y: 0.000, scale: [0.0080, 0.0080]}
+      - {y: 0.057, scale: [0.0068, 0.0068]}
   - name: chest_sensor_black
     body: torso_link
     role: face_detail
@@ -273,10 +427,15 @@ parts:
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [torso_collision.stl, waist_yaw_link.STL]
     center: [-0.096, 0.0, 0.154]
-    scale: [0.014, 0.044, 0.112]
+    axis: z
+    sections:
+      - {z: -0.112, scale: [0.012, 0.036]}
+      - {z: 0.000, scale: [0.014, 0.044]}
+      - {z: 0.112, scale: [0.012, 0.036]}
   - name: rear_spine_black_channel
     body: torso_link
     role: face_detail
@@ -315,10 +474,15 @@ parts:
     body: torso_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [waist_yaw_link.STL, waist_roll_link.STL, torso_collision.stl]
     center: [0.030, 0.002, 0.062]
-    scale: [0.003, 0.010, 0.032]
+    axis: z
+    sections:
+      - {z: -0.032, scale: [0.0025, 0.0085]}
+      - {z: 0.000, scale: [0.0030, 0.0100]}
+      - {z: 0.032, scale: [0.0025, 0.0085]}
   - name: abdomen_panel_rib_1
     body: torso_link
     role: face_detail
@@ -350,28 +514,41 @@ parts:
     body: pelvis
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [pelvis_link.STL]
     center: [0.106, 0.0, -0.046]
-    scale: [0.004, 0.016, 0.030]
+    axis: z
+    sections:
+      - {z: -0.030, scale: [0.0035, 0.013]}
+      - {z: 0.000, scale: [0.0040, 0.016]}
+      - {z: 0.030, scale: [0.0035, 0.013]}
   - name: pelvis_lower_nose_plate
     body: pelvis
     role: armor
     material: orange_armor
-    shape: capsule_z
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [pelvis_link.STL]
     center: [0.114, 0.0, -0.095]
-    radius: 0.017
-    height: 0.060
+    axis: z
+    sections:
+      - {z: -0.030, scale: [0.012, 0.012]}
+      - {z: 0.000, scale: [0.017, 0.017]}
+      - {z: 0.030, scale: [0.012, 0.012]}
   - name: rear_seat_bridge_armor
     body: pelvis
     role: armor
     material: orange_armor
-    shape: capsule_y
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [pelvis_link.STL]
     center: [-0.078, 0.0, -0.080]
-    radius: 0.016
-    height: 0.112
+    axis: y
+    sections:
+      - {y: -0.056, scale: [0.013, 0.013]}
+      - {y: 0.000, scale: [0.016, 0.016]}
+      - {y: 0.056, scale: [0.013, 0.013]}
   - name: left_rear_hip_fairing
     body: pelvis
     role: armor
@@ -523,18 +700,28 @@ parts:
     body: left_shoulder_yaw_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_shoulder_yaw_link.STL]
     center: [0.018, 0.034, -0.068]
-    scale: [0.010, 0.0035, 0.034]
+    axis: z
+    sections:
+      - {z: -0.034, scale: [0.0080, 0.0028]}
+      - {z: 0.000, scale: [0.0100, 0.0035]}
+      - {z: 0.034, scale: [0.0080, 0.0028]}
   - name: left_upper_arm_front_armor
     body: left_shoulder_yaw_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_shoulder_yaw_link.STL]
     center: [0.042, 0.006, -0.044]
-    scale: [0.005, 0.009, 0.022]
+    axis: z
+    sections:
+      - {z: -0.022, scale: [0.0038, 0.0070]}
+      - {z: 0.000, scale: [0.0050, 0.0090]}
+      - {z: 0.022, scale: [0.0038, 0.0070]}
   - name: right_upper_arm_shell
     body: right_shoulder_yaw_link
     role: underbody
@@ -552,18 +739,28 @@ parts:
     body: right_shoulder_yaw_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_shoulder_yaw_link.STL]
     center: [0.018, -0.034, -0.068]
-    scale: [0.010, 0.0035, 0.034]
+    axis: z
+    sections:
+      - {z: -0.034, scale: [0.0080, 0.0028]}
+      - {z: 0.000, scale: [0.0100, 0.0035]}
+      - {z: 0.034, scale: [0.0080, 0.0028]}
   - name: right_upper_arm_front_armor
     body: right_shoulder_yaw_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_shoulder_yaw_link.STL]
     center: [0.042, -0.006, -0.044]
-    scale: [0.005, 0.009, 0.022]
+    axis: z
+    sections:
+      - {z: -0.022, scale: [0.0038, 0.0070]}
+      - {z: 0.000, scale: [0.0050, 0.0090]}
+      - {z: 0.022, scale: [0.0038, 0.0070]}
   - name: left_forearm_shell
     body: left_elbow_link
     role: underbody
@@ -581,10 +778,15 @@ parts:
     body: left_elbow_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_elbow_link.STL]
     center: [0.032, -0.030, -0.004]
-    scale: [0.026, 0.0030, 0.0065]
+    axis: x
+    sections:
+      - {x: -0.026, scale: [0.0025, 0.0050]}
+      - {x: 0.000, scale: [0.0035, 0.0070]}
+      - {x: 0.026, scale: [0.0022, 0.0048]}
   - name: left_forearm_inner_detail
     body: left_elbow_link
     role: face_detail
@@ -619,10 +821,15 @@ parts:
     body: right_elbow_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_elbow_link.STL]
-    center: [0.024, 0.032, -0.004]
-    scale: [0.028, 0.0035, 0.007]
+    center: [0.024, 0.028, -0.004]
+    axis: x
+    sections:
+      - {x: -0.028, scale: [0.0028, 0.0052]}
+      - {x: 0.000, scale: [0.0035, 0.0070]}
+      - {x: 0.028, scale: [0.0023, 0.0050]}
   - name: right_forearm_inner_detail
     body: right_elbow_link
     role: face_detail
@@ -657,18 +864,28 @@ parts:
     body: left_hip_yaw_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_hip_yaw_link.STL]
     center: [0.056, -0.018, -0.070]
-    scale: [0.010, 0.020, 0.064]
+    axis: z
+    sections:
+      - {z: -0.064, scale: [0.0080, 0.016]}
+      - {z: 0.000, scale: [0.0100, 0.020]}
+      - {z: 0.064, scale: [0.0080, 0.016]}
   - name: left_thigh_side_armor
     body: left_hip_yaw_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_hip_yaw_link.STL]
     center: [-0.004, -0.052, -0.070]
-    scale: [0.016, 0.0045, 0.040]
+    axis: z
+    sections:
+      - {z: -0.040, scale: [0.013, 0.0035]}
+      - {z: 0.000, scale: [0.016, 0.0045]}
+      - {z: 0.040, scale: [0.013, 0.0035]}
   - name: right_thigh_shell
     body: right_hip_yaw_link
     role: underbody
@@ -686,18 +903,28 @@ parts:
     body: right_hip_yaw_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_hip_yaw_link.STL]
     center: [0.043, 0.032, -0.074]
-    scale: [0.005, 0.0065, 0.042]
+    axis: z
+    sections:
+      - {z: -0.042, scale: [0.0040, 0.0050]}
+      - {z: 0.000, scale: [0.0050, 0.0065]}
+      - {z: 0.042, scale: [0.0040, 0.0050]}
   - name: right_thigh_side_armor
     body: right_hip_yaw_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_hip_yaw_link.STL]
     center: [-0.008, 0.058, -0.076]
-    scale: [0.014, 0.004, 0.034]
+    axis: z
+    sections:
+      - {z: -0.034, scale: [0.011, 0.0030]}
+      - {z: 0.000, scale: [0.014, 0.0040]}
+      - {z: 0.034, scale: [0.011, 0.0030]}
   - name: left_shin_shell
     body: left_knee_link
     role: underbody
@@ -715,10 +942,15 @@ parts:
     body: left_knee_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_knee_link.STL]
     center: [0.066, -0.024, -0.168]
-    scale: [0.0075, 0.014, 0.100]
+    axis: z
+    sections:
+      - {z: -0.064, scale: [0.0035, 0.0075]}
+      - {z: 0.000, scale: [0.0052, 0.0105]}
+      - {z: 0.064, scale: [0.0035, 0.0075]}
   - name: left_shin_side_armor
     body: left_knee_link
     role: armor
@@ -744,10 +976,15 @@ parts:
     body: right_knee_link
     role: armor
     material: orange_armor
-    shape: box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_knee_link.STL]
     center: [0.071, 0.020, -0.172]
-    scale: [0.006, 0.011, 0.090]
+    axis: z
+    sections:
+      - {z: -0.060, scale: [0.0034, 0.0068]}
+      - {z: 0.000, scale: [0.0050, 0.0095]}
+      - {z: 0.060, scale: [0.0034, 0.0068]}
   - name: right_shin_side_armor
     body: right_knee_link
     role: armor
@@ -763,7 +1000,7 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
-    center: [0.047, -0.016, -0.046]
+    center: [0.047, -0.016, -0.050]
     axis: x
     sections:
       - {x: -0.096, scale: [0.012, 0.0035]}
@@ -774,60 +1011,90 @@ parts:
     body: left_ankle_roll_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
     center: [0.132, 0.007, -0.024]
-    scale: [0.004, 0.004, 0.0025]
+    axis: z
+    sections:
+      - {z: -0.0025, scale: [0.0032, 0.0032]}
+      - {z: 0.0000, scale: [0.0040, 0.0040]}
+      - {z: 0.0025, scale: [0.0032, 0.0032]}
   - name: left_foot_sole_black
     body: left_ankle_roll_link
     role: underbody
     material: black_underbody
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
-    center: [0.040, -0.003, -0.044]
-    scale: [0.112, 0.036, 0.0045]
-    top_scale: [0.098, 0.030]
+    center: [0.057, -0.008, -0.062]
+    axis: z
+    sections:
+      - {z: -0.0045, scale: [0.108, 0.034]}
+      - {z: 0.0000, scale: [0.112, 0.036]}
+      - {z: 0.0045, scale: [0.094, 0.028]}
   - name: left_foot_heel_black
     body: left_ankle_roll_link
     role: underbody
     material: black_underbody
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [left_ankle_roll_link.STL]
-    center: [-0.028, 0.0, -0.053]
-    scale: [0.020, 0.025, 0.013]
-    top_scale: [0.015, 0.019]
+    center: [-0.032, 0.0, -0.064]
+    axis: z
+    sections:
+      - {z: -0.013, scale: [0.018, 0.022]}
+      - {z: 0.000, scale: [0.020, 0.025]}
+      - {z: 0.013, scale: [0.014, 0.018]}
   - name: right_foot_top_shell
     body: right_ankle_roll_link
     role: armor
     material: orange_armor
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [0.047, 0.0, -0.025]
-    scale: [0.100, 0.033, 0.012]
-    top_scale: [0.073, 0.023]
+    center: [0.040, 0.0, -0.026]
+    axis: z
+    sections:
+      - {z: -0.012, scale: [0.094, 0.030]}
+      - {z: 0.000, scale: [0.086, 0.027]}
+      - {z: 0.012, scale: [0.069, 0.021]}
   - name: right_foot_toe_armor
     body: right_ankle_roll_link
     role: armor
     material: orange_armor
-    shape: ellipsoid
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [0.132, 0.0, -0.020]
-    scale: [0.010, 0.010, 0.005]
+    center: [0.126, 0.0, -0.016]
+    axis: z
+    sections:
+      - {z: -0.005, scale: [0.0085, 0.0085]}
+      - {z: 0.000, scale: [0.0100, 0.0100]}
+      - {z: 0.005, scale: [0.0085, 0.0085]}
   - name: right_foot_sole_black
     body: right_ankle_roll_link
     role: underbody
     material: black_underbody
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [0.038, -0.004, -0.045]
-    scale: [0.108, 0.034, 0.004]
-    top_scale: [0.094, 0.028]
+    center: [0.064, -0.004, -0.056]
+    axis: z
+    sections:
+      - {z: -0.004, scale: [0.104, 0.032]}
+      - {z: 0.000, scale: [0.108, 0.034]}
+      - {z: 0.004, scale: [0.090, 0.026]}
   - name: right_foot_heel_black
     body: right_ankle_roll_link
     role: underbody
     material: black_underbody
-    shape: tapered_box
+    shape: section_loft
+    source_kind: parametric_loft
     oem_baseline_meshes: [right_ankle_roll_link.STL]
-    center: [-0.042, -0.004, -0.048]
-    scale: [0.016, 0.020, 0.010]
-    top_scale: [0.013, 0.017]
+    center: [-0.031, -0.004, -0.058]
+    axis: z
+    sections:
+      - {z: -0.010, scale: [0.015, 0.018]}
+      - {z: 0.000, scale: [0.016, 0.020]}
+      - {z: 0.010, scale: [0.012, 0.016]}

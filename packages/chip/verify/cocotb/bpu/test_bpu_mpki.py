@@ -565,6 +565,14 @@ async def bpu_mpki_synthetic_workload_sweep(dut):
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "harness": "cocotb-rtl-bpu_top",
         "rtl_top": "bpu_top",
+        "evidence_class": "synthetic_planning_only",
+        "claim_boundary": (
+            "synthetic_planning_only RTL evidence exercises branch-predictor "
+            "control shapes only; it is not SPEC2017, Android, JavaScript-engine, "
+            "phone, or release evidence."
+        ),
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
         "instructions_per_branch_assumption": INSTRUCTIONS_PER_BRANCH,
         "cbp5_tage_sc_l_reference_mpki": CBP5_TAGE_SC_L_REFERENCE_MPKI,
         "target_2028_mpki": TARGET_2028_MPKI,
@@ -738,6 +746,12 @@ async def bpu_mpki_cbp5_real_traces(dut):
         "harness": "cocotb-rtl-bpu_top",
         "rtl_top": "bpu_top",
         "evidence_class": "cbp5_train_traces_only",
+        "claim_boundary": (
+            "cbp5_train_traces_only RTL evidence is not SPEC2017, Android, "
+            "JavaScript-engine, phone, or release evidence."
+        ),
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
         "cbp5_tage_sc_l_reference_mpki": CBP5_TAGE_SC_L_REFERENCE_MPKI,
         "target_2028_mpki": TARGET_2028_MPKI,
         "aggregate": {
@@ -938,12 +952,29 @@ async def bpu_mpki_workload_traces(dut):
         result["trace_class"] = "qemu_rv64_workload"
         result["source_branch_count"] = source_branch_count
         result["source_instruction_count"] = source_instruction_count
+        replay_fraction = (
+            len(branches) / source_branch_count if source_branch_count else 0.0
+        )
+        instruction_replay_fraction = (
+            instruction_count / source_instruction_count if source_instruction_count else 0.0
+        )
+        result["replay_fraction"] = round(replay_fraction, 6)
+        result["instruction_replay_fraction"] = round(instruction_replay_fraction, 6)
+        result["full_trace_replay"] = bool(source_branch_count == len(branches))
         result.update(replay_window)
         results[name] = result
 
     aggregate_inst = sum(r["instruction_count"] for r in results.values())
     aggregate_misp = sum(r["misprediction_count"] for r in results.values())
     aggregate_branches = sum(r["branch_count"] for r in results.values())
+    aggregate_source_inst = sum(r["source_instruction_count"] for r in results.values())
+    aggregate_source_branches = sum(r["source_branch_count"] for r in results.values())
+    aggregate_replay_fraction = (
+        aggregate_branches / aggregate_source_branches if aggregate_source_branches else 0.0
+    )
+    aggregate_instruction_replay_fraction = (
+        aggregate_inst / aggregate_source_inst if aggregate_source_inst else 0.0
+    )
     aggregate_mpki = (aggregate_misp * 1000.0 / aggregate_inst) if aggregate_inst else 0.0
 
     envelope = {
@@ -958,6 +989,15 @@ async def bpu_mpki_workload_traces(dut):
         "instructions_per_branch_assumption": None,
         "branch_replay_cap": _workload_branch_cap() or None,
         "branch_replay_window_mode": _workload_window_mode(),
+        "source_branch_count": aggregate_source_branches,
+        "source_instruction_count": aggregate_source_inst,
+        "replayed_branch_count": aggregate_branches,
+        "replayed_instruction_count": aggregate_inst,
+        "replay_fraction": round(aggregate_replay_fraction, 6),
+        "instruction_replay_fraction": round(aggregate_instruction_replay_fraction, 6),
+        "full_trace_replay": bool(
+            aggregate_source_branches > 0 and aggregate_branches == aggregate_source_branches
+        ),
         "aggregate": {
             "branch_count": aggregate_branches,
             "instruction_count": aggregate_inst,
