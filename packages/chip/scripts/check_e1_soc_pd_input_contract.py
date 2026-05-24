@@ -362,16 +362,27 @@ def build_report() -> dict[str, Any]:
             }
         )
     expected_clock_period_raw = config.get("CLOCK_PERIOD")
-    expected_clock_period = (
-        float(expected_clock_period_raw)
-        if isinstance(expected_clock_period_raw, (int, float, str))
-        else None
-    )
-    if clock_period != expected_clock_period:
+    expected_clock_period: float | None = None
+    if isinstance(expected_clock_period_raw, (int, float, str)):
+        try:
+            expected_clock_period = float(expected_clock_period_raw)
+        except (TypeError, ValueError):
+            expected_clock_period = None
+    if expected_clock_period is None:
+        # CLOCK_PERIOD missing or unparseable in config — fail closed as a
+        # config error rather than masquerading as an SDC mismatch.
+        sdc_semantic_failures.append(
+            {
+                "id": "clock_period_config_missing_or_invalid",
+                "config_value": expected_clock_period_raw,
+                "sdc_value": clock_period,
+            }
+        )
+    elif clock_period != expected_clock_period:
         sdc_semantic_failures.append(
             {
                 "id": "clock_period_mismatch",
-                "expected": config.get("CLOCK_PERIOD"),
+                "expected": expected_clock_period,
                 "actual": clock_period,
             }
         )

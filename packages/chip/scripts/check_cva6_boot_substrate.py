@@ -114,8 +114,7 @@ def _parse_results() -> tuple[bool, str]:
             return False, f"test skipped: {case.get('name')}"
         if failure is not None or error is not None:
             node = failure if failure is not None else error
-            if node is None:
-                continue
+            assert node is not None  # narrowed by the guard above
             msg = (node.get("message") or node.text or "assertion failed").strip()
             return False, f"{case.get('name')}: {msg[:400]}"
     if seen == 0:
@@ -203,15 +202,24 @@ def main() -> int:
         print(f"FAIL: {reason}")
         return 1
 
-    _write("PASS", None, None, evidence + [
-        "verify/cocotb/integration/Makefile.cva6-dram-boot",
-        "build/reports/cva6_boot_substrate.sim.log",
-    ], extra={
-        "proof": "CVA6 elaborated + bare-metal image executed through the RTL "
-                 "DRAM path (markers + timer trap asserted)",
-    })
-    print("PASS: CVA6 elaborated and the bare-metal image provably executed "
-          "through the RTL DRAM path (DRAM markers + CLINT timer trap asserted).")
+    _write(
+        "PASS",
+        None,
+        None,
+        evidence
+        + [
+            "verify/cocotb/integration/Makefile.cva6-dram-boot",
+            "build/reports/cva6_boot_substrate.sim.log",
+        ],
+        extra={
+            "proof": "CVA6 elaborated + bare-metal image executed through the RTL "
+            "DRAM path (markers + timer trap asserted)",
+        },
+    )
+    print(
+        "PASS: CVA6 elaborated and the bare-metal image provably executed "
+        "through the RTL DRAM path (DRAM markers + CLINT timer trap asserted)."
+    )
     _write(
         "PASS",
         None,
