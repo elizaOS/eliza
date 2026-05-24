@@ -42,6 +42,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     morph_report = BODYKIT_ROOT / "review" / "parametric-morph-report.json"
     base_reconstruction = BODYKIT_ROOT / "review" / "base-cad-reconstruction-report.json"
     reconstruction_audit = BODYKIT_ROOT / "review" / "parametric-reconstruction-audit.json"
+    subassembly_report = BODYKIT_ROOT / "review" / "subassembly-volume-report.json"
     step_dir = BODYKIT_ROOT / "out" / "step"
     base_reconstruction_step_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "step"
     base_reconstruction_param_dir = BODYKIT_ROOT / "out" / "base-reconstruction" / "params"
@@ -67,6 +68,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert morph_report.is_file()
     assert base_reconstruction.is_file()
     assert reconstruction_audit.is_file()
+    assert subassembly_report.is_file()
     assert concept_reference.is_file()
 
     model = mujoco.MjModel.from_xml_path(str(mjcf))
@@ -276,6 +278,7 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert Path(torso_reconstruction["step"]).is_file()
     assert Path(torso_reconstruction["parameters"]).is_file()
     reconstruction_audit_raw = json.loads(reconstruction_audit.read_text())
+    subassembly_raw = json.loads(subassembly_report.read_text())
     assert reconstruction_audit_raw["verdict"] == "pass"
     assert reconstruction_audit_raw["step_exported_count"] == step_raw["exported_count"]
     assert reconstruction_audit_raw["base_reconstructed_assets"] == base_reconstruction_raw["reconstructed_count"]
@@ -321,6 +324,35 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
         row["part"] == "face_shell" and row["reconstruction_status"] == "morph-ready-section-loft"
         for row in reconstruction_audit_raw["parts"]
     )
+    assert manifest_raw["subassembly_volume_report"]["verdict"] == subassembly_raw["verdict"]
+    assert subassembly_raw["total_solid_volume_cm3"] > 0
+    assert len(subassembly_raw["source_body_subassemblies"]) >= 10
+    for assembly_name in [
+        "left_forearm_wrist",
+        "right_forearm_wrist",
+        "left_foot_ankle",
+        "right_foot_ankle",
+        "left_knee_shin",
+        "right_knee_shin",
+        "torso_front_chest",
+        "rear_pelvis_glute",
+        "face_plate_details",
+    ]:
+        assembly = subassembly_raw["source_body_subassemblies"][assembly_name]
+        assert assembly["part_count"] > 0
+        assert assembly["total_solid_volume_cm3"] > 0
+        assert assembly["mounted_robot_bodies"]
+        assert assembly["world_bbox_home_pose"]["extents_mm"]
+        assert all(part["step_solid_exported"] for part in assembly["parts"])
+    assert subassembly_raw["source_body_subassemblies"]["left_foot_ankle"]["mounted_robot_bodies"] == [
+        "left_ankle_roll_link"
+    ]
+    assert subassembly_raw["source_body_subassemblies"]["right_knee_shin"]["mounted_robot_bodies"] == [
+        "right_knee_link"
+    ]
+    assert "left_shin_side_armor" in {
+        part["name"] for part in subassembly_raw["source_body_subassemblies"]["left_knee_shin"]["parts"]
+    }
 
     forbidden = ("Make" + "Human", "make" + "human", "M" + "PFB", "m" + "pfb")
     checked_suffixes = {".py", ".yaml", ".yml", ".md", ".json", ".csv", ".obj", ".mtl"}

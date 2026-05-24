@@ -3135,7 +3135,7 @@ def write_subassembly_volume_report(params: dict[str, Any], parts: list[Part], m
             "parts": sorted(part_rows, key=lambda row: row["name"]),
             "connection_review": (
                 "source-connected-parametric-subassembly"
-                if region_parts and not disconnected_parts
+                if assembly_parts and not disconnected_parts
                 else "needs-source-connection-review"
             ),
             "mount_design_status": "needs-fastener-boss-rib-insert-detail",

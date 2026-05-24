@@ -302,7 +302,13 @@ HTTP/text/file/video/audio shard over `baseline`, `h2p_off`, and
 weighted MPKI versus baseline `40.2076` and `h2p_off` `39.9444`. It is not the
 default because the broader `100k` stratified mixed-workload probe still favors
 baseline (`42.3553` versus `42.9139` for `h2p_lowconf_only`) on correlated and
-control-flow synthetic guardrails.
+control-flow synthetic guardrails. `make bpu-sweep-full-system-gpu-shard`
+covers the uncapped `gpu_control`, GC-runtime, syscall, and B-tree shard; guarded
+H2P wins there too (`37.6255` versus baseline `38.0666` and `h2p_off`
+`37.8209`). `make bpu-sweep-full-browser-build-crypto-shard` covers the
+uncapped browser-layout, build/compiler, and crypto shard; guarded H2P wins
+there with no per-trace regressions (`48.5761` versus baseline `50.1515` and
+`h2p_off` `48.9479`).
 
 The synthetic set is deliberately broad enough to catch overfitting: regular
 GPU tile loops, SIMT divergence/reconvergence, GPU command processing and
@@ -597,6 +603,8 @@ downstream fetch logic can accept both lanes.
 | Geometry tuning sweep | `make bpu-sweep`, `make bpu-sweep-full` | `docs/evidence/cpu_ap/bpu_sweep_results.json`, `…_leaderboard.md` |
 | Full proxy shard sweep | `make bpu-sweep-full-proxy-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json`, `…_leaderboard.md` |
 | Full IO/media shard sweep | `make bpu-sweep-full-io-media-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json`, `…_leaderboard.md` |
+| Full system/GPU shard sweep | `make bpu-sweep-full-system-gpu-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_system_gpu_shard.json`, `…_leaderboard.md` |
+| Full browser/build/crypto shard sweep | `make bpu-sweep-full-browser-build-crypto-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json`, `…_leaderboard.md` |
 
 ## Files
 

@@ -39,6 +39,10 @@ WORKLOAD_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/bpu-workload-trace-manifest.
 FULL_PROXY_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json"
 FULL_IO_MEDIA_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json"
 FULL_SYSTEM_GPU_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_system_gpu_shard.json"
+FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL = (
+    "docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json"
+)
+FULL_COMPRESSION_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -105,6 +109,14 @@ REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES = {
     "gc_runtime_proxy",
     "kernel_syscall_proxy",
     "database_btree_proxy",
+}
+REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES = {
+    "browser_layout_proxy",
+    "build_compiler_proxy",
+    "crypto_packet_proxy",
+}
+REQUIRED_FULL_COMPRESSION_SHARD_TRACES = {
+    "compression_proxy",
 }
 
 # The minimum thresholds the BPU geometry must satisfy to support a 2028
@@ -1163,6 +1175,8 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / FULL_PROXY_SHARD_SWEEP_REL,
         ROOT / FULL_IO_MEDIA_SHARD_SWEEP_REL,
         ROOT / FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
+        ROOT / FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
+        ROOT / FULL_COMPRESSION_SHARD_SWEEP_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -1217,6 +1231,22 @@ def evaluate_evidence_artifacts() -> list[str]:
         failures,
         FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
         REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
+    )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
+        REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
+    )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_COMPRESSION_SHARD_SWEEP_REL,
+        REQUIRED_FULL_COMPRESSION_SHARD_TRACES,
         require_baseline_not_worse_than_h2p_off=False,
         required_extra_configs={"h2p_lowconf_only"},
         required_best_not_worse_than=("baseline", "h2p_off"),
@@ -1600,6 +1630,14 @@ def build_evidence(
         FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
         "make bpu-sweep-full-system-gpu-shard",
     )
+    full_browser_build_crypto_shard_ref = full_trace_shard_sweep_ref(
+        FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-browser-build-crypto-shard",
+    )
+    full_compression_shard_ref = full_trace_shard_sweep_ref(
+        FULL_COMPRESSION_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-compression-shard",
+    )
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
@@ -1679,6 +1717,8 @@ def build_evidence(
         "full_proxy_shard_sweep_ref": full_proxy_shard_ref,
         "full_io_media_shard_sweep_ref": full_io_media_shard_ref,
         "full_system_gpu_shard_sweep_ref": full_system_gpu_shard_ref,
+        "full_browser_build_crypto_shard_sweep_ref": full_browser_build_crypto_shard_ref,
+        "full_compression_shard_sweep_ref": full_compression_shard_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

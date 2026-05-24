@@ -51,6 +51,7 @@ Generated layout/DFM files:
 - `base-cad-reconstruction-report.json`
 - `panel-gap-validation.json`
 - `part-review-report.json`
+- `subassembly-volume-report.json`
 - `face-alignment-validation.json`
 - `mechanical-stress-blockers.json`
 - `head-keepout-policy.json`

@@ -349,6 +349,22 @@ def write_valid_sweep_result(root: Path) -> None:
         h2p_off_mpki=29.0,
         h2p_lowconf_mpki=28.0,
     )
+    write_full_trace_shard_result(
+        root,
+        branch.FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
+        branch.REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES,
+        baseline_mpki=40.0,
+        h2p_off_mpki=39.0,
+        h2p_lowconf_mpki=38.0,
+    )
+    write_full_trace_shard_result(
+        root,
+        branch.FULL_COMPRESSION_SHARD_SWEEP_REL,
+        branch.REQUIRED_FULL_COMPRESSION_SHARD_TRACES,
+        baseline_mpki=50.0,
+        h2p_off_mpki=49.0,
+        h2p_lowconf_mpki=48.0,
+    )
 
 
 def write_valid_evidence_set(root: Path) -> None:
@@ -665,6 +681,44 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
 
             self.assertTrue(
                 any("best_config must not regress versus baseline" in err for err in errors),
+                errors,
+            )
+
+    def test_full_browser_build_crypto_shard_requires_lowconf_probe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "docs/evidence/cpu_ap"
+            write_valid_evidence_set(root)
+            write_bpu_verification_reports(root)
+            shard_path = evidence / "bpu_sweep_full_browser_build_crypto_shard.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            del shard["results"]["h2p_lowconf_only"]
+            write_json(shard_path, shard)
+
+            with mock.patch.object(branch, "ROOT", root):
+                errors = branch.evaluate_evidence_artifacts()
+
+            self.assertTrue(
+                any("h2p_lowconf_only" in err for err in errors),
+                errors,
+            )
+
+    def test_full_compression_shard_requires_uncapped_replay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "docs/evidence/cpu_ap"
+            write_valid_evidence_set(root)
+            write_bpu_verification_reports(root)
+            shard_path = evidence / "bpu_sweep_full_compression_shard.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            shard["max_branches_per_trace"] = 800000
+            write_json(shard_path, shard)
+
+            with mock.patch.object(branch, "ROOT", root):
+                errors = branch.evaluate_evidence_artifacts()
+
+            self.assertTrue(
+                any("max_branches_per_trace must be 0" in err for err in errors),
                 errors,
             )
 

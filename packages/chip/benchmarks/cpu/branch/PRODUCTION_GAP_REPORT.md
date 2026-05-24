@@ -663,8 +663,14 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    versus baseline `40.2076` and `h2p_off` `39.9444`), but a `100k`
    stratified mixed-workload probe still favors baseline (`42.3553` versus
    `42.9139`) because guarded H2P regresses correlated/control-flow synthetic
-   guardrails. The full twenty-trace model sweep and uncapped RTL replay remain
-   open production evidence gaps.
+   guardrails. `make bpu-sweep-full-system-gpu-shard` records the uncapped
+   `gpu_control`, GC-runtime, syscall, and B-tree shard; `h2p_lowconf_only`
+   wins there too (`37.6255` versus baseline `38.0666` and `h2p_off`
+   `37.8209`). `make bpu-sweep-full-browser-build-crypto-shard` records the
+   uncapped browser-layout, build/compiler, and crypto shard; `h2p_lowconf_only`
+   wins there with no per-trace regressions (`48.5761` versus baseline
+   `50.1515` and `h2p_off` `48.9479`). The full twenty-trace model sweep and
+   uncapped RTL replay remain open production evidence gaps.
 6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an

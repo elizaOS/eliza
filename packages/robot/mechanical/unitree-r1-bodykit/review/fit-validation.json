@@ -3520,35 +3520,35 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 35.763,
-        "worst_non_adjacent_part": "right_shin_side_armor",
+        "minimum_non_adjacent_clearance_mm": 36.707,
+        "worst_non_adjacent_part": "right_shin_shell",
         "worst_non_adjacent_clearance": {
-          "part": "right_shin_side_armor",
+          "part": "right_shin_shell",
           "part_body": "right_knee_link",
           "base_geom": "geom_18",
           "base_body": "left_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 35.763,
+          "clearance_mm": 36.707,
           "part_sample_point_m": [
-            -0.05098,
-            0.02802,
-            0.26524
+            -0.03904,
+            0.01711,
+            0.27061
           ],
           "base_sample_point_m": [
-            -0.02381,
-            0.05083,
-            0.26977
+            -0.02279,
+            0.05001,
+            0.26968
           ],
           "part_to_base_vector_m": [
-            0.02717,
-            0.02281,
-            0.00453
+            0.01625,
+            0.0329,
+            -0.00093
           ],
           "part_to_base_vector_mm": [
-            27.171,
-            22.808,
-            4.535
+            16.247,
+            32.903,
+            -0.925
           ]
         },
         "non_adjacent_samples_checked": 13168
@@ -4919,35 +4919,35 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 15.032,
-        "worst_non_adjacent_part": "left_shin_side_armor",
+        "minimum_non_adjacent_clearance_mm": 18.456,
+        "worst_non_adjacent_part": "right_shin_shell",
         "worst_non_adjacent_clearance": {
-          "part": "left_shin_side_armor",
-          "part_body": "left_knee_link",
-          "base_geom": "geom_47",
-          "base_body": "right_knee_link",
+          "part": "right_shin_shell",
+          "part_body": "right_knee_link",
+          "base_geom": "geom_18",
+          "base_body": "left_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 15.032,
+          "clearance_mm": 18.456,
           "part_sample_point_m": [
-            0.0104,
-            -0.11401,
-            0.32376
+            0.00874,
+            -0.06288,
+            0.24161
           ],
           "base_sample_point_m": [
-            0.00911,
-            -0.1261,
-            0.3326
+            0.00961,
+            -0.07648,
+            0.25406
           ],
           "part_to_base_vector_m": [
-            -0.00128,
-            -0.01209,
-            0.00884
+            0.00087,
+            -0.0136,
+            0.01245
           ],
           "part_to_base_vector_mm": [
-            -1.282,
-            -12.091,
-            8.838
+            0.869,
+            -13.597,
+            12.449
           ]
         },
         "non_adjacent_samples_checked": 13168
@@ -5777,35 +5777,35 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 14.833,
-        "worst_non_adjacent_part": "right_shin_side_armor",
+        "minimum_non_adjacent_clearance_mm": 15.554,
+        "worst_non_adjacent_part": "left_shin_shell",
         "worst_non_adjacent_clearance": {
-          "part": "right_shin_side_armor",
-          "part_body": "right_knee_link",
-          "base_geom": "geom_18",
-          "base_body": "left_knee_link",
+          "part": "left_shin_shell",
+          "part_body": "left_knee_link",
+          "base_geom": "geom_47",
+          "base_body": "right_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 14.833,
+          "clearance_mm": 15.554,
           "part_sample_point_m": [
-            0.01206,
-            0.11393,
-            0.32372
+            0.02065,
+            0.06697,
+            0.24861
           ],
           "base_sample_point_m": [
-            0.0119,
-            0.1261,
-            0.3322
+            0.00961,
+            0.07648,
+            0.25406
           ],
           "part_to_base_vector_m": [
-            -0.00017,
-            0.01216,
-            0.00848
+            -0.01104,
+            0.0095,
+            0.00545
           ],
           "part_to_base_vector_mm": [
-            -0.166,
-            12.165,
-            8.485
+            -11.043,
+            9.502,
+            5.449
           ]
         },
         "non_adjacent_samples_checked": 13168
@@ -9270,7 +9270,7 @@
     "left_rear_hip_fairing": 74.531,
     "left_shin_front_armor": 32.426,
     "left_shin_shell": 8.042,
-    "left_shin_side_armor": 2.725,
+    "left_shin_side_armor": 7.761,
     "left_shoulder_cap": 1.328,
     "left_shoulder_fastener_front": 50.793,
     "left_thigh_front_armor": 48.702,
@@ -9304,7 +9304,7 @@
     "right_rear_hip_fairing": 81.602,
     "right_shin_front_armor": 37.714,
     "right_shin_shell": 5.163,
-    "right_shin_side_armor": 2.093,
+    "right_shin_side_armor": 5.982,
     "right_shoulder_cap": 1.002,
     "right_shoulder_fastener_front": 50.312,
     "right_thigh_front_armor": 59.104,
@@ -9343,7 +9343,7 @@
     "left_rear_hip_fairing": 74.531,
     "left_shin_front_armor": 122.736,
     "left_shin_shell": 108.047,
-    "left_shin_side_armor": 63.481,
+    "left_shin_side_armor": 100.21,
     "left_shoulder_cap": 47.066,
     "left_shoulder_fastener_front": 59.725,
     "left_thigh_front_armor": 48.702,
@@ -9377,7 +9377,7 @@
     "right_rear_hip_fairing": 81.602,
     "right_shin_front_armor": 113.699,
     "right_shin_shell": 104.738,
-    "right_shin_side_armor": 63.523,
+    "right_shin_side_armor": 108.77,
     "right_shoulder_cap": 46.355,
     "right_shoulder_fastener_front": 59.725,
     "right_thigh_front_armor": 59.104,
@@ -9416,7 +9416,7 @@
     "left_rear_hip_fairing": 121.744,
     "left_shin_front_armor": 135.952,
     "left_shin_shell": 108.047,
-    "left_shin_side_armor": 103.889,
+    "left_shin_side_armor": 100.21,
     "left_shoulder_cap": 171.267,
     "left_shoulder_fastener_front": 185.827,
     "left_thigh_front_armor": 130.359,
@@ -9450,7 +9450,7 @@
     "right_rear_hip_fairing": 130.1,
     "right_shin_front_armor": 139.919,
     "right_shin_shell": 104.738,
-    "right_shin_side_armor": 104.176,
+    "right_shin_side_armor": 108.77,
     "right_shoulder_cap": 169.602,
     "right_shoulder_fastener_front": 183.725,
     "right_thigh_front_armor": 130.489,

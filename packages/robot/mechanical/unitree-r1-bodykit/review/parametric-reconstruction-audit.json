@@ -142,7 +142,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -157,7 +159,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -244,7 +248,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -259,7 +265,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -274,7 +282,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -307,7 +317,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -322,7 +334,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -337,7 +351,9 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -390,7 +406,11 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -405,7 +425,11 @@
       "body": "torso_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -593,7 +617,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -608,7 +635,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -623,7 +653,10 @@
       "body": "torso_link",
       "shape": "ellipsoid",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -656,7 +689,10 @@
       "body": "left_shoulder_pitch_link",
       "shape": "cylinder_x",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_shoulder_pitch_link.STL",
+        "left_shoulder_roll_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -689,7 +725,10 @@
       "body": "right_shoulder_pitch_link",
       "shape": "cylinder_x",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_shoulder_pitch_link.STL",
+        "right_shoulder_roll_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -840,7 +879,9 @@
       "body": "left_elbow_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
@@ -906,7 +947,9 @@
       "body": "right_elbow_link",
       "shape": "box",
       "source_kind": "primitive",
-      "oem_baseline_meshes": [],
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
       "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,

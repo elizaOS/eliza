@@ -35,6 +35,7 @@ REQUIRED_SQUASHFS_PATHS = {
 ARCH_RUNTIME_SQUASHFS_PATHS = {
     "arm64": {
         "bun": "squashfs-root/opt/elizaos/bin/bun",
+        "node": "squashfs-root/usr/bin/node",
         "agent_bundle": "squashfs-root/opt/elizaos/app/agent-bundle.js",
     },
     "riscv64": {

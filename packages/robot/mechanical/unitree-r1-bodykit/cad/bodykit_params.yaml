@@ -184,15 +184,15 @@ morphs:
       left_shin_shell:
         center: [-0.001, -0.044, -0.139]
         sections:
-          - {z: -0.078, scale: [0.013, 0.0035]}
-          - {z: 0.000, scale: [0.018, 0.005]}
-          - {z: 0.078, scale: [0.013, 0.0035]}
+          - {z: -0.058, scale: [0.0090, 0.0024]}
+          - {z: 0.000, scale: [0.0125, 0.0032]}
+          - {z: 0.058, scale: [0.0090, 0.0024]}
       left_shin_front_armor:
-        center: [0.066, -0.024, -0.168]
+        center: [0.062, -0.024, -0.168]
         sections:
-          - {z: -0.056, scale: [0.0026, 0.0055]}
-          - {z: 0.000, scale: [0.0042, 0.0080]}
-          - {z: 0.056, scale: [0.0026, 0.0055]}
+          - {z: -0.036, scale: [0.0018, 0.0035]}
+          - {z: 0.000, scale: [0.0028, 0.0052]}
+          - {z: 0.036, scale: [0.0018, 0.0035]}
       rear_back_spine_plate:
         sections:
           - {z: -0.108, scale: [0.0100, 0.032]}
@@ -365,6 +365,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [0.098, 0.0, 0.258]
     scale: [0.005, 0.058, 0.011]
   - name: chest_panel_seam_black
@@ -372,6 +373,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [0.098, 0.0, 0.188]
     scale: [0.005, 0.078, 0.007]
   - name: left_chest_contour_armor
@@ -431,6 +433,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [0.094, 0.0, 0.136]
     scale: [0.003, 0.060, 0.006]
   - name: left_chest_vent_black
@@ -438,6 +441,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [0.124, 0.074, 0.203]
     scale: [0.0025, 0.004, 0.024]
   - name: right_chest_vent_black
@@ -445,6 +449,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [0.124, -0.074, 0.203]
     scale: [0.0025, 0.004, 0.024]
   - name: rear_back_spine_plate
@@ -465,6 +470,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [-0.112, 0.0, 0.154]
     scale: [0.004, 0.012, 0.092]
   - name: rear_left_back_cut_black
@@ -472,6 +478,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [-0.086, 0.036, 0.120]
     scale: [0.003, 0.004, 0.080]
   - name: rear_right_back_cut_black
@@ -479,6 +486,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [torso_collision.stl]
     center: [-0.086, -0.036, 0.120]
     scale: [0.003, 0.004, 0.080]
   - name: torso_abdomen_black
@@ -512,6 +520,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [waist_yaw_link.STL, waist_roll_link.STL, torso_collision.stl]
     center: [0.090, 0.0, 0.103]
     scale: [0.003, 0.056, 0.005]
   - name: abdomen_panel_rib_2
@@ -519,6 +528,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [waist_yaw_link.STL, waist_roll_link.STL, torso_collision.stl]
     center: [0.090, 0.0, 0.034]
     scale: [0.003, 0.042, 0.005]
   - name: pelvis_front_shell
@@ -669,6 +679,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: ellipsoid
+    oem_baseline_meshes: [head_yaw_link.STL, head_pitch_link.STL]
     center: [-0.040, 0.0226, 0.492]
     scale: [0.00035, 0.0114, 0.0032]
   - name: right_eye_insert
@@ -676,6 +687,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: ellipsoid
+    oem_baseline_meshes: [head_yaw_link.STL, head_pitch_link.STL]
     center: [-0.040, -0.0226, 0.492]
     scale: [0.00035, 0.0114, 0.0032]
   - name: lip_insert
@@ -683,6 +695,7 @@ parts:
     role: face_detail
     material: lip_detail
     shape: ellipsoid
+    oem_baseline_meshes: [head_yaw_link.STL, head_pitch_link.STL]
     center: [-0.060, 0.0, 0.436]
     scale: [0.00020, 0.0138, 0.0021]
   - name: left_shoulder_cap
@@ -703,6 +716,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: cylinder_x
+    oem_baseline_meshes: [left_shoulder_pitch_link.STL, left_shoulder_roll_link.STL]
     center: [0.088, 0.043, -0.006]
     radius: 0.007
     height: 0.008
@@ -724,6 +738,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: cylinder_x
+    oem_baseline_meshes: [right_shoulder_pitch_link.STL, right_shoulder_roll_link.STL]
     center: [0.088, -0.043, -0.006]
     radius: 0.007
     height: 0.008
@@ -836,6 +851,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [left_elbow_link.STL]
     center: [0.034, 0.022, -0.008]
     scale: [0.026, 0.003, 0.005]
   - name: left_wrist_separated_cuff
@@ -881,6 +897,7 @@ parts:
     role: face_detail
     material: eye_lip_detail
     shape: box
+    oem_baseline_meshes: [right_elbow_link.STL]
     center: [0.034, -0.022, -0.008]
     scale: [0.026, 0.003, 0.005]
   - name: right_wrist_separated_cuff
@@ -1006,14 +1023,14 @@ parts:
     shape: section_loft
     source_kind: parametric_loft
     oem_baseline_meshes: [left_knee_link.STL]
-    center: [-0.006, -0.048, -0.176]
+    center: [-0.006, -0.056, -0.176]
     axis: z
     sections:
-      - {z: -0.118, scale: [0.009, 0.0026], offset: [0.000, -0.0015]}
-      - {z: -0.070, scale: [0.013, 0.0034], offset: [0.000, -0.0015]}
-      - {z: 0.000, scale: [0.014, 0.0038], offset: [0.000, -0.0015]}
-      - {z: 0.070, scale: [0.013, 0.0034], offset: [0.000, -0.0015]}
-      - {z: 0.118, scale: [0.009, 0.0026], offset: [0.000, -0.0015]}
+      - {z: -0.045, scale: [0.0025, 0.0005]}
+      - {z: -0.025, scale: [0.0035, 0.0007]}
+      - {z: 0.000, scale: [0.0040, 0.0008]}
+      - {z: 0.025, scale: [0.0035, 0.0007]}
+      - {z: 0.045, scale: [0.0025, 0.0005]}
   - name: right_shin_shell
     body: right_knee_link
     role: underbody
@@ -1050,11 +1067,11 @@ parts:
     center: [-0.006, 0.048, -0.176]
     axis: z
     sections:
-      - {z: -0.118, scale: [0.009, 0.0026], offset: [0.000, 0.0015]}
-      - {z: -0.070, scale: [0.013, 0.0034], offset: [0.000, 0.0015]}
-      - {z: 0.000, scale: [0.014, 0.0038], offset: [0.000, 0.0015]}
-      - {z: 0.070, scale: [0.013, 0.0034], offset: [0.000, 0.0015]}
-      - {z: 0.118, scale: [0.009, 0.0026], offset: [0.000, 0.0015]}
+      - {z: -0.045, scale: [0.0025, 0.0005]}
+      - {z: -0.025, scale: [0.0035, 0.0007]}
+      - {z: 0.000, scale: [0.0040, 0.0008]}
+      - {z: 0.025, scale: [0.0035, 0.0007]}
+      - {z: 0.045, scale: [0.0025, 0.0005]}
   - name: left_foot_top_shell
     body: left_ankle_roll_link
     role: armor

@@ -49,8 +49,8 @@ class Riscv64GuiKioskIsoTests(unittest.TestCase):
             self.assertIn(key, required)
         self.assertIn("node", checker.required_paths_for_arch("riscv64"))
         self.assertIn("bun", checker.required_paths_for_arch("arm64"))
+        self.assertIn("node", checker.required_paths_for_arch("arm64"))
         self.assertIn("agent_bundle", checker.required_paths_for_arch("arm64"))
-        self.assertNotIn("node", checker.required_paths_for_arch("arm64"))
 
     def test_missing_paths_are_detected_from_listing(self) -> None:
         paths = [
