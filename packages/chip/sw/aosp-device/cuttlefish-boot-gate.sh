@@ -151,11 +151,7 @@ emit() {
 		# as `boot-validate.mjs --expected-abi <abi>`); the brand-config
 		# mjs validator owns the x86_64/arm64/riscv64 image path. This gate
 		# keeps its own host-side copy because it targets the chip
-<<<<<<< HEAD
-		# ai.milady.milady product without going through a distro-android brand
-=======
 		# ai.elizaos.app product without going through a distro-android brand
->>>>>>> origin/rot-integration-backup-2026-05-21
 		# config, and pairs the triad with the kernel.log / manifest /
 		# evidence-emission assertions the mjs validator does not perform.
 		# Keep the two in sync.

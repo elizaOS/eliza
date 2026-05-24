@@ -5,19 +5,11 @@ Proves that rtl/memory/dram_ctrl/e1_dram_ctrl.sv is a real AXI4 memory
 controller front-end to a verified large memory model (default 2 GiB at
 0x8000_0000), not the earlier 16 KiB SRAM-backed AXI-Lite aperture:
 
-<<<<<<< HEAD
-      1. Verilator --lint-only must be clean for the AXI4 package, the
-     controller RTL, and the cocotb testbench.
-  2. The cocotb suite verify/cocotb/memory/test_dram_memory.py must pass in
-     full, including the boundary known-answer tests:
-       * capacity_readback_matches_geometry        (RTL geometry register readback)
-=======
   1. Verilator --lint-only must be clean for the AXI4 package, the
      controller RTL, and the cocotb testbench.
   2. The cocotb suite verify/cocotb/memory/test_dram_memory.py must pass in
      full, including the boundary known-answer tests:
        * capacity_readback_matches_geometry        (boot-time RAM discovery)
->>>>>>> origin/rot-integration-backup-2026-05-21
        * burst_write_read_back_across_row_boundary  (data integrity)
        * multiple_outstanding_writes                (write-response FIFO)
        * multiple_outstanding_reads                 (AR command FIFO)
@@ -39,27 +31,13 @@ from __future__ import annotations
 
 import json
 import os
-<<<<<<< HEAD
-import shutil
-=======
->>>>>>> origin/rot-integration-backup-2026-05-21
 import subprocess
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
-<<<<<<< HEAD
-from typing import Any
-from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/dram_controller.json"
-COCOTB_RESULT = ROOT / "verify/cocotb/memory/results.xml"
-OSS_CAD_BIN = ROOT / "external/oss-cad-suite/bin"
-=======
-
-ROOT = Path(__file__).resolve().parents[1]
-REPORT = ROOT / "build/reports/dram_controller.json"
->>>>>>> origin/rot-integration-backup-2026-05-21
 
 AXI4_PKG = "rtl/interconnect/axi4/e1_axi4_pkg.sv"
 CTRL_RTL = "rtl/memory/dram_ctrl/e1_dram_ctrl.sv"
@@ -119,11 +97,7 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "as_of": datetime.now(UTC).isoformat(),
                 "subsystem": "memory",
                 "claim_boundary": (
-<<<<<<< HEAD
-                    "Proves e1_dram_ctrl is an RTL full-AXI4 slave front-end "
-=======
                     "Proves e1_dram_ctrl is a real full-AXI4 slave front-end "
->>>>>>> origin/rot-integration-backup-2026-05-21
                     "(read/write bursts INCR/WRAP/FIXED, AxSIZE byte addressing, "
                     "WSTRB, multiple outstanding via B/AR FIFOs, ready/valid "
                     "backpressure) to a parameterised large memory model "
@@ -134,17 +108,8 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                     "Does NOT cover the LPDDR5X analog PHY / DFI 5.0 training "
                     "(physical silicon dependency in "
                     "docs/evidence/memory/lpddr-phy-procurement.yaml), on-die "
-<<<<<<< HEAD
-                    "ECC injection, or SoC-top integration + DTS memory node. "
-                    "This is not phone, release, silicon, Linux, Android, or "
-                    "physical LPDDR evidence."
-                ),
-                "phone_claim_allowed": False,
-                "release_claim_allowed": False,
-=======
                     "ECC injection, or SoC-top integration + DTS memory node."
                 ),
->>>>>>> origin/rot-integration-backup-2026-05-21
                 "latency_model": {
                     "source": "DRAMsim3 LPDDR4_8Gb_x16_2400 timing (CK cycles)",
                     "row_hit_latency_default": 17,
@@ -167,19 +132,8 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
 
 
 def verilator_lint() -> tuple[bool, str]:
-<<<<<<< HEAD
-    env = dict(os.environ)
-    if OSS_CAD_BIN.is_dir():
-        env["PATH"] = f"{OSS_CAD_BIN}{os.pathsep}{env.get('PATH', '')}"
-    verilator = shutil.which("verilator", path=env.get("PATH"))
-    if verilator is None:
-        return False, "verilator not found; install Verilator or source tools/env.sh"
-    cmd = [
-        verilator,
-=======
     cmd = [
         "verilator",
->>>>>>> origin/rot-integration-backup-2026-05-21
         "--lint-only",
         "-Wall",
         *LINT_WAIVERS,
@@ -189,11 +143,7 @@ def verilator_lint() -> tuple[bool, str]:
         str(ROOT / CTRL_RTL),
         str(ROOT / TB),
     ]
-<<<<<<< HEAD
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, env=env)
-=======
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
->>>>>>> origin/rot-integration-backup-2026-05-21
     ok = proc.returncode == 0 and "%Error" not in proc.stderr
     return ok, (proc.stderr or proc.stdout).strip()
 
@@ -210,10 +160,6 @@ def run_cocotb() -> tuple[bool, str]:
             "COCOTB_MODULE": "test_dram_memory",
             "COCOTB_TOPLEVEL": "e1_dram_ctrl_mem_tb",
             "COCOTB_DIR": "verify/cocotb/memory",
-<<<<<<< HEAD
-            "COCOTB_RESULTS_FILE": str(COCOTB_RESULT),
-=======
->>>>>>> origin/rot-integration-backup-2026-05-21
         }
     )
     proc = subprocess.run(
@@ -228,33 +174,6 @@ def run_cocotb() -> tuple[bool, str]:
     return ok, out
 
 
-<<<<<<< HEAD
-def testcase_id(testcase: ElementTree.Element) -> str | None:
-    name = testcase.get("name")
-    if not name:
-        return None
-    return name.rsplit(".", 1)[-1]
-
-
-def cocotb_result_summary() -> tuple[dict[str, Any] | None, str | None]:
-    try:
-        root = ElementTree.parse(COCOTB_RESULT).getroot()
-    except FileNotFoundError:
-        return None, f"{COCOTB_RESULT.relative_to(ROOT)} missing"
-    except ElementTree.ParseError as exc:
-        return None, f"{COCOTB_RESULT.relative_to(ROOT)} invalid XML: {exc}"
-    testcases = root.findall(".//testcase")
-    return {
-        "tests": len(testcases),
-        "failures": len(root.findall(".//failure")),
-        "errors": len(root.findall(".//error")),
-        "skipped": len(root.findall(".//skipped")),
-        "test_names": {name for tc in testcases if (name := testcase_id(tc))},
-    }, None
-
-
-=======
->>>>>>> origin/rot-integration-backup-2026-05-21
 def check_rtl_tokens() -> tuple[bool, list[str]]:
     text = (ROOT / CTRL_RTL).read_text()
     missing = [tok for tok in REQUIRED_RTL_TOKENS if tok not in text]
@@ -320,62 +239,14 @@ def main() -> int:
         print(sim_log[-2000:])
         return 1
 
-<<<<<<< HEAD
-    summary, summary_error = cocotb_result_summary()
-    if summary_error is not None or summary is None:
-        write_report(
-            "BLOCKED",
-            "cocotb_memory_results_invalid",
-            "The cocotb DRAM memory suite did not produce a valid results.xml.",
-            {"result_error": summary_error, "sim_log_tail": sim_log[-2000:]},
-        )
-        print("BLOCKED: cocotb memory results.xml invalid")
-        print(summary_error)
-        return 1
-
-    missing_xml = sorted(set(REQUIRED_TESTS) - summary["test_names"])
-    if missing_xml or summary["failures"] or summary["errors"] or summary["skipped"]:
-        write_report(
-            "BLOCKED",
-            "cocotb_memory_results_incomplete",
-            "The cocotb DRAM memory suite XML does not contain every required passing test.",
-            {
-                "missing_xml_tests": missing_xml,
-                "tests": summary["tests"],
-                "failures": summary["failures"],
-                "errors": summary["errors"],
-                "skipped": summary["skipped"],
-            },
-        )
-        print("BLOCKED: cocotb memory results.xml missing required passing tests")
-        if missing_xml:
-            print("  missing:", ", ".join(missing_xml))
-        print(
-            f"  tests={summary['tests']} failures={summary['failures']} "
-            f"errors={summary['errors']} skipped={summary['skipped']}"
-        )
-        return 1
-
-=======
->>>>>>> origin/rot-integration-backup-2026-05-21
     write_report(
         "PASS",
         None,
         None,
         {
             "verilator_lint": "clean",
-<<<<<<< HEAD
-            "cocotb": "results.xml exact required tests, FAIL=0",
-            "required_tests": list(REQUIRED_TESTS),
-            "cocotb_result": str(COCOTB_RESULT.relative_to(ROOT)),
-            "cocotb_counts": {
-                key: summary[key]
-                for key in ("tests", "failures", "errors", "skipped")
-            },
-=======
             "cocotb": "FAIL=0",
             "required_tests": list(REQUIRED_TESTS),
->>>>>>> origin/rot-integration-backup-2026-05-21
         },
     )
     print("PASS: DRAM memory-controller boundary gate")

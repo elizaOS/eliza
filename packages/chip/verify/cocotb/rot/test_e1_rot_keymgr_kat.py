@@ -144,13 +144,9 @@ async def _host_xact(dut, addr, *, we, wdata=0, be=0xF):
         await Timer(1, units="ns")
         if dut.host_rvalid_o.value == 1:
             rdata = int(dut.host_rdata_o.value)
-<<<<<<< HEAD
-            assert dut.host_err_o.value == 0, f"TL-UL error response for addr=0x{addr:x} we={we}"
-=======
             assert dut.host_err_o.value == 0, (
                 f"TL-UL error response for addr=0x{addr:x} we={we}"
             )
->>>>>>> origin/rot-integration-backup-2026-05-21
             break
         await RisingEdge(dut.clk_i)
     else:
@@ -194,13 +190,9 @@ async def _wait_op_done(dut, what):
         )
     if status == OP_DONE_ERROR:
         err = await _read(dut, KEYMGR_ERR_CODE)
-<<<<<<< HEAD
-        raise AssertionError(f"keymgr {what} finished with DONE_ERROR, ERR_CODE=0x{err:08x}")
-=======
         raise AssertionError(
             f"keymgr {what} finished with DONE_ERROR, ERR_CODE=0x{err:08x}"
         )
->>>>>>> origin/rot-integration-backup-2026-05-21
     # Clear OP_STATUS (rw1c): write back what we read.
     await _write(dut, KEYMGR_OP_STATUS, OP_DONE_SUCCESS)
 
@@ -282,13 +274,9 @@ async def keymgr_ladder_advance_and_bind(dut):
     # --- Run A: binding X. ---
     await _reset(dut)
     assert dut.host_intg_err_o.value == 0, "spurious TL-UL integrity error at reset"
-<<<<<<< HEAD
-    key_a, side_a0, side_a1 = await _run_ladder(dut, binding_word=0xA5A5A5A5, salt_word=0xC3C3C3C3)
-=======
     key_a, side_a0, side_a1 = await _run_ladder(
         dut, binding_word=0xA5A5A5A5, salt_word=0xC3C3C3C3
     )
->>>>>>> origin/rot-integration-backup-2026-05-21
 
     # A generated key of all-zero would mean the KDF never wrote real data.
     assert any(w != 0 for w in key_a), (
@@ -297,13 +285,9 @@ async def keymgr_ladder_advance_and_bind(dut):
 
     # --- Run B: different binding, same salt. ---
     await _reset(dut)
-<<<<<<< HEAD
-    key_b, side_b0, side_b1 = await _run_ladder(dut, binding_word=0x5A5A5A5A, salt_word=0xC3C3C3C3)
-=======
     key_b, side_b0, side_b1 = await _run_ladder(
         dut, binding_word=0x5A5A5A5A, salt_word=0xC3C3C3C3
     )
->>>>>>> origin/rot-integration-backup-2026-05-21
 
     # Input binding divergence: a different creator SW binding must yield a
     # different derived key, proving the binding flows through the real KMAC KDF.
