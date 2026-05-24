@@ -356,11 +356,11 @@ export default function ConnectedPage() {
 
         <div className="flex flex-col gap-4">
           {user.telegram_id ? (
-            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
               <button
                 type="button"
                 onClick={handleOpenTelegram}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <TelegramIcon className="size-8 text-[#229ED9]" />
@@ -371,7 +371,7 @@ export default function ConnectedPage() {
                       defaultValue: "Telegram",
                     })}
                   </span>
-                  <span className="text-sm text-black/60">
+                  <span className="text-sm text-black/60 group-hover:text-white/60">
                     @{getTelegramBotUsername()}
                   </span>
                 </div>
@@ -384,7 +384,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyTelegram();
                 }}
-                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
+                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyTelegramTitle", {
                   defaultValue: "Copy Telegram link",
                 })}
@@ -403,7 +403,7 @@ export default function ConnectedPage() {
             <Button
               type="button"
               onClick={() => navigate("/get-started?method=telegram&link=true")}
-              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black gap-4 justify-start px-5"
+              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                 <TelegramIcon className="size-8 text-[#229ED9]" />
@@ -419,11 +419,11 @@ export default function ConnectedPage() {
           )}
 
           {user.phone_number ? (
-            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
               <button
                 type="button"
                 onClick={handleOpenMessages}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <AppleMessagesIcon className="size-8" />
@@ -434,7 +434,7 @@ export default function ConnectedPage() {
                       defaultValue: "iMessage",
                     })}
                   </span>
-                  <span className="text-sm text-black/60">
+                  <span className="text-sm text-black/60 group-hover:text-white/60">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
                 </div>
@@ -447,7 +447,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyPhone();
                 }}
-                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
+                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyNumberTitle", {
                   defaultValue: "Copy number",
                 })}
@@ -466,7 +466,7 @@ export default function ConnectedPage() {
             <div className="flex flex-col gap-2">
               <button
                 type="button"
-                className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+                className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
                 onClick={() => setShowPhoneInput((v) => !v)}
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -532,11 +532,11 @@ export default function ConnectedPage() {
           )}
 
           {user.whatsapp_id ? (
-            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
               <button
                 type="button"
                 onClick={handleOpenWhatsApp}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
@@ -547,7 +547,7 @@ export default function ConnectedPage() {
                       defaultValue: "WhatsApp",
                     })}
                   </span>
-                  <span className="text-sm text-black/60">
+                  <span className="text-sm text-black/60 group-hover:text-white/60">
                     {user.whatsapp_name ||
                       t("homepage_eliza.connected.openWhatsapp", {
                         defaultValue: "Open WhatsApp",
@@ -563,7 +563,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   handleCopyWhatsApp();
                 }}
-                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
+                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.copyWhatsappTitle", {
                   defaultValue: "Copy WhatsApp link",
                 })}
@@ -578,7 +578,7 @@ export default function ConnectedPage() {
           ) : (
             <button
               type="button"
-              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
+              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center gap-4 px-5 cursor-pointer transition-colors"
               onClick={handleOpenWhatsApp}
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
@@ -595,11 +595,11 @@ export default function ConnectedPage() {
           )}
 
           {user.discord_id ? (
-            <div className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black flex items-center px-5 transition-colors">
+            <div className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black flex items-center px-5 transition-colors group">
               <button
                 type="button"
                 onClick={handleOpenDiscord}
-                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black"
+                className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-4 border-0 bg-transparent p-0 text-left text-black group-hover:text-white"
               >
                 <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                   <DiscordIcon className="size-8 text-[#5865F2]" />
@@ -610,7 +610,7 @@ export default function ConnectedPage() {
                       defaultValue: "Discord",
                     })}
                   </span>
-                  <span className="text-sm text-black/60">
+                  <span className="text-sm text-black/60 group-hover:text-white/60">
                     @{user.discord_username || "Eliza"}
                   </span>
                 </div>
@@ -623,7 +623,7 @@ export default function ConnectedPage() {
                   e.stopPropagation();
                   navigate("/get-started?guide=discord");
                 }}
-                className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
+                className="shrink-0 text-black/50 group-hover:text-white/50 hover:text-white hover:bg-white/10"
                 title={t("homepage_eliza.connected.discordSetupGuideTitle", {
                   defaultValue: "Setup guide",
                 })}
@@ -635,7 +635,7 @@ export default function ConnectedPage() {
             <Button
               type="button"
               onClick={() => navigate("/get-started?method=discord&link=true")}
-              className="w-full h-[72px] bg-white hover:bg-white/90 text-black border border-black gap-4 justify-start px-5"
+              className="w-full h-[72px] bg-white hover:bg-black hover:text-white text-black gap-4 justify-start px-5"
             >
               <div className="w-8 h-8 shrink-0 flex items-center justify-center">
                 <DiscordIcon className="size-8 text-[#5865F2]" />

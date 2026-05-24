@@ -1026,7 +1026,7 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(0)}
                 >
                   <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center shrink-0">
@@ -1044,7 +1044,7 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(1)}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
@@ -1062,7 +1062,7 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(2)}
                 >
                   <div className="w-12 h-12 rounded-xs bg-[#25D366]/20 flex items-center justify-center shrink-0">
@@ -1080,7 +1080,7 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(3)}
                 >
                   <div className="w-12 h-12 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0">
@@ -1101,7 +1101,7 @@ export default function GetStartedPage() {
                   data-testid="solana-signin"
                   disabled={isSolanaLoading}
                   onClick={() => handleMethodSelect("solana")}
-                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
                   style={cardStyle(4)}
                 >
                   <div

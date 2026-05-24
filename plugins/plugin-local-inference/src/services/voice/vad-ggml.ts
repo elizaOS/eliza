@@ -120,12 +120,12 @@ export function resolveSileroVadGgmlLibrary(opts: {
 	if (explicit) return existsSync(explicit) ? path.resolve(explicit) : null;
 
 	const repoRoot = opts.repoRoot ?? process.cwd();
-	const buildDir = path.join(
+	const pluginDir = path.join(
 		repoRoot,
 		"packages",
-		"native-plugins",
+		"native",
+		"plugins",
 		"silero-vad-cpp",
-		"build",
 	);
 	const platformNames =
 		process.platform === "darwin"
@@ -133,9 +133,11 @@ export function resolveSileroVadGgmlLibrary(opts: {
 			: process.platform === "win32"
 				? ["silero_vad.dll", "libsilero_vad.dll"]
 				: ["libsilero_vad.so"];
-	for (const name of platformNames) {
-		const candidate = path.join(buildDir, name);
-		if (existsSync(candidate)) return candidate;
+	for (const buildDir of ["build", "build-darwin"]) {
+		for (const name of platformNames) {
+			const candidate = path.join(pluginDir, buildDir, name);
+			if (existsSync(candidate)) return candidate;
+		}
 	}
 	return null;
 }

@@ -7,9 +7,25 @@ import {
   useState,
 } from "react";
 
+export type CloudVideoSpeed = "1x" | "4x" | "8x";
+
+type VideoSource = {
+  src: string;
+  type: string;
+  media?: string;
+};
+
 export type CloudVideoBackgroundProps = {
   /** Static image shown immediately, before the video can play. */
   poster?: string;
+  /** Public base path for the speed-based cloud loop assets. */
+  basePath?: string;
+  /** Cloud loop speed for synced `/clouds/clouds_<speed>_<size>.*` assets. */
+  speed?: CloudVideoSpeed;
+  /** Responsive poster candidates for the static image layer. */
+  posterSrcSet?: string;
+  /** Responsive poster sizes for the static image layer. */
+  posterSizes?: string;
   /** Cloud loop video for desktop / wide viewports. */
   videoSrc?: string;
   /** Smaller cloud loop for narrow viewports (cellular friendly). */
@@ -32,6 +48,34 @@ export type CloudVideoBackgroundProps = {
   style?: CSSProperties;
 };
 
+function joinAssetPath(basePath: string, filename: string): string {
+  const base = basePath.replace(/\/+$/, "");
+  const name = filename.replace(/^\/+/, "");
+  return base ? `${base}/${name}` : `/${name}`;
+}
+
+function cloudLoopSources(basePath: string, speed: CloudVideoSpeed): VideoSource[] {
+  const variants = [
+    { size: "1080p", media: "(min-width: 1440px)" },
+    { size: "720p", media: "(min-width: 768px)" },
+    { size: "480p", media: "(min-width: 481px)" },
+    { size: "360p", media: "(max-width: 480px)" },
+  ] as const;
+
+  return variants.flatMap(({ size, media }) => [
+    {
+      src: joinAssetPath(basePath, `clouds_${speed}_${size}.webm`),
+      type: "video/webm",
+      media,
+    },
+    {
+      src: joinAssetPath(basePath, `clouds_${speed}_${size}.mp4`),
+      type: "video/mp4",
+      media,
+    },
+  ]);
+}
+
 /**
  * Full-bleed cloud background.
  *
@@ -42,6 +86,10 @@ export type CloudVideoBackgroundProps = {
  */
 export function CloudVideoBackground({
   poster = CLOUD_BACKGROUND_ASSETS.poster,
+  basePath,
+  speed = "8x",
+  posterSrcSet,
+  posterSizes,
   videoSrc = CLOUD_BACKGROUND_ASSETS.source1080pMp4,
   videoSrcMobile = CLOUD_BACKGROUND_ASSETS.sourceMobile480pMp4,
   mobileMaxWidth = 640,
@@ -128,6 +176,20 @@ export function CloudVideoBackground({
 
   const fallbackBackground =
     "radial-gradient(circle at 18% 18%, rgba(255,255,255,0.95) 0 7rem, rgba(255,255,255,0.42) 7.1rem 12rem, transparent 12.1rem), radial-gradient(circle at 82% 24%, rgba(255,255,255,0.82) 0 5rem, rgba(255,255,255,0.34) 5.1rem 9rem, transparent 9.1rem), linear-gradient(180deg, #80caff 0%, #bde9ff 42%, #f7c38d 100%)";
+  const sources = basePath
+    ? cloudLoopSources(basePath, speed)
+    : [
+        ...(videoSrcMobile
+          ? [
+              {
+                src: videoSrcMobile,
+                type: "video/mp4",
+                media: `(max-width: ${mobileMaxWidth}px)`,
+              },
+            ]
+          : []),
+        { src: videoSrc, type: "video/mp4" },
+      ];
 
   return (
     <div
@@ -144,6 +206,8 @@ export function CloudVideoBackground({
       {poster ? (
         <img
           src={poster}
+          srcSet={posterSrcSet}
+          sizes={posterSizes}
           alt=""
           aria-hidden="true"
           loading="eager"
@@ -167,7 +231,7 @@ export function CloudVideoBackground({
           loop
           muted
           playsInline
-          preload="auto"
+          preload="metadata"
           poster={poster}
           disableRemotePlayback
           disablePictureInPicture
@@ -184,14 +248,14 @@ export function CloudVideoBackground({
             zIndex: 1,
           }}
         >
-          {videoSrcMobile ? (
+          {sources.map((source) => (
             <source
-              src={videoSrcMobile}
-              type="video/mp4"
-              media={`(max-width: ${mobileMaxWidth}px)`}
+              key={`${source.type}:${source.media ?? "default"}:${source.src}`}
+              src={source.src}
+              type={source.type}
+              media={source.media}
             />
-          ) : null}
-          <source src={videoSrc} type="video/mp4" />
+          ))}
         </video>
       ) : null}
       {scrim > 0 ? (

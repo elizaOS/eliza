@@ -120,20 +120,22 @@ function resolveVoiceClassifierLibrary(opts: {
 	const explicit = opts.libraryPath ?? process.env.ELIZA_VOICE_CLASSIFIER_LIB;
 	if (explicit) return existsSync(explicit) ? path.resolve(explicit) : null;
 	const repoRoot = opts.repoRoot ?? process.cwd();
-	const buildDir = path.join(
+	const pluginDir = path.join(
 		repoRoot,
 		"packages",
-		"native-plugins",
+		"native",
+		"plugins",
 		"voice-classifier-cpp",
-		"build",
 	);
-	for (const name of [
-		"libvoice_classifier.so",
-		"libvoice_classifier.dylib",
-		"voice_classifier.dll",
-	]) {
-		const candidate = path.join(buildDir, name);
-		if (existsSync(candidate)) return candidate;
+	for (const buildDir of ["build", "build-darwin"]) {
+		for (const name of [
+			"libvoice_classifier.so",
+			"libvoice_classifier.dylib",
+			"voice_classifier.dll",
+		]) {
+			const candidate = path.join(pluginDir, buildDir, name);
+			if (existsSync(candidate)) return candidate;
+		}
 	}
 	return null;
 }
