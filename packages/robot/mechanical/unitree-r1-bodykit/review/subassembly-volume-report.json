@@ -14,17 +14,27 @@
     "hair_reference_alignment",
     "left_chest_side_panel",
     "left_foot_ankle",
+    "left_forearm",
     "left_glute_backside",
+    "left_hand_keepout",
     "left_hip_upper_leg",
     "left_rear_hip_fairing",
+    "left_shoulder",
+    "left_upper_arm",
+    "left_wrist_cuff",
     "neck_carrier",
     "rear_pelvis_bridge",
     "rear_torso_back_panel",
     "right_chest_side_panel",
     "right_foot_ankle",
+    "right_forearm",
     "right_glute_backside",
+    "right_hand_keepout",
     "right_hip_upper_leg",
     "right_rear_hip_fairing",
+    "right_shoulder",
+    "right_upper_arm",
+    "right_wrist_cuff",
     "torso_chest_core_shell",
     "waist_abdomen"
   ],
@@ -248,7 +258,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_sole_black",
@@ -285,7 +295,7 @@
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_toe_armor",
@@ -322,7 +332,7 @@
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_top_shell",
@@ -359,7 +369,7 @@
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_heel_black",
@@ -396,7 +406,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_sole_black",
@@ -433,7 +443,7 @@
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_toe_armor",
@@ -470,7 +480,7 @@
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_top_shell",
@@ -507,7 +517,7 @@
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -784,7 +794,7 @@
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_shell",
@@ -822,7 +832,7 @@
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_side_armor",
@@ -859,7 +869,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_front_armor",
@@ -896,7 +906,7 @@
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_shell",
@@ -935,7 +945,7 @@
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_side_armor",
@@ -972,7 +982,7 @@
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_front_armor",
@@ -1009,7 +1019,7 @@
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_shell",
@@ -1047,7 +1057,7 @@
           "solid_volume_cm3": 8.8288,
           "surface_area_cm2": 47.1736,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_side_armor",
@@ -1084,7 +1094,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_front_armor",
@@ -1121,7 +1131,7 @@
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_shell",
@@ -1160,7 +1170,7 @@
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_side_armor",
@@ -1197,7 +1207,7 @@
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -1472,7 +1482,7 @@
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_1",
@@ -1511,7 +1521,7 @@
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_2",
@@ -1550,7 +1560,7 @@
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_lower_bridge_armor",
@@ -1588,7 +1598,7 @@
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_panel_seam_black",
@@ -1625,7 +1635,7 @@
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_sensor_black",
@@ -1662,7 +1672,7 @@
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_under_bust_black",
@@ -1699,7 +1709,7 @@
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_upper_bridge_armor",
@@ -1737,7 +1747,7 @@
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_contour_armor",
@@ -1775,7 +1785,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_outer_armor_skin",
@@ -1813,7 +1823,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_vent_black",
@@ -1850,7 +1860,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_rear_glute_armor_skin",
@@ -1887,7 +1897,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_rear_hip_fairing",
@@ -1924,7 +1934,7 @@
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_center_plate",
@@ -1961,7 +1971,7 @@
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_front_shell",
@@ -1998,7 +2008,7 @@
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_lower_nose_plate",
@@ -2035,7 +2045,7 @@
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_back_spine_plate",
@@ -2073,7 +2083,7 @@
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_left_back_cut_black",
@@ -2110,7 +2120,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_right_back_cut_black",
@@ -2147,7 +2157,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_seat_bridge_armor",
@@ -2184,7 +2194,7 @@
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_spine_black_channel",
@@ -2221,7 +2231,7 @@
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_contour_armor",
@@ -2259,7 +2269,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_outer_armor_skin",
@@ -2297,7 +2307,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_vent_black",
@@ -2334,7 +2344,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_rear_glute_armor_skin",
@@ -2371,7 +2381,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_rear_hip_fairing",
@@ -2408,7 +2418,7 @@
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "torso_abdomen_black",
@@ -2447,7 +2457,7 @@
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "torso_chest_shell",
@@ -2485,7 +2495,7 @@
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -2814,7 +2824,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_outer_blade",
@@ -2851,7 +2861,7 @@
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_shell",
@@ -2888,7 +2898,7 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shoulder_cap",
@@ -2926,7 +2936,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shoulder_fastener_front",
@@ -2964,7 +2974,7 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_front_armor",
@@ -3001,7 +3011,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_outer_blade",
@@ -3038,7 +3048,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_shell",
@@ -3075,7 +3085,7 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_wrist_separated_cuff",
@@ -3112,7 +3122,7 @@
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_inner_detail",
@@ -3149,7 +3159,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_outer_blade",
@@ -3186,7 +3196,7 @@
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_shell",
@@ -3223,7 +3233,7 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shoulder_cap",
@@ -3261,7 +3271,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shoulder_fastener_front",
@@ -3299,7 +3309,7 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_front_armor",
@@ -3336,7 +3346,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_outer_blade",
@@ -3373,7 +3383,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_shell",
@@ -3410,7 +3420,7 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_wrist_separated_cuff",
@@ -3447,7 +3457,7 @@
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -3696,7 +3706,7 @@
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "head_mount_neck_black",
@@ -3735,7 +3745,7 @@
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_eye_insert",
@@ -3773,7 +3783,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "lip_insert",
@@ -3811,7 +3821,7 @@
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_eye_insert",
@@ -3849,7 +3859,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -4071,7 +4081,7 @@
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_panel_seam_black",
@@ -4108,7 +4118,7 @@
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_sensor_black",
@@ -4145,7 +4155,7 @@
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_under_bust_black",
@@ -4182,7 +4192,7 @@
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_upper_bridge_armor",
@@ -4220,7 +4230,7 @@
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -4464,7 +4474,7 @@
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_eye_insert",
@@ -4502,7 +4512,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "lip_insert",
@@ -4540,7 +4550,7 @@
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_eye_insert",
@@ -4578,7 +4588,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -4731,7 +4741,7 @@
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_front_shell",
@@ -4768,7 +4778,7 @@
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_lower_nose_plate",
@@ -4805,7 +4815,7 @@
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -5007,7 +5017,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_outer_armor_skin",
@@ -5045,7 +5055,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_vent_black",
@@ -5082,7 +5092,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -5245,7 +5255,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_sole_black",
@@ -5282,7 +5292,7 @@
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_toe_armor",
@@ -5319,7 +5329,7 @@
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_top_shell",
@@ -5356,7 +5366,7 @@
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -5367,8 +5377,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_elbow_link",
+        "mounted_bodies": [
+          "left_elbow_link"
+        ],
+        "source_bodies": [
+          "left_shoulder_yaw_link",
+          "left_elbow_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_elbow_link.STL"
+        ],
+        "anchor_role": "left elbow-link forearm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 44.472,
       "volume_by_material_cm3": {
@@ -5542,7 +5566,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_outer_blade",
@@ -5579,7 +5603,7 @@
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_shell",
@@ -5616,10 +5640,10 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_glute_backside": {
@@ -5750,7 +5774,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -5898,7 +5922,7 @@
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_shell",
@@ -5937,7 +5961,7 @@
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_side_armor",
@@ -5974,7 +5998,7 @@
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -6118,7 +6142,7 @@
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_shell",
@@ -6156,7 +6180,7 @@
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_side_armor",
@@ -6193,7 +6217,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -6328,7 +6352,7 @@
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -6339,8 +6363,24 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_shoulder_pitch_link",
+        "mounted_bodies": [
+          "left_shoulder_pitch_link"
+        ],
+        "source_bodies": [
+          "torso_link",
+          "left_shoulder_pitch_link",
+          "left_shoulder_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_shoulder_pitch_link.STL",
+          "left_shoulder_roll_link.STL"
+        ],
+        "anchor_role": "left shoulder pitch/roll cap",
+        "anchor_connected": true
+      },
       "part_count": 2,
       "total_solid_volume_cm3": 292.746,
       "volume_by_material_cm3": {
@@ -6456,7 +6496,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shoulder_fastener_front",
@@ -6494,10 +6534,10 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_upper_arm": {
@@ -6505,8 +6545,23 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_shoulder_yaw_link",
+        "mounted_bodies": [
+          "left_shoulder_yaw_link"
+        ],
+        "source_bodies": [
+          "left_shoulder_pitch_link",
+          "left_shoulder_roll_link",
+          "left_shoulder_yaw_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_shoulder_yaw_link.STL"
+        ],
+        "anchor_role": "left shoulder-yaw upper-arm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 111.0335,
       "volume_by_material_cm3": {
@@ -6678,7 +6733,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_outer_blade",
@@ -6715,7 +6770,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_shell",
@@ -6752,10 +6807,10 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_wrist_cuff": {
@@ -6763,8 +6818,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_elbow_link",
+        "mounted_bodies": [
+          "left_elbow_link"
+        ],
+        "source_bodies": [
+          "left_elbow_link",
+          "left_wrist_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_elbow_link.STL"
+        ],
+        "anchor_role": "left forearm-end wrist cuff",
+        "anchor_connected": true
+      },
       "part_count": 1,
       "total_solid_volume_cm3": 0.1132,
       "volume_by_material_cm3": {
@@ -6873,10 +6942,10 @@
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "neck_carrier": {
@@ -7032,7 +7101,7 @@
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -7181,7 +7250,7 @@
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -7357,7 +7426,7 @@
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_left_back_cut_black",
@@ -7394,7 +7463,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_right_back_cut_black",
@@ -7431,7 +7500,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_spine_black_channel",
@@ -7468,7 +7537,7 @@
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -7670,7 +7739,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_outer_armor_skin",
@@ -7708,7 +7777,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_vent_black",
@@ -7745,7 +7814,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -7936,7 +8005,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_sole_black",
@@ -7973,7 +8042,7 @@
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_toe_armor",
@@ -8010,7 +8079,7 @@
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_top_shell",
@@ -8047,7 +8116,7 @@
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -8058,8 +8127,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_elbow_link",
+        "mounted_bodies": [
+          "right_elbow_link"
+        ],
+        "source_bodies": [
+          "right_shoulder_yaw_link",
+          "right_elbow_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_elbow_link.STL"
+        ],
+        "anchor_role": "right elbow-link forearm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 44.787,
       "volume_by_material_cm3": {
@@ -8233,7 +8316,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_outer_blade",
@@ -8270,7 +8353,7 @@
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_shell",
@@ -8307,10 +8390,10 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_glute_backside": {
@@ -8441,7 +8524,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -8589,7 +8672,7 @@
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_shell",
@@ -8628,7 +8711,7 @@
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_side_armor",
@@ -8665,7 +8748,7 @@
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -8843,7 +8926,7 @@
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_shell",
@@ -8881,7 +8964,7 @@
           "solid_volume_cm3": 8.8288,
           "surface_area_cm2": 47.1736,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_side_armor",
@@ -8918,7 +9001,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -9068,7 +9151,7 @@
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -9079,8 +9162,24 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_shoulder_pitch_link",
+        "mounted_bodies": [
+          "right_shoulder_pitch_link"
+        ],
+        "source_bodies": [
+          "torso_link",
+          "right_shoulder_pitch_link",
+          "right_shoulder_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_shoulder_pitch_link.STL",
+          "right_shoulder_roll_link.STL"
+        ],
+        "anchor_role": "right shoulder pitch/roll cap",
+        "anchor_connected": true
+      },
       "part_count": 2,
       "total_solid_volume_cm3": 292.746,
       "volume_by_material_cm3": {
@@ -9196,7 +9295,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shoulder_fastener_front",
@@ -9234,10 +9333,10 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_upper_arm": {
@@ -9245,8 +9344,23 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_shoulder_yaw_link",
+        "mounted_bodies": [
+          "right_shoulder_yaw_link"
+        ],
+        "source_bodies": [
+          "right_shoulder_pitch_link",
+          "right_shoulder_roll_link",
+          "right_shoulder_yaw_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_shoulder_yaw_link.STL"
+        ],
+        "anchor_role": "right shoulder-yaw upper-arm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 111.0335,
       "volume_by_material_cm3": {
@@ -9404,7 +9518,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_outer_blade",
@@ -9441,7 +9555,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_shell",
@@ -9478,10 +9592,10 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_wrist_cuff": {
@@ -9489,8 +9603,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_elbow_link",
+        "mounted_bodies": [
+          "right_elbow_link"
+        ],
+        "source_bodies": [
+          "right_elbow_link",
+          "right_wrist_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_elbow_link.STL"
+        ],
+        "anchor_role": "right forearm-end wrist cuff",
+        "anchor_connected": true
+      },
       "part_count": 1,
       "total_solid_volume_cm3": 0.2001,
       "volume_by_material_cm3": {
@@ -9599,10 +9727,10 @@
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "torso_chest_core_shell": {
@@ -9753,7 +9881,7 @@
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -9907,7 +10035,7 @@
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_1",
@@ -9946,7 +10074,7 @@
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_2",
@@ -9985,7 +10113,7 @@
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "torso_abdomen_black",
@@ -10024,7 +10152,7 @@
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -10349,7 +10477,7 @@
           "solid_volume_cm3": 11.6326,
           "surface_area_cm2": 42.4994,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_lower_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_panel_seam_black",
@@ -10386,7 +10514,7 @@
           "solid_volume_cm3": 21.84,
           "surface_area_cm2": 77.68,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_panel_seam_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_sensor_black",
@@ -10423,7 +10551,7 @@
           "solid_volume_cm3": 25.52,
           "surface_area_cm2": 78.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_sensor_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_under_bust_black",
@@ -10460,7 +10588,7 @@
           "solid_volume_cm3": 8.64,
           "surface_area_cm2": 44.64,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_under_bust_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "chest_upper_bridge_armor",
@@ -10498,7 +10626,7 @@
           "solid_volume_cm3": 16.9869,
           "surface_area_cm2": 55.1588,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/chest_upper_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -10742,7 +10870,7 @@
           "solid_volume_cm3": 112.5088,
           "surface_area_cm2": 231.5642,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/face_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_eye_insert",
@@ -10780,7 +10908,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "lip_insert",
@@ -10818,7 +10946,7 @@
           "solid_volume_cm3": 0.0242,
           "surface_area_cm2": 1.8447,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/lip_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_eye_insert",
@@ -10856,7 +10984,7 @@
           "solid_volume_cm3": 0.0533,
           "surface_area_cm2": 2.3336,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_eye_insert.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -11009,7 +11137,7 @@
           "solid_volume_cm3": 6.8241,
           "surface_area_cm2": 31.9316,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_center_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_front_shell",
@@ -11046,7 +11174,7 @@
           "solid_volume_cm3": 500.3121,
           "surface_area_cm2": 330.5254,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_front_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "pelvis_lower_nose_plate",
@@ -11083,7 +11211,7 @@
           "solid_volume_cm3": 49.1697,
           "surface_area_cm2": 87.8592,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/pelvis_lower_nose_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -11285,7 +11413,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_outer_armor_skin",
@@ -11323,7 +11451,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_chest_vent_black",
@@ -11360,7 +11488,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -11523,7 +11651,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_sole_black",
@@ -11560,7 +11688,7 @@
           "solid_volume_cm3": 27.0409,
           "surface_area_cm2": 108.6916,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_toe_armor",
@@ -11597,7 +11725,7 @@
           "solid_volume_cm3": 0.1322,
           "surface_area_cm2": 1.3597,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_foot_top_shell",
@@ -11634,7 +11762,7 @@
           "solid_volume_cm3": 9.4564,
           "surface_area_cm2": 144.6626,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -11645,8 +11773,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_elbow_link",
+        "mounted_bodies": [
+          "left_elbow_link"
+        ],
+        "source_bodies": [
+          "left_shoulder_yaw_link",
+          "left_elbow_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_elbow_link.STL"
+        ],
+        "anchor_role": "left elbow-link forearm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 44.472,
       "volume_by_material_cm3": {
@@ -11820,7 +11962,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_outer_blade",
@@ -11857,7 +11999,7 @@
           "solid_volume_cm3": 0.302,
           "surface_area_cm2": 9.0567,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_forearm_shell",
@@ -11894,10 +12036,10 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_glute_backside": {
@@ -12028,7 +12170,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -12176,7 +12318,7 @@
           "solid_volume_cm3": 42.3845,
           "surface_area_cm2": 94.2949,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_shell",
@@ -12215,7 +12357,7 @@
           "solid_volume_cm3": 41.7893,
           "surface_area_cm2": 67.9537,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_thigh_side_armor",
@@ -12252,7 +12394,7 @@
           "solid_volume_cm3": 9.0272,
           "surface_area_cm2": 41.245,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -12396,7 +12538,7 @@
           "solid_volume_cm3": 1.2818,
           "surface_area_cm2": 11.1755,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_shell",
@@ -12434,7 +12576,7 @@
           "solid_volume_cm3": 32.4979,
           "surface_area_cm2": 107.6378,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shin_side_armor",
@@ -12471,7 +12613,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -12606,7 +12748,7 @@
           "solid_volume_cm3": 42.8627,
           "surface_area_cm2": 68.194,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -12617,8 +12759,24 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_shoulder_pitch_link",
+        "mounted_bodies": [
+          "left_shoulder_pitch_link"
+        ],
+        "source_bodies": [
+          "torso_link",
+          "left_shoulder_pitch_link",
+          "left_shoulder_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_shoulder_pitch_link.STL",
+          "left_shoulder_roll_link.STL"
+        ],
+        "anchor_role": "left shoulder pitch/roll cap",
+        "anchor_connected": true
+      },
       "part_count": 2,
       "total_solid_volume_cm3": 292.746,
       "volume_by_material_cm3": {
@@ -12734,7 +12892,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_shoulder_fastener_front",
@@ -12772,10 +12930,10 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_upper_arm": {
@@ -12783,8 +12941,23 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_shoulder_yaw_link",
+        "mounted_bodies": [
+          "left_shoulder_yaw_link"
+        ],
+        "source_bodies": [
+          "left_shoulder_pitch_link",
+          "left_shoulder_roll_link",
+          "left_shoulder_yaw_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_shoulder_yaw_link.STL"
+        ],
+        "anchor_role": "left shoulder-yaw upper-arm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 111.0335,
       "volume_by_material_cm3": {
@@ -12956,7 +13129,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_outer_blade",
@@ -12993,7 +13166,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "left_upper_arm_shell",
@@ -13030,10 +13203,10 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "left_wrist_cuff": {
@@ -13041,8 +13214,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "left_elbow_link",
+        "mounted_bodies": [
+          "left_elbow_link"
+        ],
+        "source_bodies": [
+          "left_elbow_link",
+          "left_wrist_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "left_elbow_link.STL"
+        ],
+        "anchor_role": "left forearm-end wrist cuff",
+        "anchor_connected": true
+      },
       "part_count": 1,
       "total_solid_volume_cm3": 0.1132,
       "volume_by_material_cm3": {
@@ -13151,10 +13338,10 @@
           "solid_volume_cm3": 0.1132,
           "surface_area_cm2": 2.6346,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/left_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "neck_carrier": {
@@ -13310,7 +13497,7 @@
           "solid_volume_cm3": 210.922,
           "surface_area_cm2": 202.8735,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/head_mount_neck_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -13459,7 +13646,7 @@
           "solid_volume_cm3": 22.9308,
           "surface_area_cm2": 54.9172,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_seat_bridge_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -13635,7 +13822,7 @@
           "solid_volume_cm3": 255.0962,
           "surface_area_cm2": 352.5854,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_back_spine_plate.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_left_back_cut_black",
@@ -13672,7 +13859,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_left_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_right_back_cut_black",
@@ -13709,7 +13896,7 @@
           "solid_volume_cm3": 7.68,
           "surface_area_cm2": 45.76,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_right_back_cut_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "rear_spine_black_channel",
@@ -13746,7 +13933,7 @@
           "solid_volume_cm3": 35.328,
           "surface_area_cm2": 121.6,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/rear_spine_black_channel.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -13948,7 +14135,7 @@
           "solid_volume_cm3": 19.4139,
           "surface_area_cm2": 59.5417,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_contour_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_outer_armor_skin",
@@ -13986,7 +14173,7 @@
           "solid_volume_cm3": 11.3476,
           "surface_area_cm2": 70.1303,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_outer_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_chest_vent_black",
@@ -14023,7 +14210,7 @@
           "solid_volume_cm3": 1.92,
           "surface_area_cm2": 13.28,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_chest_vent_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -14214,7 +14401,7 @@
           "solid_volume_cm3": 6.9001,
           "surface_area_cm2": 19.261,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_heel_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_sole_black",
@@ -14251,7 +14438,7 @@
           "solid_volume_cm3": 36.9567,
           "surface_area_cm2": 129.1631,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_sole_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_toe_armor",
@@ -14288,7 +14475,7 @@
           "solid_volume_cm3": 0.9043,
           "surface_area_cm2": 5.0014,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_toe_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_foot_top_shell",
@@ -14325,7 +14512,7 @@
           "solid_volume_cm3": 6.2611,
           "surface_area_cm2": 114.4031,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_foot_top_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -14336,8 +14523,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_elbow_link",
+        "mounted_bodies": [
+          "right_elbow_link"
+        ],
+        "source_bodies": [
+          "right_shoulder_yaw_link",
+          "right_elbow_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_elbow_link.STL"
+        ],
+        "anchor_role": "right elbow-link forearm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 44.787,
       "volume_by_material_cm3": {
@@ -14511,7 +14712,7 @@
           "solid_volume_cm3": 3.12,
           "surface_area_cm2": 17.84,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_inner_detail.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_outer_blade",
@@ -14548,7 +14749,7 @@
           "solid_volume_cm3": 0.617,
           "surface_area_cm2": 11.9502,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_forearm_shell",
@@ -14585,10 +14786,10 @@
           "solid_volume_cm3": 41.05,
           "surface_area_cm2": 66.0148,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_forearm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_glute_backside": {
@@ -14719,7 +14920,7 @@
           "solid_volume_cm3": 1.9652,
           "surface_area_cm2": 16.9154,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_glute_armor_skin.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -14867,7 +15068,7 @@
           "solid_volume_cm3": 4.4926,
           "surface_area_cm2": 22.3074,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_shell",
@@ -14906,7 +15107,7 @@
           "solid_volume_cm3": 16.6656,
           "surface_area_cm2": 37.0,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_thigh_side_armor",
@@ -14943,7 +15144,7 @@
           "solid_volume_cm3": 1.5112,
           "surface_area_cm2": 13.3786,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_thigh_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -15121,7 +15322,7 @@
           "solid_volume_cm3": 13.0029,
           "surface_area_cm2": 49.1981,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_shell",
@@ -15159,7 +15360,7 @@
           "solid_volume_cm3": 8.8288,
           "surface_area_cm2": 47.1736,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shin_side_armor",
@@ -15196,7 +15397,7 @@
           "solid_volume_cm3": 0.6688,
           "surface_area_cm2": 12.9912,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shin_side_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-connected-parametric-subassembly",
@@ -15346,7 +15547,7 @@
           "solid_volume_cm3": 17.3172,
           "surface_area_cm2": 38.9244,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_rear_hip_fairing.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -15357,8 +15558,24 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_shoulder_pitch_link",
+        "mounted_bodies": [
+          "right_shoulder_pitch_link"
+        ],
+        "source_bodies": [
+          "torso_link",
+          "right_shoulder_pitch_link",
+          "right_shoulder_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_shoulder_pitch_link.STL",
+          "right_shoulder_roll_link.STL"
+        ],
+        "anchor_role": "right shoulder pitch/roll cap",
+        "anchor_connected": true
+      },
       "part_count": 2,
       "total_solid_volume_cm3": 292.746,
       "volume_by_material_cm3": {
@@ -15474,7 +15691,7 @@
           "solid_volume_cm3": 291.5224,
           "surface_area_cm2": 233.0029,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_cap.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_shoulder_fastener_front",
@@ -15512,10 +15729,10 @@
           "solid_volume_cm3": 1.2236,
           "surface_area_cm2": 6.572,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_shoulder_fastener_front.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_upper_arm": {
@@ -15523,8 +15740,23 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_shoulder_yaw_link",
+        "mounted_bodies": [
+          "right_shoulder_yaw_link"
+        ],
+        "source_bodies": [
+          "right_shoulder_pitch_link",
+          "right_shoulder_roll_link",
+          "right_shoulder_yaw_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_shoulder_yaw_link.STL"
+        ],
+        "anchor_role": "right shoulder-yaw upper-arm sleeve",
+        "anchor_connected": true
+      },
       "part_count": 3,
       "total_solid_volume_cm3": 111.0335,
       "volume_by_material_cm3": {
@@ -15682,7 +15914,7 @@
           "solid_volume_cm3": 3.3632,
           "surface_area_cm2": 15.849,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_front_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_outer_blade",
@@ -15719,7 +15951,7 @@
           "solid_volume_cm3": 3.7172,
           "surface_area_cm2": 22.8242,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_outer_blade.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "right_upper_arm_shell",
@@ -15756,10 +15988,10 @@
           "solid_volume_cm3": 103.9531,
           "surface_area_cm2": 128.7406,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_upper_arm_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "right_wrist_cuff": {
@@ -15767,8 +15999,22 @@
       "broad_region": "arms",
       "worker_package": "arms_shoulders_wrists_worker",
       "panel_split_strategy": "source-body-mounted bodykit subassembly",
-      "configured_source_subassembly": false,
-      "source_subassembly_anchor": null,
+      "configured_source_subassembly": true,
+      "source_subassembly_anchor": {
+        "mounted_body": "right_elbow_link",
+        "mounted_bodies": [
+          "right_elbow_link"
+        ],
+        "source_bodies": [
+          "right_elbow_link",
+          "right_wrist_roll_link"
+        ],
+        "oem_baseline_meshes": [
+          "right_elbow_link.STL"
+        ],
+        "anchor_role": "right forearm-end wrist cuff",
+        "anchor_connected": true
+      },
       "part_count": 1,
       "total_solid_volume_cm3": 0.2001,
       "volume_by_material_cm3": {
@@ -15877,10 +16123,10 @@
           "solid_volume_cm3": 0.2001,
           "surface_area_cm2": 3.7449,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/right_wrist_separated_cuff.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
-      "connection_review": "source-connected-parametric-subassembly",
+      "connection_review": "source-anchor-connected-parametric-subassembly",
       "mount_design_status": "needs-fastener-boss-rib-insert-detail"
     },
     "torso_chest_core_shell": {
@@ -16031,7 +16277,7 @@
           "solid_volume_cm3": 2427.6828,
           "surface_area_cm2": 988.1641,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_chest_shell.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",
@@ -16185,7 +16431,7 @@
           "solid_volume_cm3": 3.4208,
           "surface_area_cm2": 22.3156,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_center_armor.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_1",
@@ -16224,7 +16470,7 @@
           "solid_volume_cm3": 6.72,
           "surface_area_cm2": 37.04,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_1.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "abdomen_panel_rib_2",
@@ -16263,7 +16509,7 @@
           "solid_volume_cm3": 5.04,
           "surface_area_cm2": 28.08,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/abdomen_panel_rib_2.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         },
         {
           "name": "torso_abdomen_black",
@@ -16302,7 +16548,7 @@
           "solid_volume_cm3": 113.539,
           "surface_area_cm2": 130.4338,
           "step": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/out/step/torso_abdomen_black.step",
-          "step_solid_exported": false
+          "step_solid_exported": true
         }
       ],
       "connection_review": "source-anchor-connected-parametric-subassembly",

@@ -92,7 +92,7 @@
         "waist_yaw_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -110,7 +110,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -128,7 +128,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -145,7 +145,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -162,7 +162,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -180,7 +180,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -198,7 +198,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -216,7 +216,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -234,7 +234,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -251,7 +251,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -268,7 +268,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -285,7 +285,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -303,7 +303,7 @@
         "torso_collision.stl",
         "waist_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -320,7 +320,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -337,7 +337,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -354,7 +354,7 @@
       "oem_baseline_meshes": [
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -373,7 +373,7 @@
         "waist_roll_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -392,7 +392,7 @@
         "waist_roll_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -411,7 +411,7 @@
         "waist_roll_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -430,7 +430,7 @@
         "waist_roll_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -447,7 +447,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -464,7 +464,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -481,7 +481,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -498,7 +498,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -515,7 +515,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -532,7 +532,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -549,7 +549,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -566,7 +566,7 @@
       "oem_baseline_meshes": [
         "pelvis_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -585,7 +585,7 @@
         "head_pitch_link.STL",
         "torso_collision.stl"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -603,7 +603,7 @@
         "head_yaw_link.STL",
         "head_pitch_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -621,7 +621,7 @@
         "head_yaw_link.STL",
         "head_pitch_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -639,7 +639,7 @@
         "head_yaw_link.STL",
         "head_pitch_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -657,7 +657,7 @@
         "head_yaw_link.STL",
         "head_pitch_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -675,7 +675,7 @@
         "left_shoulder_pitch_link.STL",
         "left_shoulder_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -693,7 +693,7 @@
         "left_shoulder_pitch_link.STL",
         "left_shoulder_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -711,7 +711,7 @@
         "right_shoulder_pitch_link.STL",
         "right_shoulder_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -729,7 +729,7 @@
         "right_shoulder_pitch_link.STL",
         "right_shoulder_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -746,7 +746,7 @@
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -763,7 +763,7 @@
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -780,7 +780,7 @@
       "oem_baseline_meshes": [
         "left_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -797,7 +797,7 @@
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -814,7 +814,7 @@
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -831,7 +831,7 @@
       "oem_baseline_meshes": [
         "right_shoulder_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -848,7 +848,7 @@
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -865,7 +865,7 @@
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -882,7 +882,7 @@
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -899,7 +899,7 @@
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -916,7 +916,7 @@
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -933,7 +933,7 @@
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -950,7 +950,7 @@
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "simple-parametric-solid-needs-loft-reconstruction",
       "has_morph_history": false,
       "has_section_parameters": false,
@@ -967,7 +967,7 @@
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -986,7 +986,7 @@
         "left_hip_roll_link.STL",
         "left_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1003,7 +1003,7 @@
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1020,7 +1020,7 @@
       "oem_baseline_meshes": [
         "left_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1039,7 +1039,7 @@
         "right_hip_roll_link.STL",
         "right_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1056,7 +1056,7 @@
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1073,7 +1073,7 @@
       "oem_baseline_meshes": [
         "right_hip_yaw_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1091,7 +1091,7 @@
         "left_knee_link.STL",
         "left_knee_collision.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1108,7 +1108,7 @@
       "oem_baseline_meshes": [
         "left_knee_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1125,7 +1125,7 @@
       "oem_baseline_meshes": [
         "left_knee_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1143,7 +1143,7 @@
         "right_knee_link.STL",
         "right_knee_collision.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1160,7 +1160,7 @@
       "oem_baseline_meshes": [
         "right_knee_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1177,7 +1177,7 @@
       "oem_baseline_meshes": [
         "right_knee_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1194,7 +1194,7 @@
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": false,
       "has_section_parameters": true,
@@ -1211,7 +1211,7 @@
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1228,7 +1228,7 @@
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1245,7 +1245,7 @@
       "oem_baseline_meshes": [
         "left_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1262,7 +1262,7 @@
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1279,7 +1279,7 @@
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1296,7 +1296,7 @@
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
@@ -1313,7 +1313,7 @@
       "oem_baseline_meshes": [
         "right_ankle_roll_link.STL"
       ],
-      "step_solid_exported": false,
+      "step_solid_exported": true,
       "reconstruction_status": "morph-ready-section-loft",
       "has_morph_history": true,
       "has_section_parameters": true,
