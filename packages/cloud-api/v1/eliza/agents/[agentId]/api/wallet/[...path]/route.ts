@@ -110,17 +110,55 @@ export async function resolveStewardAgentId(
   sandboxAgentId: string,
   organizationId: string,
 ): Promise<string | null> {
-  const row = await dbWrite
+  try {
+    const row = await dbWrite
+      .select({ stewardAgentId: agentServerWallets.steward_agent_id })
+      .from(agentServerWallets)
+      .where(
+        and(
+          eq(agentServerWallets.sandbox_agent_id, sandboxAgentId),
+          eq(agentServerWallets.organization_id, organizationId),
+        ),
+      )
+      .limit(1);
+    return row[0]?.stewardAgentId ?? null;
+  } catch (error) {
+    logger.info(
+      "[wallet-api] Failed to resolve steward_agent_id by sandbox_agent_id; trying organization wallet fallback",
+      { sandboxAgentId, orgId: organizationId, error },
+    );
+  }
+
+  const orgWalletRows = await dbWrite
     .select({ stewardAgentId: agentServerWallets.steward_agent_id })
     .from(agentServerWallets)
-    .where(
-      and(
-        eq(agentServerWallets.sandbox_agent_id, sandboxAgentId),
-        eq(agentServerWallets.organization_id, organizationId),
-      ),
-    )
-    .limit(1);
-  return row[0]?.stewardAgentId ?? null;
+    .where(eq(agentServerWallets.organization_id, organizationId))
+    .limit(2);
+
+  const stewardAgentIds = orgWalletRows
+    .map((row) => row.stewardAgentId)
+    .filter((id): id is string => typeof id === "string" && id.length > 0);
+  const uniqueStewardAgentIds = [...new Set(stewardAgentIds)];
+  if (uniqueStewardAgentIds.length === 1) {
+    logger.info(
+      "[wallet-api] Using the only Steward-managed wallet in the organization as sandbox mapping fallback",
+      {
+        sandboxAgentId,
+        orgId: organizationId,
+        stewardAgentId: uniqueStewardAgentIds[0],
+      },
+    );
+    return uniqueStewardAgentIds[0];
+  }
+
+  if (uniqueStewardAgentIds.length > 1) {
+    logger.info(
+      "[wallet-api] Multiple Steward-managed wallets exist in the organization; refusing ambiguous sandbox mapping fallback",
+      { sandboxAgentId, orgId: organizationId },
+    );
+  }
+
+  return null;
 }
 
 async function resolveStewardAgentIdForProxy(

@@ -194,6 +194,25 @@ describe("wallet proxy steward agent id resolution", () => {
     );
   });
 
+  test("uses the only organization wallet as a safe fallback when sandbox mapping lookup is unavailable", async () => {
+    dbRows.push({ stewardAgentId: "cloud-only-org-wallet" });
+    dbLimit.mockImplementationOnce(async () => {
+      throw new Error("column sandbox_agent_id does not exist");
+    });
+    stewardClient.getAddresses.mockResolvedValue({
+      addresses: [{ chainFamily: "evm", address: "0xwallet" }],
+    });
+
+    const response = await callWallet("addresses");
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toEqual({ evmAddress: "0xwallet", solanaAddress: "" });
+    expect(stewardClient.getAddresses).toHaveBeenCalledWith(
+      "cloud-only-org-wallet",
+    );
+  });
+
   test("falls back to the sandbox UUID for legacy wallets without a mapping", async () => {
     stewardClient.getPolicies.mockResolvedValue([{ id: "p1" }]);
 
