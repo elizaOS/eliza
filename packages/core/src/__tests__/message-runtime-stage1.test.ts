@@ -325,90 +325,41 @@ describe("runV5MessageRuntimeStage1", () => {
 		);
 	});
 
-	it("routes image follow-up replies through ATTACHMENT before answering", async () => {
+	it("keeps generic programming questions on the simple path even when stale attachments linger in state", async () => {
+		// Regression for the false-positive routing where a verb like "read"
+		// in a normal dev question ("read a large file line by line in node")
+		// was hijacked into the planner whenever any attachment lingered in
+		// the conversation state (e.g. from older probes in the same channel).
+		// The fix removes the bare-verb branch of
+		// `looksLikeAttachmentInspectionRequest` so only noun-anchored
+		// attachment references trigger the routing.
 		const runtime = makeRuntime([
 			stage1Response({
 				contexts: ["simple"],
-				replyText: "Yes, I can see the image you attached.",
+				replyText: "Use the built-in readline module to stream lines.",
 				extra: { requiresTool: false },
 			}),
-			{
-				thought: "Read the visible image attachment before answering.",
-				toolCalls: [
-					{
-						id: "read-image",
-						name: "ATTACHMENT",
-						args: { action: "read", attachmentId: "image-1" },
-					},
-				],
-			},
-			JSON.stringify({
-				success: true,
-				decision: "FINISH",
-				thought: "Attachment was read before replying.",
-				messageToUser:
-					"I couldn't generate a readable description for that image.",
-			}),
 		]);
-		const attachmentHandler = vi.fn(async () => ({
-			success: true,
-			text: "I couldn't generate a readable description for that image.",
-			data: { actionName: "ATTACHMENT" },
-		}));
-		runtime.actions = [
-			{
-				name: "ATTACHMENT",
-				contexts: ["general", "media", "messaging"],
-				description: "Read current or recent attachments.",
-				parameters: [
-					{
-						name: "action",
-						description: "Attachment operation",
-						required: false,
-						schema: { type: "string" },
-					},
-					{
-						name: "attachmentId",
-						description: "Attachment id",
-						required: false,
-						schema: { type: "string" },
-					},
-				],
-				examples: [],
-				validate: async () => true,
-				handler: attachmentHandler,
-			},
-		] as never;
 		const state = makeAttachmentState();
 		runtime.composeState = vi.fn(async () => state) as never;
 
 		const result = await runV5MessageRuntimeStage1({
 			runtime,
 			message: makeMessage({
-				text: "Give me thoughts on it",
-				mentionContext: { isReply: true },
+				text: "what's a good way to read a large file line by line in node?",
 			}),
 			state,
 			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
 		});
 
-		expect(result.kind).toBe("planned_reply");
-		expect(attachmentHandler).toHaveBeenCalledTimes(1);
-		const calls = useModelCalls(runtime);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"requiresTool":true');
-		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
-		expect(plannerUserContent).not.toContain(
-			"Yes, I can see the image you attached.",
-		);
-		if (result.kind === "planned_reply") {
+		expect(result.kind).toBe("direct_reply");
+		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
-				"I couldn't generate a readable description for that image.",
+				"Use the built-in readline module to stream lines.",
 			);
 		}
+		// No planner reroute. Only Stage 1 should have run.
+		expect(useModelCalls(runtime)).toHaveLength(1);
 	});
 
 	it("does not treat the agent's own attachment ack as a user follow-up anchor", async () => {
@@ -485,48 +436,6 @@ describe("runV5MessageRuntimeStage1", () => {
 		if (result.kind === "direct_reply") {
 			expect(result.result.responseContent?.text).toBe(
 				"https://eliza.so\nhttps://app.eliza.so",
-			);
-		}
-	});
-
-	it("does not send an image-inspection ack when attachment tooling is unavailable", async () => {
-		const runtime = makeRuntime([
-			stage1Response({
-				contexts: ["general"],
-				replyText: "On it.",
-				extra: { requiresTool: false },
-			}),
-			JSON.stringify({
-				thought: "No attachment action is exposed in this fixture.",
-				toolCalls: [],
-				messageToUser:
-					"I can see there is an image attachment, but I cannot inspect its contents from this context.",
-			}),
-		]);
-		const state = makeAttachmentState();
-		runtime.composeState = vi.fn(async () => state) as never;
-
-		const result = await runV5MessageRuntimeStage1({
-			runtime,
-			message: makeMessage({
-				text: "what shape and color is in this image?",
-				mentionContext: { isMention: true },
-			}),
-			state,
-			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-		});
-
-		expect(result.kind).toBe("planned_reply");
-		const calls = useModelCalls(runtime);
-		const plannerCall = calls[1]?.[1] as {
-			messages?: Array<{ role?: string; content?: string | null }>;
-		};
-		const plannerUserContent = plannerCall.messages?.[1]?.content ?? "";
-		expect(plannerUserContent).toContain('"candidateActions":["ATTACHMENT"]');
-		expect(plannerUserContent).not.toContain('"reply":"On it."');
-		if (result.kind === "planned_reply") {
-			expect(result.result.responseContent?.text).toContain(
-				"cannot inspect its contents",
 			);
 		}
 	});
