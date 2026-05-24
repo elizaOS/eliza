@@ -12,6 +12,7 @@ export * from "./admin-users";
 export * from "./affiliates";
 export * from "./agent-budgets";
 export * from "./agent-events";
+export * from "./agent-identities";
 export * from "./agent-pairing-tokens";
 export * from "./agent-phone-contacts";
 export * from "./agent-phone-numbers";
