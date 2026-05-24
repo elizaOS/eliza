@@ -249,20 +249,28 @@ function loadLink(name, file, pos) {
 
 // ── GLB Reference ────────────────────────────────────────────────────────────
 const gltfLoader = new GLTFLoader();
+let refBaseScale = 1;  // scale that makes sentinel = robot height
+
 gltfLoader.load('reference.glb', (gltf) => {
   refGroup = gltf.scene;
-  // Estimate bounding box and auto-scale to ~1.2m height
+
+  // Apply orientation correction: Sentinel faces right (+X) in the GLB, rotate to face camera (+Z)
+  refGroup.rotation.y = parseFloat(document.getElementById('ref-roty').value) * Math.PI / 180;
+
+  // Auto-scale so sentinel height matches robot standing height (~1.15m in THREE.js Y)
+  // Must compute BB *after* rotation is applied
   const bb = new THREE.Box3().setFromObject(refGroup);
   const sz = new THREE.Vector3(); bb.getSize(sz);
-  const maxDim = Math.max(sz.x, sz.y, sz.z);
-  const targetH = 1.2;
-  const autoScale = targetH / maxDim;
-  const initScale = parseFloat(document.getElementById('ref-scale').value) / 100 * autoScale * 100;
-  refGroup.scale.setScalar(autoScale * 0.8);
-  // Center bottom at origin
-  const center = new THREE.Vector3(); bb.getCenter(center);
-  refGroup.position.set(-center.x * autoScale * 0.8, -bb.min.y * autoScale * 0.8, -center.z * autoScale * 0.8);
-  setRefMat(refGroup, 0.4);
+  const robotH = 1.15;  // robot Y span foot-to-head in THREE.js
+  refBaseScale = robotH / sz.y;
+  const userScale = parseFloat(document.getElementById('ref-scale').value) / 100;
+  refGroup.scale.setScalar(refBaseScale * userScale);
+
+  // Position: feet at Y=0, to the left of robot (X offset from slider)
+  const bb2 = new THREE.Box3().setFromObject(refGroup);
+  const xOff = parseFloat(document.getElementById('ref-x').value) / 1000;
+  refGroup.position.set(xOff, -bb2.min.y, 0);
+  setRefMat(refGroup, parseFloat(document.getElementById('ref-opacity').value) / 100);
   scene.add(refGroup);
 }, undefined, (err) => {
   console.warn('GLB load failed:', err);
@@ -341,17 +349,38 @@ window.setRefOpacity = (v) => {
 window.setRefScale = (v) => {
   document.getElementById('ref-scale-val').textContent = (v/100).toFixed(2);
   if (refGroup) {
+    refGroup.scale.setScalar(refBaseScale * (v / 100));
+    // Re-seat feet after scale change
     const bb = new THREE.Box3().setFromObject(refGroup);
-    const sz = new THREE.Vector3(); bb.getSize(sz);
-    const maxDim = Math.max(sz.x/refGroup.scale.x, sz.y/refGroup.scale.y, sz.z/refGroup.scale.z);
-    const s = (1.2 / maxDim) * (v / 100);
-    refGroup.scale.setScalar(s);
+    const xOff = parseFloat(document.getElementById('ref-x').value) / 1000;
+    const yOff = parseFloat(document.getElementById('ref-y').value) / 1000;
+    refGroup.position.set(xOff, -bb.min.y + yOff, 0);
   }
 };
 
 window.setRefY = (v) => {
   document.getElementById('ref-y-val').textContent = v;
-  if (refGroup) refGroup.position.y = parseFloat(v)/1000;
+  if (refGroup) {
+    const bb = new THREE.Box3().setFromObject(refGroup);
+    refGroup.position.y = -bb.min.y + parseFloat(v)/1000;
+  }
+};
+
+window.setRefX = (v) => {
+  document.getElementById('ref-x-val').textContent = v;
+  if (refGroup) refGroup.position.x = parseFloat(v)/1000;
+};
+
+window.setRefRotY = (v) => {
+  document.getElementById('ref-roty-val').textContent = v + '°';
+  if (refGroup) {
+    refGroup.rotation.y = parseFloat(v) * Math.PI / 180;
+    // Re-seat feet after rotation change
+    const bb = new THREE.Box3().setFromObject(refGroup);
+    const xOff = parseFloat(document.getElementById('ref-x').value) / 1000;
+    const yOff = parseFloat(document.getElementById('ref-y').value) / 1000;
+    refGroup.position.set(xOff, -bb.min.y + yOff, 0);
+  }
 };
 
 window.allOn = () => {

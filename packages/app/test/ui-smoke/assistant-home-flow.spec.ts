@@ -177,6 +177,15 @@ async function installAssistantFlowRoutes(page: Page): Promise<{
       });
     },
   );
+  await page.route(
+    "**/api/conversations/assistant-home-conversation/greeting**",
+    async (route) => {
+      await fulfillJson(route, {
+        text: "Ready when you are.",
+        localInference: null,
+      });
+    },
+  );
   await page.route("**/api/turns/assistant-home-room/abort", async (route) => {
     await fulfillJson(route, {
       aborted: true,
