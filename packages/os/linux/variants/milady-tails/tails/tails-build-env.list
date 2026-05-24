@@ -1,9 +1,0 @@
-# This file is in Java property file format
-# (https://en.wikipedia.org/wiki/.properties)
-APT_SNAPSHOTS_SERIALS = {"debian":"2026042702","debian-security":"2026051804","torproject":"2026050704"}
-# This file is in Java property file format
-# (https://en.wikipedia.org/wiki/.properties)
-APT_SNAPSHOTS_SERIALS = {"debian":"2026042702","debian-security":"2026052003","torproject":"2026050704"}
-# This file is in Java property file format
-# (https://en.wikipedia.org/wiki/.properties)
-APT_SNAPSHOTS_SERIALS = {"debian":"2026042702","debian-security":"2026052003","torproject":"2026050704"}
