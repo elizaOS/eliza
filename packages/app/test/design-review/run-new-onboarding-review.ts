@@ -25,6 +25,7 @@ import {
 } from "@playwright/test";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { getFreePort } from "../utils/get-free-port.mjs";
+import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 
 type ViewportId = "mobile" | "desktop";
 
@@ -441,11 +442,11 @@ async function captureState(args: {
       );
     }
 
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-      timeout: 5000,
-    });
+    await captureScreenshotWithQualityRetry(
+      page,
+      `new onboarding ${args.state.id} ${args.viewport.id}`,
+      { path: screenshotPath, fullPage: true },
+    );
     return {
       capture: {
         stateId: slug,
@@ -466,9 +467,11 @@ async function captureState(args: {
       diagnosticsRoot,
       `${args.viewport.id}-${slug}.console.txt`,
     );
-    await page
-      ?.screenshot({ path: failShot, fullPage: true, timeout: 5000 })
-      .catch(() => {});
+    await captureScreenshotWithQualityRetry(
+      page,
+      `new onboarding diagnostic ${args.state.id} ${args.viewport.id}`,
+      { path: failShot, fullPage: true },
+    ).catch(() => {});
     await writeFile(consolePath, consoleLines.join("\n"), "utf-8");
     return {
       failure: {

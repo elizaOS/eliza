@@ -11,9 +11,12 @@ import { readdirSync, statSync } from "node:fs";
 import pathModule from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
+import {
+  assertScreenshotNotBlank,
+  captureScreenshotWithQualityRetry,
+} from "./_helpers/screenshot-quality";
 
 const LIVE_URL = process.env.CLOUD_E2E_LIVE_URL;
-const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
 const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
 
@@ -135,8 +138,10 @@ test.describe("live: public routes against real backend", () => {
       await expect(
         page.getByRole("heading", { name: /^Page Not Found$/i }),
       ).toHaveCount(0);
-      const screenshot = await page.screenshot({ fullPage: true });
-      expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
+      const screenshot = await captureScreenshotWithQualityRetry(page, route, {
+        fullPage: true,
+      });
+      await assertScreenshotNotBlank(screenshot, route);
 
       const title = await page.title();
       if (route !== "/") {

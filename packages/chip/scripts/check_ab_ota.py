@@ -123,14 +123,11 @@ def run_host_test() -> tuple[bool, str]:
     fails = sum(1 for ln in lines if ln.startswith("FAIL "))
     if fails:
         return False, f"{fails} check(s) failed"
-    passed = {ln[len("PASS ") :] for ln in lines if ln.startswith("PASS ")}
+    passed = {ln[len("PASS "):] for ln in lines if ln.startswith("PASS ")}
     missing = [c for c in REQUIRED_CASES if c not in passed]
     if missing:
         return False, "missing required cases: " + "; ".join(missing)
-    return (
-        True,
-        f"{len(passed)} checks passed; all {len(REQUIRED_CASES)} required cases present; '{PASS_LINE}'",
-    )
+    return True, f"{len(passed)} checks passed; all {len(REQUIRED_CASES)} required cases present; '{PASS_LINE}'"
 
 
 def run_target_build() -> tuple[bool, str]:
@@ -169,22 +166,18 @@ def main() -> int:
 
     checks = []
     host_ok, host_detail = run_host_test()
-    checks.append(
-        {
-            "id": "host_ab_ota_slot_rollback_recovery_suite",
-            "status": "pass" if host_ok else "fail",
-            "detail": host_detail,
-        }
-    )
+    checks.append({
+        "id": "host_ab_ota_slot_rollback_recovery_suite",
+        "status": "pass" if host_ok else "fail",
+        "detail": host_detail,
+    })
 
     target_ok, target_detail = run_target_build()
-    checks.append(
-        {
-            "id": "riscv64_freestanding_build",
-            "status": "pass" if target_ok else "fail",
-            "detail": target_detail,
-        }
-    )
+    checks.append({
+        "id": "riscv64_freestanding_build",
+        "status": "pass" if target_ok else "fail",
+        "detail": target_detail,
+    })
 
     failures = [c["id"] for c in checks if c["status"] != "pass"]
     passed = not failures

@@ -6,6 +6,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 type ViewCase = {
   id: string;
@@ -135,10 +136,15 @@ test.describe("registered plugin views visual coverage", () => {
         }
       }
 
-      await page.screenshot({
-        fullPage: false,
-        path: path.join(screenshotDir, `${view.id}-${view.viewType}.png`),
-      });
+      await captureScreenshotWithQualityRetry(
+        page,
+        `${view.id} ${view.viewType}`,
+        {
+          fullPage: false,
+          path: path.join(screenshotDir, `${view.id}-${view.viewType}.png`),
+          attempts: 4,
+        },
+      );
 
       const focusedAfterTabs: string[] = [];
       focusedAfterTabs.push(

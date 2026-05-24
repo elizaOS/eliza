@@ -55,6 +55,30 @@ function link(href, label) {
   return href ? `<a href="${escapeHtml(href)}">${escapeHtml(label)}</a>` : "";
 }
 
+function remapOfflineReviewSummary(summary) {
+  if (!summary) return null;
+  return {
+    ...summary,
+    primaryEvidenceHref: relHref(summary.primaryEvidenceHref, PACK_DIR, PROMPT_DIR),
+    supportingEvidenceHrefs: (summary.supportingEvidenceHrefs || [])
+      .map((href) => relHref(href, PACK_DIR, PROMPT_DIR))
+      .filter(Boolean),
+  };
+}
+
+function evidenceTierLimitation(tier) {
+  if (tier === "script-sidecar-complete") {
+    return "Script-local structured sidecar has parsed prompt and response rows.";
+  }
+  if (tier === "reason-coded-no-model-call") {
+    return "The wrapped script is classified as validation/self-test or no-model-call; playback and logs are the review surface.";
+  }
+  if (tier === "runtime-blocked-before-sidecar") {
+    return "The wrapped script failed or timed out before a script-local LLM sidecar could be emitted.";
+  }
+  return "Prompt/response evidence tier is unavailable; inspect playback and logs.";
+}
+
 function buildPayload() {
   const model = readJson("reports/benchmark-analysis/live-test-model-evidence/model-evidence.json");
   const prompt = readJson(
@@ -92,6 +116,7 @@ function buildPayload() {
         viewerHref: relHref(row.viewerHref, PACK_DIR),
         modelReviewHref: relHref(row.modelReviewHref, PACK_DIR),
         llmCallsHref: relHref(row.llmCallsHref, PACK_DIR),
+        latestReportHref: relHref(row.latestReportHref, PACK_DIR),
         promptResponseHref: relHref("../live-test-prompt-response-completeness/index.html", PACK_DIR, MODEL_EVIDENCE_DIR),
         failureTriageHref: row.failureTriageHref
           ? relHref(row.failureTriageHref, PACK_DIR, MODEL_EVIDENCE_DIR)
@@ -101,15 +126,24 @@ function buildPayload() {
         modelReviewExists: Boolean(row.modelReviewExists),
         structured: {
           callCount: Number(row.structuredLlmCallCount || 0),
+          latestCallCount: Number(row.latestStructuredLlmCallCount ?? promptRow.latestStructuredLlmCallCount ?? 0),
           runCount: Number(row.structuredLlmRunCount || 0),
           reason: row.structuredLlmCoverageReason || "",
           detail: row.structuredLlmCoverageDetail || "",
           completeness: promptRow.promptResponseCompleteness || "",
+          evidenceTier: promptRow.evidenceTier || "",
+          limitation: evidenceTierLimitation(promptRow.evidenceTier || ""),
           parsedCalls: Number(promptRow.calls || 0),
           withPrompt: Number(promptRow.withPrompt || 0),
           withResponse: Number(promptRow.withResponse || 0),
           totalTokens: Number(promptRow.totalTokens || 0),
           cacheReadTokens: Number(promptRow.cacheReadTokens || 0),
+          llmCallsStatus: row.llmCallsStatus || promptRow.llmCallsStatus || "",
+          llmCallsLines: Number(row.llmCallsLines ?? promptRow.llmCallsLines ?? 0),
+          llmCallsBytes: Number(row.llmCallsBytes ?? promptRow.llmCallsBytes ?? 0),
+          latestStdoutExcerpt: row.latestStdoutExcerpt || promptRow.latestStdoutExcerpt || "",
+          latestStderrExcerpt: row.latestStderrExcerpt || promptRow.latestStderrExcerpt || "",
+          offlineReviewSummary: remapOfflineReviewSummary(promptRow.offlineReviewSummary),
         },
         failure: {
           classification: row.failureClassification || triageRow.classification || "",
@@ -146,6 +180,7 @@ function buildPayload() {
     structuredSidecarScripts: packs.filter((pack) => pack.structured.callCount > 0).length,
     structuredStatusScripts: packs.filter((pack) => pack.structured.reason).length,
     scriptStructuredCalls: packs.reduce((sum, pack) => sum + pack.structured.callCount, 0),
+    scriptLatestStructuredCalls: packs.reduce((sum, pack) => sum + pack.structured.latestCallCount, 0),
     scriptCallsParsed: packs.reduce((sum, pack) => sum + pack.structured.parsedCalls, 0),
     scriptCallsWithPrompt: packs.reduce((sum, pack) => sum + pack.structured.withPrompt, 0),
     scriptCallsWithResponse: packs.reduce((sum, pack) => sum + pack.structured.withResponse, 0),
@@ -154,6 +189,24 @@ function buildPayload() {
     rowsWithRerunCommand: packs.filter((pack) => pack.rerunCommand).length,
     manualReviewNotes: packs.filter((pack) => pack.manualReview?.noteHref).length,
     sampleCallRows: packs.filter((pack) => pack.sampleCalls.length > 0).length,
+    emptyLlmCallSidecars: packs.filter((pack) => pack.structured.llmCallsStatus === "empty-sidecar-zero-calls").length,
+    noLlmCallSidecars: packs.filter((pack) => pack.structured.llmCallsStatus === "no-sidecar-file").length,
+    rowsWithLatestRunExcerpt: packs.filter((pack) => pack.structured.latestStdoutExcerpt || pack.structured.latestStderrExcerpt).length,
+    scriptSidecarComplete: packs.filter((pack) => pack.structured.evidenceTier === "script-sidecar-complete").length,
+    reasonCodedNoModelCall: packs.filter((pack) => pack.structured.evidenceTier === "reason-coded-no-model-call").length,
+    runtimeBlockedBeforeSidecar: packs.filter((pack) => pack.structured.evidenceTier === "runtime-blocked-before-sidecar").length,
+    rowsWithOfflineReviewSummary: packs.filter((pack) => pack.structured.offlineReviewSummary?.canReviewOffline).length,
+    noSidecarRowsWithOfflineReviewSummary: packs.filter(
+      (pack) =>
+        pack.structured.evidenceTier !== "script-sidecar-complete" &&
+        pack.structured.offlineReviewSummary?.canReviewOffline &&
+        pack.structured.offlineReviewSummary?.primaryEvidenceHref,
+    ).length,
+    byEvidenceTier: packs.reduce((counts, pack) => {
+      const tier = pack.structured.evidenceTier || "unknown";
+      counts[tier] = (counts[tier] || 0) + 1;
+      return counts;
+    }, {}),
     allStructuredRunCallsParsed: prompt.summary?.structuredRunCallsParsed || 0,
     allStructuredRunCallsWithPrompt: prompt.summary?.structuredRunCallsWithPrompt || 0,
     allStructuredRunCallsWithResponse: prompt.summary?.structuredRunCallsWithResponse || 0,
@@ -201,22 +254,27 @@ function packHtml(payload, pack) {
     <section class="grid">
       <div class="metric"><span>disposition</span><strong>${escapeHtml(pack.disposition)}</strong></div>
       <div class="metric"><span>exit</span><strong>${escapeHtml(pack.latestWrappedExitCode ?? "n/a")}</strong></div>
-      <div class="metric"><span>structured calls</span><strong>${escapeHtml(pack.structured.callCount)}</strong></div>
+      <div class="metric"><span>latest sidecar calls</span><strong>${escapeHtml(pack.structured.latestCallCount)}</strong></div>
+      <div class="metric"><span>aggregate script calls</span><strong>${escapeHtml(pack.structured.callCount)}</strong></div>
       <div class="metric"><span>parsed prompt/response</span><strong>${pack.structured.withPrompt}/${pack.structured.withResponse}</strong></div>
       <div class="metric"><span>failure</span><strong>${escapeHtml(pack.failure.classification || "none")}</strong></div>
       <div class="metric"><span>manual note</span><strong>${pack.manualReview ? "yes" : "no"}</strong></div>
     </section>
     <section class="panel"><h2>Primary Links</h2><div class="body">
-      ${link(pack.playbackHref, "playback")} ${link(pack.viewerHref, "run viewer")} ${link(pack.modelReviewHref, "focused review")} ${link(pack.llmCallsHref, "llm calls")} ${link(pack.promptResponseHref, "prompt/response matrix")} ${link(pack.failureTriageHref, "failure triage")} ${pack.manualReview ? link(pack.manualReview.noteHref, "manual note") : ""}
+      ${link(pack.playbackHref, "playback")} ${link(pack.viewerHref, "run viewer")} ${link(pack.modelReviewHref, "focused review")} ${link(pack.llmCallsHref, "llm calls")} ${link(pack.latestReportHref, "report")} ${link(pack.promptResponseHref, "prompt/response matrix")} ${link(pack.failureTriageHref, "failure triage")} ${pack.manualReview ? link(pack.manualReview.noteHref, "manual note") : ""}
     </div></section>
     <section class="panel"><h2>Structured Status</h2><div class="body"><table><tbody>
       <tr><th>coverage</th><td>${escapeHtml(pack.structured.completeness || "structured-present")}</td></tr>
+      <tr><th>evidence tier</th><td><code>${escapeHtml(pack.structured.evidenceTier || "unknown")}</code><br>${escapeHtml(pack.structured.limitation)}</td></tr>
+      <tr><th>offline review</th><td><b>${escapeHtml(pack.structured.offlineReviewSummary?.reviewSurface || "")}</b><br>${escapeHtml(pack.structured.offlineReviewSummary?.manualReviewPrompt || "")}<br>${link(pack.structured.offlineReviewSummary?.primaryEvidenceHref, "primary evidence")}${(pack.structured.offlineReviewSummary?.supportingEvidenceHrefs || []).map((href, index) => link(href, `support ${index + 1}`)).join("")}${pack.structured.offlineReviewSummary?.excerpt ? `<pre>${escapeHtml(pack.structured.offlineReviewSummary.excerpt)}</pre>` : ""}</td></tr>
       <tr><th>reason</th><td><code>${escapeHtml(pack.structured.reason || "structured-present")}</code><br>${escapeHtml(pack.structured.detail)}</td></tr>
-      <tr><th>calls</th><td>${pack.structured.parsedCalls}/${pack.structured.callCount} parsed; prompt ${pack.structured.withPrompt}; response ${pack.structured.withResponse}; tokens ${fmt(pack.structured.totalTokens)}; cache ${fmt(pack.structured.cacheReadTokens)}</td></tr>
+      <tr><th>calls</th><td>${pack.structured.parsedCalls}/${pack.structured.latestCallCount} latest sidecar calls; ${pack.structured.callCount} aggregate script calls; prompt ${pack.structured.withPrompt}; response ${pack.structured.withResponse}; tokens ${fmt(pack.structured.totalTokens)}; cache ${fmt(pack.structured.cacheReadTokens)}</td></tr>
+      <tr><th>llm-calls sidecar</th><td><code>${escapeHtml(pack.structured.llmCallsStatus || "unknown")}</code>; ${escapeHtml(pack.structured.llmCallsLines)} jsonl rows; ${escapeHtml(pack.structured.llmCallsBytes)} bytes</td></tr>
       <tr><th>rerun</th><td><code>${escapeHtml(pack.rerunCommand)}</code><br><span class="muted">then <code>bun run bench:analysis:build</code></span></td></tr>
     </tbody></table></div></section>
     <section class="panel"><h2>Sample Calls</h2><div class="body">
       ${pack.sampleCalls.length ? pack.sampleCalls.map((call) => `<div><b>${escapeHtml(call.purpose || call.model || "call")}</b> ${escapeHtml(call.totalTokens || 0)} tokens cache ${escapeHtml(call.cacheReadInputTokens || 0)}<pre>${escapeHtml(call.promptPreview || "")}</pre><pre>${escapeHtml(call.responsePreview || "")}</pre></div>`).join("") : "<span class=\"muted\">No structured prompt/response sidecar rows for this script.</span>"}
+      ${!pack.sampleCalls.length && (pack.structured.latestStdoutExcerpt || pack.structured.latestStderrExcerpt) ? `<pre>${escapeHtml(pack.structured.latestStderrExcerpt || pack.structured.latestStdoutExcerpt)}</pre>` : ""}
     </div></section>
     <section class="panel"><h2>Failure And Manual Review</h2><div class="body"><table><tbody>
       <tr><th>failure</th><td>${escapeHtml(pack.failure.classification || "none")} exit ${escapeHtml(pack.failure.exitCode ?? "n/a")} duration ${escapeHtml(pack.failure.durationMs ?? "n/a")}ms</td></tr>
@@ -257,10 +315,20 @@ function indexHtml(payload) {
   <header><h1>Live/E2E Review Packs</h1><div class="muted">${escapeHtml(payload.generatedAt)}</div></header>
   <main>
     <section class="cards">
-      ${Object.entries(payload.summary).slice(0, 8).map(([key, value]) => `<div class="card"><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
+      ${[
+        ["packPages", payload.summary.packPages],
+        ["playbackLinkedScripts", payload.summary.playbackLinkedScripts],
+        ["scriptSidecarComplete", payload.summary.scriptSidecarComplete],
+        ["reasonCodedNoModelCall", payload.summary.reasonCodedNoModelCall],
+        ["runtimeBlockedBeforeSidecar", payload.summary.runtimeBlockedBeforeSidecar],
+        ["offlineReviewSummaries", payload.summary.rowsWithOfflineReviewSummary],
+        ["scriptLatestStructuredCalls", payload.summary.scriptLatestStructuredCalls],
+        ["failedScripts", payload.summary.failedScripts],
+        ["manualReviewNotes", payload.summary.manualReviewNotes],
+      ].map(([key, value]) => `<div class="card"><span>${escapeHtml(key)}</span><strong>${escapeHtml(value)}</strong></div>`).join("")}
     </section>
     <table><thead><tr><th>script</th><th>status</th><th>structured</th><th>failure</th><th>links</th></tr></thead><tbody>
-      ${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.id)}</code></td><td>${escapeHtml(pack.disposition)}<br>exit ${escapeHtml(pack.latestWrappedExitCode ?? "n/a")}</td><td>${pack.structured.parsedCalls}/${pack.structured.callCount} parsed<br><span class="muted">${escapeHtml(pack.structured.reason || "structured-present")}</span></td><td>${escapeHtml(pack.failure.classification || "")}</td><td><a href="${escapeHtml(pack.href)}">pack</a></td></tr>`).join("")}
+      ${payload.packs.map((pack) => `<tr><td><code>${escapeHtml(pack.id)}</code></td><td>${escapeHtml(pack.disposition)}<br>exit ${escapeHtml(pack.latestWrappedExitCode ?? "n/a")}</td><td>${pack.structured.parsedCalls}/${pack.structured.latestCallCount} latest sidecar calls<br><span class="muted">${escapeHtml(pack.structured.callCount)} aggregate script calls; ${escapeHtml(pack.structured.evidenceTier || "unknown")}; ${escapeHtml(pack.structured.reason || "structured-present")}</span></td><td>${escapeHtml(pack.failure.classification || "")}</td><td><a href="${escapeHtml(pack.href)}">pack</a></td></tr>`).join("")}
     </tbody></table>
   </main>
 </body>
@@ -273,13 +341,13 @@ function markdown(payload) {
     "",
     `Generated: ${payload.generatedAt}`,
     "",
-    `Summary: ${payload.summary.packPages}/${payload.summary.scriptCount} pack pages, ${payload.summary.playbackLinkedScripts} playback-linked scripts, ${payload.summary.failedScripts} failed scripts, ${payload.summary.manualReviewNotes} manual notes.`,
+    `Summary: ${payload.summary.packPages}/${payload.summary.scriptCount} pack pages, ${payload.summary.playbackLinkedScripts} playback-linked scripts, ${payload.summary.scriptSidecarComplete} complete sidecar scripts, ${payload.summary.reasonCodedNoModelCall} no-model-call scripts, ${payload.summary.runtimeBlockedBeforeSidecar} runtime-blocked scripts, ${payload.summary.rowsWithOfflineReviewSummary} offline review summaries, ${payload.summary.failedScripts} failed scripts, ${payload.summary.manualReviewNotes} manual notes.`,
     "",
     "| Script | Pack | Disposition | Structured | Failure |",
     "| --- | --- | --- | ---: | --- |",
     ...payload.packs.map(
       (pack) =>
-        `| \`${pack.id}\` | \`${pack.href}\` | ${pack.disposition} | ${pack.structured.parsedCalls}/${pack.structured.callCount} | ${pack.failure.classification || ""} |`,
+        `| \`${pack.id}\` | \`${pack.href}\` | ${pack.disposition} | ${pack.structured.parsedCalls}/${pack.structured.latestCallCount} latest; ${pack.structured.callCount} aggregate; ${pack.structured.evidenceTier || "unknown"} | ${pack.failure.classification || ""} |`,
     ),
     "",
   ].join("\n");

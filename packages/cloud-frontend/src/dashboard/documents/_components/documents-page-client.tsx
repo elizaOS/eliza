@@ -118,8 +118,13 @@ export function DocumentsPageClient({
       queueMicrotask(() => {
         fetchDocuments();
       });
+    } else {
+      // No character selected (or no characters at all) — stop the spinner.
+      queueMicrotask(() => {
+        updatePageState({ loading: false, documents: [] });
+      });
     }
-  }, [pageState.selectedCharacterId, fetchDocuments]);
+  }, [pageState.selectedCharacterId, fetchDocuments, updatePageState]);
 
   useEffect(() => {
     // Use queueMicrotask to defer execution and avoid synchronous setState

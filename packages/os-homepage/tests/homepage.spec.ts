@@ -33,6 +33,7 @@ const hardwareCopy = [
 
 test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
 
   const hero = page.locator(".hero-cloud");
   await expect(hero).toBeVisible();
@@ -54,6 +55,7 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
 
 test("download section exposes release artifact links", async ({ page }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
 
   const downloads = page.locator("#download");
   await expect(downloads).toBeVisible();
@@ -70,6 +72,7 @@ test("anchor sections #download and #hardware exist and are reachable", async ({
   page,
 }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
 
   await expect(page.locator("#download")).toHaveCount(1);
   await expect(page.locator("#hardware")).toHaveCount(1);
@@ -93,6 +96,7 @@ test("footer renders wordmark, link nav, and social links", async ({
   page,
 }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
 
   const footer = page.locator("footer.site-footer");
   await expect(footer).toBeVisible();
@@ -109,6 +113,7 @@ test("footer renders wordmark, link nav, and social links", async ({
 
 test("hero has no horizontal overflow", async ({ page }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
 
   const metrics = await page.evaluate(() => ({
     horizontalOverflow:
@@ -119,6 +124,7 @@ test("hero has no horizontal overflow", async ({ page }) => {
 
 test("hardware tiles link to checkout per product", async ({ page }) => {
   await page.goto("/");
+  await page.waitForSelector("h1", { timeout: 15000 });
   await expect(
     page.getByRole("link", { name: /Open checkout/i }),
   ).toHaveAttribute("href", "/checkout?collection=elizaos-hardware");
@@ -128,6 +134,7 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   page,
 }) => {
   await page.goto("/checkout?sku=elizaos-usb");
+  await page.waitForSelector("h1, h2", { timeout: 15000 });
 
   await expect(
     page.getByRole("heading", { name: "ElizaOS USB" }),
@@ -159,6 +166,7 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
 
 test("checkout result pages return to hardware", async ({ page }) => {
   await page.goto("/checkout/success?sku=elizaos-usb");
+  await page.waitForSelector("h1, h2", { timeout: 15000 });
   await expect(
     page.getByRole("heading", { name: "Pre-order received." }),
   ).toBeVisible();
@@ -167,6 +175,7 @@ test("checkout result pages return to hardware", async ({ page }) => {
   ).toHaveAttribute("href", "/#hardware");
 
   await page.goto("/checkout/cancel?sku=elizaos-usb");
+  await page.waitForSelector("h1, h2", { timeout: 15000 });
   await expect(
     page.getByRole("heading", { name: "Checkout canceled." }),
   ).toBeVisible();
@@ -194,6 +203,7 @@ for (const product of [
     const [slug, name, sku] = product;
 
     await page.goto(`/hardware/${slug}`);
+    await page.waitForSelector("h1, h2", { timeout: 15000 });
 
     await expect(page.getByRole("heading", { name })).toBeVisible();
     await expect(

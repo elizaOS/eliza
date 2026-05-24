@@ -260,14 +260,18 @@ describe("App navigate-view event wiring", () => {
     });
     expect(window.location.pathname).toBe("/apps/remote-ledger");
 
-    navigateView({ action: "open-window", viewId: "remote-ledger" });
+    navigateView({
+      action: "open-window",
+      viewId: "remote-ledger",
+      alwaysOnTop: true,
+    });
 
     await waitFor(() => {
       expect(desktopBridgeMock.invokeDesktopBridgeRequest).toHaveBeenCalledWith(
         {
           ipcChannel: "desktop:openAppWindow",
           params: {
-            alwaysOnTop: false,
+            alwaysOnTop: true,
             path: "/apps/remote-ledger",
             title: "Remote Ledger",
           },

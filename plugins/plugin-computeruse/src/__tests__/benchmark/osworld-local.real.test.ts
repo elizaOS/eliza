@@ -20,6 +20,7 @@ import { OSWorldAdapter } from "../../osworld/adapter.js";
 import type { OSWorldAction } from "../../osworld/types.js";
 import { captureScreenshot } from "../../platform/screenshot.js";
 import { ComputerUseService } from "../../services/computer-use-service.js";
+import { assertScreenshotBase64NotBlank } from "../../../test/helpers/screenshot-quality.ts";
 
 // ── Environment detection ───────────────────────────────────────────────
 
@@ -79,11 +80,10 @@ describeIfDesktop("OSWorld local benchmark", () => {
       expect(obs.instruction).toBe("Test task");
 
       if (canCapture) {
-        expect(obs.screenshot.length).toBeGreaterThan(100);
-        // Verify it's valid base64
-        const buf = Buffer.from(obs.screenshot, "base64");
-        expect(buf[0]).toBe(0x89); // PNG magic
-        expect(buf[1]).toBe(0x50);
+        assertScreenshotBase64NotBlank(
+          obs.screenshot,
+          "OSWorld observation screenshot",
+        );
       } else {
         // Without screen recording permission, screenshot is empty string
         expect(typeof obs.screenshot).toBe("string");
@@ -101,6 +101,12 @@ describeIfDesktop("OSWorld local benchmark", () => {
 
       const obs = await a11yAdapter.getObservation("Test with a11y");
       expect(obs.screenshot).toBeDefined();
+      if (canCapture) {
+        assertScreenshotBase64NotBlank(
+          obs.screenshot,
+          "OSWorld a11y observation screenshot",
+        );
+      }
       // a11y tree may or may not be available depending on permissions
       expect(
         obs.accessibility_tree === null ||
@@ -392,6 +398,12 @@ describeIfDesktop("OSWorld local benchmark", () => {
 
       // Assertions for the report
       expect(typeof obs.screenshot).toBe("string");
+      if (canCapture) {
+        assertScreenshotBase64NotBlank(
+          obs.screenshot,
+          "OSWorld benchmark metrics screenshot",
+        );
+      }
       expect(timings.every((t) => t < 10000)).toBe(true); // Each action under 10s
       expect(totalTime).toBeLessThan(60000); // Total under 60s
     });

@@ -151,29 +151,36 @@ function AssistantVoiceHarness() {
   const [continuousMode, setContinuousMode] =
     React.useState<VoiceContinuousMode>("off");
   const [preview, setPreview] = React.useState("");
+  const voiceTurnIdRef = React.useRef(0);
 
   const voice = useVoiceChat({
     onTranscriptPreview: (text) => {
       setPreview(text);
     },
     onTranscript: (text) => {
+      const turnId = voiceTurnIdRef.current;
+      voiceTurnIdRef.current += 1;
       setPreview("");
       setMessages((current) => [
         ...current,
         {
-          id: `user-${current.length}`,
+          id: `user-${turnId}`,
           role: "user",
           content: text,
           createdAt: current.length + 1,
         },
         {
-          id: `assistant-${current.length}`,
+          id: `assistant-${turnId}`,
           role: "assistant",
           content: WAIT_PHRASE,
           createdAt: current.length + 2,
         },
       ]);
-      voice.queueAssistantSpeech("assistant-wait", WAIT_PHRASE, false);
+      voice.queueAssistantSpeech(
+        `assistant-wait-${turnId}`,
+        WAIT_PHRASE,
+        false,
+      );
     },
   });
   const continuous = useContinuousChat({
@@ -311,6 +318,67 @@ describe("assistant voice application flow", () => {
     });
     expect(screen.queryByLabelText("Voice transcript preview")).toBeNull();
     expect(speechSynthesisMock.spoken[0]?.text).toBe(WAIT_PHRASE);
+    expect(screen.getByLabelText("Voice capture status").textContent).toMatch(
+      /listening|speaking/,
+    );
+    expect(recognition?.stopped).toBe(false);
+    expect(toggle.getAttribute("data-mode")).toBe("always-on");
+  });
+
+  it("keeps Live capture open across assistant playback and submits a second spoken turn", async () => {
+    render(<AssistantVoiceHarness />);
+
+    fireEvent.click(screen.getByTestId("shell-home-pill"));
+    const toggle = screen.getByTestId("assistant-continuous-toggle");
+    const liveButton = toggle.querySelector(
+      "button[data-mode='always-on']",
+    ) as HTMLButtonElement;
+
+    await act(async () => {
+      fireEvent.click(liveButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Voice capture status").textContent).toBe(
+        "listening",
+      );
+    });
+    const recognition = FakeSpeechRecognition.instances[0];
+    expect(recognition?.started).toBe(true);
+    expect(recognition?.continuous).toBe(true);
+
+    act(() => {
+      recognition?.emitResult("create a remote ledger", false);
+    });
+    expect(screen.getByLabelText("Voice transcript preview").textContent).toBe(
+      "create a remote ledger",
+    );
+
+    act(() => {
+      recognition?.emitResult("create a remote ledger view while live", true);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("create a remote ledger view while live"),
+      ).toBeTruthy();
+      expect(screen.getByText(WAIT_PHRASE)).toBeTruthy();
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByLabelText("Voice transcript preview")).toBeNull();
+    expect(recognition?.stopped).toBe(false);
+
+    act(() => {
+      speechSynthesisMock.spoken[0]?.onend?.();
+      recognition?.emitResult("now create the local notes view", true);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("now create the local notes view")).toBeTruthy();
+      expect(speechSynthesisMock.speak).toHaveBeenCalledTimes(2);
+    });
+    expect(speechSynthesisMock.spoken[1]?.text).toBe(WAIT_PHRASE);
+    expect(screen.getAllByText(WAIT_PHRASE).length).toBe(2);
     expect(screen.getByLabelText("Voice capture status").textContent).toMatch(
       /listening|speaking/,
     );

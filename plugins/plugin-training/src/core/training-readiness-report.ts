@@ -14,6 +14,8 @@ import type {
 export const TRAINING_READINESS_REPORT_SCHEMA =
   "eliza_training_readiness_report";
 export const TRAINING_READINESS_REPORT_VERSION = 1;
+const ELIZA_HARNESS_ACTION_SELECTION_BENCHMARK =
+  "eliza_harness_action_selection";
 
 export type TrainingReadinessStatus = "ready" | "partial" | "missing";
 
@@ -83,6 +85,46 @@ function sourceLabelOf(artifact: TrainingAnalysisArtifact): string | undefined {
   const source = artifact.summary.source;
   if (typeof source === "string") return source;
   return sourceKindOf(artifact);
+}
+
+function stringFromRecord(
+  record: ReadinessRecord | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value.trim().length > 0
+    ? value.trim()
+    : undefined;
+}
+
+function benchmarkNameOf(
+  artifact: TrainingAnalysisArtifact,
+): string | undefined {
+  const summarySource = isRecord(artifact.summary.source)
+    ? artifact.summary.source
+    : undefined;
+  const payload = isRecord(artifact.payload) ? artifact.payload : undefined;
+  const payloadSource = isRecord(payload?.source) ? payload.source : undefined;
+  const payloadSummary = isRecord(payload?.summary)
+    ? payload.summary
+    : undefined;
+  return (
+    stringFromRecord(artifact.summary, "benchmark") ??
+    stringFromRecord(summarySource, "benchmark") ??
+    stringFromRecord(payload, "benchmark") ??
+    stringFromRecord(payloadSource, "benchmark") ??
+    stringFromRecord(payloadSummary, "benchmark")
+  );
+}
+
+function isElizaHarnessActionBenchmark(
+  artifact: TrainingAnalysisArtifact,
+): boolean {
+  return (
+    schemaOf(artifact) === "eliza_action_selection_benchmark_report" ||
+    sourceKindOf(artifact) === "app_core_action_selection_benchmark" ||
+    benchmarkNameOf(artifact) === ELIZA_HARNESS_ACTION_SELECTION_BENCHMARK
+  );
 }
 
 function numberSummary(
@@ -533,6 +575,29 @@ function coverageTierStatus(
   return null;
 }
 
+function readableSourceCoverageStatus(
+  coverage: TrainingAnalysisCoverageSummary,
+): TrainingReadinessStatus | null {
+  const sourceKeys = [
+    "huggingFace",
+    "feed",
+    "natural",
+    "scenarios",
+    "tests",
+    "trainingJsonl",
+  ] as const;
+  const presentSources = sourceKeys.filter(
+    (key) => (coverage.dataSources[key] ?? 0) > 0,
+  );
+  if (presentSources.length === 0) return null;
+  if (
+    presentSources.every((key) => (coverage.readableSamples[key] ?? 0) > 0)
+  ) {
+    return "ready";
+  }
+  return "partial";
+}
+
 function applyCoverageReadiness(
   checks: TrainingReadinessCheck[],
   coverage: TrainingAnalysisCoverageSummary | undefined,
@@ -542,17 +607,13 @@ function applyCoverageReadiness(
     if (item.id === "readable_source_samples") {
       return coverageCheck(
         item,
-        coverage.readableSamples.total > 0
-          ? "ready"
-          : Object.values(coverage.dataSources).some((count) => count > 0)
-            ? "partial"
-            : null,
+        readableSourceCoverageStatus(coverage),
         {
           artifactCount: coverage.readableSamples.total,
           readyNote:
-            "Analysis coverage includes readable trajectory samples for the HTML viewer.",
+            "Analysis coverage includes readable trajectory samples for every collected source category.",
           partialNote:
-            "Analysis coverage found trajectory sources, but no readable samples yet.",
+            "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
         },
       );
     }
@@ -953,17 +1014,14 @@ export function buildTrainingReadinessReportPayload(
       label: "Eliza harness benchmarks",
       ready: (artifact) =>
         artifact.kind === "eval" &&
-        (schemaOf(artifact) === "eliza_action_selection_benchmark_report" ||
-          typeof artifact.summary.benchmark === "string") &&
+        isElizaHarnessActionBenchmark(artifact) &&
         (typeof artifact.summary.accuracy === "number" ||
           typeof artifact.summary.score === "number" ||
           typeof artifact.summary.passRate === "number") &&
         ((numberSummary(artifact, "total") ?? 1) > 0 ||
           (numberSummary(artifact, "results") ?? 1) > 0),
       partial: (artifact) =>
-        artifact.kind === "eval" &&
-        (schemaOf(artifact) === "eliza_action_selection_benchmark_report" ||
-          typeof artifact.summary.benchmark === "string"),
+        artifact.kind === "eval" && isElizaHarnessActionBenchmark(artifact),
       readyNote: "Agentic benchmark artifacts include scored results.",
       partialNote:
         "An agentic benchmark artifact is present, but it has no score.",

@@ -43,18 +43,30 @@ function buildPayload() {
   const sampler = readJson(
     "reports/benchmark-analysis/benchmark-five-example-sampler/five-example-sampler.json",
   );
+  const sampleReview = readJson(
+    "reports/benchmark-analysis/benchmark-sample-review-matrix/sample-review-matrix.json",
+  );
   const trajectory = readJson(
     "reports/benchmarks/code-agent-trajectory-catalog/trajectory-catalog.json",
   );
   const version = readJson(
     "reports/benchmarks/code-agent-version-comparison/version-comparison.json",
   );
+  const versionRemediation = readJson(
+    "reports/benchmark-analysis/version-remediation-matrix/version-remediation.json",
+  );
   const corpus = readJson(
     "reports/benchmarks/benchmark-results-corpus-review/corpus-review.json",
+  );
+  const corpusReviewPacks = readJson(
+    "reports/benchmark-analysis/corpus-review-packs/corpus-review-packs.json",
   );
   const scenarios = readJson("reports/scenarios/catalog-execution-union/coverage.json");
   const failures = readJson("reports/scenarios/failure-analysis/failure-analysis.json");
   const live = readJson("reports/live-test-inventory/inventory.json");
+  const livePromptResponse = readJson(
+    "reports/benchmark-analysis/live-test-prompt-response-completeness/prompt-response-completeness.json",
+  );
   const globalPlayback = readJson(
     "reports/benchmark-analysis/global-playback-index/global-playback-index.json",
   );
@@ -65,7 +77,6 @@ function buildPayload() {
 
   const objectiveCoverage = runContract.objectiveCoverage || {};
   const auditRows = new Map((audit.rows || []).map((row) => [row.id, row]));
-  const osworldMissing = auditRows.get("osworld-live")?.status === "missing";
   const corpusCaveated = auditRows.get("corpus-publication-gaps")?.status === "caveated";
   const fiveExampleCaveated =
     auditRows.get("five-examples-per-benchmark")?.status === "caveated";
@@ -89,7 +100,7 @@ function buildPayload() {
           sampler.summary?.selectedWithPlayback === sampler.summary?.selectedRows,
         fiveExampleCaveated,
       ),
-      evidence: `${sampler.summary?.selectedWithPlayback || 0}/${sampler.summary?.selectedRows || 0} sampled examples have playback across ${sampler.summary?.benchmarkCount || 0} benchmarks; OSWorld remains smoke-only.`,
+      evidence: `${sampler.summary?.selectedWithPlayback || 0}/${sampler.summary?.selectedRows || 0} sampled examples have playback across ${sampler.summary?.benchmarkCount || 0}/16 latest code-agent benchmarks; ${sampler.summary?.selectedWithTaskId || 0}/${sampler.summary?.selectedRows || 0} carry explicit task IDs; ${sampleReview.summary?.fullInlineReviewRows || 0} full inline I/O/cache rows, ${sampleReview.summary?.toolCallOnlyInlineRows || 0} tool-call-only rows, ${sampleReview.summary?.playbackOnlyEnvironmentRows || 0} playback-only environment rows. Caveat: OSWorld contributes 5/5 smoke playback rows until a live provider is available.`,
       viewer: "../benchmark-five-example-sampler/index.html",
     },
     {
@@ -117,12 +128,12 @@ function buildPayload() {
       id: "version-comparison",
       requirement: "Historical benchmark versions are shown where available, with previous-run gaps explicit.",
       status: status(
-        version.summary?.benchmarksWithPrevious === 8 &&
-          version.summary?.previousPlaybackGapCount === 2,
+        versionRemediation.summary?.withPrevious === 8 &&
+          versionRemediation.summary?.previousPlaybackGaps === 2,
         true,
       ),
-      evidence: `${version.summary?.benchmarksWithPrevious || 0}/${version.summary?.benchmarkCount || 0} code-agent benchmarks have previous rows; ${version.summary?.comparablePlaybackPairs || 0}/${version.summary?.benchmarksWithPrevious || 0} have call-by-call previous playback and ${version.summary?.previousPlaybackGapCount || 0} are aggregate-previous-viewer-only.`,
-      viewer: "../../benchmarks/code-agent-version-comparison/index.html",
+      evidence: `${versionRemediation.summary?.withPrevious || 0}/${versionRemediation.summary?.benchmarkCount || 0} code-agent benchmarks have previous rows; ${versionRemediation.summary?.comparablePlaybackPairs || 0}/${versionRemediation.summary?.withPrevious || 0} have call-by-call previous playback; ${versionRemediation.summary?.previousPlaybackGaps || 0} previous playback gaps (${(versionRemediation.summary?.previousPlaybackGapBenchmarks || []).join(", ")}); ${versionRemediation.summary?.previousAggregateOnlyWithViewer || 0} aggregate-only previous viewers have zero target/baseline trajectory files and ${versionRemediation.summary?.previousAggregateOnlyReviewRows || 0} have explicit version-gap review rows; ${versionRemediation.summary?.noPreviousRun || 0} true no-previous-run benchmarks.`,
+      viewer: "../version-remediation-matrix/index.html",
     },
     {
       id: "broader-corpus-review",
@@ -133,8 +144,8 @@ function buildPayload() {
           corpus.telemetryGapSummary?.evidenceAbsentLatestRows === 0,
         corpusCaveated,
       ),
-      evidence: `${corpus.callCatalogSummary?.normalizedCallCount || 0} normalized records across ${corpus.callCatalogSummary?.rowsWithNormalizedCalls || 0} rows and ${corpus.callCatalogSummary?.benchmarksWithNormalizedCalls || 0} families; ${corpus.summary?.canonicalTrajectoryFiles || 0} canonical playback files; ${corpus.telemetryGapSummary?.evidenceAbsentLatestRows || 0} evidence-absent rows; ${corpus.reviewFindingSummary?.telemetryGap || 0} tokenless telemetry-gap families; ${corpus.reviewFindingSummary?.blocked || 0} blocked family.`,
-      viewer: "../../benchmarks/benchmark-results-corpus-review/index.html",
+      evidence: `${corpus.callCatalogSummary?.normalizedCallCount || 0} normalized records across ${corpus.callCatalogSummary?.rowsWithNormalizedCalls || 0} rows and ${corpus.callCatalogSummary?.benchmarksWithNormalizedCalls || 0} families; ${corpus.summary?.canonicalTrajectoryFiles || 0} canonical playback files; ${corpus.telemetryGapSummary?.evidenceAbsentLatestRows || 0} evidence-absent rows; ${corpus.summary?.insufficientLatestRows || 0} insufficient-* publication-warning rows; ${corpus.telemetryGapSummary?.zeroMetricLatestRows || 0} replayable token/turn-zero latest rows; ${corpus.reviewFindingSummary?.telemetryGap || 0} tokenless telemetry-gap families; ${corpus.reviewFindingSummary?.blocked || 0} blocked family: hyperliquid_bench pending HL_PRIVATE_KEY; ${corpusReviewPacks.summary?.warningRowsWithPlayback || 0}/${corpusReviewPacks.summary?.warningRows || 0} publication-warning rows have playback and ${corpusReviewPacks.summary?.warningRowsWithCallPreview || 0}/${corpusReviewPacks.summary?.warningRows || 0} have call previews.`,
+      viewer: "../corpus-review-packs/index.html",
     },
     {
       id: "all-scenarios-included",
@@ -164,9 +175,10 @@ function buildPayload() {
         live.summary?.modelArtifactRequiredWithoutEvidence === 0 &&
           live.summary?.modelScriptReviewPages === live.summary?.modelArtifactRequiredScripts &&
           live.summary?.structuredLlmModelScriptsWithReason === live.summary?.modelArtifactRequiredScripts,
+        livePromptResponse.summary?.scriptSidecarComplete < livePromptResponse.summary?.likelyLlmScripts,
       ),
-      evidence: `${live.summary?.modelArtifactRequiredScripts || 0}/${live.summary?.modelArtifactRequiredScripts || 0} model-call scripts reviewed; ${live.summary?.modelArtifactRequiredWithoutEvidence || 0} evidence gaps; ${live.summary?.wrapperPlaybackRuns || 0}/${live.summary?.wrappedRuns || 0} wrapped runs have playback; ${live.summary?.structuredLlmCallCount || 0} structured calls.`,
-      viewer: "../../live-test-inventory/index.html",
+      evidence: `${live.summary?.modelArtifactRequiredScripts || 0}/${live.summary?.modelArtifactRequiredScripts || 0} model-call scripts reviewed; ${live.summary?.modelArtifactRequiredWithoutEvidence || 0} evidence gaps; ${live.summary?.wrapperPlaybackRuns || 0}/${live.summary?.wrappedRuns || 0} wrapped runs have playback; ${live.summary?.structuredLlmCallCount || 0} structured calls; ${livePromptResponse.summary?.scriptSidecarComplete || 0}/${livePromptResponse.summary?.likelyLlmScripts || 0} complete script sidecars; ${livePromptResponse.summary?.rowsWithOfflineReviewSummary || 0}/${livePromptResponse.summary?.likelyLlmScripts || 0} offline review summaries and ${livePromptResponse.summary?.noSidecarRowsWithOfflineReviewSummary || 0}/${livePromptResponse.summary?.reasonCodedNoSidecar || 0} no-sidecar rows with offline evidence guidance.`,
+      viewer: "../live-test-review-packs/index.html",
     },
     {
       id: "manual-review-workspace",
@@ -203,7 +215,7 @@ function buildPayload() {
           ),
         true,
       ),
-      evidence: `CEREBRAS_API_KEY present; OSWorld runnable providers=${gap.osworld?.providerReadiness?.runnableProviderCount || 0}; HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}; rerun commands are recorded with placeholders only.`,
+      evidence: `CEREBRAS_API_KEY present; OSWorld runnable providers=${gap.osworld?.providerReadiness?.runnableProviderCount || 0} because Docker daemon is unreachable, vmrun/VBoxManage are unavailable, and AWS credentials are incomplete; HL_PRIVATE_KEY present=${gap.credentials?.hyperliquidPrivateKeyPresent ? "yes" : "no"}. Rerun commands are recorded for --benchmarks osworld and --benchmarks hyperliquid_bench; only Hyperliquid uses HL_PRIVATE_KEY=<set-in-shell>.`,
       viewer: "../gap-evidence/index.html",
     },
   ];

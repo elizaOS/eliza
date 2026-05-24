@@ -71,6 +71,7 @@ async function invokeActionBenchmarkRoute(
 
 async function invokeCollectionRoute(
   body: Record<string, unknown>,
+  service: TrainingServiceLike = trainingService(),
 ): Promise<{ status: number; payload: unknown }> {
   const captured: { status: number; payload: unknown } = {
     status: 200,
@@ -85,7 +86,7 @@ async function invokeCollectionRoute(
     method: "POST",
     pathname: "/api/training/collect",
     runtime: null,
-    trainingService: trainingService(),
+    trainingService: service,
     isLoopbackHost: () => true,
     readJsonBody: async <T extends object>() => body as T,
     json: (_res, data, status = 200) => {
@@ -169,6 +170,150 @@ describe("training routes", () => {
             status: "warning",
           }),
         ]),
+      },
+    });
+  });
+
+  it("expands compact all-tier action benchmark pairs through the collection route", async () => {
+    const root = await makeTempDir();
+    const outputDir = join(root, "collection");
+
+    const result = await invokeCollectionRoute({
+      outputDir,
+      includeHuggingFace: false,
+      includeFeed: false,
+      includeNaturalTrajectories: false,
+      includeTestTrajectories: false,
+      includeScenarios: false,
+      includeEvalComparison: false,
+      includeActionBenchmark: false,
+      includeBenchmarkVsCerebras: false,
+      includeEliza1ModelRegistry: false,
+      includeEliza1BundleStage: false,
+      includeBenchmarkMatrix: false,
+      actionBenchmarkPairs: "all",
+    });
+
+    expect(result.status).toBe(201);
+    expect(result.payload).toMatchObject({
+      manifest: {
+        recipe: {
+          evals: {
+            actionBenchmarkPairs: [
+              expect.objectContaining({ tier: "0_8b" }),
+              expect.objectContaining({ tier: "2b" }),
+              expect.objectContaining({ tier: "4b" }),
+              expect.objectContaining({ tier: "9b" }),
+              expect.objectContaining({ tier: "27b" }),
+            ],
+          },
+        },
+      },
+    });
+  });
+
+  it("pulls app trajectories into natural trajectory collection runs", async () => {
+    const root = await makeTempDir();
+    const outputDir = join(root, "collection");
+    const calls: Array<Record<string, unknown>> = [];
+    const service = {
+      ...trainingService(),
+      listTrajectories: async (options: Record<string, unknown>) => {
+        calls.push(options);
+        return {
+          trajectories: [{ id: "traj-keep" }, { id: "traj-drop" }],
+          total: 2,
+        };
+      },
+      getTrajectoryById: async (id: string) => {
+        const runId = id === "traj-keep" ? "app-run-1" : "app-run-2";
+        return {
+          trajectoryId: id,
+          agentId: "agent-1",
+          roomId: "room-1",
+          userId: "user-1",
+          startTime: Date.now(),
+          endTime: Date.now(),
+          duration: 1,
+          metadata: { runId },
+          steps: [],
+        };
+      },
+    } as TrainingServiceLike;
+
+    const result = await invokeCollectionRoute(
+      {
+        outputDir,
+        includeHuggingFace: false,
+        includeFeed: false,
+        includeNaturalTrajectories: true,
+        includeTestTrajectories: false,
+        includeScenarios: false,
+        includeEvalComparison: false,
+        includeActionBenchmark: false,
+        includeBenchmarkVsCerebras: false,
+        includeEliza1ModelRegistry: false,
+        includeEliza1BundleStage: false,
+        includeBenchmarkMatrix: false,
+        naturalTrajectories: {
+          runId: "app-run-1",
+          limit: 2,
+        },
+      },
+      service,
+    );
+
+    expect(calls).toEqual([
+      {
+        limit: 2,
+        offset: 0,
+        runId: "app-run-1",
+      },
+    ]);
+    expect(result.status).toBe(201);
+    const payload = result.payload as {
+      manifest: {
+        steps: Array<{
+          id: string;
+          status: string;
+          result?: {
+            manifest?: {
+              runId?: string | null;
+              source?: Record<string, unknown> & {
+                metadata?: Record<string, unknown>;
+              };
+            };
+          } | null;
+        }>;
+      };
+    };
+    expect(
+      payload.manifest.steps.find((step) => step.id === "huggingface"),
+    ).toMatchObject({ status: "skipped" });
+    expect(
+      payload.manifest.steps.find((step) => step.id === "feed"),
+    ).toMatchObject({ status: "skipped" });
+    expect(
+      payload.manifest.steps.find(
+        (step) => step.id === "natural_trajectories",
+      ),
+    ).toMatchObject({
+      status: "succeeded",
+      result: {
+        manifest: {
+          runId: "app-run-1",
+          source: {
+            kind: "training_collection_natural_trajectories",
+            inputTrajectoryCount: 1,
+            sanitizedTrajectoryCount: 1,
+            metadata: {
+              requestedLimit: 2,
+              requestedRunId: "app-run-1",
+              selectedTrajectoryIds: 2,
+              loadedTrajectories: 2,
+            },
+          },
+        },
       },
     });
   });

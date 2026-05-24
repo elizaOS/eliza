@@ -20,6 +20,10 @@ import {
   test,
 } from "@playwright/test";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import {
+  assertScreenshotNotBlank,
+  captureScreenshotWithQualityRetry,
+} from "./_helpers/screenshot-quality";
 
 const LIVE_AUTH_ENABLED = process.env.CLOUD_E2E_LIVE_AUTH === "1";
 const API_BASE_URL = resolveApiBaseUrl();
@@ -249,11 +253,10 @@ async function expectDashboardRouteHealthy(page: Page, route: string) {
     await expect(page.getByText(/Something went wrong/i)).toHaveCount(0);
     await expect(page.getByText(/Dashboard route failed/i)).toHaveCount(0);
 
-    const screenshot = await page.screenshot({ fullPage: true });
-    expect(
-      screenshot.length,
-      `${route} rendered a blank screenshot`,
-    ).toBeGreaterThan(1_000);
+    const screenshot = await captureScreenshotWithQualityRetry(page, route, {
+      fullPage: true,
+    });
+    await assertScreenshotNotBlank(screenshot, route);
 
     expect(
       { pageErrors, consoleErrors, failedResponses, requestFailures },

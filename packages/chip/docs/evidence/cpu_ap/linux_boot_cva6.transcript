@@ -80,25 +80,3 @@ Movable zone start for each node
 Early memory node ranges
   node   0: [mem 0x0000000080000000-0x0000000087ffffff]
 Initmem setup node 0 [mem 0x0000000080000000-0x0000000087ffffff]
-Falling back to deprecated "riscv,isa"
-riscv: base ISA extensions c
-riscv: ELF capabilities c
-Kernel command line: console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init
-Dentry cache hash table entries: 16384 (order: 5, 131072 bytes, linear)
-Inode-cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
-Built 1 zonelists, mobility grouping on.  Total pages: 32768
-mem auto-init: stack:all(zero), heap alloc:off, heap free:off
-SLUB: HWalign=64, Order=0-1, MinObjects=0, CPUs=1, Nodes=1
-NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
-riscv-intc: 64 local interrupts mapped
-clocksource: riscv_clocksource: mask: 0xffffffffffffffff max_cycles: 0x24e6a1710, max_idle_ns: 440795202120 ns
-sched_clock: 64 bits at 10MHz, resolution 100ns, wraps every 4398046511100ns
-Console: colour dummy device 80x25
-Calibrating delay loop (skipped), value calculated using timer frequency.. 20.00 BogoMIPS (lpj=100000)
-pid_max: default: 32768 minimum: 301
-Mount-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
-Mountpoint-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
-ASID allocator using 16 bits (65536 entries)
-Memory: 126064K/131072K available (1076K kernel code, 580K rwdata, 263K rodata, 143K init, 223K bss, 4332K reserved, 0K cma-reserved)
-devtmpfs: initialized
-clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 19112604462750000 ns

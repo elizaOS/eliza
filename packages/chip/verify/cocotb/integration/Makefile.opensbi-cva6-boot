@@ -1,8 +1,15 @@
+<<<<<<< HEAD
 # Cocotb Makefile — OpenSBI v1.8.1 boots on the CVA6 RTL through the
 # DRAM-controller RTL model.
 #
 # Same DUT as Makefile.cva6-dram-boot (rtl/top/e1_cva6_dram_boot_top.sv) but
 # the preload image is the OpenSBI boot image (shim + OpenSBI fw_jump +
+=======
+# Cocotb Makefile — OpenSBI v1.8.1 boots on the REAL CVA6 from REAL DRAM.
+#
+# Same DUT as Makefile.cva6-dram-boot (rtl/top/e1_cva6_dram_boot_top.sv) but
+# the preload image is the OpenSBI boot image (shim + real OpenSBI fw_jump +
+>>>>>>> origin/rot-integration-backup-2026-05-21
 # DTB + S-mode payload, assembled by fw/opensbi-cva6-boot/build_boot_image.py)
 # and the DRAM-controller preload window is widened to hold it.  cocotb scrapes
 # the ns16550a UART TX stream and asserts the OpenSBI banner (and the S-mode

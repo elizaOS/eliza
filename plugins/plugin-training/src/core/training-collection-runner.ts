@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import type { Trajectory } from "@elizaos/agent";
 import {
   runActionBenchmark,
@@ -20,7 +20,9 @@ import {
 import {
   canonicalElizaOneTierSort,
   ELIZA_ONE_BENCHMARK_TIERS,
+  elizaOneActionBenchmarkPairs,
   elizaOneBenchmarkModelId,
+  parseElizaOneBenchmarkTiers,
 } from "./eliza1-benchmark-recipe.js";
 import {
   EVAL_COMPARISON_ARTIFACT_SCHEMA,
@@ -105,7 +107,7 @@ export interface TrainingCollectionRunOptions {
   evalComparison?: EvalComparisonRunOptions;
   actionBenchmark?: ActionBenchmarkRunOptions;
   actionBenchmarkPair?: ActionBenchmarkPairOptions;
-  actionBenchmarkPairs?: ActionBenchmarkPairOptions[];
+  actionBenchmarkPairs?: ActionBenchmarkPairOptions[] | string;
   benchmarkVsCerebras?: BenchmarkVsCerebrasRunOptions;
   eliza1BundleStage?: StageEliza1BundleOptions;
   benchmarkMatrix?: {
@@ -261,10 +263,23 @@ function actionBenchmarkPairLabel(
 function explicitActionBenchmarkPairs(
   options: TrainingCollectionRunOptions,
 ): ActionBenchmarkPairOptions[] {
-  if (options.actionBenchmarkPairs && options.actionBenchmarkPairs.length > 0) {
-    return options.actionBenchmarkPairs;
-  }
+  const pairs = actionBenchmarkPairsOption(options.actionBenchmarkPairs);
+  if (pairs.length > 0) return pairs;
   return options.actionBenchmarkPair ? [options.actionBenchmarkPair] : [];
+}
+
+function actionBenchmarkPairsOption(
+  value: TrainingCollectionRunOptions["actionBenchmarkPairs"],
+): ActionBenchmarkPairOptions[] {
+  if (typeof value === "string") {
+    return elizaOneActionBenchmarkPairs(
+      parseElizaOneBenchmarkTiers(value, []),
+    );
+  }
+  if (value && value.length > 0) {
+    return value;
+  }
+  return [];
 }
 
 function shouldUseDefaultActionBenchmarkPair(
@@ -378,7 +393,7 @@ async function runActionBenchmarkCollectionStep(input: {
   options: TrainingCollectionRunOptions;
 }): Promise<ActionBenchmarkRunResult | ActionBenchmarkPairRunResult> {
   const { outputDir, workspaceRoot, options } = input;
-  const explicitPairs = options.actionBenchmarkPairs ?? [];
+  const explicitPairs = actionBenchmarkPairsOption(options.actionBenchmarkPairs);
   if (explicitPairs.length > 0) {
     const pairs: ActionBenchmarkPairRunRecord[] = [];
     for (const [index, pair] of explicitPairs.entries()) {
@@ -532,14 +547,47 @@ export interface TrainingCollectionRunSummary {
     partial: number;
     missing: number;
   };
+  readinessGaps: TrainingCollectionEvidenceSummary["readinessGaps"];
   artifactCount: number;
   stepCounts: Record<TrainingCollectionStep["status"], number>;
   dataSources: TrainingCollectionEvidenceSummary["dataSources"];
+  sourceSamples: {
+    huggingFace: TrainingCollectionSourceSample[];
+    feed: TrainingCollectionSourceSample[];
+    natural: TrainingCollectionSourceSample[];
+    scenarios: TrainingCollectionSourceSample[];
+    tests: TrainingCollectionSourceSample[];
+    trainingJsonl: TrainingCollectionSourceSample[];
+  };
+  sourceArtifacts: Array<{
+    category:
+      | "huggingface"
+      | "feed"
+      | "natural"
+      | "scenario"
+      | "test"
+      | "training_jsonl";
+    title: string;
+    path: string;
+    schema: string | null;
+  }>;
+  evidenceArtifacts: Array<{
+    category: "eval" | "benchmark" | "model";
+    title: string;
+    path: string;
+    schema: string | null;
+  }>;
+  training: {
+    trainingRuns: number;
+    models: number;
+    modelInventory: TrainingCollectionEvidenceSummary["training"]["modelInventory"];
+  };
   benchmarks: {
     actionBenchmarkPairs: number;
     benchmarkComparisons: number;
     caseSamples: number;
     tiers: string[];
+    comparisonInventory: TrainingCollectionEvidenceSummary["benchmarks"]["comparisonInventory"];
     baselineProgress: TrainingCollectionEvidenceSummary["benchmarks"]["baselineProgress"];
   };
   evals: {
@@ -582,6 +630,7 @@ export interface TrainingCollectionEvidenceSummary {
     benchmarks: TrainingAnalysisIndex["manifest"]["coverage"]["benchmarks"];
     models: {
       artifacts: number;
+      stagedBundles: number;
       inventoryCount: number;
     };
   };
@@ -656,6 +705,8 @@ export interface TrainingCollectionEvidenceSummary {
       outputPath: string | null;
       baseModel: string | null;
       repoId: string | null;
+      baseEvalScore: number | null;
+      trainedEvalScore: number | null;
       evalImprovementPercent: number | null;
     }>;
   };
@@ -839,6 +890,13 @@ function liveEvalComparisonRequested(options: TrainingCollectionRunOptions): boo
   );
 }
 
+function liveFeedGenerationRequested(options: TrainingCollectionRunOptions): boolean {
+  return (
+    boolWithDefault(options.includeFeed, true) &&
+    options.feed?.dryRun === false
+  );
+}
+
 function liveBenchmarkVsCerebrasRequested(
   options: TrainingCollectionRunOptions,
 ): boolean {
@@ -920,8 +978,9 @@ export function buildTrainingCollectionPreflight(input: {
   const checks: TrainingCollectionPreflightSummary["checks"] = [];
   const actionLive = liveActionBenchmarkRequested(options);
   const evalLive = liveEvalComparisonRequested(options);
+  const feedLive = liveFeedGenerationRequested(options);
   const cerebrasLive = liveBenchmarkVsCerebrasRequested(options);
-  const liveRequired = actionLive || evalLive || cerebrasLive;
+  const liveRequired = actionLive || evalLive || feedLive || cerebrasLive;
   const resolvedWorkspaceRoot =
     workspaceRoot ?? discoverWorkspaceRoot() ?? process.cwd();
   const resolvedTrainingRoot =
@@ -975,6 +1034,24 @@ export function buildTrainingCollectionPreflight(input: {
       label: "Action benchmark provider",
       status: "skipped",
       detail: "live action benchmark not requested",
+    });
+  }
+
+  if (feedLive) {
+    checks.push({
+      id: "feed_database_url",
+      label: "Feed database URL",
+      status: process.env.DATABASE_URL ? "ok" : "missing",
+      detail: process.env.DATABASE_URL
+        ? "DATABASE_URL is set for live feed generation"
+        : "DATABASE_URL is required for live packages/feed train parallel generation",
+    });
+  } else {
+    checks.push({
+      id: "feed_database_url",
+      label: "Feed database URL",
+      status: "skipped",
+      detail: "live feed generation not requested",
     });
   }
 
@@ -1498,7 +1575,9 @@ function buildCollectionRecipe(
       actionBenchmarkPair: actionBenchmarkPair
         ? sanitizeRecipeRecord(actionBenchmarkPair)
         : null,
-      actionBenchmarkPairs: (options.actionBenchmarkPairs ?? []).map(
+      actionBenchmarkPairs: actionBenchmarkPairsOption(
+        options.actionBenchmarkPairs,
+      ).map(
         sanitizeRecipeRecord,
       ),
       benchmarkVsCerebras: sanitizeRecipeRecord(options.benchmarkVsCerebras),
@@ -1659,19 +1738,27 @@ function summarizeModelInventory(
 ): TrainingCollectionEvidenceSummary["training"]["modelInventory"] {
   return analysis.manifest.artifacts
     .filter((artifact) => artifact.kind === "model")
+    .filter((artifact) => {
+      const summary = artifact.summary;
+      return (
+        stringOrNull(summary.model) !== null ||
+        stringOrNull(summary.outputPath) !== null
+      );
+    })
     .map((artifact) => {
       const summary = artifact.summary;
-      const payload = recordValue(artifact.payload) ?? {};
       return {
         title: artifact.title,
         path: artifact.path,
         schema: schemaOfArtifact(artifact) ?? null,
         model: stringOrNull(summary.model),
         tier: stringOrNull(summary.tier),
-        variant: stringOrNull(payload.variant),
+        variant: stringOrNull(summary.variant),
         outputPath: stringOrNull(summary.outputPath),
         baseModel: stringOrNull(summary.baseModel),
         repoId: stringOrNull(summary.repoId),
+        baseEvalScore: numberOrNull(summary.baseEvalScore),
+        trainedEvalScore: numberOrNull(summary.trainedEvalScore),
         evalImprovementPercent: numberOrNull(summary.evalImprovementPercent),
       };
     })
@@ -1918,6 +2005,7 @@ function buildCollectionEvidenceSummary(input: {
       benchmarks: analysis.manifest.coverage.benchmarks,
       models: {
         artifacts: analysis.manifest.coverage.models.artifacts,
+        stagedBundles: analysis.manifest.coverage.models.stagedBundles,
         inventoryCount: analysis.manifest.coverage.models.inventory.length,
       },
     },
@@ -2037,6 +2125,14 @@ function markdownInline(value: unknown): string {
   return JSON.stringify(value).replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
 }
 
+function markdownPathLink(value: unknown): string {
+  const path = typeof value === "string" ? value.trim() : "";
+  if (!path) return "n/a";
+  const label = basename(path) || path;
+  const href = /^[a-z][a-z0-9+.-]*:\/\//i.test(path) ? path : fileHref(path);
+  return `[${label.replace(/\]/g, "\\]")}](${href.replace(/\)/g, "%29")})`;
+}
+
 function markdownTable(
   headers: readonly string[],
   rows: readonly (readonly unknown[])[],
@@ -2061,6 +2157,16 @@ function escapeHtml(value: unknown): string {
 
 function fileHref(path: string): string {
   return encodeURI(`file://${path}`);
+}
+
+function compactCollectionIndexValue(value: unknown): string {
+  const raw =
+    typeof value === "string"
+      ? value
+      : value === null || value === undefined
+        ? ""
+        : JSON.stringify(value);
+  return raw.length > 180 ? `${raw.slice(0, 177)}...` : raw;
 }
 
 function isTrainingCollectionManifest(
@@ -2126,6 +2232,7 @@ function emptyCollectionCoverage(): TrainingCollectionEvidenceSummary["coverage"
     },
     models: {
       artifacts: 0,
+      stagedBundles: 0,
       inventoryCount: 0,
     },
   };
@@ -2186,9 +2293,97 @@ function summarizeCollectionManifest(
   manifest: TrainingCollectionRunManifest,
 ): TrainingCollectionRunSummary {
   const coverage = collectionCoverage(manifest.evidence);
+  const trainingEvidence = manifest.evidence.training ?? {
+    trainingRuns: 0,
+    models: 0,
+    modelInventory: [],
+  };
   const baselineProgress = collectionBaselineProgress(
     manifest.evidence.benchmarks,
   );
+  const percentDelta = (base: number | null, next: number | null) =>
+    base === null || next === null || base === 0
+      ? null
+      : Number((((next - base) / Math.abs(base)) * 100).toFixed(6));
+  const benchmarkComparisonInventory =
+    manifest.evidence.benchmarks.comparisonInventory?.length > 0
+      ? manifest.evidence.benchmarks.comparisonInventory
+      : (manifest.evidence.benchmarks.improvementComparisons ?? []).map(
+          (comparison) => ({
+            tier: comparison.tier,
+            benchmark: comparison.benchmark,
+            baseModelId: null,
+            trainedModelId: null,
+            referenceModelId: null,
+            baseScore: comparison.baseScore,
+            trainedScore: comparison.trainedScore,
+            improvementPercent: comparison.improvementPercent,
+            referenceScore: comparison.referenceScore,
+            trainedVsReferencePercent:
+              comparison.trainedVsReferencePercent ??
+              percentDelta(comparison.referenceScore, comparison.trainedScore),
+            dryRun: false,
+            useMocks: false,
+            modelBacked: comparison.modelBacked,
+          }),
+        );
+  const sourceArtifacts = (manifest.evidence.artifactLinks ?? [])
+    .filter(
+      (artifact): artifact is typeof artifact & {
+        category:
+          | "huggingface"
+          | "feed"
+          | "natural"
+          | "scenario"
+          | "test"
+          | "training_jsonl";
+      } =>
+        artifact.category === "huggingface" ||
+        artifact.category === "feed" ||
+        artifact.category === "natural" ||
+        artifact.category === "scenario" ||
+        artifact.category === "test" ||
+        artifact.category === "training_jsonl",
+    )
+    .slice(0, 12)
+    .map((artifact) => ({
+      category: artifact.category,
+      title: artifact.title,
+      path: artifact.path,
+      schema: artifact.schema,
+    }));
+  const evidenceSourceSamples = manifest.evidence.sourceSamples ?? {
+    huggingFace: [],
+    feed: [],
+    natural: [],
+    scenarios: [],
+    tests: [],
+    trainingJsonl: [],
+  };
+  const sourceSamples = {
+    huggingFace: (evidenceSourceSamples.huggingFace ?? []).slice(0, 3),
+    feed: (evidenceSourceSamples.feed ?? []).slice(0, 3),
+    natural: (evidenceSourceSamples.natural ?? []).slice(0, 3),
+    scenarios: (evidenceSourceSamples.scenarios ?? []).slice(0, 3),
+    tests: (evidenceSourceSamples.tests ?? []).slice(0, 3),
+    trainingJsonl: (evidenceSourceSamples.trainingJsonl ?? []).slice(0, 3),
+  };
+  const evidenceArtifacts = (manifest.evidence.artifactLinks ?? [])
+    .filter(
+      (artifact): artifact is typeof artifact & {
+        category: "eval" | "benchmark" | "model";
+      } =>
+        artifact.category === "eval" ||
+        artifact.category === "benchmark" ||
+        artifact.category === "model",
+    )
+    .slice(0, 12)
+    .map((artifact) => ({
+      category: artifact.category,
+      title: artifact.title,
+      path: artifact.path,
+      schema: artifact.schema,
+    }));
   return {
     generatedAt: manifest.generatedAt,
     outputDir: manifest.outputDir,
@@ -2201,15 +2396,25 @@ function summarizeCollectionManifest(
       partial: manifest.readiness.partial,
       missing: manifest.readiness.missing,
     },
+    readinessGaps: (manifest.evidence.readinessGaps ?? []).slice(0, 8),
     artifactCount: manifest.analysis.artifactCount,
     stepCounts: manifest.evidence.stepCounts,
     dataSources: manifest.evidence.dataSources,
+    sourceSamples,
+    sourceArtifacts,
+    evidenceArtifacts,
+    training: {
+      trainingRuns: trainingEvidence.trainingRuns,
+      models: trainingEvidence.models,
+      modelInventory: (trainingEvidence.modelInventory ?? []).slice(0, 5),
+    },
     benchmarks: {
       actionBenchmarkPairs: manifest.evidence.benchmarks.actionBenchmarkPairs,
       benchmarkComparisons:
         manifest.evidence.benchmarks.benchmarkComparisons,
       caseSamples: manifest.evidence.benchmarks.caseSamples?.length ?? 0,
       tiers: manifest.evidence.benchmarks.tiers,
+      comparisonInventory: benchmarkComparisonInventory.slice(0, 5),
       baselineProgress,
     },
     evals: {
@@ -2307,6 +2512,55 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
         `tests:${collection.dataSources.testTrajectories}`,
         `jsonl:${collection.dataSources.trainingJsonlDatasets}`,
       ].join(" ");
+      const sourceLinks =
+        collection.sourceArtifacts.length > 0
+          ? collection.sourceArtifacts
+              .slice(0, 6)
+              .map(
+                (artifact) =>
+                  `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
+              )
+              .join(" ")
+          : '<span>no source artifacts</span>';
+      const sourceSampleRows = [
+        ["hf", collection.sourceSamples.huggingFace],
+        ["feed", collection.sourceSamples.feed],
+        ["natural", collection.sourceSamples.natural],
+        ["scenarios", collection.sourceSamples.scenarios],
+        ["tests", collection.sourceSamples.tests],
+        ["jsonl", collection.sourceSamples.trainingJsonl],
+      ].flatMap(([category, samples]) =>
+        (samples as TrainingCollectionSourceSample[]).slice(0, 2).map((sample) =>
+          [
+            category,
+            sample.trajectoryId ?? sample.scenarioId ?? sample.title,
+            sample.task ?? sample.sourceKind ?? sample.schema ?? "sample",
+            `input:${compactCollectionIndexValue(sample.input) || "n/a"}`,
+            `output:${compactCollectionIndexValue(sample.output) || "n/a"}`,
+          ].join(" "),
+        ),
+      );
+      const sourceSampleSummary =
+        sourceSampleRows.length > 0 ? sourceSampleRows.join(" | ") : "none";
+      const gapSummary =
+        collection.readinessGaps.length > 0
+          ? collection.readinessGaps
+              .slice(0, 4)
+              .map((gap) =>
+                [
+                  `${gap.id}:${gap.status}`,
+                  gap.recommendedCapability
+                    ? `->${gap.recommendedCapability}`
+                    : null,
+                  gap.recommendedParams
+                    ? ` params=${JSON.stringify(gap.recommendedParams)}`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(""),
+              )
+              .join(" | ")
+          : "none";
       const benchmarkSummary = [
         `pairs:${collection.benchmarks.actionBenchmarkPairs}`,
         `comparisons:${collection.benchmarks.benchmarkComparisons}`,
@@ -2318,12 +2572,97 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
         `next:${collection.benchmarks.baselineProgress.nextTier ?? "none"}`,
         `remaining:${collection.benchmarks.baselineProgress.remainingTiers.join(",") || "none"}`,
       ].join(" ");
+      const benchmarkHighlights =
+        collection.benchmarks.comparisonInventory.length > 0
+          ? collection.benchmarks.comparisonInventory
+              .slice(0, 3)
+              .map((comparison) =>
+                [
+                  comparison.tier ?? "tier",
+                  comparison.benchmark ?? "benchmark",
+                  `base:${comparison.baseScore ?? "n/a"}`,
+                  `trained:${comparison.trainedScore ?? "n/a"}`,
+                  `reference:${comparison.referenceScore ?? "n/a"}`,
+                  `improvement:${comparison.improvementPercent ?? "n/a"}%`,
+                  `vs-reference:${comparison.trainedVsReferencePercent ?? "n/a"}%`,
+                  comparison.dryRun
+                    ? "dry-run"
+                    : comparison.modelBacked
+                      ? "model-backed"
+                      : comparison.useMocks
+                        ? "mocked"
+                        : "incomplete",
+                ].join(" "),
+              )
+              .join(" | ")
+          : "none";
+      const benchmarkLinks =
+        collection.evidenceArtifacts.filter(
+          (artifact) => artifact.category === "benchmark",
+        ).length > 0
+          ? collection.evidenceArtifacts
+              .filter((artifact) => artifact.category === "benchmark")
+              .slice(0, 4)
+              .map(
+                (artifact) =>
+                  `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
+              )
+              .join(" ")
+          : '<span>no benchmark artifacts</span>';
       const evalSummary = [
         `evals:${collection.evals.evalArtifacts}`,
         `comparisons:${collection.evals.evalComparisons}`,
         `action:${collection.evals.actionBenchmarks}`,
         `matrices:${collection.evals.benchmarkMatrices}`,
       ].join(" ");
+      const evalLinks =
+        collection.evidenceArtifacts.filter(
+          (artifact) => artifact.category === "eval",
+        ).length > 0
+          ? collection.evidenceArtifacts
+              .filter((artifact) => artifact.category === "eval")
+              .slice(0, 4)
+              .map(
+                (artifact) =>
+                  `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
+              )
+              .join(" ")
+          : '<span>no eval artifacts</span>';
+      const modelSummary = [
+        `runs:${collection.training.trainingRuns}`,
+        `models:${collection.training.models}`,
+        `inventory:${collection.training.modelInventory.length}`,
+        `tracked:${collection.coverage.models.inventoryCount}`,
+      ].join(" ");
+      const modelHighlights =
+        collection.training.modelInventory.length > 0
+          ? collection.training.modelInventory
+              .slice(0, 3)
+              .map((model) =>
+                [
+                  model.tier ?? "tier",
+                  model.variant ?? "variant",
+                  model.model ?? "model",
+                  `base:${model.baseModel ?? "n/a"}`,
+                  `output:${model.outputPath ?? "n/a"}`,
+                  `improvement:${model.evalImprovementPercent ?? "n/a"}%`,
+                ].join(" "),
+              )
+              .join(" | ")
+          : "none";
+      const modelLinks =
+        collection.evidenceArtifacts.filter(
+          (artifact) => artifact.category === "model",
+        ).length > 0
+          ? collection.evidenceArtifacts
+              .filter((artifact) => artifact.category === "model")
+              .slice(0, 4)
+              .map(
+                (artifact) =>
+                  `<a href="${escapeHtml(fileHref(artifact.path))}">${escapeHtml(`${artifact.category}:${artifact.title}`)}</a>`,
+              )
+              .join(" ")
+          : '<span>no model artifacts</span>';
       const coverageSummary = [
         `samples:${collection.coverage.readableSamples.total}`,
         `scored-evals:${collection.coverage.evals.scoredComparisons}/${collection.coverage.evals.comparisons}`,
@@ -2333,9 +2672,11 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
       return `<tr>
         <td>${escapeHtml(collection.generatedAt)}</td>
         <td>${escapeHtml(collection.readinessStatus)}<br><span>${escapeHtml(`ready:${collection.readiness.ready} partial:${collection.readiness.partial} missing:${collection.readiness.missing}`)}</span></td>
-        <td>${escapeHtml(sourceSummary)}</td>
-        <td>${escapeHtml(`${benchmarkSummary} ${baselineSummary}`)}</td>
-        <td>${escapeHtml(evalSummary)}</td>
+        <td>${escapeHtml(gapSummary)}</td>
+        <td>${escapeHtml(sourceSummary)}<br><span>${escapeHtml(sourceSampleSummary)}</span><br>${sourceLinks}</td>
+        <td>${escapeHtml(`${benchmarkSummary} ${baselineSummary}`)}<br><span>${escapeHtml(benchmarkHighlights)}</span><br>${benchmarkLinks}</td>
+        <td>${escapeHtml(evalSummary)}<br>${evalLinks}</td>
+        <td>${escapeHtml(modelSummary)}<br><span>${escapeHtml(modelHighlights)}</span><br>${modelLinks}</td>
         <td>${escapeHtml(coverageSummary)}</td>
         <td>${escapeHtml(collection.artifactCount)}</td>
         <td><a href="${escapeHtml(fileHref(collection.analysisIndexHtmlPath))}">viewer</a> <a href="${escapeHtml(fileHref(collection.readmePath))}">readme</a> <a href="${escapeHtml(fileHref(collection.manifestPath))}">manifest</a></td>
@@ -2372,9 +2713,11 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
         <tr>
           <th>Generated</th>
           <th>Readiness</th>
+          <th>Gaps</th>
           <th>Sources</th>
           <th>Benchmarks</th>
           <th>Evals</th>
+          <th>Models</th>
           <th>Coverage</th>
           <th>Artifacts</th>
           <th>Links</th>
@@ -2382,7 +2725,7 @@ function buildCollectionIndexHtml(index: TrainingCollectionIndex): string {
         </tr>
       </thead>
       <tbody>
-        ${rows || '<tr><td colspan="9">No collection runs found.</td></tr>'}
+        ${rows || '<tr><td colspan="11">No collection runs found.</td></tr>'}
       </tbody>
     </table>
   </main>
@@ -2444,7 +2787,7 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       sample.model,
       sample.input,
       sample.output,
-      sample.path,
+      markdownPathLink(sample.path),
     ]),
   );
   const benchmarkReadiness = evidence.benchmarkReadiness;
@@ -2454,14 +2797,16 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
     check.id,
     check.label,
     check.detail,
-    check.path ?? null,
+    markdownPathLink(check.path),
   ]);
   const modelRows = evidence.training.modelInventory.slice(0, 12).map((model) => [
     model.tier,
     model.variant,
     model.model,
     model.baseModel,
-    model.outputPath,
+    model.baseEvalScore,
+    model.trainedEvalScore,
+    markdownPathLink(model.outputPath),
     model.evalImprovementPercent,
   ]);
   const comparisonRows = evidence.benchmarks.comparisonInventory
@@ -2473,6 +2818,7 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       comparison.trainedScore,
       comparison.referenceScore,
       comparison.improvementPercent,
+      comparison.trainedVsReferencePercent,
       comparison.dryRun
         ? "dry-run"
         : comparison.modelBacked
@@ -2492,7 +2838,7 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       comparison.improvementPercent,
       comparison.baseLatencyMs,
       comparison.trainedLatencyMs,
-      comparison.reportPath,
+      markdownPathLink(comparison.reportPath),
     ]);
   const caseRows = evidence.benchmarks.caseSamples.slice(0, 12).map((sample) => [
     sample.tier,
@@ -2502,20 +2848,21 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
     sample.prompt,
     sample.expectedAction,
     sample.actualAction,
-    sample.trajectoryPath,
+    markdownPathLink(sample.trajectoryPath),
   ]);
   const gapRows = evidence.readinessGaps.map((gap) => [
     gap.status,
     gap.id,
     gap.note,
     gap.recommendedCapability,
+    gap.recommendedParams,
   ]);
   const artifactRows = evidence.artifactLinks.slice(0, 24).map((artifact) => [
     artifact.category,
     artifact.kind,
     artifact.schema,
     artifact.title,
-    artifact.path,
+    markdownPathLink(artifact.path),
   ]);
   const stepArtifactRows = evidence.stepArtifacts.flatMap((step) => {
     const command = step.command?.join(" ") ?? null;
@@ -2529,7 +2876,7 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
           step.stdout,
           step.stderr,
           "n/a",
-          "n/a",
+          markdownPathLink(step.outputDir),
         ],
       ];
     }
@@ -2541,7 +2888,7 @@ function buildCollectionReadme(manifest: TrainingCollectionRunManifest): string 
       step.stdout,
       step.stderr,
       path.label,
-      path.path,
+      markdownPathLink(path.path),
     ]);
   });
 
@@ -2551,12 +2898,12 @@ Generated: ${manifest.generatedAt}
 
 ## Entry Points
 
-- Output directory: ${manifest.outputDir}
-- Collection manifest: ${manifest.manifestPath}
-- Run summary: ${manifest.readmePath}
-- Analysis viewer: ${manifest.analysis.indexHtmlPath}
-- Analysis manifest: ${manifest.analysis.manifestPath}
-- Readiness report: ${manifest.readiness.reportPath}
+- Output directory: ${markdownPathLink(manifest.outputDir)}
+- Collection manifest: ${markdownPathLink(manifest.manifestPath)}
+- Run summary: ${markdownPathLink(manifest.readmePath)}
+- Analysis viewer: ${markdownPathLink(manifest.analysis.indexHtmlPath)}
+- Analysis manifest: ${markdownPathLink(manifest.analysis.manifestPath)}
+- Readiness report: ${markdownPathLink(manifest.readiness.reportPath)}
 
 ## Provenance
 
@@ -2585,7 +2932,7 @@ ${markdownTable(["Status", "Check", "Label", "Detail", "Path"], preflightRows)}
 - Eval comparisons: scored=${coverage.evals.scoredComparisons}/${coverage.evals.comparisons} artifacts=${coverage.evals.artifacts}
 - Benchmark comparisons: scored=${coverage.benchmarks.scoredComparisons}/${coverage.benchmarks.comparisons} matrices=${coverage.benchmarks.matrices} case-samples=${coverage.benchmarks.caseSamples} all-tiers=${coverage.benchmarks.allEliza1TiersCovered ? "yes" : "no"}
 - Benchmark tiers: ${coverage.benchmarks.tiers.join(", ") || "none"}
-- Model inventory: artifacts=${coverage.models.artifacts} inventory=${coverage.models.inventoryCount}
+- Model inventory: artifacts=${coverage.models.artifacts} inventory=${coverage.models.inventoryCount} staged-bundles=${coverage.models.stagedBundles}
 
 ## Baseline Progression
 
@@ -2603,7 +2950,7 @@ ${markdownTable(
   manifest.steps.map((step) => [
     step.id,
     step.status,
-    step.outputDir,
+    markdownPathLink(step.outputDir),
     step.error,
   ]),
 )}
@@ -2627,19 +2974,28 @@ ${markdownTable(
     ["Training JSONL datasets", evidence.dataSources.trainingJsonlDatasets],
   ],
 )}
-## Readable Samples
+## Source Samples
 
 ${markdownTable(["Source", "Samples"], sampleCounts)}
-## Readable Sample Preview
+## Source Sample Preview
 
 ${markdownTable(
   ["Source", "Title", "Task", "Trajectory", "Model", "Input", "Output", "Path"],
   sampleRows,
 )}
-## Models
+## Model Inventory
 
 ${markdownTable(
-  ["Tier", "Variant", "Model", "Base Model", "Output", "Eval Improvement %"],
+  [
+    "Tier",
+    "Variant",
+    "Model",
+    "Base Model",
+    "Base Score",
+    "Trained Score",
+    "Output",
+    "Eval Improvement %",
+  ],
   modelRows,
 )}
 ## Benchmark Comparisons
@@ -2652,6 +3008,7 @@ ${markdownTable(
     "Trained",
     "Reference",
     "Improvement %",
+    "Vs Reference %",
     "Evidence",
   ],
   comparisonRows,
@@ -2670,7 +3027,7 @@ ${markdownTable(
 )}
 ## Readiness Gaps
 
-${markdownTable(["Status", "Check", "Note", "Recommended Capability"], gapRows)}
+${markdownTable(["Status", "Check", "Note", "Recommended Capability", "Recommended Params"], gapRows)}
 ## Evidence Artifacts
 
 ${markdownTable(["Category", "Kind", "Schema", "Title", "Path"], artifactRows)}

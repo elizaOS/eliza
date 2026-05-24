@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Gate: OpenSBI hands off (M->S) and Linux boots on CVA6 RTL in Verilator.
+"""Gate: OpenSBI hands off (M->S) and a real Linux kernel boots on the real
+CVA6 from real DRAM, in Verilator — recorded to the furthest honest marker.
 
 This is the OS-bring-up step above scripts/check_opensbi_cva6_boot.py (which
 proves the OpenSBI M-mode banner).  The bespoke read-modify-write atomics
@@ -35,6 +36,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -64,10 +66,11 @@ MARKERS = [
 
 
 def _now() -> str:
-    return _dt.datetime.now(_dt.UTC).isoformat()
+    return _dt.datetime.now(_dt.timezone.utc).isoformat()
 
 
-def _write(status: str, blocker_id, reason, evidence, extra=None, stage: str | None = None) -> None:
+def _write(status: str, blocker_id, reason, evidence, extra=None,
+           stage: str | None = None) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema": "eliza.gate_status.v1",
@@ -84,14 +87,14 @@ def _write(status: str, blocker_id, reason, evidence, extra=None, stage: str | N
     text = json.dumps(payload, indent=2) + "\n"
     REPORT.write_text(text, encoding="utf-8")
     if stage:
-        (REPORT.parent / f"linux_boot_cva6.{stage}.json").write_text(text, encoding="utf-8")
+        (REPORT.parent / f"linux_boot_cva6.{stage}.json").write_text(
+            text, encoding="utf-8")
 
 
 def _run(cmd, cwd, env, log, timeout):
     with log.open("w", encoding="utf-8") as fh:
-        proc = subprocess.run(
-            cmd, cwd=str(cwd), env=env, stdout=fh, stderr=subprocess.STDOUT, timeout=timeout
-        )
+        proc = subprocess.run(cmd, cwd=str(cwd), env=env, stdout=fh,
+                              stderr=subprocess.STDOUT, timeout=timeout)
     return proc.returncode, log.read_text(encoding="utf-8", errors="replace")
 
 
@@ -130,19 +133,16 @@ def _parse_results():
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", choices=("smode", "linux", "userland"), default="smode")
-    ap.add_argument(
-        "--fast",
-        action="store_true",
-        help="fast functional boot config (zero-wait DRAM model, "
-        "tiny 32 MiB advertised RAM, -O2 + threaded Verilator) "
-        "to reach ELIZA-USERLAND-OK in a bounded sim window. "
-        "FUNCTIONAL boot proof, NOT a timing/perf claim. "
-        "Implies --stage userland.",
-    )
-    ap.add_argument(
-        "--require", default=None, help="marker token that must appear (default: stage default)"
-    )
+    ap.add_argument("--stage", choices=("smode", "linux", "userland"),
+                    default="smode")
+    ap.add_argument("--fast", action="store_true",
+                    help="fast functional boot config (zero-wait DRAM model, "
+                         "tiny 32 MiB advertised RAM, -O2 + threaded Verilator) "
+                         "to reach ELIZA-USERLAND-OK in a bounded sim window. "
+                         "FUNCTIONAL boot proof, NOT a timing/perf claim. "
+                         "Implies --stage userland.")
+    ap.add_argument("--require", default=None,
+                    help="marker token that must appear (default: stage default)")
     ap.add_argument("--max-cycles", type=int, default=None)
     ap.add_argument("--idle-limit", type=int, default=None)
     ap.add_argument("--sim-timeout", type=int, default=21600)
@@ -175,14 +175,16 @@ def main() -> int:
         makefile = COCOTB_DIR / "Makefile.linux-cva6-boot"
         # Fast and realistic configs are different Verilator builds (the C++ opt
         # level + threading differ), so keep their build dirs separate.
-        sim_build = "sim_build_linux_cva6_boot_fast" if fast else "sim_build_linux_cva6_boot"
+        sim_build = ("sim_build_linux_cva6_boot_fast" if fast
+                     else "sim_build_linux_cva6_boot")
         builder = ROOT / "fw/linux-cva6-boot/build_linux_boot_image.py"
         boot_hex = ROOT / "fw/linux-cva6-boot/build/linux_boot.hex128"
         # Goal is userland: the trimmed kernel (CONFIG_INITRAMFS_SOURCE builtin,
         # no SMP/NET/PCI, size-optimised) has a short enough pre-userland init
         # path that ELIZA-USERLAND-OK is reachable inside the cycle budget.
         require = args.require or "ELIZA-USERLAND-OK"
-        transcript_name = "linux_userland_cva6.transcript" if fast else "linux_boot_cva6.transcript"
+        transcript_name = ("linux_userland_cva6.transcript" if fast
+                           else "linux_boot_cva6.transcript")
         if fast:
             # Zero-wait DRAM + 32 MiB advertised RAM cut the boot to the low
             # tens of millions of cycles.  The idle watchdog must tolerate the
@@ -213,21 +215,14 @@ def main() -> int:
 
     for tool in ("verilator", "riscv64-unknown-elf-gcc", "dtc"):
         if shutil.which(tool) is None:
-            _write(
-                "BLOCKED",
-                "toolchain-missing",
-                f"{tool} not on PATH — run `source tools/env.sh` first",
-                evidence,
-            )
+            _write("BLOCKED", "toolchain-missing",
+                   f"{tool} not on PATH — run `source tools/env.sh` first", evidence)
             print(f"BLOCKED: {tool} not on PATH (source tools/env.sh)")
             return 1
     if not (LINUX_GNU / "usr/bin/riscv64-linux-gnu-gcc").exists():
-        _write(
-            "BLOCKED",
-            "toolchain-missing",
-            "riscv64-linux-gnu-gcc not found under external/riscv64-linux-gnu",
-            evidence,
-        )
+        _write("BLOCKED", "toolchain-missing",
+               "riscv64-linux-gnu-gcc not found under external/riscv64-linux-gnu",
+               evidence)
         print("BLOCKED: riscv64-linux-gnu-gcc missing")
         return 1
 
@@ -237,28 +232,20 @@ def main() -> int:
     try:
         rc, out = _run(build_cmd, ROOT, env, build_log, timeout=1800)
     except subprocess.TimeoutExpired:
-        _write(
-            "BLOCKED",
-            "image-build-timeout",
-            f"{stage_label} boot image build exceeded 1800s",
-            evidence,
-        )
+        _write("BLOCKED", "image-build-timeout",
+               f"{stage_label} boot image build exceeded 1800s", evidence)
         print("BLOCKED: boot image build timed out")
         return 1
     if rc != 0 or not boot_hex.exists():
         tail = "\n".join(out.splitlines()[-25:])
-        _write(
-            "BLOCKED",
-            "image-build",
-            f"{stage_label} boot image build failed (rc={rc}); see {build_log}",
-            evidence,
-            extra={"log_tail": tail},
-        )
+        _write("BLOCKED", "image-build",
+               f"{stage_label} boot image build failed (rc={rc}); see {build_log}",
+               evidence, extra={"log_tail": tail})
         print(f"BLOCKED: boot image build failed; see {build_log}")
         return 1
 
     # 2) Elaborate + run the cocotb sim.
-    COCOTB_DIR / sim_build
+    sim_build_dir = COCOTB_DIR / sim_build
     if RESULTS_XML.exists():
         RESULTS_XML.unlink()
     sim_log = ROOT / f"build/reports/linux_boot_cva6.{stage_label}.sim.log"
@@ -268,9 +255,7 @@ def main() -> int:
     test_env["E1_BOOT_MAX_CYCLES"] = str(max_cycles)
     test_env["E1_BOOT_IDLE_LIMIT"] = str(idle_limit)
     cmd = [
-        "make",
-        "-f",
-        str(makefile),
+        "make", "-f", str(makefile),
         f"SIM_BUILD={sim_build}",
         "MODULE=test_linux_boot_cva6",
         f"PLUSARGS=+E1_DRAM_PRELOAD_HEX={boot_hex}",
@@ -278,30 +263,22 @@ def main() -> int:
     try:
         rc, out = _run(cmd, COCOTB_DIR, test_env, sim_log, timeout=args.sim_timeout)
     except subprocess.TimeoutExpired:
-        furthest = (
-            _furthest(transcript.read_text(errors="replace")) if transcript.exists() else "none"
-        )
-        _write(
-            "BLOCKED",
-            "sim-timeout",
-            f"cocotb sim exceeded {args.sim_timeout}s; furthest marker "
-            f"reached before timeout = {furthest}",
-            evidence,
-            extra={"furthest_marker": furthest, "sim_log": str(sim_log.relative_to(ROOT))},
-            stage=stage_label,
-        )
+        furthest = _furthest(transcript.read_text(errors="replace")) \
+            if transcript.exists() else "none"
+        _write("BLOCKED", "sim-timeout",
+               f"cocotb sim exceeded {args.sim_timeout}s; furthest marker "
+               f"reached before timeout = {furthest}", evidence,
+               extra={"furthest_marker": furthest,
+                      "sim_log": str(sim_log.relative_to(ROOT))},
+               stage=stage_label)
         print(f"BLOCKED: sim timed out; furthest marker = {furthest}")
         return 1
 
     if rc != 0 and not RESULTS_XML.exists():
         tail = "\n".join(out.splitlines()[-25:])
-        _write(
-            "FAIL",
-            "elaboration-or-build",
-            f"Verilator build/elaboration failed; see {sim_log}",
-            evidence,
-            extra={"log_tail": tail},
-        )
+        _write("FAIL", "elaboration-or-build",
+               f"Verilator build/elaboration failed; see {sim_log}", evidence,
+               extra={"log_tail": tail})
         print(f"FAIL: elaboration/build failed; see {sim_log}")
         return 1
 
@@ -316,12 +293,11 @@ def main() -> int:
             "# CLAIM BOUNDARY: functional boot proof, NOT a timing/perf claim.\n"
             "# Sim-only levers: +E1_DRAM_FAST zero-wait DRAM model, 32 MiB\n"
             "#   advertised RAM, Verilator -O2/threaded/x-fast, lpj=10000.\n"
-            "# Proves: CVA6 RTL + OpenSBI v1.8.1 + Linux 6.12.90 +\n"
-            "#   freestanding /init reach userland (ELIZA-USERLAND-OK).\n"
+            "# Proves: real CVA6 RTL + OpenSBI v1.8.1 + real Linux 6.12.90 +\n"
+            "#   real freestanding /init reach userland (ELIZA-USERLAND-OK).\n"
             "# The realistic-latency config (no +E1_DRAM_FAST) is the fidelity\n"
             "#   reference; cycle counts here are NOT representative of silicon.\n"
-            "# ---------------------------------------------------------------\n"
-        )
+            "# ---------------------------------------------------------------\n")
         transcript_text = header + transcript_text
         transcript.write_text(transcript_text, encoding="utf-8")
 
@@ -338,7 +314,8 @@ def main() -> int:
             "collapsed to 1 cycle (AXI4 protocol + ordering + data path intact)",
             "32 MiB advertised RAM in the DTS memory node (minimises mem_init "
             "page-struct/memmap walk)",
-            "Verilator built -O2 + --x-assign fast --x-initial fast + --threads (raises cycles/s)",
+            "Verilator built -O2 + --x-assign fast --x-initial fast + "
+            "--threads (raises cycles/s)",
             "kernel/bootarg trims: lpj=10000 skips calibrate_delay, "
             "PRINTK_TIME off, no SMP/NET/PCI/block",
         ]
@@ -346,12 +323,11 @@ def main() -> int:
             "FUNCTIONAL BOOT PROOF, NOT A TIMING/PERF CLAIM.  This run uses a "
             "sim-only zero-wait DRAM model and a tiny advertised memory to make "
             "the OpenSBI -> Linux -> userland boot fit a bounded Verilator "
-            "wall-time.  It proves the CVA6 RTL + OpenSBI + Linux + "
+            "wall-time.  It proves the CVA6 RTL + OpenSBI + real Linux + real "
             "/init reach userland; it makes NO statement about cycle counts, "
             "memory latency, or wall-clock performance on silicon.  The "
             "realistic-latency config (no --fast / no +E1_DRAM_FAST) remains "
-            "the DRAMsim3-derived fidelity reference."
-        )
+            "the DRAMsim3-derived fidelity reference.")
     if transcript.exists():
         extra["transcript"] = str(transcript.relative_to(ROOT))
         extra["transcript_excerpt"] = transcript_text[-2000:]
@@ -370,32 +346,19 @@ def main() -> int:
                 nxt = MARKERS[i + 1][0]
                 break
         extra["next_marker"] = nxt
-        _write(
-            "BLOCKED",
-            "boot-marker-not-reached",
-            f"required marker {require!r} not reached; furthest honest marker "
-            f"= {furthest}; next gap = {nxt}. {reason}",
-            evidence_full,
-            extra,
-            stage=stage_label,
-        )
+        _write("BLOCKED", "boot-marker-not-reached",
+               f"required marker {require!r} not reached; furthest honest marker "
+               f"= {furthest}; next gap = {nxt}. {reason}", evidence_full, extra,
+               stage=stage_label)
         print(f"BLOCKED: furthest marker = {furthest}; required {require!r} not reached")
         return 1
 
     proof = ("OpenSBI completed M-mode init and handed off to the S-mode payload "
-             "(S-MODE-OK printed over the ns16550a UART) on the CVA6 RTL through "
-             "the DRAM-controller RTL model and vendored axi_riscv_atomics filter — the M->S "
+             "(S-MODE-OK printed over the ns16550a UART) on the real CVA6 from "
+             "real DRAM through the vendored axi_riscv_atomics filter — the M->S "
              "transition Linux requires."
              if stage == "smode" else
              f"Linux boot reached marker {furthest!r} (required {require!r}).")
-    proof = (
-        "OpenSBI completed M-mode init and handed off to the S-mode payload "
-        "(S-MODE-OK printed over the ns16550a UART) on the real CVA6 from "
-        "real DRAM through the vendored axi_riscv_atomics filter — the M->S "
-        "transition Linux requires."
-        if stage == "smode"
-        else f"Linux boot reached marker {furthest!r} (required {require!r})."
-    )
     extra["proof"] = proof
     _write("PASS", None, None, evidence_full, extra, stage=stage_label)
     print(f"PASS: stage={stage_label} furthest marker = {furthest} (required {require!r})")

@@ -644,6 +644,10 @@ export async function handleTrainingRoutes(
               item !== null && typeof item === "object" && !Array.isArray(item),
           )
         : undefined;
+    const actionBenchmarkPairsSetting = (
+      value: unknown,
+    ): Record<string, unknown>[] | string | undefined =>
+      typeof value === "string" ? value : objectArraySetting(value);
     const naturalTrajectoryOptions = objectSetting(body.naturalTrajectories);
     const naturalTrajectoryIds = Array.isArray(
       naturalTrajectoryOptions?.trajectoryIds,
@@ -768,7 +772,9 @@ export async function handleTrainingRoutes(
         evalComparison: objectSetting(body.evalComparison),
         actionBenchmark: objectSetting(body.actionBenchmark),
         actionBenchmarkPair: objectSetting(body.actionBenchmarkPair),
-        actionBenchmarkPairs: objectArraySetting(body.actionBenchmarkPairs),
+        actionBenchmarkPairs: actionBenchmarkPairsSetting(
+          body.actionBenchmarkPairs,
+        ),
         benchmarkVsCerebras: objectSetting(body.benchmarkVsCerebras),
         eliza1BundleStage: objectSetting(body.eliza1BundleStage),
         benchmarkMatrix: objectSetting(body.benchmarkMatrix),

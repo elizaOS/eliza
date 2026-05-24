@@ -95,9 +95,8 @@ def check_lint(verilator: str, rtl: str, top: str, check_id: str) -> dict:
     return {"id": check_id, "status": "fail", "detail": "lint failed: " + "\n".join(diags[:8])}
 
 
-def check_cocotb(
-    makefile: str, results: Path, sim_build: str, expected: tuple[str, ...], check_id: str
-) -> dict:
+def check_cocotb(makefile: str, results: Path, sim_build: str,
+                 expected: tuple[str, ...], check_id: str) -> dict:
     if results.exists():
         results.unlink()
     proc = subprocess.run(
@@ -156,12 +155,12 @@ def main() -> int:
         checks.append(check_lint(verilator, CLINT_RTL, "e1_clint", "clint_lint"))
         checks.append(check_lint(verilator, PLIC_RTL, "e1_plic", "plic_lint"))
         checks.append(
-            check_cocotb(
-                CLINT_MAKEFILE, CLINT_RESULTS, CLINT_SIM_BUILD, CLINT_EXPECTED, "clint_cocotb"
-            )
+            check_cocotb(CLINT_MAKEFILE, CLINT_RESULTS, CLINT_SIM_BUILD,
+                         CLINT_EXPECTED, "clint_cocotb")
         )
         checks.append(
-            check_cocotb(PLIC_MAKEFILE, PLIC_RESULTS, PLIC_SIM_BUILD, PLIC_EXPECTED, "plic_cocotb")
+            check_cocotb(PLIC_MAKEFILE, PLIC_RESULTS, PLIC_SIM_BUILD,
+                         PLIC_EXPECTED, "plic_cocotb")
         )
 
     has_fail = any(c["status"] == "fail" for c in checks)

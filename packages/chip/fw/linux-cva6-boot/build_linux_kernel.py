@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parents[1]  # packages/chip
+ROOT = HERE.parents[1]   # packages/chip
 LINUX_SRC = ROOT / "external/linux"
 LINUX_GNU = ROOT / "external/riscv64-linux-gnu"
 
@@ -53,13 +53,9 @@ def _env() -> dict:
 
 def _make(targets: list[str], env: dict, extra: list[str] | None = None) -> None:
     cmd = [
-        "make",
-        "-C",
-        str(LINUX_SRC),
-        f"ARCH={ARCH}",
-        f"CROSS_COMPILE={CROSS}",
-        "-j",
-        str(os.cpu_count() or 4),
+        "make", "-C", str(LINUX_SRC),
+        f"ARCH={ARCH}", f"CROSS_COMPILE={CROSS}",
+        "-j", str(os.cpu_count() or 4),
     ]
     if extra:
         cmd += extra
@@ -70,11 +66,8 @@ def _make(targets: list[str], env: dict, extra: list[str] | None = None) -> None
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--initramfs", default=str(HERE / "build/initramfs.cpio"))
-    ap.add_argument(
-        "--skip-initramfs",
-        action="store_true",
-        help="reuse an existing initramfs cpio instead of rebuilding",
-    )
+    ap.add_argument("--skip-initramfs", action="store_true",
+                    help="reuse an existing initramfs cpio instead of rebuilding")
     args = ap.parse_args()
 
     env = _env()
@@ -84,9 +77,8 @@ def main() -> int:
     # 1) initramfs cpio (baked into the kernel below).
     initrd = Path(args.initramfs)
     if not args.skip_initramfs or not initrd.exists():
-        subprocess.run(
-            ["python3", str(HERE / "build_initramfs.py"), "--out", str(initrd)], env=env, check=True
-        )
+        subprocess.run(["python3", str(HERE / "build_initramfs.py"),
+                        "--out", str(initrd)], env=env, check=True)
     if not initrd.exists():
         raise SystemExit(f"initramfs not built: {initrd}")
 
@@ -101,36 +93,26 @@ def main() -> int:
     frag.write_text(frag_src)
     subprocess.run(
         ["./scripts/kconfig/merge_config.sh", "-m", ".config", str(frag)],
-        cwd=str(LINUX_SRC),
-        env=env,
-        check=True,
-    )
+        cwd=str(LINUX_SRC), env=env, check=True)
     _make(["olddefconfig"], env)
 
     # 4) verify the load-bearing options survived olddefconfig.
     config = (LINUX_SRC / ".config").read_text()
     required = [
-        "CONFIG_ARCH_RV64I=y",
-        "CONFIG_MMU=y",
-        "CONFIG_RISCV_SBI=y",
-        "CONFIG_SERIAL_8250_CONSOLE=y",
-        "CONFIG_SERIAL_EARLYCON=y",
-        "CONFIG_BLK_DEV_INITRD=y",
-        "CONFIG_BINFMT_ELF=y",
-        "CONFIG_DEVTMPFS=y",
-        "CONFIG_CMDLINE_FORCE=y",
+        "CONFIG_ARCH_RV64I=y", "CONFIG_MMU=y", "CONFIG_RISCV_SBI=y",
+        "CONFIG_SERIAL_8250_CONSOLE=y", "CONFIG_SERIAL_EARLYCON=y",
+        "CONFIG_BLK_DEV_INITRD=y", "CONFIG_BINFMT_ELF=y",
+        "CONFIG_DEVTMPFS=y", "CONFIG_CMDLINE_FORCE=y",
         f'CONFIG_INITRAMFS_SOURCE="{initrd.resolve()}"',
     ]
     missing = [r for r in required if r not in config]
     if missing:
         raise SystemExit(
-            "minimal config lost required options after olddefconfig:\n  " + "\n  ".join(missing)
-        )
+            "minimal config lost required options after olddefconfig:\n  "
+            + "\n  ".join(missing))
     if "CONFIG_SMP=y" in config:
-        print(
-            "WARNING: CONFIG_SMP=y survived (expected UP) — SMP bring-up will still run.",
-            file=sys.stderr,
-        )
+        print("WARNING: CONFIG_SMP=y survived (expected UP) — SMP bring-up will "
+              "still run.", file=sys.stderr)
 
     # 5) build the Image.
     _make(["Image"], env)
@@ -138,7 +120,8 @@ def main() -> int:
     if not image.exists():
         raise SystemExit(f"kernel Image not produced: {image}")
     size = image.stat().st_size
-    print(f"\nminimal riscv64 Image: {image}  ({size} bytes, {size / 1024 / 1024:.2f} MiB)")
+    print(f"\nminimal riscv64 Image: {image}  ({size} bytes, "
+          f"{size / 1024 / 1024:.2f} MiB)")
     # Persist the resolved config alongside the fw for documentation/repro.
     shutil.copy(LINUX_SRC / ".config", HERE / "build/kernel.config")
     print(f"resolved kernel config saved: {HERE / 'build/kernel.config'}")

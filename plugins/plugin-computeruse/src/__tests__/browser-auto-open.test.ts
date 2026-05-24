@@ -84,6 +84,7 @@ describe("ComputerUseService browser auto-open recovery", () => {
       isOpen: true,
       is_open: true,
     });
+    vi.mocked(browser.screenshotBrowser).mockResolvedValue("base64");
     service = (await ComputerUseService.start(
       createRuntime(),
     )) as ComputerUseService;
@@ -159,5 +160,21 @@ describe("ComputerUseService browser auto-open recovery", () => {
       error: "Browser not open.",
     });
     expect(browser.openBrowser).not.toHaveBeenCalled();
+  });
+
+  it("returns a failed command result when browser screenshot quality fails", async () => {
+    vi.mocked(browser.screenshotBrowser).mockRejectedValueOnce(
+      new Error(
+        'browser screenshot: screenshot quality failed: browser screenshot: screenshot is one color; metrics={"colorBuckets":1}',
+      ),
+    );
+
+    const result = await service.executeBrowserAction({ action: "screenshot" });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("screenshot quality failed");
+    expect(result.error).toContain("screenshot is one color");
+    expect(result.screenshot).toBeUndefined();
+    expect(browser.screenshotBrowser).toHaveBeenCalledTimes(1);
   });
 });

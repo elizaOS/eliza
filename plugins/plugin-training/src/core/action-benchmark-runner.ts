@@ -178,7 +178,18 @@ async function annotateBenchmarkReportSource(
 }
 
 export function buildActionBenchmarkCommand(): string[] {
-  return ["run", "test", "test/benchmarks/action-selection.real.test.ts"];
+  return [
+    "x",
+    "vitest",
+    "run",
+    "--config",
+    "../test/vitest/real.config.ts",
+    "test/benchmarks/action-selection.real.test.ts",
+    "--exclude",
+    ".git/**",
+    "--exclude",
+    ".eliza/**",
+  ];
 }
 
 export function buildActionBenchmarkEnv(

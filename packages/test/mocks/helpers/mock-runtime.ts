@@ -15,6 +15,7 @@ import {
   startMocks,
 } from "../scripts/start-mocks.ts";
 import { createBenchmarkRuntimeFixturesEnvironment } from "./benchmark-runtime-fixtures.ts";
+import { createDeterministicLlmProxyPlugin } from "./llm-proxy-plugin.ts";
 import {
   createLifeOpsSimulatorRuntimeFixtures,
   type LifeOpsSimulatorSeedResult,
@@ -98,9 +99,17 @@ const FAKE_CREDS: Readonly<Record<string, string>> = {
   TWITTER_USER_ID: "1234567890",
 };
 
-function mockRuntimePlugins(plugins: readonly Plugin[] | undefined): Plugin[] {
+function mockRuntimePlugins(
+  plugins: readonly Plugin[] | undefined,
+  withLLM: boolean,
+): Plugin[] {
   const out: Plugin[] = [appLifeOpsPlugin];
   const seen = new Set(out.map((plugin) => plugin.name));
+  if (withLLM) {
+    const proxy = createDeterministicLlmProxyPlugin();
+    seen.add(proxy.name);
+    out.push(proxy);
+  }
   for (const plugin of plugins ?? []) {
     if (seen.has(plugin.name)) continue;
     seen.add(plugin.name);
@@ -342,7 +351,7 @@ export async function createMockedTestRuntime(
   try {
     real = await createRealTestRuntime({
       withLLM: opts?.withLLM ?? false,
-      plugins: mockRuntimePlugins(opts?.plugins),
+      plugins: mockRuntimePlugins(opts?.plugins, opts?.withLLM ?? false),
       preferredProvider: opts?.preferredProvider,
     });
     cleanupRuntimeFixtures = await environment.applyRuntimeFixtures?.(

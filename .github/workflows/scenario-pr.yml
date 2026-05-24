@@ -28,7 +28,7 @@ jobs:
   deterministic-scenario:
     name: Deterministic Scenario Smoke
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,11 +61,41 @@ jobs:
       - name: UI dynamic view interaction coverage
         run: bun run --cwd packages/ui test -- src/App.navigate-view-wiring.test.tsx src/app-navigate-view.test.ts src/components/pages/ViewManagerPage.test.tsx src/components/shell/__tests__/shell-assistant-flow.test.tsx src/components/views/DynamicViewLoader.test.tsx src/hooks/useAvailableViews.test.tsx src/hooks/useDesktopTabs.test.tsx src/state/startup-phase-hydrate.view-interact.test.ts
 
+      - name: Install Playwright browsers
+        run: bunx playwright install --with-deps chromium
+
+      - name: Actual app assistant pill browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "captures onboarding, assistant home, chat suppression, and view pill states"
+
+      - name: Actual app assistant voice browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/assistant-home-flow.spec.ts --project=chromium -g "drives the assistant home voice path with a scripted browser STT turn"
+
+      - name: Actual app TTS and STT browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/tts-stt-e2e.spec.ts --project=chromium
+
+      - name: Actual app view manager browser coverage
+        run: bun run --cwd packages/app test:e2e test/ui-smoke/view-manager-actual-flow.spec.ts --project=chromium
+
       - name: Electrobun window and dynamic-view coverage
         run: bun run --cwd packages/app-core/platforms/electrobun test src/native/desktop-window.test.ts src/rpc-handlers.test.ts src/dynamic-view-rpc-schema.test.ts src/surface-windows.test.ts src/dynamic-views/host.test.ts
 
       - name: View management action coverage
         run: bun run --cwd plugins/plugin-app-control test -- src/actions/views-management.test.ts
+
+      - name: App verification diagnostics coverage
+        run: bun run --cwd plugins/plugin-app-control test -- src/services/__tests__/app-verification.integration.test.ts src/services/__tests__/verification-room-bridge.test.ts
+
+      - name: Computer-use screenshot quality diagnostics coverage
+        run: bun run --cwd plugins/plugin-computeruse test -- test/helpers/screenshot-quality.test.ts src/__tests__/browser-auto-open.test.ts
+
+      - name: App screenshot quality diagnostics coverage
+        run: bun run --cwd packages/app test -- test/screenshot-quality.test.ts
+
+      - name: App-core screenshot quality diagnostics coverage
+        run: bun run --cwd packages/app-core test -- test/app/screenshot-quality.test.ts
+
+      - name: Cloud screenshot quality diagnostics coverage
+        run: bun run --cwd packages/cloud-frontend test -- tests/e2e/screenshot-quality.test.ts
 
       - name: Zero-cost scenario e2e
         run: bun run --cwd packages/scenario-runner test:pr:e2e

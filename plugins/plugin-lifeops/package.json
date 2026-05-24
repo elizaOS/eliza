@@ -69,8 +69,7 @@
     "lucide-react": "^1.0.0",
     "react-plaid-link": "^4.0.1",
     "sharp": "^0.34.5",
-    "zod": "^4.4.3",
-    "@elizaos/scenario-runner": "workspace:*"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.0",

@@ -14,6 +14,7 @@ import {
   startMockApiServer,
 } from "../electrobun-packaged/mock-api";
 import { getFreePort } from "../utils/get-free-port.mjs";
+import { captureScreenshotWithQualityRetry } from "../ui-smoke/helpers/screenshot-quality";
 
 type ShellMode = "companion" | "native";
 type ViewId =
@@ -681,7 +682,11 @@ async function captureOneAttempt(
     const relativePath = screenshotRelativePath(capture);
     const absolutePath = path.join(outputRoot, relativePath);
     await mkdir(path.dirname(absolutePath), { recursive: true });
-    await page.screenshot({ path: absolutePath, fullPage: false });
+    await captureScreenshotWithQualityRetry(
+      page,
+      `design review ${capture.view.id} ${capture.stateId} ${capture.viewport.id}`,
+      { path: absolutePath, fullPage: false },
+    );
 
     return {
       record: {
@@ -701,9 +706,11 @@ async function captureOneAttempt(
     const screenshotPath = path.join(diagnosticsRoot, `${stem}.png`);
     const htmlPath = path.join(diagnosticsRoot, `${stem}.html`);
     const consolePath = path.join(diagnosticsRoot, `${stem}.log`);
-    await page
-      .screenshot({ path: screenshotPath, fullPage: false })
-      .catch(() => {});
+    await captureScreenshotWithQualityRetry(
+      page,
+      `design review diagnostic ${capture.view.id} ${capture.stateId} ${capture.viewport.id}`,
+      { path: screenshotPath, fullPage: false },
+    ).catch(() => {});
     await writeFile(htmlPath, await page.content().catch(() => ""), "utf8");
     await writeFile(consolePath, `${consoleLines.join("\n")}\n`, "utf8");
     const message = error instanceof Error ? error.message : String(error);

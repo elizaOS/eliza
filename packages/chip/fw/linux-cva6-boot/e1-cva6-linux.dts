@@ -99,18 +99,8 @@
 			clock-frequency = <50000000>;
 			current-speed = <115200>;
 			reg-shift = <0>;
-			/*
-			 * No `interrupts` property: drive the 8250 console in POLLED
-			 * TX mode.  The behavioural ns16550a model (e1_uart_ns16550.sv)
-			 * holds LSR.THRE|TEMT permanently set but does NOT raise a UART
-			 * TX interrupt to the PLIC.  With an interrupt declared, the
-			 * 8250 driver switches to IRQ-driven buffered TX after the
-			 * console handover and wedges PID-1's write() waiting for a
-			 * TX-empty IRQ that never arrives (the kernel earlycon + the
-			 * first post-handover write drain, then the next write blocks).
-			 * Polled mode makes every write() drain against the always-ready
-			 * THRE bit, so /init's userland marker reaches the UART.
-			 */
+			interrupt-parent = <&plic>;
+			interrupts = <1>;
 		};
 	};
 };

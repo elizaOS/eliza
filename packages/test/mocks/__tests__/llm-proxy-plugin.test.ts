@@ -4,6 +4,18 @@ import { createDeterministicLlmProxyPlugin } from "../helpers/llm-proxy-plugin.t
 
 const runtime = {} as never;
 
+function actualDiagnosticsFrom(error: unknown): Record<string, unknown> {
+  const message = error instanceof Error ? error.message : String(error);
+  expect(message).toContain(
+    "Expected: the E2E prompt must clearly match exactly one provided action/tool.",
+  );
+  const actualLine = message
+    .split("\n")
+    .find((line) => line.startsWith("Actual: "));
+  expect(actualLine).toBeDefined();
+  return JSON.parse(actualLine?.slice("Actual: ".length) ?? "{}");
+}
+
 describe("deterministic LLM proxy plugin", () => {
   it("registers high-priority deterministic text and embedding handlers", async () => {
     const plugin = createDeterministicLlmProxyPlugin({
@@ -39,6 +51,21 @@ describe("deterministic LLM proxy plugin", () => {
     expect(args.replyText).toBe(
       "Deterministic test reply for: Open the view manager",
     );
+  });
+
+  it("extracts exact user_message text from direct-reply prompts", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+    const raw = await plugin.models?.[ModelType.TEXT_SMALL]?.(runtime, {
+      prompt: [
+        "task: Write one direct reply to the user.",
+        "rules:",
+        "- answer directly",
+        "user_message: hello deterministic proxy",
+        "routing_thought: Direct private chat fast path.",
+      ].join("\n"),
+    });
+
+    expect(raw).toBe("deterministic-test-response: hello deterministic proxy");
   });
 
   it("selects an action planner tool from the actual tool list", async () => {
@@ -115,6 +142,127 @@ describe("deterministic LLM proxy plugin", () => {
     ]);
   });
 
+  it("fails closed with actual-vs-expected diagnostics when no planner tool matches", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+        messages: [
+          {
+            role: "user",
+            content: "Create a new remote ledger view",
+          },
+        ],
+        tools: [
+          {
+            name: "SEND_EMAIL",
+            description: "Send an email message",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy could not select an ACTION_PLANNER tool: no matching tool",
+    );
+    const actual = actualDiagnosticsFrom(thrown);
+    expect(actual.latestUserText).toBe("Create a new remote ledger view");
+    expect(actual.toolNames).toEqual(["SEND_EMAIL"]);
+    expect(actual.scores).toEqual([
+      {
+        name: "SEND_EMAIL",
+        score: 0,
+        description: "Send an email message",
+      },
+    ]);
+  });
+
+  it("fails closed with actual-vs-expected diagnostics when planner tools tie", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+        messages: [
+          {
+            role: "user",
+            content: "Open the remote ledger view",
+          },
+        ],
+        tools: [
+          {
+            name: "REMOTE_LEDGER_PRIMARY",
+            description: "Open the remote ledger view",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "REMOTE_LEDGER_SECONDARY",
+            description: "Open the remote ledger view",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy could not select an ACTION_PLANNER tool: ambiguous matching tools",
+    );
+    const actual = actualDiagnosticsFrom(thrown);
+    expect(actual.latestUserText).toBe("Open the remote ledger view");
+    expect(actual.toolNames).toEqual([
+      "REMOTE_LEDGER_PRIMARY",
+      "REMOTE_LEDGER_SECONDARY",
+    ]);
+    expect(actual.scores).toEqual([
+      {
+        name: "REMOTE_LEDGER_PRIMARY",
+        score: expect.any(Number),
+        description: "Open the remote ledger view",
+      },
+      {
+        name: "REMOTE_LEDGER_SECONDARY",
+        score: expect.any(Number),
+        description: "Open the remote ledger view",
+      },
+    ]);
+  });
+
+  it("can opt into legacy first-tool fallback for compatibility-only smoke tests", async () => {
+    const plugin = createDeterministicLlmProxyPlugin({
+      failOnUnhandledAction: false,
+    });
+    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+      messages: [
+        {
+          role: "user",
+          content: "Create a new remote ledger view",
+        },
+      ],
+      tools: [
+        {
+          name: "SEND_EMAIL",
+          description: "Send an email message",
+          parameters: { type: "object", properties: {} },
+        },
+      ],
+    });
+
+    const result = JSON.parse(String(raw));
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        name: "SEND_EMAIL",
+      }),
+    ]);
+  });
+
   it("generates exact deterministic view registration arguments from schema field names", async () => {
     const plugin = createDeterministicLlmProxyPlugin();
     const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
@@ -163,6 +311,62 @@ describe("deterministic LLM proxy plugin", () => {
             metadata: {
               deterministic: true,
               viewId: "remote-ledger",
+            },
+          },
+          update: false,
+        },
+      }),
+    ]);
+  });
+
+  it("generates local dynamic view registration arguments without a remote bundle", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+    const raw = await plugin.models?.[ModelType.ACTION_PLANNER]?.(runtime, {
+      messages: [
+        {
+          role: "user",
+          content: "Create a new local agent run trace view",
+        },
+      ],
+      tools: [
+        {
+          name: "DYNAMIC_VIEW_REGISTER",
+          description: "Create or update a dynamic local or remote view",
+          parameters: {
+            type: "object",
+            properties: {
+              manifest: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  title: { type: "string" },
+                  source: { type: "string" },
+                  entrypoint: { type: "string" },
+                  placement: { type: "string" },
+                  metadata: { type: "object" },
+                },
+              },
+              update: { type: "boolean" },
+            },
+          },
+        },
+      ],
+    });
+
+    const result = JSON.parse(String(raw));
+    expect(result.toolCalls).toEqual([
+      expect.objectContaining({
+        name: "DYNAMIC_VIEW_REGISTER",
+        arguments: {
+          manifest: {
+            id: "agent-run-trace",
+            title: "Agent Run Trace",
+            source: "local",
+            entrypoint: "agent-run-trace.html",
+            placement: "floating",
+            metadata: {
+              deterministic: true,
+              viewId: "agent-run-trace",
             },
           },
           update: false,
@@ -403,9 +607,10 @@ describe("deterministic LLM proxy plugin", () => {
       view: "remote-ledger",
     },
     {
-      text: "Open the remote ledger view in a separate window",
+      text: "Open the remote ledger view in a separate window and keep it always on top",
       action: "window",
       view: "remote-ledger",
+      alwaysOnTop: true,
     },
     {
       text: "Fill the remote ledger view title input with Remote Ledger Updated",
@@ -431,6 +636,7 @@ describe("deterministic LLM proxy plugin", () => {
     },
   ])("generates semantic arguments for unified VIEWS action: $action", async ({
     action,
+    alwaysOnTop,
     capability,
     params,
     text,
@@ -469,6 +675,7 @@ describe("deterministic LLM proxy plugin", () => {
               },
               view: { type: "string" },
               capability: { type: "string" },
+              alwaysOnTop: { type: "boolean" },
               params: { type: "object" },
               viewType: { type: "string", enum: ["gui", "tui"] },
             },
@@ -483,6 +690,7 @@ describe("deterministic LLM proxy plugin", () => {
         name: "VIEWS",
         arguments: {
           action,
+          alwaysOnTop: alwaysOnTop ?? false,
           capability: capability ?? "get-text",
           params: params ?? {},
           view,
@@ -514,6 +722,104 @@ describe("deterministic LLM proxy plugin", () => {
     expect(args.contexts).toEqual(["actions"]);
     expect(args.replyText).toBe("On it.");
     expect(args.candidateActionNames).toEqual(["DYNAMIC_VIEW_UNREGISTER"]);
+  });
+
+  it("fails Stage 1 with actual-vs-expected diagnostics when no candidate action matches", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.RESPONSE_HANDLER]?.(runtime, {
+        messages: [
+          {
+            role: "user",
+            content: "Create a new remote ledger view",
+          },
+        ],
+        tools: [
+          { name: "HANDLE_RESPONSE" },
+          {
+            name: "SEND_EMAIL",
+            description: "Send an email message",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy could not select an ACTION_PLANNER tool: no matching tool",
+    );
+    const actual = actualDiagnosticsFrom(thrown);
+    expect(actual.modelType).toBe(ModelType.RESPONSE_HANDLER);
+    expect(actual.latestUserText).toBe("Create a new remote ledger view");
+    expect(actual.toolNames).toEqual(["HANDLE_RESPONSE", "SEND_EMAIL"]);
+    expect(actual.scores).toEqual([
+      {
+        name: "SEND_EMAIL",
+        score: 0,
+        description: "Send an email message",
+      },
+    ]);
+  });
+
+  it("fails Stage 1 with actual-vs-expected diagnostics when candidate actions tie", async () => {
+    const plugin = createDeterministicLlmProxyPlugin();
+
+    let thrown: unknown;
+    try {
+      await plugin.models?.[ModelType.RESPONSE_HANDLER]?.(runtime, {
+        messages: [
+          {
+            role: "user",
+            content: "Open the remote ledger view",
+          },
+        ],
+        tools: [
+          { name: "HANDLE_RESPONSE" },
+          {
+            name: "REMOTE_LEDGER_PRIMARY",
+            description: "Open the remote ledger view",
+            parameters: { type: "object", properties: {} },
+          },
+          {
+            name: "REMOTE_LEDGER_SECONDARY",
+            description: "Open the remote ledger view",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+      });
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toContain(
+      "deterministic LLM proxy could not select an ACTION_PLANNER tool: ambiguous matching tools",
+    );
+    const actual = actualDiagnosticsFrom(thrown);
+    expect(actual.modelType).toBe(ModelType.RESPONSE_HANDLER);
+    expect(actual.latestUserText).toBe("Open the remote ledger view");
+    expect(actual.toolNames).toEqual([
+      "HANDLE_RESPONSE",
+      "REMOTE_LEDGER_PRIMARY",
+      "REMOTE_LEDGER_SECONDARY",
+    ]);
+    expect(actual.scores).toEqual([
+      {
+        name: "REMOTE_LEDGER_PRIMARY",
+        score: expect.any(Number),
+        description: "Open the remote ledger view",
+      },
+      {
+        name: "REMOTE_LEDGER_SECONDARY",
+        score: expect.any(Number),
+        description: "Open the remote ledger view",
+      },
+    ]);
   });
 
   it("lets tests override responses dynamically from model type and action", async () => {

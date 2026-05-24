@@ -89,7 +89,9 @@ async def _host_xact(dut, addr, *, we, wdata=0, be=0xF):
         await Timer(1, units="ns")
         if dut.host_rvalid_o.value == 1:
             rdata = int(dut.host_rdata_o.value)
-            assert dut.host_err_o.value == 0, f"TL-UL error response for addr=0x{addr:x} we={we}"
+            assert dut.host_err_o.value == 0, (
+                f"TL-UL error response for addr=0x{addr:x} we={we}"
+            )
             break
         await RisingEdge(dut.clk_i)
     else:
@@ -140,12 +142,12 @@ async def hmac_sha256_kat_through_xbar(dut):
         digest.append(await _read(dut, HMAC_DIGEST_0 + 4 * i))
 
     assert digest == SHA256_ABC, (
-        'HMAC SHA-256("abc") mismatch through RoT crossbar:\n'
+        "HMAC SHA-256(\"abc\") mismatch through RoT crossbar:\n"
         f"  got      {[hex(d) for d in digest]}\n"
         f"  expected {[hex(d) for d in SHA256_ABC]}"
     )
     dut._log.info(
-        'RoT datapath KAT PASS: SHA-256("abc") = '
+        "RoT datapath KAT PASS: SHA-256(\"abc\") = "
         + "".join(f"{d:08x}" for d in digest)
         + " via tlul_adapter_host -> tlul_socket_1n -> real OpenTitan hmac"
     )

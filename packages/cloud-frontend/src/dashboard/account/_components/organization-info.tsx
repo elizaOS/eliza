@@ -26,8 +26,10 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
     });
   };
 
-  const formatBalance = (balance: number) => {
-    return `$${Number(balance).toFixed(2)}`;
+  const formatBalance = (balance: string | number | null | undefined) => {
+    const n = Number(balance);
+    if (balance == null || balance === "" || Number.isNaN(n)) return "—";
+    return `$${n.toFixed(2)}`;
   };
 
   return (
@@ -69,7 +71,7 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
                 Balance
               </p>
               <p className="font-semibold text-lg text-white">
-                {formatBalance(Number(organization.credit_balance))}
+                {formatBalance(organization.credit_balance)}
               </p>
             </div>
 

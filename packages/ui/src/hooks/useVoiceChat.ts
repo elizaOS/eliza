@@ -1767,7 +1767,12 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
       } finally {
         queueWorkerRunningRef.current = false;
       }
-      if (workerGeneration !== generationRef.current) return;
+      if (workerGeneration !== generationRef.current) {
+        if (queueRef.current.length > 0) {
+          processQueue();
+        }
+        return;
+      }
       if (workerError) {
         usingAudioAnalysisRef.current = false;
         setUsingAudioAnalysis(false);

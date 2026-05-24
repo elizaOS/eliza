@@ -285,7 +285,7 @@ async def do_check(dut, domain: int, addr: int, write: int) -> tuple[int, int]:
 
 
 # Domain ids used across tests.
-GUEST = 1  # the confidential guest domain that owns its private pages
+GUEST = 1   # the confidential guest domain that owns its private pages
 GUEST2 = 2  # a different confidential domain (non-owner)
 DEVICE = 3  # a measured device domain (device-assigned)
 
@@ -499,10 +499,10 @@ async def state_transition_enforced(dut):
     assert ("private", "free") not in edges
 
     for state_name, owner, host_denied, owner_read_ok in [
-        ("free", DOMAIN_HOST, False, False),  # host owns free scratch
-        ("measured", GUEST, True, True),  # frozen: owner reads, host denied
-        ("private", GUEST, True, True),  # owner only
-        ("scrub-pending", GUEST, True, False),  # deny-all
+        ("free", DOMAIN_HOST, False, False),       # host owns free scratch
+        ("measured", GUEST, True, True),           # frozen: owner reads, host denied
+        ("private", GUEST, True, True),            # owner only
+        ("scrub-pending", GUEST, True, False),     # deny-all
     ]:
         mtt = build_mtt()
         mtt.map_page(page, PS[state_name], owner)

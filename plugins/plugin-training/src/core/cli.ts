@@ -98,6 +98,20 @@ function optionalPositiveInteger(
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function parseCerebrasVariants(
+  value: string | undefined,
+): "trained" | "base" | "both" {
+  if (value === "trained" || value === "base" || value === "both") {
+    return value;
+  }
+  if (value) {
+    throw new Error(
+      `Invalid --cerebras-variants value ${JSON.stringify(value)}; expected trained, base, or both`,
+    );
+  }
+  return "both";
+}
+
 function getTeacherModel(): TeacherModel {
   // Standing direction: training defaults to Cerebras gpt-oss-120b. The
   // teacher generates synthetic conversations; the agent under test is
@@ -531,10 +545,13 @@ export function buildRunCollectionOptionsFromCliArgs(
       "dataset-version": { type: "string", default: "eliza-native-v1" },
       "hf-repo": { type: "string", default: "elizaos/eliza-1-training" },
       "hf-revision": { type: "string", default: "main" },
+      "hf-files": { type: "string" },
       "feed-archetypes": { type: "string", default: "trader" },
       "feed-agents": { type: "string", default: "1" },
       "feed-ticks": { type: "string", default: "1" },
       "feed-parallel": { type: "string", default: "1" },
+      "cerebras-max-samples": { type: "string", default: "50" },
+      "cerebras-variants": { type: "string", default: "both" },
       scenario: { type: "string", default: "deterministic-pr-smoke" },
       "natural-sanitized-jsonl": { type: "string" },
       "natural-raw-jsonl": { type: "string" },
@@ -549,6 +566,7 @@ export function buildRunCollectionOptionsFromCliArgs(
       "skip-natural": { type: "boolean", default: false },
       "skip-tests": { type: "boolean", default: false },
       "skip-scenarios": { type: "boolean", default: false },
+      "skip-action-benchmark": { type: "boolean", default: false },
       "skip-cerebras": { type: "boolean", default: false },
       "skip-model-registry": { type: "boolean", default: false },
       "skip-bundle-stage": { type: "boolean", default: false },
@@ -609,7 +627,7 @@ export function buildRunCollectionOptionsFromCliArgs(
     includeEvalComparison:
       values["skip-eval-comparison"] !== true &&
       (dryRun || values["include-eval-comparison"] === true),
-    includeActionBenchmark: true,
+    includeActionBenchmark: values["skip-action-benchmark"] !== true,
     includeBenchmarkVsCerebras: values["skip-cerebras"] !== true,
     includeEliza1ModelRegistry: values["skip-model-registry"] !== true,
     includeEliza1BundleStage: values["skip-bundle-stage"] !== true,
@@ -661,6 +679,13 @@ export function buildRunCollectionOptionsFromCliArgs(
         typeof values["hf-revision"] === "string"
           ? values["hf-revision"]
           : "main",
+      files:
+        typeof values["hf-files"] === "string"
+          ? values["hf-files"]
+              .split(",")
+              .map((file) => file.trim())
+              .filter(Boolean)
+          : undefined,
       dryRun,
     },
     feed: {
@@ -721,8 +746,17 @@ export function buildRunCollectionOptionsFromCliArgs(
     benchmarkVsCerebras: {
       tiers: tiers.join(","),
       benchmark,
-      variants: "both",
-      maxSamples: 50,
+      variants: parseCerebrasVariants(
+        typeof values["cerebras-variants"] === "string"
+          ? values["cerebras-variants"]
+          : undefined,
+      ),
+      maxSamples:
+        optionalPositiveInteger(
+          typeof values["cerebras-max-samples"] === "string"
+            ? values["cerebras-max-samples"]
+            : undefined,
+        ) ?? 50,
       dryRun,
     },
     eliza1BundleStage: {
@@ -801,6 +835,43 @@ export function formatListTrainingCollectionsSummary(
   ];
   for (const collection of result.collections) {
     const firstEvalComparison = collection.evals.comparisonInventory[0];
+    const firstModel =
+      collection.training.modelInventory.find(
+        (model) => model.model || model.variant,
+      ) ?? collection.training.modelInventory[0];
+    const sourceSamples = collection.sourceSamples ?? {
+      huggingFace: [],
+      feed: [],
+      natural: [],
+      scenarios: [],
+      tests: [],
+      trainingJsonl: [],
+    };
+    const sourceSampleEntries = Object.entries(sourceSamples) as Array<
+      [
+        string,
+        Array<{
+          trajectoryId?: string | null;
+          scenarioId?: string | null;
+          title?: string;
+          task?: string | null;
+        }>,
+      ]
+    >;
+    const sampleCounts = sourceSampleEntries
+      .map(([source, samples]) => `${source}:${samples.length}`)
+      .join(",");
+    const sampleExamples = sourceSampleEntries
+      .flatMap(([source, samples]) =>
+        samples.slice(0, 1).map((sample) => {
+          const id =
+            sample.trajectoryId ?? sample.scenarioId ?? sample.title ?? "sample";
+          const task = sample.task ? `:${sample.task}` : "";
+          return `${source}:${id}${task}`;
+        }),
+      )
+      .slice(0, 4)
+      .join(",");
     const evalSummary = [
       `artifacts:${collection.evals.evalArtifacts}`,
       `comparisons:${collection.evals.evalComparisons}`,
@@ -814,6 +885,28 @@ export function formatListTrainingCollectionsSummary(
     ]
       .filter(Boolean)
       .join(",");
+    const modelSummary = [
+      `runs:${collection.training.trainingRuns}`,
+      `models:${collection.training.models}`,
+      `inventory:${collection.training.modelInventory.length}`,
+      firstModel
+        ? `first:${firstModel.tier ?? "tier"}/${firstModel.variant ?? "variant"}/${
+            firstModel.model ?? "model"
+          },improvement:${firstModel.evalImprovementPercent ?? "n/a"}%`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(",");
+    const gapSummary =
+      collection.readinessGaps.length > 0
+        ? collection.readinessGaps
+            .slice(0, 4)
+            .map(
+              (gap) =>
+                `${gap.id}:${gap.status}${gap.recommendedCapability ? `->${gap.recommendedCapability}` : ""}${formatRecommendedParamsSuffix(gap.recommendedParams)}`,
+            )
+            .join(",")
+        : "none";
     lines.push(
       [
         `[list-collections] run=${collection.generatedAt}`,
@@ -826,6 +919,10 @@ export function formatListTrainingCollectionsSummary(
         `benchmarks=pairs:${collection.benchmarks.actionBenchmarkPairs},comparisons:${collection.benchmarks.benchmarkComparisons},cases:${collection.benchmarks.caseSamples},tiers:${collection.benchmarks.tiers.join(",") || "none"}`,
         `baseline=established:${collection.benchmarks.baselineProgress.establishedTiers.join(",") || "none"},next:${collection.benchmarks.baselineProgress.nextTier ?? "none"},remaining:${collection.benchmarks.baselineProgress.remainingTiers.join(",") || "none"}`,
         `evals=${evalSummary}`,
+        `models=${modelSummary}`,
+        `samples=${sampleCounts}${sampleExamples ? `,examples:${sampleExamples}` : ""}`,
+        `artifact-links=source:${collection.sourceArtifacts.length},evidence:${collection.evidenceArtifacts.length}`,
+        `gaps=${gapSummary}`,
         `output=${collection.outputDir}`,
         `readme=${collection.readmePath}`,
         `viewer=${collection.analysisIndexHtmlPath}`,
@@ -833,6 +930,27 @@ export function formatListTrainingCollectionsSummary(
     );
   }
   return lines;
+}
+
+function formatRecommendedParamsSuffix(
+  params: Record<string, unknown> | null | undefined,
+): string {
+  if (!params || Object.keys(params).length === 0) return "";
+  return ` params=${JSON.stringify(params)}`;
+}
+
+function compactStepError(error: string | null | undefined): string {
+  const normalized = (error ?? "failed").replace(/\s+/g, " ").trim();
+  const priorityPatterns = [
+    /Database not initialized\.[^.]*\./,
+    /DATABASE_URL is required[^.]*\./,
+    /CEREBRAS_API_KEY is required[^.]*\./,
+  ];
+  for (const pattern of priorityPatterns) {
+    const match = normalized.match(pattern);
+    if (match?.[0]) return match[0].slice(0, 220);
+  }
+  return normalized.slice(0, 220);
 }
 
 export function formatRunCollectionSummary(
@@ -918,6 +1036,9 @@ export function formatRunCollectionSummary(
     )
     .slice(0, 5)
     .join(" ");
+  const failedSteps = (result.manifest.steps ?? [])
+    .filter((step) => step.status === "failed")
+    .map((step) => `${step.id}:${compactStepError(step.error)}`);
   return [
     `[run-collection] output=${result.outputDir}`,
     `[run-collection] manifest=${result.manifestPath}`,
@@ -936,11 +1057,14 @@ export function formatRunCollectionSummary(
     `[run-collection] eval-readiness comparison=${readinessStatusFor("eval_comparison")} models=${readinessStatusFor("model_tracking")}`,
     `[run-collection] sample-readiness readable=${readinessStatusFor("readable_source_samples")}`,
     `[run-collection] source-samples ${sampleCounts}${sampleExamples ? ` examples=${sampleExamples}` : ""}`,
+    failedSteps.length > 0
+      ? `[run-collection] failed-steps ${failedSteps.join(" | ")}`
+      : "[run-collection] failed-steps none",
     gaps.length > 0
       ? `[run-collection] readiness-gaps ${gaps
           .map(
             (gap) =>
-              `${gap.id}:${gap.status}${gap.recommendedCapability ? `->${gap.recommendedCapability}` : ""}`,
+              `${gap.id}:${gap.status}${gap.recommendedCapability ? `->${gap.recommendedCapability}` : ""}${formatRecommendedParamsSuffix(gap.recommendedParams)}`,
           )
           .join(" ")}`
       : "[run-collection] readiness-gaps none",
@@ -1103,10 +1227,14 @@ Commands:
     --probe-endpoints  Probe local OpenAI-compatible endpoints during preflight
     --skip-matrix      Skip benchmark matrix generation
     --skip-hf          Skip Hugging Face ingest
+    --hf-files LIST    Comma-separated Hugging Face dataset paths to ingest
     --skip-feed        Skip feed generation
     --skip-natural     Skip natural trajectory export
     --skip-tests       Skip test trajectory collection
     --skip-scenarios   Skip scenario trajectories
+    --skip-action-benchmark Skip Eliza harness action benchmark execution
+    --cerebras-max-samples N Max prompts for benchmark-vs-Cerebras (default: 50)
+    --cerebras-variants V   Eliza variants for benchmark-vs-Cerebras: trained, base, both (default: both)
     --natural-sanitized-jsonl PATH Existing sanitized app trajectory JSONL
     --natural-raw-jsonl PATH       Existing raw app trajectory JSONL
     --natural-run-id ID            Run id to record on imported natural trajectories
@@ -1120,6 +1248,7 @@ Commands:
   list-collections  List saved training collection runs
     --root DIR       Collection root or a single collection output dir
     -n, --limit N    Maximum runs to print (default: 20)
+                    Prints gaps=<id>:<status>-><capability> params={...}
 
   compare           A/B compare two prompts on a trajectory dataset
     --baseline PATH    Path to baseline prompt (.txt)

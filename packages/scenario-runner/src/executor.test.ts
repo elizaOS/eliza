@@ -163,4 +163,177 @@ describe("scenario executor action turns", () => {
     expect(report.error).toContain("failed validation");
     expect(runtime.actions[0].handler).not.toHaveBeenCalled();
   });
+
+  it("reports expected and actual response text for responseIncludesAny failures", async () => {
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(
+          async (_runtime, _message, _state, _options, callback) => {
+            await callback?.({ text: "opened local-notes instead" });
+            return { success: true };
+          },
+        ),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "response-includes-any-failure",
+        title: "Response includes any failure",
+        domain: "executor",
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            responseIncludesAny: ["opened remote-ledger"],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.turns[0]?.failedAssertions).toEqual([
+      'responseIncludesAny: expected response to include any of [opened remote-ledger], saw "opened local-notes instead"',
+    ]);
+  });
+
+  it("reports expected and actual action arguments for selectedActionArguments failures", async () => {
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => ({
+          success: true,
+          text: "opened local notes",
+        })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "selected-action-arguments-failure",
+        title: "Selected action arguments failure",
+        domain: "executor",
+        rooms: [{ id: "main", source: "telegram", title: "Action User" }],
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "local-notes" },
+          },
+        ],
+        finalChecks: [
+          {
+            type: "selectedActionArguments",
+            actionName: "VIEWS",
+            includesAll: [/remote-ledger/],
+          },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toContainEqual({
+      label: "selectedActionArguments",
+      detail:
+        'selectedActionArguments: expected arguments to include /remote-ledger/, saw "VIEWS {\\"action\\":\\"pin\\",\\"view\\":\\"local-notes\\"} opened local notes"',
+    });
+  });
+
+  it("reports expected and actual action names when selectedActionArguments matches no action", async () => {
+    const report = await runScenario(
+      {
+        id: "selected-action-arguments-no-action",
+        title: "Selected action arguments no action",
+        domain: "executor",
+        turns: [],
+        finalChecks: [
+          {
+            type: "selectedActionArguments",
+            actionName: "VIEWS",
+            includesAll: [/remote-ledger/],
+          },
+        ],
+      },
+      createRuntime([]),
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toContainEqual({
+      label: "selectedActionArguments",
+      detail:
+        "selectedActionArguments: expected action in [VIEWS], saw actions [(none)]",
+    });
+  });
+
+  it("reports expected and actual action results for actionCalled success failures", async () => {
+    const runtime = createRuntime([
+      {
+        name: "VIEWS",
+        description: "test action",
+        validate: vi.fn(async () => true),
+        handler: vi.fn(async () => ({
+          success: false,
+          text: "failed to open remote ledger",
+          data: { reason: "view missing" },
+        })),
+      } as Action,
+    ]);
+
+    const report = await runScenario(
+      {
+        id: "action-called-success-failure",
+        title: "Action called success failure",
+        domain: "executor",
+        rooms: [{ id: "main", source: "telegram", title: "Action User" }],
+        turns: [
+          {
+            kind: "action",
+            name: "open view",
+            actionName: "VIEWS",
+            options: { action: "pin", view: "remote-ledger" },
+          },
+        ],
+        finalChecks: [
+          { type: "actionCalled", actionName: "VIEWS", status: "success" },
+        ],
+      },
+      runtime,
+      {
+        minJudgeScore: 0.8,
+        providerName: "unit-test",
+        turnTimeoutMs: 1_000,
+      },
+    );
+
+    expect(report.status).toBe("failed");
+    expect(report.failedAssertions).toContainEqual({
+      label: "actionCalled",
+      detail:
+        'actionCalled: expected at least one VIEWS call with result.success=true, saw {"actionName":"VIEWS","parameters":{"action":"pin","view":"remote-ledger"},"result":{"success":false,"text":"failed to open remote ledger","data":{"reason":"view missing"}}}',
+    });
+  });
 });

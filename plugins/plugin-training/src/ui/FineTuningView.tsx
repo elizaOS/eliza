@@ -42,6 +42,7 @@ import {
 import {
   ELIZA_ONE_BENCHMARK_TIERS,
   ELIZA_ONE_BENCHMARK_TIER_LIST,
+  elizaOneActionBenchmarkPairs,
   parseElizaOneBenchmarkTiers,
 } from "../core/eliza1-benchmark-recipe.js";
 import {
@@ -186,6 +187,16 @@ function nullableNumberValue(value: unknown): number | null {
 function formatNullableMetric(value: unknown, suffix = ""): string {
   const numberValue = nullableNumberValue(value);
   return numberValue === null ? "n/a" : `${numberValue}${suffix}`;
+}
+
+function compactDisplayValue(value: unknown): string {
+  const raw =
+    typeof value === "string"
+      ? value
+      : value === null || value === undefined
+        ? ""
+        : JSON.stringify(value);
+  return raw.length > 160 ? `${raw.slice(0, 157)}...` : raw;
 }
 
 function formatEvalComparisonSummary(
@@ -2829,6 +2840,36 @@ export function FineTuningView({
                               {run.benchmarks.caseSamples} comparisons:
                               {run.benchmarks.benchmarkComparisons} tiers:
                               {run.benchmarks.tiers.join(",") || "n/a"}
+                              {run.benchmarks.comparisonInventory?.length
+                                ? ` ${run.benchmarks.comparisonInventory
+                                    .slice(0, 2)
+                                    .map(
+                                      (comparison) =>
+                                        `${comparison.tier ?? "tier"} ${
+                                          comparison.benchmark ?? "benchmark"
+                                        } base:${
+                                          comparison.baseScore ?? "n/a"
+                                        } trained:${
+                                          comparison.trainedScore ?? "n/a"
+                                        } reference:${
+                                          comparison.referenceScore ?? "n/a"
+                                        } improvement:${
+                                          comparison.improvementPercent ?? "n/a"
+                                        }% vs-reference:${
+                                          comparison.trainedVsReferencePercent ??
+                                          "n/a"
+                                        }% ${
+                                          comparison.dryRun
+                                            ? "dry-run"
+                                            : comparison.modelBacked
+                                              ? "model-backed"
+                                              : comparison.useMocks
+                                                ? "mocked"
+                                                : "incomplete"
+                                        }`,
+                                    )
+                                    .join(" ")}`
+                                : ""}
                               {" "}evals:{run.evals?.evalArtifacts ?? 0} eval-comparisons:
                               {run.evals?.evalComparisons ?? 0}
                               {run.evals?.comparisonInventory?.length
@@ -2858,6 +2899,88 @@ export function FineTuningView({
                                 ",",
                               ) || "none"}
                             </div>
+                            {run.training ? (
+                              <div className="mt-1 break-all font-mono text-xs text-muted">
+                                models:{run.training.models} training-runs:
+                                {run.training.trainingRuns} inventory:
+                                {run.training.modelInventory.length}
+                                {run.training.modelInventory.length
+                                  ? ` ${run.training.modelInventory
+                                      .slice(0, 2)
+                                      .map(
+                                        (model) =>
+                                          `${model.tier ?? "tier"} ${
+                                            model.variant ?? "variant"
+                                          } ${model.model ?? "model"} base:${
+                                            model.baseModel ?? "n/a"
+                                          } score:${
+                                            model.baseEvalScore ?? "n/a"
+                                          }->${
+                                            model.trainedEvalScore ?? "n/a"
+                                          } output:${
+                                            model.outputPath ?? "n/a"
+                                          } improvement:${
+                                            model.evalImprovementPercent ??
+                                            "n/a"
+                                          }%`,
+                                      )
+                                      .join(" ")}`
+                                : ""}
+                              </div>
+                            ) : null}
+                            {run.readinessGaps?.length ? (
+                              <>
+                                <div className="mt-1 break-all font-mono text-xs text-muted">
+                                  gaps:{" "}
+                                  {run.readinessGaps
+                                    .slice(0, 4)
+                                    .map(
+                                      (gap) =>
+                                        `${gap.id}:${gap.status}${
+                                          gap.recommendedCapability
+                                            ? `->${gap.recommendedCapability}`
+                                            : ""
+                                        }`,
+                                    )
+                                    .join(" | ")}
+                                </div>
+                                {run.readinessGaps.some(
+                                  (gap) => gap.recommendedCapability,
+                                ) ? (
+                                  <div className="mt-2 flex flex-wrap gap-1">
+                                    {run.readinessGaps
+                                      .filter((gap) => gap.recommendedCapability)
+                                      .slice(0, 4)
+                                      .map((gap) => (
+                                        <Button
+                                          key={`${run.manifestPath}:${gap.id}:${gap.recommendedCapability}`}
+                                          variant="outline"
+                                          size="sm"
+                                          className={FINE_TUNING_ACTION_CLASS}
+                                          disabled={
+                                            readinessActionRunning ===
+                                            `history:${gap.id}`
+                                          }
+                                          title={`${gap.id}: ${gap.recommendedCapability}`}
+                                          onClick={() =>
+                                            void handleRunReadinessRecommendation(
+                                              `history:${gap.id}`,
+                                              {
+                                                capability:
+                                                  gap.recommendedCapability!,
+                                                params:
+                                                  gap.recommendedParams ?? {},
+                                              },
+                                            )
+                                          }
+                                        >
+                                          Run {gap.id}
+                                        </Button>
+                                      ))}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
                             {run.coverage ? (
                               <div className="mt-1 break-all font-mono text-xs text-muted">
                                 coverage samples:
@@ -2875,6 +2998,85 @@ export function FineTuningView({
                                 {run.coverage.benchmarks.allEliza1TiersCovered
                                   ? "yes"
                                   : "no"}
+                              </div>
+                            ) : null}
+                            {run.sourceSamples &&
+                            Object.values(run.sourceSamples).flat().length >
+                              0 ? (
+                              <div className="mt-1 break-all font-mono text-xs text-muted">
+                                source samples:{" "}
+                                {Object.entries(run.sourceSamples)
+                                  .flatMap(([category, samples]) =>
+                                    samples.slice(0, 2).map((sample) => {
+                                      const input = compactDisplayValue(
+                                        sample.input,
+                                      );
+                                      const output = compactDisplayValue(
+                                        sample.output,
+                                      );
+                                      return `${category}:${
+                                        sample.trajectoryId ??
+                                        sample.scenarioId ??
+                                        sample.title
+                                      } task:${
+                                        sample.task ?? sample.sourceKind ?? "n/a"
+                                      } input:${input || "n/a"} output:${
+                                        output || "n/a"
+                                      }`;
+                                    }),
+                                  )
+                                  .slice(0, 8)
+                                  .join(" | ")}
+                              </div>
+                            ) : null}
+                            {run.sourceArtifacts?.length ? (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {run.sourceArtifacts
+                                  .slice(0, 6)
+                                  .map((artifact) => (
+                                    <Button
+                                      key={`${artifact.category}:${artifact.path}`}
+                                      variant="ghost"
+                                      size="sm"
+                                      className={FINE_TUNING_ACTION_CLASS}
+                                      title={[
+                                        artifact.schema ?? "source artifact",
+                                        artifact.path,
+                                      ].join(" · ")}
+                                      onClick={() =>
+                                        void openExternalUrl(
+                                          localViewerUrl(artifact.path),
+                                        )
+                                      }
+                                    >
+                                      {artifact.category}:{artifact.title}
+                                    </Button>
+                                  ))}
+                              </div>
+                            ) : null}
+                            {run.evidenceArtifacts?.length ? (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {run.evidenceArtifacts
+                                  .slice(0, 6)
+                                  .map((artifact) => (
+                                    <Button
+                                      key={`${artifact.category}:${artifact.path}`}
+                                      variant="ghost"
+                                      size="sm"
+                                      className={FINE_TUNING_ACTION_CLASS}
+                                      title={[
+                                        artifact.schema ?? "evidence artifact",
+                                        artifact.path,
+                                      ].join(" · ")}
+                                      onClick={() =>
+                                        void openExternalUrl(
+                                          localViewerUrl(artifact.path),
+                                        )
+                                      }
+                                    >
+                                      {artifact.category}:{artifact.title}
+                                    </Button>
+                                  ))}
                               </div>
                             ) : null}
                           </div>
@@ -5238,7 +5440,11 @@ export async function interact(
                 typeof item === "object" &&
                 !Array.isArray(item),
             )
-          : undefined,
+          : typeof params?.actionBenchmarkPairs === "string"
+            ? elizaOneActionBenchmarkPairs(
+                parseCollectionTierList(params.actionBenchmarkPairs),
+              )
+            : undefined,
         benchmarkVsCerebras:
           params?.benchmarkVsCerebras &&
           typeof params.benchmarkVsCerebras === "object" &&
@@ -5461,6 +5667,7 @@ export function FineTuningDetailExtension({
     null,
   );
   const [loading, setLoading] = useState(false);
+  const [runningGapId, setRunningGapId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const refreshCollections = useCallback(async () => {
@@ -5479,6 +5686,27 @@ export function FineTuningDetailExtension({
     void refreshCollections();
   }, [refreshCollections]);
 
+  const runGapRecommendation = useCallback(
+    async (
+      gap: NonNullable<
+        ListTrainingCollectionsResponse["collections"][number]["readinessGaps"]
+      >[number],
+    ) => {
+      if (!gap.recommendedCapability) return;
+      setRunningGapId(gap.id);
+      setErrorMessage(null);
+      try {
+        await interact(gap.recommendedCapability, gap.recommendedParams ?? {});
+        await refreshCollections();
+      } catch (err) {
+        setErrorMessage(err instanceof Error ? err.message : String(err));
+      } finally {
+        setRunningGapId(null);
+      }
+    },
+    [refreshCollections],
+  );
+
   const latest = history?.collections[0] ?? null;
   const coverage = latest?.coverage;
   const dataSources = latest
@@ -5491,6 +5719,8 @@ export function FineTuningDetailExtension({
     0;
   const modelCount =
     coverage?.models.inventoryCount ?? coverage?.models.artifacts ?? 0;
+  const baseline = latest?.benchmarks.baselineProgress;
+  const topGaps = latest?.readinessGaps.slice(0, 3) ?? [];
 
   return (
     <div
@@ -5577,7 +5807,59 @@ export function FineTuningDetailExtension({
                   .join(" ")}
               </span>
             </div>
+            <div className="min-w-0">
+              <span className="text-muted">Baseline </span>
+              <span className="text-foreground">
+                established{" "}
+                {baseline?.establishedTiers.length
+                  ? baseline.establishedTiers.join(", ")
+                  : "none"}{" "}
+                / next {baseline?.nextTier ?? "none"}
+              </span>
+            </div>
+            <div className="min-w-0">
+              <span className="text-muted">Remaining </span>
+              <span className="text-foreground">
+                {baseline?.remainingTiers.length
+                  ? baseline.remainingTiers.join(", ")
+                  : "none"}
+              </span>
+            </div>
           </div>
+          {topGaps.length > 0 ? (
+            <div className="flex flex-col gap-1 rounded border border-border/35 bg-card/25 p-2">
+              <div className="text-[10px] uppercase tracking-[0.14em] text-muted">
+                Next gaps
+              </div>
+              {topGaps.map((gap) => (
+                <div
+                  key={gap.id}
+                  className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-xs font-semibold text-foreground">
+                      {gap.id}:{gap.status}
+                    </div>
+                    <div className="line-clamp-2 text-xs text-muted">
+                      {gap.note}
+                    </div>
+                  </div>
+                  {gap.recommendedCapability ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void runGapRecommendation(gap)}
+                      disabled={runningGapId === gap.id}
+                      title={gap.recommendedCapability}
+                    >
+                      {runningGapId === gap.id ? "Running" : "Run"}
+                    </Button>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
           <div className="flex flex-wrap gap-2 pt-1">
             <Button
               type="button"

@@ -63,7 +63,7 @@ function buildPayload() {
   const categoryByKey = new Map((failures.categories || []).map((category) => [category.key, category]));
 
   const rows = (scenarioAgent.rows || [])
-    .filter((row) => row.disposition !== "passed")
+    .filter((row) => row.disposition !== "passed" || row.category)
     .map((row) => {
       const matchingFailures = failureById.get(row.id) || [];
       const category = categoryByKey.get(row.category || "");
@@ -127,6 +127,7 @@ function buildPayload() {
       scenarioCount: scenarioAgent.summary?.scenarioCount || 0,
       nonPassingRows: rows.length,
       failedOnlyRows: rows.filter((row) => row.disposition === "failed-only").length,
+      passedWithHistoricalFailureRows: rows.filter((row) => row.disposition === "passed" && row.category).length,
       nonPassingWithoutCategory: rows.filter((row) => !row.category).length,
       playbackLinkedRows: rows.filter((row) => row.playbackExists).length,
       categoryLinkedRows: rows.filter((row) => row.categoryPageExists).length,

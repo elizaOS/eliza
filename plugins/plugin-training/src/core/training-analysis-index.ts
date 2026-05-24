@@ -113,12 +113,15 @@ export interface TrainingAnalysisCoverageSummary {
   };
   models: {
     artifacts: number;
+    stagedBundles: number;
     inventory: Array<{
       model: string | null;
       tier: string | null;
       variant: string | null;
       baseModel: string | null;
       outputPath: string | null;
+      baseEvalScore: number | null;
+      trainedEvalScore: number | null;
       evalImprovementPercent: number | null;
     }>;
   };
@@ -159,6 +162,19 @@ function resolveManifestPath(
   if (isAbsolute(path)) return path;
   if (/^[a-z][a-z0-9+.-]*:\/\//i.test(path)) return path;
   return resolve(dirname(manifestPath), path);
+}
+
+function resolveManifestFilePath(
+  manifestPath: string,
+  value: unknown,
+): string | undefined {
+  const path = stringValue(value);
+  if (!path) return undefined;
+  const resolved = resolveManifestPath(manifestPath, path);
+  if (resolved && existsSync(resolved)) return resolved;
+  const asWritten = resolve(path);
+  if (existsSync(asWritten)) return asWritten;
+  return resolved;
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -245,17 +261,17 @@ function summarizeBundleSample(sample: JsonRecord): JsonRecord {
     return count + step.llmCalls.length;
   }, 0);
   return {
-    trajectoryId: sample.trajectoryId ?? sample.id,
-    agentId: sample.agentId,
+    trajectoryId: sample.trajectoryId ?? sample.id ?? sample.run_id,
+    agentId: sample.agentId ?? sample.agent,
     durationMs: sample.durationMs,
     steps: steps.length,
     llmCalls,
-    purpose: call.purpose,
-    callId: call.callId,
-    model: bundleLlmCallModel(call),
-    systemPrompt: call.systemPrompt,
-    input: call.userPrompt ?? call.prompt ?? call.input,
-    output: call.response ?? call.output,
+    purpose: call.purpose ?? sample.kind ?? sample.task_id,
+    callId: call.callId ?? sample.callId,
+    model: bundleLlmCallModel(call) ?? sample.model,
+    systemPrompt: call.systemPrompt ?? sample.systemPrompt,
+    input: call.userPrompt ?? call.prompt ?? call.input ?? sample.prompt,
+    output: call.response ?? call.output ?? sample.response,
   };
 }
 
@@ -351,12 +367,28 @@ async function summarizeBundle(
   payload: TrajectoryExportBundleManifest,
   roots: readonly string[],
 ): Promise<TrainingAnalysisArtifact> {
-  const samplePreviews = await readJsonlSamplePreviews(
+  const viewerHtmlPath = resolveManifestFilePath(
+    path,
+    payload.paths?.viewerHtmlPath,
+  );
+  const rawJsonlPath = resolveManifestFilePath(path, payload.paths?.rawJsonlPath);
+  const sanitizedJsonlPath = resolveManifestFilePath(
+    path,
     payload.paths?.sanitizedJsonlPath,
+  );
+  const taskDatasetSummaryPath = resolveManifestFilePath(
+    path,
+    payload.paths?.taskDatasetSummaryPath,
+  );
+  const taskDatasetDir =
+    resolveManifestPath(path, payload.paths?.taskDatasetDir) ??
+    payload.paths?.taskDatasetDir;
+  const samplePreviews = await readJsonlSamplePreviews(
+    sanitizedJsonlPath,
     summarizeBundleSample,
   );
   const llmCallPreviews = await readBundleLlmCallPreviews(
-    payload.paths?.sanitizedJsonlPath,
+    sanitizedJsonlPath,
   );
   return {
     id: artifactId("trajectory_bundle", path),
@@ -371,11 +403,11 @@ async function summarizeBundle(
       source: payload.source?.kind,
       runId: payload.runId,
       relativePath: relativePath(path, roots),
-      viewerHtmlPath: payload.paths?.viewerHtmlPath,
-      rawJsonlPath: payload.paths?.rawJsonlPath,
-      sanitizedJsonlPath: payload.paths?.sanitizedJsonlPath,
-      taskDatasetDir: payload.paths?.taskDatasetDir,
-      taskDatasetSummaryPath: payload.paths?.taskDatasetSummaryPath,
+      viewerHtmlPath,
+      rawJsonlPath,
+      sanitizedJsonlPath,
+      taskDatasetDir,
+      taskDatasetSummaryPath,
       inputTrajectoryCount: payload.source?.inputTrajectoryCount,
       sanitizedTrajectoryCount: payload.source?.sanitizedTrajectoryCount,
       taskExamples: payload.counts?.taskExamples,
@@ -385,7 +417,7 @@ async function summarizeBundle(
       huggingFacePath: payload.cloudUpload?.huggingFacePath,
       taskFiles: Object.entries(payload.tasks ?? {}).map(([task, file]) => ({
         task,
-        path: file.path,
+        path: resolveManifestFilePath(path, file.path) ?? file.path,
         exampleCount: file.exampleCount,
         sourceCallCount: file.sourceCallCount,
         sourceTrajectoryCount: file.sourceTrajectoryCount,
@@ -473,15 +505,15 @@ async function summarizeTrajectoryDataset(
   const counts = isRecord(payload.counts) ? payload.counts : {};
   const source = isRecord(payload.source) ? payload.source : {};
   const files = Array.isArray(payload.files) ? payload.files : [];
-  const jsonlPath = resolveManifestPath(path, payload.jsonlPath);
-  const exportPath = resolveManifestPath(path, payload.exportPath);
+  const jsonlPath = resolveManifestFilePath(path, payload.jsonlPath);
+  const exportPath = resolveManifestFilePath(path, payload.exportPath);
   const outputDir = resolveManifestPath(path, payload.outputDir);
   const runDir = resolveManifestPath(path, payload.runDir);
   const feedSamplePreviews =
     (payload.schema === "feed_training_trajectory_export" ||
       payload.schema === "feed_parallel_generation")
       ? await readJsonlSamplePreviews(
-          exportPath,
+          exportPath ?? jsonlPath,
           summarizeFeedSample,
         )
       : [];
@@ -541,7 +573,7 @@ async function summarizeTrajectoryDataset(
         .filter((file): file is JsonRecord => isRecord(file))
         .map((file) => ({
           hfPath: file.hfPath,
-          localPath: resolveManifestPath(path, file.localPath),
+          localPath: resolveManifestFilePath(path, file.localPath),
           rows: file.rows,
           bytes: file.bytes,
           status: file.status,
@@ -586,6 +618,33 @@ function summarizeTestTrajectorySample(input: {
     {};
   const firstLlmCall = llmCalls[0] ?? {};
   const firstAction = actions[0] ?? {};
+  const firstMemoryAction = Array.isArray(input.payload.memoriesWritten)
+    ? input.payload.memoriesWritten
+        .filter(isRecord)
+        .flatMap((memory) => {
+          const raw = isRecord(memory.raw) ? memory.raw : {};
+          const content = isRecord(raw.content) ? raw.content : {};
+          return [
+            ...(Array.isArray(memory.contentActions)
+              ? memory.contentActions
+              : []),
+            ...(Array.isArray(content.actions) ? content.actions : []),
+          ];
+        })
+        .map(stringValue)
+        .find(Boolean)
+    : undefined;
+  const actionName =
+    stringValue(firstAction.actionName) ??
+    stringValue(firstAction.name) ??
+    stringValue(firstAction.type) ??
+    firstMemoryAction;
+  const output =
+    stringValue(lastAssistantTurn.text) ??
+    stringValue(firstLlmCall.response) ??
+    stringValue(input.metadata.actualAction) ??
+    stringValue(input.metadata.plannedAction) ??
+    actionName;
   return {
     caseId: input.payload.caseId,
     scenarioId: input.payload.scenarioId,
@@ -593,11 +652,11 @@ function summarizeTestTrajectorySample(input: {
     expectedAction: input.metadata.expectedAction,
     actualAction: input.metadata.actualAction,
     input: firstUserTurn.text ?? firstLlmCall.prompt ?? firstLlmCall.userPrompt,
-    output: lastAssistantTurn.text ?? firstLlmCall.response,
+    output,
     llmPurpose: firstLlmCall.purpose,
     llmInput: firstLlmCall.prompt ?? firstLlmCall.userPrompt,
     llmOutput: firstLlmCall.response,
-    action: firstAction.actionName ?? firstAction.name ?? firstAction.type,
+    action: actionName,
     actionStatus: firstAction.actionStatus ?? firstAction.status,
   };
 }
@@ -740,8 +799,13 @@ function summarizeScenarioRun(
     return acc;
   }, {});
   const runDir =
-    stringValue(payload.runDir) ??
+    resolveManifestPath(path, payload.runDir) ??
     (path.endsWith("matrix.json") ? dirname(path) : undefined);
+  const nativeJsonlPath = resolveManifestFilePath(path, payload.nativeJsonlPath);
+  const nativeManifestPath = resolveManifestFilePath(
+    path,
+    payload.nativeManifestPath,
+  );
   const nativeExport = isRecord(payload.nativeExport)
     ? payload.nativeExport
     : undefined;
@@ -774,8 +838,8 @@ function summarizeScenarioRun(
       runId: report.runId,
       runDir,
       viewerHtmlPath: runDir ? join(runDir, "viewer", "index.html") : undefined,
-      nativeJsonlPath: payload.nativeJsonlPath,
-      nativeManifestPath: payload.nativeManifestPath,
+      nativeJsonlPath,
+      nativeManifestPath,
       providerName: report.providerName,
       totalCount: report.totalCount,
       passedCount: report.passedCount,
@@ -893,6 +957,8 @@ function looksLikeTrainingJsonl(
       stringValue(sample.prompt) !== undefined ||
       stringValue(sample.input) !== undefined ||
       stringValue(sample.output) !== undefined ||
+      isRecord(sample.request) ||
+      isRecord(sample.response) ||
       Array.isArray(sample.messages)
     );
   });
@@ -900,30 +966,48 @@ function looksLikeTrainingJsonl(
 
 function summarizeJsonlSample(sample: JsonRecord): JsonRecord {
   const messages = Array.isArray(sample.messages) ? sample.messages : [];
+  const request = isRecord(sample.request) ? sample.request : {};
+  const response = isRecord(sample.response) ? sample.response : {};
+  const metadata = isRecord(sample.metadata) ? sample.metadata : {};
+  const requestMessages = Array.isArray(request.messages)
+    ? request.messages
+    : [];
   const messageRecords = messages.filter(isRecord);
+  const requestMessageRecords = requestMessages.filter(isRecord);
   const lastUserMessage = [...messageRecords]
     .reverse()
     .find((message) => stringValue(message.role) === "user");
   const lastAssistantMessage = [...messageRecords]
     .reverse()
     .find((message) => stringValue(message.role) === "assistant");
+  const lastRequestUserMessage = [...requestMessageRecords]
+    .reverse()
+    .find((message) => stringValue(message.role) === "user");
   return {
-    task: sample.task,
+    task: sample.task ?? metadata.task_type,
     schema: sample.schema,
-    sourceDataset: sample.source_dataset,
-    trajectoryId: sample.trajectoryId ?? sample.trajectory_id,
+    sourceDataset: sample.source_dataset ?? metadata.source_dataset,
+    trajectoryId:
+      sample.trajectoryId ?? sample.trajectory_id ?? metadata.trajectory_id,
+    scenarioId: sample.scenarioId ?? sample.scenario_id ?? metadata.scenario_id,
     input:
       sample.input ??
       sample.prompt ??
       lastUserMessage?.content ??
       lastUserMessage?.text ??
-      sample.messages,
+      request.prompt ??
+      lastRequestUserMessage?.content ??
+      lastRequestUserMessage?.text ??
+      sample.messages ??
+      request.messages,
     output:
       sample.output ??
-      sample.response ??
       sample.completion ??
       lastAssistantMessage?.content ??
-      lastAssistantMessage?.text,
+      lastAssistantMessage?.text ??
+      response.text ??
+      (isRecord(sample.response) ? undefined : sample.response) ??
+      response.toolCalls,
   };
 }
 
@@ -935,7 +1019,7 @@ async function readHuggingFaceSamplePreviews(
   for (const file of files) {
     if (!isRecord(file)) continue;
     const hfPath = stringValue(file.hfPath);
-    const localPath = resolveManifestPath(manifestPath, file.localPath);
+    const localPath = resolveManifestFilePath(manifestPath, file.localPath);
     const status = stringValue(file.status);
     if (
       !localPath ||
@@ -1709,7 +1793,10 @@ function buildAnalysisCoverage(
       "hfSamplePreviews",
     ]),
     feed: countSamplesFor(artifacts, isFeed, ["feedSamplePreviews"]),
-    natural: countSamplesFor(artifacts, isNatural, ["samplePreviews"]),
+    natural: countSamplesFor(artifacts, isNatural, [
+      "samplePreviews",
+      "llmCallPreviews",
+    ]),
     scenarios: countSamplesFor(artifacts, isScenario, [
       "turnPreviews",
       "scenarioNativeSamplePreviews",
@@ -1837,7 +1924,6 @@ function buildAnalysisCoverage(
       comparisons: benchmarkComparisons.length,
       scoredComparisons: scoredBenchmarkComparisons.length,
       caseSamples: benchmarkRows.reduce((count, row) => {
-        if (isDryRunRecord(row) || isMockedRecord(row)) return count;
         const raw = isRecord(row.raw) ? row.raw : {};
         return count + (Array.isArray(raw.caseSamples) ? raw.caseSamples.length : 0);
       }, 0),
@@ -1853,18 +1939,27 @@ function buildAnalysisCoverage(
     },
     models: {
       artifacts: modelArtifacts.length,
-      inventory: modelArtifacts.map((artifact) => {
-        const summary = summaryRecord(artifact);
-        return {
+      stagedBundles: modelArtifacts.filter(
+        (artifact) => schemaOf(artifact) === ELIZA1_BUNDLE_STAGE_SCHEMA,
+      ).length,
+      inventory: modelArtifacts
+        .map((artifact) => summaryRecord(artifact))
+        .filter(
+          (summary) =>
+            stringValue(summary.model) !== undefined ||
+            stringValue(summary.outputPath) !== undefined,
+        )
+        .map((summary) => ({
           model: stringValue(summary.model) ?? null,
           tier: normalizeElizaOneBenchmarkTier(stringValue(summary.tier)) ?? null,
           variant: stringValue(summary.variant) ?? null,
           baseModel: stringValue(summary.baseModel) ?? null,
           outputPath: stringValue(summary.outputPath) ?? null,
+          baseEvalScore: numberValue(summary.baseEvalScore) ?? null,
+          trainedEvalScore: numberValue(summary.trainedEvalScore) ?? null,
           evalImprovementPercent:
             numberValue(summary.evalImprovementPercent) ?? null,
-        };
-      }),
+        })),
     },
   };
 }
@@ -1912,6 +2007,8 @@ function enrichArtifactLinks(
     sourceLink("raw-jsonl", summary.rawJsonlPath),
     sourceLink("sanitized-jsonl", summary.sanitizedJsonlPath),
     sourceLink("jsonl", summary.jsonlPath),
+    sourceLink("native-jsonl", summary.nativeJsonlPath),
+    sourceLink("native-manifest", summary.nativeManifestPath),
     sourceLink("export", summary.exportPath),
     sourceLink("report", summary.reportPath ?? summary.reportMarkdownPath),
     sourceLink("manifest", summary.manifestPath),
@@ -2010,7 +2107,7 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
       gap: 8px;
       margin-bottom: 14px;
     }
-    button, input {
+    button, input, select {
       border: 1px solid var(--line);
       border-radius: 6px;
       background: var(--panel);
@@ -2028,6 +2125,9 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
     }
     input {
       min-width: min(100%, 320px);
+    }
+    select {
+      min-width: min(100%, 180px);
     }
     .metrics {
       display: grid;
@@ -2293,6 +2393,12 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
     </nav>
     <div class="filters">
       <input id="search" type="search" placeholder="Filter artifacts">
+      <select id="run-filter" aria-label="Filter by run">
+        <option value="all">All runs</option>
+      </select>
+      <select id="tier-filter" aria-label="Filter by Eliza-1 tier">
+        <option value="all">All tiers</option>
+      </select>
     </div>
     <section class="source-inventory detail-card" aria-label="Source inventory">
       <h2>Source inventory</h2>
@@ -2317,10 +2423,14 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
     const manifest = JSON.parse(document.getElementById("analysis-data").textContent);
     let selectedKind = "all";
     let selectedSourceCategory = "all";
+    let selectedRunId = "all";
+    let selectedTier = "all";
     let selectedIndex = 0;
     const list = document.getElementById("artifact-list");
     const detail = document.getElementById("artifact-detail");
     const search = document.getElementById("search");
+    const runFilter = document.getElementById("run-filter");
+    const tierFilter = document.getElementById("tier-filter");
     const sourceInventory = document.getElementById("source-inventory");
     const sourceSamples = document.getElementById("source-samples");
     const sourceSampleNote = document.getElementById("source-sample-note");
@@ -2338,28 +2448,145 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         ? value
         : null;
     const asArray = (value) => Array.isArray(value) ? value : [];
+    const stringValue = (value) =>
+      typeof value === "string" && value.trim() ? value.trim() : null;
     const statusClass = (value) => "status-pill status-" + String(value || "unknown").toLowerCase();
-    function sourceCategory(artifact) {
+    function addUnique(list, value) {
+      const normalized = stringValue(value);
+      if (normalized && !list.includes(normalized)) list.push(normalized);
+    }
+    function addRunIdsFromSource(list, source) {
+      const record = asRecord(source);
+      if (!record) return;
+      addUnique(list, record.runId);
+      for (const runId of asArray(record.runIds)) addUnique(list, runId);
+    }
+    function artifactRunIds(artifact) {
+      const summary = asRecord(artifact.summary) || {};
+      const payload = asRecord(artifact.payload);
+      const runIds = [];
+      addUnique(runIds, summary.runId);
+      addUnique(runIds, summary.trainingRunId);
+      for (const runId of asArray(summary.runIds)) addUnique(runIds, runId);
+      addRunIdsFromSource(runIds, summary.source);
+      if (payload) {
+        addUnique(runIds, payload.runId);
+        addUnique(runIds, payload.run_id);
+        for (const runId of asArray(payload.runIds)) addUnique(runIds, runId);
+        addRunIdsFromSource(runIds, payload.source);
+        for (const step of asArray(payload.steps).map(asRecord).filter(Boolean)) {
+          const result = asRecord(step.result);
+          const manifest = asRecord(result && result.manifest);
+          addUnique(runIds, manifest && manifest.runId);
+          addRunIdsFromSource(runIds, manifest && manifest.source);
+        }
+      }
+      return runIds.sort();
+    }
+    function artifactTiers(artifact) {
+      const summary = asRecord(artifact.summary) || {};
+      const payload = asRecord(artifact.payload);
+      const tiers = [];
+      addUnique(tiers, summary.tier);
+      for (const stat of asArray(summary.modelStats).map(asRecord).filter(Boolean)) addUnique(tiers, stat.tier);
+      if (payload) {
+        addUnique(tiers, payload.tier);
+        for (const row of asArray(payload.rows).map(asRecord).filter(Boolean)) addUnique(tiers, row.tier);
+        for (const row of asArray(payload.comparisons).map(asRecord).filter(Boolean)) addUnique(tiers, row.tier);
+        const recipe = asRecord(payload.recipe);
+        const evals = asRecord(recipe && recipe.evals);
+        for (const pair of asArray(evals && evals.actionBenchmarkPairs).map(asRecord).filter(Boolean)) addUnique(tiers, pair.tier);
+        const evidence = asRecord(payload.evidence);
+        const benchmarks = asRecord(evidence && evidence.benchmarks);
+        const training = asRecord(evidence && evidence.training);
+        for (const item of asArray(benchmarks && benchmarks.tierCoverage).map(asRecord).filter(Boolean)) addUnique(tiers, item.tier);
+        for (const item of asArray(benchmarks && benchmarks.comparisonInventory).map(asRecord).filter(Boolean)) addUnique(tiers, item.tier);
+        for (const item of asArray(training && training.modelInventory).map(asRecord).filter(Boolean)) addUnique(tiers, item.tier);
+      }
+      return tiers.sort();
+    }
+    function sourceCategories(artifact) {
       const summary = asRecord(artifact.summary) || {};
       const source = asRecord(summary.source);
       const sourceKind = typeof summary.source === "string"
         ? summary.source
         : source && source.kind;
-      if (summary.schema === "eliza_huggingface_dataset_ingest" || sourceKind === "huggingface_dataset") return "Hugging Face";
-      if (summary.schema === "feed_training_trajectory_export" || summary.schema === "feed_parallel_generation") return "Feed";
-      if (artifact.kind === "trajectory_bundle" && sourceKind === "training_collection_natural_trajectories") return "Natural trajectories";
-      if (artifact.kind === "scenario_run" || summary.schema === "eliza_scenario_native_export") return "Scenarios";
-      if (summary.schema === "eliza_test_trajectory_record" && sourceKind === "app_core_test_trajectory") return "Tests";
-      if (summary.schema === "eliza_training_jsonl_dataset") return "Training JSONL";
-      if (artifact.kind === "eval") return "Evals";
-      if (artifact.kind === "benchmark_matrix") return "Benchmarks";
-      if (artifact.kind === "model") return "Models";
-      return "Other";
+      const categories = [];
+      function add(category) {
+        if (category && !categories.includes(category)) categories.push(category);
+      }
+      if (summary.schema === "eliza_huggingface_dataset_ingest" || sourceKind === "huggingface_dataset") return ["Hugging Face"];
+      if (summary.schema === "feed_training_trajectory_export" || summary.schema === "feed_parallel_generation") return ["Feed"];
+      if (artifact.kind === "trajectory_bundle" && sourceKind === "training_collection_natural_trajectories") return ["Natural trajectories"];
+      if (artifact.kind === "scenario_run" || summary.schema === "eliza_scenario_native_export") return ["Scenarios"];
+      if (summary.schema === "eliza_test_trajectory_record" && sourceKind === "app_core_test_trajectory") return ["Tests"];
+      if (summary.schema === "eliza_training_jsonl_dataset") return ["Training JSONL"];
+      if (artifact.kind === "eval") return ["Evals"];
+      if (artifact.kind === "benchmark_matrix") return ["Benchmarks"];
+      if (artifact.kind === "model") return ["Models"];
+      if (artifact.kind === "collection_run") {
+        const payload = asRecord(artifact.payload);
+        const evidence = asRecord(payload && payload.evidence);
+        const sourceSamples = asRecord(evidence && evidence.sourceSamples);
+        if (asArray(sourceSamples && sourceSamples.huggingFace).length > 0) add("Hugging Face");
+        if (asArray(sourceSamples && sourceSamples.feed).length > 0) add("Feed");
+        if (asArray(sourceSamples && sourceSamples.natural).length > 0) add("Natural trajectories");
+        if (asArray(sourceSamples && sourceSamples.scenarios).length > 0) add("Scenarios");
+        if (asArray(sourceSamples && sourceSamples.tests).length > 0) add("Tests");
+        if (asArray(sourceSamples && sourceSamples.trainingJsonl).length > 0) add("Training JSONL");
+        if (asArray(evidence && evidence.readinessGaps).length > 0) add("Readiness");
+        const feed = asRecord(evidence && evidence.feed);
+        if (asArray(feed && feed.runs).length > 0 || asArray(feed && feed.trajectorySamples).length > 0) add("Feed");
+        const evals = asRecord(evidence && evidence.evals);
+        if ((evals && Number(evals.evalArtifacts) > 0) || asArray(evals && evals.comparisonInventory).length > 0) add("Evals");
+        const benchmarks = asRecord(evidence && evidence.benchmarks);
+        if ((benchmarks && Number(benchmarks.benchmarkRows) > 0) || asArray(benchmarks && benchmarks.comparisonInventory).length > 0) add("Benchmarks");
+        const training = asRecord(evidence && evidence.training);
+        if ((training && Number(training.models) > 0) || asArray(training && training.modelInventory).length > 0) add("Models");
+        for (const link of asArray(evidence && evidence.artifactLinks).map(asRecord).filter(Boolean)) {
+          if (link.category === "benchmark") add("Benchmarks");
+          if (link.category === "eval") add("Evals");
+          if (link.category === "model") add("Models");
+          if (link.category === "source") add("Training JSONL");
+        }
+        return categories.length > 0 ? categories : ["Collections"];
+      }
+      return ["Other"];
+    }
+    function sourceCategory(artifact) {
+      return sourceCategories(artifact)[0] || "Other";
     }
     function sourceSampleRowsForArtifact(artifact) {
       const summary = asRecord(artifact.summary) || {};
       const category = sourceCategory(artifact);
       const rows = [];
+      if (artifact.kind === "collection_run") {
+        const payload = asRecord(artifact.payload);
+        const evidence = asRecord(payload && payload.evidence);
+        const sourceSamples = asRecord(evidence && evidence.sourceSamples);
+        const collectionSources = [
+          ["huggingFace", "Hugging Face"],
+          ["feed", "Feed"],
+          ["natural", "Natural trajectories"],
+          ["scenarios", "Scenarios"],
+          ["tests", "Tests"],
+          ["trainingJsonl", "Training JSONL"],
+        ];
+        for (const [sourceKey, sourceLabel] of collectionSources) {
+          for (const sample of asArray(sourceSamples && sourceSamples[sourceKey]).map(asRecord).filter(Boolean)) {
+            rows.push({
+              source: sourceLabel,
+              artifact: sample.title || artifact.title,
+              trajectory: sample.trajectoryId || sample.caseId,
+              task: sample.task || sample.purpose || sample.scenarioId || sample.sourceKind || sample.schema,
+              input: sample.input || sample.firstInput || sample.llmInput,
+              output: sample.output || sample.firstOutput || sample.llmOutput,
+              path: sample.path || summary.relativePath || artifact.path,
+            });
+          }
+        }
+        return rows;
+      }
       function pushRows(samples, mapper) {
         for (const sample of asArray(samples).map(asRecord).filter(Boolean)) {
           const row = mapper(sample);
@@ -2389,6 +2616,12 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         input: sample.input,
         output: sample.output,
       }));
+      pushRows(summary.llmCallPreviews, (sample) => ({
+        trajectory: sample.trajectoryId,
+        task: sample.purpose || sample.callId || sample.stepId,
+        input: sample.input,
+        output: sample.output,
+      }));
       pushRows(summary.scenarioNativeSamplePreviews, (sample) => ({
         trajectory: sample.trajectoryId,
         task: sample.purpose || sample.taskType || sample.scenarioId,
@@ -2412,11 +2645,12 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
       sourceInventory.textContent = "";
       const groups = new Map();
       for (const artifact of manifest.artifacts) {
-        const category = sourceCategory(artifact);
-        const group = groups.get(category) || { count: 0, paths: [] };
-        group.count += 1;
-        group.paths.push((artifact.summary && artifact.summary.relativePath) || artifact.path);
-        groups.set(category, group);
+        for (const category of sourceCategories(artifact)) {
+          const group = groups.get(category) || { count: 0, paths: [] };
+          group.count += 1;
+          group.paths.push((artifact.summary && artifact.summary.relativePath) || artifact.path);
+          groups.set(category, group);
+        }
       }
       const allItem = document.createElement("button");
       allItem.type = "button";
@@ -2563,6 +2797,32 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
           .map((model) => [model.tier, model.variant, model.model].filter(Boolean).join(":"))
           .join(" | "),
       );
+    }
+    function populateFilter(select, values, allLabel, selectedValue) {
+      select.textContent = "";
+      const allOption = document.createElement("option");
+      allOption.value = "all";
+      allOption.textContent = allLabel;
+      select.appendChild(allOption);
+      for (const value of values) {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      }
+      select.value = values.includes(selectedValue) ? selectedValue : "all";
+    }
+    function renderRunTierFilters() {
+      const runIds = [];
+      const tiers = [];
+      for (const artifact of manifest.artifacts) {
+        for (const runId of artifactRunIds(artifact)) addUnique(runIds, runId);
+        for (const tier of artifactTiers(artifact)) addUnique(tiers, tier);
+      }
+      populateFilter(runFilter, runIds.sort(), "All runs", selectedRunId);
+      populateFilter(tierFilter, tiers.sort(), "All tiers", selectedTier);
+      selectedRunId = runFilter.value;
+      selectedTier = tierFilter.value;
     }
     function appendTextCell(row, value) {
       const cell = document.createElement("td");
@@ -3238,13 +3498,15 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         .filter(Boolean);
       return appendTableCard(
         "Collection Model Inventory",
-        ["Tier", "Variant", "Model", "Base", "Output", "Repo", "Improvement"],
+        ["Tier", "Variant", "Model", "Base", "Base Score", "Trained Score", "Output", "Repo", "Improvement"],
         rows,
         [
           (row, item) => appendTextCell(row, item.tier),
           (row, item) => appendTextCell(row, item.variant),
           (row, item) => appendTextCell(row, item.model),
           (row, item) => appendTextCell(row, item.baseModel),
+          (row, item) => appendTextCell(row, item.baseEvalScore),
+          (row, item) => appendTextCell(row, item.trainedEvalScore),
           (row, item) => appendPathCell(row, item.outputPath),
           (row, item) => appendTextCell(row, item.repoId),
           (row, item) => appendTextCell(row, item.evalImprovementPercent),
@@ -3379,7 +3641,7 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         .filter(Boolean);
       return appendTableCard(
         "Collection Benchmark Improvements",
-        ["Tier", "Benchmark", "Base", "Trained", "Reference", "Improvement"],
+        ["Tier", "Benchmark", "Base", "Trained", "Reference", "Improvement", "Vs Reference", "Evidence"],
         rows,
         [
           (row, item) => appendTextCell(row, item.tier),
@@ -3388,6 +3650,8 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
           (row, item) => appendTextCell(row, item.trainedScore),
           (row, item) => appendTextCell(row, item.referenceScore),
           (row, item) => appendTextCell(row, item.improvementPercent === null || item.improvementPercent === undefined ? "n/a" : String(item.improvementPercent) + "%"),
+          (row, item) => appendTextCell(row, item.trainedVsReferencePercent === null || item.trainedVsReferencePercent === undefined ? "n/a" : String(item.trainedVsReferencePercent) + "%"),
+          (row, item) => appendTextCell(row, item.modelBacked === true ? "model-backed" : "partial"),
         ],
       );
     }
@@ -3426,18 +3690,20 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         .filter(Boolean);
       return appendTableCard(
         "Collection Benchmark Comparisons",
-        ["Tier", "Benchmark", "Base Model", "Trained Model", "Base", "Trained", "Reference", "Improvement", "Run"],
+        ["Tier", "Benchmark", "Base Model", "Trained Model", "Reference Model", "Base", "Trained", "Reference", "Improvement", "Vs Reference", "Evidence"],
         rows,
         [
           (row, item) => appendTextCell(row, item.tier),
           (row, item) => appendTextCell(row, item.benchmark),
           (row, item) => appendTextCell(row, item.baseModelId),
           (row, item) => appendTextCell(row, item.trainedModelId),
+          (row, item) => appendTextCell(row, item.referenceModelId),
           (row, item) => appendTextCell(row, item.baseScore),
           (row, item) => appendTextCell(row, item.trainedScore),
           (row, item) => appendTextCell(row, item.referenceScore),
           (row, item) => appendTextCell(row, item.improvementPercent === null || item.improvementPercent === undefined ? "n/a" : String(item.improvementPercent) + "%"),
-          (row, item) => appendTextCell(row, item.dryRun === true ? "dry-run" : "live"),
+          (row, item) => appendTextCell(row, item.trainedVsReferencePercent === null || item.trainedVsReferencePercent === undefined ? "n/a" : String(item.trainedVsReferencePercent) + "%"),
+          (row, item) => appendTextCell(row, item.dryRun === true ? "dry-run" : item.modelBacked === true ? "model-backed" : item.useMocks === true ? "mocked" : "incomplete"),
         ],
       );
     }
@@ -3450,13 +3716,14 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
         .filter(Boolean);
       return appendTableCard(
         "Collection Readiness Gaps",
-        ["Status", "Check", "Note", "Recommended Capability"],
+        ["Status", "Check", "Note", "Recommended Capability", "Recommended Params"],
         rows,
         [
           (row, item) => appendStatusCell(row, item.status),
           (row, item) => appendTextCell(row, item.id),
           (row, item) => appendTextCell(row, item.note),
           (row, item) => appendTextCell(row, item.recommendedCapability),
+          (row, item) => appendTextCell(row, item.recommendedParams),
         ],
       );
     }
@@ -3619,12 +3886,14 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
       const query = search.value.trim().toLowerCase();
       return manifest.artifacts.filter((artifact) => {
         if (selectedKind !== "all" && artifact.kind !== selectedKind) return false;
-        if (selectedSourceCategory !== "all" && sourceCategory(artifact) !== selectedSourceCategory) return false;
+        if (selectedSourceCategory !== "all" && !sourceCategories(artifact).includes(selectedSourceCategory)) return false;
+        if (selectedRunId !== "all" && !artifactRunIds(artifact).includes(selectedRunId)) return false;
+        if (selectedTier !== "all" && !artifactTiers(artifact).includes(selectedTier)) return false;
         if (!query) return true;
         return JSON.stringify({
           title: artifact.title,
           kind: artifact.kind,
-          sourceCategory: sourceCategory(artifact),
+          sourceCategories: sourceCategories(artifact),
           path: artifact.path,
           summary: artifact.summary
         }).toLowerCase().includes(query);
@@ -3677,6 +3946,17 @@ function buildIndexHtml(manifest: TrainingAnalysisIndexManifest): string {
       selectedIndex = 0;
       render();
     });
+    runFilter.addEventListener("change", () => {
+      selectedRunId = runFilter.value;
+      selectedIndex = 0;
+      render();
+    });
+    tierFilter.addEventListener("change", () => {
+      selectedTier = tierFilter.value;
+      selectedIndex = 0;
+      render();
+    });
+    renderRunTierFilters();
     renderSourceInventory();
     renderSourceSamples();
     renderCoverageSummary();

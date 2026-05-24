@@ -12,6 +12,7 @@ import {
   openAppPath,
   seedAppStorage,
 } from "./helpers";
+import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 const MAC_CHROME_USER_AGENT =
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36";
@@ -72,7 +73,11 @@ async function attachVisibleScreenshot(
   if (screenshotDir) {
     await mkdir(screenshotDir, { recursive: true });
   }
-  await page.screenshot({ fullPage: false, path: screenshotPath });
+  await captureScreenshotWithQualityRetry(page, name, {
+    fullPage: false,
+    path: screenshotPath,
+    attempts: 4,
+  });
   await testInfo.attach(name, {
     path: screenshotPath,
     contentType: "image/png",

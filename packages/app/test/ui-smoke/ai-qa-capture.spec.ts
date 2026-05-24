@@ -17,6 +17,7 @@ import {
   openSettingsSection,
   seedAppStorage,
 } from "./helpers";
+import { captureScreenshotWithQualityRetry } from "./helpers/screenshot-quality";
 
 type ButtonRecord = {
   selector: string;
@@ -258,11 +259,16 @@ async function capture(args: {
   const relDir = join("captures", route.id);
   const absDir = join(REPORT_DIR, relDir);
   await ensureDir(absDir);
-  await page.screenshot({
-    path: join(absDir, fileName),
-    fullPage: false,
-    type: "png",
-  });
+  await captureScreenshotWithQualityRetry(
+    page,
+    `${route.id} ${viewport} ${theme}`,
+    {
+      attempts: 4,
+      fullPage: false,
+      path: join(absDir, fileName),
+      type: "png",
+    },
+  );
 
   let buttons: ButtonRecord[] = [];
   try {
@@ -332,12 +338,14 @@ test.describe("ai-qa capture", () => {
           await applyTheme(page, theme);
           await installDefaultAppRoutes(page);
           let record: CaptureRecord;
+          let captureError: Error | null = null;
           try {
             record = await capture({ page, route, viewport, theme, issues });
           } catch (error) {
+            captureError = error as Error;
             issues.push({
               kind: "capture-error",
-              detail: (error as Error).message,
+              detail: captureError.message,
             });
             record = {
               routeId: route.id,
@@ -360,6 +368,9 @@ test.describe("ai-qa capture", () => {
             JSON.stringify(record, null, 2),
           );
           await context.close();
+          if (captureError) {
+            throw captureError;
+          }
         });
       }
     }
@@ -398,10 +409,11 @@ test.describe("ai-qa capture", () => {
       const relDir = join("captures", section.id);
       const absDir = join(REPORT_DIR, relDir);
       await ensureDir(absDir);
-      await page.screenshot({
-        path: join(absDir, fileName),
+      await captureScreenshotWithQualityRetry(page, `${section.id} settings`, {
+        attempts: 4,
         fullPage: false,
         type: "png",
+        path: join(absDir, fileName),
       });
       const buttons = await captureButtonInventory(page).catch(() => []);
       records.push({

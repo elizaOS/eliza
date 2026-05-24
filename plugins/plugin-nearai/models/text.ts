@@ -1,15 +1,18 @@
 import type { GenerateTextParams, IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import { generateText } from "ai";
+import { generateText, type ToolSet } from "ai";
 import { createNearAIClient, type NearAIFetch } from "../providers";
 import type { ModelName, ProviderOptions } from "../types";
 import { getExperimentalTelemetry, getLargeModel, getSmallModel } from "../utils/config";
 import { emitModelUsageEvent } from "../utils/events";
 
+// Extract the native generateText parameter type to avoid unsafe casts at call sites.
+type NativeGenerateTextParams = Parameters<typeof generateText<ToolSet>>[0];
+
 interface ResolvedTextParams {
   readonly prompt: string;
   readonly stopSequences: readonly string[];
-  readonly maxTokens: number;
+  readonly maxOutputTokens: number;
   readonly temperature: number | undefined;
   readonly topP: number | undefined;
   readonly frequencyPenalty: number;
@@ -18,29 +21,18 @@ interface ResolvedTextParams {
 }
 
 function resolveTextParams(params: GenerateTextParams): ResolvedTextParams {
-  const prompt = params.prompt ?? "";
-  const stopSequences = params.stopSequences ?? [];
-  const frequencyPenalty = params.frequencyPenalty ?? 0;
-  const presencePenalty = params.presencePenalty ?? 0;
-
-  const rawParams = params as unknown as Record<string, unknown>;
-  const temperature = params.temperature;
-  const topP = rawParams.topP != null ? params.topP : undefined;
-  const maxTokens = params.maxTokens ?? 8192;
-
-  const rawProviderOptions = rawParams.providerOptions as ProviderOptions | undefined;
-  const providerOptions: ProviderOptions = rawProviderOptions
-    ? JSON.parse(JSON.stringify(rawProviderOptions))
-    : {};
+  // All fields read here are direct properties of GenerateTextParams — no cast needed.
+  const providerOptions: ProviderOptions =
+    (params.providerOptions?.nearai as ProviderOptions | undefined) ?? {};
 
   return {
-    prompt,
-    stopSequences,
-    maxTokens,
-    temperature,
-    topP,
-    frequencyPenalty,
-    presencePenalty,
+    prompt: params.prompt ?? "",
+    stopSequences: params.stopSequences ?? [],
+    maxOutputTokens: params.maxTokens ?? 8192,
+    temperature: params.temperature,
+    topP: params.topP,
+    frequencyPenalty: params.frequencyPenalty ?? 0,
+    presencePenalty: params.presencePenalty ?? 0,
     providerOptions,
   };
 }
@@ -100,7 +92,7 @@ async function generateTextWithModel(
     metadata: agentName ? { agentName } : undefined,
   };
 
-  const generateParams = {
+  const generateParams: NativeGenerateTextParams = {
     model: nearai(modelName),
     prompt: resolved.prompt,
     system: runtime.character?.system ?? undefined,
@@ -109,13 +101,11 @@ async function generateTextWithModel(
     frequencyPenalty: resolved.frequencyPenalty,
     presencePenalty: resolved.presencePenalty,
     experimental_telemetry: telemetryConfig,
-    maxTokens: resolved.maxTokens,
+    maxOutputTokens: resolved.maxOutputTokens,
     topP: resolved.topP,
   };
 
-  const { text, usage } = await generateText(
-    generateParams as unknown as Parameters<typeof generateText>[0]
-  );
+  const { text, usage } = await generateText(generateParams);
 
   if (usage) {
     emitModelUsageEvent(runtime, modelType, usage);

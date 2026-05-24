@@ -24,6 +24,12 @@ export type LlmProxyResponse =
 
 export interface DeterministicLlmProxyOptions {
   embeddingDimensions?: number;
+  /**
+   * Fail ACTION_PLANNER calls when the prompt cannot be matched to a provided
+   * tool. This keeps PR E2E tests from passing after the proxy silently picked
+   * the first available tool.
+   */
+  failOnUnhandledAction?: boolean;
   priority?: number;
   resolve?: (call: LlmProxyCall) => LlmProxyResponse | null | undefined;
 }
@@ -61,11 +67,15 @@ export function createDeterministicLlmProxyPlugin(
     }
 
     if (modelType === ModelType.RESPONSE_HANDLER) {
-      return normalizeResolvedResponse(createHandleResponse(call));
+      return normalizeResolvedResponse(
+        createHandleResponse(call, options.failOnUnhandledAction ?? true),
+      );
     }
 
     if (modelType === ModelType.ACTION_PLANNER) {
-      return normalizeResolvedResponse(createPlannerResponse(call));
+      return normalizeResolvedResponse(
+        createPlannerResponse(call, options.failOnUnhandledAction ?? true),
+      );
     }
 
     if (params.responseSchema) {
@@ -114,10 +124,16 @@ function normalizeResolvedResponse(response: LlmProxyResponse): string {
   return JSON.stringify(response);
 }
 
-function createHandleResponse(call: LlmProxyCall): GenerateTextResult {
+function createHandleResponse(
+  call: LlmProxyCall,
+  failOnUnhandledAction: boolean,
+): GenerateTextResult {
   const lowered = call.latestUserText.toLowerCase();
   const shouldStop = /\b(stop|cancel|never mind|nevermind)\b/.test(lowered);
-  const candidateActionNames = selectCandidateActionNames(call);
+  const candidateActionNames = selectCandidateActionNames(
+    call,
+    failOnUnhandledAction,
+  );
   const planning = candidateActionNames.length > 0;
   const args: Record<string, JsonValue> = {
     shouldRespond: shouldStop ? "STOP" : "RESPOND",
@@ -142,8 +158,11 @@ function createHandleResponse(call: LlmProxyCall): GenerateTextResult {
   };
 }
 
-function createPlannerResponse(call: LlmProxyCall): GenerateTextResult {
-  const selected = selectPlannerTool(call);
+function createPlannerResponse(
+  call: LlmProxyCall,
+  failOnUnhandledAction: boolean,
+): GenerateTextResult {
+  const selected = selectPlannerTool(call, failOnUnhandledAction);
   if (!selected) {
     return {
       text: "No matching deterministic test action was selected.",
@@ -158,12 +177,18 @@ function createPlannerResponse(call: LlmProxyCall): GenerateTextResult {
   };
 }
 
-function selectCandidateActionNames(call: LlmProxyCall): string[] {
-  const selected = selectPlannerTool(call);
+function selectCandidateActionNames(
+  call: LlmProxyCall,
+  failOnUnhandledAction: boolean,
+): string[] {
+  const selected = selectPlannerTool(call, failOnUnhandledAction);
   return selected ? [selected.name] : [];
 }
 
-function selectPlannerTool(call: LlmProxyCall): ToolDefinition | null {
+function selectPlannerTool(
+  call: LlmProxyCall,
+  failOnUnhandledAction: boolean,
+): ToolDefinition | null {
   const tools = (call.params.tools ?? []).filter(
     (tool) => tool.name !== HANDLE_RESPONSE_TOOL_NAME,
   );
@@ -179,7 +204,41 @@ function selectPlannerTool(call: LlmProxyCall): ToolDefinition | null {
       (left, right) => right.score - left.score || left.index - right.index,
     );
   const best = scored[0];
-  return best?.score ? best.tool : (tools[0] ?? null);
+  if (!best?.score) {
+    if (failOnUnhandledAction) {
+      throw new Error(unhandledPlannerMessage(call, scored, "no matching tool"));
+    }
+    return tools[0] ?? null;
+  }
+  const tied = scored.filter((entry) => entry.score === best.score);
+  if (failOnUnhandledAction && tied.length > 1) {
+    throw new Error(
+      unhandledPlannerMessage(call, tied, "ambiguous matching tools"),
+    );
+  }
+  return best.tool;
+}
+
+function unhandledPlannerMessage(
+  call: LlmProxyCall,
+  scored: Array<{ score: number; tool: ToolDefinition }>,
+  reason: string,
+): string {
+  const actual = {
+    modelType: call.modelType,
+    latestUserText: call.latestUserText,
+    toolNames: call.toolNames,
+    scores: scored.map(({ score, tool }) => ({
+      name: tool.name,
+      score,
+      description: typeof tool.description === "string" ? tool.description : "",
+    })),
+  };
+  return [
+    `deterministic LLM proxy could not select an ACTION_PLANNER tool: ${reason}`,
+    "Expected: the E2E prompt must clearly match exactly one provided action/tool.",
+    `Actual: ${JSON.stringify(actual)}`,
+  ].join("\n");
 }
 
 function defaultToolArguments(
@@ -497,8 +556,8 @@ function inferInputValue(text: string): string {
 
 function inferViewId(loweredText: string): string {
   if (/\bledger|finance|remote\b/.test(loweredText)) return "remote-ledger";
-  if (/\bnote|notes|local\b/.test(loweredText)) return "local-notes";
   if (/\btrace|diagnostic|run\b/.test(loweredText)) return "agent-run-trace";
+  if (/\bnote|notes|local\b/.test(loweredText)) return "local-notes";
   if (/\bmanager|views?\b/.test(loweredText)) return "view-manager";
   const quoted = loweredText.match(/["'`](?<name>[a-z0-9][a-z0-9\s-]+)["'`]/)
     ?.groups?.name;
@@ -541,9 +600,27 @@ function latestUserText(params: GenerateTextParams): string {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (message.role !== "user") continue;
-    return contentToText(message.content);
+    return extractPromptUserMessage(contentToText(message.content));
   }
-  return params.prompt ?? "";
+  return extractPromptUserMessage(params.prompt ?? "");
+}
+
+function extractPromptUserMessage(text: string): string {
+  const directUserMessage = text.match(
+    /(?:^|\n)user_message:\s*(?<message>.+?)(?=\n[a-z_]+:|\n\n|$)/is,
+  )?.groups?.message;
+  if (directUserMessage) return directUserMessage.trim();
+  const receivedMessage = text.match(
+    /(?:^|\n)# Received Message\s*\n(?<line>[^\n]+)$/im,
+  )?.groups?.line;
+  if (receivedMessage) {
+    const colonIndex = receivedMessage.indexOf(":");
+    return (colonIndex >= 0
+      ? receivedMessage.slice(colonIndex + 1)
+      : receivedMessage
+    ).trim();
+  }
+  return text;
 }
 
 function contentToText(content: unknown): string {

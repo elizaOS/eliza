@@ -166,6 +166,37 @@ describe("App navigate-view shell handler", () => {
     expect(fixture.openDesktopTab).not.toHaveBeenCalled();
   });
 
+  it("passes always-on-top window requests through the desktop bridge", async () => {
+    const remoteLedger = view({
+      id: "remote-ledger",
+      label: "Remote Ledger",
+      path: "/apps/remote-ledger",
+    });
+    const fixture = createHandlerFixture([remoteLedger]);
+
+    fixture.handler(
+      navigateEvent({
+        viewId: "remote-ledger",
+        action: "open-window",
+        alwaysOnTop: true,
+      }),
+    );
+
+    await vi.waitFor(() =>
+      expect(fixture.invokeDesktopBridgeRequest).toHaveBeenCalledWith({
+        rpcMethod: "desktopOpenAppWindow",
+        ipcChannel: "desktop:openAppWindow",
+        params: {
+          title: "Remote Ledger",
+          path: "/apps/remote-ledger",
+          alwaysOnTop: true,
+        },
+      }),
+    );
+    expect(fixture.navigatePath).not.toHaveBeenCalled();
+    expect(fixture.openDesktopTab).not.toHaveBeenCalled();
+  });
+
   it("uses stable fallback title and path for missing open-window view entries", async () => {
     const fixture = createHandlerFixture([]);
 

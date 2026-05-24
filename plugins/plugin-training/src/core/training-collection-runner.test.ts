@@ -211,6 +211,11 @@ describe("training collection runner", () => {
           detail: expect.stringContaining("http://localhost:11434/v1"),
         }),
         expect.objectContaining({
+          id: "feed_database_url",
+          status: "skipped",
+          detail: "live feed generation not requested",
+        }),
+        expect.objectContaining({
           id: "cerebras_api_key",
           status: process.env.CEREBRAS_API_KEY ? "ok" : "missing",
         }),
@@ -220,6 +225,43 @@ describe("training collection runner", () => {
         }),
       ]),
     );
+  });
+
+  it("records live feed database preflight requirements", () => {
+    const originalDatabaseUrl = process.env.DATABASE_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      const preflight = buildTrainingCollectionPreflight({
+        workspaceRoot: "/repo",
+        trainingRoot: "/repo/packages/training",
+        options: {
+          includeFeed: true,
+          includeActionBenchmark: false,
+          includeEvalComparison: false,
+          includeBenchmarkVsCerebras: false,
+          feed: {
+            dryRun: false,
+          },
+        },
+      });
+
+      expect(preflight.liveRequired).toBe(true);
+      expect(preflight.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: "feed_database_url",
+            status: "missing",
+            detail: expect.stringContaining("DATABASE_URL is required"),
+          }),
+        ]),
+      );
+    } finally {
+      if (originalDatabaseUrl === undefined) {
+        delete process.env.DATABASE_URL;
+      } else {
+        process.env.DATABASE_URL = originalDatabaseUrl;
+      }
+    }
   });
 
   it("probes local action benchmark endpoints when requested", async () => {
@@ -753,7 +795,8 @@ describe("training collection runner", () => {
         }),
         models: {
           artifacts: 11,
-          inventoryCount: 11,
+          stagedBundles: 1,
+          inventoryCount: 10,
         },
       },
       benchmarkReadiness: {
@@ -910,7 +953,10 @@ describe("training collection runner", () => {
         expect.objectContaining({
           stepId: "action_benchmark",
           status: "succeeded",
-          command: expect.arrayContaining(["test"]),
+          command: expect.arrayContaining([
+            "vitest",
+            "../test/vitest/real.config.ts",
+          ]),
           stdout: expect.stringContaining("DRY RUN"),
           stderr: null,
           paths: expect.arrayContaining([
@@ -954,10 +1000,56 @@ describe("training collection runner", () => {
             partial: result.manifest.readiness.partial,
             missing: result.manifest.readiness.missing,
           },
+          readinessGaps: expect.arrayContaining([
+            expect.objectContaining({
+              id: "feed_generation",
+              recommendedCapability: "terminal-training-feed-generate",
+            }),
+          ]),
           artifactCount: result.analysis.manifest.counts.artifacts,
           dataSources: {
             naturalTrajectoryBundles: 1,
             testTrajectories: 1,
+          },
+          sourceSamples: {
+            natural: expect.arrayContaining([
+              expect.objectContaining({
+                trajectoryId: "natural-traj-1",
+                input: "What should I do next?",
+                output: "Review the latest task and pick the smallest action.",
+              }),
+            ]),
+            tests: expect.arrayContaining([
+              expect.objectContaining({
+                scenarioId: "app-core-test-scenario",
+                input: "Open settings",
+                output: "Opening settings.",
+              }),
+            ]),
+          },
+          evidenceArtifacts: expect.arrayContaining([
+            expect.objectContaining({
+              category: "eval",
+              path: expect.stringContaining("eval"),
+            }),
+            expect.objectContaining({
+              category: "benchmark",
+              path: expect.stringContaining("benchmark"),
+            }),
+            expect.objectContaining({
+              category: "model",
+              path: expect.stringContaining("model"),
+            }),
+          ]),
+          training: {
+            trainingRuns: 0,
+            models: expect.any(Number),
+            modelInventory: expect.arrayContaining([
+              expect.objectContaining({
+                tier: "0_8b",
+                variant: "base",
+              }),
+            ]),
           },
           benchmarks: {
             benchmarkComparisons: expect.any(Number),
@@ -990,6 +1082,18 @@ describe("training collection runner", () => {
         },
       ],
     });
+    expect(listedCollections.collections[0]?.sourceArtifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "natural",
+          path: expect.stringContaining("natural"),
+        }),
+        expect.objectContaining({
+          category: "test",
+          path: expect.stringContaining("test_trajectories"),
+        }),
+      ]),
+    );
     expect(result.collectionIndex).toMatchObject({
       root: collectionRoot,
       indexJsonPath: join(collectionRoot, "collection-index.json"),
@@ -1012,6 +1116,17 @@ describe("training collection runner", () => {
     );
     expect(collectionIndexHtml).toContain("Eliza Training Collections");
     expect(collectionIndexHtml).toContain("native:1");
+    expect(collectionIndexHtml).toContain("natural:");
+    expect(collectionIndexHtml).toContain("test:");
+    expect(collectionIndexHtml).toContain("input:What should I do next?");
+    expect(collectionIndexHtml).toContain("output:Opening settings.");
+    expect(collectionIndexHtml).toContain("eval:");
+    expect(collectionIndexHtml).toContain("benchmark:");
+    expect(collectionIndexHtml).toContain("model:");
+    expect(collectionIndexHtml).toContain(
+      "feed_generation:missing-&gt;terminal-training-feed-generate",
+    );
+    expect(collectionIndexHtml).toContain("params={&quot;dryRun&quot;:false}");
     expect(collectionIndexHtml).toContain("viewer");
     expect(collectionIndexHtml).toContain("README.md");
     expect(collectionIndexHtml).toContain(
@@ -1034,18 +1149,29 @@ describe("training collection runner", () => {
     expect(readme).toContain("## Eval Comparisons");
     expect(readme).toContain("/models/eliza-1-0b-trained");
     expect(readme).toContain("local_model_comparison.json");
+    expect(readme).toContain(
+      "[local_model_comparison.json](file://",
+    );
     expect(readme).toContain("message-route");
+    expect(readme).toContain("[message-route.json](file://");
+    expect(readme).toContain(
+      "[eliza-1-0b-trained](file:///models/eliza-1-0b-trained)",
+    );
     expect(readme).toContain("## Readiness Gaps");
+    expect(readme).toContain("Recommended Params");
+    expect(readme).toContain("{\"dryRun\":false}");
     expect(readme).toContain("## Coverage");
     expect(readme).toContain("## Baseline Progression");
     expect(readme).toContain("Benchmark comparisons: scored=");
     expect(readme).toContain("feed_generation");
-    expect(readme).toContain("## Readable Sample Preview");
+    expect(readme).toContain("## Source Samples");
+    expect(readme).toContain("## Source Sample Preview");
     expect(readme).toContain("What should I do next?");
     expect(readme).toContain(
       "Review the latest task and pick the smallest action.",
     );
     expect(readme).toContain("Open settings");
+    expect(readme).toContain("## Model Inventory");
     const html = await readFile(result.analysis.indexHtmlPath, "utf8");
     expect(html).toContain("Collections");
     expect(html).toContain("Collection Steps");
@@ -1309,6 +1435,66 @@ describe("training collection runner", () => {
           testTrajectories: 0,
           trainingJsonlDatasets: 0,
         },
+        artifactLinks: [
+          {
+            category: "feed",
+            kind: "trajectory_dataset",
+            title: "feed-export",
+            path: join(runDir, "feed", "manifest.json"),
+            schema: "feed_training_trajectory_export",
+          },
+          {
+            category: "benchmark",
+            kind: "benchmark_matrix",
+            title: "benchmark-matrix",
+            path: join(runDir, "matrix", "benchmark-matrix.json"),
+            schema: "eliza_benchmark_matrix_artifact",
+          },
+          {
+            category: "eval",
+            kind: "eval",
+            title: "eval-comparison",
+            path: join(runDir, "eval", "eval-comparison.json"),
+            schema: "eliza_local_eval_comparison_artifact",
+          },
+          {
+            category: "model",
+            kind: "model",
+            title: "eliza-1-0_8b-trained",
+            path: join(runDir, "models", "0_8b-trained.json"),
+            schema: "eliza1_model_registry_entry",
+          },
+        ],
+        training: {
+          trainingRuns: 1,
+          models: 1,
+          modelInventory: [
+            {
+              title: "eliza-1-0_8b-trained",
+              path: join(runDir, "models", "0_8b-trained.json"),
+              schema: "eliza1_model_registry_entry",
+              model: "eliza-1-0_8b-trained",
+              tier: "0_8b",
+              variant: "trained",
+              outputPath: "hf://elizaos/eliza-1-0_8b-trained",
+              baseModel: "eliza-1-0_8b-base",
+              repoId: "elizaos/eliza-1-0_8b-trained",
+              baseEvalScore: 0.4,
+              trainedEvalScore: 0.5,
+              evalImprovementPercent: 25,
+            },
+          ],
+        },
+        readinessGaps: [
+          {
+            id: "all_eliza1_tiers_benchmark",
+            label: "All Eliza-1 tier benchmark coverage",
+            status: "missing",
+            note: "Run benchmark matrix coverage for every Eliza-1 tier.",
+            recommendedCapability: "terminal-training-run-collection",
+            recommendedParams: { actionBenchmarkPairs: "all" },
+          },
+        ],
         benchmarks: {
           actionBenchmarkPairs: 2,
           actionBenchmarkMatrixSources: 4,
@@ -1358,11 +1544,93 @@ describe("training collection runner", () => {
       smallestTierEstablished: true,
       allTiersEstablished: false,
     });
+    expect(listed.collections[0]?.sourceArtifacts).toEqual([
+      {
+        category: "feed",
+        title: "feed-export",
+        path: join(runDir, "feed", "manifest.json"),
+        schema: "feed_training_trajectory_export",
+      },
+    ]);
+    expect(listed.collections[0]?.evidenceArtifacts).toEqual([
+      {
+        category: "benchmark",
+        title: "benchmark-matrix",
+        path: join(runDir, "matrix", "benchmark-matrix.json"),
+        schema: "eliza_benchmark_matrix_artifact",
+      },
+      {
+        category: "eval",
+        title: "eval-comparison",
+        path: join(runDir, "eval", "eval-comparison.json"),
+        schema: "eliza_local_eval_comparison_artifact",
+      },
+      {
+        category: "model",
+        title: "eliza-1-0_8b-trained",
+        path: join(runDir, "models", "0_8b-trained.json"),
+        schema: "eliza1_model_registry_entry",
+      },
+    ]);
+    expect(listed.collections[0]?.training).toEqual({
+      trainingRuns: 1,
+      models: 1,
+      modelInventory: [
+        {
+          title: "eliza-1-0_8b-trained",
+          path: join(runDir, "models", "0_8b-trained.json"),
+          schema: "eliza1_model_registry_entry",
+          model: "eliza-1-0_8b-trained",
+          tier: "0_8b",
+          variant: "trained",
+          outputPath: "hf://elizaos/eliza-1-0_8b-trained",
+          baseModel: "eliza-1-0_8b-base",
+          repoId: "elizaos/eliza-1-0_8b-trained",
+          baseEvalScore: 0.4,
+          trainedEvalScore: 0.5,
+          evalImprovementPercent: 25,
+        },
+      ],
+    });
+    expect(listed.collections[0]?.readinessGaps).toEqual([
+      {
+        id: "all_eliza1_tiers_benchmark",
+        label: "All Eliza-1 tier benchmark coverage",
+        status: "missing",
+        note: "Run benchmark matrix coverage for every Eliza-1 tier.",
+        recommendedCapability: "terminal-training-run-collection",
+        recommendedParams: { actionBenchmarkPairs: "all" },
+      },
+    ]);
+    expect(listed.collections[0]?.benchmarks.comparisonInventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tier: "0_8b",
+          benchmark: "eliza_harness_action_selection",
+          baseScore: 0.4,
+          trainedScore: 0.5,
+          referenceScore: 0.8,
+          improvementPercent: 25,
+          trainedVsReferencePercent: -37.5,
+          modelBacked: true,
+        }),
+      ]),
+    );
 
     const index = await writeTrainingCollectionIndex({ root });
     const html = await readFile(index.indexHtmlPath, "utf8");
     expect(html).toContain("established:0_8b,2b");
     expect(html).toContain("next:4b");
+    expect(html).toContain("vs-reference:-37.5%");
+    expect(html).toContain("model-backed");
+    expect(html).toContain("feed:feed-export");
+    expect(html).toContain("benchmark:benchmark-matrix");
+    expect(html).toContain("eval:eval-comparison");
+    expect(html).toContain("model:eliza-1-0_8b-trained");
+    expect(html).toContain("improvement:25%");
+    expect(html).toContain(
+      "all_eliza1_tiers_benchmark:missing-&gt;terminal-training-run-collection",
+    );
   });
 
   it("runs multi-tier action benchmark pairs into one benchmark matrix", async () => {

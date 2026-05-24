@@ -60,27 +60,3 @@ Boot HART MHPM Info         : 6 (0x000001f8)
 Boot HART Debug Triggers    : 0 triggers
 Boot HART MIDELEG           : 0x0000000000000222
 Boot HART MEDELEG           : 0x000000000000b109
-Linux version 6.12.90 (shaw@BEAST) (riscv64-linux-gnu-gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #4 Fri May 22 00:46:27 PDT 2026
-Machine model: eliza-e1-cva6-linux-boot
-Forcing kernel command line to: console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init lpj=10000
-SBI specification v3.0 detected
-SBI implementation ID=0x1 Version=0x10008
-SBI TIME extension detected
-SBI IPI extension detected
-SBI RFENCE extension detected
-SBI DBCN extension detected
-earlycon: uart8250 at MMIO 0x0000000010001000 (options '')
-printk: legacy bootconsole [uart8250] enabled
-printk: debug: skip boot console de-registration.
-OF: reserved mem: Reserved memory: No reserved-memory node in the DT
-Zone ranges:
-  DMA32    [mem 0x0000000080000000-0x0000000081ffffff]
-  Normal   empty
-Movable zone start for each node
-Early memory node ranges
-  node   0: [mem 0x0000000080000000-0x0000000081ffffff]
-Initmem setup node 0 [mem 0x0000000080000000-0x0000000081ffffff]
-Falling back to deprecated "riscv,isa"
-riscv: base ISA extensions c
-riscv: ELF capabilities c
-Kernel command line: console=ttyS0,115200 earlycon=uart8250,mmio,0x10001000 keep_bootcon panic=-1 rdinit=/init lpj=10000

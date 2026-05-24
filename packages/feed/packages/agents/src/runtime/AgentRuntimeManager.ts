@@ -405,7 +405,21 @@ function createAdapterStubs(existingAdapter: unknown): unknown {
       getParticipantsForRoomState(roomId),
     getParticipantsForRooms: async (roomIds: unknown[]) =>
       Array.isArray(roomIds)
-        ? roomIds.flatMap((roomId) => getParticipantsForRoomState(roomId))
+        ? roomIds
+            .map((roomIdValue) => {
+              const roomId = readAgentId(roomIdValue);
+              if (!roomId) return null;
+              const participants = getParticipantsForRoomState(roomId);
+              return {
+                roomId,
+                entityIds: participants
+                  .map((participant) => readAgentId(participant.entityId))
+                  .filter((entityId): entityId is string => Boolean(entityId)),
+              };
+            })
+            .filter((room): room is { roomId: string; entityIds: string[] } =>
+              Boolean(room),
+            )
         : [],
     getParticipantsForEntity: async () => [],
     addParticipantsRoom: async (participantIds: unknown, roomId: unknown) =>

@@ -7,6 +7,7 @@ import { useComputerAction } from "../actions/use-computer.js";
 import { windowAction } from "../actions/window.js";
 import computerUsePlugin from "../index.js";
 import { ComputerUseService } from "../services/computer-use-service.js";
+import { assertScreenshotBase64NotBlank } from "../../test/helpers/screenshot-quality.ts";
 
 function createRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return {
@@ -319,7 +320,10 @@ describe("computer-use live parity", () => {
       action: "screenshot",
     });
     if (screenshotResult.success) {
-      expect(screenshotResult.screenshot).toBeTruthy();
+      assertScreenshotBase64NotBlank(
+        screenshotResult.screenshot,
+        "computer-use permission outcome screenshot",
+      );
     } else {
       expect(screenshotResult.permissionDenied).toBe(true);
       expect(screenshotResult.permissionType).toBe("screen_recording");

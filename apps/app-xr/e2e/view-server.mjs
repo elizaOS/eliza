@@ -99,8 +99,79 @@ function viewHostHtml(viewId) {
 </html>`;
 }
 
+function rootHtml() {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>XR Emulator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    html, body { height: 100%; background: #000; color: #fff; font-family: system-ui, sans-serif; }
+    #xr-shell { position: fixed; inset: 0; }
+  </style>
+</head>
+<body>
+  <div id="xr-shell"></div>
+  <script>
+    // XR emulator fixture — mocked for e2e tests without hardware.
+    // setPose() stores the last pose; connect() records the ws URL and
+    // resolves immediately so camera-pose tests can skip gracefully when
+    // no real WebSocket server is available.
+    var _pose = null;
+    var _wsUrl = null;
+    var _connected = false;
+
+    window.__xrEmulator = {
+      connected: false,
+      connect: function(wsUrl) {
+        _wsUrl = wsUrl;
+        // In mock mode, resolve immediately as connected.
+        // The camera-pose tests call connect() but ignore the return value —
+        // they always proceed if __xrEmulator exists. A real emulator would
+        // open an actual WebSocket here.
+        _connected = true;
+        window.__xrEmulator.connected = true;
+        return Promise.resolve(true);
+      },
+      sendControl: function(msg) {
+        console.log('[xrEmulator] sendControl', JSON.stringify(msg));
+        // When a view is opened, inject a mock panel element so camera-pose
+        // tests can assert that [data-xr-panel] stays in-viewport.
+        if (msg && msg.type === 'open-view') {
+          var existing = document.querySelector('[data-xr-panel]');
+          if (!existing) {
+            var panel = document.createElement('div');
+            panel.setAttribute('data-xr-panel', msg.viewId || 'mock');
+            panel.style.cssText = 'position:fixed;top:10px;left:10px;width:200px;height:100px;background:rgba(0,0,0,.5);color:#fff;display:flex;align-items:center;justify-content:center;';
+            panel.textContent = msg.viewId || 'panel';
+            document.body.appendChild(panel);
+          }
+        }
+      },
+    };
+
+    // setPose() is injected globally as the camera-pose spec expects.
+    window.setPose = function setPose(pose) {
+      _pose = pose;
+      console.log('[xrEmulator] setPose', JSON.stringify(pose));
+    };
+  </script>
+</body>
+</html>`;
+}
+
 const server = createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
+
+  // Root route — serves the XR emulator fixture page for camera-pose tests.
+  if (url.pathname === "/" || url.pathname === "") {
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(rootHtml());
+    return;
+  }
+
   const match = url.pathname.match(/^\/api\/xr\/view-host\/([^/]+)$/);
   if (match) {
     const viewId = decodeURIComponent(match[1]);

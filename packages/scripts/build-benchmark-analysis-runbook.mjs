@@ -217,7 +217,7 @@ function buildPayload() {
       rerunCommandCatalog: `${rerunCommandCatalog.summary.commandCount} commands, ${rerunCommandCatalog.summary.runnableNow} runnable now, ${rerunCommandCatalog.summary.blocked} blocked`,
       rerunBatches: `${rerunBatches.summary.batchCount} scripts, ${rerunBatches.summary.runnableCommands} runnable commands, ${rerunBatches.summary.blockedCommands} blocked excluded`,
       codeAgentTrajectoryCache: `${cache.codeAgent.summary.trajectoryCachePercent.toFixed(1)}%`,
-      trajectoryIoCompleteness: `${trajectoryIoCompleteness.summary.withInput}/${trajectoryIoCompleteness.summary.records} input, ${trajectoryIoCompleteness.summary.withOutput}/${trajectoryIoCompleteness.summary.records} output, ${trajectoryIoCompleteness.summary.missingOutputWithTokens} token output gaps`,
+      trajectoryIoCompleteness: `${trajectoryIoCompleteness.summary.withInput}/${trajectoryIoCompleteness.summary.records} input, ${trajectoryIoCompleteness.summary.withOutput}/${trajectoryIoCompleteness.summary.records} output, ${trajectoryIoCompleteness.summary.reviewRelevantOutputGaps} review-relevant output gaps`,
       globalPlaybackRows: `${globalPlaybackIndex.summary.playbackExisting}/${globalPlaybackIndex.summary.rowCount}`,
       globalPlaybackGroups: globalPlaybackIndex.summary.groupCount || 0,
       corpusNormalizedCallCache: `${cache.corpus.summary.cachePercent.toFixed(1)}%`,
@@ -226,7 +226,7 @@ function buildPayload() {
       agentBenchmarkSampledPlayback: `${agentBenchmarkReview.summary.codeAgentSampledExamplesWithPlayback || 0}/${agentBenchmarkReview.summary.codeAgentSampledExamples || 0}`,
       benchmarkClosureMatrix: `${benchmarkClosureMatrix.summary.complete} complete, ${benchmarkClosureMatrix.summary.caveated} caveated, ${benchmarkClosureMatrix.summary.missing} missing`,
       benchmarkClosureTargetPlayback: `${benchmarkClosureMatrix.summary.targetPlaybackComplete}/${benchmarkClosureMatrix.summary.benchmarkCount}`,
-      versionRemediationMatrix: `${versionRemediationMatrix.summary.completeHistory} complete, ${versionRemediationMatrix.summary.previousPlaybackGaps} previous-playback gaps, ${versionRemediationMatrix.summary.withoutPrevious} missing previous`,
+      versionRemediationMatrix: `${versionRemediationMatrix.summary.completeHistory} complete, ${versionRemediationMatrix.summary.previousPlaybackGaps} previous-playback gaps, ${versionRemediationMatrix.summary.noPreviousRun} true no-previous-run, ${versionRemediationMatrix.summary.noEarlierPreviousRow || 0} no-earlier previous`,
       benchmarkOutcomeAnalysis: `${benchmarkOutcomeAnalysis.summary.reviewPass} review-pass, ${benchmarkOutcomeAnalysis.summary.needsOutputReview} needs-output-review, ${benchmarkOutcomeAnalysis.summary.blockedOrCaveated} caveated`,
       corpusFamilies: corpus.reviewFindingSummary?.findingCount || 0,
       corpusRemediationMatrix: `${corpusRemediationMatrix.summary.familyRows} families, ${corpusRemediationMatrix.summary.insufficientWarningLatestRows} insufficient-warning rows`,
@@ -240,7 +240,7 @@ function buildPayload() {
       liveModelScriptReviewPages: live.summary.modelScriptReviewPages,
       liveFailureTriage: `${liveFailureTriage.summary.failedRunCount} failed runs, ${liveFailureTriage.summary.likelyLlmFailedRuns} likely LLM`,
       liveModelEvidence: `${liveModelEvidence.summary.playbackLinkedScripts}/${liveModelEvidence.summary.scriptCount} playback, ${liveModelEvidence.summary.structuredLlmScripts} structured`,
-      livePromptResponseCompleteness: `${livePromptResponseCompleteness.summary.scriptsWithStructuredSidecar}/${livePromptResponseCompleteness.summary.likelyLlmScripts} script sidecars, ${livePromptResponseCompleteness.summary.structuredRunCallsParsed} run calls parsed`,
+      livePromptResponseCompleteness: `${livePromptResponseCompleteness.summary.scriptSidecarComplete}/${livePromptResponseCompleteness.summary.likelyLlmScripts} complete script sidecars, ${livePromptResponseCompleteness.summary.runtimeBlockedBeforeSidecar} runtime-blocked, ${livePromptResponseCompleteness.summary.structuredRunCallsParsed} run calls parsed`,
       liveTestReviewPacks: `${liveTestReviewPacks.summary.packPages}/${liveTestReviewPacks.summary.scriptCount} pack pages, ${liveTestReviewPacks.summary.playbackLinkedScripts} playback-linked`,
       liveTestAgentReview: `${liveTestAgentReview.summary.reviewed}/${liveTestAgentReview.summary.scriptCount}`,
       reviewQueueItems: queue.summary.itemCount,
@@ -251,8 +251,21 @@ function buildPayload() {
       agentReviewHighPriority: agentReview.summary.highPriorityCount,
       agentReviewLiveFailures: agentReview.summary.liveFailuresReviewed,
       remediationMatrixItems: remediationMatrix.summary.itemCount,
+      remediationMatrixLocalActions: `${remediationMatrix.summary.localActionItems || 0}/${remediationMatrix.summary.itemCount || 0}`,
+      remediationMatrixCredentialRequiredActions:
+        remediationMatrix.summary.localCredentialRequiredItems || 0,
+      remediationMatrixLocalActionByLane: remediationMatrix.summary.localActionByLane || {},
       remediationMatrixExternalBlockers: remediationMatrix.summary.externalBlockers,
       remediationMatrixLiveTestItems: remediationMatrix.summary.liveTestItems,
+      remediationMatrixObjectiveCaveats: remediationMatrix.summary.objectiveCaveats,
+      remediationMatrixObjectiveLocalActions: `${remediationMatrix.summary.objectiveLocalActionItems || 0}/${remediationMatrix.summary.objectiveCaveats || 0}`,
+      remediationMatrixObjectiveLocalActionByLane:
+        remediationMatrix.summary.objectiveLocalActionByLane || {},
+      remediationMatrixLiveLocalActions: `${remediationMatrix.summary.liveLocalActionItems || 0}/${remediationMatrix.summary.liveTestItems || 0}`,
+      remediationMatrixLiveLocalActionByClassification:
+        remediationMatrix.summary.liveLocalActionByClassification || {},
+      remediationMatrixLiveLocalActionByLane:
+        remediationMatrix.summary.liveLocalActionByLane || {},
     },
     externalGates: [
       {

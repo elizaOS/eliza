@@ -120,6 +120,17 @@ function readViewTypeOption(
 	return undefined;
 }
 
+function readBooleanOption(
+	options: Record<string, unknown> | undefined,
+	key: string,
+): boolean {
+	if (!options) return false;
+	const value = options[key];
+	if (typeof value === "boolean") return value;
+	if (typeof value !== "string") return false;
+	return /^(1|true|yes|on)$/i.test(value.trim());
+}
+
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
 	message: Memory,
@@ -325,6 +336,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				description: "Timeout in ms for interact responses. Default 5000.",
 				required: false,
 				schema: { type: "number" },
+			},
+			{
+				name: "alwaysOnTop",
+				description:
+					"When action=window, request that the detached desktop window stays above normal windows.",
+				required: false,
+				schema: { type: "boolean" },
 			},
 			{
 				name: "intent",
@@ -642,6 +660,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						readStringOption(options, "view") ??
 						readStringOption(options, "id") ??
 						readStringOption(options, "name");
+					const alwaysOnTop = readBooleanOption(options, "alwaysOnTop");
 					if (!windowViewId) {
 						const reply =
 							"Specify which view to open in a new window, e.g. action=window view=wallet.";
@@ -651,6 +670,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 					const windowResultText = await openViewInWindow(
 						windowViewId,
 						viewType,
+						alwaysOnTop,
 					);
 					await callback?.({ text: windowResultText });
 					return {
@@ -660,8 +680,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 							mode: "window",
 							viewId: windowViewId,
 							viewType: viewType ?? "gui",
+							alwaysOnTop,
 						},
-						data: { viewId: windowViewId, viewType: viewType ?? "gui" },
+						data: {
+							viewId: windowViewId,
+							viewType: viewType ?? "gui",
+							alwaysOnTop,
+						},
 					};
 				}
 			}
@@ -835,6 +860,7 @@ async function navigateViewWithShellAction(
 	successText: string,
 	fallbackText: string,
 	viewType?: ViewType,
+	alwaysOnTop = false,
 ): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -846,7 +872,7 @@ async function navigateViewWithShellAction(
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ action, viewType }),
+				body: JSON.stringify({ action, viewType, alwaysOnTop }),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
@@ -876,6 +902,7 @@ function pinViewAsTab(viewId: string, viewType?: ViewType): Promise<string> {
 function openViewInWindow(
 	viewId: string,
 	viewType?: ViewType,
+	alwaysOnTop = false,
 ): Promise<string> {
 	return navigateViewWithShellAction(
 		viewId,
@@ -883,6 +910,7 @@ function openViewInWindow(
 		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,
 		`Requested separate window for ${viewType ?? "gui"} view "${viewId}".`,
 		viewType,
+		alwaysOnTop,
 	);
 }
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """soc-real-integration-check gate.
 
-Fail-closed gate proving the RTL interrupt + main-memory leaves compose
+Fail-closed gate proving the production interrupt + main-memory leaves compose
 into e1_soc_top behind +define+E1_SOC_REAL_IRQ +define+E1_SOC_REAL_DRAM:
 
-  * the RISC-V CLINT RTL (rtl/interrupts/e1_clint.sv) @ 0x0200_0000 drives
+  * the real RISC-V CLINT (rtl/interrupts/e1_clint.sv) @ 0x0200_0000 drives
     mip.MSIP / mip.MTIP,
-  * the RISC-V PLIC RTL (rtl/interrupts/e1_plic.sv) @ 0x0C00_0000 round-trips
+  * the real RISC-V PLIC (rtl/interrupts/e1_plic.sv) @ 0x0C00_0000 round-trips
     a device external interrupt via claim/complete to mip.MEIP,
-  * the full-AXI4 DRAM-controller RTL model (rtl/memory/dram_ctrl/e1_dram_ctrl.sv)
+  * the real full-AXI4 DRAM controller (rtl/memory/dram_ctrl/e1_dram_ctrl.sv)
     backs the 2 GiB @ 0x8000_0000 main-memory window,
 
 all wired through rtl/top/adapters/e1_soc_real_subsys.sv and the additive,
@@ -17,16 +17,16 @@ define-guarded composition in rtl/top/e1_soc_top.sv. The legacy bring-up path
 
 NOTE on naming: scripts/check_soc_integration.py already exists and owns the
 parallel e1_soc_integrated cross-domain top; this gate covers the distinct
-e1_soc_top IRQ/DRAM-controller RTL composition and writes its own report.
+e1_soc_top real-IRQ/real-DRAM composition and writes its own report.
 
 PASS requires ALL of:
-  (a) the integrated config (e1_soc_top + the RTL leaves + the adapter) lints
+  (a) the integrated config (e1_soc_top + the real leaves + the adapter) lints
       clean under `verilator --lint-only -Wall` with +define+E1_SOC_REAL_IRQ
       +define+E1_SOC_REAL_DRAM (SoC-block style waivers only);
   (b) the integration smoke (verify/cocotb/soc/test_e1_soc_integrated_smoke.py)
-      runs and every test passes: DRAM word read/write through the AXI4
-      DRAM-controller RTL model (with discoverable 2 GiB capacity), a CLINT timer
-      interrupt taken (mtip_o), and a PLIC external-IRQ claim/complete
+      runs and every test passes: DRAM word read/write through the real AXI4
+      controller (with discoverable 2 GiB capacity), a real-CLINT timer
+      interrupt taken (mtip_o), and a real-PLIC external-IRQ claim/complete
       round-trip (meip_o).
 
 If verilator/cocotb is unavailable the gate reports BLOCKED with the missing
@@ -37,7 +37,6 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -51,7 +50,7 @@ COCOTB_DIR = ROOT / "verify/cocotb/soc"
 
 # Integrated-config source list (mirrors verify/cocotb/soc/Makefile). The
 # bring-up CLINT (rtl/peripherals/e1_clint.sv) is intentionally excluded: in
-# this config e1_soc_top instantiates rtl/interrupts/e1_clint.sv (same
+# this config e1_soc_top instantiates the real rtl/interrupts/e1_clint.sv (same
 # module name), so including both would be a duplicate-module declaration.
 INTEGRATED_SOURCES = [
     "rtl/interconnect/axi4/e1_axi4_pkg.sv",
@@ -108,8 +107,8 @@ SMOKE = {
         "plic_claim_complete",
         "rot_gated_boot",
     ),
-    "label": "CLINT timer IRQ + PLIC claim/complete + AXI4 DRAM-controller "
-    "RTL r/w composed in e1_soc_top",
+    "label": "real CLINT timer IRQ + real PLIC claim/complete + real AXI4 "
+    "DRAM r/w composed in e1_soc_top",
 }
 
 
@@ -139,13 +138,15 @@ def check_lint(verilator: str) -> dict:
         + ["--top-module", "e1_soc_top"]
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    diags = [ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln]
+    diags = [
+        ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln
+    ]
     if proc.returncode == 0 and not diags:
         return {
             "id": "verilator_elaborate_integrated",
             "status": "pass",
             "detail": "integrated e1_soc_top (E1_SOC_REAL_IRQ + E1_SOC_REAL_DRAM) "
-            "+ RTL CLINT/PLIC/DRAM-controller path + e1_soc_real_subsys lint clean under "
+            "+ real CLINT/PLIC/DRAM + e1_soc_real_subsys lint clean under "
             "verilator --lint-only -Wall (SoC-block style waivers only)",
         }
     return {
@@ -156,14 +157,10 @@ def check_lint(verilator: str) -> dict:
 
 
 def run_cocotb(verilator: str) -> dict:
-    results = COCOTB_DIR / str(SMOKE["results"])
+    results = COCOTB_DIR / SMOKE["results"]
     if results.exists():
         results.unlink()
     env_python = _python()
-    env = dict(os.environ)
-    venv_bin = str((ROOT / ".venv/bin").resolve())
-    verilator_dir = str(Path(verilator).parent)
-    env["PATH"] = f"{venv_bin}:{verilator_dir}:{env.get('PATH', '')}"
     rc = subprocess.run(
         [
             "make",
@@ -174,16 +171,13 @@ def run_cocotb(verilator: str) -> dict:
             f"MODULE={SMOKE['module']}",
             f"SIM_BUILD={SMOKE['sim_build']}",
             f"COCOTB_RESULTS_FILE={SMOKE['results']}",
-            SMOKE["results"],
         ],
         capture_output=True,
         text=True,
         cwd=ROOT,
-        env=env,
     )
     if not results.is_file():
-        lines = (rc.stderr + "\n" + rc.stdout).splitlines()
-        last = lines[-1] if lines else ""
+        last = rc.stderr.splitlines()[-1] if rc.stderr else ""
         return {
             "id": SMOKE["id"],
             "status": "blocked",
@@ -223,7 +217,9 @@ def main() -> int:
                 "detail": "verilator not found; source tools/env.sh / install oss-cad-suite",
             }
         )
-        checks.append({"id": SMOKE["id"], "status": "blocked", "detail": "verilator not found"})
+        checks.append(
+            {"id": SMOKE["id"], "status": "blocked", "detail": "verilator not found"}
+        )
     else:
         checks.append(check_lint(verilator))
         checks.append(run_cocotb(verilator))
@@ -263,18 +259,18 @@ def main() -> int:
         "subsystem": "soc-integration",
         "claim_boundary": (
             "Behind +define+E1_SOC_REAL_IRQ / +define+E1_SOC_REAL_DRAM, "
-            "e1_soc_top composes the RTL CLINT (@0x0200_0000, drives "
-            "mip.MSIP/MTIP), the RTL PLIC v1.0.0 (@0x0C00_0000, "
-            "claim/complete -> mip.MEIP), and the RTL full-AXI4 "
-            "DRAM-controller model (2 GiB @ 0x8000_0000) via e1_soc_real_subsys, "
+            "e1_soc_top composes the production RISC-V CLINT (@0x0200_0000, "
+            "drives mip.MSIP/MTIP), the production RISC-V PLIC v1.0.0 "
+            "(@0x0C00_0000, claim/complete -> mip.MEIP), and the full-AXI4 "
+            "DRAM controller (2 GiB @ 0x8000_0000) via e1_soc_real_subsys, "
             "which bridges the v0 32-bit MMIO debug aperture to the leaves' "
             "AXI-Lite / AXI4 slave ports with single-outstanding request "
             "shims. This gate proves the integrated config elaborates clean "
             "(-Wall, SoC-block style waivers only) and that the cocotb smoke "
-            "exercises an RTL CLINT timer interrupt, an RTL PLIC external-IRQ "
-            "claim/complete round-trip, and RTL AXI4 DRAM-controller word "
-            "read/write with a discoverable 2 GiB capacity through the debug "
-            "MMIO smoke path. It does NOT prove: real CPU execution "
+            "exercises a real-CLINT timer interrupt, a real-PLIC external-IRQ "
+            "claim/complete round-trip, and real-AXI4 DRAM word read/write "
+            "with a discoverable 2 GiB capacity, all through the SoC fabric "
+            "rather than standalone. It does NOT prove: real CPU execution "
             "out of DRAM (the CPU subsystem is the CVA6-disabled stub unless "
             "E1_HAVE_CVA6 + external/cva6 are added; the smoke drives the bus "
             "via the MMIO debug master); the IOMMU/IOPMP/SG-DMA/AIA path or "
@@ -284,9 +280,6 @@ def main() -> int:
             "boot (requires the CPU core, OpenSBI handoff, and a DTB whose "
             "memory node matches the controller's 2 GiB aperture)."
         ),
-        "phone_claim_allowed": False,
-        "linux_claim_allowed": False,
-        "release_claim_allowed": False,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": sum(1 for c in checks if c["status"] == "pass"),

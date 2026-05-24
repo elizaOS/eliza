@@ -1,10 +1,15 @@
 import { spawn } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 const host = process.env.PLAYWRIGHT_HOST || "127.0.0.1";
 const port = process.env.PLAYWRIGHT_PORT || "4173";
 const baseUrl = process.env.PLAYWRIGHT_BASE_URL || `http://${host}:${port}`;
 const liveUrl = process.env.CLOUD_E2E_LIVE_URL?.trim();
 const args = process.argv.slice(2);
+const runsAestheticAudit = args.some((arg) =>
+  arg.includes("aesthetic-audit.spec.ts"),
+);
 const env = {
   ...process.env,
   VITE_PLAYWRIGHT_TEST_AUTH: "true",
@@ -13,6 +18,13 @@ const env = {
 };
 delete env.FORCE_COLOR;
 delete env.NO_COLOR;
+
+if (runsAestheticAudit) {
+  fs.rmSync(path.resolve("aesthetic-audit-output", "_fragments"), {
+    recursive: true,
+    force: true,
+  });
+}
 
 async function waitForServer(child) {
   const deadline = Date.now() + 120_000;

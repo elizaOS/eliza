@@ -38,10 +38,10 @@ import common  # noqa: E402
 
 # --- register map (word addresses on the simple MMIO port) -----------------
 R_FB_BASE = 0x00
-R_MODE = 0x01  # {v_active[31:16], h_active[15:0]}
-R_H_PORCH = 0x02  # {h_sync[31:16], h_front[15:0]}
-R_HB_VF = 0x03  # {v_front[31:16], h_back[15:0]}
-R_VS_VB = 0x04  # {v_back[31:16], v_sync[15:0]}
+R_MODE = 0x01            # {v_active[31:16], h_active[15:0]}
+R_H_PORCH = 0x02         # {h_sync[31:16], h_front[15:0]}
+R_HB_VF = 0x03           # {v_front[31:16], h_back[15:0]}
+R_VS_VB = 0x04           # {v_back[31:16], v_sync[15:0]}
 R_STRIDE = 0x05
 R_FORMAT = 0x06
 R_ENABLE = 0x07
@@ -78,7 +78,7 @@ async def reset(dut):
 # Honours arlen (INCR bursts), drives rlast on the final beat, returns OKAY.
 # ---------------------------------------------------------------------------
 async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=4):
-    pending: list[list[int]] = []  # [addr, beats_left, beat_idx, countdown, arid]
+    pending = []  # list of [addr, beats_left, beat_idx, countdown, arid]
     dut.m_arready.value = 1
     dut.m_rvalid.value = 0
     while True:
@@ -106,7 +106,7 @@ async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=
                     dut.m_rdata.value = word
                     dut.m_rid.value = req[4]
                     dut.m_rvalid.value = 1
-                    last = req[2] == req[1] - 1
+                    last = (req[2] == req[1] - 1)
                     dut.m_rlast.value = 1 if last else 0
                     dut.m_rresp.value = 0
                     drove = True
@@ -121,9 +121,9 @@ async def axi4_read_slave(dut, mem, *, latency=2, starve=False, max_outstanding=
             dut.m_rlast.value = 0
 
 
-async def program_mode(
-    dut, *, fb_base, w, h, fmt, stride, h_front=4, h_sync=8, h_back=4, v_front=2, v_sync=2, v_back=2
-):
+async def program_mode(dut, *, fb_base, w, h, fmt, stride,
+                       h_front=4, h_sync=8, h_back=4,
+                       v_front=2, v_sync=2, v_back=2):
     await common.write_reg(dut, R_FB_BASE, fb_base)
     await common.write_reg(dut, R_MODE, (h << 16) | w)
     await common.write_reg(dut, R_H_PORCH, (h_sync << 16) | h_front)
@@ -146,7 +146,7 @@ def rgb565_to_rgb888(half: int) -> int:
 
 async def capture_active_pixels(dut, count, *, timeout_cycles=20000):
     """Collect ``count`` consecutive active-DE pixels from the DPI stream."""
-    pixels: list[int] = []
+    pixels = []
     cycles = 0
     while len(pixels) < count and cycles < timeout_cycles:
         await RisingEdge(dut.clk)
@@ -251,20 +251,9 @@ async def timing_matches_programmed_mode(dut):
     v_front, v_sync, v_back = 2, 2, 2
     mem = {addr: 0 for addr in range(0x4000, 0x4000 + 4096)}
     cocotb.start_soon(axi4_read_slave(dut, mem, latency=2))
-    await program_mode(
-        dut,
-        fb_base=0x4000,
-        w=w,
-        h=h,
-        fmt=FMT_XR24,
-        stride=w * 4,
-        h_front=h_front,
-        h_sync=h_sync,
-        h_back=h_back,
-        v_front=v_front,
-        v_sync=v_sync,
-        v_back=v_back,
-    )
+    await program_mode(dut, fb_base=0x4000, w=w, h=h, fmt=FMT_XR24, stride=w * 4,
+                       h_front=h_front, h_sync=h_sync, h_back=h_back,
+                       v_front=v_front, v_sync=v_sync, v_back=v_back)
 
     line_total = w + h_front + h_sync + h_back
     frame_lines = h + v_front + v_sync + v_back

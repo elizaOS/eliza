@@ -1,7 +1,13 @@
 // Visual regression baselines for cloud-frontend.
 // Run once with --update-snapshots to generate baselines. See tests/VISUAL-REGRESSION.md.
+//
+// All routes in this spec are PUBLIC (no auth required). Do NOT install the
+// eliza-test-auth cookie here — doing so globally causes the landing page (/)
+// to detect an authenticated session and redirect to /dashboard/agents, which
+// means the baseline snapshot is never captured.
 
 import { expect, type Page, test } from "@playwright/test";
+import { captureScreenshotWithQualityRetry } from "./_helpers/screenshot-quality";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -22,21 +28,6 @@ const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 720 },
   { name: "mobile", width: 390, height: 844 },
 ] as const;
-
-test.beforeEach(async ({ context }) => {
-  // Stubbed auth cookie so authenticated routes render without backend.
-  await context.addCookies([
-    {
-      name: "eliza-test-auth",
-      value: "1",
-      domain: "127.0.0.1",
-      path: "/",
-      httpOnly: false,
-      secure: false,
-      sameSite: "Lax",
-    },
-  ]);
-});
 
 async function prepare(page: Page) {
   await page.evaluate(() => document.fonts.ready);
@@ -62,6 +53,15 @@ for (const viewport of VIEWPORTS) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
         await page.goto(route.path, { waitUntil: "networkidle" });
         await prepare(page);
+        await captureScreenshotWithQualityRetry(
+          page,
+          `${route.name} ${viewport.name}`,
+          {
+            fullPage: true,
+            mask: dynamicMask(page),
+            animations: "disabled",
+          },
+        );
         await expect(page).toHaveScreenshot(
           `${route.name}-${viewport.name}.png`,
           {

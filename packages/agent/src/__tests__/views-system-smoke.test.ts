@@ -15,6 +15,7 @@
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -55,6 +56,7 @@ function makeCtx(
   method: string,
   pathname: string,
   opts: {
+    body?: unknown;
     broadcastWs?: (payload: object) => void;
     developerMode?: boolean;
     res?: http.ServerResponse;
@@ -67,8 +69,12 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const url = new URL(`http://localhost${pathname}`);
+  const req =
+    opts.body !== undefined || method === "POST"
+      ? makeReqWithBody(opts.body)
+      : ({ headers: {} } as http.IncomingMessage);
   const ctx: ViewsRouteContext = {
-    req: { headers: {} } as http.IncomingMessage,
+    req,
     res: opts.res ?? ({} as http.ServerResponse),
     method,
     pathname: url.pathname,
@@ -79,6 +85,20 @@ function makeCtx(
     developerMode: opts.developerMode,
   };
   return { ctx, json, error };
+}
+
+function makeReqWithBody(body?: unknown): http.IncomingMessage {
+  const req = new EventEmitter() as http.IncomingMessage;
+  (req as unknown as { headers: Record<string, string> }).headers = {
+    "content-type": "application/json",
+  };
+  process.nextTick(() => {
+    if (body !== undefined) {
+      req.emit("data", Buffer.from(JSON.stringify(body)));
+    }
+    req.emit("end");
+  });
+  return req;
 }
 
 beforeEach(() => {
@@ -443,6 +463,50 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
     expect(body.ok).toBe(true);
     expect(body.viewId).toBe("smoke.main");
     expect(body.viewType).toBe("gui");
+  });
+
+  it("propagates alwaysOnTop through navigate responses and broadcasts", async () => {
+    await registerPluginViews(
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [SMOKE_VIEW],
+      },
+      undefined,
+    );
+
+    const broadcasts: object[] = [];
+    const { ctx, json } = makeCtx("POST", "/api/views/smoke.main/navigate", {
+      body: { action: "open-window", alwaysOnTop: true },
+      broadcastWs: (payload) => broadcasts.push(payload),
+    });
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(broadcasts).toHaveLength(1);
+    expect(broadcasts[0]).toMatchObject({
+      type: "shell:navigate:view",
+      viewId: "smoke.main",
+      action: "open-window",
+      alwaysOnTop: true,
+    });
+
+    const [, body] = json.mock.calls[0] as [
+      unknown,
+      {
+        ok: boolean;
+        viewId: string;
+        action: string;
+        alwaysOnTop: boolean;
+      },
+    ];
+    expect(body).toMatchObject({
+      ok: true,
+      viewId: "smoke.main",
+      action: "open-window",
+      alwaysOnTop: true,
+    });
   });
 
   it("navigate works for synthetic IDs not in registry (like view manager)", async () => {

@@ -115,18 +115,26 @@ function ModuleOutlet({ views }: { views: ViewRegistryEntry[] }) {
     );
   }
 
-  const remoteView = views.find(
-    (entry) => entry.bundleUrl && (entry.path ?? `/apps/${entry.id}`) === path,
+  const dynamicView = views.find(
+    (entry) => (entry.path ?? `/apps/${entry.id}`) === path,
   );
-  if (!remoteView?.bundleUrl) return null;
+  if (!dynamicView) return null;
+
+  if (!dynamicView.bundleUrl) {
+    return (
+      <section aria-label="Local dynamic module outlet">
+        {dynamicView.label} local module loaded
+      </section>
+    );
+  }
 
   return (
     <section aria-label="Remote module outlet">
       <DynamicViewLoader
-        bundleUrl={remoteView.bundleUrl}
-        componentExport={remoteView.componentExport}
-        viewId={remoteView.id}
-        viewType={remoteView.viewType}
+        bundleUrl={dynamicView.bundleUrl}
+        componentExport={dynamicView.componentExport}
+        viewId={dynamicView.id}
+        viewType={dynamicView.viewType}
       />
     </section>
   );
@@ -443,6 +451,89 @@ describe("assistant + view manager application flow", () => {
     await waitFor(() => {
       expect(screen.queryByRole("tablist")).toBeNull();
       expect(screen.queryByText("Remote Ledger")).toBeNull();
+    });
+    expect(screen.getAllByText("Local Notes").length).toBeGreaterThan(0);
+  });
+
+  it("creates, switches to, edits, and deletes a local dynamic module from the real chat input", async () => {
+    render(<AssistantViewManagerHarness />);
+
+    fireEvent.click(screen.getByTestId("shell-home-pill"));
+    const input = screen.getByLabelText(/message eliza/i);
+    async function sendChat(text: string) {
+      fireEvent.change(input, { target: { value: text } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /send message/i }));
+      });
+    }
+
+    await sendChat("Create a new local agent run trace view");
+
+    await waitFor(() => {
+      expect(screen.getByText("On it.")).toBeTruthy();
+      expect(screen.getByText("Agent Run Trace")).toBeTruthy();
+      expect(
+        screen.getAllByTestId("view-card-agent-run-trace").length,
+      ).toBeGreaterThan(0);
+    });
+    expect(screen.queryByRole("tablist")).toBeNull();
+
+    const traceCard = screen.getAllByTestId("view-card-agent-run-trace")[0];
+    fireEvent.click(
+      within(traceCard).getByRole("button", { name: /Agent Run Trace/i }),
+    );
+    expect(window.location.pathname).toBe("/apps/agent-run-trace");
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Local dynamic module outlet").textContent,
+      ).toBe("Agent Run Trace local module loaded");
+    });
+    expect(remoteBundleImport).not.toHaveBeenCalled();
+
+    act(() => {
+      window.history.pushState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await sendChat(
+      "Edit the local agent run trace view title to Agent Run Trace Updated",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByTestId("view-card-agent-run-trace").length,
+      ).toBeGreaterThan(0);
+      expect(
+        screen.getAllByText("Agent Run Trace Updated").length,
+      ).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText(/^Agent Run Trace$/)).toBeNull();
+
+    const updatedTraceCard = screen.getAllByTestId(
+      "view-card-agent-run-trace",
+    )[0];
+    fireEvent.click(
+      within(updatedTraceCard).getByRole("button", {
+        name: /Agent Run Trace Updated/i,
+      }),
+    );
+    expect(window.location.pathname).toBe("/apps/agent-run-trace");
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Local dynamic module outlet").textContent,
+      ).toBe("Agent Run Trace Updated local module loaded");
+    });
+
+    act(() => {
+      window.history.pushState(null, "", "/views");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+
+    await sendChat("Delete the local agent run trace dynamic view");
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("view-card-agent-run-trace")).toBeNull();
+      expect(screen.queryByRole("tablist")).toBeNull();
     });
     expect(screen.getAllByText("Local Notes").length).toBeGreaterThan(0);
   });

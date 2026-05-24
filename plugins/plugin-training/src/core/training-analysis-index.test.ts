@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   BENCHMARK_MATRIX_ARTIFACT_SCHEMA,
@@ -62,7 +62,7 @@ describe("training analysis index", () => {
       generatedAt: "2026-01-02T03:04:05.000Z",
       runId: "run-1",
       source: {
-        kind: "test-bundle",
+        kind: "training_collection_natural_trajectories",
         runId: "run-1",
         runIds: ["run-1"],
         inputTrajectoryCount: 2,
@@ -181,6 +181,16 @@ describe("training analysis index", () => {
             ],
           },
         ],
+      },
+      {
+        schema: "eliza_benchmark_canonical_call_v1",
+        agent: "eliza",
+        run_id: "run-1-canonical",
+        kind: "action",
+        model: "gpt-oss-120b",
+        prompt: "channel_type: dm\nincoming_message: \"good morning\"",
+        response: "Action completed.",
+        actions: ["REPLY"],
       },
     ]);
     await writeJson(join(root, "runs", "run-1.json"), runRecord);
@@ -604,6 +614,57 @@ describe("training analysis index", () => {
         },
       },
     );
+    await writeJson(
+      join(root, "action-benchmark-report", "cases", "empty-reply.json"),
+      {
+        caseId: "empty-reply",
+        startedAt: Date.UTC(2026, 0, 2, 3, 16, 3),
+        endedAt: Date.UTC(2026, 0, 2, 3, 16, 4),
+        durationMs: 1000,
+        transcript: [
+          {
+            role: "user",
+            text: "hey",
+            timestamp: Date.UTC(2026, 0, 2, 3, 16, 3),
+          },
+          {
+            role: "assistant",
+            text: "",
+            timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
+          },
+        ],
+        agentTrajectory: {
+          llmCalls: [
+            {
+              callId: "llm-empty-1",
+              timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
+              latencyMs: 8,
+              modelType: "TEXT_LARGE",
+              purpose: "reply",
+              prompt: "reply to greeting",
+              response: "",
+            },
+          ],
+          providerSnapshots: [],
+        },
+        actions: [],
+        events: [{ type: "RUN_ENDED", timestamp: Date.UTC(2026, 0, 2, 3, 16, 4), data: {} }],
+        memoriesWritten: [
+          {
+            timestamp: Date.UTC(2026, 0, 2, 3, 16, 4),
+            tableName: "messages",
+            contentActions: ["REPLY"],
+            raw: { content: { actions: ["REPLY"], text: "" } },
+          },
+        ],
+        metadata: {
+          pass: true,
+          selectionPass: true,
+          executionPass: true,
+          tags: ["chat", "negative"],
+        },
+      },
+    );
     await writeJsonl(join(root, "hf", "eliza-1-trajectories.jsonl"), [
       {
         schema: "eliza.eliza1_trajectory_record.v1",
@@ -684,31 +745,31 @@ describe("training analysis index", () => {
     expect(index.manifest.schema).toBe(TRAINING_ANALYSIS_INDEX_SCHEMA);
     expect(index.manifest.counts).toMatchObject({
       trajectoryBundles: 1,
-      trajectoryDatasets: 9,
+      trajectoryDatasets: 10,
       scenarioRuns: 1,
       trainingRuns: 1,
       evals: 3,
       benchmarkMatrices: 1,
       models: 3,
-      artifacts: 19,
+      artifacts: 20,
     });
     expect(index.manifest.coverage).toMatchObject({
       dataSources: {
         huggingFace: 1,
         feed: 1,
-        natural: 0,
+        natural: 1,
         scenarios: 2,
-        tests: 1,
+        tests: 2,
         trainingJsonl: 5,
       },
       readableSamples: {
         huggingFace: 2,
         feed: 1,
-        natural: 0,
+        natural: 4,
         scenarios: 2,
-        tests: 1,
-        trainingJsonl: 7,
-        total: 13,
+        tests: 2,
+        trainingJsonl: 8,
+        total: 19,
       },
       evals: {
         artifacts: 3,
@@ -767,6 +828,7 @@ describe("training analysis index", () => {
       "trajectory_dataset",
       "trajectory_dataset",
       "trajectory_dataset",
+      "trajectory_dataset",
     ]);
 
     const html = await readFile(index.indexHtmlPath, "utf8");
@@ -805,6 +867,7 @@ describe("training analysis index", () => {
     expect(html).toContain("Test Trajectory LLM Calls");
     expect(html).toContain("Test Trajectory Actions");
     expect(html).toContain("Trajectory Bundle LLM Calls");
+    expect(html).toContain("run-1-traj-1");
     expect(html).toContain("Trajectories");
     expect(html).toContain("Scenarios");
     expect(html).toContain("lifeops_bench");
@@ -852,7 +915,7 @@ describe("training analysis index", () => {
     const manifestOnDisk = JSON.parse(
       await readFile(index.manifestPath, "utf8"),
     ) as typeof index.manifest;
-    expect(manifestOnDisk.counts.artifacts).toBe(19);
+    expect(manifestOnDisk.counts.artifacts).toBe(20);
     const bundleArtifact = manifestOnDisk.artifacts.find(
       (artifact) => artifact.kind === "trajectory_bundle",
     );
@@ -879,7 +942,7 @@ describe("training analysis index", () => {
           exampleCount: 1,
         }),
       ]),
-      samplePreviews: [
+      samplePreviews: expect.arrayContaining([
         expect.objectContaining({
           trajectoryId: "run-1-traj-1",
           agentId: "agent-1",
@@ -892,7 +955,17 @@ describe("training analysis index", () => {
           steps: 1,
           llmCalls: 2,
         }),
-      ],
+        expect.objectContaining({
+          trajectoryId: "run-1-canonical",
+          agentId: "eliza",
+          purpose: "action",
+          model: "gpt-oss-120b",
+          input: 'channel_type: dm\nincoming_message: "good morning"',
+          output: "Action completed.",
+          steps: 0,
+          llmCalls: 0,
+        }),
+      ]),
       llmCallPreviews: [
         expect.objectContaining({
           trajectoryId: "run-1-traj-1",
@@ -936,6 +1009,7 @@ describe("training analysis index", () => {
         }),
       ]),
     );
+    expect(manifestOnDisk.coverage.readableSamples.natural).toBe(4);
     const scenarioArtifact = manifestOnDisk.artifacts.find(
       (artifact) => artifact.kind === "scenario_run",
     );
@@ -1000,6 +1074,25 @@ describe("training analysis index", () => {
         }),
       ]),
     );
+    const scenarioNativeJsonlArtifact = manifestOnDisk.artifacts.find(
+      (artifact) =>
+        artifact.kind === "trajectory_dataset" &&
+        artifact.path.endsWith("scenario-native.jsonl"),
+    );
+    expect(scenarioNativeJsonlArtifact?.summary).toMatchObject({
+      schema: "eliza_training_jsonl_dataset",
+      rows: 1,
+      samplePreviews: [
+        expect.objectContaining({
+          task: "action_planner",
+          sourceDataset: "scenario_trajectory_boundary",
+          trajectoryId: "scenario-traj-1",
+          scenarioId: "lifeops.basic",
+          input: "check in",
+          output: "scheduled",
+        }),
+      ],
+    });
     const jsonlArtifact = manifestOnDisk.artifacts.find(
       (artifact) =>
         artifact.kind === "trajectory_dataset" &&
@@ -1130,6 +1223,24 @@ describe("training analysis index", () => {
         }),
       ],
     });
+    const emptyReplyArtifact = manifestOnDisk.artifacts.find(
+      (artifact) =>
+        artifact.kind === "trajectory_dataset" &&
+        artifact.path.endsWith("empty-reply.json"),
+    );
+    expect(emptyReplyArtifact?.summary).toMatchObject({
+      schema: "eliza_test_trajectory_record",
+      source: { kind: "app_core_test_trajectory" },
+      caseId: "empty-reply",
+      testSamplePreviews: [
+        expect.objectContaining({
+          input: "hey",
+          output: "REPLY",
+          action: "REPLY",
+          llmOutput: "",
+        }),
+      ],
+    });
     const evalComparisonArtifact = manifestOnDisk.artifacts.find(
       (artifact) =>
         artifact.kind === "eval" &&
@@ -1208,6 +1319,18 @@ describe("training analysis index", () => {
       trainedEvalScore: 0.62,
       evalImprovementPercent: 24,
     });
+    expect(manifestOnDisk.coverage.models.inventory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          model: "eliza-1-0b-trained",
+          baseModel: "eliza-1-0b-base",
+          outputPath: join(root, "checkpoints", "run-1", "final"),
+          baseEvalScore: 0.5,
+          trainedEvalScore: 0.62,
+          evalImprovementPercent: 24,
+        }),
+      ]),
+    );
     const registryModelArtifact = manifestOnDisk.artifacts.find(
       (artifact) =>
         artifact.kind === "model" &&
@@ -1477,6 +1600,8 @@ describe("training analysis index", () => {
               variant: "trained",
               outputPath: "hf://elizaos/eliza-1-0_8b-trained",
               baseModel: "eliza-1-0_8b-base",
+              baseEvalScore: 0.4,
+              trainedEvalScore: 0.6,
               repoId: "elizaos/eliza-1-0_8b-trained",
               evalImprovementPercent: null,
             },
@@ -1493,6 +1618,8 @@ describe("training analysis index", () => {
               variant: "trained",
               outputPath: "hf://elizaos/eliza-1-2b-trained",
               baseModel: "eliza-1-2b-base",
+              baseEvalScore: 0.4,
+              trainedEvalScore: 0.6,
               repoId: "elizaos/eliza-1-2b-trained",
               evalImprovementPercent: 50,
             },
@@ -1834,9 +1961,23 @@ describe("training analysis index", () => {
     expect(html).toContain("Collection Benchmark Improvements");
     expect(html).toContain("Collection Baseline Progression");
     expect(html).toContain("Collection Readiness Gaps");
+    expect(html).toContain("Recommended Params");
     expect(html).toContain("all_eliza1_tiers_benchmark");
     expect(html).toContain("terminal-training-run-collection");
+    expect(html).toContain('"actionBenchmarkPairs":"all"');
     expect(html).toContain("selectedSourceCategory");
+    expect(html).toContain("run-filter");
+    expect(html).toContain("tier-filter");
+    expect(html).toContain("artifactRunIds(artifact)");
+    expect(html).toContain("artifactTiers(artifact)");
+    expect(html).toContain('selectedRunId !== "all"');
+    expect(html).toContain('selectedTier !== "all"');
+    expect(html).toContain("sourceCategories(artifact)");
+    expect(html).toContain('"trainingJsonl", "Training JSONL"');
+    expect(html).toContain("sample.title || artifact.title");
+    expect(html).toContain(
+      "!sourceCategories(artifact).includes(selectedSourceCategory)",
+    );
     expect(html).toContain("All sources");
     expect(html).toContain("dataset.sourceCategory");
     expect(html).toContain("hello from collection hf");
@@ -1975,5 +2116,432 @@ describe("training analysis index", () => {
     expect(html).toContain("relative market input");
     expect(html).toContain("relative market decision");
     expect(html).toContain("relative feed export was loaded");
+  });
+
+  it("uses feed jsonlPath for readable previews when exportPath is absent", async () => {
+    const root = await makeTempDir();
+    const feedDir = join(root, "feed", "jsonl-only");
+    const outputDir = join(root, "analysis");
+    await writeJson(join(feedDir, "feed.manifest.json"), {
+      schema: "feed_training_trajectory_export",
+      schemaVersion: 1,
+      generatedAt: "2026-01-02T03:20:00.000Z",
+      jsonlPath: "feed-trajectories.jsonl",
+      outputDir: ".",
+      source: {
+        kind: "feed_train_archetype_export",
+        archetype: "trader",
+      },
+      counts: { trajectories: 1 },
+    });
+    await writeJsonl(join(feedDir, "feed-trajectories.jsonl"), [
+      {
+        trajectory_id: "feed-jsonl-traj-1",
+        agent_id: "feed-agent-jsonl",
+        archetype: "trader",
+        steps: [
+          {
+            event: "market_tick",
+            observation: "jsonl-only feed input",
+            decision: "jsonl-only feed output",
+          },
+        ],
+      },
+    ]);
+
+    const index = await buildTrainingAnalysisIndex({
+      roots: [root],
+      outputDir,
+      now: () => new Date("2026-01-02T04:00:00.000Z"),
+    });
+
+    const feedArtifact = index.manifest.artifacts.find(
+      (artifact) =>
+        artifact.kind === "trajectory_dataset" &&
+        artifact.summary.schema === "feed_training_trajectory_export",
+    );
+    expect(feedArtifact?.summary).toMatchObject({
+      jsonlPath: join(feedDir, "feed-trajectories.jsonl"),
+      feedSamplePreviews: [
+        expect.objectContaining({
+          trajectoryId: "feed-jsonl-traj-1",
+          firstInput: "jsonl-only feed input",
+          firstOutput: "jsonl-only feed output",
+        }),
+      ],
+    });
+    expect(index.manifest.coverage.readableSamples.feed).toBe(1);
+    const html = await readFile(index.indexHtmlPath, "utf8");
+    expect(html).toContain("feed-jsonl-traj-1");
+    expect(html).toContain("jsonl-only feed input");
+    expect(html).toContain("jsonl-only feed output");
+  });
+
+  it("uses feed export paths as written when manifests store cwd-relative paths", async () => {
+    const root = await makeTempDir();
+    const feedDir = join(root, "feed", "cwd-relative");
+    const outputDir = join(root, "analysis");
+    const cwdRelativeExport = relative(
+      process.cwd(),
+      join(feedDir, "feed-trajectories.jsonl"),
+    );
+    await writeJson(join(feedDir, "feed.manifest.json"), {
+      schema: "feed_parallel_generation",
+      schemaVersion: 1,
+      generatedAt: "2026-01-02T03:25:00.000Z",
+      exportPath: cwdRelativeExport,
+      outputDir: ".",
+      source: {
+        kind: "feed_train_parallel_generation",
+        archetypes: ["trader"],
+      },
+      counts: { trajectories: 1 },
+    });
+    await writeJsonl(join(feedDir, "feed-trajectories.jsonl"), [
+      {
+        trajectory_id: "feed-cwd-relative-traj-1",
+        agent_id: "feed-agent-cwd",
+        archetype: "trader",
+        steps: [
+          {
+            action: "DRY_RUN",
+            input: "cwd relative feed input",
+            output: "cwd relative feed output",
+          },
+        ],
+      },
+    ]);
+
+    const index = await buildTrainingAnalysisIndex({
+      roots: [root],
+      outputDir,
+      now: () => new Date("2026-01-02T04:00:00.000Z"),
+    });
+
+    const feedArtifact = index.manifest.artifacts.find(
+      (artifact) =>
+        artifact.kind === "trajectory_dataset" &&
+        artifact.summary.schema === "feed_parallel_generation",
+    );
+    expect(feedArtifact?.summary).toMatchObject({
+      exportPath: join(feedDir, "feed-trajectories.jsonl"),
+      feedSamplePreviews: [
+        expect.objectContaining({
+          trajectoryId: "feed-cwd-relative-traj-1",
+          firstInput: "cwd relative feed input",
+          firstOutput: "cwd relative feed output",
+        }),
+      ],
+    });
+    expect(index.manifest.coverage.readableSamples.feed).toBe(1);
+    const html = await readFile(index.indexHtmlPath, "utf8");
+    expect(html).toContain("feed-cwd-relative-traj-1");
+    expect(html).toContain("cwd relative feed input");
+    expect(html).toContain("cwd relative feed output");
+  });
+
+  it("uses Hugging Face local paths as written when manifests store cwd-relative paths", async () => {
+    const root = await makeTempDir();
+    const hfDir = join(root, "hf", "cwd-relative");
+    const outputDir = join(root, "analysis");
+    const cwdRelativeLocalPath = relative(
+      process.cwd(),
+      join(hfDir, "sft", "0_8b", "train.jsonl"),
+    );
+    await writeJsonl(join(hfDir, "sft", "0_8b", "train.jsonl"), [
+      {
+        schema: "eliza.eliza1_sft_record.v1",
+        source_dataset: "huggingface_sft",
+        trajectoryId: "hf-cwd-relative-traj-1",
+        task: "response",
+        input: "cwd relative hf input",
+        output: "cwd relative hf output",
+      },
+    ]);
+    await writeJson(join(hfDir, "huggingface-dataset-manifest.json"), {
+      schema: "eliza_huggingface_dataset_ingest",
+      schemaVersion: 1,
+      generatedAt: "2026-01-02T03:35:00.000Z",
+      source: {
+        kind: "huggingface_dataset",
+        repoId: "elizaos/eliza-1-training",
+        revision: "main",
+      },
+      outputDir: ".",
+      counts: {
+        files: 1,
+        downloadedFiles: 1,
+        dryRunFiles: 0,
+        jsonlRows: 1,
+        bytes: 128,
+      },
+      files: [
+        {
+          hfPath: "sft/0_8b/train.jsonl",
+          localPath: cwdRelativeLocalPath,
+          rows: 1,
+          bytes: 128,
+          status: "downloaded",
+        },
+      ],
+    });
+
+    const index = await buildTrainingAnalysisIndex({
+      roots: [root],
+      outputDir,
+      now: () => new Date("2026-01-02T04:00:00.000Z"),
+    });
+
+    const huggingFaceArtifact = index.manifest.artifacts.find(
+      (artifact) =>
+        artifact.kind === "trajectory_dataset" &&
+        artifact.summary.schema === "eliza_huggingface_dataset_ingest",
+    );
+    expect(huggingFaceArtifact?.summary).toMatchObject({
+      hfFiles: [
+        expect.objectContaining({
+          hfPath: "sft/0_8b/train.jsonl",
+          localPath: join(hfDir, "sft", "0_8b", "train.jsonl"),
+          rows: 1,
+          status: "downloaded",
+        }),
+      ],
+      hfSamplePreviews: [
+        expect.objectContaining({
+          hfPath: "sft/0_8b/train.jsonl",
+          localPath: join(hfDir, "sft", "0_8b", "train.jsonl"),
+          trajectoryId: "hf-cwd-relative-traj-1",
+          input: "cwd relative hf input",
+          output: "cwd relative hf output",
+        }),
+      ],
+    });
+    expect(index.manifest.coverage.readableSamples.huggingFace).toBe(1);
+    const html = await readFile(index.indexHtmlPath, "utf8");
+    expect(html).toContain("hf-cwd-relative-traj-1");
+    expect(html).toContain("cwd relative hf input");
+    expect(html).toContain("cwd relative hf output");
+  });
+
+  it("uses natural trajectory bundle paths as written when manifests store cwd-relative paths", async () => {
+    const root = await makeTempDir();
+    const bundleDir = join(root, "natural", "cwd-relative");
+    const outputDir = join(root, "analysis");
+    const cwdRelativeSanitizedPath = relative(
+      process.cwd(),
+      join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"),
+    );
+    const cwdRelativeTaskPath = relative(
+      process.cwd(),
+      join(bundleDir, "tasks", "response.jsonl"),
+    );
+    await writeJsonl(join(bundleDir, "sanitized", "trajectories.sanitized.jsonl"), [
+      {
+        trajectoryId: "natural-cwd-relative-traj-1",
+        agentId: "agent-natural",
+        steps: [
+          {
+            stepId: "step-1",
+            llmCalls: [
+              {
+                callId: "call-1",
+                purpose: "response",
+                model: "eliza-1-0_8b-trained",
+                userPrompt: "cwd relative natural input",
+                response: "cwd relative natural output",
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    await writeJsonl(join(bundleDir, "tasks", "response.jsonl"), [
+      {
+        task: "response",
+        example: { trajectoryId: "natural-cwd-relative-traj-1" },
+      },
+    ]);
+    await writeJson(join(bundleDir, "manifest.json"), {
+      schema: TRAJECTORY_EXPORT_BUNDLE_SCHEMA,
+      schemaVersion: TRAJECTORY_EXPORT_BUNDLE_VERSION,
+      generatedAt: "2026-01-02T03:40:00.000Z",
+      runId: "natural-run-1",
+      source: {
+        kind: "training_collection_natural_trajectories",
+        runId: "natural-run-1",
+        runIds: ["natural-run-1"],
+        inputTrajectoryCount: 1,
+        sanitizedTrajectoryCount: 1,
+        droppedTrajectoryCount: 0,
+      },
+      paths: {
+        bundleDir,
+        manifestPath: join(bundleDir, "manifest.json"),
+        sanitizedJsonlPath: cwdRelativeSanitizedPath,
+        taskDatasetDir: "tasks",
+      },
+      counts: {
+        rawTrajectoryRows: 0,
+        sanitizedTrajectoryRows: 1,
+        taskRows: {
+          should_respond: 0,
+          context_routing: 0,
+          action_planner: 0,
+          response: 1,
+          media_description: 0,
+        },
+        taskFiles: 1,
+        taskExamples: 1,
+        llmCalls: 1,
+        skippedNonNativeRows: 0,
+      },
+      tasks: {
+        response: {
+          path: cwdRelativeTaskPath,
+          exampleCount: 1,
+          sourceCallCount: 1,
+          sourceTrajectoryCount: 1,
+        },
+      },
+      privacy: {
+        applied: true,
+        redactionCount: 0,
+        anonymizationCount: 0,
+        droppedCount: 0,
+        dropped: [],
+      },
+      cloudUpload: { uploadedToHuggingFace: false },
+    });
+
+    const index = await buildTrainingAnalysisIndex({
+      roots: [root],
+      outputDir,
+      now: () => new Date("2026-01-02T04:00:00.000Z"),
+    });
+
+    const bundleArtifact = index.manifest.artifacts.find(
+      (artifact) => artifact.kind === "trajectory_bundle",
+    );
+    expect(bundleArtifact?.summary).toMatchObject({
+      sanitizedJsonlPath: join(
+        bundleDir,
+        "sanitized",
+        "trajectories.sanitized.jsonl",
+      ),
+      taskFiles: [
+        expect.objectContaining({
+          task: "response",
+          path: join(bundleDir, "tasks", "response.jsonl"),
+        }),
+      ],
+      llmCallPreviews: [
+        expect.objectContaining({
+          trajectoryId: "natural-cwd-relative-traj-1",
+          input: "cwd relative natural input",
+          output: "cwd relative natural output",
+        }),
+      ],
+    });
+    expect(index.manifest.coverage.readableSamples.natural).toBe(2);
+    const html = await readFile(index.indexHtmlPath, "utf8");
+    expect(html).toContain("natural-cwd-relative-traj-1");
+    expect(html).toContain("cwd relative natural input");
+    expect(html).toContain("cwd relative natural output");
+  });
+
+  it("resolves scenario run native paths and links when stored cwd-relative", async () => {
+    const root = await makeTempDir();
+    const runDir = join(root, "scenario-run-cwd");
+    const outputDir = join(root, "analysis");
+    const cwdRelativeNativeJsonlPath = relative(
+      process.cwd(),
+      join(runDir, "native", "scenario-native.jsonl"),
+    );
+    const cwdRelativeNativeManifestPath = relative(
+      process.cwd(),
+      join(runDir, "native", "scenario-native.manifest.json"),
+    );
+    await writeJsonl(join(runDir, "native", "scenario-native.jsonl"), [
+      {
+        trajectoryId: "scenario-cwd-traj-1",
+        request: { prompt: "scenario cwd input" },
+        response: { text: "scenario cwd output" },
+      },
+    ]);
+    await writeJson(join(runDir, "native", "scenario-native.manifest.json"), {
+      schema: "eliza_scenario_native_export",
+      counts: { rows: 1 },
+    });
+    await writeJson(join(runDir, "matrix.json"), {
+      schema: "eliza_scenario_run_viewer_v1",
+      runId: "scenario-cwd-run-1",
+      runDir: relative(process.cwd(), runDir),
+      nativeJsonlPath: cwdRelativeNativeJsonlPath,
+      nativeManifestPath: cwdRelativeNativeManifestPath,
+      completedAtIso: "2026-01-02T03:45:00.000Z",
+      providerName: "deterministic-proxy",
+      scenarios: [
+        {
+          id: "scenario.cwd",
+          title: "Scenario cwd",
+          status: "passed",
+          durationMs: 12,
+          turns: [
+            {
+              name: "turn-1",
+              kind: "user",
+              text: "scenario cwd input",
+              responseText: "scenario cwd output",
+              actionsCalled: [],
+              failedAssertions: [],
+            },
+          ],
+        },
+      ],
+      totalCount: 1,
+      passedCount: 1,
+      failedCount: 0,
+      skippedCount: 0,
+    });
+
+    const index = await buildTrainingAnalysisIndex({
+      roots: [root],
+      outputDir,
+      now: () => new Date("2026-01-02T04:00:00.000Z"),
+    });
+
+    const scenarioArtifact = index.manifest.artifacts.find(
+      (artifact) => artifact.kind === "scenario_run",
+    );
+    expect(scenarioArtifact?.summary).toMatchObject({
+      runDir,
+      viewerHtmlPath: join(runDir, "viewer", "index.html"),
+      nativeJsonlPath: join(runDir, "native", "scenario-native.jsonl"),
+      nativeManifestPath: join(runDir, "native", "scenario-native.manifest.json"),
+      turnPreviews: [
+        expect.objectContaining({
+          scenarioId: "scenario.cwd",
+          input: "scenario cwd input",
+          output: "scenario cwd output",
+        }),
+      ],
+    });
+    expect(scenarioArtifact?.summary.sourceLinks).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          label: "native-jsonl",
+          path: join(runDir, "native", "scenario-native.jsonl"),
+        }),
+        expect.objectContaining({
+          label: "native-manifest",
+          path: join(runDir, "native", "scenario-native.manifest.json"),
+        }),
+      ]),
+    );
+    const html = await readFile(index.indexHtmlPath, "utf8");
+    expect(html).toContain("scenario cwd input");
+    expect(html).toContain("scenario cwd output");
+    expect(html).toContain("native-jsonl");
+    expect(html).toContain("native-manifest");
   });
 });

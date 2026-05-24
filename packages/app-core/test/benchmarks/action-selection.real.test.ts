@@ -28,7 +28,7 @@ const BENCHMARK_TRAJECTORY_DIR =
   process.env.ELIZA_ACTION_BENCHMARK_TRAJECTORY_DIR ??
   "action-benchmark-report";
 const mockRuntimeModuleUrl = new URL(
-  "../../../../test/mocks/helpers/mock-runtime.ts",
+  "../../../../packages/test/mocks/helpers/mock-runtime.ts",
   import.meta.url,
 ).href;
 const computerUsePluginSpecifier: string = "@elizaos/plugin-computeruse";

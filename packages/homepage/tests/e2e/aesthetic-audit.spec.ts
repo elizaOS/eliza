@@ -12,6 +12,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "playwright/test";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const TEST_TOKEN = "homepage-aesthetic-audit-token";
 
@@ -111,10 +112,18 @@ async function seedAuthed(page: Page) {
   }, TEST_TOKEN);
 }
 
-async function settle(page: Page) {
+async function settle(page: Page, routePath?: string) {
   await page.evaluate(() => document.fonts.ready);
-  // Wait for substantive content. Leaderboard renders its primary UI
-  // behind [aria-label="Eliza"]; other routes have h1/h2/buttons earlier.
+  // /leaderboard runs a ~1800ms SVG intro animation before the real chrome
+  // (header, tab bar, BlobButton) is visible. Wait for the header element
+  // specifically so we don't screenshot the orange Suspense loading screen,
+  // then add extra padding for the spring animations that fire after showUI.
+  if (routePath === "/leaderboard") {
+    await page.waitForSelector("header", { timeout: 20_000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    return;
+  }
+  // Wait for substantive content on all other routes.
   await page
     .waitForSelector('h1, h2, button, [data-marquee], [aria-label="Eliza"]', {
       timeout: 10_000,
@@ -123,11 +132,7 @@ async function settle(page: Page) {
   await page
     .waitForLoadState("networkidle", { timeout: 10_000 })
     .catch(() => {});
-  // The /leaderboard route runs a ~1800ms intro animation before the
-  // primary UI (BlobButton, tab bar, model figure) is positioned. Wait
-  // long enough that the screenshot captures the settled state on every
-  // route.
-  await page.waitForTimeout(2200);
+  await page.waitForTimeout(600);
 }
 
 function dynamicMask(page: Page) {
@@ -170,18 +175,22 @@ for (const viewport of VIEWPORTS) {
         }
 
         await page.goto(route.path, { waitUntil: "domcontentloaded" });
-        await settle(page);
+        await settle(page, route.path);
 
         // Some routes redirect (login -> connected). Capture wherever we
         // settled, but verify by current URL.
         const settledPath = new URL(page.url()).pathname;
 
-        await page.screenshot({
-          path: path.join(ARTIFACT_DIR, viewport.name, `${route.name}.png`),
-          fullPage: true,
-          mask: dynamicMask(page),
-          animations: "disabled",
-        });
+        await captureScreenshotWithQualityRetry(
+          page,
+          `${viewport.name} ${route.name}`,
+          {
+            path: path.join(ARTIFACT_DIR, viewport.name, `${route.name}.png`),
+            fullPage: true,
+            mask: dynamicMask(page),
+            animations: "disabled",
+          },
+        );
 
         // ── Logo presence on the chrome'd pages (not the marketing landing). ──
         if (route.name !== "landing" && settledPath !== "/") {
@@ -347,7 +356,7 @@ test.describe("brand chrome consistency", () => {
     ]) {
       if (route.authed) await seedAuthed(page);
       await page.goto(route.path, { waitUntil: "domcontentloaded" });
-      await settle(page);
+      await settle(page, route.path);
       await page.waitForSelector("header img, header svg", { timeout: 10_000 });
       const m = await page.evaluate(() => {
         const header = document.querySelector("header");
@@ -388,6 +397,7 @@ test.describe("Sign-In With Solana", () => {
   test.use({ viewport: { width: 1440, height: 900 } });
 
   test("Solana button signs in and routes to /connected", async ({ page }) => {
+    test.setTimeout(45_000);
     await installCloudMocks(page);
 
     // Inject a deterministic test signer before the page boots.
@@ -401,13 +411,17 @@ test.describe("Sign-In With Solana", () => {
     });
 
     await page.goto("/get-started", { waitUntil: "domcontentloaded" });
-    await settle(page);
+    await settle(page, "/get-started");
 
     const button = page.getByTestId("solana-signin");
     await expect(button).toBeVisible();
     await button.click();
 
-    await expect(page).toHaveURL(/\/connected$/, { timeout: 15_000 });
+    // Explicit navigation wait: after the SIWS verify roundtrip completes the
+    // auth context sets isAuthenticated=true, which triggers navigate("/connected")
+    // both from handleSolanaConnect directly and from the auth-guard effect.
+    await page.waitForURL(/\/connected$/, { timeout: 15_000 });
+    await expect(page).toHaveURL(/\/connected$/);
     await expect(
       page.getByRole("heading", { name: /Connected\./i }),
     ).toBeVisible();

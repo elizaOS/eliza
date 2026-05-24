@@ -88,7 +88,7 @@ function parseJsonl(text) {
       try {
         return JSON.parse(line);
       } catch {
-        return { parse_error: true, raw: line.slice(0, PREVIEW_CHARS) };
+        return { parse_error: true, raw: line };
       }
     });
 }
@@ -129,6 +129,102 @@ function pickWithSource(record, keys) {
   return { key: "", value: undefined };
 }
 
+function safeRepoFileText(filePath) {
+  if (!filePath || typeof filePath !== "string") return "";
+  const absolute = path.resolve(filePath);
+  if (!absolute.startsWith(REPO_ROOT + path.sep) || !existsSync(absolute)) return "";
+  try {
+    return readFileSync(absolute, "utf8");
+  } catch {
+    return "";
+  }
+}
+
+function mirroredPrivateTmpFileText(filePath) {
+  if (!filePath || typeof filePath !== "string") return "";
+  const match = String(filePath).match(/^\/private\/tmp\/([^/]+)\/(.+)$/);
+  if (!match) return "";
+  return safeRepoFileText(
+    path.join(REPO_ROOT, "reports", "benchmarks", "code-agent-runs", match[1], match[2]),
+  );
+}
+
+function fallbackInputWithSource(record) {
+  const promptPath = safeRepoFileText(record.prompt_path) || mirroredPrivateTmpFileText(record.prompt_path);
+  if (promptPath) return { key: "prompt_path", value: promptPath };
+  const taskYaml = safeRepoFileText(record.task_yaml);
+  if (taskYaml) return { key: "task_yaml", value: taskYaml };
+  const action = pick(record, ["action", "info.action"]);
+  if (action !== undefined && action !== null && action !== "") {
+    return { key: "action", value: action };
+  }
+  if (record.parse_error && record.raw) return { key: "parse_error.raw", value: record.raw };
+  return { key: "", value: undefined };
+}
+
+function jsonStringFieldFromRaw(raw, field) {
+  if (!raw || typeof raw !== "string") return "";
+  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = raw.match(new RegExp(`"${escapedField}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  if (!match) return "";
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return match[1].replace(/\\n/g, "\n").replace(/\\"/g, '"');
+  }
+}
+
+function parseMaybeJson(value) {
+  if (typeof value !== "string") return value;
+  const trimmed = value.trim();
+  if (!trimmed || !/^[\[{]/.test(trimmed)) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function textFromContent(content) {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (typeof part === "string") return part;
+      if (part && typeof part === "object" && typeof part.text === "string") {
+        return part.text;
+      }
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+function assistantTextFromTranscript(transcript) {
+  const parsed = parseMaybeJson(transcript);
+  const items = Array.isArray(parsed) ? parsed : [parsed];
+  const assistantTexts = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") continue;
+    const message = item.message && typeof item.message === "object" ? item.message : item;
+    if (message.role !== "assistant") continue;
+    const text = textFromContent(message.content);
+    if (text.trim()) assistantTexts.push(text.trim());
+  }
+  return assistantTexts.join("\n\n");
+}
+
+function fallbackOutputWithSource(record) {
+  const transcriptOutput = assistantTextFromTranscript(record.transcript);
+  if (transcriptOutput) return { key: "transcript.assistant_text", value: transcriptOutput };
+  if (!record.parse_error || !record.raw) return { key: "", value: undefined };
+  const responseText =
+    jsonStringFieldFromRaw(record.raw, "response_text") ||
+    jsonStringFieldFromRaw(record.raw, "responseText");
+  if (responseText) return { key: "parse_error.response_text", value: responseText };
+  return { key: "", value: undefined };
+}
+
 function numeric(record, keys) {
   const value = pick(record, keys);
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -139,8 +235,48 @@ function cachePercent(promptTokens, cacheReadTokens) {
   return (cacheReadTokens / promptTokens) * 100;
 }
 
+function stringArray(value) {
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function lastSnapshotStep(record) {
+  const steps = record?.trajectory_snapshot?.steps;
+  return Array.isArray(steps) && steps.length ? steps[steps.length - 1] : null;
+}
+
+function toolCallArguments(record) {
+  if (!Array.isArray(record.tool_calls)) return [];
+  return record.tool_calls
+    .map((call) => call?.function?.arguments)
+    .filter((value) => value !== undefined && value !== null)
+    .map((value) => (typeof value === "string" ? value : JSON.stringify(value)));
+}
+
+function benchmarkCommandFromToolCalls(record) {
+  for (const text of toolCallArguments(record)) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed?.command) return String(parsed.command);
+    } catch {
+      const match = String(text).match(/"command"\s*:\s*"([^"]+)"/);
+      if (match) return match[1];
+    }
+  }
+  return "";
+}
+
+function recentActionsFromPrompt(text) {
+  const source = String(text || "");
+  const match = source.match(/# Recent actions\s*([\s\S]*?)(?:\nYou are|\n\nYou are|$)/);
+  if (!match) return [];
+  return match[1]
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*\d+\.\s*/, "").trim())
+    .filter(Boolean);
+}
+
 function normalizeRecord(record, index) {
-  const input = pickWithSource(record, [
+  let input = pickWithSource(record, [
     "prompt_text",
     "input_text",
     "model_input",
@@ -152,7 +288,8 @@ function normalizeRecord(record, index) {
     "message.content",
     "transcript",
   ]);
-  const output = pickWithSource(record, [
+  if (!input.key) input = fallbackInputWithSource(record);
+  let output = pickWithSource(record, [
     "response_text",
     "output_text",
     "completion_text",
@@ -166,6 +303,7 @@ function normalizeRecord(record, index) {
     "result",
     "message",
   ]);
+  if (!output.key) output = fallbackOutputWithSource(record);
   const promptTokens = numeric(record, [
     "prompt_tokens",
     "input_tokens",
@@ -200,6 +338,11 @@ function normalizeRecord(record, index) {
   const taskId = String(
     pick(record, ["task_id", "task", "metadata.task_id", "scenario", "id"]) || "",
   );
+  const snapshotStep = lastSnapshotStep(record);
+  const context = snapshotStep?.context || {};
+  const toolNames = stringArray(record.tool_names).length
+    ? stringArray(record.tool_names)
+    : stringArray(record.metadata?.tool_names);
   return {
     index,
     taskId,
@@ -228,6 +371,32 @@ function normalizeRecord(record, index) {
     cachePercent:
       explicitCachePercent ?? cachePercent(promptTokens || totalTokens, cacheReadTokens),
     actions: Array.isArray(record.actions) ? record.actions.map(String) : [],
+    toolNames,
+    toolSchemaCount:
+      numeric(record, ["tool_schema_count", "metadata.tool_schema_count"]) ??
+      (Array.isArray(record.tools) ? record.tools.length : null),
+    toolCallNames: Array.isArray(record.tool_calls)
+      ? record.tool_calls.map((call) => String(call?.function?.name || "")).filter(Boolean)
+      : [],
+    toolCallArgumentsPreview: preview(toolCallArguments(record).join("\n")),
+    benchmarkCommand: benchmarkCommandFromToolCalls(record),
+    diagnosticsEndpoint: String(pick(record, ["diagnostics_endpoint", "metadata.diagnostics_endpoint"]) || ""),
+    trajectoryEndpoint: String(pick(record, ["trajectory_endpoint", "metadata.trajectory_endpoint"]) || ""),
+    trajectorySnapshotStatus: String(record.trajectory_snapshot?.status || ""),
+    trajectorySnapshotError: preview(record.trajectory_snapshot_error || record.trajectory_snapshot?.error || ""),
+    webshopPage: String(context.page || ""),
+    webshopGoal: String(context.goal || context.instruction || ""),
+    webshopBudget: context.budget ?? null,
+    webshopAvailableActions: stringArray(context.available_actions || context.actionSpace),
+    webshopRecentActions: recentActionsFromPrompt(record.prompt_text),
+    webshopObservationPreview: preview(context.observation || ""),
+    responseChars: numeric(record, ["response_chars", "responseChars"]),
+    toolCallCount: numeric(record, [
+      "tool_call_count",
+      "toolCallCount",
+      "usage.tool_call_count",
+      "metadata.tool_call_count",
+    ]),
     inputSource: input.key,
     outputSource: output.key,
     inputPreview: preview(input.value),

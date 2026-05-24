@@ -63,6 +63,7 @@ export const broken: number = ({ hello: "world" } as Greeting).foo;
 `;
 
 const PASS_SHIM_JS = `process.stdout.write("lint ok\\n"); process.exit(0);\n`;
+const TEST_SHIM_JS = `process.stdout.write(" Tests  2 passed (2)\\n"); process.exit(0);\n`;
 
 function writeMinimalTsProject(workdir: string, source: string): void {
 	writeFileSync(path.join(workdir, "src.ts"), source, "utf8");
@@ -90,6 +91,8 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 	// Lint: a tiny shim so we don't depend on eslint being installed.
 	const lintShim = path.join(workdir, "lint-shim.mjs");
 	writeFileSync(lintShim, PASS_SHIM_JS, "utf8");
+	const testShim = path.join(workdir, "test-shim.mjs");
+	writeFileSync(testShim, TEST_SHIM_JS, "utf8");
 
 	writeFileSync(
 		path.join(workdir, "package.json"),
@@ -105,6 +108,7 @@ function writeMinimalTsProject(workdir: string, source: string): void {
 					typecheck:
 						"npx --yes -p typescript@5.6.2 tsc --noEmit -p tsconfig.json",
 					lint: `node ${JSON.stringify(lintShim).slice(1, -1)}`,
+					test: `node ${JSON.stringify(testShim).slice(1, -1)}`,
 				},
 			},
 			null,
@@ -161,6 +165,79 @@ describe("AppVerificationService.verifyApp (integration)", () => {
 			expect((typecheck?.diagnostics ?? []).length).toBeGreaterThan(0);
 			expect(result.retryablePromptForChild.toLowerCase()).toContain(
 				"typecheck",
+			);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"fails structured proof with actual vs claimed test-count diagnostics",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-proof-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+
+			const result = await service.verifyApp({
+				workdir,
+				profile: "full",
+				runId: "int-proof-mismatch",
+				packageManager: "npm",
+				structuredProof: {
+					kind: "APP_CREATE_DONE",
+					appName: "verify-int-fixture",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 1, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("fail");
+			const proof = result.checks.find((c) => c.kind === "structured-proof");
+			expect(proof?.passed).toBe(false);
+			expect(proof?.diagnostics?.map((diag) => diag.message)).toContain(
+				"structured proof tests.passed=1 does not match verified test output passed=2",
+			);
+			expect(result.retryablePromptForChild).toContain(
+				'tests":{"passed":<exact passed count>',
+			);
+		},
+		120_000,
+	);
+
+	itIf(pkgManagerAvailable)(
+		"fails structured proof with explicit expected-vs-actual kind and name-field diagnostics",
+		async () => {
+			const workdir = mkdtempSync(path.join(tmpdir(), "verify-int-kind-"));
+			writeMinimalTsProject(workdir, PASS_TS);
+
+			const result = await service.verifyApp({
+				workdir,
+				profile: "full",
+				runId: "int-proof-kind-mismatch",
+				packageManager: "npm",
+				projectKind: "app",
+				structuredProof: {
+					kind: "PLUGIN_CREATE_DONE",
+					pluginName: "verify-int-fixture",
+					files: ["src.ts"],
+					typecheck: "ok",
+					lint: "ok",
+					tests: { passed: 2, failed: 0 },
+				},
+			});
+
+			expect(result.verdict).toBe("fail");
+			const proof = result.checks.find((c) => c.kind === "structured-proof");
+			expect(proof?.passed).toBe(false);
+			expect(proof?.diagnostics?.map((diag) => diag.message)).toEqual(
+				expect.arrayContaining([
+					"structured proof kind must be APP_CREATE_DONE; received PLUGIN_CREATE_DONE",
+					"structured proof must include a non-empty appName",
+					"structured proof pluginName is invalid for APP_CREATE_DONE",
+				]),
+			);
+			expect(result.retryablePromptForChild).toContain(
+				'APP_CREATE_DONE {"appName":"<package-name>"',
 			);
 		},
 		120_000,

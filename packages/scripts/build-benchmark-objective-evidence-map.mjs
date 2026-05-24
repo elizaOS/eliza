@@ -68,6 +68,9 @@ function buildPayload() {
   const corpusRemediation = readJson(
     "reports/benchmark-analysis/corpus-remediation-matrix/corpus-remediation.json",
   );
+  const corpusReviewPacks = readJson(
+    "reports/benchmark-analysis/corpus-review-packs/corpus-review-packs.json",
+  );
   const gap = readJson("reports/benchmark-analysis/gap-evidence/gap-evidence.json");
   const manualReview = readJson("reports/benchmark-analysis/manual-review/manual-review.json");
   const reviewQueue = readJson("reports/benchmark-analysis/review-queue/review-queue.json");
@@ -86,17 +89,17 @@ function buildPayload() {
       id: "five-examples",
       status: "caveated",
       requirement: "Approximately five examples per benchmark are selected, playback-linked, and ready for manual inspection.",
-      evidence: `${sampleReview.summary.sampleRows} sampled rows across ${sampleReview.summary.benchmarkCount} benchmarks; ${sampleReview.summary.rowsWithPlayback}/${sampleReview.summary.sampleRows} playback-linked; ${sampleReview.summary.rowsWithTaskId} task IDs; ${sampleReview.summary.reviewReadyRows} review-ready rows. OSWorld and some smoke/dry-run rows remain caveated.`,
+      evidence: `${sampleReview.summary.sampleRows} sampled rows across ${sampleReview.summary.benchmarkCount} benchmarks; ${sampleReview.summary.rowsWithPlayback}/${sampleReview.summary.sampleRows} playback-linked; ${sampleReview.summary.rowsWithTaskId} task IDs; ${sampleReview.summary.reviewReadyRows} review-ready rows. OSWorld samples remain smoke/dry-run caveats until a live provider is available.`,
       link: "../benchmark-sample-review-matrix/index.html",
-      nextAction: "Review the eight missing-input rows and rerun OSWorld once a provider is available.",
+      nextAction: "Rerun OSWorld once a provider is available; sampled playback is otherwise review-ready.",
     },
     {
       id: "trajectory-playback-input-output-cache",
       status: "caveated",
       requirement: "Trajectory playback exposes inputs, outputs, token usage, and cache behavior at call granularity.",
-      evidence: `${trajectoryIo.summary.playbackFiles}/${trajectoryIo.summary.files} trajectory files have playback; ${trajectoryIo.summary.withInput}/${trajectoryIo.summary.records} records expose input; ${trajectoryIo.summary.withOutput}/${trajectoryIo.summary.records} expose output; ${trajectoryIo.summary.missingOutputWithTokens} token-backed output gaps; ${fmt(trajectoryIo.summary.tokens)} tokens and ${fmt(trajectoryIo.summary.cacheReadTokens)} cached-read tokens.`,
+      evidence: `${trajectoryIo.summary.playbackFiles}/${trajectoryIo.summary.files} trajectory files have playback; ${trajectoryIo.summary.withInput}/${trajectoryIo.summary.records} records expose input; ${trajectoryIo.summary.withOutput}/${trajectoryIo.summary.records} expose output; ${trajectoryIo.summary.reviewRelevantOutputGaps} review-relevant empty-response token gaps and ${trajectoryIo.summary.benignOutputGaps} benign tool/action/environment gaps; ${fmt(trajectoryIo.summary.tokens)} tokens and ${fmt(trajectoryIo.summary.cacheReadTokens)} cached-read tokens.`,
       link: "../trajectory-io-completeness/index.html",
-      nextAction: "Use the I/O completeness report to separate tool/action-only rows from model output gaps.",
+      nextAction: "Inspect the review-relevant empty-response token gaps; treat tool/action-only and environment/dry-run gaps as classified playback caveats.",
     },
     {
       id: "ignored-html-viewers",
@@ -118,7 +121,7 @@ function buildPayload() {
       id: "version-comparison",
       status: "caveated",
       requirement: "Benchmark versions are compared where historical runs exist, with previous-run gaps explicit.",
-      evidence: `${versionRemediation.summary.withPrevious}/${versionRemediation.summary.benchmarkCount} benchmarks have previous rows; ${versionRemediation.summary.comparablePlaybackPairs} comparable playback pairs; ${versionRemediation.summary.previousPlaybackGaps} previous playback gaps; ${versionRemediation.summary.noPreviousRun} no-previous-run benchmarks; ${versionRemediation.summary.osworldProviderCaveats} OSWorld caveat.`,
+      evidence: `${versionRemediation.summary.withPrevious}/${versionRemediation.summary.benchmarkCount} benchmarks have previous rows; ${versionRemediation.summary.comparablePlaybackPairs} comparable playback pairs; ${versionRemediation.summary.previousPlaybackGaps} previous playback gaps (${(versionRemediation.summary.previousPlaybackGapBenchmarks || []).join(", ")}); ${versionRemediation.summary.previousAggregateOnlyWithViewer} aggregate-only previous viewers have zero target/baseline trajectory files; ${versionRemediation.summary.noPreviousRun} true no-previous-run benchmarks (${(versionRemediation.summary.noPreviousRunBenchmarks || []).join(", ")}); ${versionRemediation.summary.noEarlierPreviousRow || 0} no-earlier-previous-row benchmark; ${versionRemediation.summary.osworldProviderCaveats} OSWorld caveat.`,
       link: "../version-remediation-matrix/index.html",
       nextAction: "Rerun mind2web and nl2repo with trajectory output when previous playback is required.",
     },
@@ -126,9 +129,9 @@ function buildPayload() {
       id: "real-llm-e2e-tests",
       status: "caveated",
       requirement: "Real-LLM/live/e2e tests have playback, structured status, and prompt-response evidence.",
-      evidence: `${livePromptResponse.summary.likelyLlmScripts} likely-LLM scripts; ${livePromptResponse.summary.scriptsWithPlayback} playback-linked; ${livePromptResponse.summary.scriptsWithStructuredStatus} structured-status scripts; ${livePromptResponse.summary.scriptsWithStructuredSidecar} script-level structured sidecar; ${fmt(livePromptResponse.summary.structuredRunCallsParsed)} structured live-run calls parsed with prompt and response.`,
+      evidence: `${livePromptResponse.summary.likelyLlmScripts} likely-LLM scripts; ${livePromptResponse.summary.scriptsWithPlayback} playback-linked; ${livePromptResponse.summary.scriptsWithStructuredStatus} structured-status scripts; ${livePromptResponse.summary.scriptSidecarComplete} complete script sidecar, ${livePromptResponse.summary.reasonCodedNoModelCall} no-model-call rows, ${livePromptResponse.summary.runtimeBlockedBeforeSidecar} runtime-blocked rows, ${livePromptResponse.summary.missingCallArtifact} missing-call-artifact row; ${fmt(livePromptResponse.summary.structuredRunCallsParsed)} structured live-run calls parsed with prompt and response; ${livePromptResponse.summary.rowsWithOfflineReviewSummary}/${livePromptResponse.summary.likelyLlmScripts} rows have offline review summaries and ${livePromptResponse.summary.noSidecarRowsWithOfflineReviewSummary}/${livePromptResponse.summary.reasonCodedNoSidecar} no-sidecar rows have offline evidence guidance.`,
       link: "../live-test-prompt-response-completeness/index.html",
-      nextAction: "For strict script-local evidence, add sidecar emission to wrappers that currently only have reason-coded status.",
+      nextAction: "For strict script-local evidence, add sidecar emission to wrappers that currently only have runtime-blocked, runtime-service-unavailable, or other reason-coded no-sidecar status.",
     },
     {
       id: "all-scenarios",
@@ -150,17 +153,25 @@ function buildPayload() {
       id: "broader-corpus",
       status: "caveated",
       requirement: "The broader benchmark-results corpus is normalized, playback-linked where possible, and publication gaps are exposed.",
-      evidence: `${corpus.summary.rowCount} latest corpus rows across ${corpus.summary.benchmarkCount} benchmark families; ${corpus.summary.insufficientLatestRows} insufficient latest rows; ${corpusRemediation.summary.telemetryGapFamilies} telemetry-gap families; ${corpusRemediation.summary.blockedFamilies} blocked family; ${corpusRemediation.summary.normalizedCalls} normalized calls.`,
+      evidence: `${corpus.summary.rowCount} latest corpus rows across ${corpus.summary.benchmarkCount} benchmark families; ${corpus.summary.insufficientLatestRows} insufficient latest rows; ${corpusRemediation.summary.telemetryGapFamilies} telemetry-gap families; ${corpusRemediation.summary.blockedFamilies} blocked family; ${fmt(corpus.callCatalogSummary?.normalizedCallCount || 0)} full-corpus normalized calls (${fmt(corpusRemediation.summary.normalizedCalls)} in the focused remediation subset); ${corpusReviewPacks.summary.warningRowsWithPlayback}/${corpusReviewPacks.summary.warningRows} publication-warning rows have playback and ${corpusReviewPacks.summary.warningRowsWithCallPreview}/${corpusReviewPacks.summary.warningRows} have call previews.`,
       link: "../corpus-remediation-matrix/index.html",
       nextAction: "Resolve publication warnings and Hyperliquid credentials before treating the corpus as fully closed.",
     },
     {
       id: "manual-review-workspace",
-      status: "caveated",
-      requirement: "Manual review notes are durable and agent-triaged, while human verdict gaps remain visible.",
+      status:
+        manualReview.summary.reviewed === reviewQueue.summary.itemCount &&
+        manualReview.summary.highPriorityUnreviewed === 0
+          ? "proven"
+          : "caveated",
+      requirement: "Manual review notes are durable, agent-triaged, and reviewed with durable verdicts.",
       evidence: `${manualReview.summary.noteCount}/${reviewQueue.summary.itemCount} review notes generated; ${manualReview.summary.agentReviewed} agent-triaged; ${manualReview.summary.reviewed} human-reviewed; ${manualReview.summary.highPriorityUnreviewed} high-priority items still unreviewed by a human.`,
       link: "../manual-review/index.html",
-      nextAction: "Fill human verdicts for high-priority items before declaring human manual review complete.",
+      nextAction:
+        manualReview.summary.reviewed === reviewQueue.summary.itemCount &&
+        manualReview.summary.highPriorityUnreviewed === 0
+          ? "Keep the durable note verdicts synchronized by rebuilding the analysis stack after new review queue items are added."
+          : "Fill all human verdicts before declaring human manual review complete.",
     },
     {
       id: "external-gates",

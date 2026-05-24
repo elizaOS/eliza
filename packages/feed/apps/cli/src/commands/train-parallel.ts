@@ -144,11 +144,11 @@ function createParallelGenerator(config: ParallelGenerationConfig): ParallelGene
         archetypeTrajectoryIds[archetype] = new Set();
         for (let index = 0; index < config.agentsPerArchetype; index += 1) {
           try {
-            const suffix = `${Date.now()}_${index}`;
+            const suffix = `${Date.now().toString(36).slice(-5)}_${index.toString(36)}`;
             const agent = await agentService.createAgent({
               userId: config.managerId,
               name: `Training ${archetype} ${index + 1}`,
-              username: `train_${safeUsername(archetype)}_${suffix}`.slice(0, 20),
+              username: `tr_${safeUsername(archetype).slice(0, 8)}_${suffix}`,
               description: `Feed training data generator for ${archetype}`,
               system: `You are a ${archetype} feed simulation agent generating trajectories for training.`,
               bio: [`${archetype} training trajectory generator`],
@@ -229,7 +229,9 @@ function createParallelGenerator(config: ParallelGenerationConfig): ParallelGene
       const maybeDelete = agentService.deleteAgent;
       if (!maybeDelete) return;
       await Promise.all(
-        createdAgents.map((agent) => maybeDelete(agent.id, config.managerId)),
+        createdAgents.map((agent) =>
+          maybeDelete.call(agentService, agent.id, config.managerId),
+        ),
       );
     },
   };

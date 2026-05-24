@@ -1,21 +1,21 @@
-"""SoC integration smoke — CLINT, PLIC, and AXI4 DRAM-controller RTL in e1_soc_top.
+"""SoC integration smoke — real CLINT + real PLIC + real AXI4 DRAM in e1_soc_top.
 
 Drives the integrated e1_soc_top config (compiled with +define+E1_SOC_REAL_IRQ
 +define+E1_SOC_REAL_DRAM) through its 32-bit MMIO debug aperture and proves the
-RTL interrupt + main-memory leaves compose end to end inside the SoC,
+production interrupt + main-memory leaves compose end to end inside the SoC,
 not just standalone:
 
-  * dram_rw            — write/read words through the e1_dram_ctrl AXI4
-                         RTL model at the 2 GiB @ 0x8000_0000 main-memory
+  * dram_rw            — write/read words through the real e1_dram_ctrl AXI4
+                         controller at the 2 GiB @ 0x8000_0000 main-memory
                          window; the discoverable capacity ports report 2 GiB.
-  * clint_timer_irq    — program the e1_clint RTL mtimecmp and observe mtip_o
+  * clint_timer_irq    — program the real e1_clint mtimecmp and observe mtip_o
                          (mip.MTIP) assert when the free-running mtime crosses
                          it; the CPU subsystem's time_irq_i is fed from it.
-  * plic_claim_complete— raise a device IRQ source line into the e1_plic RTL
+  * plic_claim_complete— raise a device IRQ source line into the real e1_plic
                          gateway, enable it, claim it (read), confirm meip_o
                          (mip.MEIP) round-trips, then complete it.
 
-The MMIO aperture is single-outstanding; RTL regions hold mmio_ready low
+The MMIO aperture is single-outstanding; real regions hold mmio_ready low
 until the AXI(-Lite) transfer drains, so these helpers poll mmio_ready.
 """
 
@@ -36,7 +36,7 @@ CLINT_MTIME_LO = 0xBFF8
 CLINT_MTIME_HI = 0xBFFC
 
 # PLIC register offsets (RISC-V PLIC v1.0.0 map), context 0 = hart0 M-mode.
-PLIC_PRIORITY = 0x00_0000  # +4*src
+PLIC_PRIORITY = 0x00_0000     # +4*src
 PLIC_ENABLE_CTX0 = 0x00_2000  # bitfield, bit s = source s
 PLIC_THRESHOLD_CTX0 = 0x20_0000
 PLIC_CLAIM_CTX0 = 0x20_0004
@@ -107,7 +107,7 @@ async def mread(dut, addr):
 
 @cocotb.test()
 async def dram_rw(dut):
-    """AXI4 DRAM-controller RTL model: word write/read at the 2 GiB main window."""
+    """Real AXI4 DRAM controller: word write/read at the 2 GiB main window."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
@@ -141,7 +141,7 @@ async def clint_timer_irq(dut):
     # No spurious timer IRQ at reset (mtimecmp resets to all-ones).
     assert int(dut.mtip_o.value) == 0
 
-    # msip round-trips through the CLINT RTL (software interrupt).
+    # msip round-trips through the real CLINT (software interrupt).
     await mwrite(dut, CLINT_BASE + CLINT_MSIP, 1)
     assert await mread(dut, CLINT_BASE + CLINT_MSIP) == 1
     assert int(dut.msip_o.value) == 1

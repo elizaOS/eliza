@@ -46,6 +46,7 @@ const RENDER_TELEMETRY_INSTALLED_KEY =
   "__ELIZA_RENDER_TELEMETRY_WATCHER_INSTALLED__";
 
 const renderTelemetryGuardedPages = new WeakSet<Page>();
+const browserDiagnosticIssuesByPage = new WeakMap<Page, string[]>();
 
 type ReadyCheck =
   | { selector: string; text?: never }
@@ -62,6 +63,67 @@ type RenderTelemetryIssue = {
   windowMs?: number;
   severity?: string;
 };
+
+function issueMessage(error: Error): string {
+  return error.stack || error.message || String(error);
+}
+
+function shouldIgnoreRequestFailure(url: string, failureText: string): boolean {
+  if (failureText.includes("net::ERR_ABORTED")) return true;
+  if (url.startsWith("data:") || url.startsWith("blob:")) return true;
+  return false;
+}
+
+function shouldIgnoreHttpError(url: string, status: number): boolean {
+  if (status < 400) return true;
+  if (url.startsWith("data:") || url.startsWith("blob:")) return true;
+  return false;
+}
+
+export function installPageDiagnosticsGuard(page: Page): void {
+  if (browserDiagnosticIssuesByPage.has(page)) return;
+
+  const issues: string[] = [];
+  browserDiagnosticIssuesByPage.set(page, issues);
+
+  page.on("pageerror", (error) => {
+    issues.push(`pageerror: ${issueMessage(error)}`);
+  });
+
+  page.on("console", (message) => {
+    if (message.type() !== "error") return;
+    issues.push(`console.error: ${message.text()}`);
+  });
+
+  page.on("requestfailed", (request) => {
+    const failureText = request.failure()?.errorText ?? "unknown";
+    const url = request.url();
+    if (shouldIgnoreRequestFailure(url, failureText)) return;
+    issues.push(`requestfailed: ${request.method()} ${url} ${failureText}`);
+  });
+
+  page.on("response", (response) => {
+    const status = response.status();
+    const url = response.url();
+    if (shouldIgnoreHttpError(url, status)) return;
+    issues.push(`http.${status}: ${response.request().method()} ${url}`);
+  });
+}
+
+export async function expectNoPageDiagnostics(
+  page: Page,
+  label: string,
+): Promise<void> {
+  const issues = browserDiagnosticIssuesByPage.get(page) ?? [];
+  expect(
+    issues,
+    `[playwright-ui-smoke] ${label}: expected no browser console.error/pageerror/requestfailed diagnostics; actual=${JSON.stringify(
+      issues,
+      null,
+      2,
+    )}`,
+  ).toEqual([]);
+}
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Basics", "identity"],

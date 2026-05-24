@@ -290,7 +290,9 @@ async def su_access_to_tsm_denied(dut):
         for base in (TSM_CODE_BASE, TSM_DATA_BASE):
             for acc in (ACC_READ, ACC_WRITE, ACC_FETCH):
                 allow, deny = await check(dut, priv, base + 0x20, acc)
-                assert allow == 0 and deny == 1, f"priv={priv} base={base:#x} acc={acc} must DENY"
+                assert allow == 0 and deny == 1, (
+                    f"priv={priv} base={base:#x} acc={acc} must DENY"
+                )
 
 
 @cocotb.test()

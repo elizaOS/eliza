@@ -173,7 +173,7 @@
     "test:cloud:full": "bun run test:cloud && bun run test:cloud:e2e",
     "test:cloud:e2e": "bun run --cwd packages/cloud-api test:e2e",
     "test:cloud:integration": "node packages/scripts/cloud/admin/run-integration-tests.mjs",
-    "test:cloud:playwright": "bun run --cwd packages/cloud-frontend test",
+    "test:cloud:playwright": "bun run --cwd packages/cloud-frontend test:e2e",
     "cloud:e2e": "bun run --cwd packages/test/cloud-e2e test",
     "cloud:e2e:headed": "bun run --cwd packages/test/cloud-e2e test:headed",
     "cloud:e2e:ui": "bun run --cwd packages/test/cloud-e2e test:ui",

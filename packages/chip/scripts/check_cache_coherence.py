@@ -29,7 +29,6 @@ dependency and exits non-zero (fail-closed).
 from __future__ import annotations
 
 import datetime as _dt
-import os
 import json
 import shutil
 import subprocess
@@ -122,7 +121,9 @@ def check_lint(verilator: str) -> dict:
         ]
     )
     proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
-    diags = [ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln]
+    diags = [
+        ln for ln in proc.stderr.splitlines() if "%Warning" in ln or "%Error" in ln
+    ]
     if proc.returncode == 0 and not diags:
         return {
             "id": "verilator_lint",
@@ -137,42 +138,24 @@ def check_lint(verilator: str) -> dict:
     }
 
 
-def summarize_junit_results(results: Path) -> tuple[set[str], list[str]]:
-    tree = ET.parse(results)
-    seen: set[str] = set()
-    failed: list[str] = []
-    for tc in tree.iter("testcase"):
-        name = tc.get("name", "")
-        seen.add(name)
-        if tc.find("failure") is not None:
-            failed.append(f"{name}<failure>")
-        if tc.find("error") is not None:
-            failed.append(f"{name}<error>")
-        if tc.find("skipped") is not None:
-            failed.append(f"{name}<skipped>")
-    return seen, failed
-
-
-def run_cocotb(spec: dict, verilator: str) -> dict:
+def run_cocotb(spec: dict) -> dict:
     results = COCOTB_DIR / spec["results"]
     if results.exists():
         results.unlink()
-    env = os.environ.copy()
-    verilator_dir = str(Path(verilator).resolve().parent)
-    env["PATH"] = verilator_dir + os.pathsep + env.get("PATH", "")
-    env["COCOTB_TOPLEVEL"] = spec["toplevel"]
-    env["COCOTB_MODULE"] = spec["module"]
-    env["REQUIRE_CACHE_COCOTB"] = "1"
     rc = subprocess.run(
-        [str(ROOT / "scripts/run_cocotb_cache.sh")],
+        [
+            "make",
+            "-C",
+            str(COCOTB_DIR),
+            f"TOPLEVEL={spec['toplevel']}",
+            f"MODULE={spec['module']}",
+            f"SIM_BUILD={spec['sim_build']}",
+            f"COCOTB_RESULTS_FILE={spec['results']}",
+        ],
         capture_output=True,
         text=True,
         cwd=ROOT,
-        env=env,
     )
-    generated = COCOTB_DIR / "results" / f"{spec['toplevel']}_{spec['module']}.xml"
-    if generated.is_file():
-        shutil.copyfile(generated, results)
     if not results.is_file():
         last = rc.stderr.splitlines()[-1] if rc.stderr else ""
         return {
@@ -180,7 +163,13 @@ def run_cocotb(spec: dict, verilator: str) -> dict:
             "status": "blocked",
             "detail": f"no {spec['results']}; cocotb/verilator unavailable. {last}",
         }
-    seen, failed = summarize_junit_results(results)
+    tree = ET.parse(results)
+    seen, failed = set(), []
+    for tc in tree.iter("testcase"):
+        name = tc.get("name", "")
+        seen.add(name)
+        if tc.find("failure") is not None or tc.find("error") is not None:
+            failed.append(name)
     missing = [t for t in spec["expected"] if t not in seen]
     if failed or missing:
         return {
@@ -216,8 +205,8 @@ def main() -> int:
         )
     else:
         checks.append(check_lint(verilator))
-        checks.append(run_cocotb(SMP_COCOTB, verilator))
-        checks.append(run_cocotb(VECTORS_COCOTB, verilator))
+        checks.append(run_cocotb(SMP_COCOTB))
+        checks.append(run_cocotb(VECTORS_COCOTB))
 
     has_fail = any(c["status"] == "fail" for c in checks)
     has_block = any(c["status"] == "blocked" for c in checks)

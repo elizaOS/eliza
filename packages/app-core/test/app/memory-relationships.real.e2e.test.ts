@@ -17,6 +17,7 @@ import puppeteer, { type Browser, type Page } from "puppeteer-core";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { describeIf } from "../helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../helpers/live-provider.ts";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality.ts";
 
 const DEFAULT_UI_URL = stripTrailingSlash(
   process.env.ELIZA_LIVE_UI_URL ??
@@ -475,7 +476,7 @@ async function findPersonWithMemories(
 }
 
 async function saveScreenshot(page: Page, name: string): Promise<void> {
-  await page.screenshot({
+  await captureScreenshotWithQualityRetry(page, name, {
     path: path.join(ARTIFACT_DIR, `${name}.png`),
     fullPage: true,
   });

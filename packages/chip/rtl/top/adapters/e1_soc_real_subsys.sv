@@ -48,7 +48,7 @@ module e1_soc_real_subsys
     input  logic [31:0] mmio_addr,
     input  logic [31:0] mmio_wdata,
 
-    // Region selects (decoded in the top: CLINT RTL, PLIC RTL, DRAM RTL path).
+    // Region selects (decoded in the top: real CLINT, real PLIC, real DRAM).
     input  logic        clint_sel,
     input  logic        plic_sel,
     input  logic        dram_sel,
@@ -244,7 +244,7 @@ module e1_soc_real_subsys
     );
 
     // ====================================================================
-    // AXI4 DRAM-controller RTL model. The MMIO word access is bridged to a single
+    // Real AXI4 DRAM controller. The MMIO word access is bridged to a single
     // AXI4 beat (AWLEN/ARLEN=0, SIZE=4B) by e1_axi4_mmio_shim, which selects
     // the 32-bit lane within the 128-bit data bus from mmio_addr[3:2].
     // ====================================================================
@@ -543,7 +543,7 @@ endmodule : e1_axil_mmio_shim
 // Each MMIO access becomes one AXI4 beat (AWLEN/ARLEN=0, SIZE=4B, INCR). The
 // 32-bit MMIO lane is placed on / extracted from the 128-bit AXI4 data bus by
 // the word offset mmio_addr[3:2]; WSTRB enables only that lane. The full
-// physical address handed to the controller is the configured DRAM base
+// physical address handed to the controller is the real DRAM base
 // (0x8000_0000) + the window word offset, so the controller's in-range check
 // and discoverable-capacity contract are exercised at the true address.
 // ----------------------------------------------------------------------

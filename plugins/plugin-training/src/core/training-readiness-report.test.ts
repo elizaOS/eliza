@@ -573,6 +573,8 @@ describe("training readiness report", () => {
             variant,
             baseModel: variant === "trained" ? `eliza-1-${tier}-base` : null,
             outputPath: `hf://elizaos/eliza-1-${tier}-${variant}`,
+            baseEvalScore: variant === "trained" ? 0.4 : null,
+            trainedEvalScore: variant === "trained" ? 0.44 : null,
             evalImprovementPercent: variant === "trained" ? 10 : null,
           })),
         ),
@@ -917,6 +919,97 @@ describe("training readiness report", () => {
       status: "missing",
       recommendedAction: {
         capability: "terminal-training-build-analysis-index",
+      },
+    });
+  });
+
+  it("keeps readable source samples partial until every collected source has previews", () => {
+    const report = buildTrainingReadinessReportPayload(
+      analysis([], {
+        dataSources: {
+          huggingFace: 1,
+          feed: 1,
+          natural: 1,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+        },
+        readableSamples: {
+          huggingFace: 1,
+          feed: 1,
+          natural: 0,
+          scenarios: 0,
+          tests: 0,
+          trainingJsonl: 0,
+          total: 2,
+        },
+        evals: {
+          artifacts: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+        },
+        benchmarks: {
+          matrices: 0,
+          comparisons: 0,
+          scoredComparisons: 0,
+          caseSamples: 0,
+          tiers: [],
+          allEliza1TiersCovered: false,
+          tierCoverage: [],
+        },
+        models: {
+          artifacts: 0,
+          inventory: [],
+        },
+      }),
+    );
+
+    expect(
+      report.checks.find((item) => item.id === "readable_source_samples"),
+    ).toMatchObject({
+      status: "partial",
+      artifactCount: 2,
+      note:
+        "Analysis coverage found collected trajectory sources that do not all expose readable samples yet.",
+      recommendedAction: {
+        capability: "terminal-training-build-analysis-index",
+      },
+    });
+  });
+
+  it("does not count non-Eliza scored evals as Eliza harness benchmark evidence", () => {
+    const report = buildTrainingReadinessReportPayload(
+      analysis([
+        {
+          id: "mmlu",
+          kind: "eval",
+          title: "MMLU",
+          path: "/tmp/mmlu.json",
+          summary: {
+            benchmark: "mmlu",
+            score: 0.91,
+            total: 100,
+          },
+          payload: {
+            schema: "generic_eval_report",
+            benchmark: "mmlu",
+          },
+        },
+      ]),
+    );
+
+    expect(
+      report.checks.find((item) => item.id === "agentic_benchmarks"),
+    ).toMatchObject({
+      status: "missing",
+      note: "No Eliza harness benchmark artifact was found.",
+      recommendedAction: {
+        capability: "terminal-training-run-collection",
+        params: {
+          actionBenchmark: expect.objectContaining({
+            benchmark: "eliza_harness_action_selection",
+          }),
+        },
       },
     });
   });

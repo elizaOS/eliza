@@ -85,7 +85,13 @@ def _now() -> str:
 def _run_model(script: Path, check_id: str, ok_detail: str) -> dict:
     if not script.is_file():
         return {"id": check_id, "status": "blocked", "detail": f"{script.name} missing"}
+<<<<<<< HEAD
     proc = subprocess.run([sys.executable, str(script)], capture_output=True, text=True, cwd=ROOT)
+=======
+    proc = subprocess.run(
+        [sys.executable, str(script)], capture_output=True, text=True, cwd=ROOT
+    )
+>>>>>>> origin/rot-integration-backup-2026-05-21
     if proc.returncode != 0:
         return {
             "id": check_id,

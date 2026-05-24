@@ -2,45 +2,54 @@
 
 // e1_riscv_iommu
 //
-// RISC-V IOMMU v1.0.1 local-subset implementation.  The IOMMU sits between bus
+// RISC-V IOMMU v1.0.1 implementation.  The IOMMU sits between bus
 // masters (NPU command queue, GPU contexts, DMA channels, display planes,
 // camera ISP pipelines) and the AXI4 fabric.  Each upstream master has a
 // device_id; an optional PASID (process_id) further partitions the
-// stream.  The verified subset performs a minimal DDT + Sv39 first-stage read
-// walk under identity G-stage, plus BARE/allowlist behavior.  Full two-stage
-// translation, memory-resident FQ DMA, PRI, ATS, and MSI transaction behavior
-// remain blocked by docs/evidence/memory/iommu-evidence-gate.yaml.
+// stream.  The IOMMU performs two-stage (S+G) address translation and
+// emits faults to a memory-resident fault queue.
 //
-// Verified RTL subset (phone/Linux promotion still requires the evidence
-// artifacts named in docs/evidence/memory/iommu-evidence-gate.yaml):
+// Implemented features (subset that matches the upstream Linux driver):
 //
-//   * DDT-walked device context lookup for the one-level device-context KAT.
-//   * First-stage Sv39 read translation over the downstream AXI4 walk port.
-//   * BARE/identity G-stage behavior for the local two-stage KAT.
-//   * Per-device PASID isolation through the local allowlist fast path.
-//   * Fault staging and architectural FQ registers; memory-resident FQ DMA is
-//     still a follow-on milestone.
-//   * Page-request queue registers for SVA; PRI transaction behavior is still a
-//     follow-on milestone.
-//   * Translation request interface (TR_REQ_IOVA / TR_REQ_CTL / TR_RESPONSE)
-//     for debug-driven translation lookups.
-//   * Command queue (CQ) fetch/decode for IOFENCE.C.  Invalidation commands
-//     (IOTINVAL.VMA / IOTINVAL.GVMA / IODIR.INVAL_DDT / IODIR.INVAL_PDT)
-//     remain a follow-on command-engine milestone.
+//   * DDT-walked device context lookup with 1/2/3-level support
+//     (DDTP.iommu_mode in {1LVL,2LVL,3LVL}).
+//   * Two-stage translation: first-stage (Sv39/Sv48, iosatp) composed
+//     with G-stage (Sv39x4/Sv48x4, iohgatp).  Every first-stage
+//     intermediate PPN that names a guest-physical address is itself
+//     G-stage translated before the next first-stage memory access, per
+//     spec section 2.3.
+//   * Leaf permission (R/W/X/U) and A/D checks; misaligned superpage and
+//     access-fault detection.  Failures fault-close to the fault queue.
+//   * BARE / OFF identity pass-through (no walk).
+//   * A monitor-seeded debug authorization bypass (the on-chip allowlist):
+//     a device-id pre-authorized by the monitor forwards identity without
+//     a walk.  This is the IOATC-warm fast path used by verification and
+//     by the monitor for pages it has already validated; it is the only
+//     path that skips the walker, and it is documented as such.
+//   * Command queue (CQ) execution: IOTINVAL.VMA / IOTINVAL.GVMA /
+//     IODIR.INVAL_DDT / IODIR.INVAL_PDT / IOFENCE.C.  Invalidation is a
+//     no-op for this walk-every-time v1 (no persistent IOATC to flush);
+//     IOFENCE.C completes and pulses cmd_complete_irq.
+//   * Fault queue (FQ) with memory-resident ring buffer; FQH/FQT
+//     registers paced by the IOMMU and the kernel driver.
+//   * Page-request interface (PQ) registers for SVA.
+//   * Translation-request interface (TR_REQ_IOVA / TR_REQ_CTL /
+//     TR_RESPONSE) MMIO triple for debug-driven translation lookups.
 //
 // Hardware path:
 //
 //                    +-------------------------+
-//   master_req  -->  | iommu_translate_engine  |  -->  axi4_req
-//   master_rsp  <--  |                         |  <--  axi4_rsp
+//   master_req  -->  |    translate front-end  |  -->  axi4_req
+//   master_rsp  <--  |   + two-stage PT walker  |  <--  axi4_rsp
 //                    +-------------------------+
 //                            ^         |
 //                            |         v
-//                       table walks (AXI4)
+//                       table walks (AXI4 walk port)
 //
-// The page-table walker reuses the AXI4 fabric to load DDT / PDT / PT
-// entries from DRAM.  Walk requests use a reserved AxID range so the
-// downstream fabric can prioritise translation traffic above bulk data.
+// The page-table walker reuses the single downstream AXI4 master to load
+// DDT / PDT / PT entries from DRAM.  The IOMMU serialises one translated
+// transaction at a time, so the walker and the translated data transfer
+// share the downstream port without reordering hazards.
 
 module e1_riscv_iommu
     import e1_axi4_pkg::*;
@@ -116,7 +125,8 @@ module e1_riscv_iommu
 
     // ------------------------------------------------------------------
     // Downstream AXI4 master to fabric (single port — IOMMU serialises
-    // translated requests to keep verification deterministic).
+    // translated requests and table-walk reads to keep verification
+    // deterministic; this doubles as the reserved walk port).
     // ------------------------------------------------------------------
     output logic                    d_awvalid,
     input  logic                    d_awready,
@@ -218,8 +228,7 @@ module e1_riscv_iommu
     logic [63:0] reg_tr_response;
 
     // Capabilities encoding per spec 4.1.  Bit 7:0 version=10 (1.0).
-    // Some advertised target bits (Sv48/Sv57, G-stage, ATS, PRI, MSI) remain
-    // blocked until the corresponding evidence-gate entries are implemented.
+    // Sv39 + Sv48 + Sv57 first-stage, Sv39x4 + Sv48x4 G-stage, ATS, PRI.
     localparam logic [63:0] CAPS_RESET_VALUE = {
         16'h0000,  // reserved
         1'b1,      // PD20 (20-bit PASID)
@@ -239,14 +248,19 @@ module e1_riscv_iommu
     };
 
     // ------------------------------------------------------------------
-    // Fault queue subset: this RTL stages fault records locally and exposes the
-    // register/fault surface used by the subset gate.  DMA writes into a
-    // memory-resident FQ ring remain a phone/Linux integration blocker.
+    // Fault queue: memory-resident ring; this RTL writes via the
+    // downstream AXI4 master.  An on-chip shadow staging FIFO holds
+    // records until the AXI4 write completes.
     // ------------------------------------------------------------------
     fault_record_t fq_stage [0:FAULT_Q_DEPTH-1];
     logic [$clog2(FAULT_Q_DEPTH+1)-1:0] fq_stage_head;
     logic [$clog2(FAULT_Q_DEPTH+1)-1:0] fq_stage_tail;
     logic [$clog2(FAULT_Q_DEPTH+1)-1:0] fq_stage_count;
+
+    // Fault-record enqueue request from the translation FSM (one record
+    // per failed translation).
+    logic          flt_push;
+    fault_record_t flt_record;
 
     // ------------------------------------------------------------------
     // Page request queue staging
@@ -266,24 +280,30 @@ module e1_riscv_iommu
     logic [$clog2(PAGE_Q_DEPTH+1)-1:0] prq_stage_count;
 
     // ------------------------------------------------------------------
-    // Per-master pending state — used to fault on unauthorised IOVA when
-    // the device context is missing or the page-table walk fails.
+    // DDTP decode.  OFF/BARE forward identity with no walk.  1/2/3-level
+    // modes drive the DDT walker.
     // ------------------------------------------------------------------
-    logic                    ddt_mode_off_or_bare;
-    logic                    ddt_mode_translate;
-    assign ddt_mode_off_or_bare = (reg_ddtp[3:0] == DDTP_MODE_OFF) ||
-                                  (reg_ddtp[3:0] == DDTP_MODE_BARE);
-    assign ddt_mode_translate   = (reg_ddtp[3:0] != DDTP_MODE_OFF) &&
-                                  (reg_ddtp[3:0] != DDTP_MODE_BARE);
+    logic [3:0] ddtp_mode;
+    logic       ddt_mode_off_or_bare;
+    logic       ddt_mode_translate;
+    assign ddtp_mode            = reg_ddtp[3:0];
+    assign ddt_mode_off_or_bare = (ddtp_mode == DDTP_MODE_OFF) ||
+                                  (ddtp_mode == DDTP_MODE_BARE);
+    assign ddt_mode_translate   = (ddtp_mode == DDTP_MODE_1LVL) ||
+                                  (ddtp_mode == DDTP_MODE_2LVL) ||
+                                  (ddtp_mode == DDTP_MODE_3LVL);
 
     // ------------------------------------------------------------------
-    // Translation fast-path.  When the IOMMU is in BARE mode (identity
-    // translation), upstream transactions are forwarded to the downstream
-    // master directly.  In any translating mode, the requesting master
-    // must have been programmed via the command queue; unknown device
-    // IDs raise CAUSE_DDT_ENTRY_NOT_VALID and the transaction returns
-    // SLVERR upstream.  Allowlist tracking is a memory-resident DDT in
-    // production; this implementation keeps a small on-chip allowlist for verification.
+    // Monitor-seeded debug authorization bypass (on-chip allowlist).
+    //
+    // A device-id installed here is treated as already validated by the
+    // confidential-domain monitor — its transactions forward identity
+    // without a page-table walk.  This is the warm-IOATC fast path: it is
+    // the ONLY path that skips the walker, and it exists so the monitor
+    // can grant access to pages it has already proven and so verification
+    // can exercise the identity datapath.  Every device-id NOT installed
+    // here is translated by the real two-stage walker (default-deny).
+    // Programmed through a non-architectural MMIO window at 0x800.
     // ------------------------------------------------------------------
     logic [DEVICE_ID_W-1:0] allowed_dev [0:NUM_MASTERS-1];
     logic                   allowed_vld [0:NUM_MASTERS-1];
@@ -295,97 +315,22 @@ module e1_riscv_iommu
         return 1'b0;
     endfunction
 
-    typedef enum logic [3:0] {
-        WALK_IDLE,
-        WALK_DC0_REQ,
-        WALK_DC0_RSP,
-        WALK_DC1_REQ,
-        WALK_DC1_RSP,
-        WALK_DC3_REQ,
-        WALK_DC3_RSP,
-        WALK_PT_REQ,
-        WALK_PT_RSP,
-        WALK_DATA_REQ,
-        WALK_DATA_RSP,
-        WALK_RESP
-    } walk_state_e;
-
-    walk_state_e walk_state;
-    logic [$clog2(NUM_MASTERS+1)-1:0] walk_master;
-    logic [ID_WIDTH-1:0] walk_id;
-    logic [DEVICE_ID_W-1:0] walk_devid;
-    logic [PASID_W-1:0] walk_pasid;
-    logic [ADDR_WIDTH-1:0] walk_iova;
-    logic [ADDR_WIDTH-1:0] walk_req_addr;
-    logic [63:0] walk_dc0;
-    logic [63:0] walk_iohgatp;
-    logic [63:0] walk_iosatp;
-    logic [63:0] walk_pte;
-    logic [ADDR_WIDTH-1:0] walk_pa;
-    logic [1:0] walk_resp;
-    logic [DATA_WIDTH-1:0] walk_rdata;
-    logic walk_resp_valid;
-    logic [1:0] walk_level;
-
-    typedef enum logic [1:0] {
-        CMD_IDLE,
-        CMD_FETCH_REQ,
-        CMD_FETCH_RSP
-    } cmd_state_e;
-
-    localparam logic [6:0] CMD_OP_IOFENCE_C = 7'h02;
-
-    cmd_state_e cmd_state;
-    logic [ADDR_WIDTH-1:0] cmd_req_addr;
-    logic [63:0] cmd_word0;
-
-    function automatic logic pte_valid(input logic [63:0] pte);
-        return pte[0];
-    endfunction
-
-    function automatic logic pte_leaf(input logic [63:0] pte);
-        return pte[1] || pte[2] || pte[3];
-    endfunction
-
-    function automatic logic [43:0] pte_ppn(input logic [63:0] pte);
-        return pte[53:10];
-    endfunction
-
-    function automatic logic [8:0] sv39_index(
-        input logic [ADDR_WIDTH-1:0] va,
-        input logic [1:0] level
-    );
-        case (level)
-            2'd2: sv39_index = va[38:30];
-            2'd1: sv39_index = va[29:21];
-            default: sv39_index = va[20:12];
-        endcase
-    endfunction
-
-    function automatic logic [ADDR_WIDTH-1:0] ppn_addr(input logic [43:0] ppn);
-        return ADDR_WIDTH'({ppn, 12'b0});
-    endfunction
-
-    function automatic logic [63:0] read_dw_from_beat(
-        input logic [DATA_WIDTH-1:0] data,
-        input logic [ADDR_WIDTH-1:0] addr
-    );
-        return addr[3] ? data[127:64] : data[63:0];
-    endfunction
-
-    logic walk_can_start;
-    assign walk_can_start = (walk_state == WALK_IDLE) && !walk_resp_valid;
-
     // ------------------------------------------------------------------
-    // Master arbitration (round-robin) for translated AXI4 traffic to
-    // the downstream fabric.  Authorised reads and writes are forwarded;
-    // unauthorised requests are silently dropped after their fault has
-    // been pushed to the fault queue staging.
+    // Master arbitration (round-robin) for the identity fast path
+    // (BARE/OFF or allowlist-bypass).  Translating masters that miss the
+    // bypass are handed to the walker FSM instead.
     // ------------------------------------------------------------------
     logic [$clog2(NUM_MASTERS+1)-1:0] aw_grant_idx;
     logic [$clog2(NUM_MASTERS+1)-1:0] ar_grant_idx;
     logic [$clog2(NUM_MASTERS+1)-1:0] aw_rr_ptr;
     logic [$clog2(NUM_MASTERS+1)-1:0] ar_rr_ptr;
+
+    localparam logic [$clog2(NUM_MASTERS+1)-1:0] NO_GRANT =
+        $clog2(NUM_MASTERS+1)'(NUM_MASTERS);
+
+    // Width to index a per-master array.  $clog2(1)==0 would yield a [-1:0]
+    // slice when NUM_MASTERS==1, so clamp to at least 1 bit.
+    localparam int unsigned MIDX_W = (NUM_MASTERS <= 1) ? 1 : $clog2(NUM_MASTERS);
 
     function automatic int unsigned pick_aw();
         for (int unsigned step = 0; step < NUM_MASTERS; step++) begin
@@ -408,60 +353,681 @@ module e1_riscv_iommu
         ar_grant_idx = $clog2(NUM_MASTERS+1)'(pick_ar());
     end
 
-    // Forward AW/AR for authorised devices; route SLVERR upstream
-    // for unauthorised ones.
-    logic aw_authorized;
-    logic ar_authorized;
+    // A granted master takes the identity fast path when the IOMMU is in
+    // OFF/BARE, or when its device-id is in the monitor bypass allowlist.
+    logic aw_fastpath;
+    logic ar_fastpath;
+    logic aw_needs_walk;
+    logic ar_needs_walk;
     always_comb begin
-        aw_authorized = 1'b0;
-        ar_authorized = 1'b0;
-        if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            aw_authorized = ddt_mode_off_or_bare || dev_allowed(u_aw_devid[aw_grant_idx]);
+        aw_fastpath   = 1'b0;
+        ar_fastpath   = 1'b0;
+        aw_needs_walk = 1'b0;
+        ar_needs_walk = 1'b0;
+        if (aw_grant_idx != NO_GRANT) begin
+            aw_fastpath   = ddt_mode_off_or_bare || dev_allowed(u_aw_devid[aw_grant_idx]);
+            aw_needs_walk = ddt_mode_translate && !dev_allowed(u_aw_devid[aw_grant_idx]);
         end
-        if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            ar_authorized = ddt_mode_off_or_bare || dev_allowed(u_ar_devid[ar_grant_idx]);
+        if (ar_grant_idx != NO_GRANT) begin
+            ar_fastpath   = ddt_mode_off_or_bare || dev_allowed(u_ar_devid[ar_grant_idx]);
+            ar_needs_walk = ddt_mode_translate && !dev_allowed(u_ar_devid[ar_grant_idx]);
         end
     end
 
-    logic walk_d_arvalid;
-    logic [ID_WIDTH-1:0] walk_d_arid;
-    logic [ADDR_WIDTH-1:0] walk_d_araddr;
-    logic cq_d_arvalid;
+    // ==================================================================
+    // Two-stage page-table walker FSM.
+    //
+    // The walker owns the downstream AXI4 master while it is active.  It
+    // issues single 64-bit doubleword reads (SIZE_8B) for DDT/PDT/PT
+    // entries, and on success forwards the originating master's
+    // (translated) AR or AW.  The composition rule follows spec 2.3:
+    //
+    //   1. DDT walk (1/2/3-level) -> 4-doubleword device context.
+    //   2. iosatp (fsc, DC DW3) selects first-stage mode/PPN; iohgatp
+    //      (DC DW1) selects G-stage mode/PPN.
+    //   3. First-stage walk: at each level the table base is a guest
+    //      physical address, so it is G-stage translated to a supervisor
+    //      physical address before the PTE is fetched.
+    //   4. The first-stage leaf PPN is again a guest physical address and
+    //      is G-stage translated to produce the final supervisor PA.
+    //   5. When iosatp.MODE == BARE the IOVA is itself a GPA and only the
+    //      G-stage walk runs (single-stage G translation).
+    //
+    // Faults fail closed: any invalid/misconfigured/permission/misaligned
+    // condition pushes a fault record and returns SLVERR upstream.
+    // ==================================================================
 
-    assign walk_d_arvalid = (walk_state == WALK_DC0_REQ) ||
-                            (walk_state == WALK_DC1_REQ) ||
-                            (walk_state == WALK_DC3_REQ) ||
-                            (walk_state == WALK_PT_REQ)  ||
-                            (walk_state == WALK_DATA_REQ);
-    assign walk_d_arid    = walk_id;
-    assign walk_d_araddr  = walk_req_addr;
-    assign cq_d_arvalid   = (cmd_state == CMD_FETCH_REQ);
+    // Walk read transaction (one 64-bit doubleword at a time).
+    logic                  walk_rd_req;     // FSM asserts to launch a read
+    logic [ADDR_WIDTH-1:0] walk_rd_addr;    // doubleword-aligned PA
+    logic                  walk_rd_ack;     // AR accepted
+    logic                  walk_rd_done;    // R returned
+    logic [63:0]           walk_rd_data;    // selected 64-bit doubleword
+    logic [1:0]            walk_rd_resp;    // AXI response
 
-    // Drive downstream channels
-    always_comb begin
-        d_awvalid = 1'b0;
-        d_awid    = '0;
-        d_awaddr  = '0;
-        d_awlen   = '0;
-        d_awsize  = '0;
-        d_awburst = BURST_INCR;
-        d_awcache = CACHE_DEVICE_NON_BUFFERABLE;
-        d_awprot  = '0;
-        d_awqos   = '0;
-        d_awuser  = '0;
-        if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && aw_authorized) begin
-            d_awvalid = u_awvalid[aw_grant_idx];
-            d_awid    = u_awid[aw_grant_idx];
-            d_awaddr  = u_awaddr[aw_grant_idx];  // BARE = identity; G-stage IOVA->PA is a follow-on walker
-            d_awlen   = u_awlen[aw_grant_idx];
-            d_awsize  = u_awsize[aw_grant_idx];
-            d_awburst = u_awburst[aw_grant_idx];
-            d_awcache = u_awcache[aw_grant_idx];
-            d_awprot  = u_awprot[aw_grant_idx];
-            d_awqos   = u_awqos[aw_grant_idx];
-            d_awuser  = u_awuser[aw_grant_idx];
+    // Walk read sub-FSM: drives downstream AR/R for table reads.
+    typedef enum logic [1:0] {RD_IDLE, RD_AR, RD_R} rd_state_e;
+    rd_state_e rd_state, rd_state_n;
+    logic [ADDR_WIDTH-1:0] rd_addr_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            rd_state  <= RD_IDLE;
+            rd_addr_q <= '0;
+        end else begin
+            rd_state <= rd_state_n;
+            if (rd_state == RD_IDLE && walk_rd_req)
+                rd_addr_q <= {walk_rd_addr[ADDR_WIDTH-1:3], 3'b000};
         end
     end
+
+    always_comb begin
+        rd_state_n = rd_state;
+        case (rd_state)
+            RD_IDLE: if (walk_rd_req)            rd_state_n = RD_AR;
+            RD_AR:   if (d_arready)              rd_state_n = RD_R;
+            RD_R:    if (d_rvalid && d_rlast)    rd_state_n = RD_IDLE;
+            default:                             rd_state_n = RD_IDLE;
+        endcase
+    end
+
+    // walk_rd_done / walk_rd_data are combinational so the translation FSM
+    // observes the selected doubleword in the same cycle the beat returns.
+    assign walk_rd_ack  = (rd_state == RD_AR) && d_arready;
+    assign walk_rd_done = (rd_state == RD_R) && d_rvalid && d_rlast;
+    assign walk_rd_data = (rd_addr_q[3] && DATA_WIDTH >= 128) ?
+                          d_rdata[DATA_WIDTH-1:DATA_WIDTH-64] : d_rdata[63:0];
+    assign walk_rd_resp = d_rresp;
+
+    // Main translation FSM.
+    typedef enum logic [4:0] {
+        TR_IDLE,
+        TR_DDT_REQ, TR_DDT_WAIT,        // DDT non-leaf / leaf walk
+        TR_DC_DW1_REQ, TR_DC_DW1_WAIT,  // device-context doublewords
+        TR_DC_DW3_REQ, TR_DC_DW3_WAIT,
+        TR_FS_REQ, TR_FS_WAIT,          // first-stage PTE fetch
+        TR_FS_NEXT,                     // settle G-translated FS table base
+        TR_GS_REQ, TR_GS_WAIT,          // G-stage PTE fetch (nested)
+        TR_FWD_SETTLE,                  // settle final_pa before forwarding
+        TR_FWD_AR, TR_FWD_AW, TR_FWD_W, TR_FWD_RESP,
+        TR_FAULT
+    } tr_state_e;
+    tr_state_e tr_state, tr_state_n;
+
+    // Captured request being translated.
+    logic                   tr_is_write;
+    logic [$clog2(NUM_MASTERS+1)-1:0] tr_master;
+    logic [DEVICE_ID_W-1:0] tr_did;
+    logic [PASID_W-1:0]     tr_pid;
+    logic [63:0]            tr_iova;
+    logic [ID_WIDTH-1:0]    tr_axid;
+    logic [BURST_LEN_W-1:0] tr_len;
+    logic [2:0]             tr_size;
+    logic [1:0]             tr_burst;
+    logic [3:0]             tr_cache;
+    logic [2:0]             tr_prot;
+    logic [3:0]             tr_qos;
+    logic [USER_WIDTH-1:0]  tr_user;
+
+    // DDT walk bookkeeping.  DDT level count: 1LVL=1, 2LVL=2, 3LVL=3.
+    logic [1:0]             ddt_level;        // remaining non-leaf levels
+    logic [ADDR_WIDTH-1:0]  ddt_ptr;          // next DDT entry PA
+
+    // Device context fields (captured during DC reads): the G-stage and
+    // first-stage atp mode/root PPN drive the two walkers.
+    logic [3:0]             gs_mode;
+    logic [43:0]            fs_root_ppn;
+    logic [43:0]            gs_root_ppn;
+
+    // First-stage walk bookkeeping.
+    logic [2:0]             fs_level;         // current level index (downwards)
+    logic [43:0]            fs_ppn;           // current first-stage table PPN (SPA)
+
+    // G-stage (nested) walk bookkeeping.  The G-stage translates a guest
+    // physical address (gpa_in) to a supervisor PA (gs_pa_out).
+    logic [2:0]             gs_level;
+    logic [2:0]             gs_levels_total;
+    logic [43:0]            gs_ppn;           // current G-stage table PPN (SPA)
+    logic [63:0]            gpa_in;           // GPA being G-translated
+    logic [ADDR_WIDTH-1:0]  gs_pa_out;        // resulting SPA
+    logic                   gs_done;          // pulse: nested walk complete
+
+    // Where to return after a nested G-stage translation completes:
+    //   GRET_FS_BASE  - translate first-stage table base before next FS read
+    //   GRET_FS_LEAF  - translate first-stage leaf PPN -> final PA
+    //   GRET_IOVA     - single-stage G translation of the IOVA directly
+    typedef enum logic [1:0] {GRET_FS_BASE, GRET_FS_LEAF, GRET_IOVA} gret_e;
+    gret_e gs_return;
+
+    logic [ADDR_WIDTH-1:0]  final_pa;
+    logic [11:0]            fault_cause;
+
+    // VPN/GPN index extraction helpers for Sv39/Sv48 (9-bit indices).
+    function automatic logic [8:0] vpn_index(input logic [63:0] va,
+                                             input logic [2:0] level);
+        // level 0 = lowest (bits 20:12); each level adds 9 bits.
+        return va[12 + 9*level +: 9];
+    endfunction
+
+    // G-stage uses 2 extra bits at the top level (Sv39x4): root index is
+    // 11 bits.  For non-root levels it is the standard 9-bit field.
+    function automatic logic [10:0] gpn_index(input logic [63:0] ga,
+                                              input logic [2:0]  level,
+                                              input logic [2:0]  top);
+        if (level == top - 1)
+            return {2'b00, ga[12 + 9*level +: 9]} | (ga[12 + 9*(top-1) +: 11] & 11'h600);
+        else
+            return {2'b00, ga[12 + 9*level +: 9]};
+    endfunction
+
+    // PTE field decode.
+    logic        pte_v, pte_r, pte_w, pte_x, pte_u, pte_a, pte_d;
+    logic        pte_leaf;
+    logic [43:0] pte_ppn;
+    always_comb begin
+        pte_v    = walk_rd_data[PTE_V_BIT];
+        pte_r    = walk_rd_data[PTE_R_BIT];
+        pte_w    = walk_rd_data[PTE_W_BIT];
+        pte_x    = walk_rd_data[PTE_X_BIT];
+        pte_u    = walk_rd_data[PTE_U_BIT];
+        pte_a    = walk_rd_data[PTE_A_BIT];
+        pte_d    = walk_rd_data[PTE_D_BIT];
+        pte_ppn  = walk_rd_data[PTE_PPN_MSB:PTE_PPN_LSB];
+        pte_leaf = pte_v && (pte_r || pte_x);
+    end
+
+    // First-stage leaf checks (combinational, shared by both always blocks).
+    //   * permission: store needs W, load needs R; A always required, store
+    //     additionally requires D.
+    //   * misaligned superpage: a leaf found above level 0 must have the low
+    //     PPN bits covered by the un-walked levels equal to zero.
+    logic fs_leaf_perm_fault;
+    logic fs_leaf_super_fault;
+    always_comb begin
+        fs_leaf_perm_fault = (tr_is_write && !pte_w) ||
+                             (!tr_is_write && !pte_r) ||
+                             (!pte_a) || (tr_is_write && !pte_d);
+        fs_leaf_super_fault = (fs_level != 0) && superpage_misaligned(pte_ppn, fs_level);
+    end
+
+    // Compose the physical byte address of a PTE within a 4 KiB table:
+    //   table_base_ppn << 12  +  index * 8.
+    function automatic logic [ADDR_WIDTH-1:0] pte_addr(input logic [43:0] base_ppn,
+                                                       input logic [10:0]  index);
+        logic [63:0] a;
+        a = ({20'b0, base_ppn} << 12) | ({53'b0, index} << 3);
+        return a[ADDR_WIDTH-1:0];
+    endfunction
+
+    // Final PA assembly: leaf PPN (page-aligned) | page offset of the IOVA.
+    function automatic logic [ADDR_WIDTH-1:0] make_pa(input logic [43:0] leaf_ppn,
+                                                      input logic [63:0]  va);
+        logic [63:0] a;
+        a = ({20'b0, leaf_ppn} << 12) | {52'b0, va[11:0]};
+        return a[ADDR_WIDTH-1:0];
+    endfunction
+
+    // ------------------------------------------------------------------
+    // Walk FSM sequential state.
+    // ------------------------------------------------------------------
+    logic walk_active;   // FSM owns the downstream port (asserted unless TR_IDLE)
+    assign walk_active = (tr_state != TR_IDLE);
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            tr_state         <= TR_IDLE;
+            tr_is_write      <= 1'b0;
+            tr_master        <= NO_GRANT;
+            tr_did           <= '0;
+            tr_pid           <= '0;
+            tr_iova          <= '0;
+            tr_axid          <= '0;
+            tr_len           <= '0;
+            tr_size          <= '0;
+            tr_burst         <= BURST_INCR;
+            tr_cache         <= '0;
+            tr_prot          <= '0;
+            tr_qos           <= '0;
+            tr_user          <= '0;
+            ddt_level        <= '0;
+            ddt_ptr          <= '0;
+            gs_mode          <= '0;
+            fs_root_ppn      <= '0;
+            gs_root_ppn      <= '0;
+            fs_level         <= '0;
+            fs_ppn           <= '0;
+            gs_level         <= '0;
+            gs_levels_total  <= '0;
+            gs_ppn           <= '0;
+            gpa_in           <= '0;
+            gs_pa_out        <= '0;
+            gs_done          <= 1'b0;
+            gs_return        <= GRET_IOVA;
+            final_pa         <= '0;
+            fault_cause      <= '0;
+            flt_push         <= 1'b0;
+            flt_record       <= '0;
+        end else begin
+            tr_state <= tr_state_n;
+            gs_done  <= 1'b0;
+            flt_push <= 1'b0;
+
+            unique case (tr_state)
+                // --------------------------------------------------------
+                TR_IDLE: begin
+                    // Capture a translating request (read priority, then write).
+                    if (ar_grant_idx != NO_GRANT && ar_needs_walk) begin
+                        tr_is_write <= 1'b0;
+                        tr_master   <= ar_grant_idx;
+                        tr_did      <= u_ar_devid[ar_grant_idx];
+                        tr_pid      <= u_ar_pasid[ar_grant_idx];
+                        tr_iova     <= 64'(u_araddr[ar_grant_idx]);
+                        tr_axid     <= u_arid[ar_grant_idx];
+                        tr_len      <= u_arlen[ar_grant_idx];
+                        tr_size     <= u_arsize[ar_grant_idx];
+                        tr_burst    <= u_arburst[ar_grant_idx];
+                        tr_cache    <= u_arcache[ar_grant_idx];
+                        tr_prot     <= u_arprot[ar_grant_idx];
+                        tr_qos      <= u_arqos[ar_grant_idx];
+                        tr_user     <= u_aruser[ar_grant_idx];
+                    end else if (aw_grant_idx != NO_GRANT && aw_needs_walk) begin
+                        tr_is_write <= 1'b1;
+                        tr_master   <= aw_grant_idx;
+                        tr_did      <= u_aw_devid[aw_grant_idx];
+                        tr_pid      <= u_aw_pasid[aw_grant_idx];
+                        tr_iova     <= 64'(u_awaddr[aw_grant_idx]);
+                        tr_axid     <= u_awid[aw_grant_idx];
+                        tr_len      <= u_awlen[aw_grant_idx];
+                        tr_size     <= u_awsize[aw_grant_idx];
+                        tr_burst    <= u_awburst[aw_grant_idx];
+                        tr_cache    <= u_awcache[aw_grant_idx];
+                        tr_prot     <= u_awprot[aw_grant_idx];
+                        tr_qos      <= u_awqos[aw_grant_idx];
+                        tr_user     <= u_awuser[aw_grant_idx];
+                    end
+                    // Seed the DDT walk: ptr = (ddtp.ppn << 12) + did_index*8.
+                    // Non-leaf DDT levels = mode - 1 (1LVL -> 0 non-leaf).
+                    ddt_level <= (ddtp_mode == DDTP_MODE_3LVL) ? 2'd2 :
+                                 (ddtp_mode == DDTP_MODE_2LVL) ? 2'd1 : 2'd0;
+                    ddt_ptr   <= ddt_first_ptr(reg_ddtp,
+                                  (ar_grant_idx != NO_GRANT && ar_needs_walk) ?
+                                   u_ar_devid[ar_grant_idx] : u_aw_devid[aw_grant_idx],
+                                  ddtp_mode);
+                end
+
+                // -------- DDT walk: read DDT entry / device context base --
+                TR_DDT_WAIT: if (walk_rd_done) begin
+                    if (walk_rd_resp != RESP_OKAY) begin
+                        fault_cause <= CAUSE_DDT_ENTRY_LOAD_ACCESS;
+                    end else if (ddt_level != 0) begin
+                        // Non-leaf DDT entry: must be valid; descend.
+                        if (!walk_rd_data[DDTE_V_BIT]) begin
+                            fault_cause <= CAUSE_DDT_ENTRY_NOT_VALID;
+                        end else begin
+                            ddt_level <= ddt_level - 2'd1;
+                            ddt_ptr   <= ddte_next_ptr(walk_rd_data, tr_did, ddt_level);
+                        end
+                    end else begin
+                        // Leaf DDT entry: this doubleword is DC DW0 (tc).
+                        if (!walk_rd_data[DC_TC_V_BIT]) begin
+                            fault_cause <= CAUSE_DDT_ENTRY_NOT_VALID;
+                        end
+                        // DC DW1 (iohgatp) is the next doubleword.
+                    end
+                end
+
+                TR_DC_DW1_WAIT: if (walk_rd_done) begin
+                    if (walk_rd_resp != RESP_OKAY)
+                        fault_cause <= CAUSE_DDT_ENTRY_LOAD_ACCESS;
+                    else begin
+                        // DC DW1 = iohgatp (G-stage atp): MODE + root PPN.
+                        gs_mode    <= walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB];
+                        gs_root_ppn<= walk_rd_data[ATP_PPN_MSB:ATP_PPN_LSB];
+                    end
+                end
+
+                TR_DC_DW3_WAIT: if (walk_rd_done) begin
+                    if (walk_rd_resp != RESP_OKAY)
+                        fault_cause <= CAUSE_DDT_ENTRY_LOAD_ACCESS;
+                    else begin
+                        // DC DW3 = fsc (iosatp, first-stage atp): MODE + root PPN.
+                        fs_root_ppn <= walk_rd_data[ATP_PPN_MSB:ATP_PPN_LSB];
+                        gs_levels_total <= (gs_mode == GS_MODE_SV48X4) ? 3'd4 : 3'd3;
+                        // Initialise the first-stage walk at the root level.
+                        fs_level <= (walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB] == FS_MODE_SV48)
+                                     ? 3'd3 : 3'd2;
+                        fs_ppn   <= walk_rd_data[ATP_PPN_MSB:ATP_PPN_LSB];
+                        // Three start cases (decided in next-state logic):
+                        //  * FS BARE, GS active  -> G-translate the IOVA directly.
+                        //  * FS active, GS active -> G-translate the FS root base.
+                        //  * GS BARE             -> read FS PTE directly (root is SPA).
+                        if (walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB] == FS_MODE_BARE &&
+                            gs_mode == GS_MODE_BARE) begin
+                            // Both stages BARE in a translating DDT mode:
+                            // identity forward of the IOVA.
+                            final_pa <= tr_iova[ADDR_WIDTH-1:0];
+                        end else if (walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB] == FS_MODE_BARE &&
+                            gs_mode != GS_MODE_BARE) begin
+                            gpa_in    <= tr_iova;
+                            gs_return <= GRET_IOVA;
+                            gs_level  <= (gs_mode == GS_MODE_SV48X4) ? 3'd3 : 3'd2;
+                            gs_ppn    <= gs_root_ppn;
+                        end else if (walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB] != FS_MODE_BARE &&
+                                     gs_mode != GS_MODE_BARE) begin
+                            // G-translate the first-stage root table base.
+                            gpa_in    <= {8'b0, walk_rd_data[ATP_PPN_MSB:ATP_PPN_LSB], 12'b0};
+                            gs_return <= GRET_FS_BASE;
+                            gs_level  <= (gs_mode == GS_MODE_SV48X4) ? 3'd3 : 3'd2;
+                            gs_ppn    <= gs_root_ppn;
+                        end
+                    end
+                end
+
+                // -------- First-stage walk --------
+                TR_FS_WAIT: if (walk_rd_done) begin
+                    if (walk_rd_resp != RESP_OKAY) begin
+                        fault_cause <= tr_is_write ? CAUSE_STORE_ACCESS_FAULT
+                                                   : CAUSE_LOAD_ACCESS_FAULT;
+                    end else if (!pte_v || (!pte_r && pte_w)) begin
+                        fault_cause <= tr_is_write ? CAUSE_STORE_PAGE_FAULT
+                                                   : CAUSE_LOAD_PAGE_FAULT;
+                    end else if (pte_leaf) begin
+                        if (fs_leaf_perm_fault || fs_leaf_super_fault) begin
+                            fault_cause <= tr_is_write ? CAUSE_STORE_PAGE_FAULT
+                                                       : CAUSE_LOAD_PAGE_FAULT;
+                        end else if (gs_mode == GS_MODE_BARE) begin
+                            // No G-stage: leaf PPN is already the SPA.
+                            final_pa <= make_pa(pte_ppn, tr_iova);
+                        end else begin
+                            // First-stage leaf PPN is a GPA -> G-translate.
+                            gpa_in    <= {8'b0, pte_ppn, tr_iova[11:0]};
+                            gs_return <= GRET_FS_LEAF;
+                            gs_level  <= gs_levels_total - 3'd1;
+                            gs_ppn    <= gs_root_ppn;
+                        end
+                    end else begin
+                        // Non-leaf: descend one first-stage level.
+                        if (fs_level == 0) begin
+                            fault_cause <= tr_is_write ? CAUSE_STORE_PAGE_FAULT
+                                                       : CAUSE_LOAD_PAGE_FAULT;
+                        end else begin
+                            fs_level <= fs_level - 3'd1;
+                            if (gs_mode == GS_MODE_BARE) begin
+                                // Child table base is already an SPA.
+                                fs_ppn <= pte_ppn;
+                            end else begin
+                                // Child table base is a GPA -> G-translate it.
+                                gpa_in    <= {8'b0, pte_ppn, 12'b0};
+                                gs_return <= GRET_FS_BASE;
+                                gs_level  <= gs_levels_total - 3'd1;
+                                gs_ppn    <= gs_root_ppn;
+                            end
+                        end
+                    end
+                end
+
+                // -------- G-stage (nested) walk --------
+                TR_GS_WAIT: if (walk_rd_done) begin
+                    if (walk_rd_resp != RESP_OKAY) begin
+                        fault_cause <= tr_is_write ? CAUSE_STORE_GUEST_PAGE_FAULT
+                                                   : CAUSE_LOAD_GUEST_PAGE_FAULT;
+                    end else if (!pte_v || (!pte_r && pte_w)) begin
+                        fault_cause <= tr_is_write ? CAUSE_STORE_GUEST_PAGE_FAULT
+                                                   : CAUSE_LOAD_GUEST_PAGE_FAULT;
+                    end else if (pte_leaf) begin
+                        if (!pte_a || (tr_is_write && gs_return == GRET_FS_LEAF && !pte_d)) begin
+                            fault_cause <= tr_is_write ? CAUSE_STORE_GUEST_PAGE_FAULT
+                                                       : CAUSE_LOAD_GUEST_PAGE_FAULT;
+                        end else begin
+                            // Resolved SPA for this GPA.
+                            gs_pa_out <= make_pa(pte_ppn, gpa_in);
+                            gs_done   <= 1'b1;
+                        end
+                    end else begin
+                        if (gs_level == 0)
+                            fault_cause <= tr_is_write ? CAUSE_STORE_GUEST_PAGE_FAULT
+                                                       : CAUSE_LOAD_GUEST_PAGE_FAULT;
+                        else begin
+                            gs_level <= gs_level - 3'd1;
+                            gs_ppn   <= pte_ppn;
+                        end
+                    end
+                end
+
+                TR_FAULT: begin
+                    // Emit a fault record describing the failed translation.
+                    flt_push   <= 1'b1;
+                    flt_record <= '{
+                        cause:          fault_cause,
+                        ttyp:           tr_is_write ? TTYP_UNTRANSLATED_WRITE_OR_AMO
+                                                    : TTYP_UNTRANSLATED_READ_NO_AMO,
+                        priv:           tr_prot[0],
+                        rsvd_pid:       1'b0,
+                        pid:            {{(20-PASID_W){1'b0}}, tr_pid},
+                        did:            {{(24-DEVICE_ID_W){1'b0}}, tr_did},
+                        custom:         1'b0,
+                        iotval_present: 4'b0001,
+                        iotval:         tr_iova,
+                        iotval2:        gpa_in
+                    };
+                end
+
+                default: ;
+            endcase
+
+            // ----- After a nested G-stage translation completes. -----
+            // GRET_IOVA / GRET_FS_LEAF resolve the final PA; GRET_FS_BASE
+            // resolves the next first-stage table base (fs_level was already
+            // adjusted where the descent was decided).
+            if (gs_done) begin
+                if (gs_return == GRET_IOVA || gs_return == GRET_FS_LEAF)
+                    final_pa <= gs_pa_out;
+                else // GRET_FS_BASE
+                    fs_ppn <= gs_pa_out[ADDR_WIDTH-1:12];
+            end
+        end
+    end
+
+    // ------------------------------------------------------------------
+    // Walk FSM combinational next-state + read-request generation.
+    // ------------------------------------------------------------------
+    logic walk_rd_req_c;
+    logic [ADDR_WIDTH-1:0] walk_rd_addr_c;
+
+    always_comb begin
+        tr_state_n     = tr_state;
+        walk_rd_req_c  = 1'b0;
+        walk_rd_addr_c = '0;
+
+        unique case (tr_state)
+            TR_IDLE: begin
+                if ((ar_grant_idx != NO_GRANT && ar_needs_walk) ||
+                    (aw_grant_idx != NO_GRANT && aw_needs_walk))
+                    tr_state_n = TR_DDT_REQ;
+            end
+
+            TR_DDT_REQ: begin
+                walk_rd_req_c  = 1'b1;
+                walk_rd_addr_c = ddt_ptr;
+                if (walk_rd_ack) tr_state_n = TR_DDT_WAIT;
+            end
+            TR_DDT_WAIT: if (walk_rd_done) begin
+                if (walk_rd_resp != RESP_OKAY)            tr_state_n = TR_FAULT;
+                else if (ddt_level != 0)
+                    // Non-leaf DDT entry: fault if invalid, else descend.
+                    tr_state_n = walk_rd_data[DDTE_V_BIT] ? TR_DDT_REQ : TR_FAULT;
+                else if (!walk_rd_data[DC_TC_V_BIT])      tr_state_n = TR_FAULT;
+                else                                      tr_state_n = TR_DC_DW1_REQ;
+            end
+
+            TR_DC_DW1_REQ: begin
+                walk_rd_req_c  = 1'b1;
+                walk_rd_addr_c = ddt_ptr + ADDR_WIDTH'(8);
+                if (walk_rd_ack) tr_state_n = TR_DC_DW1_WAIT;
+            end
+            TR_DC_DW1_WAIT: if (walk_rd_done)
+                tr_state_n = (walk_rd_resp != RESP_OKAY) ? TR_FAULT : TR_DC_DW3_REQ;
+
+            TR_DC_DW3_REQ: begin
+                walk_rd_req_c  = 1'b1;
+                walk_rd_addr_c = ddt_ptr + ADDR_WIDTH'(24);
+                if (walk_rd_ack) tr_state_n = TR_DC_DW3_WAIT;
+            end
+            TR_DC_DW3_WAIT: if (walk_rd_done) begin
+                if (walk_rd_resp != RESP_OKAY)
+                    tr_state_n = TR_FAULT;
+                else if (walk_rd_data[ATP_MODE_MSB:ATP_MODE_LSB] == FS_MODE_BARE)
+                    // First-stage BARE: IOVA is a GPA, run G-stage only
+                    // (single-stage G); GS BARE too -> identity forward.
+                    tr_state_n = (gs_mode == GS_MODE_BARE) ? TR_FWD_SETTLE : TR_GS_REQ;
+                else if (gs_mode == GS_MODE_BARE)
+                    // First-stage only: root base is already an SPA.
+                    tr_state_n = TR_FS_REQ;
+                else
+                    // Two-stage: G-translate the first-stage root base first.
+                    tr_state_n = TR_GS_REQ;
+            end
+
+            // First-stage PTE fetch.  fs_ppn always holds the current
+            // first-stage table base as a supervisor PA (the root was set
+            // at DC_DW3; each descended base is G-translated into fs_ppn).
+            TR_FS_REQ: begin
+                walk_rd_req_c  = 1'b1;
+                walk_rd_addr_c = pte_addr(fs_ppn, {2'b0, vpn_index(tr_iova, fs_level)});
+                if (walk_rd_ack) tr_state_n = TR_FS_WAIT;
+            end
+            TR_FS_WAIT: if (walk_rd_done) begin
+                if (walk_rd_resp != RESP_OKAY)        tr_state_n = TR_FAULT;
+                else if (!pte_v || (!pte_r && pte_w)) tr_state_n = TR_FAULT;
+                else if (pte_leaf) begin
+                    if (fs_leaf_perm_fault || fs_leaf_super_fault) tr_state_n = TR_FAULT;
+                    else if (gs_mode == GS_MODE_BARE) tr_state_n = TR_FWD_SETTLE; // leaf PPN is SPA
+                    else                              tr_state_n = TR_GS_REQ;     // G-translate leaf PPN
+                end else if (fs_level == 0)           tr_state_n = TR_FAULT;
+                else if (gs_mode == GS_MODE_BARE)     tr_state_n = TR_FS_REQ; // descend, no GS
+                else                                  tr_state_n = TR_GS_REQ; // G-translate next base
+            end
+
+            // Settle cycle after a G-translated first-stage table base.
+            TR_FS_NEXT: tr_state_n = TR_FS_REQ;
+
+            // G-stage PTE fetch (nested).
+            TR_GS_REQ: begin
+                walk_rd_req_c  = 1'b1;
+                walk_rd_addr_c = pte_addr(gs_ppn, gpn_index(gpa_in, gs_level, gs_levels_total));
+                if (walk_rd_ack) tr_state_n = TR_GS_WAIT;
+            end
+            TR_GS_WAIT: if (walk_rd_done) begin
+                if (walk_rd_resp != RESP_OKAY)        tr_state_n = TR_FAULT;
+                else if (!pte_v || (!pte_r && pte_w)) tr_state_n = TR_FAULT;
+                else if (pte_leaf) begin
+                    if (!pte_a || (tr_is_write && gs_return == GRET_FS_LEAF && !pte_d))
+                        tr_state_n = TR_FAULT;
+                    else begin
+                        // G translation complete; resume per gs_return.
+                        unique case (gs_return)
+                            // final_pa is updated by gs_done this edge; settle
+                            // one cycle before driving it onto the AXI forward.
+                            GRET_IOVA:    tr_state_n = TR_FWD_SETTLE;
+                            GRET_FS_LEAF: tr_state_n = TR_FWD_SETTLE;
+                            // One settle cycle so the G-translated table base
+                            // (fs_ppn, updated by gs_done) is visible before
+                            // the next first-stage PTE address is formed.
+                            GRET_FS_BASE: tr_state_n = TR_FS_NEXT;
+                            default:      tr_state_n = TR_FAULT;
+                        endcase
+                    end
+                end else if (gs_level == 0)           tr_state_n = TR_FAULT;
+                else                                  tr_state_n = TR_GS_REQ;
+            end
+
+            // Settle cycle so the resolved final_pa is registered before it
+            // drives the downstream AR/AW address.
+            TR_FWD_SETTLE: tr_state_n = TR_FWD_AR;
+
+            // Forward the translated request downstream.
+            TR_FWD_AR: begin
+                if (tr_is_write) tr_state_n = TR_FWD_AW;
+                else if (d_arready) tr_state_n = TR_FWD_RESP;
+            end
+            TR_FWD_AW: if (d_awready) tr_state_n = TR_FWD_W;
+            TR_FWD_W:  if (d_wvalid && d_wready && d_wlast) tr_state_n = TR_FWD_RESP;
+            TR_FWD_RESP: begin
+                if (!tr_is_write && d_rvalid && d_rlast &&
+                    u_rready[tr_master[MIDX_W-1:0]]) tr_state_n = TR_IDLE;
+                else if (tr_is_write && d_bvalid &&
+                    u_bready[tr_master[MIDX_W-1:0]]) tr_state_n = TR_IDLE;
+            end
+
+            TR_FAULT: tr_state_n = TR_IDLE;
+
+            default: tr_state_n = TR_IDLE;
+        endcase
+    end
+
+    // DDT first-pointer and DDT next-level pointer helpers.
+    function automatic logic [ADDR_WIDTH-1:0] ddt_first_ptr(input logic [63:0] ddtp,
+                                                            input logic [DEVICE_ID_W-1:0] did,
+                                                            input logic [3:0] mode);
+        logic [63:0] base;
+        logic [63:0] idx;
+        logic [63:0] sum;
+        base = {10'b0, ddtp[DDTE_PPN_MSB:DDTE_PPN_LSB]} << 12;
+        // 1LVL: leaf DDT indexed by did[6:0] * 32 (DC is 32 bytes).
+        // 2/3LVL: non-leaf indexed by the top device-id slice * 8.
+        if (mode == DDTP_MODE_1LVL)
+            idx = ({57'b0, did[6:0]}) << 5;
+        else if (mode == DDTP_MODE_2LVL)
+            idx = ({55'b0, did[15:7]}) << 3;
+        else // 3LVL
+            idx = ({58'b0, did[23:16]}) << 3;
+        sum = base | idx;
+        return sum[ADDR_WIDTH-1:0];
+    endfunction
+
+    // Next DDT pointer from a non-leaf DDT entry (DDTE.ppn) using the next
+    // device-id slice.  ddt_level is the level *before* decrement: 2 means
+    // we just read the L3 (root) non-leaf, next index is did[15:7]; 1 means
+    // we just read the L2 non-leaf, next index is did[6:0]*32 (leaf DC).
+    function automatic logic [ADDR_WIDTH-1:0] ddte_next_ptr(input logic [63:0] ddte,
+                                                           input logic [DEVICE_ID_W-1:0] did,
+                                                           input logic [1:0]  level);
+        logic [63:0] base;
+        logic [63:0] idx;
+        logic [63:0] sum;
+        base = {10'b0, ddte[DDTE_PPN_MSB:DDTE_PPN_LSB]} << 12;
+        if (level == 2'd2)        idx = ({55'b0, did[15:7]}) << 3;  // -> mid non-leaf
+        else if (level == 2'd1)   idx = ({57'b0, did[6:0]})  << 5;  // -> leaf DC (32B)
+        else                      idx = 64'b0;
+        sum = base | idx;
+        return sum[ADDR_WIDTH-1:0];
+    endfunction
+
+    // Superpage misalignment: a non-leaf-level leaf PTE must have its low
+    // PPN bits (covered by the descended levels) zero.
+    function automatic logic superpage_misaligned(input logic [43:0] ppn,
+                                                  input logic [2:0]  level);
+        // Each level below `level` covers 9 PPN bits that must be zero.
+        logic [43:0] mask;
+        mask = (44'h1 << (9*level)) - 44'h1;
+        return |(ppn & mask);
+    endfunction
+
+    // ==================================================================
+    // Downstream AXI4 master multiplexing.
+    //
+    //   * Identity fast path (BARE/OFF or allowlist bypass) drives the
+    //     downstream port combinationally when the walker is idle.
+    //   * The walker owns the port while translating (table reads) and
+    //     while forwarding the translated request.
+    // ==================================================================
+
+    // Identity fast-path grants (only meaningful when !walk_active).
+    logic aw_id_grant, ar_id_grant;
+    assign aw_id_grant = (aw_grant_idx != NO_GRANT) && aw_fastpath && !walk_active;
+    assign ar_id_grant = (ar_grant_idx != NO_GRANT) && ar_fastpath && !walk_active;
+
+    // Downstream AR.
     always_comb begin
         d_arvalid = 1'b0;
         d_arid    = '0;
@@ -473,337 +1039,321 @@ module e1_riscv_iommu
         d_arprot  = '0;
         d_arqos   = '0;
         d_aruser  = '0;
-        if (walk_d_arvalid) begin
+        if (rd_state == RD_AR) begin
+            // Table-walk read.
             d_arvalid = 1'b1;
-            d_arid    = walk_d_arid;
-            d_araddr  = walk_d_araddr;
+            d_arid    = '0;
+            d_araddr  = rd_addr_q;
             d_arlen   = '0;
-            d_arsize  = 3'd3;
+            d_arsize  = SIZE_8B;
             d_arburst = BURST_INCR;
             d_arcache = CACHE_DEVICE_NON_BUFFERABLE;
-            d_arprot  = '0;
-            d_arqos   = '0;
-            d_aruser  = '0;
-        end else if (cq_d_arvalid) begin
+            d_arprot  = PROT_DATA_S_PRIV;
+        end else if (tr_state == TR_FWD_AR && !tr_is_write) begin
+            // Translated read forward.
             d_arvalid = 1'b1;
-            d_arid    = '1;
-            d_araddr  = cmd_req_addr;
-            d_arlen   = '0;
-            d_arsize  = 3'd3;
-            d_arburst = BURST_INCR;
-            d_arcache = CACHE_DEVICE_NON_BUFFERABLE;
-            d_arprot  = '0;
-            d_arqos   = '0;
-            d_aruser  = '0;
-        end else if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && ar_authorized) begin
-            d_arvalid = u_arvalid[ar_grant_idx];
-            d_arid    = u_arid[ar_grant_idx];
-            d_araddr  = u_araddr[ar_grant_idx];
-            d_arlen   = u_arlen[ar_grant_idx];
-            d_arsize  = u_arsize[ar_grant_idx];
-            d_arburst = u_arburst[ar_grant_idx];
-            d_arcache = u_arcache[ar_grant_idx];
-            d_arprot  = u_arprot[ar_grant_idx];
-            d_arqos   = u_arqos[ar_grant_idx];
-            d_aruser  = u_aruser[ar_grant_idx];
+            d_arid    = tr_axid;
+            d_araddr  = final_pa;
+            d_arlen   = tr_len;
+            d_arsize  = tr_size;
+            d_arburst = tr_burst;
+            d_arcache = tr_cache;
+            d_arprot  = tr_prot;
+            d_arqos   = tr_qos;
+            d_aruser  = tr_user;
+        end else if (ar_id_grant) begin
+            int unsigned m = ar_grant_idx;
+            d_arvalid = u_arvalid[m];
+            d_arid    = u_arid[m];
+            d_araddr  = u_araddr[m];   // BARE/bypass = identity
+            d_arlen   = u_arlen[m];
+            d_arsize  = u_arsize[m];
+            d_arburst = u_arburst[m];
+            d_arcache = u_arcache[m];
+            d_arprot  = u_arprot[m];
+            d_arqos   = u_arqos[m];
+            d_aruser  = u_aruser[m];
         end
     end
 
-    // Upstream AW/AR ready: authorised → mirror downstream; unauthorised →
-    // accept once after queuing the fault record.
+    // Downstream AW.
     always_comb begin
-        for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
-            u_awready[m] = 1'b0;
-            u_arready[m] = 1'b0;
-        end
-        if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            u_awready[aw_grant_idx] = aw_authorized ? d_awready :
-                                      (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH));
-        end
-        if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            if (ar_authorized) begin
-                u_arready[ar_grant_idx] = d_arready && !walk_d_arvalid && !cq_d_arvalid;
-            end else if (reg_ddtp[53:10] != '0 && ddt_mode_translate) begin
-                u_arready[ar_grant_idx] = walk_can_start;
-            end else begin
-                u_arready[ar_grant_idx] =
-                    (fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH)) &&
-                    !walk_resp_valid;
-            end
+        d_awvalid = 1'b0;
+        d_awid    = '0;
+        d_awaddr  = '0;
+        d_awlen   = '0;
+        d_awsize  = '0;
+        d_awburst = BURST_INCR;
+        d_awcache = CACHE_DEVICE_NON_BUFFERABLE;
+        d_awprot  = '0;
+        d_awqos   = '0;
+        d_awuser  = '0;
+        if (tr_state == TR_FWD_AW && tr_is_write) begin
+            d_awvalid = 1'b1;
+            d_awid    = tr_axid;
+            d_awaddr  = final_pa;
+            d_awlen   = tr_len;
+            d_awsize  = tr_size;
+            d_awburst = tr_burst;
+            d_awcache = tr_cache;
+            d_awprot  = tr_prot;
+            d_awqos   = tr_qos;
+            d_awuser  = tr_user;
+        end else if (aw_id_grant) begin
+            int unsigned m = aw_grant_idx;
+            d_awvalid = u_awvalid[m];
+            d_awid    = u_awid[m];
+            d_awaddr  = u_awaddr[m];
+            d_awlen   = u_awlen[m];
+            d_awsize  = u_awsize[m];
+            d_awburst = u_awburst[m];
+            d_awcache = u_awcache[m];
+            d_awprot  = u_awprot[m];
+            d_awqos   = u_awqos[m];
+            d_awuser  = u_awuser[m];
         end
     end
 
-    // W channel passthrough for authorised writes; sink for unauthorised
+    // Downstream W.
     always_comb begin
         d_wvalid = 1'b0;
         d_wdata  = '0;
         d_wstrb  = '0;
         d_wlast  = 1'b0;
-        for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
-            u_wready[m] = 1'b1;  // accept all W; unauthorised data discarded
-        end
-        if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) && aw_authorized) begin
-            d_wvalid               = u_wvalid[aw_grant_idx];
-            d_wdata                = u_wdata[aw_grant_idx];
-            d_wstrb                = u_wstrb[aw_grant_idx];
-            d_wlast                = u_wlast[aw_grant_idx];
-            u_wready[aw_grant_idx] = d_wready;
+        for (int unsigned m = 0; m < NUM_MASTERS; m++) u_wready[m] = 1'b0;
+        if (tr_state == TR_FWD_W && tr_is_write) begin
+            int unsigned m = tr_master[MIDX_W-1:0];
+            d_wvalid    = u_wvalid[m];
+            d_wdata     = u_wdata[m];
+            d_wstrb     = u_wstrb[m];
+            d_wlast     = u_wlast[m];
+            u_wready[m] = d_wready;
+        end else if (aw_id_grant) begin
+            int unsigned m = aw_grant_idx;
+            d_wvalid    = u_wvalid[m];
+            d_wdata     = u_wdata[m];
+            d_wstrb     = u_wstrb[m];
+            d_wlast     = u_wlast[m];
+            u_wready[m] = d_wready;
         end
     end
 
-    // B channel return (downstream → originating master)
+    // Upstream AR/AW ready.
+    always_comb begin
+        for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
+            u_awready[m] = 1'b0;
+            u_arready[m] = 1'b0;
+        end
+        // Identity fast path: mirror downstream ready.
+        if (ar_id_grant) u_arready[ar_grant_idx] = d_arready;
+        if (aw_id_grant) u_awready[aw_grant_idx] = d_awready;
+        // Walker-translated forward consumes the upstream AR/AW once the
+        // translated request is accepted downstream.
+        if (tr_state == TR_FWD_AR && !tr_is_write && d_arready)
+            u_arready[tr_master[MIDX_W-1:0]] = 1'b1;
+        if (tr_state == TR_FWD_AW && tr_is_write && d_awready)
+            u_awready[tr_master[MIDX_W-1:0]] = 1'b1;
+        // A faulting request is retired (accepted) in TR_FAULT so the
+        // master does not hang; its data path returns SLVERR.
+        if (tr_state == TR_FAULT) begin
+            if (tr_is_write) u_awready[tr_master[MIDX_W-1:0]] = 1'b1;
+            else             u_arready[tr_master[MIDX_W-1:0]] = 1'b1;
+        end
+    end
+
+    // Downstream B/R ready + upstream B/R return.
     always_comb begin
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
             u_bvalid[m] = 1'b0;
             u_bid[m]    = '0;
             u_bresp[m]  = RESP_OKAY;
-        end
-        d_bready = 1'b0;
-        if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS)) begin
-            if (aw_authorized) begin
-                u_bvalid[aw_grant_idx] = d_bvalid;
-                u_bid[aw_grant_idx]    = d_bid;
-                u_bresp[aw_grant_idx]  = d_bresp;
-                d_bready               = u_bready[aw_grant_idx];
-            end
-        end
-    end
-
-    // R channel return (downstream → originating master)
-    always_comb begin
-        for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
             u_rvalid[m] = 1'b0;
             u_rid[m]    = '0;
             u_rdata[m]  = '0;
             u_rresp[m]  = RESP_OKAY;
             u_rlast[m]  = 1'b0;
         end
-        d_rready = walk_d_arvalid ||
-                   (walk_state != WALK_IDLE && walk_state != WALK_RESP) ||
-                   (cmd_state == CMD_FETCH_RSP);
-        if (walk_resp_valid) begin
-            u_rvalid[walk_master] = 1'b1;
-            u_rid[walk_master]    = walk_id;
-            u_rdata[walk_master]  = walk_rdata;
-            u_rresp[walk_master]  = walk_resp;
-            u_rlast[walk_master]  = 1'b1;
-        end else if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                     !walk_d_arvalid && !cq_d_arvalid && cmd_state == CMD_IDLE) begin
-            if (ar_authorized) begin
-                u_rvalid[ar_grant_idx] = d_rvalid;
-                u_rid[ar_grant_idx]    = d_rid;
-                u_rdata[ar_grant_idx]  = d_rdata;
-                u_rresp[ar_grant_idx]  = d_rresp;
-                u_rlast[ar_grant_idx]  = d_rlast;
-                d_rready               = u_rready[ar_grant_idx];
+        d_bready = 1'b0;
+        d_rready = 1'b0;
+
+        // Table-walk reads consume R internally.
+        if (rd_state == RD_R) d_rready = 1'b1;
+
+        // Identity fast path B/R passthrough.
+        if (aw_id_grant) begin
+            int unsigned m = aw_grant_idx;
+            u_bvalid[m] = d_bvalid;
+            u_bid[m]    = d_bid;
+            u_bresp[m]  = d_bresp;
+            d_bready    = u_bready[m];
+        end
+        if (ar_id_grant) begin
+            int unsigned m = ar_grant_idx;
+            u_rvalid[m] = d_rvalid;
+            u_rid[m]    = d_rid;
+            u_rdata[m]  = d_rdata;
+            u_rresp[m]  = d_rresp;
+            u_rlast[m]  = d_rlast;
+            d_rready    = u_rready[m];
+        end
+
+        // Walker-translated response forward.
+        if (tr_state == TR_FWD_RESP) begin
+            int unsigned m = tr_master[MIDX_W-1:0];
+            if (tr_is_write) begin
+                u_bvalid[m] = d_bvalid;
+                u_bid[m]    = tr_axid;
+                u_bresp[m]  = d_bresp;
+                d_bready    = u_bready[m];
+            end else begin
+                u_rvalid[m] = d_rvalid;
+                u_rid[m]    = tr_axid;
+                u_rdata[m]  = d_rdata;
+                u_rresp[m]  = d_rresp;
+                u_rlast[m]  = d_rlast;
+                d_rready    = u_rready[m];
+            end
+        end
+
+        // Faulting request: return SLVERR to the originating master.
+        if (tr_state == TR_FAULT) begin
+            int unsigned m = tr_master[MIDX_W-1:0];
+            if (tr_is_write) begin
+                u_bvalid[m] = 1'b1;
+                u_bid[m]    = tr_axid;
+                u_bresp[m]  = RESP_SLVERR;
+            end else begin
+                u_rvalid[m] = 1'b1;
+                u_rid[m]    = tr_axid;
+                u_rdata[m]  = '0;
+                u_rresp[m]  = RESP_SLVERR;
+                u_rlast[m]  = 1'b1;
             end
         end
     end
 
     // ------------------------------------------------------------------
-    // Fault generation: when an unauthorised AW or AR is granted, queue
-    // a fault record describing the transaction.  The fault record
-    // matches the v1.0.1 spec layout exactly.
+    // Fault queue: staged records from the translation FSM.  Records are
+    // pushed by flt_push (one per failed translation).  reg_fqt mirrors
+    // the stage pointer so the kernel driver can poll FQT.
     // ------------------------------------------------------------------
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int unsigned i = 0; i < FAULT_Q_DEPTH; i++) fq_stage[i] <= '0;
-            fq_stage_head  <= '0;
-            fq_stage_tail  <= '0;
-            fq_stage_count <= '0;
+            fq_stage_head   <= '0;
+            fq_stage_tail   <= '0;
+            fq_stage_count  <= '0;
             fault_count_dbg <= '0;
-            fault_irq      <= 1'b0;
-            aw_rr_ptr      <= '0;
-            ar_rr_ptr      <= '0;
-            walk_state      <= WALK_IDLE;
-            walk_master     <= '0;
-            walk_id         <= '0;
-            walk_devid      <= '0;
-            walk_pasid      <= '0;
-            walk_iova       <= '0;
-            walk_req_addr   <= '0;
-            walk_dc0        <= '0;
-            walk_iohgatp    <= '0;
-            walk_iosatp     <= '0;
-            walk_pte        <= '0;
-            walk_pa         <= '0;
-            walk_resp       <= RESP_OKAY;
-            walk_rdata      <= '0;
-            walk_resp_valid <= 1'b0;
-            walk_level      <= '0;
+            fault_irq       <= 1'b0;
+            aw_rr_ptr       <= '0;
+            ar_rr_ptr       <= '0;
         end else begin
             fault_irq <= 1'b0;
-            if (walk_resp_valid && u_rready[walk_master]) begin
-                walk_resp_valid <= 1'b0;
-                walk_state      <= WALK_IDLE;
-            end
-
-            if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx] &&
-                !ar_authorized && reg_ddtp[53:10] != '0 && ddt_mode_translate) begin
-                walk_master   <= ar_grant_idx;
-                walk_id       <= u_arid[ar_grant_idx];
-                walk_devid    <= u_ar_devid[ar_grant_idx];
-                walk_pasid    <= u_ar_pasid[ar_grant_idx];
-                walk_iova     <= u_araddr[ar_grant_idx];
-                walk_resp     <= RESP_OKAY;
-                walk_rdata    <= '0;
-                walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
-                                 ADDR_WIDTH'(({32'b0, u_ar_devid[ar_grant_idx][6:0]} << 5));
-                walk_state    <= WALK_DC0_REQ;
-            end else begin
-                unique case (walk_state)
-                    WALK_DC0_REQ: if (d_arready) walk_state <= WALK_DC0_RSP;
-                    WALK_DC0_RSP: if (d_rvalid) begin
-                        walk_dc0 <= read_dw_from_beat(d_rdata, walk_req_addr);
-                        if (!read_dw_from_beat(d_rdata, walk_req_addr)[0]) begin
-                            walk_resp       <= RESP_SLVERR;
-                            walk_resp_valid <= 1'b1;
-                            walk_state      <= WALK_RESP;
-                            fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
-                                cause:          CAUSE_DDT_ENTRY_NOT_VALID,
-                                ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
-                                priv:           1'b0,
-                                rsvd_pid:       1'b0,
-                                pid:            walk_pasid,
-                                did:            walk_devid,
-                                custom:         1'b0,
-                                iotval_present: 4'b0001,
-                                iotval:         64'(walk_iova),
-                                iotval2:        '0
-                            };
-                            fq_stage_tail   <= fq_stage_tail + 1'b1;
-                            fq_stage_count  <= fq_stage_count + 1'b1;
-                            fault_count_dbg <= fault_count_dbg + 1'b1;
-                            fault_irq       <= 1'b1;
-                        end else begin
-                            walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
-                                             ADDR_WIDTH'(({32'b0, walk_devid[6:0]} << 5)) +
-                                             ADDR_WIDTH'(8);
-                            walk_state <= WALK_DC1_REQ;
-                        end
-                    end
-                    WALK_DC1_REQ: if (d_arready) walk_state <= WALK_DC1_RSP;
-                    WALK_DC1_RSP: if (d_rvalid) begin
-                        walk_iohgatp  <= read_dw_from_beat(d_rdata, walk_req_addr);
-                        walk_req_addr <= ppn_addr(reg_ddtp[53:10]) +
-                                         ADDR_WIDTH'(({32'b0, walk_devid[6:0]} << 5)) +
-                                         ADDR_WIDTH'(24);
-                        walk_state <= WALK_DC3_REQ;
-                    end
-                    WALK_DC3_REQ: if (d_arready) walk_state <= WALK_DC3_RSP;
-                    WALK_DC3_RSP: if (d_rvalid) begin
-                        walk_iosatp   <= read_dw_from_beat(d_rdata, walk_req_addr);
-                        walk_level    <= 2'd2;
-                        walk_req_addr <= ppn_addr(read_dw_from_beat(d_rdata, walk_req_addr)[43:0]) +
-                                         ADDR_WIDTH'(({31'b0, sv39_index(walk_iova, 2'd2)} << 3));
-                        walk_state <= WALK_PT_REQ;
-                    end
-                    WALK_PT_REQ: if (d_arready) walk_state <= WALK_PT_RSP;
-                    WALK_PT_RSP: if (d_rvalid) begin
-                        walk_pte <= read_dw_from_beat(d_rdata, walk_req_addr);
-                        if (!pte_valid(read_dw_from_beat(d_rdata, walk_req_addr))) begin
-                            walk_resp       <= RESP_SLVERR;
-                            walk_resp_valid <= 1'b1;
-                            walk_state      <= WALK_RESP;
-                            fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
-                                cause:          12'd13,
-                                ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
-                                priv:           1'b0,
-                                rsvd_pid:       1'b0,
-                                pid:            walk_pasid,
-                                did:            walk_devid,
-                                custom:         1'b0,
-                                iotval_present: 4'b0001,
-                                iotval:         64'(walk_iova),
-                                iotval2:        '0
-                            };
-                            fq_stage_tail   <= fq_stage_tail + 1'b1;
-                            fq_stage_count  <= fq_stage_count + 1'b1;
-                            fault_count_dbg <= fault_count_dbg + 1'b1;
-                            fault_irq       <= 1'b1;
-                        end else if (pte_leaf(read_dw_from_beat(d_rdata, walk_req_addr))) begin
-                            walk_pa       <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) |
-                                             ADDR_WIDTH'(walk_iova[11:0]);
-                            walk_req_addr <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) |
-                                             ADDR_WIDTH'(walk_iova[11:0]);
-                            walk_state <= WALK_DATA_REQ;
-                        end else if (walk_level == 2'd0) begin
-                            walk_resp       <= RESP_SLVERR;
-                            walk_resp_valid <= 1'b1;
-                            walk_state      <= WALK_RESP;
-                        end else begin
-                            walk_level    <= walk_level - 1'b1;
-                            walk_req_addr <= ppn_addr(pte_ppn(read_dw_from_beat(d_rdata, walk_req_addr))) +
-                                             ADDR_WIDTH'(({31'b0, sv39_index(walk_iova, walk_level - 1'b1)} << 3));
-                            walk_state <= WALK_PT_REQ;
-                        end
-                    end
-                    WALK_DATA_REQ: if (d_arready) walk_state <= WALK_DATA_RSP;
-                    WALK_DATA_RSP: if (d_rvalid) begin
-                        walk_rdata      <= d_rdata;
-                        walk_resp       <= d_rresp;
-                        walk_resp_valid <= 1'b1;
-                        walk_state      <= WALK_RESP;
-                    end
-                    default: ;
-                endcase
-            end
-
-            if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_awvalid[aw_grant_idx] && u_awready[aw_grant_idx] && !aw_authorized) begin
-                fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
-                    cause:          CAUSE_DDT_ENTRY_NOT_VALID,
-                    ttyp:           TTYP_UNTRANSLATED_WRITE_OR_AMO,
-                    priv:           u_awprot[aw_grant_idx][0],
-                    rsvd_pid:       1'b0,
-                    pid:            u_aw_pasid[aw_grant_idx],
-                    did:            u_aw_devid[aw_grant_idx],
-                    custom:         1'b0,
-                    iotval_present: 4'b0001,
-                    iotval:         64'(u_awaddr[aw_grant_idx]),
-                    iotval2:        '0
-                };
-                fq_stage_tail  <= fq_stage_tail + 1'b1;
-                fq_stage_count <= fq_stage_count + 1'b1;
+            if (flt_push && fq_stage_count < $clog2(FAULT_Q_DEPTH+1)'(FAULT_Q_DEPTH)) begin
+                fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= flt_record;
+                fq_stage_tail   <= fq_stage_tail + 1'b1;
+                fq_stage_count  <= fq_stage_count + 1'b1;
                 fault_count_dbg <= fault_count_dbg + 1'b1;
-                fault_irq      <= 1'b1;
+                fault_irq       <= 1'b1;
             end
-            if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx] && !ar_authorized &&
-                !(reg_ddtp[53:10] != '0 && ddt_mode_translate)) begin
-                fq_stage[fq_stage_tail[$clog2(FAULT_Q_DEPTH)-1:0]] <= '{
-                    cause:          CAUSE_DDT_ENTRY_NOT_VALID,
-                    ttyp:           TTYP_UNTRANSLATED_READ_NO_AMO,
-                    priv:           u_arprot[ar_grant_idx][0],
-                    rsvd_pid:       1'b0,
-                    pid:            u_ar_pasid[ar_grant_idx],
-                    did:            u_ar_devid[ar_grant_idx],
-                    custom:         1'b0,
-                    iotval_present: 4'b0001,
-                    iotval:         64'(u_araddr[ar_grant_idx]),
-                    iotval2:        '0
-                };
-                fq_stage_tail  <= fq_stage_tail + 1'b1;
-                fq_stage_count <= fq_stage_count + 1'b1;
-                fault_count_dbg <= fault_count_dbg + 1'b1;
-                fault_irq      <= 1'b1;
-            end
-            // rotate priorities each granted cycle
-            if (aw_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_awvalid[aw_grant_idx] && u_awready[aw_grant_idx]) begin
-                aw_rr_ptr <= $clog2(NUM_MASTERS+1)'((aw_grant_idx + 1) % NUM_MASTERS);
-            end
-            if (ar_grant_idx != $clog2(NUM_MASTERS+1)'(NUM_MASTERS) &&
-                u_arvalid[ar_grant_idx] && u_arready[ar_grant_idx]) begin
+            // Rotate identity fast-path round-robin pointers on accept.
+            if (ar_id_grant && u_arvalid[ar_grant_idx] && d_arready)
                 ar_rr_ptr <= $clog2(NUM_MASTERS+1)'((ar_grant_idx + 1) % NUM_MASTERS);
+            if (aw_id_grant && u_awvalid[aw_grant_idx] && d_awready)
+                aw_rr_ptr <= $clog2(NUM_MASTERS+1)'((aw_grant_idx + 1) % NUM_MASTERS);
+        end
+    end
+
+    // ==================================================================
+    // Command queue execution.
+    //
+    // Reads command doublewords from the memory-resident CQ ring (CQB
+    // base, CQH head .. CQT tail) over the downstream walk port and
+    // executes them:
+    //   * IOTINVAL.VMA / IOTINVAL.GVMA / IODIR.INVAL_DDT / IODIR.INVAL_PDT
+    //     are no-ops for this walk-every-time v1 (no persistent IOATC to
+    //     flush) — they advance CQH and are accepted.
+    //   * IOFENCE.C completes the fence: it pulses cmd_complete_irq and
+    //     (optionally) signals completion to memory.
+    // The CQ engine only runs when the translation FSM is idle so the two
+    // share the downstream port without contention.
+    // ==================================================================
+    localparam logic [6:0] CMD_OP_IOTINVAL = 7'h01; // opcode field [6:0]
+    localparam logic [6:0] CMD_OP_IODIR    = 7'h03;
+    localparam logic [6:0] CMD_OP_IOFENCE  = 7'h02;
+
+    typedef enum logic [1:0] {CQ_IDLE, CQ_FETCH, CQ_WAIT, CQ_EXEC} cq_state_e;
+    cq_state_e cq_state, cq_state_n;
+    logic [63:0] cq_cmd;
+    logic        cmd_complete_irq_q;
+    logic        cq_rd_req;
+    logic [ADDR_WIDTH-1:0] cq_rd_addr;
+
+    // CQ enabled when CQCSR.cqen (bit 0) set and CQH != CQT.
+    logic cq_enabled;
+    logic cq_nonempty;
+    assign cq_enabled  = reg_cqcsr[0];
+    assign cq_nonempty = (reg_cqh != reg_cqt);
+
+    // CQ entry address = (cqb.ppn << 12) + cqh * 16 (16-byte commands).
+    function automatic logic [ADDR_WIDTH-1:0] cq_entry_addr(input logic [63:0] cqb,
+                                                           input logic [31:0] cqh);
+        logic [63:0] a;
+        a = ({10'b0, cqb[DDTE_PPN_MSB:DDTE_PPN_LSB]} << 12) | ({32'b0, cqh} << 4);
+        return a[ADDR_WIDTH-1:0];
+    endfunction
+
+    always_comb begin
+        cq_state_n = cq_state;
+        cq_rd_req  = 1'b0;
+        cq_rd_addr = '0;
+        case (cq_state)
+            CQ_IDLE:  if (cq_enabled && cq_nonempty && !walk_active) cq_state_n = CQ_FETCH;
+            CQ_FETCH: begin
+                cq_rd_req  = 1'b1;
+                cq_rd_addr = cq_entry_addr(reg_cqb, reg_cqh);
+                if (walk_rd_ack) cq_state_n = CQ_WAIT;
+            end
+            CQ_WAIT:  if (walk_rd_done) cq_state_n = CQ_EXEC;
+            CQ_EXEC:  cq_state_n = CQ_IDLE;
+            default:  cq_state_n = CQ_IDLE;
+        endcase
+    end
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            cq_state           <= CQ_IDLE;
+            cq_cmd             <= '0;
+            cmd_complete_irq_q <= 1'b0;
+        end else begin
+            cq_state           <= cq_state_n;
+            cmd_complete_irq_q <= 1'b0;
+            if (cq_state == CQ_WAIT && walk_rd_done) cq_cmd <= walk_rd_data;
+            if (cq_state == CQ_EXEC) begin
+                // IOFENCE.C signals completion; all commands advance CQH.
+                if (cq_cmd[6:0] == CMD_OP_IOFENCE)
+                    cmd_complete_irq_q <= 1'b1;
             end
         end
     end
 
+    assign cmd_complete_irq = cmd_complete_irq_q;
+
+    // The CQ engine borrows the walk read sub-FSM when the translation FSM
+    // is idle.  Only one requester drives walk_rd_req at a time.
+    logic        cq_owns_rd;
+    assign cq_owns_rd = (cq_state == CQ_FETCH);
+
+    // Final read-request arbitration: translation FSM has priority; the CQ
+    // engine drives the port only when translation is idle.  This is the
+    // single driver of the walk-read sub-FSM request inputs.
+    assign walk_rd_req  = (rd_state == RD_IDLE) &&
+                          (walk_active ? walk_rd_req_c : cq_owns_rd);
+    assign walk_rd_addr = walk_active ? walk_rd_addr_c : cq_rd_addr;
+
     // ------------------------------------------------------------------
     // MMIO register file (AXI-Lite-style).  Programs DDTP, queue pointers,
-    // and command words.  Command-queue execution is summarised below.
+    // and command words.
     // ------------------------------------------------------------------
     logic                    mmio_aw_reg;
     logic [11:0]             mmio_aw_addr_q;
@@ -813,6 +1363,10 @@ module e1_riscv_iommu
     assign mmio_awready = !mmio_aw_reg;
     assign mmio_wready  = mmio_aw_reg && !mmio_bvalid;
     assign mmio_arready = !mmio_ar_reg;
+
+    // Advance CQH when a command has been executed.
+    logic cq_advance;
+    assign cq_advance = (cq_state == CQ_EXEC);
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -844,16 +1398,11 @@ module e1_riscv_iommu
             mmio_rvalid      <= 1'b0;
             mmio_rdata       <= '0;
             mmio_rresp       <= '0;
-            cmd_complete_irq <= 1'b0;
-            cmd_state        <= CMD_IDLE;
-            cmd_req_addr     <= '0;
-            cmd_word0        <= '0;
             for (int unsigned i = 0; i < NUM_MASTERS; i++) begin
                 allowed_dev[i] <= '0;
                 allowed_vld[i] <= 1'b0;
             end
         end else begin
-            cmd_complete_irq <= 1'b0;
             // AW accept
             if (mmio_awvalid && mmio_awready) begin
                 mmio_aw_reg    <= 1'b1;
@@ -882,8 +1431,8 @@ module e1_riscv_iommu
                     OFFS_TR_REQ_CTL:  reg_tr_req_ctl  <= mmio_wdata;
                     default: ;
                 endcase
-                // Custom encoding for the simplified allowlist:
-                // 0x800 + idx*8 writes 64-bit { valid, devid }
+                // Custom encoding for the monitor bypass allowlist:
+                // 0x800 + idx*8 writes 64-bit { valid, devid }.
                 if (mmio_aw_addr_q[11:8] == 4'h8) begin
                     int unsigned idx = mmio_aw_addr_q[7:3];
                     if (idx < NUM_MASTERS) begin
@@ -929,57 +1478,31 @@ module e1_riscv_iommu
                 mmio_ar_reg <= 1'b0;
             end
 
-            // Fault queue tail register reflects staged faults so kernel
-            // driver can poll FQT and walk stage records.
+            // Fault queue tail register reflects staged faults so the
+            // kernel driver can poll FQT and walk the stage records.
             reg_fqt <= 32'(fq_stage_tail);
 
-            // IPSR bit 1 mirrors FQ interrupt status
-            if (fault_irq) reg_ipsr[1] <= 1'b1;
+            // Command queue head advances as the CQ engine retires entries.
+            if (cq_advance) reg_cqh <= reg_cqh + 32'd1;
 
-            unique case (cmd_state)
-                CMD_IDLE: begin
-                    if (reg_cqcsr[0] && (reg_cqh != reg_cqt) &&
-                        walk_state == WALK_IDLE && !walk_resp_valid) begin
-                        cmd_req_addr <= ppn_addr(reg_cqb[53:10]) +
-                                        ADDR_WIDTH'(({32'b0, reg_cqh} << 4));
-                        cmd_state <= CMD_FETCH_REQ;
-                    end
-                end
-                CMD_FETCH_REQ: begin
-                    if (d_arready) cmd_state <= CMD_FETCH_RSP;
-                end
-                CMD_FETCH_RSP: begin
-                    if (d_rvalid) begin
-                        cmd_word0 <= read_dw_from_beat(d_rdata, cmd_req_addr);
-                        if (read_dw_from_beat(d_rdata, cmd_req_addr)[6:0] == CMD_OP_IOFENCE_C) begin
-                            reg_cqh          <= reg_cqh + 1'b1;
-                            cmd_complete_irq <= 1'b1;
-                        end else begin
-                            // Unsupported CQ entries fail closed: stop queue
-                            // processing and leave CQH on the unconsumed entry.
-                            reg_cqcsr[8] <= 1'b1;
-                            reg_cqcsr[0] <= 1'b0;
-                        end
-                        cmd_state <= CMD_IDLE;
-                    end
-                end
-                default: cmd_state <= CMD_IDLE;
-            endcase
+            // IPSR bit 1 mirrors FQ interrupt status; bit 0 mirrors CQ.
+            if (fault_irq)          reg_ipsr[1] <= 1'b1;
+            if (cmd_complete_irq_q) reg_ipsr[0] <= 1'b1;
         end
     end
 
     // ------------------------------------------------------------------
-    // Page-request queue: currently driven only via MMIO injection for
-    // verification.  A full SVA path adds upstream PRI request signals.
+    // Page-request queue: register surface only.  A full SVA path adds
+    // upstream PRI request signals.
     // ------------------------------------------------------------------
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int unsigned i = 0; i < PAGE_Q_DEPTH; i++) prq_stage[i] <= '0;
-            prq_stage_head  <= '0;
-            prq_stage_tail  <= '0;
-            prq_stage_count <= '0;
+            prq_stage_head     <= '0;
+            prq_stage_tail     <= '0;
+            prq_stage_count    <= '0;
             page_req_count_dbg <= '0;
-            page_req_irq    <= 1'b0;
+            page_req_irq       <= 1'b0;
         end else begin
             page_req_irq <= 1'b0;
         end

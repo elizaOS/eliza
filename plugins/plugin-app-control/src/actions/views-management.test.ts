@@ -353,6 +353,157 @@ describe("view management actions", () => {
 		}
 	});
 
+	it("opens a view in a separate always-on-top window through the shell navigate API", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const client = {
+			listViews: vi.fn(async () => [view()]),
+			getCurrentView: vi.fn(async () => null),
+		};
+		const action = createViewsAction({
+			client,
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				"open the remote ledger view in a separate always on top window",
+			) as never,
+			undefined,
+			{
+				action: "window",
+				view: "remote-ledger",
+				alwaysOnTop: true,
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "window",
+			viewId: "remote-ledger",
+			viewType: "gui",
+			alwaysOnTop: true,
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/remote-ledger/navigate",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "open-window",
+					alwaysOnTop: true,
+				}),
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: 'Opened gui view "remote-ledger" in a separate window.',
+			}),
+		);
+	});
+
+	it("owner-gates mutating view management modes but allows window navigation validation", async () => {
+		const { runtime } = createRuntime();
+		const ownerCheck = vi.fn(async () => false);
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view()]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: ownerCheck,
+		});
+
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("create a remote ledger dashboard view") as never,
+			),
+		).resolves.toBe(false);
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("edit the remote ledger view") as never,
+			),
+		).resolves.toBe(false);
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("delete the remote ledger view") as never,
+			),
+		).resolves.toBe(false);
+		await expect(
+			action.validate?.(
+				runtime as never,
+				message("open the remote ledger view in a separate window") as never,
+			),
+		).resolves.toBe(true);
+		expect(ownerCheck).toHaveBeenCalledTimes(3);
+	});
+
+	it("includes explicit TUI view type and always-on-top false in window navigation payloads", async () => {
+		const { runtime } = createRuntime();
+		const callback = vi.fn();
+		const action = createViewsAction({
+			client: {
+				listViews: vi.fn(async () => [view({ viewType: "tui" })]),
+				getCurrentView: vi.fn(async () => null),
+			},
+			hasOwnerAccess: vi.fn(async () => true),
+		});
+
+		vi.mocked(globalThis.fetch).mockResolvedValueOnce({
+			ok: true,
+			status: 200,
+			json: async () => ({ ok: true }),
+		} as Response);
+
+		const result = await action.handler(
+			runtime as never,
+			message(
+				"open the remote ledger terminal view in a separate window",
+			) as never,
+			undefined,
+			{
+				action: "window",
+				view: "remote-ledger",
+				viewType: "tui",
+				alwaysOnTop: false,
+			},
+			callback,
+		);
+
+		expect(result?.success).toBe(true);
+		expect(result?.values).toMatchObject({
+			mode: "window",
+			viewId: "remote-ledger",
+			viewType: "tui",
+			alwaysOnTop: false,
+		});
+		expect(globalThis.fetch).toHaveBeenCalledWith(
+			"http://127.0.0.1:3456/api/views/remote-ledger/navigate?viewType=tui",
+			expect.objectContaining({
+				method: "POST",
+				body: JSON.stringify({
+					action: "open-window",
+					viewType: "tui",
+					alwaysOnTop: false,
+				}),
+			}),
+		);
+		expect(callback).toHaveBeenCalledWith(
+			expect.objectContaining({
+				text: 'Opened tui view "remote-ledger" in a separate window.',
+			}),
+		);
+	});
+
 	it("routes create, edit, and delete through the unified VIEWS action dispatcher", async () => {
 		const repo = createRepoFixture();
 		try {

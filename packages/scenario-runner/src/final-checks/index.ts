@@ -339,6 +339,33 @@ function actionBlob(action: ScenarioContext["actionsCalled"][number]): string {
   return parts.join(" ").toLowerCase();
 }
 
+function actionCallSummary(
+  action: ScenarioContext["actionsCalled"][number],
+): string {
+  const result = action.result
+    ? {
+        success: action.result.success,
+        text: action.result.text,
+        message: action.result.message,
+        data: action.result.data,
+        values: action.result.values,
+        raw:
+          action.result.text === undefined &&
+          action.result.message === undefined &&
+          action.result.data === undefined &&
+          action.result.values === undefined
+            ? action.result.raw
+            : undefined,
+      }
+    : undefined;
+  return JSON.stringify({
+    actionName: action.actionName,
+    parameters: action.parameters,
+    result,
+    error: action.error?.message,
+  }).slice(0, 500);
+}
+
 // ---------------------------------------------------------------------------
 // Built-in handlers
 // ---------------------------------------------------------------------------
@@ -372,9 +399,10 @@ registerFinalCheckHandler("actionCalled", (check, { ctx }) => {
   if (status === "success") {
     const ok = calls.some((c) => c.result?.success === true);
     if (!ok) {
+      const actual = calls.map(actionCallSummary).join(" | ") || "(none)";
       return {
         status: "failed",
-        detail: `${actionName} was called but none succeeded.`,
+        detail: `actionCalled: expected at least one ${actionName} call with result.success=true, saw ${actual}`,
       };
     }
   }
@@ -404,10 +432,12 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
   const matched = ctx.actionsCalled.filter((a) =>
     accepted.includes(a.actionName),
   );
+  const actualCalls =
+    ctx.actionsCalled.map((a) => a.actionName).join(",") || "(none)";
   if (matched.length === 0) {
     return {
       status: "failed",
-      detail: `no actions matched [${accepted.join(",")}]`,
+      detail: `selectedActionArguments: expected action in [${accepted.join(",")}], saw actions [${actualCalls}]`,
     };
   }
   const blob = matched
@@ -423,7 +453,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
       if (!matchesPattern(blob, pattern)) {
         return {
           status: "failed",
-          detail: `arguments missing ${String(pattern)}. Blob: ${blob.slice(0, 300)}`,
+          detail: `selectedActionArguments: expected arguments to include ${String(pattern)}, saw ${JSON.stringify(blob.slice(0, 500))}`,
         };
       }
     }
@@ -433,7 +463,7 @@ registerFinalCheckHandler("selectedActionArguments", (check, { ctx }) => {
     if (!ok) {
       return {
         status: "failed",
-        detail: `arguments missing any of [${includesAny.map(String).join(",")}]. Blob: ${blob.slice(0, 300)}`,
+        detail: `selectedActionArguments: expected arguments to include any of [${includesAny.map(String).join(",")}], saw ${JSON.stringify(blob.slice(0, 500))}`,
       };
     }
   }

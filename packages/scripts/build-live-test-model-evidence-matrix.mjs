@@ -84,6 +84,33 @@ function parseJsonl(filePath, limit = 3) {
   return records;
 }
 
+function lineCount(filePath) {
+  if (!filePath || !existsSync(filePath)) return 0;
+  return readFileSync(filePath, "utf8").split(/\r?\n/).filter((line) => line.trim()).length;
+}
+
+function byteCount(filePath) {
+  if (!filePath || !existsSync(filePath)) return 0;
+  return Buffer.byteLength(readFileSync(filePath, "utf8"));
+}
+
+function latestReport(row) {
+  const viewerPath = resolveInventoryHref(row.latestWrappedViewer);
+  if (!viewerPath) return null;
+  const reportPath = path.join(path.dirname(viewerPath), "report.json");
+  if (!existsSync(reportPath)) return null;
+  try {
+    const report = JSON.parse(readFileSync(reportPath, "utf8"));
+    return {
+      href: relFromReport(reportPath),
+      stdoutExcerpt: truncate(report.stdout || "", 1200),
+      stderrExcerpt: truncate(report.stderr || "", 1200),
+    };
+  } catch {
+    return null;
+  }
+}
+
 function messageText(messages) {
   if (!Array.isArray(messages)) return "";
   return messages
@@ -127,6 +154,9 @@ function buildPayload() {
       const llmCallsPath = resolveInventoryHref(row.latestLlmCallsJsonl);
       const modelReviewPath = path.join(INVENTORY_DIR, row.modelReviewHref || "");
       const samples = parseJsonl(llmCallsPath).map(callPreview);
+      const llmCallsExists = llmCallsPath ? existsSync(llmCallsPath) : false;
+      const llmCallsLines = lineCount(llmCallsPath);
+      const report = latestReport(row);
       return {
         id,
         packageJson: row.packageJson,
@@ -144,8 +174,21 @@ function buildPayload() {
         modelReviewHref: modelReviewPath ? relFromReport(modelReviewPath) : "",
         modelReviewExists: row.modelReviewHref ? existsSync(modelReviewPath) : false,
         llmCallsHref: llmCallsPath ? relFromReport(llmCallsPath) : "",
-        llmCallsExists: llmCallsPath ? existsSync(llmCallsPath) : false,
+        llmCallsExists,
+        llmCallsBytes: byteCount(llmCallsPath),
+        llmCallsLines,
+        llmCallsStatus: llmCallsExists
+          ? llmCallsLines > 0
+            ? "sidecar-with-calls"
+            : "empty-sidecar-zero-calls"
+          : "no-sidecar-file",
+        latestReportHref: report?.href || "",
+        latestStdoutExcerpt: report?.stdoutExcerpt || "",
+        latestStderrExcerpt: report?.stderrExcerpt || "",
         structuredLlmCallCount: Number(row.structuredLlmCallCount || 0),
+        latestStructuredLlmCallCount: Number(
+          row.latestStructuredLlmCallCount ?? row.structuredLlmCallCount ?? 0,
+        ),
         structuredLlmRunCount: Number(row.structuredLlmRunCount || 0),
         structuredLlmCoverageReason: row.structuredLlmCoverageReason || "",
         structuredLlmCoverageDetail: row.structuredLlmCoverageDetail || "",
@@ -183,11 +226,15 @@ function buildPayload() {
       focusedReviewPages: rows.filter((row) => row.modelReviewExists).length,
       structuredLlmScripts: rows.filter((row) => row.structuredLlmCallCount > 0).length,
       structuredLlmCallCount: rows.reduce((sum, row) => sum + row.structuredLlmCallCount, 0),
+      latestStructuredLlmCallCount: rows.reduce((sum, row) => sum + row.latestStructuredLlmCallCount, 0),
       structuredStatusScripts: rows.filter((row) => row.structuredLlmCoverageReason).length,
       failedScripts: rows.filter((row) => Number(row.latestWrappedExitCode || 0) !== 0).length,
       rowsWithFailureClassification: rows.filter((row) => row.failureClassification).length,
       rowsWithRerunCommand: rows.filter((row) => row.rerunCommand).length,
       sampleCallRows: rows.filter((row) => row.sampleCalls.length > 0).length,
+      rowsWithEmptyLlmCallSidecar: rows.filter((row) => row.llmCallsStatus === "empty-sidecar-zero-calls").length,
+      rowsWithNoLlmCallSidecar: rows.filter((row) => row.llmCallsStatus === "no-sidecar-file").length,
+      rowsWithLatestRunExcerpt: rows.filter((row) => row.latestStdoutExcerpt || row.latestStderrExcerpt).length,
       byDisposition,
       byStructuredReason,
     },
@@ -239,7 +286,7 @@ function html(payload) {
       .map(([label, value]) => `<div class="card"><div class="muted">${escapeHtml(label)}</div><div class="metric">${escapeHtml(value)}</div></div>`)
       .join("")}</section>
     <section class="panel"><h2>Likely-LLM Scripts</h2><div class="body"><table><thead><tr><th>script</th><th>status</th><th>evidence links</th><th>structured status</th><th>sample calls</th><th>failure</th><th>rerun</th></tr></thead><tbody>${payload.rows
-      .map((row) => `<tr><td><code>${escapeHtml(row.id)}</code></td><td class="${Number(row.latestWrappedExitCode || 0) === 0 ? "ok" : "bad"}">${escapeHtml(row.disposition)}<br>exit ${escapeHtml(row.latestWrappedExitCode ?? "n/a")}</td><td><a href="${escapeHtml(row.playbackHref)}">playback</a><br><a href="${escapeHtml(row.modelReviewHref)}">focused review</a>${row.llmCallsExists ? `<br><a href="${escapeHtml(row.llmCallsHref)}">llm calls</a>` : ""}</td><td>${escapeHtml(row.structuredLlmCallCount)} calls in ${escapeHtml(row.structuredLlmRunCount)} runs<br><code>${escapeHtml(row.structuredLlmCoverageReason || "structured-present")}</code><br><span class="muted">${escapeHtml(row.structuredLlmCoverageDetail)}</span></td><td>${row.sampleCalls.length ? row.sampleCalls.map((call) => `<div><strong>${escapeHtml(call.purpose || call.model || "call")}</strong> ${escapeHtml(call.totalTokens)} tokens cache ${escapeHtml(call.cacheReadInputTokens)}<pre>${escapeHtml(call.promptPreview)}</pre><pre>${escapeHtml(call.responsePreview)}</pre></div>`).join("") : "<span class=\"muted\">no structured prompt/response sidecar rows</span>"}</td><td>${row.failureClassification ? `<span class="bad">${escapeHtml(row.failureClassification)}</span><br><a href="${escapeHtml(row.failureTriageHref)}">failure triage</a>` : ""}</td><td><code>${escapeHtml(row.rerunCommand)}</code><br><span class="muted">then <code>bun run bench:analysis:build</code></span></td></tr>`)
+      .map((row) => `<tr><td><code>${escapeHtml(row.id)}</code></td><td class="${Number(row.latestWrappedExitCode || 0) === 0 ? "ok" : "bad"}">${escapeHtml(row.disposition)}<br>exit ${escapeHtml(row.latestWrappedExitCode ?? "n/a")}</td><td><a href="${escapeHtml(row.playbackHref)}">playback</a><br><a href="${escapeHtml(row.modelReviewHref)}">focused review</a>${row.llmCallsExists ? `<br><a href="${escapeHtml(row.llmCallsHref)}">llm calls</a>` : ""}${row.latestReportHref ? `<br><a href="${escapeHtml(row.latestReportHref)}">report</a>` : ""}</td><td>${escapeHtml(row.latestStructuredLlmCallCount)} latest-run calls; ${escapeHtml(row.structuredLlmCallCount)} aggregate calls in ${escapeHtml(row.structuredLlmRunCount)} runs<br><code>${escapeHtml(row.structuredLlmCoverageReason || "structured-present")}</code><br><span class="muted">${escapeHtml(row.structuredLlmCoverageDetail)}</span><br><span class="muted">${escapeHtml(row.llmCallsStatus)}; ${escapeHtml(row.llmCallsLines)} jsonl rows; ${escapeHtml(row.llmCallsBytes)} bytes</span></td><td>${row.sampleCalls.length ? row.sampleCalls.map((call) => `<div><strong>${escapeHtml(call.purpose || call.model || "call")}</strong> ${escapeHtml(call.totalTokens)} tokens cache ${escapeHtml(call.cacheReadInputTokens)}<pre>${escapeHtml(call.promptPreview)}</pre><pre>${escapeHtml(call.responsePreview)}</pre></div>`).join("") : `<span class="muted">no structured prompt/response sidecar rows</span>${row.latestStdoutExcerpt || row.latestStderrExcerpt ? `<pre>${escapeHtml(row.latestStderrExcerpt || row.latestStdoutExcerpt)}</pre>` : ""}`}</td><td>${row.failureClassification ? `<span class="bad">${escapeHtml(row.failureClassification)}</span><br><a href="${escapeHtml(row.failureTriageHref)}">failure triage</a>` : ""}</td><td><code>${escapeHtml(row.rerunCommand)}</code><br><span class="muted">then <code>bun run bench:analysis:build</code></span></td></tr>`)
       .join("")}</tbody></table></div></section>
   </main>
 </body>

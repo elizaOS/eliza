@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 """OpenSBI v1.8.1 boots on the CVA6 RTL through the DRAM-controller model and
 prints its banner over the ns16550a UART RTL.
 
@@ -5,6 +6,15 @@ This is the OS-bring-up step above the bare-metal substrate proof
 (`test_cva6_dram_boot.py`): the same DUT (`e1_cva6_dram_boot_top`) — CVA6
 v5.3.0 RTL fetching from the `e1_dram_ctrl` RTL model through the fabric RTL,
 CLINT/PLIC RTL, RoT-gated reset — now executes the repo OpenSBI build instead
+=======
+"""Real OpenSBI v1.8.1 boots on the REAL CVA6 from REAL DRAM and prints its
+banner over a real ns16550a UART.
+
+This is the OS-bring-up step above the bare-metal substrate proof
+(`test_cva6_dram_boot.py`): the same DUT (`e1_cva6_dram_boot_top`) — real CVA6
+v5.3.0 fetching from the real `e1_dram_ctrl` through the real fabric, real
+CLINT/PLIC, RoT-gated reset — now executes the REAL repo OpenSBI build instead
+>>>>>>> origin/rot-integration-backup-2026-05-21
 of a hand-written bare-metal image, with:
 
   * a synthesizable ns16550a UART model @0x1000_1000 wired onto the fabric as
@@ -27,8 +37,13 @@ Preload image (fw/opensbi-cva6-boot/build_boot_image.py):
 cocotb drives clk/rst_n + the RoT release inputs, then assembles the UART TX
 stream (uart_tx_valid_o / uart_tx_byte_o) into a transcript and asserts the
 OpenSBI BANNER appears ("OpenSBI v...") — the milestone for this proof: real
+<<<<<<< HEAD
 OpenSBI ran in M-mode on CVA6, executing from the RTL DRAM-controller model,
 and reached its console over the UART RTL.
+=======
+OpenSBI ran in M-mode on CVA6, executing from real DRAM, and reached its
+console over the real UART.
+>>>>>>> origin/rot-integration-backup-2026-05-21
 
 The transcript is written to docs/evidence/cpu_ap/opensbi_cva6_boot.transcript.
 
@@ -90,7 +105,13 @@ async def test_opensbi_boots_and_prints_banner(dut):
     for _ in range(4):
         await RisingEdge(dut.clk)
 
+<<<<<<< HEAD
     assert int(dut.platform_released_o.value) == 1, "RoT did not release the CVA6 cluster."
+=======
+    assert int(dut.platform_released_o.value) == 1, (
+        "RoT did not release the CVA6 cluster."
+    )
+>>>>>>> origin/rot-integration-backup-2026-05-21
     assert int(dut.cva6_rst_n_o.value) == 1, "CVA6 still held in reset."
 
     chars = bytearray()
@@ -122,7 +143,11 @@ async def test_opensbi_boots_and_prints_banner(dut):
     EVIDENCE_DIR.mkdir(parents=True, exist_ok=True)
     TRANSCRIPT.write_text(transcript, encoding="utf-8")
 
+<<<<<<< HEAD
     # Structural evidence the CPU fetched OpenSBI from the RTL DRAM path.
+=======
+    # Structural evidence the CPU actually fetched OpenSBI from real DRAM.
+>>>>>>> origin/rot-integration-backup-2026-05-21
     dram_ar = int(dut.dram_ar_xfers_o.value)
     dram_r = int(dut.dram_r_xfers_o.value)
     uart_aw = int(dut.uart_aw_xfers_o.value)
@@ -134,9 +159,14 @@ async def test_opensbi_boots_and_prints_banner(dut):
     dut._log.info("UART transcript:\n" + transcript)
 
     assert dram_ar >= 1 and dram_r >= 1, (
+<<<<<<< HEAD
         f"CVA6 never fetched through the RTL DRAM path (AR={dram_ar}, R={dram_r})."
     )
     assert dram_ar >= 1 and dram_r >= 1, f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
+=======
+        f"CVA6 never fetched real DRAM (AR={dram_ar}, R={dram_r})."
+    )
+>>>>>>> origin/rot-integration-backup-2026-05-21
     assert len(chars) > 0, (
         "No UART output — OpenSBI never reached its console.  Check the entry "
         "shim regs (a0/a1), the OpenSBI image base (FW_TEXT_START=0x80000000), "
@@ -148,8 +178,14 @@ async def test_opensbi_boots_and_prints_banner(dut):
     )
 
     dut._log.info(
+<<<<<<< HEAD
         "OpenSBI-on-CVA6 PROVEN: OpenSBI v1.8.1 booted in M-mode on the "
         "CVA6 RTL from the RTL DRAM-controller model (through the fabric RTL, with "
         "the CLINT/PLIC RTL + RoT gate) and printed its banner over the "
+=======
+        "OpenSBI-on-CVA6 PROVEN: real OpenSBI v1.8.1 booted in M-mode on the "
+        "real CVA6 from the real DRAM controller (through the real fabric, with "
+        "the real CLINT/PLIC + RoT gate) and printed its banner over the "
+>>>>>>> origin/rot-integration-backup-2026-05-21
         f"ns16550a UART.  S-mode marker observed: {smode_seen}."
     )

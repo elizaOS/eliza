@@ -111,9 +111,12 @@ function buildPayload() {
       label: entry.label,
       disposition: `exit-${entry.exitCode}`,
       callCount: number(entry.eventCount),
-      totalTokens: 0,
-      cachedTokens: 0,
-      cachePercent: null,
+      totalTokens: number(entry.structuredTotalTokens),
+      cachedTokens: number(entry.structuredCacheReadInputTokens),
+      cachePercent: number(entry.structuredTotalTokens) > 0
+        ? (number(entry.structuredCacheReadInputTokens) / number(entry.structuredTotalTokens)) * 100
+        : null,
+      structuredLlmCallCount: number(entry.structuredLlmCallCount),
       playbackHref: rel(entry.playbackIndex || ""),
       playbackExists: existsRelative(entry.playbackIndex || ""),
       sourceHref: rel(entry.reportJson || entry.viewerIndex || ""),

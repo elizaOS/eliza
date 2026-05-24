@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test } from "playwright/test";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const outDir = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -45,7 +46,7 @@ test.describe("contact sheet", () => {
       const locator = page.locator(frame.selector).first();
       await locator.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
-      await page.screenshot({
+      await captureScreenshotWithQualityRetry(page, `desktop ${frame.name}`, {
         path: join(outDir, `desktop-${frame.name}.png`),
         fullPage: false,
         type: "png",
@@ -63,7 +64,7 @@ test.describe("contact sheet", () => {
       const locator = page.locator(frame.selector).first();
       await locator.scrollIntoViewIfNeeded();
       await page.waitForTimeout(200);
-      await page.screenshot({
+      await captureScreenshotWithQualityRetry(page, `mobile ${frame.name}`, {
         path: join(outDir, `mobile-${frame.name}.png`),
         fullPage: false,
         type: "png",

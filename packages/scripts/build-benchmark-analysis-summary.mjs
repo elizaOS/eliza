@@ -37,6 +37,19 @@ function buildPayload() {
   const live = readJson("reports/live-test-inventory/inventory.json");
   const audit = readJson("reports/benchmark-analysis/goal-audit.json");
   const gap = readJson("reports/benchmark-analysis/gap-evidence/gap-evidence.json");
+  const remediation = readJson("reports/benchmark-analysis/remediation-matrix/remediation-matrix.json");
+  const sampleReview = readJson("reports/benchmark-analysis/benchmark-sample-review-matrix/sample-review-matrix.json");
+  const versionRemediation = readJson(
+    "reports/benchmark-analysis/version-remediation-matrix/version-remediation.json",
+  );
+  const corpusPacks = readJson("reports/benchmark-analysis/corpus-review-packs/corpus-review-packs.json");
+  const livePromptResponse = readJson(
+    "reports/benchmark-analysis/live-test-prompt-response-completeness/prompt-response-completeness.json",
+  );
+  const rerunBatches = readJson("reports/benchmark-analysis/rerun-batches/rerun-batches.json");
+  const manualProgress = readJson(
+    "reports/benchmark-analysis/manual-review-progress/manual-review-progress.json",
+  );
   const benchmarkFocus = (review.rows || [])
     .filter((row) => row.disposition !== "review-pass")
     .map((row) => ({
@@ -112,12 +125,46 @@ function buildPayload() {
         zeroMetricLatestRows: corpus.telemetryGapSummary?.zeroMetricLatestRows || 0,
         evidenceAbsentLatestRows: corpus.telemetryGapSummary?.evidenceAbsentLatestRows || 0,
       },
+      strictReviewSignals: {
+        sampledExamples: sampleReview.summary?.sampleRows || 0,
+        reviewReadySamples: sampleReview.summary?.reviewReadyRows || 0,
+        fullInlineSampleRows: sampleReview.summary?.fullInlineReviewRows || 0,
+        toolCallOnlySampleRows: sampleReview.summary?.toolCallOnlyInlineRows || 0,
+        playbackOnlyEnvironmentRows: sampleReview.summary?.playbackOnlyEnvironmentRows || 0,
+        previousAggregateOnlyReviewRows:
+          versionRemediation.summary?.previousAggregateOnlyReviewRows || 0,
+        corpusWarningRowsWithPlayback: corpusPacks.summary?.warningRowsWithPlayback || 0,
+        corpusWarningRowsWithCallPreview: corpusPacks.summary?.warningRowsWithCallPreview || 0,
+        liveOfflineReviewSummaries:
+          livePromptResponse.summary?.rowsWithOfflineReviewSummary || 0,
+        liveNoSidecarOfflineSummaries:
+          livePromptResponse.summary?.noSidecarRowsWithOfflineReviewSummary || 0,
+      },
+      readinessActions: {
+        remediationItems: remediation.summary?.itemCount || 0,
+        localActionItems: remediation.summary?.localActionItems || 0,
+        localCredentialRequiredItems: remediation.summary?.localCredentialRequiredItems || 0,
+        localActionByLane: remediation.summary?.localActionByLane || {},
+        objectiveCaveats: remediation.summary?.objectiveCaveats || 0,
+        objectiveLocalActionItems: remediation.summary?.objectiveLocalActionItems || 0,
+        objectiveLocalActionByLane: remediation.summary?.objectiveLocalActionByLane || {},
+        liveLocalActionItems: remediation.summary?.liveLocalActionItems || 0,
+        liveLocalActionByLane: remediation.summary?.liveLocalActionByLane || {},
+        rerunBatches: rerunBatches.summary?.batchCount || 0,
+        runnableCommands: rerunBatches.summary?.runnableCommands || 0,
+        blockedCommands: rerunBatches.summary?.blockedCommands || 0,
+        manualReviewed: manualProgress.summary?.reviewed || 0,
+        manualReviewItems: manualProgress.summary?.itemCount || 0,
+      },
     },
     externalGates: [
       {
         id: "osworld-live",
         status: gap.osworld?.providerReadiness?.runnableProviderCount > 0 ? "ready-to-rerun" : "blocked",
-        evidence: gap.osworld?.blockerSummary || "",
+        evidence:
+          Object.entries(gap.osworld?.providerReadiness?.providers || {})
+            .map(([provider, detail]) => `${provider}: ${detail.detail}`)
+            .join("; ") || "",
         href: "../gap-evidence/osworld-live-readiness.html",
       },
       {
@@ -190,10 +237,25 @@ function html(payload) {
         ["Scenarios", `${payload.headline.scenarioExecution.passed}/${payload.headline.scenarioExecution.findingCount} passed`],
         ["Failed scenarios", payload.headline.scenarioFailures.failedScenarios],
         ["Live model gaps", payload.headline.liveFindings.modelArtifactGap],
+        ["Sample review", `${payload.headline.strictReviewSignals.reviewReadySamples}/${payload.headline.strictReviewSignals.sampledExamples} ready`],
+        ["Corpus warnings", `${payload.headline.strictReviewSignals.corpusWarningRowsWithPlayback}/${payload.headline.strictReviewSignals.corpusWarningRowsWithCallPreview} playback/calls`],
+        ["Rerun commands", `${payload.headline.readinessActions.runnableCommands} runnable`],
+        ["Manual notes", `${payload.headline.readinessActions.manualReviewed}/${payload.headline.readinessActions.manualReviewItems} reviewed`],
       ]
         .map(([label, value]) => `<div class="card"><span class="muted">${escapeHtml(label)}</span><b>${escapeHtml(value)}</b></div>`)
         .join("")}
     </div>
+    <section class="panel"><h2>Strict Review Signals</h2><div class="body">${table([
+      { label: "sample review", value: `${payload.headline.strictReviewSignals.fullInlineSampleRows} full inline, ${payload.headline.strictReviewSignals.toolCallOnlySampleRows} tool-call-only, ${payload.headline.strictReviewSignals.playbackOnlyEnvironmentRows} playback-only environment` },
+      { label: "version gaps", value: `${payload.headline.strictReviewSignals.previousAggregateOnlyReviewRows} previous aggregate-only rows have review summaries` },
+      { label: "corpus warnings", value: `${payload.headline.strictReviewSignals.corpusWarningRowsWithPlayback} rows with playback, ${payload.headline.strictReviewSignals.corpusWarningRowsWithCallPreview} rows with call previews` },
+      { label: "live/e2e offline review", value: `${payload.headline.strictReviewSignals.liveOfflineReviewSummaries} offline summaries, ${payload.headline.strictReviewSignals.liveNoSidecarOfflineSummaries} no-sidecar guidance rows` },
+      { label: "local action lanes", value: `${payload.headline.readinessActions.objectiveLocalActionItems}/${payload.headline.readinessActions.objectiveCaveats} objective caveats and ${payload.headline.readinessActions.liveLocalActionItems} live/e2e rows have local actions` },
+      { label: "all remediation rows", value: `${payload.headline.readinessActions.localActionItems}/${payload.headline.readinessActions.remediationItems} rows have local actions; ${payload.headline.readinessActions.localCredentialRequiredItems} require credentials` },
+    ], [
+      { label: "signal", key: "label" },
+      { label: "evidence", key: "value" },
+    ])}</div></section>
     <section class="panel"><h2>External Gates</h2><div class="body">${table(payload.externalGates, [
       { label: "gate", render: (row) => `<code>${escapeHtml(row.id)}</code>` },
       { label: "status", render: (row) => `<span class="${row.status === "blocked" ? "bad" : "ok"}">${escapeHtml(row.status)}</span>` },
@@ -242,11 +304,15 @@ function markdown(payload) {
     "",
     `Generated: ${payload.generatedAt}`,
     "",
-    `Goal audit: ${payload.headline.goalAudit.proven}/${payload.headline.goalAudit.total} proven, ${payload.headline.goalAudit.caveated} caveated, ${payload.headline.goalAudit.missing} missing`,
+    `Goal audit: ${payload.headline.goalAudit.proven}/${payload.headline.goalAudit.total} proven, ${payload.headline.goalAudit.caveated} caveated, ${payload.headline.goalAudit.blocked || 0} blocked, ${payload.headline.goalAudit.missing} missing`,
     `Benchmark focus rows: ${payload.focus.benchmark.length}`,
     `Corpus focus rows: ${payload.focus.corpus.length}`,
     `Scenario category rows: ${payload.focus.scenarioCategories.length}`,
     `Live/e2e model-call focus rows: ${payload.focus.liveModelScripts.length}`,
+    `Sample review: ${payload.headline.strictReviewSignals.reviewReadySamples}/${payload.headline.strictReviewSignals.sampledExamples} ready`,
+    `Corpus warning rows: ${payload.headline.strictReviewSignals.corpusWarningRowsWithPlayback} with playback, ${payload.headline.strictReviewSignals.corpusWarningRowsWithCallPreview} with call previews`,
+    `Local actions: ${payload.headline.readinessActions.localActionItems}/${payload.headline.readinessActions.remediationItems} remediation rows; ${payload.headline.readinessActions.objectiveLocalActionItems}/${payload.headline.readinessActions.objectiveCaveats} objective caveats and ${payload.headline.readinessActions.liveLocalActionItems} live/e2e rows`,
+    `Rerun commands: ${payload.headline.readinessActions.runnableCommands} runnable across ${payload.headline.readinessActions.rerunBatches} batches; ${payload.headline.readinessActions.blockedCommands} blocked`,
     "",
   ].join("\n");
 }

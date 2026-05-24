@@ -1378,7 +1378,9 @@ async function runTurnAssertions(
     );
     if (!ok) {
       failures.push(
-        `responseIncludesAny: response missing any of [${includesAny.join(",")}]`,
+        `responseIncludesAny: expected response to include any of [${includesAny.join(
+          ",",
+        )}], saw ${JSON.stringify(execution.responseText ?? "")}`,
       );
     }
   }

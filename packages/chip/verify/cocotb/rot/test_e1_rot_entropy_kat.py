@@ -133,7 +133,9 @@ async def _host_xact(dut, addr, *, we, wdata=0, be=0xF):
         await Timer(1, units="ns")
         if dut.host_rvalid_o.value == 1:
             rdata = int(dut.host_rdata_o.value)
-            assert dut.host_err_o.value == 0, f"TL-UL error response for addr=0x{addr:x} we={we}"
+            assert dut.host_err_o.value == 0, (
+                f"TL-UL error response for addr=0x{addr:x} we={we}"
+            )
             break
         await RisingEdge(dut.clk_i)
     else:

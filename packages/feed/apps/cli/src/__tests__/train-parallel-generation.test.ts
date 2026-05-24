@@ -14,7 +14,15 @@ const createAgent = mock(async () => {
   createdAgents.push(id);
   return { id };
 });
-const deleteAgent = mock(async () => {});
+const deleteAgent = mock(async function (
+  this: { serviceName?: string },
+  _agentId: string,
+  _managerId: string,
+) {
+  if (this?.serviceName !== "agent-service") {
+    throw new Error("deleteAgent was called without the agent service context");
+  }
+});
 const getRuntime = mock(async (agentId: string) => ({ agentId }));
 const executeAutonomousTick = mock(
   async (agentId: string, _runtime: unknown, recordTrajectories?: boolean) => ({
@@ -70,7 +78,7 @@ mock.module("@feed/db", () => ({
 
 mock.module("@feed/agents/dependencies", () => ({
   configureTrainingDependencies,
-  getAgentService: () => ({ createAgent, deleteAgent }),
+  getAgentService: () => ({ serviceName: "agent-service", createAgent, deleteAgent }),
   getAgentRuntimeManager: () => ({ getRuntime }),
   getAutonomousCoordinator: () => ({ executeAutonomousTick }),
   getToTrainingMessages: () => () => [],
@@ -134,6 +142,11 @@ describe("feed train parallel generation", () => {
     );
 
     expect(createAgent).toHaveBeenCalledTimes(2);
+    const usernames = createAgent.mock.calls.map((call) => call[0]?.username);
+    expect(new Set(usernames).size).toBe(2);
+    expect(usernames.every((username) => (username?.length ?? 0) <= 20)).toBe(
+      true,
+    );
     expect(getRuntime).toHaveBeenCalledTimes(2);
     expect(executeAutonomousTick).toHaveBeenCalledTimes(4);
     expect(executeAutonomousTick.mock.calls[0]?.[2]).toBe(true);

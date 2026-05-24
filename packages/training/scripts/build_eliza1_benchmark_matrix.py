@@ -241,7 +241,7 @@ def build_artifact(
         {
             str(row["tier"])
             for row in normalized_rows
-            if row.get("variant") != "reference" and row.get("tier")
+            if row.get("tier")
         }
     )
     benchmarks = sorted({str(row["benchmark"]) for row in normalized_rows})
