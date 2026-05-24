@@ -694,7 +694,7 @@ export function VoicePrefixGate({
   return (
     <div
       data-testid="voice-prefix-gate"
-      className="relative flex h-full max-h-full min-h-0 w-full items-start justify-center overflow-hidden bg-[#F7F9FF] px-3 text-[#0B35F1]"
+      className="relative flex h-full max-h-full min-h-0 w-full items-start justify-center overflow-hidden bg-brand-blue-soft bg-[#F7F9FF] px-3 text-[#0B35F1]"
       style={{
         display: "flex",
         alignItems: "flex-start",

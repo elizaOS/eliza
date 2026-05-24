@@ -246,7 +246,7 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
-            className="min-h-11 bg-[#0B35F1] px-5 text-white hover:bg-[#0A2FD8]"
+            className="min-h-11 bg-brand-blue bg-[#0B35F1] px-5 text-white hover:bg-[#0A2FD8]"
             disabled={continueDisabled}
             onClick={() =>
               props.onAdvance(nextVoicePrefixStep(activeStep, tier))
