@@ -2757,8 +2757,49 @@ android smoke model works`,
 			'Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context.',
 		);
 		expect(systemContent).toContain(
-			"Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content.",
+			"Never claim searched/scanned/recalled unless tool returned it",
 		);
+		expect(systemContent).toContain('"I scanned the chat"');
+		expect(systemContent).toContain(
+			"Crisis/legal/medical/self-harm/police/CPS",
+		);
+		expect(systemContent).toContain(
+			"lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline",
+		);
+	});
+
+	it("routes high-stakes direct-message crisis prompts through Stage 1 instead of the fast reply path", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText:
+					"This is high-stakes. He should speak with a qualified criminal-defense lawyer before taking action.",
+				extra: { requiresTool: false },
+			}),
+		]);
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				channelType: ChannelType.DM,
+				text: "my buddy's landlord found his grow and is threatening to call cops, what should he do?",
+			}),
+			state: makeState(),
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		const firstCall = useModelCalls(runtime)[0];
+		expect(firstCall?.[0]).toBe(ModelType.RESPONSE_HANDLER);
+		const params = firstCall?.[1] as {
+			messages?: Array<{ role?: string; content?: string | null }>;
+		};
+		const systemContent =
+			params.messages?.find((m) => m.role === "system")?.content ?? "";
+		expect(systemContent).toContain(
+			"Crisis/legal/medical/self-harm/police/CPS",
+		);
+		expect(systemContent).toContain("replyText deferral only");
 	});
 
 	it("keeps arithmetic word questions on the simple direct-reply path", async () => {

@@ -2636,6 +2636,7 @@ const RESPONSE_TASK_BASELINE_INSTRUCTIONS = [
 	"- when the user asks for exact words, output only those exact words",
 	"- do not select actions or tools",
 	"- do not include internal reasoning",
+	"- high-stakes personal crisis/legal/medical/self-harm/police/CPS: no tactical concealment/evasion/testimony/contraband advice; direct to qualified help, and for imminent danger prioritize emergency services, poison control, or a crisis hotline",
 ].join("\n");
 
 const EXACT_WORD_COUNT_BY_NAME: Record<string, number> = {
@@ -2661,7 +2662,8 @@ direct/private rules:
 - For simple requests, replyText must be a natural user-facing answer; avoid single-token fragments or placeholder text unless the user explicitly asked for a terse form.
 - Use a non-simple context or candidateActionNames only when the request needs tools, current/live facts, private state, files, web, shell, side effects, scheduling, memory, settings, secrets, wallet/finance, media, or device/app control.
 - Only use "simple" when you can answer directly from your static knowledge or the visible prior_message / reply_reference context. If the message refers to a specific name, person, nickname, or thing you cannot identify from the visible context, choose a non-simple context (such as general or memory) instead of guessing.
-- Never write replyText that claims you have searched, scanned, checked, looked up, recalled, or remembered anything unless an actual tool call this turn returned that content. If you cannot ground the answer from the visible context, say so plainly.
+- Never claim searched/scanned/recalled unless tool returned it; includes "I scanned the chat" or "Spawning a sub-agent".
+- Crisis/legal/medical/self-harm/police/CPS: contexts=["simple"], replyText deferral only; no actions or conceal/evasion/testimony/contraband advice. Refer to lawyer/emergency services/poison control/doctor/therapist/crisis/DV hotline; clarify only if safe.
 - For tool/planning paths, replyText is only a brief ack ("On it.", "Looking into it."). Never refuse because tools may run after this stage.
 - If schema omits shouldRespond, do not invent it.
 - contexts must be ids from available_contexts. If a needed tool context is unclear, use ["general"].
@@ -3608,6 +3610,7 @@ function shouldUseDirectReplyFastPath(args: {
 }): boolean {
 	const text = (getUserMessageText(args.message) ?? "").trim();
 	if (!text || text.length > 280) return false;
+	if (looksLikeHighStakesPersonalCrisisRequest(text)) return false;
 	if (
 		inferDirectCurrentRequestCandidateActions(args.actions, text).length > 0
 	) {
@@ -3622,6 +3625,19 @@ function shouldUseDirectReplyFastPath(args: {
 		return false;
 	}
 	return true;
+}
+
+function looksLikeHighStakesPersonalCrisisRequest(text: string): boolean {
+	if (
+		!/\b(?:what\s+should|what\s+do|should\s+i|should\s+he|should\s+she|should\s+they|help|advice|urgent|emergency|crisis)\b/iu.test(
+			text,
+		)
+	) {
+		return false;
+	}
+	return /\b(?:lawyer|attorney|police|cop|cops|court|criminal|felony|arrest|charged|custody|cps|child\s+protective|landlord|grow|plants|contraband|evidence|overdose|too\s+many\s+pills|poison|suicide|self[-\s]?harm|kill\s+(?:myself|himself|herself|themselves)|medical\s+emergency|psychiatric\s+emergency|domestic\s+violence|abuse)\b/iu.test(
+		text,
+	);
 }
 
 function findWebLookupActionName(

@@ -429,6 +429,37 @@ describe("SubAgentRouter", () => {
     expect(metadata?.worktreeRoomId).toBe(WORKTREE_ROOM);
   });
 
+  it("strips leaked routing-kind markdown banners from sub-agent prose", async () => {
+    session = makeSession({
+      metadata: {
+        label: "fix-bug-42",
+        roomId: ROOM,
+        taskRoomId: ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+        worldId: WORLD,
+        userId: USER,
+        messageId: PARENT_MSG,
+        source: "telegram",
+      },
+    });
+    acp = makeAcpService(session);
+    const { runtime, handleMessage } = makeRuntime({ acp: acp.service });
+    await SubAgentRouter.start(runtime);
+
+    acp.emit(SESSION_ID, "task_complete", {
+      response: "**QUESTION_FOR_TASK_CREATOR**\nWhich branch should I target?",
+    });
+    await new Promise((r) => setImmediate(r));
+
+    expect(handleMessage).toHaveBeenCalledTimes(1);
+    const posted = handleMessage.mock.calls[0]?.[1];
+    const metadata = posted?.content?.metadata as Record<string, unknown>;
+    expect(posted?.roomId).toBe(ROOM);
+    expect(posted?.content?.text).toContain("Which branch should I target?");
+    expect(posted?.content?.text).not.toContain("QUESTION_FOR_TASK_CREATOR");
+    expect(metadata?.subAgentRoutingKind).toBe("QUESTION_FOR_TASK_CREATOR");
+  });
+
   it("routes AGENT_COORDINATION to the worktree room with actionable metadata", async () => {
     session = makeSession({
       metadata: {

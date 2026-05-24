@@ -170,6 +170,85 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
+		// Regression for elizaOS/eliza#7935: Stage 1 hinted
+		// candidateActions=["SEARCH_MESSAGES"], but no matching action was
+		// registered. The planner fell back to echo placeholders and grep
+		// commands, burning iterations without a real chat-history capability.
+		expect(plannerTemplate).toContain(
+			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
+		);
+		expect(plannerTemplate).toContain(
+			"do not run shell greps, echo placeholders, or simulate the search",
+		);
+		expect(plannerTemplate).toContain(
+			"memory queries, or agent-history lookups",
+		);
+	});
+
+	it("forbids spawning coding sub-agents for chat-message recall tasks", () => {
+		expect(plannerTemplate).toContain(
+			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+		);
+		expect(plannerTemplate).toContain(
+			"not a fallback for chat-message recall, memory queries, or agent-history lookups",
+		);
+		expect(plannerTemplate).toContain(
+			"routinely ends in sub-agent error/timeout",
+		);
+	});
+
+	it("forbids inventing tool workarounds for dead candidateActions hints", () => {
+		expect(plannerTemplate).toContain(
+			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
+		);
+		expect(plannerTemplate).toContain(
+			"do not invent SHELL/BROWSER/TASKS workarounds to fulfill it",
+		);
+		expect(plannerTemplate).toContain(
+			"placeholder echoes burn cost and produce no progress",
+		);
+	});
+
+	it("appends mandatory chat-recall fallback policy to optimized planner prompts", async () => {
+		const runtime = {
+			useModel: vi.fn(async () => ({ text: "No chat search is available." })),
+			getService: vi.fn(() => ({
+				getPrompt: vi.fn(() => ({
+					prompt:
+						"task: Optimized planner without bundled safety policy.\n\ncontext_object:\n{{contextObject}}\n\ntrajectory:\n{{trajectory}}",
+				})),
+			})),
+		};
+
+		await runPlannerLoop({
+			runtime,
+			context: { id: "ctx", events: [] },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		const plannerParams = runtime.useModel.mock.calls[0]?.[1] as {
+			messages?: Array<{ role?: string; content?: string }>;
+		};
+		const systemContent =
+			plannerParams.messages?.find((message) => message.role === "system")
+				?.content ?? "";
+		expect(systemContent).toContain(
+			"Optimized planner without bundled safety policy",
+		);
+		expect(systemContent).toContain("mandatory planner policy:");
+		expect(systemContent).toContain(
+			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
+		);
+		expect(systemContent).toContain(
+			"candidateActions naming a tool that is not in this turn's exposed tools list is a dead hint",
+		);
+		expect(systemContent).toContain(
+			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+		);
+	});
+
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({

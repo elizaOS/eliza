@@ -1140,6 +1140,8 @@ function routingKindForEvent(
   if (normalized === QUESTION_FOR_TASK_CREATOR)
     return QUESTION_FOR_TASK_CREATOR;
   if (normalized === AGENT_COORDINATION) return AGENT_COORDINATION;
+  const bannerKind = routingKindFromPayloadBanner(data);
+  if (bannerKind) return bannerKind;
   if (event === "blocked") return QUESTION_FOR_TASK_CREATOR;
   return "TASK_STATUS";
 }
@@ -1341,7 +1343,7 @@ function composeNarration(
       pickPayloadString(data, "message") ??
       pickPayloadString(data, "prompt") ??
       "sub-agent has a question for the task creator";
-    return `${header}\n${message}`;
+    return `${header}\n${stripRoutingKindBanner(message)}`;
   }
   if (event === AGENT_COORDINATION) {
     const message =
@@ -1349,25 +1351,54 @@ function composeNarration(
       pickPayloadString(data, "coordination") ??
       pickPayloadString(data, "prompt") ??
       "sub-agent posted a coordination update";
-    return `${header}\n${message}`;
+    return `${header}\n${stripRoutingKindBanner(message)}`;
   }
   if (event === "error") {
     const message =
       pickPayloadString(data, "message") ?? "sub-agent reported an error";
-    return `${header}\n${message}`;
+    return `${header}\n${stripRoutingKindBanner(message)}`;
   }
   if (event === "blocked") {
     const message =
       pickPayloadString(data, "message") ??
       pickPayloadString(data, "prompt") ??
       "sub-agent is blocked and waiting for input";
-    return `${header}\n${message}`;
+    return `${header}\n${stripRoutingKindBanner(message)}`;
   }
   const response =
     pickPayloadString(data, "response") ??
     pickPayloadString(data, "finalText") ??
     "sub-agent reports task complete (no captured output).";
-  return `${header}\n${response}`;
+  return `${header}\n${stripRoutingKindBanner(response)}`;
+}
+
+function stripRoutingKindBanner(text: string): string {
+  return text
+    .replace(
+      /^(?:\s*(?:#{1,6}\s*)?(?:\*\*)?(?:QUESTION_FOR_TASK_CREATOR|AGENT_COORDINATION)(?:\*\*)?\s*(?::|-)?\s*(?:\r?\n|$))+/u,
+      "",
+    )
+    .trimStart();
+}
+
+function routingKindFromPayloadBanner(data: unknown): string | undefined {
+  for (const key of [
+    "response",
+    "finalText",
+    "message",
+    "question",
+    "coordination",
+    "prompt",
+  ]) {
+    const value = pickPayloadString(data, key);
+    const match = value?.match(
+      /^\s*(?:#{1,6}\s*)?(?:\*\*)?(QUESTION_FOR_TASK_CREATOR|AGENT_COORDINATION)(?:\*\*)?\b/u,
+    );
+    if (match?.[1] === QUESTION_FOR_TASK_CREATOR)
+      return QUESTION_FOR_TASK_CREATOR;
+    if (match?.[1] === AGENT_COORDINATION) return AGENT_COORDINATION;
+  }
+  return undefined;
 }
 
 /**

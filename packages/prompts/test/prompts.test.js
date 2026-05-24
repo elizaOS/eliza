@@ -112,6 +112,28 @@ describe("prompt templates (src/index.ts)", () => {
       /unless an actual tool call this turn returned that content/,
       "phantom-action-claim rule should bind the prohibition to actual tool execution this turn",
     );
+    // Strengthening: the original rule used present-perfect phrasing
+    // ("you have searched/scanned/...") which the model interpreted
+    // narrowly. Live probes (trajectories tj-fe07eedf943fb7 /
+    // tj-063a9ea4fad748 / tj-01270535922813 on 2026-05-24) showed bare
+    // past-tense ("I scanned the recent messages") and present-continuous
+    // ("Spawning a sub-agent to search the chat history for X") slipping
+    // through.
+    assert.match(
+      body,
+      /bare past-tense \("I scanned the chat", "I searched the messages"\)/,
+      "phantom-action-claim rule should cover bare past-tense verb forms",
+    );
+    assert.match(
+      body,
+      /present-continuous claims of in-flight action \("Spawning a sub-agent", "Looking into it"/,
+      "phantom-action-claim rule should cover present-continuous future-action claims",
+    );
+    assert.match(
+      body,
+      /none of these belong in a simple-path replyText where no tool actually runs/,
+      "phantom-action-claim rule should anchor the prohibition to the simple-path contract",
+    );
   });
 
   it("messageHandlerTemplate routes visible attachment references through ATTACHMENT and ignores generic verbs in unrelated questions", () => {
@@ -125,7 +147,12 @@ describe("prompt templates (src/index.ts)", () => {
     const src = readSrc();
     const messageHandlerTemplateRe =
       /export const messageHandlerTemplate = `([^`]+)`/;
-    const body = src.match(messageHandlerTemplateRe)[1];
+    const match = src.match(messageHandlerTemplateRe);
+    assert.ok(
+      match,
+      "messageHandlerTemplate string literal should be findable",
+    );
+    const body = match[1];
     assert.match(
       body,
       /provider:ATTACHMENTS/,
@@ -140,6 +167,75 @@ describe("prompt templates (src/index.ts)", () => {
       body,
       /Generic verbs like "read", "view", "describe", "open" used in unrelated questions/,
       "attachment rule should disclaim generic-verb false positives",
+    );
+  });
+
+  it("messageHandlerTemplate defaults to deferring high-stakes personal-crisis topics to qualified professionals", () => {
+    // Default safety scaffold (#7925): when a user asks what someone should
+    // do in a personal-crisis situation involving legal jeopardy, criminal
+    // exposure, medical emergencies, self-harm, or active police/CPS
+    // contact, the framework default is to acknowledge the stakes and
+    // recommend qualified professional help instead of dispensing tactical
+    // advice on concealing evidence, evading authorities, etc. Per-agent
+    // character config may override.
+    const src = readSrc();
+    const messageHandlerTemplateRe =
+      /export const messageHandlerTemplate = `([^`]+)`/;
+    const match = src.match(messageHandlerTemplateRe);
+    assert.ok(
+      match,
+      "messageHandlerTemplate string literal should be findable",
+    );
+    const body = match[1];
+    assert.match(
+      body,
+      /personal-crisis situation involving legal jeopardy, criminal exposure/,
+      "safety-scaffold rule should enumerate high-stakes topic categories",
+    );
+    assert.match(
+      body,
+      /do not give specific tactical advice on concealing evidence/,
+      "safety-scaffold rule should forbid tactical concealment/evasion advice",
+    );
+    assert.match(
+      body,
+      /recommend qualified professional help/,
+      "safety-scaffold rule should direct users to qualified counsel",
+    );
+    assert.match(
+      body,
+      /emergency services, poison control, a doctor, therapist, crisis hotline, or domestic violence hotline/,
+      "safety-scaffold rule should prioritize emergency and crisis resources for medical/safety emergencies",
+    );
+    assert.match(
+      body,
+      /Per-agent character config may override/,
+      "safety-scaffold rule should be opt-out-overridable at the agent layer",
+    );
+    // Stage 1 routing contract: the deferral is the complete reply (simple
+    // path), no tools. Live trajectory tj-f7ab3f282747f6 showed that without
+    // this clause Stage 1 set requiresTool=true and the planner spawned
+    // BROWSER to fetch nolo.com / findlaw.com, all of which failed and the
+    // user got no reply at all.
+    assert.match(
+      body,
+      /The deferral itself is the complete reply for this turn/,
+      "safety-scaffold rule should state the deferral is the complete reply",
+    );
+    assert.match(
+      body,
+      /use contexts=\["simple"\], put the deferral text in replyText/,
+      "safety-scaffold rule should pin Stage 1 routing to simple path",
+    );
+    assert.match(
+      body,
+      /do NOT set requiresTool=true or hint candidateActions for these topics/,
+      "safety-scaffold rule should forbid tool-spawning routing",
+    );
+    assert.match(
+      body,
+      /calling BROWSER to fetch nolo\.com \/ findlaw\.com/,
+      "safety-scaffold rule should explicitly call out the failed-BROWSER-lookup anti-pattern",
     );
   });
 });
