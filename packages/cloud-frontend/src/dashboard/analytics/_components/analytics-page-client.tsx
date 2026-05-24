@@ -137,7 +137,7 @@ export function AnalyticsPageClient({
             }
           : undefined,
       icon: Activity,
-      accent: "violet" as const,
+      accent: "amber" as const,
     },
     {
       label: t("cloud.analytics.metric.totalCost", {
@@ -198,7 +198,7 @@ export function AnalyticsPageClient({
             }
           : undefined,
       icon: BarChart3,
-      accent: "sky" as const,
+      accent: "amber" as const,
     },
   ];
 
