@@ -27,7 +27,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -47,7 +47,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -67,7 +67,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -87,7 +87,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -106,7 +106,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -125,7 +125,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -145,7 +145,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -165,7 +165,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -185,7 +185,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -205,7 +205,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -224,7 +224,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -243,7 +243,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -262,7 +262,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -282,7 +282,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -301,7 +301,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -320,7 +320,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -339,7 +339,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -360,7 +360,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -381,7 +381,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -402,7 +402,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -423,7 +423,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -442,7 +442,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -461,7 +461,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -480,7 +480,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -499,7 +499,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -518,7 +518,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -537,7 +537,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -556,7 +556,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -575,7 +575,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -596,7 +596,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_donor_face_grid",
       "source_asset": "cad/source-assets/human-donor/eliza_face_donor.stl",
       "oem_baseline_meshes": [
@@ -616,7 +616,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -636,7 +636,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -656,7 +656,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -676,7 +676,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -696,7 +696,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -716,7 +716,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -736,7 +736,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -756,7 +756,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -775,7 +775,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -794,7 +794,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -813,7 +813,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -832,7 +832,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -851,7 +851,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -870,7 +870,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -889,7 +889,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -908,7 +908,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -927,7 +927,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -946,7 +946,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -965,7 +965,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -984,7 +984,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": false,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "primitive",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1003,7 +1003,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1022,7 +1022,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1043,7 +1043,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1062,7 +1062,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1081,7 +1081,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1102,7 +1102,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1113,15 +1113,15 @@
     {
       "part": "right_thigh_side_armor",
       "bbox_mm": [
-        23.0,
-        6.0,
-        64.0
+        14.0,
+        3.6,
+        48.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1140,7 +1140,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1152,15 +1152,15 @@
     {
       "part": "left_shin_front_armor",
       "bbox_mm": [
+        4.4,
         8.4,
-        16.0,
-        112.0
+        64.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1179,7 +1179,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1190,15 +1190,15 @@
     {
       "part": "right_shin_shell",
       "bbox_mm": [
-        30.0,
-        8.0,
-        104.0
+        25.0,
+        6.0,
+        100.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1218,7 +1218,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1237,7 +1237,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1256,7 +1256,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1275,7 +1275,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1294,7 +1294,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1313,7 +1313,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1324,15 +1324,15 @@
     {
       "part": "right_foot_top_shell",
       "bbox_mm": [
-        148.0,
-        46.0,
-        20.0
+        172.0,
+        36.0,
+        12.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1351,7 +1351,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1370,7 +1370,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
@@ -1389,7 +1389,7 @@
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
-      "step_solid_exported": true,
+      "step_solid_exported": false,
       "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [

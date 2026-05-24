@@ -67,6 +67,21 @@
       "crypto_packet_proxy"
     ]
   },
+  "full_compression_shard_sweep_ref": {
+    "baseline_weighted_mpki": 103.691058,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 102.247902,
+    "command": "make bpu-sweep-full-compression-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "72a8daa7cfa83cce8895f815b7f564c135194ff0f33d12db6911b44d698fc953",
+    "trace_filter": [
+      "compression_proxy"
+    ]
+  },
   "full_io_media_shard_sweep_ref": {
     "baseline_weighted_mpki": 40.207626,
     "best_config": "h2p_lowconf_only",
@@ -123,7 +138,7 @@
       "kernel_syscall_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-24T05:57:58.461091+00:00",
+  "generated_at_utc": "2026-05-24T06:09:11.182035+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -236,7 +251,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "f5ec488667ca291a401d968b8e26808d6f55bfe7",
+  "source_revision": "8e050038affa556b08cf410a1f9413e5b795f496",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -245,7 +260,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "d19539ae5437ce6196a4473d10a9af6533effe665ca0b56736aee4fdfe08f897"
+      "sha256": "0200edbde528cef0a48690115751fd8eb065a8a86f89517addabc64517d610f9"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",

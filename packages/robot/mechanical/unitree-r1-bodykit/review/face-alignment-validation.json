@@ -2,6 +2,130 @@
   "verdict": "pass",
   "reference_source": "eliza_front_reference.png visible-face proportions, excluding hair and glasses",
   "face_shell_source": "cad/source-assets/human-donor/eliza_face_donor.stl",
+  "reference_assets": {
+    "face_closeup_jpeg": {
+      "path": "/home/shaw/Downloads/Gh3Tr5RW4AAu-gY.jpeg",
+      "exists": true,
+      "width": 1526,
+      "height": 854,
+      "bytes": 125325,
+      "sha256": "daea1092e203fe0e4d40381076bb138f0d1325d57eed990f4100dbb042a52c6c"
+    },
+    "full_body_jpeg": {
+      "path": "/home/shaw/Downloads/GhXVM_0bgAAw5r7.jpeg",
+      "exists": true,
+      "width": 1024,
+      "height": 1024,
+      "bytes": 71633,
+      "sha256": "db1c712cd45ee58cf6dc659d4bc7d3b21353a31e655e2c777f9a642944600274"
+    },
+    "source_front_glb": {
+      "path": "/home/shaw/Downloads/eliza_front.glb",
+      "exists": true,
+      "mesh_count": 1,
+      "vertices": 299410,
+      "faces": 493875,
+      "bounds_m": [
+        [
+          -0.44384,
+          -0.95056,
+          -0.19405
+        ],
+        [
+          0.44285,
+          0.94778,
+          0.1897
+        ]
+      ],
+      "extents_m": [
+        0.88669,
+        1.89834,
+        0.38375
+      ],
+      "height_axis": "y",
+      "height_m": 1.89834,
+      "unitree_r1_height_reference_m": 1.23,
+      "scale_to_r1_height": 0.64793,
+      "bytes": 24503848,
+      "sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
+    },
+    "project_front_png": {
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
+      "exists": true,
+      "width": 1024,
+      "height": 1536,
+      "bytes": 1960756,
+      "sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0"
+    },
+    "project_front_glb": {
+      "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
+      "exists": true,
+      "mesh_count": 1,
+      "vertices": 299410,
+      "faces": 493875,
+      "bounds_m": [
+        [
+          -0.44384,
+          -0.95056,
+          -0.19405
+        ],
+        [
+          0.44285,
+          0.94778,
+          0.1897
+        ]
+      ],
+      "extents_m": [
+        0.88669,
+        1.89834,
+        0.38375
+      ],
+      "height_axis": "y",
+      "height_m": 1.89834,
+      "unitree_r1_height_reference_m": 1.23,
+      "scale_to_r1_height": 0.64793,
+      "bytes": 24503848,
+      "sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
+    }
+  },
+  "source_robot_subassemblies": {
+    "neck_carrier": {
+      "parts": [
+        "head_mount_neck_black"
+      ],
+      "mounted_robot_bodies": [
+        "torso_link"
+      ],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL",
+        "torso_collision.stl"
+      ],
+      "role": "black underbody carrier between R1 torso/head envelope and the donor-derived face"
+    },
+    "face_plate_details": {
+      "parts": [
+        "face_shell",
+        "left_eye_insert",
+        "right_eye_insert",
+        "lip_insert"
+      ],
+      "mounted_robot_bodies": [
+        "torso_link"
+      ],
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
+      "role": "visible hard-plastic face plate and seated detail inserts"
+    },
+    "hair_reference_only": {
+      "parts": [],
+      "mounted_robot_bodies": [],
+      "oem_baseline_meshes": [],
+      "role": "hair is retained as silhouette/reference context only and is not generated as robot geometry"
+    }
+  },
   "face_shell_bounds_mm": [
     [
       -52.012,
@@ -4707,6 +4831,25 @@
       "preserve_collision_mesh": true
     },
     "collision_mesh_changed": true
+  },
+  "hair_reference_policy": {
+    "generated_geometry": false,
+    "params_no_hair": true,
+    "alignment_use": "silhouette/context only; do not create hair mesh, ponytail mass, or collision volume",
+    "reference_inputs": [
+      "face_closeup_jpeg",
+      "full_body_jpeg",
+      "source_front_glb",
+      "project_front_png",
+      "project_front_glb"
+    ]
+  },
+  "wrist_collision_policy": {
+    "classification": "controller keepout or wrist/forearm geometry issue, not a face-surfacing target",
+    "face_geometry_can_close_wrist_rows": false,
+    "controlled_part": "face_shell",
+    "controlled_base_body_suffix": "wrist_roll_link",
+    "required_resolution": "Use head-protection keepout, joint-limit policy, or wrist/forearm redesign for wrist-roll rows; do not flatten or shrink the donor-derived face solely to satisfy extreme wrist sweep contact."
   },
   "note": "Face alignment uses the donor-derived parametric face shell plus separate eye/lip inserts. Hair and glasses in the concept references are reference-only and are not generated."
 }

@@ -32,11 +32,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front.png",
       "width": 640,
       "height": 480,
-      "bytes": 42820,
+      "bytes": 42499,
       "stddev_rgb": [
-        25.86,
-        23.633,
-        25.801
+        25.587,
+        23.681,
+        25.9
       ],
       "nonblank": true
     },
@@ -46,11 +46,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_rear.png",
       "width": 640,
       "height": 480,
-      "bytes": 41236,
+      "bytes": 42197,
       "stddev_rgb": [
-        27.339,
-        26.05,
-        28.459
+        26.875,
+        26.276,
+        28.823
       ],
       "nonblank": true
     },
@@ -60,11 +60,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left.png",
       "width": 640,
       "height": 480,
-      "bytes": 34183,
+      "bytes": 34174,
       "stddev_rgb": [
-        22.346,
-        21.775,
-        24.253
+        21.893,
+        21.757,
+        24.311
       ],
       "nonblank": true
     },
@@ -74,11 +74,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right.png",
       "width": 640,
       "height": 480,
-      "bytes": 33808,
+      "bytes": 33983,
       "stddev_rgb": [
-        22.392,
-        21.796,
-        24.275
+        21.894,
+        21.759,
+        24.315
       ],
       "nonblank": true
     },
@@ -88,7 +88,7 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_head.png",
       "width": 640,
       "height": 480,
-      "bytes": 29691,
+      "bytes": 29694,
       "stddev_rgb": [
         29.561,
         27.26,
@@ -105,8 +105,8 @@
       "bytes": 33110,
       "stddev_rgb": [
         24.329,
-        22.885,
-        24.78
+        22.886,
+        24.781
       ],
       "nonblank": true
     },
@@ -116,11 +116,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_upper_three_quarter.png",
       "width": 640,
       "height": 480,
-      "bytes": 57106,
+      "bytes": 57111,
       "stddev_rgb": [
         26.846,
         25.506,
-        28.541
+        28.542
       ],
       "nonblank": true
     },
@@ -130,11 +130,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_front.png",
       "width": 640,
       "height": 480,
-      "bytes": 42630,
+      "bytes": 42374,
       "stddev_rgb": [
-        25.766,
-        23.613,
-        25.827
+        25.495,
+        23.661,
+        25.924
       ],
       "nonblank": true
     },
@@ -144,11 +144,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_left.png",
       "width": 640,
       "height": 480,
-      "bytes": 32148,
+      "bytes": 32226,
       "stddev_rgb": [
-        21.59,
-        21.018,
-        23.419
+        21.155,
+        20.994,
+        23.462
       ],
       "nonblank": true
     },
@@ -158,7 +158,7 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_head.png",
       "width": 640,
       "height": 480,
-      "bytes": 63068,
+      "bytes": 63063,
       "stddev_rgb": [
         29.521,
         28.305,
@@ -172,11 +172,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_right.png",
       "width": 640,
       "height": 480,
-      "bytes": 40402,
+      "bytes": 40859,
       "stddev_rgb": [
-        24.161,
-        23.522,
-        26.305
+        23.655,
+        23.476,
+        26.306
       ],
       "nonblank": true
     },
@@ -186,11 +186,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit-contact-sheet.png",
       "width": 960,
       "height": 960,
-      "bytes": 163593,
+      "bytes": 163205,
       "stddev_rgb": [
-        27.17,
-        26.09,
-        28.124
+        26.978,
+        26.11,
+        28.181
       ],
       "nonblank": true
     },
@@ -214,11 +214,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 229872,
+      "bytes": 229634,
       "stddev_rgb": [
-        20.447,
-        16.695,
-        20.909
+        20.356,
+        16.696,
+        20.872
       ],
       "nonblank": true
     },
@@ -228,11 +228,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 225061,
+      "bytes": 225090,
       "stddev_rgb": [
-        19.354,
-        16.365,
-        20.584
+        19.195,
+        16.393,
+        20.593
       ],
       "nonblank": true
     },
@@ -242,11 +242,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 225376,
+      "bytes": 225643,
       "stddev_rgb": [
-        19.481,
-        16.397,
-        20.646
+        19.303,
+        16.429,
+        20.67
       ],
       "nonblank": true
     },
@@ -256,11 +256,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_rear_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 228642,
+      "bytes": 229749,
       "stddev_rgb": [
-        21.291,
-        18.153,
-        22.361
+        21.038,
+        18.285,
+        22.477
       ],
       "nonblank": true
     },
@@ -270,11 +270,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_front_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 231385,
+      "bytes": 231324,
       "stddev_rgb": [
-        20.768,
-        17.162,
-        21.287
+        20.683,
+        17.163,
+        21.249
       ],
       "nonblank": true
     },
@@ -284,11 +284,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_operating_blocker_left_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 225167,
+      "bytes": 225332,
       "stddev_rgb": [
-        19.799,
-        16.682,
-        20.82
+        19.65,
+        16.713,
+        20.833
       ],
       "nonblank": true
     },
@@ -298,11 +298,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_mechanical_blocker_right_concept_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 229097,
+      "bytes": 229691,
       "stddev_rgb": [
-        20.006,
-        17.066,
-        21.529
+        19.852,
+        17.083,
+        21.489
       ],
       "nonblank": true
     },
@@ -312,11 +312,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_front_reference_scale_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 232234,
+      "bytes": 232026,
       "stddev_rgb": [
-        30.369,
-        22.542,
-        25.52
+        30.314,
+        22.538,
+        25.488
       ],
       "nonblank": true
     },
@@ -326,11 +326,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_left_reference_scale_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 226969,
+      "bytes": 226995,
       "stddev_rgb": [
-        29.725,
-        22.3,
-        25.197
+        29.629,
+        22.317,
+        25.2
       ],
       "nonblank": true
     },
@@ -340,11 +340,11 @@
       "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/review/bodykit_right_reference_scale_overlay.png",
       "width": 640,
       "height": 480,
-      "bytes": 227386,
+      "bytes": 227674,
       "stddev_rgb": [
-        29.797,
-        22.32,
-        25.245
+        29.689,
+        22.341,
+        25.261
       ],
       "nonblank": true
     }

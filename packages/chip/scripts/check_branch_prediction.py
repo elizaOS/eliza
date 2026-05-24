@@ -43,6 +43,7 @@ FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL = (
     "docs/evidence/cpu_ap/bpu_sweep_full_browser_build_crypto_shard.json"
 )
 FULL_COMPRESSION_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_compression_shard.json"
+FULL_AGENT_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_agent_shard.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -117,6 +118,10 @@ REQUIRED_FULL_BROWSER_BUILD_CRYPTO_SHARD_TRACES = {
 }
 REQUIRED_FULL_COMPRESSION_SHARD_TRACES = {
     "compression_proxy",
+}
+REQUIRED_FULL_AGENT_SHARD_TRACES = {
+    "agent_loop",
+    "agent_decode",
 }
 
 # The minimum thresholds the BPU geometry must satisfy to support a 2028
@@ -1177,6 +1182,7 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
         ROOT / FULL_BROWSER_BUILD_CRYPTO_SHARD_SWEEP_REL,
         ROOT / FULL_COMPRESSION_SHARD_SWEEP_REL,
+        ROOT / FULL_AGENT_SHARD_SWEEP_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -1247,6 +1253,14 @@ def evaluate_evidence_artifacts() -> list[str]:
         failures,
         FULL_COMPRESSION_SHARD_SWEEP_REL,
         REQUIRED_FULL_COMPRESSION_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
+    )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_AGENT_SHARD_SWEEP_REL,
+        REQUIRED_FULL_AGENT_SHARD_TRACES,
         require_baseline_not_worse_than_h2p_off=False,
         required_extra_configs={"h2p_lowconf_only"},
         required_best_not_worse_than=("baseline", "h2p_off"),
@@ -1638,6 +1652,10 @@ def build_evidence(
         FULL_COMPRESSION_SHARD_SWEEP_REL,
         "make bpu-sweep-full-compression-shard",
     )
+    full_agent_shard_ref = full_trace_shard_sweep_ref(
+        FULL_AGENT_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-agent-shard",
+    )
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
@@ -1719,6 +1737,7 @@ def build_evidence(
         "full_system_gpu_shard_sweep_ref": full_system_gpu_shard_ref,
         "full_browser_build_crypto_shard_sweep_ref": full_browser_build_crypto_shard_ref,
         "full_compression_shard_sweep_ref": full_compression_shard_ref,
+        "full_agent_shard_sweep_ref": full_agent_shard_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

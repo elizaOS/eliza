@@ -365,6 +365,14 @@ def write_valid_sweep_result(root: Path) -> None:
         h2p_off_mpki=49.0,
         h2p_lowconf_mpki=48.0,
     )
+    write_full_trace_shard_result(
+        root,
+        branch.FULL_AGENT_SHARD_SWEEP_REL,
+        branch.REQUIRED_FULL_AGENT_SHARD_TRACES,
+        baseline_mpki=60.0,
+        h2p_off_mpki=59.0,
+        h2p_lowconf_mpki=58.0,
+    )
 
 
 def write_valid_evidence_set(root: Path) -> None:
@@ -719,6 +727,25 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
 
             self.assertTrue(
                 any("max_branches_per_trace must be 0" in err for err in errors),
+                errors,
+            )
+
+    def test_full_agent_shard_requires_exact_agent_traces(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "docs/evidence/cpu_ap"
+            write_valid_evidence_set(root)
+            write_bpu_verification_reports(root)
+            shard_path = evidence / "bpu_sweep_full_agent_shard.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            shard["trace_filter"] = ["agent_loop"]
+            write_json(shard_path, shard)
+
+            with mock.patch.object(branch, "ROOT", root):
+                errors = branch.evaluate_evidence_artifacts()
+
+            self.assertTrue(
+                any("trace_filter must match required full shard" in err for err in errors),
                 errors,
             )
 

@@ -669,8 +669,11 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    `37.8209`). `make bpu-sweep-full-browser-build-crypto-shard` records the
    uncapped browser-layout, build/compiler, and crypto shard; `h2p_lowconf_only`
    wins there with no per-trace regressions (`48.5761` versus baseline
-   `50.1515` and `h2p_off` `48.9479`). The full twenty-trace model sweep and
-   uncapped RTL replay remain open production evidence gaps.
+   `50.1515` and `h2p_off` `48.9479`). `make bpu-sweep-full-compression-shard`
+   records the uncapped compression proxy; `h2p_lowconf_only` wins (`102.2479`
+   versus baseline `103.6911`) while `h2p_off` regresses (`103.8983`). The full
+   twenty-trace model sweep, agent full-trace model shards, and uncapped RTL
+   replay remain open production evidence gaps.
 6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an
