@@ -1,0 +1,620 @@
+{
+  "accepted": false,
+  "mesh_assets": [
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_ankle_pitch_link.STL",
+      "file": "LEFT_ANKLE_A.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "65cb10a800add5c8c9b84d798b8c8ec1edcba0a6f1df8bd14679bdfba58c3eab",
+      "link": "LEFT_ANKLE_A",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_ankle_roll_link.STL",
+      "file": "LEFT_ANKLE_B.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "c0ca8a10bed0bc39701bfd3677f7ad07f96e1a45ec05b5d443b311b068c67f3f",
+      "link": "LEFT_ANKLE_B",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_elbow_link.STL",
+      "file": "LEFT_ELBOW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "b35de7775e91bd92b29862709235336f78322a863aabdb8964cdc90fa5d1cbc0",
+      "link": "LEFT_ELBOW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_hip_pitch_link.STL",
+      "file": "LEFT_HIP_PITCH.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "5666925b951391217bf44461e9e8a49e8a5fafaec916167e15a9599192b7255e",
+      "link": "LEFT_HIP_PITCH",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_hip_roll_link.STL",
+      "file": "LEFT_HIP_ROLL.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "f108d67748cab5b882d3d67f32de8de2cdae39bca1d6dc2abc7991b402292f78",
+      "link": "LEFT_HIP_ROLL",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_hip_yaw_link.STL",
+      "file": "LEFT_HIP_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "fa6ae83c810104fc139b7456ebba92c450addce76d5197dfc932b1d7592d2af1",
+      "link": "LEFT_HIP_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_knee_link.STL",
+      "file": "LEFT_KNEE.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "e6a6962ae2f7a8ffe74097313119472ecb88bcc1b383bff0f0ba70b6f1123a0e",
+      "link": "LEFT_KNEE",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_shoulder_pitch_link.STL",
+      "file": "LEFT_SHOULDER_PITCH.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "eed970705ae3c62dacda2dd82a539c92a92aa52a4dc430995ed1707f0be279c0",
+      "link": "LEFT_SHOULDER_PITCH",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_shoulder_roll_link.STL",
+      "file": "LEFT_SHOULDER_ROLL.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "10fe4dbdcc61a7c93215012bfd6f5233bd79b6ffa4870159a39239f5016e6c9f",
+      "link": "LEFT_SHOULDER_ROLL",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_shoulder_yaw_link.STL",
+      "file": "LEFT_SHOULDER_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "97f0a7e4da195b30e7dd40194f5ae866bd5bacd751410c37eedabe9b28da7c81",
+      "link": "LEFT_SHOULDER_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_toe_link.STL",
+      "file": "LEFT_TOE.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "4143b9d616db6f932ef1a2dcff8ca8d1ef3661a8db5942489bda60be283ba1a7",
+      "link": "LEFT_TOE",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "left_wrist_yaw_link.STL",
+      "file": "LEFT_WRIST_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "b5f57d48c5c4a813f343e46334f13d2cee13739f2292d8b66ee9f1fb943b0a08",
+      "link": "LEFT_WRIST_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "neck_pitch_link.STL",
+      "file": "NECK_PITCH.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "ff2918f84e974096a6c60bd40d6d6c855ef1f53de9f952cfd72dc3b1c9c1ce59",
+      "link": "NECK_PITCH",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "neck_yaw_link.STL",
+      "file": "NECK_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "535081930639a153089052a4ea55d3277996eb7d1ade9226c9cfe34ff488bbb4",
+      "link": "NECK_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "pelvis.STL",
+      "file": "IMU_ORIGIN.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "c84ba23df5e686eb9ab00087987101ac27ca487fe24c79a83b8bd8e6465bd6f0",
+      "link": "IMU_ORIGIN",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_ankle_pitch_link.STL",
+      "file": "RIGHT_ANKLE_A.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "ec6d32e3472204c4926dcf059c89df59613dd78832244108c446ba1f5063ca3b",
+      "link": "RIGHT_ANKLE_A",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_ankle_roll_link.STL",
+      "file": "RIGHT_ANKLE_B.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "9def844ac3b94d5df650db7616fe63fa1188ca007f72b43ff9ab4a11e0996372",
+      "link": "RIGHT_ANKLE_B",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_elbow_link.STL",
+      "file": "RIGHT_ELBOW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "c7ca2d99d723831abb1b4f0181302cf14c9899afb40e1a3704ed3c1c15db0802",
+      "link": "RIGHT_ELBOW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_hip_pitch_link.STL",
+      "file": "RIGHT_HIP_PITCH.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "229c557ee4ca0cfe2b84fec4f89d859c94c228c945ebe740dd8f87fa28f9485c",
+      "link": "RIGHT_HIP_PITCH",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_hip_roll_link.STL",
+      "file": "RIGHT_HIP_ROLL.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "44678f5d5018f12b15082e941c756a7d7d36323bb5b31da6630a5cac688a7bcc",
+      "link": "RIGHT_HIP_ROLL",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_hip_yaw_link.STL",
+      "file": "RIGHT_HIP_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "942eb4ab6b673056b2edc2d706b08d1c850121077796979d30776246bd7ca93c",
+      "link": "RIGHT_HIP_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_knee_link.STL",
+      "file": "RIGHT_KNEE.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "dab4f6300ec873c0306d775a30d70011e5a1a5284369ff2506d1affdd52b9725",
+      "link": "RIGHT_KNEE",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_shoulder_pitch_link.STL",
+      "file": "RIGHT_SHOULDER_PITCH.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "649fa844693bca9be6c17156aa5334d3b310c385ea6d7662fe4a351360ffbfe0",
+      "link": "RIGHT_SHOULDER_PITCH",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_shoulder_roll_link.STL",
+      "file": "RIGHT_SHOULDER_ROLL.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "ebef2c7b8ae9cbdc6d08dde6805bfac67f285e2195709210a840d0c0c50b2a05",
+      "link": "RIGHT_SHOULDER_ROLL",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_shoulder_yaw_link.STL",
+      "file": "RIGHT_SHOULDER_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "b24e81ba0b7c9a1e07a35c48abf534c7165d3c612147f7436f8abb0ebcbabcc1",
+      "link": "RIGHT_SHOULDER_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_toe_link.STL",
+      "file": "RIGHT_TOE.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_toe.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "ca7bd0a00c8dc72462a7cfd8d8f075fe204c35196f96616f42e1ac9f6ae16bb2",
+      "link": "RIGHT_TOE",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "right_wrist_yaw_link.STL",
+      "file": "RIGHT_WRIST_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "a3d454aea627020e611cccd8a36c646bd8db4b9d9bf50c551b0b545a962fae39",
+      "link": "RIGHT_WRIST_YAW",
+      "uses_stl": true
+    },
+    {
+      "all_cad_blocker": "MJCF visual/collision presentation still uses an STL mesh asset; replace this with a STEP/B-rep or parametric loft part and a non-STL MuJoCo representation before final acceptance",
+      "asset_name": "waist_yaw_link.STL",
+      "file": "WAIST_YAW.STL",
+      "generated_step_export_ok": true,
+      "generated_step_extent_within_tolerance": true,
+      "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
+      "generated_step_reload_ok": true,
+      "generated_step_sha256": "d1b506392b2668035465848d226ad2a5fa6e2189f85de9b2471c3a33f8ce0c98",
+      "link": "WAIST_YAW",
+      "uses_stl": true
+    }
+  ],
+  "mesh_visual_geoms": [
+    {
+      "class": "visual",
+      "file": "IMU_ORIGIN.STL",
+      "geom": "pelvis_visual",
+      "link": "IMU_ORIGIN",
+      "mesh": "pelvis.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_HIP_PITCH.STL",
+      "geom": "left_hip_pitch_link_visual",
+      "link": "LEFT_HIP_PITCH",
+      "mesh": "left_hip_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_HIP_ROLL.STL",
+      "geom": "left_hip_roll_link_visual",
+      "link": "LEFT_HIP_ROLL",
+      "mesh": "left_hip_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_HIP_YAW.STL",
+      "geom": "left_hip_yaw_link_visual",
+      "link": "LEFT_HIP_YAW",
+      "mesh": "left_hip_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_KNEE.STL",
+      "geom": "left_knee_link_visual",
+      "link": "LEFT_KNEE",
+      "mesh": "left_knee_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_ANKLE_A.STL",
+      "geom": "left_ankle_pitch_link_visual",
+      "link": "LEFT_ANKLE_A",
+      "mesh": "left_ankle_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_ANKLE_B.STL",
+      "geom": "left_ankle_roll_link_visual",
+      "link": "LEFT_ANKLE_B",
+      "mesh": "left_ankle_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_TOE.STL",
+      "geom": "left_toe_link_visual",
+      "link": "LEFT_TOE",
+      "mesh": "left_toe_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_HIP_PITCH.STL",
+      "geom": "right_hip_pitch_link_visual",
+      "link": "RIGHT_HIP_PITCH",
+      "mesh": "right_hip_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_HIP_ROLL.STL",
+      "geom": "right_hip_roll_link_visual",
+      "link": "RIGHT_HIP_ROLL",
+      "mesh": "right_hip_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_HIP_YAW.STL",
+      "geom": "right_hip_yaw_link_visual",
+      "link": "RIGHT_HIP_YAW",
+      "mesh": "right_hip_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_KNEE.STL",
+      "geom": "right_knee_link_visual",
+      "link": "RIGHT_KNEE",
+      "mesh": "right_knee_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_ANKLE_A.STL",
+      "geom": "right_ankle_pitch_link_visual",
+      "link": "RIGHT_ANKLE_A",
+      "mesh": "right_ankle_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_ANKLE_B.STL",
+      "geom": "right_ankle_roll_link_visual",
+      "link": "RIGHT_ANKLE_B",
+      "mesh": "right_ankle_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_TOE.STL",
+      "geom": "right_toe_link_visual",
+      "link": "RIGHT_TOE",
+      "mesh": "right_toe_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "WAIST_YAW.STL",
+      "geom": "waist_yaw_link_visual",
+      "link": "WAIST_YAW",
+      "mesh": "waist_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "NECK_YAW.STL",
+      "geom": "neck_yaw_link_visual",
+      "link": "NECK_YAW",
+      "mesh": "neck_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "NECK_PITCH.STL",
+      "geom": "neck_pitch_link_visual",
+      "link": "NECK_PITCH",
+      "mesh": "neck_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_SHOULDER_PITCH.STL",
+      "geom": "right_shoulder_pitch_link_visual",
+      "link": "RIGHT_SHOULDER_PITCH",
+      "mesh": "right_shoulder_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_SHOULDER_ROLL.STL",
+      "geom": "right_shoulder_roll_link_visual",
+      "link": "RIGHT_SHOULDER_ROLL",
+      "mesh": "right_shoulder_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_SHOULDER_YAW.STL",
+      "geom": "right_shoulder_yaw_link_visual",
+      "link": "RIGHT_SHOULDER_YAW",
+      "mesh": "right_shoulder_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_ELBOW.STL",
+      "geom": "right_elbow_link_visual",
+      "link": "RIGHT_ELBOW",
+      "mesh": "right_elbow_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "RIGHT_WRIST_YAW.STL",
+      "geom": "right_wrist_yaw_link_visual",
+      "link": "RIGHT_WRIST_YAW",
+      "mesh": "right_wrist_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_SHOULDER_PITCH.STL",
+      "geom": "left_shoulder_pitch_link_visual",
+      "link": "LEFT_SHOULDER_PITCH",
+      "mesh": "left_shoulder_pitch_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_SHOULDER_ROLL.STL",
+      "geom": "left_shoulder_roll_link_visual",
+      "link": "LEFT_SHOULDER_ROLL",
+      "mesh": "left_shoulder_roll_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_SHOULDER_YAW.STL",
+      "geom": "left_shoulder_yaw_link_visual",
+      "link": "LEFT_SHOULDER_YAW",
+      "mesh": "left_shoulder_yaw_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_ELBOW.STL",
+      "geom": "left_elbow_link_visual",
+      "link": "LEFT_ELBOW",
+      "mesh": "left_elbow_link.STL",
+      "uses_stl": true
+    },
+    {
+      "class": "visual",
+      "file": "LEFT_WRIST_YAW.STL",
+      "geom": "left_wrist_yaw_link_visual",
+      "link": "LEFT_WRIST_YAW",
+      "mesh": "left_wrist_yaw_link.STL",
+      "uses_stl": true
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-all-cad-readiness-v1",
+  "source": {
+    "generated_cad_schema": "asimov-fembot-generated-cad-parametric-v1",
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "source_mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml"
+  },
+  "summary": {
+    "acceptance_blocker": "all 28 links have generated STEP references, but the loadable MuJoCo model still uses STL mesh assets; final acceptance requires replacing visual/collision STL bodies with CAD-parametric STEP/B-rep or loft parts and a non-STL MuJoCo representation",
+    "accepted": false,
+    "all_cad_parametric_ready": false,
+    "links": 28,
+    "links_still_using_stl_mesh_assets": 28,
+    "links_with_generated_step_reference": 28,
+    "missing_generated_step_links": [],
+    "missing_mjcf_asset_links": [],
+    "mjcf_load_error": null,
+    "mjcf_mesh_assets": 28,
+    "mjcf_mesh_visual_geoms": 28,
+    "mjcf_stl_mesh_assets": 28,
+    "mjcf_stl_mesh_visual_geoms": 28,
+    "no_stl_mesh_assets": false,
+    "stl_mesh_asset_links": [
+      "IMU_ORIGIN",
+      "LEFT_ANKLE_A",
+      "LEFT_ANKLE_B",
+      "LEFT_ELBOW",
+      "LEFT_HIP_PITCH",
+      "LEFT_HIP_ROLL",
+      "LEFT_HIP_YAW",
+      "LEFT_KNEE",
+      "LEFT_SHOULDER_PITCH",
+      "LEFT_SHOULDER_ROLL",
+      "LEFT_SHOULDER_YAW",
+      "LEFT_TOE",
+      "LEFT_WRIST_YAW",
+      "NECK_PITCH",
+      "NECK_YAW",
+      "RIGHT_ANKLE_A",
+      "RIGHT_ANKLE_B",
+      "RIGHT_ELBOW",
+      "RIGHT_HIP_PITCH",
+      "RIGHT_HIP_ROLL",
+      "RIGHT_HIP_YAW",
+      "RIGHT_KNEE",
+      "RIGHT_SHOULDER_PITCH",
+      "RIGHT_SHOULDER_ROLL",
+      "RIGHT_SHOULDER_YAW",
+      "RIGHT_TOE",
+      "RIGHT_WRIST_YAW",
+      "WAIST_YAW"
+    ]
+  }
+}
