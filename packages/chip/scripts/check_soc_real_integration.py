@@ -157,7 +157,7 @@ def check_lint(verilator: str) -> dict:
 
 
 def run_cocotb(verilator: str) -> dict:
-    results = COCOTB_DIR / SMOKE["results"]
+    results = COCOTB_DIR / str(SMOKE["results"])
     if results.exists():
         results.unlink()
     env_python = _python()

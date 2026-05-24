@@ -62,7 +62,7 @@ def _now() -> str:
 def _write(status: str, blocker_id: str | None, reason: str | None,
            evidence: list[str], extra: dict | None = None) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": GATE,
         "status": status,
@@ -106,6 +106,8 @@ def _parse_results() -> tuple[bool, str]:
         error = case.find("error")
         if failure is not None or error is not None:
             node = failure if failure is not None else error
+            if node is None:
+                continue
             msg = (node.get("message") or node.text or "assertion failed").strip()
             return False, f"{case.get('name')}: {msg[:600]}"
     if seen == 0:
