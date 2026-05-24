@@ -17,6 +17,7 @@
 import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { expect, type Page, test } from "playwright/test";
+import { captureScreenshotWithQualityRetry } from "./screenshot-quality";
 
 const TEST_TOKEN = "homepage-contact-sheet-token";
 
@@ -110,19 +111,23 @@ for (const viewport of VIEWPORTS) {
           await page.waitForTimeout(600);
         }
 
-        await page.screenshot({
-          path: path.join(ARTIFACT_DIR, viewport.name, `${route.name}.png`),
-          fullPage: true,
-          // Mask only genuinely non-deterministic UI. Keep <video> visible
-          // so the marketing hero shows its poster image instead of the
-          // Playwright default magenta mask fill.
-          mask: [
-            page.locator(".animate-pulse"),
-            page.locator(".animate-spin"),
-            page.locator("[data-marquee]"),
-          ],
-          animations: "disabled",
-        });
+        await captureScreenshotWithQualityRetry(
+          page,
+          `${viewport.name} ${route.name}`,
+          {
+            path: path.join(ARTIFACT_DIR, viewport.name, `${route.name}.png`),
+            fullPage: true,
+            // Mask only genuinely non-deterministic UI. Keep <video> visible
+            // so the marketing hero shows its poster image instead of the
+            // Playwright default magenta mask fill.
+            mask: [
+              page.locator(".animate-pulse"),
+              page.locator(".animate-spin"),
+              page.locator("[data-marquee]"),
+            ],
+            animations: "disabled",
+          },
+        );
 
         await expect(page.locator("body")).toBeVisible();
       });
