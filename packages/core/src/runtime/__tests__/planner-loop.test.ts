@@ -191,6 +191,33 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids spawning coding sub-agents for chat-message recall tasks", () => {
+		// Second follow-up after live bot.log scan on the integration branch
+		// surfaced a sub-agent failure pattern: "look in chat for any mention
+		// of <X>" prompts and "who is <X>?" prompts spawned TASKS_SPAWN_AGENT
+		// (because TASKS_SPAWN_AGENT is in the exposed tools list — unlike
+		// SEARCH_MESSAGES which is not), the coding sub-agent had no way to
+		// actually search Discord chat, errored or timed out, and the
+		// framework posted a generic "Sorry, something went wrong on my end."
+		// reply to the user (Discord messages 21:37:55 and 21:38:14 in the
+		// e2e test channel on 2026-05-24).
+		//
+		// The earlier rules covered SHELL fallback and "dead hint" inventing,
+		// but TASKS_SPAWN_AGENT IS in the exposed tool list, so it was not a
+		// dead hint — the model picked it as the closest available match.
+		// This rule makes TASKS_SPAWN_AGENT's contract explicit:
+		// coding/build sub-agents only, not chat-recall.
+		expect(plannerTemplate).toContain(
+			"TASKS_SPAWN_AGENT is for delegating coding/build/repo work",
+		);
+		expect(plannerTemplate).toContain(
+			"not a fallback for chat-message recall, memory queries, or agent-history lookups",
+		);
+		expect(plannerTemplate).toContain(
+			"routinely ends in sub-agent error/timeout",
+		);
+	});
+
 	it("forbids inventing tool workarounds for dead candidateActions hints", async () => {
 		// Follow-up tightening after the initial rule was empirically softer
 		// than intended: live trajectory tj-d255e7683eddf2 ("who is brassrhino21?"
