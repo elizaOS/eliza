@@ -358,6 +358,16 @@ no tested strategy is production-accepted until the remaining self-collider
 envelope, mass/inertia coupling, and controller validation gates
 are proven.
 
+The final target is now tracked by an explicit all-CAD/no-STL readiness proof.
+`cad/asimov-feminine/proofs/fembot-all-cad-readiness.json` confirms that all 28
+links have generated STEP references, with no missing generated STEP links, but
+the loadable MuJoCo model still contains 28 STL mesh assets and 28 mesh visual
+geoms. The proof is therefore `ok` as a blocker inventory and not accepted as
+final geometry. The final acceptance condition is stricter than controlled-loft
+traceability: every simulation body must be backed by CAD-parametric STEP/B-rep
+or loft geometry and a non-STL MuJoCo representation while preserving mates,
+contacts, actuator behavior, and the constrained-joint visual evidence.
+
 Use the strict gate when claiming any parameterized leaner/feminine variant is
 ready for generation:
 

@@ -580,6 +580,11 @@ manufacturing evidence.
   outputs are reference/evidence artifacts until every visual and collision body
   is replaced by STEP/B-rep or parametric loft geometry that preserves mates,
   constraints, MuJoCo loading, and constrained-joint visual evidence.
+- `scripts/generate_asimov_fembot_all_cad_readiness.py` emits the current
+  no-STL blocker inventory. It currently reports 28/28 links with generated
+  STEP references and zero missing generated STEP links, but also 28 STL mesh
+  assets and 28 mesh visual geoms in the loadable MuJoCo model. It is `ok` as
+  an inventory and intentionally non-accepted until those STL bodies are gone.
 - Controlled-loft spline proofs must also prove every accepted fitted ring is a
   closed, nondegenerate loop. The proof schema records endpoint closure gap,
   fitted perimeter, fitted area, and minimum fitted segment length; the first
