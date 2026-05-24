@@ -13,33 +13,33 @@ routed_step_candidate:
   evidence_class: blocked_local_candidate_outputs_not_release
   release_credit: false
 required_fit_observations:
-- display bond and FPC sweep inspected with routed board installed
-- battery installed, removed, and inspected for pouch, pull-tab, foam, and connector
-  clearance
-- camera modules focused and verified against lens-window and dust-clearance datums
-- USB-C plug sweep, attach, charge, and debug verified in enclosure
-- side buttons measured for force, travel, return, wake, volume, and recovery combo
-- speaker, microphone, receiver, haptic, and split interconnect installed and functionally
-  checked
-- cellular and Wi-Fi/Bluetooth radios measured in closed enclosure
+  - display bond and FPC sweep inspected with routed board installed
+  - battery installed, removed, and inspected for pouch, pull-tab, foam, and connector
+    clearance
+  - camera modules focused and verified against lens-window and dust-clearance datums
+  - USB-C plug sweep, attach, charge, and debug verified in enclosure
+  - side buttons measured for force, travel, return, wake, volume, and recovery combo
+  - speaker, microphone, receiver, haptic, and split interconnect installed and functionally
+    checked
+  - cellular and Wi-Fi/Bluetooth radios measured in closed enclosure
 required_fields_unpopulated:
-- unit_serial
-- routed_board_revision
-- enclosure_revision
-- measured_clearance_results
-- display_touch_fit_result
-- battery_fit_result
-- camera_focus_and_window_result
-- usb_c_plug_sweep_result
-- side_key_force_travel_result
-- audio_haptic_install_result
-- rf_closed_enclosure_result
-- reviewer
-- approval_signature
+  - unit_serial
+  - routed_board_revision
+  - enclosure_revision
+  - measured_clearance_results
+  - display_touch_fit_result
+  - battery_fit_result
+  - camera_focus_and_window_result
+  - usb_c_plug_sweep_result
+  - side_key_force_travel_result
+  - audio_haptic_install_result
+  - rf_closed_enclosure_result
+  - reviewer
+  - approval_signature
 blockers:
-- Physical first-article fit has not been executed on serialized hardware.
-- Release routed board STEP, supplier component geometry, measured clearance results,
-  and reviewer approval are missing.
+  - Physical first-article fit has not been executed on serialized hardware.
+  - Release routed board STEP, supplier component geometry, measured clearance results,
+    and reviewer approval are missing.
 validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
 artifact_id: enclosure_fit_first_article
 source_requirement_id: enclosure_fit_first_article
@@ -47,13 +47,13 @@ owner: first_article_validation
 created_at: blocked_not_executed
 tool_or_supplier_revision: blocked_not_executed
 input_artifact_hashes:
-- blocked_not_executed
+  - blocked_not_executed
 reviewer: blocked_not_reviewed
 reviewed_at: blocked_not_reviewed
 disposition: blocked_not_executed
 board_serial: blocked_not_executed
 supplier_lot_ids:
-- blocked_not_executed
+  - blocked_not_executed
 fixture_id: blocked_not_executed
 fixture_calibration_id: blocked_not_executed
 test_software_revision: blocked_not_executed

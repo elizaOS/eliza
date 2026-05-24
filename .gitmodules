@@ -62,3 +62,7 @@
 	path = packages/robot/vendor/asimov-1
 	url = https://github.com/asimovinc/asimov-1.git
 	branch = main
+[submodule "upstreams/electrobun"]
+	path = upstreams/electrobun
+	url = https://github.com/blackboardsh/electrobun.git
+	branch = main

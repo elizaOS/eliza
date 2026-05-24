@@ -41,6 +41,11 @@ xauth
 xserver-xorg-legacy
 xserver-xorg-video-modesetting
 
+# Real-hardware evidence capture (Xorg screenshot tool). Used by
+# elizaos-real-hw-evidence.service to dump kiosk PNGs onto a user-provisioned
+# ELIZAOS-EVIDENCE FAT partition on the live USB. No-op without that partition.
+scrot
+
 # Boot splash.
 plymouth
 plymouth-themes
