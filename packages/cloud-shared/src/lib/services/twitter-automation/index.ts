@@ -25,14 +25,30 @@ const TWITTER_API_SECRET_KEY = process.env.TWITTER_API_SECRET_KEY!;
 
 type TwitterOAuthFlow = "oauth1a" | "oauth2";
 
-const TWITTER_OAUTH2_SCOPES: TOAuth2Scope[] = [
-  "tweet.read",
-  "tweet.write",
-  "users.read",
-  "dm.read",
-  "dm.write",
-  "offline.access",
-];
+/**
+ * X OAuth2 scopes.
+ *
+ * `dm.read` + `dm.write` require Twitter API Pro tier ($5k/mo). Without that
+ * tier on the OAuth app, X rejects the entire authorization with a generic
+ * "Something went wrong" page. Set `TWITTER_OAUTH2_INCLUDE_DM=1` only when the
+ * configured X app actually has DM scopes enabled — otherwise the scope list
+ * stays trimmed to what the standard tier supports.
+ */
+function resolveTwitterOAuth2Scopes(): TOAuth2Scope[] {
+  const base: TOAuth2Scope[] = [
+    "tweet.read",
+    "tweet.write",
+    "users.read",
+    "offline.access",
+  ];
+  const includeDm = (process.env.TWITTER_OAUTH2_INCLUDE_DM ?? "").trim() === "1";
+  if (includeDm) {
+    base.push("dm.read", "dm.write");
+  }
+  return base;
+}
+
+const TWITTER_OAUTH2_SCOPES: TOAuth2Scope[] = resolveTwitterOAuth2Scopes();
 
 interface TwitterApiErrorShape {
   code?: number;
