@@ -207,6 +207,20 @@ function isLocalAgentIpcBase(value: string | null | undefined): boolean {
   return isMobileLocalAgentIpcUrl(normalized);
 }
 
+function getInjectedWsBase(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const values = [
+    (window as { __ELIZA_WS_BASE__?: unknown }).__ELIZA_WS_BASE__,
+    (window as { __ELIZAOS_WS_BASE__?: unknown }).__ELIZAOS_WS_BASE__,
+  ];
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Network status — listens for the bridged Capacitor `networkStatusChange`
 // event so the WS reconnect scheduler can park itself during airplane mode
@@ -716,7 +730,15 @@ export class ElizaClient {
 
     let host: string;
     let wsProtocol: "ws:" | "wss:";
-    if (this.baseUrl) {
+    const wsBase = getInjectedWsBase();
+    if (wsBase) {
+      const parsed = new URL(wsBase);
+      host = parsed.host;
+      wsProtocol =
+        parsed.protocol === "https:" || parsed.protocol === "wss:"
+          ? "wss:"
+          : "ws:";
+    } else if (this.baseUrl) {
       const parsed = new URL(this.baseUrl);
       host = parsed.host;
       wsProtocol = parsed.protocol === "https:" ? "wss:" : "ws:";

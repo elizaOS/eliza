@@ -188,6 +188,10 @@ export default defineConfig({
         replacement: path.join(agentSrc, "$1"),
       },
       { find: /^@elizaos\/ui$/, replacement: path.join(uiDir, "src/index.ts") },
+      {
+        find: /^@elizaos\/ui\/api$/,
+        replacement: path.join(uiDir, "src/api/index.ts"),
+      },
       { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiDir, "src/$1") },
       {
         find: /^@elizaos\/shared$/,

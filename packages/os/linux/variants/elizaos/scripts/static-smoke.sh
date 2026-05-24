@@ -94,6 +94,12 @@ echo "==> shell syntax"
 test -f tails/data/debootstrap/scripts/debian-common.patch
 test -f tails/data/splash.png
 test -x tails/data/wrappers/apt-get
+test -f docs/riscv64-gui-support.md
+test -f tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list
+grep -Fq "virtio-gpu-pci" docs/riscv64-gui-support.md
+grep -qx "linux-image-riscv64" tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list
+grep -qx "gnome-shell" tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list
+grep -qx "nodejs" tails/config/chroot_local-packageslists/elizaos-riscv64-gui.list
 for tails_build_input in \
     tails/config/chroot_local-includes/usr/share/tails/build/customize-ublock-assets \
     tails/config/chroot_local-includes/usr/share/tails/build/group \

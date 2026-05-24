@@ -2,6 +2,15 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import tailwindcss from "@tailwindcss/vite";
+import react from "@vitejs/plugin-react-swc";
+import { visualizer } from "rollup-plugin-visualizer";
+import {
+  createLogger,
+  defineConfig,
+  type Plugin,
+  transformWithEsbuild,
+} from "vite";
 import {
   colorizeDevSettingsStartupBanner,
   type DevSettingsRow,
@@ -13,16 +22,7 @@ import {
   resolveDesktopUiPort,
   resolveDesktopUiPortPreference,
   syncElizaEnvAliases,
-} from "@elizaos/shared";
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react-swc";
-import { visualizer } from "rollup-plugin-visualizer";
-import {
-  createLogger,
-  defineConfig,
-  type Plugin,
-  transformWithEsbuild,
-} from "vite";
+} from "../shared/src/index.ts";
 import appConfig from "./app.config";
 import { CAPACITOR_PLUGIN_NAMES } from "./scripts/capacitor-plugin-names.mjs";
 import { normalizeEnvPrefix } from "./src/env-prefix.js";
@@ -173,7 +173,7 @@ function resolveLocalPackageSourceExportTarget(
   const sourceTarget = path.join(
     packageDir,
     "src",
-    exportTarget.slice("./dist/".length, -".js".length) + ".ts",
+    `${exportTarget.slice("./dist/".length, -".js".length)}.ts`,
   );
   return fs.existsSync(sourceTarget) ? sourceTarget : null;
 }
@@ -689,6 +689,30 @@ const enableAppSourceMaps = process.env[BRANDED_ENV.appSourcemap] === "1";
 /** Set by eliza/packages/app-core/scripts/dev-platform.mjs for `vite build --watch` (Electrobun desktop). */
 const desktopFastDist = process.env[BRANDED_ENV.desktopFastDist] === "1";
 
+function appDevWsBasePlugin(): Plugin {
+  const wsBase = `ws://127.0.0.1:${apiPort}`;
+  const brandedWsBaseKey = `__${APP_ENV_PREFIX}_WS_BASE__`;
+
+  return {
+    name: "eliza-dev-ws-base",
+    apply: "serve",
+    transformIndexHtml() {
+      return [
+        {
+          tag: "script",
+          attrs: { type: "text/javascript" },
+          injectTo: "head-prepend",
+          children: [
+            `window.__ELIZA_WS_BASE__ = ${JSON.stringify(wsBase)};`,
+            `window.__ELIZAOS_WS_BASE__ = ${JSON.stringify(wsBase)};`,
+            `window[${JSON.stringify(brandedWsBaseKey)}] = ${JSON.stringify(wsBase)};`,
+          ].join("\n"),
+        },
+      ];
+    },
+  };
+}
+
 function pathIncludesAny(id: string, markers: string[]): boolean {
   return markers.some((marker) => id.includes(marker));
 }
@@ -936,6 +960,8 @@ function watchWorkspacePackagesPlugin(): Plugin {
       server.watcher.add(path.resolve(elizaRoot, "packages"));
       server.watcher.add(nativePluginsRoot);
       server.watcher.on("change", (file) => {
+        const normalizedFile = file.split(path.sep).join("/");
+        if (normalizedFile.includes("/packages/app/.vite/")) return;
         if (file.includes("/packages/")) {
           if (file.endsWith("package.json")) {
             server.restart();
@@ -1047,6 +1073,7 @@ export default defineConfig({
   },
   plugins: [
     appShellMetadataPlugin(),
+    appDevWsBasePlugin(),
     companionAssetsPlugin(),
     elizaCoreBrowserEntryFallbackPlugin(),
     nativeModuleStubPlugin({
@@ -1663,6 +1690,7 @@ export default defineConfig({
       ignored: [
         "**/electrobun/build/**",
         "**/electrobun/artifacts/**",
+        "**/packages/app/.vite/**",
         "**/packages/benchmarks/**",
         "**/packages/os/**",
         "**/packages/training/data/raw/**",

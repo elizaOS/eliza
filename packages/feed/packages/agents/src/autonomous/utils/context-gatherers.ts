@@ -492,6 +492,7 @@ export async function getRecentPosts(
   // Get author names
   const authorIds = [...new Set(recentPostsRaw.map((p) => p.authorId))];
   const authorNames = new Map<string, string>();
+  const contactableAuthorIds = new Set<string>();
 
   for (const authorId of authorIds) {
     // Check static registry first
@@ -514,11 +515,15 @@ export async function getRecentPosts(
         id: users.id,
         displayName: users.displayName,
         username: users.username,
+        isActor: users.isActor,
       })
       .from(users)
       .where(inArray(users.id, missingIds));
     for (const u of dbUsers) {
       authorNames.set(u.id, u.displayName || u.username || "User");
+      if (!u.isActor) {
+        contactableAuthorIds.add(u.id);
+      }
     }
   }
 
@@ -633,6 +638,7 @@ export async function getRecentPosts(
     id: p.id,
     authorId: p.authorId,
     authorName: authorNames.get(p.authorId) || "User",
+    authorCanContact: contactableAuthorIds.has(p.authorId),
     content: p.content,
     commentCount: postCommentCounts.get(p.id) ?? 0,
     likeCount: postLikeCounts.get(p.id) ?? 0,

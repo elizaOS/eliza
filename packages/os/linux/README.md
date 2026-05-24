@@ -1,24 +1,23 @@
 # elizaOS Linux
 
-The active elizaOS Linux distribution lives in [`elizaos/`](./elizaos/): a
-single Debian-based live ISO build that targets **x86_64 (amd64), arm64, and
-riscv64** from one live-build configuration.
+The active elizaOS Linux distribution lives in
+[`variants/elizaos/`](./variants/elizaos/): the single Tails-derived live USB
+distribution branded and shipped as **elizaOS Live**.
 
 ```text
 packages/os/linux/
 ├── README.md
 ├── LICENSES/
-├── elizaos/                # the unified multi-arch live-build (source of truth)
+├── variants/elizaos/       # the only live Linux distribution source of truth
 └── agent/  crates/  vm/    # elizad daemon schemas + VM bundle metadata
 ```
 
-Architecture is selected at build time via `ELIZAOS_ARCH`; an optional
-`ELIZAOS_PROFILE=secure` overlays a privacy/hardening profile (Tor,
-AppArmor, MAC randomization, amnesic tmpfs home) assembled from standard
-Debian packages. There is no Tails fork: the earlier amd64 Tails-derived
-variant and the separate riscv64 Debian variant were consolidated into this
-one tree.
+The old standalone Debian live-build tree has been removed. RISC-V support is
+tracked as a contract of the elizaOS Live distro itself: the riscv64 runtime
+artifact verifier, GUI package contract, and QEMU virtio-GPU boot requirements
+live with the canonical Tails-derived variant.
 
-See [`elizaos/README.md`](./elizaos/README.md) for build commands, profiles,
-the branding pipeline, and release-evidence flow, and
+See [`variants/elizaos/README.md`](./variants/elizaos/README.md) for build
+commands, the branding pipeline, persistence/privacy behavior, and release
+evidence flow, and
 [`../CLAUDE.md`](../CLAUDE.md) for distribution channels and promotion policy.

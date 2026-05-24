@@ -70,12 +70,7 @@ import {
   FOCUS_CONNECTOR_EVENT,
   type FocusConnectorEventDetail,
 } from "./events";
-import {
-  BugReportProvider,
-  useBugReportState,
-  useContextMenu,
-  useRenderGuard,
-} from "./hooks";
+import { BugReportProvider, useBugReportState, useContextMenu } from "./hooks";
 import { useActivityEvents } from "./hooks/useActivityEvents";
 import { useAuthStatus } from "./hooks/useAuthStatus";
 import { useSecretsManagerShortcut } from "./hooks/useSecretsManagerShortcut";
@@ -1120,7 +1115,6 @@ function shouldSuppressShellPill(tab: string): boolean {
 }
 
 export function App() {
-  useRenderGuard("App");
   const {
     startupError,
     startupCoordinator,

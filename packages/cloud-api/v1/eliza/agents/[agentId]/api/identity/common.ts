@@ -20,6 +20,7 @@ import { createStewardClient } from "@/lib/services/steward-client";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 import { resolveStewardAgentId } from "../wallet/[...path]/route";
+import type { StewardPolicyRule } from "./policy";
 
 export { policiesAllowRegister } from "./policy";
 

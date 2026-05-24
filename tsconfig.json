@@ -20,25 +20,198 @@
     "paths": {
       "@elizaos/ui": ["./packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["./packages/ui/src/*"],
+      "@elizaos/agent": ["./packages/agent/src/index.ts"],
+      "@elizaos/agent/*": ["./packages/agent/src/*"],
+      "@elizaos/app-core": ["./packages/app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["./packages/app-core/src/*"],
+      "@elizaos/capacitor-agent": [
+        "./plugins/plugin-native-agent/src/index.ts"
+      ],
+      "@elizaos/capacitor-appblocker": [
+        "./plugins/plugin-native-appblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-bun-runtime": [
+        "./plugins/plugin-native-bun-runtime/src/index.ts"
+      ],
+      "@elizaos/capacitor-calendar": [
+        "./plugins/plugin-native-calendar/src/index.ts"
+      ],
+      "@elizaos/capacitor-camera": [
+        "./plugins/plugin-native-camera/src/index.ts"
+      ],
+      "@elizaos/capacitor-canvas": [
+        "./plugins/plugin-native-canvas/src/index.ts"
+      ],
+      "@elizaos/capacitor-contacts": [
+        "./plugins/plugin-native-contacts/src/index.ts"
+      ],
+      "@elizaos/capacitor-desktop": [
+        "./plugins/plugin-native-desktop/src/index.ts"
+      ],
+      "@elizaos/capacitor-gateway": [
+        "./plugins/plugin-native-gateway/src/index.ts"
+      ],
+      "@elizaos/capacitor-location": [
+        "./plugins/plugin-native-location/src/index.ts"
+      ],
+      "@elizaos/capacitor-messages": [
+        "./plugins/plugin-native-messages/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-agent-bridge": [
+        "./plugins/plugin-native-mobile-agent-bridge/src/index.ts"
+      ],
+      "@elizaos/capacitor-mobile-signals": [
+        "./plugins/plugin-native-mobile-signals/src/index.ts"
+      ],
+      "@elizaos/capacitor-phone": [
+        "./plugins/plugin-native-phone/src/index.ts"
+      ],
+      "@elizaos/capacitor-screencapture": [
+        "./plugins/plugin-native-screencapture/src/index.ts"
+      ],
+      "@elizaos/capacitor-swabble": [
+        "./plugins/plugin-native-swabble/src/index.ts"
+      ],
+      "@elizaos/capacitor-system": [
+        "./plugins/plugin-native-system/src/index.ts"
+      ],
+      "@elizaos/capacitor-talkmode": [
+        "./plugins/plugin-native-talkmode/src/index.ts"
+      ],
+      "@elizaos/capacitor-websiteblocker": [
+        "./plugins/plugin-native-websiteblocker/src/index.ts"
+      ],
+      "@elizaos/capacitor-wifi": ["./plugins/plugin-native-wifi/src/index.ts"],
+      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/src/index.ts"],
+      "@elizaos/cloud-sdk/*": ["./packages/cloud-sdk/src/*"],
+      "@elizaos/contracts": ["./packages/contracts/src/index.ts"],
+      "@elizaos/contracts/*": ["./packages/contracts/src/*"],
       "@elizaos/core": ["./packages/core/src/index.node.ts"],
       "@elizaos/core/testing": ["./packages/core/src/testing/index.ts"],
       "@elizaos/core/*": ["./packages/core/src/*"],
+      "@elizaos/plugin-2004scape": ["./plugins/plugin-2004scape/src/index.ts"],
+      "@elizaos/plugin-agent-orchestrator": [
+        "./plugins/plugin-agent-orchestrator/src/index.ts"
+      ],
+      "@elizaos/plugin-agent-skills": [
+        "./plugins/plugin-agent-skills/src/index.ts"
+      ],
+      "@elizaos/plugin-anthropic": ["./plugins/plugin-anthropic/index.ts"],
+      "@elizaos/plugin-aosp-local-inference": [
+        "./plugins/plugin-aosp-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-app-manager": [
+        "./plugins/plugin-app-manager/src/index.ts"
+      ],
+      "@elizaos/plugin-background-runner": [
+        "./plugins/plugin-background-runner/src/index.ts"
+      ],
+      "@elizaos/plugin-browser": ["./plugins/plugin-browser/src/index.ts"],
+      "@elizaos/plugin-capacitor-bridge": [
+        "./plugins/plugin-capacitor-bridge/src/index.ts"
+      ],
+      "@elizaos/plugin-clawville": ["./plugins/plugin-clawville/src/index.ts"],
+      "@elizaos/plugin-coding-tools": [
+        "./plugins/plugin-coding-tools/src/index.ts"
+      ],
+      "@elizaos/plugin-commands": ["./plugins/plugin-commands/src/index.ts"],
+      "@elizaos/plugin-companion": ["./plugins/plugin-companion/src/index.ts"],
+      "@elizaos/plugin-computeruse": [
+        "./plugins/plugin-computeruse/src/index.ts"
+      ],
+      "@elizaos/plugin-computeruse/mobile/*": [
+        "./plugins/plugin-computeruse/src/mobile/*"
+      ],
+      "@elizaos/plugin-contacts": ["./plugins/plugin-contacts/src/index.ts"],
+      "@elizaos/plugin-defense-of-the-agents": [
+        "./plugins/plugin-defense-of-the-agents/src/index.ts"
+      ],
+      "@elizaos/plugin-device-settings": [
+        "./plugins/plugin-device-settings/src/index.ts"
+      ],
+      "@elizaos/plugin-discord": ["./plugins/plugin-discord/index.ts"],
+      "@elizaos/plugin-edge-tts": ["./plugins/plugin-edge-tts/src/index.ts"],
+      "@elizaos/plugin-elizacloud": [
+        "./plugins/plugin-elizacloud/src/index.ts"
+      ],
+      "@elizaos/plugin-facewear": ["./plugins/plugin-facewear/src/index.ts"],
+      "@elizaos/plugin-feed": ["./plugins/plugin-feed/src/index.ts"],
+      "@elizaos/plugin-groq": ["./plugins/plugin-groq/index.ts"],
+      "@elizaos/plugin-hyperliquid-app": [
+        "./plugins/plugin-hyperliquid-app/src/index.ts"
+      ],
+      "@elizaos/plugin-hyperscape": [
+        "./plugins/plugin-hyperscape/src/index.ts"
+      ],
+      "@elizaos/plugin-imessage": ["./plugins/plugin-imessage/src/index.ts"],
+      "@elizaos/plugin-lifeops": ["./plugins/plugin-lifeops/src/index.ts"],
+      "@elizaos/plugin-local-inference": [
+        "./plugins/plugin-local-inference/src/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime": [
+        "./plugins/plugin-local-inference/src/runtime/index.ts"
+      ],
+      "@elizaos/plugin-local-inference/runtime/*": [
+        "./plugins/plugin-local-inference/src/runtime/*"
+      ],
+      "@elizaos/plugin-mcp": ["./plugins/plugin-mcp/src/index.ts"],
+      "@elizaos/plugin-messages": ["./plugins/plugin-messages/src/index.ts"],
+      "@elizaos/plugin-mlx": ["./plugins/plugin-mlx/index.ts"],
+      "@elizaos/plugin-ollama": ["./plugins/plugin-ollama/index.ts"],
+      "@elizaos/plugin-openai": ["./plugins/plugin-openai/index.ts"],
+      "@elizaos/plugin-phone": ["./plugins/plugin-phone/src/index.ts"],
+      "@elizaos/plugin-polymarket-app": [
+        "./plugins/plugin-polymarket-app/src/index.ts"
+      ],
+      "@elizaos/plugin-registry": ["./plugins/plugin-registry/src/index.ts"],
+      "@elizaos/plugin-remote-manifest": [
+        "./packages/plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-scape": ["./plugins/plugin-scape/src/index.ts"],
+      "@elizaos/plugin-shell": ["./plugins/plugin-shell/index.ts"],
+      "@elizaos/plugin-shopify-ui": [
+        "./plugins/plugin-shopify-ui/src/index.ts"
+      ],
+      "@elizaos/plugin-signal": ["./plugins/plugin-signal/src/index.ts"],
+      "@elizaos/plugin-sql": ["./plugins/plugin-sql/src/index.ts"],
+      "@elizaos/plugin-steward-app": [
+        "./plugins/plugin-steward-app/src/index.ts"
+      ],
+      "@elizaos/plugin-streaming": ["./plugins/plugin-streaming/src/index.ts"],
+      "@elizaos/plugin-task-coordinator": [
+        "./plugins/plugin-task-coordinator/src/index.ts"
+      ],
+      "@elizaos/plugin-training": ["./plugins/plugin-training/src/index.ts"],
+      "@elizaos/plugin-trajectory-logger": [
+        "./plugins/plugin-trajectory-logger/src/index.ts"
+      ],
+      "@elizaos/plugin-video": ["./plugins/plugin-video/src/index.ts"],
+      "@elizaos/plugin-vincent": ["./plugins/plugin-vincent/src/index.ts"],
+      "@elizaos/plugin-wallet": ["./plugins/plugin-wallet/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wechat": ["./plugins/plugin-wechat/src/index.ts"],
+      "@elizaos/plugin-whatsapp": ["./plugins/plugin-whatsapp/src/index.ts"],
+      "@elizaos/plugin-wifi": ["./plugins/plugin-wifi/src/index.ts"],
+      "@elizaos/plugin-worker-runtime": [
+        "./packages/plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-workflow": ["./plugins/plugin-workflow/src/index.ts"],
+      "@elizaos/plugin-x402": ["./plugins/plugin-x402/src/index.ts"],
+      "@elizaos/security": ["./packages/security/src/index.ts"],
+      "@elizaos/security/*": ["./packages/security/src/*"],
+      "@elizaos/tui": ["./packages/tui/src/index.ts"],
+      "@elizaos/tui/*": ["./packages/tui/src/*"],
       "@elizaos/shared": ["./packages/shared/src/index.ts"],
       "@elizaos/shared/*": ["./packages/shared/src/*"],
+      "@elizaos/skills": ["./packages/skills/src/index.ts"],
+      "@elizaos/skills/*": ["./packages/skills/src/*"],
+      "@elizaos/vault": ["./packages/vault/src/index.ts"],
+      "@elizaos/vault/*": ["./packages/vault/src/*"],
       "@elizaos/app-wallet": ["./plugins/app-wallet/src/index.ts"],
       "@elizaos/app-wallet/*": ["./plugins/app-wallet/src/*"],
       "@elizaos/cloud-shared": ["./packages/cloud-shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["./packages/cloud-shared/src/*"],
-      "@elizaos/cloud-sdk": ["./packages/cloud-sdk/src/index.ts"],
-      "@elizaos/cloud-sdk/*": ["./packages/cloud-sdk/src/*"],
-      "@elizaos/plugin-wallet-ui": ["./plugins/plugin-wallet-ui/src/index.ts"],
-      "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"],
-      "@elizaos/plugin-local-inference": [
-        "./plugins/plugin-local-inference/src/index.ts"
-      ],
-      "@elizaos/plugin-local-inference/*": [
-        "./plugins/plugin-local-inference/src/*"
-      ]
+      "@elizaos/plugin-wallet-ui/*": ["./plugins/plugin-wallet-ui/src/*"]
     }
   },
   "exclude": [

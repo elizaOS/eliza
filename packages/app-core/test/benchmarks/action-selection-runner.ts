@@ -52,6 +52,7 @@ export interface ActionBenchmarkResult {
   actualAction: string | null;
   selectionPass?: boolean;
   executionPass?: boolean;
+  responsePass?: boolean;
   pass: boolean;
   latencyMs: number;
   error?: string;
@@ -173,6 +174,7 @@ export interface ActionBenchmarkResultArtifact {
   actualAction: string | null;
   selectionPass?: boolean;
   executionPass?: boolean;
+  responsePass?: boolean;
   pass: boolean;
   latencyMs: number;
   failureMode?: ActionFailureMode;
@@ -601,6 +603,38 @@ export function caseMatches(
   return false;
 }
 
+export function isAcceptableNoActionResponse(text: string | undefined): boolean {
+  const trimmed = text?.trim();
+  if (!trimmed) return false;
+  if (!/[A-Za-z0-9]/.test(trimmed)) return false;
+  if (/^```\s*```/m.test(trimmed)) return false;
+
+  const promptLeakMarkers = [
+    /^#\s*(Response|Direct Private Chat|Current Execution Context|Available Actions|Decision Rules)\b/im,
+    /\b(use userId from Recent Posts|One Action Per Iteration|Actions Completed This Tick)\b/i,
+  ];
+  if (promptLeakMarkers.some((marker) => marker.test(trimmed))) {
+    return false;
+  }
+
+  const meaningfulLines = trimmed
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (meaningfulLines.length === 0) return false;
+  const structuralLines = meaningfulLines.filter(
+    (line) => /^[-*_]{3,}$/.test(line) || /^#{1,6}\s+\S+/.test(line),
+  );
+  if (
+    structuralLines.length > 0 &&
+    structuralLines.length / meaningfulLines.length >= 0.5
+  ) {
+    return false;
+  }
+
+  return true;
+}
+
 function firstMatchingActionName(
   names: readonly string[],
   expected: string | null,
@@ -717,9 +751,11 @@ export function determineFailureMode(args: {
   planned: string | null;
   filtered: string[];
   hadError: boolean;
+  badNoActionResponse?: boolean;
 }): ActionFailureMode {
   if (args.pass) return "passed";
   if (args.hadError) return "error";
+  if (args.badNoActionResponse) return "no_response";
   const actualNorm = canonicalActionName(args.actual);
   const plannedNorm = canonicalActionName(args.planned);
   const expectedNorm = canonicalActionName(args.expected);
@@ -1519,7 +1555,11 @@ async function runSingleCaseWithRecording(
       tc.acceptableActions,
     );
     const selectionPass = plannerPass || startedPass || executionPass;
-    const pass = selectionPass;
+    const responsePass =
+      tc.expectedAction === null
+        ? isAcceptableNoActionResponse(responseText)
+        : undefined;
+    const pass = selectionPass && (responsePass ?? true);
     const failureMode = determineFailureMode({
       pass,
       expected: tc.expectedAction,
@@ -1527,6 +1567,7 @@ async function runSingleCaseWithRecording(
       planned: planner.plannedAction,
       filtered: filteredActions,
       hadError: false,
+      badNoActionResponse: tc.expectedAction === null && responsePass === false,
     });
     harness.setMetadata("expectedAction", tc.expectedAction);
     harness.setMetadata("plannerPass", plannerPass);
@@ -1536,6 +1577,9 @@ async function runSingleCaseWithRecording(
     harness.setMetadata("pass", pass);
     harness.setMetadata("selectionPass", selectionPass);
     harness.setMetadata("executionPass", executionPass);
+    if (responsePass !== undefined) {
+      harness.setMetadata("responsePass", responsePass);
+    }
     harness.setMetadata("tags", tc.tags);
     harness.setMetadata("failureMode", failureMode);
     harness.setMetadata("availableActions", planner.availableActions);
@@ -1555,6 +1599,7 @@ async function runSingleCaseWithRecording(
       actualAction: completedAction,
       selectionPass,
       executionPass,
+      responsePass,
       pass,
       latencyMs: Date.now() - started,
       trajectory,
@@ -1603,22 +1648,31 @@ async function runSingleCaseWithRecording(
         ? false
         : caseMatches(completedAction, tc.expectedAction, tc.acceptableActions);
     const selectionPass = plannerPass || startedPass || executionPass;
+    const responsePass =
+      tc.expectedAction === null
+        ? isAcceptableNoActionResponse(responseText)
+        : undefined;
+    const pass = selectionPass && (responsePass ?? true);
     const failureMode = determineFailureMode({
-      pass: selectionPass,
+      pass,
       expected: tc.expectedAction,
       actual: completedAction,
       planned: planner.plannedAction,
       filtered: filteredActions,
       hadError: true,
+      badNoActionResponse: tc.expectedAction === null && responsePass === false,
     });
     harness.setMetadata("expectedAction", tc.expectedAction);
     harness.setMetadata("plannerPass", plannerPass);
     harness.setMetadata("plannedAction", planner.plannedAction);
     harness.setMetadata("startedAction", startedAction);
     harness.setMetadata("actualAction", completedAction);
-    harness.setMetadata("pass", selectionPass);
+    harness.setMetadata("pass", pass);
     harness.setMetadata("selectionPass", selectionPass);
     harness.setMetadata("executionPass", executionPass);
+    if (responsePass !== undefined) {
+      harness.setMetadata("responsePass", responsePass);
+    }
     harness.setMetadata("tags", tc.tags);
     harness.setMetadata("failureMode", failureMode);
     harness.setMetadata("availableActions", planner.availableActions);
@@ -1639,7 +1693,8 @@ async function runSingleCaseWithRecording(
       actualAction: completedAction,
       selectionPass,
       executionPass,
-      pass: selectionPass,
+      responsePass,
+      pass,
       latencyMs: Date.now() - started,
       error: message,
       trajectory,
@@ -2156,6 +2211,7 @@ function toResultArtifact(
     actualAction: result.actualAction,
     selectionPass: result.selectionPass,
     executionPass: result.executionPass,
+    responsePass: result.responsePass,
     pass: result.pass,
     latencyMs: result.latencyMs,
     failureMode: result.failureMode,

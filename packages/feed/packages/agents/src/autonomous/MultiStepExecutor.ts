@@ -232,7 +232,8 @@ export class MultiStepExecutor {
 
     if (enabledFeatures.includes(Features.DMS)) {
       const recipient = context.recentPosts.find(
-        (post) => post.authorId !== agentUserId,
+        (post) =>
+          post.authorId !== agentUserId && post.authorCanContact === true,
       )?.authorId;
       if (recipient) {
         return {

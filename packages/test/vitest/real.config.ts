@@ -253,6 +253,7 @@ const realResolveAlias: ModuleAlias[] = [
     "plugin-training",
     "plugin-vincent",
     "plugin-wallet-ui",
+    "plugin-x402",
   ]),
   {
     find: "@elizaos/plugin-form",

@@ -60,7 +60,7 @@ jobs:
       - name: Download Linux ISO artifact
         uses: actions/download-artifact@v8
         with:
-          pattern: elizaos-linux-iso-*
+          pattern: elizaos-live-iso-*
           path: ./_verify/iso
           merge-multiple: true
 

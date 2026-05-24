@@ -1,10 +1,9 @@
 name: Build elizaOS Linux ISO
 
-# One unified multi-arch live-build at packages/os/linux/elizaos. The build
-# runs inside a Docker builder container (`make build ARCH=<arch>`), so the
-# runner only needs Docker — no host live-build/just/rust install. amd64 is
-# the gating leg; arm64/riscv64 run continue-on-error until they have
-# produced+validated artifacts.
+# One canonical live distro at packages/os/linux/variants/elizaos. The build
+# runs inside that Tails-derived Docker builder. riscv64 support is verified as
+# a native artifact + GUI contract until full riscv64 ISO boot evidence is
+# produced for this canonical distro.
 
 on:
   workflow_call:
@@ -41,10 +40,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64, riscv64]
-    # arm64/riscv64 build under qemu-user-static and have no validated
-    # artifact yet — surface failures without blocking the amd64 gate.
-    continue-on-error: ${{ matrix.arch != 'amd64' }}
+        arch: [amd64]
     permissions:
       # contents: write covers softprops/action-gh-release (release upload)
       #   and anchore/sbom-action (artifact attachment). The workflow-level
@@ -58,7 +54,7 @@ jobs:
       attestations: write
     env:
       CHANNEL: ${{ inputs.channel || (github.event_name == 'release' && 'stable') || 'nightly' }}
-      VARIANT_DIR: packages/os/linux/elizaos
+      VARIANT_DIR: packages/os/linux/variants/elizaos
 
     steps:
       - name: Checkout
@@ -71,7 +67,7 @@ jobs:
         with:
           path: |
             ${{ env.VARIANT_DIR }}/cache
-          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/elizaos/auto/config', 'packages/os/linux/elizaos/config/package-lists/**', 'packages/os/linux/elizaos/Dockerfile') }}
+          key: elizaos-iso-${{ matrix.arch }}-${{ hashFiles('packages/os/linux/variants/elizaos/tails/auto/config', 'packages/os/linux/variants/elizaos/tails/config/chroot_local-packageslists/**', 'packages/os/linux/variants/elizaos/Dockerfile') }}
           restore-keys: elizaos-iso-${{ matrix.arch }}-
 
       - name: Detect KVM acceleration
@@ -80,12 +76,22 @@ jobs:
           if [ -e /dev/kvm ]; then
             echo "have_kvm=true" >> "$GITHUB_OUTPUT"
           else
-            echo "have_kvm=false" >> "$GITHUB_OUTPUT"
+              echo "have_kvm=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Install just
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends just
+
+      - name: Verify riscv64 contract
+        run: |
+          set -euo pipefail
+          bash scripts/verify-riscv64-buildpaths.sh
+          cd "${VARIANT_DIR}"
+          ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
 
       - name: Build ISO (${{ matrix.arch }})
         working-directory: ${{ env.VARIANT_DIR }}
-        run: make build ARCH=${{ matrix.arch }}
+        run: just build
         timeout-minutes: 110
 
       - name: Locate and rename ISO
@@ -98,13 +104,13 @@ jobs:
           ISO_MAX_BYTES: ${{ env.ELIZAOS_ISO_MAX_BYTES || '3221225472' }}
         run: |
           set -euo pipefail
-          ISO=$(find "${VARIANT_DIR}/out" -name "elizaos-linux-${{ matrix.arch }}-*.iso" | sort | tail -1)
+          ISO=$(find "${VARIANT_DIR}/out" \( -name "binary.iso" -o -name "elizaos-live-${{ matrix.arch }}-*.iso" -o -name "elizaos-linux-${{ matrix.arch }}-*.iso" \) | sort | tail -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1
           fi
           DATE=$(date +%Y.%m.%d)
-          DEST="elizaos-linux-${CHANNEL}-${DATE}-${{ matrix.arch }}.iso"
+          DEST="elizaos-live-${CHANNEL}-${DATE}-${{ matrix.arch }}.iso"
           cp "$ISO" "$DEST"
           SIZE=$(stat --format=%s "$DEST")
           if [ "$SIZE" -gt "$ISO_MAX_BYTES" ]; then
@@ -160,8 +166,8 @@ jobs:
           fi
           rm -f "$SERIAL_LOG"
 
-      - name: Smoke test skipped (no KVM or non-amd64)
-        if: matrix.arch != 'amd64' || steps.kvm.outputs.have_kvm != 'true'
+      - name: Smoke test skipped (no KVM)
+        if: steps.kvm.outputs.have_kvm != 'true'
         run: echo "::notice::Boot smoke test runs only on amd64 with KVM; skipped for ${{ matrix.arch }}."
 
       - name: Attest SLSA build provenance for ISO
@@ -241,7 +247,7 @@ jobs:
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v7
         with:
-          name: elizaos-linux-iso-${{ env.CHANNEL }}-${{ matrix.arch }}
+          name: elizaos-live-iso-${{ env.CHANNEL }}-${{ matrix.arch }}
           path: |
             ${{ steps.iso.outputs.path }}
             ${{ steps.iso.outputs.filename }}.sha256
@@ -264,7 +270,7 @@ jobs:
       - name: Write ISO metadata to summary
         run: |
           {
-            echo "## elizaOS Linux ISO (${{ matrix.arch }})"
+            echo "## elizaOS Live ISO (${{ matrix.arch }})"
             echo "| Field | Value |"
             echo "| ----- | ----- |"
             echo "| File | \`${{ steps.iso.outputs.filename }}\` |"

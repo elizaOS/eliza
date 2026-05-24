@@ -443,7 +443,10 @@ function buildAppBootConfig({
     args: ResolveCompanionInferenceNoticeArgs,
   ) => CompanionInferenceNotice | null;
 }): AppBootConfig {
+  const current = getBootConfig();
+
   return {
+    ...current,
     branding: APP_BRANDING,
     defaultApps: APP_CONFIG.defaultApps,
     assetBaseUrl:

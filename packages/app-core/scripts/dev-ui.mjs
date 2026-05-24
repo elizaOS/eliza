@@ -891,10 +891,15 @@ function startVite() {
           process.env.ELIZA_DEV_PLUGIN_BUILD === "always";
         const skipPlugins =
           process.env.ELIZA_DEV_PLUGIN_BUILD === "0" ||
-          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1";
+          process.env.ELIZA_SKIP_PLUGIN_BUILD === "1" ||
+          (process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins);
         if (skipPlugins) {
+          const skipReason =
+            process.env.ELIZA_DEV_SOURCE === "1" && !forcePlugins
+              ? "ELIZA_DEV_SOURCE=1"
+              : "ELIZA_SKIP_PLUGIN_BUILD=1";
           console.log(
-            `  ${green(logPrefix)} ${dim("Skipping Capacitor plugin build (ELIZA_SKIP_PLUGIN_BUILD=1).")}`,
+            `  ${green(logPrefix)} ${dim(`Skipping Capacitor plugin build (${skipReason}).`)}`,
           );
         } else if (
           forcePlugins ||
