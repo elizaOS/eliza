@@ -1,6 +1,6 @@
 {
   "verdict": "pass",
-  "applied_count": 34,
+  "applied_count": 38,
   "skipped_count": 0,
   "applied": [
     {
@@ -1173,21 +1173,21 @@
         {
           "section_index": 0,
           "axis": "y",
-          "position_delta": 0.0,
+          "position_delta": 0.005,
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.013,
-              "target": 0.011,
+              "base": 0.01,
+              "target": 0.008,
               "delta": -0.002,
-              "percent": -15.385
+              "percent": -20.0
             },
             {
               "axis_index": 1,
-              "base": 0.013,
-              "target": 0.011,
+              "base": 0.01,
+              "target": 0.008,
               "delta": -0.002,
-              "percent": -15.385
+              "percent": -20.0
             }
           ]
         },
@@ -1198,43 +1198,375 @@
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.016,
-              "target": 0.013,
-              "delta": -0.003,
-              "percent": -18.75
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
             },
             {
               "axis_index": 1,
-              "base": 0.016,
-              "target": 0.013,
-              "delta": -0.003,
-              "percent": -18.75
+              "base": 0.012,
+              "target": 0.01,
+              "delta": -0.002,
+              "percent": -16.667
             }
           ]
         },
         {
           "section_index": 2,
           "axis": "y",
-          "position_delta": 0.0,
+          "position_delta": -0.005,
           "scale_delta": [
             {
               "axis_index": 0,
-              "base": 0.013,
-              "target": 0.011,
+              "base": 0.01,
+              "target": 0.008,
               "delta": -0.002,
-              "percent": -15.385
+              "percent": -20.0
             },
             {
               "axis_index": 1,
-              "base": 0.013,
-              "target": 0.011,
+              "base": 0.01,
+              "target": 0.008,
               "delta": -0.002,
-              "percent": -15.385
+              "percent": -20.0
             }
           ]
         }
       ],
       "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_rear_hip_fairing",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.008,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.022,
+              "target": 0.017,
+              "delta": -0.005,
+              "percent": -22.727
+            },
+            {
+              "axis_index": 1,
+              "base": 0.018,
+              "target": 0.013,
+              "delta": -0.005,
+              "percent": -27.778
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.026,
+              "target": 0.02,
+              "delta": -0.006,
+              "percent": -23.077
+            },
+            {
+              "axis_index": 1,
+              "base": 0.022,
+              "target": 0.015,
+              "delta": -0.007,
+              "percent": -31.818
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.008,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.015,
+              "delta": -0.005,
+              "percent": -25.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.011,
+              "delta": -0.005,
+              "percent": -31.25
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_rear_hip_fairing",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.006,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.017,
+              "target": 0.012,
+              "delta": -0.005,
+              "percent": -29.412
+            },
+            {
+              "axis_index": 1,
+              "base": 0.013,
+              "target": 0.008,
+              "delta": -0.005,
+              "percent": -38.462
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.02,
+              "target": 0.014,
+              "delta": -0.006,
+              "percent": -30.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.01,
+              "delta": -0.006,
+              "percent": -37.5
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.006,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.016,
+              "target": 0.011,
+              "delta": -0.005,
+              "percent": -31.25
+            },
+            {
+              "axis_index": 1,
+              "base": 0.012,
+              "target": 0.008,
+              "delta": -0.004,
+              "percent": -33.333
+            }
+          ]
+        }
+      ],
+      "center_delta": []
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "left_rear_glute_armor_skin",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.009,
+              "delta": -0.007,
+              "percent": -43.75
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.011,
+              "delta": -0.009,
+              "percent": -45.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0028,
+              "target": 0.0014,
+              "delta": -0.0014,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.008,
+              "delta": -0.008,
+              "percent": -50.0
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.072,
+          "target": -0.06,
+          "delta": 0.012,
+          "percent": -16.667
+        },
+        {
+          "axis_index": 1,
+          "base": 0.05,
+          "target": 0.05,
+          "delta": 0.0,
+          "percent": 0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.078,
+          "target": -0.11,
+          "delta": -0.032,
+          "percent": 41.026
+        }
+      ]
+    },
+    {
+      "morph": "feminine_compact_v1",
+      "part": "right_rear_glute_armor_skin",
+      "blend": 1.0,
+      "kind": "section_loft",
+      "section_deltas": [
+        {
+          "section_index": 0,
+          "axis": "z",
+          "position_delta": 0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.003,
+              "target": 0.0014,
+              "delta": -0.0016,
+              "percent": -53.333
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.009,
+              "delta": -0.007,
+              "percent": -43.75
+            }
+          ]
+        },
+        {
+          "section_index": 1,
+          "axis": "z",
+          "position_delta": 0.0,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.004,
+              "target": 0.0018,
+              "delta": -0.0022,
+              "percent": -55.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.02,
+              "target": 0.011,
+              "delta": -0.009,
+              "percent": -45.0
+            }
+          ]
+        },
+        {
+          "section_index": 2,
+          "axis": "z",
+          "position_delta": -0.01,
+          "scale_delta": [
+            {
+              "axis_index": 0,
+              "base": 0.0028,
+              "target": 0.0014,
+              "delta": -0.0014,
+              "percent": -50.0
+            },
+            {
+              "axis_index": 1,
+              "base": 0.016,
+              "target": 0.008,
+              "delta": -0.008,
+              "percent": -50.0
+            }
+          ]
+        }
+      ],
+      "center_delta": [
+        {
+          "axis_index": 0,
+          "base": -0.072,
+          "target": -0.06,
+          "delta": 0.012,
+          "percent": -16.667
+        },
+        {
+          "axis_index": 1,
+          "base": -0.05,
+          "target": -0.05,
+          "delta": 0.0,
+          "percent": -0.0
+        },
+        {
+          "axis_index": 2,
+          "base": -0.078,
+          "target": -0.11,
+          "delta": -0.032,
+          "percent": 41.026
+        }
+      ]
     },
     {
       "morph": "feminine_compact_v1",
@@ -2466,44 +2798,40 @@
       "blend": 1.0,
       "kind": "part_fields",
       "fields": [
-        "scale",
-        "radius",
-        "tube_radius"
+        "centerline_radii_yz",
+        "tube_radii_x_radial"
       ],
       "field_deltas": {
-        "radius": {
-          "base": 0.018,
-          "target": 0.0145,
-          "delta": -0.0035,
-          "percent": -19.444
-        },
-        "tube_radius": {
-          "base": 0.0025,
-          "target": 0.0016,
-          "delta": -0.0009,
-          "percent": -36.0
-        },
-        "scale": [
+        "centerline_radii_yz": [
           {
             "axis_index": 0,
-            "base": 0.92,
-            "target": 0.92,
-            "delta": 0.0,
-            "percent": 0.0
+            "base": 0.01008,
+            "target": 0.00609,
+            "delta": -0.00399,
+            "percent": -39.583
           },
           {
             "axis_index": 1,
-            "base": 0.56,
-            "target": 0.42,
-            "delta": -0.14,
-            "percent": -25.0
+            "base": 0.01008,
+            "target": 0.00609,
+            "delta": -0.00399,
+            "percent": -39.583
+          }
+        ],
+        "tube_radii_x_radial": [
+          {
+            "axis_index": 0,
+            "base": 0.0023,
+            "target": 0.001472,
+            "delta": -0.000828,
+            "percent": -36.0
           },
           {
-            "axis_index": 2,
-            "base": 0.56,
-            "target": 0.42,
-            "delta": -0.14,
-            "percent": -25.0
+            "axis_index": 1,
+            "base": 0.0014,
+            "target": 0.000672,
+            "delta": -0.000728,
+            "percent": -52.0
           }
         ]
       }
@@ -2515,9 +2843,8 @@
       "kind": "part_fields",
       "fields": [
         "center",
-        "scale",
-        "radius",
-        "tube_radius"
+        "centerline_radii_yz",
+        "tube_radii_x_radial"
       ],
       "field_deltas": {
         "center": [
@@ -2543,39 +2870,36 @@
             "percent": -0.0
           }
         ],
-        "radius": {
-          "base": 0.018,
-          "target": 0.0155,
-          "delta": -0.0025,
-          "percent": -13.889
-        },
-        "tube_radius": {
-          "base": 0.0022,
-          "target": 0.0018,
-          "delta": -0.0004,
-          "percent": -18.182
-        },
-        "scale": [
+        "centerline_radii_yz": [
           {
             "axis_index": 0,
-            "base": 0.92,
-            "target": 0.92,
-            "delta": 0.0,
-            "percent": 0.0
+            "base": 0.0108,
+            "target": 0.00744,
+            "delta": -0.00336,
+            "percent": -31.111
           },
           {
             "axis_index": 1,
-            "base": 0.6,
-            "target": 0.48,
-            "delta": -0.12,
-            "percent": -20.0
+            "base": 0.0108,
+            "target": 0.00744,
+            "delta": -0.00336,
+            "percent": -31.111
+          }
+        ],
+        "tube_radii_x_radial": [
+          {
+            "axis_index": 0,
+            "base": 0.002024,
+            "target": 0.001656,
+            "delta": -0.000368,
+            "percent": -18.182
           },
           {
-            "axis_index": 2,
-            "base": 0.6,
-            "target": 0.48,
-            "delta": -0.12,
-            "percent": -20.0
+            "axis_index": 1,
+            "base": 0.00132,
+            "target": 0.000864,
+            "delta": -0.000456,
+            "percent": -34.545
           }
         ]
       }
@@ -2611,6 +2935,10 @@
         "pelvis_lower_nose_plate",
         "rear_back_spine_plate",
         "rear_seat_bridge_armor",
+        "left_rear_hip_fairing",
+        "right_rear_hip_fairing",
+        "left_rear_glute_armor_skin",
+        "right_rear_glute_armor_skin",
         "left_upper_arm_outer_blade",
         "left_upper_arm_front_armor",
         "right_upper_arm_outer_blade",

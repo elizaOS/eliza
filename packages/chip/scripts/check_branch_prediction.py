@@ -38,6 +38,7 @@ CBP5_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/cbp5-trace-manifest.json"
 WORKLOAD_TRACE_MANIFEST_REL = "docs/evidence/cpu_ap/bpu-workload-trace-manifest.json"
 FULL_PROXY_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json"
 FULL_IO_MEDIA_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json"
+FULL_SYSTEM_GPU_SHARD_SWEEP_REL = "docs/evidence/cpu_ap/bpu_sweep_full_system_gpu_shard.json"
 FALSE_CLAIM_STALE_PHRASES = (
     "claim is supported",
     "claim remains supported",
@@ -98,6 +99,12 @@ REQUIRED_FULL_IO_MEDIA_SHARD_TRACES = {
     "file_tlv",
     "video_blocks",
     "audio_frames",
+}
+REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES = {
+    "gpu_control_proxy",
+    "gc_runtime_proxy",
+    "kernel_syscall_proxy",
+    "database_btree_proxy",
 }
 
 # The minimum thresholds the BPU geometry must satisfy to support a 2028
@@ -824,6 +831,10 @@ def validate_full_trace_shard_sweep(
     failures: list[str],
     relpath: str,
     required_traces: set[str],
+    *,
+    require_baseline_not_worse_than_h2p_off: bool = True,
+    required_extra_configs: set[str] | None = None,
+    required_best_not_worse_than: tuple[str, ...] = (),
 ) -> None:
     path = ROOT / relpath
     artifact = relpath
@@ -860,16 +871,34 @@ def validate_full_trace_shard_sweep(
                 )
     results = data.get("results")
     if isinstance(results, dict):
-        if not {"baseline", "h2p_off"}.issubset(results):
-            failures.append(f"{artifact} must include baseline and h2p_off configs")
+        required_configs = {"baseline", "h2p_off"}
+        if required_extra_configs is not None:
+            required_configs |= required_extra_configs
+        if not required_configs.issubset(results):
+            failures.append(f"{artifact} must include configs: {sorted(required_configs)}")
         baseline = results.get("baseline")
         h2p_off = results.get("h2p_off")
         if isinstance(baseline, dict) and isinstance(h2p_off, dict):
             base_mpki = baseline.get("weighted_mpki")
             off_mpki = h2p_off.get("weighted_mpki")
             if isinstance(base_mpki, (int, float)) and isinstance(off_mpki, (int, float)):
-                if float(base_mpki) > float(off_mpki):
+                if (
+                    require_baseline_not_worse_than_h2p_off
+                    and float(base_mpki) > float(off_mpki)
+                ):
                     failures.append(f"{artifact} baseline must not regress versus h2p_off")
+        for config in required_best_not_worse_than:
+            best_name = data.get("best_config")
+            best = results.get(best_name) if isinstance(best_name, str) else None
+            other = results.get(config)
+            if not isinstance(best, dict) or not isinstance(other, dict):
+                failures.append(f"{artifact} best_config must be comparable against {config}")
+                continue
+            best_mpki = best.get("weighted_mpki")
+            other_mpki = other.get("weighted_mpki")
+            if isinstance(best_mpki, (int, float)) and isinstance(other_mpki, (int, float)):
+                if float(best_mpki) > float(other_mpki):
+                    failures.append(f"{artifact} best_config must not regress versus {config}")
 
 
 def validate_workload_class_bucket_promotion(
@@ -1133,6 +1162,7 @@ def evaluate_evidence_artifacts() -> list[str]:
         ROOT / WORKLOAD_TRACE_MANIFEST_REL,
         ROOT / FULL_PROXY_SHARD_SWEEP_REL,
         ROOT / FULL_IO_MEDIA_SHARD_SWEEP_REL,
+        ROOT / FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
     )
     for path in required_artifacts:
         if not path.is_file():
@@ -1179,6 +1209,17 @@ def evaluate_evidence_artifacts() -> list[str]:
         failures,
         FULL_IO_MEDIA_SHARD_SWEEP_REL,
         REQUIRED_FULL_IO_MEDIA_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
+    )
+    validate_full_trace_shard_sweep(
+        failures,
+        FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
+        REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES,
+        require_baseline_not_worse_than_h2p_off=False,
+        required_extra_configs={"h2p_lowconf_only"},
+        required_best_not_worse_than=("baseline", "h2p_off"),
     )
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_model_generated: datetime | None = None
@@ -1555,6 +1596,10 @@ def build_evidence(
         FULL_IO_MEDIA_SHARD_SWEEP_REL,
         "make bpu-sweep-full-io-media-shard",
     )
+    full_system_gpu_shard_ref = full_trace_shard_sweep_ref(
+        FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
+        "make bpu-sweep-full-system-gpu-shard",
+    )
 
     cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
     cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
@@ -1633,6 +1678,7 @@ def build_evidence(
         "sweep_results_ref": sweep_ref,
         "full_proxy_shard_sweep_ref": full_proxy_shard_ref,
         "full_io_media_shard_sweep_ref": full_io_media_shard_ref,
+        "full_system_gpu_shard_sweep_ref": full_system_gpu_shard_ref,
         "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "verification_reports": verification_report_refs(),
         "claim_policy": {

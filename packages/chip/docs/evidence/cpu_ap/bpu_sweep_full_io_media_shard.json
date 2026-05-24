@@ -1,17 +1,17 @@
 {
   "baseline_weighted_mpki": 40.207626,
-  "best_config": "h2p_off",
-  "best_delta_vs_baseline": -0.263244,
+  "best_config": "h2p_lowconf_only",
+  "best_delta_vs_baseline": -0.73688,
   "best_geometry_diff": {
-    "H2P_ENABLE": false
+    "H2P_LOWCONF_ONLY": 1
   },
-  "best_weighted_mpki": 39.944382,
+  "best_weighted_mpki": 39.470746,
   "cbp5_reference_mpki": {
     "sample_fp_trace": 0.5736,
     "sample_int_trace": 5.1327
   },
   "claim_boundary": "behavioural BPU geometry sweep only; SPEC/AOSP/JetStream real-workload MPKI claims remain blocked until those trace sets are captured",
-  "generated_at_utc": "2026-05-24T04:56:04.411302+00:00",
+  "generated_at_utc": "2026-05-24T05:39:51.134901+00:00",
   "harness": "behavioural-bpu-model",
   "ittage_evidence_counters": [
     "ittage_hit",
@@ -26,6 +26,7 @@
   ],
   "max_branches_per_trace": 0,
   "ranking": [
+    "h2p_lowconf_only",
     "h2p_off",
     "baseline"
   ],
@@ -183,6 +184,160 @@
         "sc_deferred_by_timing_model": 0
       },
       "weighted_mpki": 40.207626
+    },
+    "h2p_lowconf_only": {
+      "ittage_counter_totals": {
+        "ittage_allocations": 2382,
+        "ittage_hit": 11557,
+        "ittage_provider_evictions": 0,
+        "ittage_target_used": 11536,
+        "ittage_updates": 22782,
+        "ittage_useful_aging": 0,
+        "ittage_victim_replacements": 0,
+        "ittage_weak_target_replacements": 0,
+        "ittage_weak_yield_to_ftb": 21
+      },
+      "per_trace": {
+        "audio_frames": {
+          "branches": 432230,
+          "instructions": 2890947,
+          "ittage_counters": {
+            "ittage_allocations": 334,
+            "ittage_hit": 1630,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1623,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 114488,
+          "mpki": 39.602248,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "file_tlv": {
+          "branches": 471277,
+          "instructions": 3139574,
+          "ittage_counters": {
+            "ittage_allocations": 342,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3738,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 94556,
+          "mpki": 30.117462,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "http_parser": {
+          "branches": 774042,
+          "instructions": 2599051,
+          "ittage_counters": {
+            "ittage_allocations": 355,
+            "ittage_hit": 3014,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3007,
+            "ittage_updates": 5136,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 207144,
+          "mpki": 79.69986,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "text_log": {
+          "branches": 461102,
+          "instructions": 2668630,
+          "ittage_counters": {
+            "ittage_allocations": 1012,
+            "ittage_hit": 3655,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 3648,
+            "ittage_updates": 6438,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 7
+          },
+          "misp": 108149,
+          "mpki": 40.526038,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        },
+        "video_blocks": {
+          "branches": 275928,
+          "instructions": 2641291,
+          "ittage_counters": {
+            "ittage_allocations": 339,
+            "ittage_hit": 1629,
+            "ittage_provider_evictions": 0,
+            "ittage_target_used": 1629,
+            "ittage_updates": 3735,
+            "ittage_useful_aging": 0,
+            "ittage_victim_replacements": 0,
+            "ittage_weak_target_replacements": 0,
+            "ittage_weak_yield_to_ftb": 0
+          },
+          "misp": 19567,
+          "mpki": 7.40812,
+          "timing_counters": {
+            "h2p_deferred_by_timing_model": 0,
+            "ittage_deferred_by_timing_model": 0,
+            "l2_ftb_deferred_by_timing_model": 0,
+            "l2_ftb_late_redirect": 0,
+            "local_dir_deferred_by_timing_model": 0,
+            "sc_deferred_by_timing_model": 0
+          },
+          "weight": 1.5
+        }
+      },
+      "timing_counter_totals": {
+        "h2p_deferred_by_timing_model": 0,
+        "ittage_deferred_by_timing_model": 0,
+        "l2_ftb_deferred_by_timing_model": 0,
+        "l2_ftb_late_redirect": 0,
+        "local_dir_deferred_by_timing_model": 0,
+        "sc_deferred_by_timing_model": 0
+      },
+      "weighted_mpki": 39.470746
     },
     "h2p_off": {
       "ittage_counter_totals": {

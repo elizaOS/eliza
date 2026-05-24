@@ -657,9 +657,14 @@ Scope: behavioural benchmark/model pass plus the matching bounded RTL slice.
    and `CONFIGS` to the underlying harnesses so long validation runs are
    reproducible from command logs. `make bpu-sweep-full-proxy-shard` now records
    an uncapped five-trace GPU/mobile/NN/WASM proxy shard; baseline beats
-   `h2p_off` there (`49.5413` versus `49.5932` weighted MPKI), but the full
-   twenty-trace model sweep and uncapped RTL replay remain open production
-   evidence gaps.
+   `h2p_off` there (`49.5413` versus `49.5932` weighted MPKI). The companion
+   `make bpu-sweep-full-io-media-shard` records the uncapped HTTP/text/file/
+   video/audio shard; `h2p_lowconf_only` wins that narrower slice (`39.4707`
+   versus baseline `40.2076` and `h2p_off` `39.9444`), but a `100k`
+   stratified mixed-workload probe still favors baseline (`42.3553` versus
+   `42.9139`) because guarded H2P regresses correlated/control-flow synthetic
+   guardrails. The full twenty-trace model sweep and uncapped RTL replay remain
+   open production evidence gaps.
 6. **Downstream widened IFU/L1I consumption**: `ftq_to_l1i_shim` now exposes a
    widened two-lane prefetch bundle. The scalar compatibility path has an
    eight-entry ordered prefetch FIFO, so younger FTQ pops are retained while an

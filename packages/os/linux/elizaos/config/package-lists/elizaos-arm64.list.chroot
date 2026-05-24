@@ -26,6 +26,14 @@ pipewire-pulse
 # WebKitGTK kiosk browser for the agent home surface.
 epiphany-browser
 
+# Node.js fallback for the bare agent-bundle.js path. arm64 release images
+# currently stage the mobile bundle without the self-contained eliza-dist tree,
+# so Node is the deterministic service runtime for /api/health.
+nodejs
+node-undici
+node-ws
+node-fetch
+
 # Boot splash.
 plymouth
 plymouth-themes

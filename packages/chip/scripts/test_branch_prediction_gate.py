@@ -211,9 +211,60 @@ def write_full_trace_shard_result(
     *,
     baseline_mpki: float,
     h2p_off_mpki: float,
+    h2p_lowconf_mpki: float | None = None,
 ) -> None:
     counters = {key: 0 for key in branch.REQUIRED_ITTAGE_SWEEP_COUNTERS}
     timing = {key: 0 for key in branch.REQUIRED_TIMING_SWEEP_COUNTERS}
+    best_config = "baseline"
+    best_mpki = baseline_mpki
+    if h2p_lowconf_mpki is not None and h2p_lowconf_mpki < best_mpki:
+        best_config = "h2p_lowconf_only"
+        best_mpki = h2p_lowconf_mpki
+    if h2p_off_mpki < best_mpki:
+        best_config = "h2p_off"
+        best_mpki = h2p_off_mpki
+    results = {
+        "baseline": {
+            "weighted_mpki": baseline_mpki,
+            "ittage_counter_totals": counters,
+            "timing_counter_totals": timing,
+            "per_trace": {
+                name: {
+                    "mpki": baseline_mpki,
+                    "ittage_counters": counters,
+                    "timing_counters": timing,
+                }
+                for name in sorted(required_traces)
+            },
+        },
+        "h2p_off": {
+            "weighted_mpki": h2p_off_mpki,
+            "ittage_counter_totals": counters,
+            "timing_counter_totals": timing,
+            "per_trace": {
+                name: {
+                    "mpki": h2p_off_mpki,
+                    "ittage_counters": counters,
+                    "timing_counters": timing,
+                }
+                for name in sorted(required_traces)
+            },
+        },
+    }
+    if h2p_lowconf_mpki is not None:
+        results["h2p_lowconf_only"] = {
+            "weighted_mpki": h2p_lowconf_mpki,
+            "ittage_counter_totals": counters,
+            "timing_counter_totals": timing,
+            "per_trace": {
+                name: {
+                    "mpki": h2p_lowconf_mpki,
+                    "ittage_counters": counters,
+                    "timing_counters": timing,
+                }
+                for name in sorted(required_traces)
+            },
+        }
     write_json(
         root / relpath,
         {
@@ -223,8 +274,8 @@ def write_full_trace_shard_result(
             "ittage_evidence_counters": sorted(branch.REQUIRED_ITTAGE_SWEEP_COUNTERS),
             "timing_evidence_counters": sorted(branch.REQUIRED_TIMING_SWEEP_COUNTERS),
             "baseline_weighted_mpki": baseline_mpki,
-            "best_config": "baseline",
-            "best_weighted_mpki": baseline_mpki,
+            "best_config": best_config,
+            "best_weighted_mpki": best_mpki,
             "max_branches_per_trace": 0,
             "window_mode": "prefix",
             "trace_filter": sorted(required_traces),
@@ -237,34 +288,7 @@ def write_full_trace_shard_result(
                 }
                 for index, name in enumerate(sorted(required_traces))
             ],
-            "results": {
-                "baseline": {
-                    "weighted_mpki": baseline_mpki,
-                    "ittage_counter_totals": counters,
-                    "timing_counter_totals": timing,
-                    "per_trace": {
-                        name: {
-                            "mpki": baseline_mpki,
-                            "ittage_counters": counters,
-                            "timing_counters": timing,
-                        }
-                        for name in sorted(required_traces)
-                    },
-                },
-                "h2p_off": {
-                    "weighted_mpki": h2p_off_mpki,
-                    "ittage_counter_totals": counters,
-                    "timing_counter_totals": timing,
-                    "per_trace": {
-                        name: {
-                            "mpki": h2p_off_mpki,
-                            "ittage_counters": counters,
-                            "timing_counters": timing,
-                        }
-                        for name in sorted(required_traces)
-                    },
-                },
-            },
+            "results": results,
         },
     )
 
@@ -314,7 +338,16 @@ def write_valid_sweep_result(root: Path) -> None:
         branch.FULL_IO_MEDIA_SHARD_SWEEP_REL,
         branch.REQUIRED_FULL_IO_MEDIA_SHARD_TRACES,
         baseline_mpki=20.0,
-        h2p_off_mpki=21.0,
+        h2p_off_mpki=19.0,
+        h2p_lowconf_mpki=18.0,
+    )
+    write_full_trace_shard_result(
+        root,
+        branch.FULL_SYSTEM_GPU_SHARD_SWEEP_REL,
+        branch.REQUIRED_FULL_SYSTEM_GPU_SHARD_TRACES,
+        baseline_mpki=30.0,
+        h2p_off_mpki=29.0,
+        h2p_lowconf_mpki=28.0,
     )
 
 
@@ -612,6 +645,26 @@ class BranchPredictionEvidenceGateTest(unittest.TestCase):
 
             self.assertTrue(
                 any("trace_set names must match required full shard" in err for err in errors),
+                errors,
+            )
+
+    def test_full_system_gpu_shard_requires_best_against_comparators(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            evidence = root / "docs/evidence/cpu_ap"
+            write_valid_evidence_set(root)
+            write_bpu_verification_reports(root)
+            shard_path = evidence / "bpu_sweep_full_system_gpu_shard.json"
+            shard = json.loads(shard_path.read_text(encoding="utf-8"))
+            shard["best_config"] = "h2p_lowconf_only"
+            shard["results"]["h2p_lowconf_only"]["weighted_mpki"] = 31.0
+            write_json(shard_path, shard)
+
+            with mock.patch.object(branch, "ROOT", root):
+                errors = branch.evaluate_evidence_artifacts()
+
+            self.assertTrue(
+                any("best_config must not regress versus baseline" in err for err in errors),
                 errors,
             )
 

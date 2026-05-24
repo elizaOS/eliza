@@ -113,7 +113,10 @@ def _make_scripts(
     _write_executable(
         train_alberta,
         _shell_header()
-        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps {alberta_steps} --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0\n",
+        + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
+        + f"uv run eliza-robot-train --profile {profile_id} --tasks {tasks_s} --steps \"$ALBERTA_STREAMING_STEPS\" --episode-steps {alberta_episode_steps} --eval-episodes {alberta_eval_episodes} --out checkpoints/{profile_id.replace('-', '_')}_alberta_full --seed 0\n",
     )
     scripts["train_alberta"] = str(train_alberta)
 
@@ -121,6 +124,8 @@ def _make_scripts(
     _write_executable(
         compare_backends,
         _shell_header()
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
         + f"uv run eliza-robot-compare-backends --profile {profile_id} --tasks {tasks_s} --steps {backend_compare_steps} --eval-episodes 5 --max-steps 200 --out-root evidence/backend_compare/{profile_id}\n"
         + f"uv run eliza-robot-validate-backend-comparison evidence/backend_compare/{profile_id} --expected-profile {profile_id} --min-steps {backend_compare_steps} --min-eval-mean-steps 20 > evidence/backend_compare/{profile_id}/validation_report.json\n",
     )
@@ -130,6 +135,8 @@ def _make_scripts(
     _write_executable(
         continual,
         _shell_header()
+        + "export JAX_PLATFORMS=cpu\n"
+        + "export JAX_PLATFORM_NAME=cpu\n"
         + f"uv run eliza-robot-benchmark-alberta --env joint_reach --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_joint_reach\n"
         + f"uv run eliza-robot-validate-alberta-benchmark evidence/alberta_joint_reach --expected-env joint_reach --min-steps-per-task {benchmark_steps_per_task} --min-seeds {benchmark_seeds} --min-tasks 4 --require-alberta-acc-gte-ppo --require-alberta-forgetting-lte-ppo > evidence/alberta_joint_reach/validation_report.json\n"
         + f"uv run eliza-robot-benchmark-alberta --env obstacle_course --steps-per-task {benchmark_steps_per_task} --seeds {benchmark_seeds} --out-dir evidence/alberta_obstacle_course\n"
@@ -141,7 +148,9 @@ def _make_scripts(
     brax = scripts_dir / "40_nebius_brax_baseline.sh"
     _write_executable(
         brax,
-        _shell_header() + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
+        _shell_header()
+        + "export JAX_PLATFORMS=cuda,cpu\n"
+        + f"{_rel(brax_job_dir)}/run_full_training.sh --train\n",
     )
     scripts["brax_baseline"] = str(brax)
 
@@ -150,9 +159,10 @@ def _make_scripts(
     _write_executable(
         post,
         _shell_header()
-        + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps {alberta_steps} --require-domain-rand --require-inference\n"
-        + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps {alberta_steps} --require-inference-check\n"
-        + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps {alberta_steps} --require-production --max-steps 2\n"
+        + f"ALBERTA_STREAMING_STEPS=\"${{ALBERTA_STREAMING_STEPS:-{alberta_steps}}}\"\n"
+        + f"uv run eliza-robot-validate-alberta-checkpoint {checkpoint} --profile {profile_id} --tasks {tasks_s} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-domain-rand --require-inference\n"
+        + f"uv run eliza-robot-validate-asimov1-production-checkpoint {checkpoint} --min-steps \"$ALBERTA_STREAMING_STEPS\" --require-inference-check\n"
+        + f"uv run python scripts/validate_asimov1_real_agent_readiness.py --checkpoint {checkpoint} --production-min-steps \"$ALBERTA_STREAMING_STEPS\" --require-production --max-steps 2\n"
         + f"uv run python scripts/eval_text_policy.py --profile {profile_id} --ckpt {checkpoint} --tasks {tasks_s} --episodes 5 --max-steps 200\n"
         + f"uv run python scripts/evidence_text_to_action_e2e.py --checkpoint {checkpoint} --profile {profile_id} --no-real\n"
         + f"uv run python scripts/record_agent_videos.py --profiles {profile_id} --commands \"stand up\" \"walk forward\" \"turn left\" \"turn right\" --out evidence/agent_videos --max-steps 200 --policy-checkpoint {checkpoint}\n"

@@ -296,6 +296,13 @@ The checked full-trace shard target, `make bpu-sweep-full-proxy-shard`, runs
 baseline versus `h2p_off` over the five new GPU/mobile/NN/WASM proxy traces
 without a branch cap and writes
 `docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json`.
+The companion `make bpu-sweep-full-io-media-shard` target runs the uncapped
+HTTP/text/file/video/audio shard over `baseline`, `h2p_off`, and
+`h2p_lowconf_only`; the guarded H2P candidate wins that shard at `39.4707`
+weighted MPKI versus baseline `40.2076` and `h2p_off` `39.9444`. It is not the
+default because the broader `100k` stratified mixed-workload probe still favors
+baseline (`42.3553` versus `42.9139` for `h2p_lowconf_only`) on correlated and
+control-flow synthetic guardrails.
 
 The synthetic set is deliberately broad enough to catch overfitting: regular
 GPU tile loops, SIMT divergence/reconvergence, GPU command processing and
@@ -589,6 +596,7 @@ downstream fetch logic can accept both lanes.
 | Real RV64 workload trace | `make bpu-workload-trace` | `external/workload-traces/<name>.btrace.json` |
 | Geometry tuning sweep | `make bpu-sweep`, `make bpu-sweep-full` | `docs/evidence/cpu_ap/bpu_sweep_results.json`, `…_leaderboard.md` |
 | Full proxy shard sweep | `make bpu-sweep-full-proxy-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_proxy_shard.json`, `…_leaderboard.md` |
+| Full IO/media shard sweep | `make bpu-sweep-full-io-media-shard` | `docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json`, `…_leaderboard.md` |
 
 ## Files
 

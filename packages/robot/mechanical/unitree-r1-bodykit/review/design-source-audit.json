@@ -311,7 +311,7 @@
       "part": "left_rear_hip_fairing",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -324,7 +324,7 @@
       "part": "right_rear_hip_fairing",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -337,7 +337,7 @@
       "part": "left_rear_glute_armor_skin",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -350,7 +350,7 @@
       "part": "right_rear_glute_armor_skin",
       "role": "armor",
       "body": "pelvis",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -590,7 +590,7 @@
       "part": "left_wrist_separated_cuff",
       "role": "underbody",
       "body": "left_elbow_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
@@ -640,7 +640,7 @@
       "part": "right_wrist_separated_cuff",
       "role": "underbody",
       "body": "right_elbow_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
@@ -762,7 +762,7 @@
       "part": "left_shin_side_armor",
       "role": "armor",
       "body": "left_knee_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_knee_link.STL"
@@ -802,7 +802,7 @@
       "part": "right_shin_side_armor",
       "role": "armor",
       "body": "right_knee_link",
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_knee_link.STL"

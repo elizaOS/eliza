@@ -110,7 +110,15 @@ def _blend_loft_sections(base_sections: list[dict[str, Any]], target_sections: l
 
 def _blend_part_fields(spec: dict[str, Any], target: dict[str, Any], blend: float) -> list[str]:
     changed: list[str] = []
-    vector_fields = {"center", "scale", "top_scale", "aesthetic_scale", "center_offset"}
+    vector_fields = {
+        "center",
+        "scale",
+        "top_scale",
+        "aesthetic_scale",
+        "center_offset",
+        "centerline_radii_yz",
+        "tube_radii_x_radial",
+    }
     scalar_fields = {"radius", "tube_radius", "height"}
     for field in sorted(vector_fields):
         if field not in target:
@@ -413,6 +421,48 @@ def _section_loft(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
         faces.append([bottom_center, j, i])
         top_base = (len(sections) - 1) * segments
         faces.append([top_center, top_base + i, top_base + j])
+    mesh = trimesh.Trimesh(vertices=np.asarray(vertices, dtype=float), faces=np.asarray(faces, dtype=int), process=True)
+    return _paint(mesh, rgba)
+
+
+def _annular_loft_x(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
+    """Parametric hollow cuff around the local X axis.
+
+    `section_loft` creates capped solids, which is wrong for wrist collars.
+    This keeps the cuff as an annular CAD primitive with explicit centerline
+    and tube radii that can be morphed numerically without filling the wrist.
+    """
+    ry, rz = [float(x) for x in spec["centerline_radii_yz"][:2]]
+    tube_x, tube_radial = [float(x) for x in spec["tube_radii_x_radial"][:2]]
+    major_segments = int(spec.get("major_segments", 48))
+    minor_segments = int(spec.get("minor_segments", 12))
+    vertices: list[list[float]] = []
+    for i in range(major_segments):
+        u = 2 * math.pi * i / major_segments
+        cu = math.cos(u)
+        su = math.sin(u)
+        for j in range(minor_segments):
+            v = 2 * math.pi * j / minor_segments
+            cv = math.cos(v)
+            sv = math.sin(v)
+            vertices.append(
+                [
+                    tube_x * sv,
+                    (ry + tube_radial * cv) * cu,
+                    (rz + tube_radial * cv) * su,
+                ]
+            )
+    faces: list[list[int]] = []
+    for i in range(major_segments):
+        ni = (i + 1) % major_segments
+        for j in range(minor_segments):
+            nj = (j + 1) % minor_segments
+            a = i * minor_segments + j
+            b = ni * minor_segments + j
+            c = ni * minor_segments + nj
+            d = i * minor_segments + nj
+            faces.append([a, b, c])
+            faces.append([a, c, d])
     mesh = trimesh.Trimesh(vertices=np.asarray(vertices, dtype=float), faces=np.asarray(faces, dtype=int), process=True)
     return _paint(mesh, rgba)
 
@@ -880,6 +930,8 @@ def _part_mesh(spec: dict[str, Any], rgba: list[float]) -> trimesh.Trimesh:
         mesh = _face([float(x) for x in spec["scale"]], rgba)
     elif shape == "torus_x":
         mesh = _torus(float(spec["radius"]), float(spec["tube_radius"]), "x", spec.get("scale"), rgba)
+    elif shape == "annular_loft_x":
+        mesh = _annular_loft_x(spec, rgba)
     elif shape == "torus_y":
         mesh = _torus(float(spec["radius"]), float(spec["tube_radius"]), "y", spec.get("scale"), rgba)
     elif shape == "torus_z":
@@ -1006,6 +1058,21 @@ def _cq_shape_from_spec(cq: Any, spec: dict[str, Any]) -> Any:
         solid = cylinder(float(spec["radius"]), float(spec["height"]), "z")
     elif shape == "torus_x":
         solid = cq.Solid.makeTorus(float(spec["radius"]), float(spec["tube_radius"]), (0, 0, 0), (1, 0, 0))
+    elif shape == "annular_loft_x":
+        ry, rz = [float(x) for x in spec["centerline_radii_yz"][:2]]
+        tube_x, tube_radial = [float(x) for x in spec["tube_radii_x_radial"][:2]]
+        path_radius = max((ry + rz) / 2.0, 1e-6)
+        tube_norm = max(tube_radial / path_radius, 1e-6)
+        solid = cq.Solid.makeTorus(1.0, tube_norm, (0, 0, 0), (1, 0, 0)).transformGeometry(
+            cq.Matrix(
+                [
+                    [tube_x / tube_norm, 0, 0, 0],
+                    [0, ry, 0, 0],
+                    [0, 0, rz, 0],
+                    [0, 0, 0, 1],
+                ]
+            )
+        )
     elif shape == "torus_y":
         solid = cq.Solid.makeTorus(float(spec["radius"]), float(spec["tube_radius"]), (0, 0, 0), (0, 1, 0))
     elif shape == "torus_z":
@@ -2751,7 +2818,7 @@ def write_parametric_reconstruction_audit(
         shape_counts[shape] = shape_counts.get(shape, 0) + 1
         shell_part = part.role in shell_roles
         step_path = STEP_ROOT / f"{part.name}.step"
-        has_section_params = shape in {"section_loft", "donor_face_grid_loft"}
+        has_section_params = shape in {"section_loft", "donor_face_grid_loft", "annular_loft_x"}
         has_simple_parameters = shape in {
             "ellipsoid",
             "capsule_z",
@@ -2830,6 +2897,39 @@ def _part_region(name: str) -> str:
     if any(token in name for token in ["head", "face", "eye", "lip", "neck"]):
         return "neck_head_face"
     return "unclassified"
+
+
+def _part_subassembly(name: str) -> str:
+    side = "left" if name.startswith("left_") else ("right" if name.startswith("right_") else None)
+    if side and any(token in name for token in ["foot"]):
+        return f"{side}_foot_ankle"
+    if side and any(token in name for token in ["rear_hip", "thigh"]):
+        return f"{side}_hip_upper_leg"
+    if side and any(token in name for token in ["shin"]):
+        return f"{side}_knee_shin"
+    if side and any(token in name for token in ["shoulder"]):
+        return f"{side}_shoulder"
+    if side and any(token in name for token in ["upper_arm"]):
+        return f"{side}_upper_arm"
+    if side and any(token in name for token in ["forearm", "wrist"]):
+        return f"{side}_forearm_wrist"
+    if any(token in name for token in ["chest", "sensor", "vent", "under_bust"]):
+        return "torso_front_chest"
+    if any(token in name for token in ["abdomen", "rib"]):
+        return "waist_abdomen"
+    if any(token in name for token in ["back", "spine"]):
+        return "rear_torso_back"
+    if any(token in name for token in ["pelvis_front", "pelvis_center", "pelvis_lower"]):
+        return "front_pelvis"
+    if any(token in name for token in ["rear_seat", "rear_hip", "glute"]):
+        return "rear_pelvis_glute"
+    if any(token in name for token in ["head", "neck"]):
+        return "neck_carrier"
+    if any(token in name for token in ["face", "eye", "lip"]):
+        return "face_plate_details"
+    if any(token in name for token in ["torso"]):
+        return "torso_front_chest"
+    return _part_region(name)
 
 
 def write_part_review_report(
@@ -2948,6 +3048,140 @@ def write_part_review_report(
     return report
 
 
+def write_subassembly_volume_report(params: dict[str, Any], parts: list[Part], mjcf_path: Path) -> dict[str, Any]:
+    """Group the flat bodykit part list into source-robot-connected assemblies.
+
+    This is intentionally evidence-oriented: it does not claim final mount
+    design, but it proves which robot bodies and OEM mesh references each
+    generated shell is tied to and records the local/world volume envelope.
+    """
+    model = mujoco.MjModel.from_xml_path(str(mjcf_path))
+    data = mujoco.MjData(model)
+    _set_home_pose(model, data, params)
+    regions = ["feet_ankles", "legs", "hips_torso_chest_back", "arms", "neck_head_face"]
+    grouped: dict[str, list[Part]] = {region: [] for region in regions}
+    subassembly_grouped: dict[str, list[Part]] = {}
+    for part in parts:
+        grouped.setdefault(_part_region(part.name), []).append(part)
+        subassembly_grouped.setdefault(_part_subassembly(part.name), []).append(part)
+
+    def assembly_row(name: str, assembly_parts: list[Part], *, broad_region: str | None) -> dict[str, Any]:
+        part_rows = []
+        world_vertices = []
+        volume_by_material: dict[str, float] = {}
+        volume_by_role: dict[str, float] = {}
+        body_to_parts: dict[str, list[str]] = {}
+        source_meshes: set[str] = set()
+        disconnected_parts = []
+        for part in assembly_parts:
+            local_volume_cm3 = float(abs(part.mesh.volume) * 1_000_000)
+            surface_area_cm2 = float(part.mesh.area * 10_000)
+            extents_mm = np.asarray(part.mesh.extents, dtype=float) * 1000
+            world_mesh = _body_world_mesh(model, data, part.body, part.mesh)
+            if len(world_mesh.vertices):
+                world_vertices.append(np.asarray(world_mesh.vertices, dtype=float))
+            step_path = STEP_ROOT / f"{part.name}.step"
+            source_connected = bool(part.body) and bool(part.oem_baseline_meshes)
+            if not source_connected:
+                disconnected_parts.append(part.name)
+            body_to_parts.setdefault(part.body, []).append(part.name)
+            source_meshes.update(part.oem_baseline_meshes)
+            volume_by_material[part.material] = volume_by_material.get(part.material, 0.0) + local_volume_cm3
+            volume_by_role[part.role] = volume_by_role.get(part.role, 0.0) + local_volume_cm3
+            part_rows.append(
+                {
+                    "name": part.name,
+                    "body": part.body,
+                    "role": part.role,
+                    "material": part.material,
+                    "source_kind": part.source_kind,
+                    "source_robot_connected": source_connected,
+                    "oem_baseline_meshes": list(part.oem_baseline_meshes),
+                    "local_bbox_mm": [round(float(x), 3) for x in extents_mm],
+                    "solid_volume_cm3": round(local_volume_cm3, 4),
+                    "surface_area_cm2": round(surface_area_cm2, 4),
+                    "step": str(step_path),
+                    "step_solid_exported": step_path.is_file(),
+                }
+            )
+
+        if world_vertices:
+            combined = np.vstack(world_vertices)
+            world_min = combined.min(axis=0)
+            world_max = combined.max(axis=0)
+            world_extent_mm = (world_max - world_min) * 1000
+            world_bbox = {
+                "min_m": [round(float(x), 5) for x in world_min],
+                "max_m": [round(float(x), 5) for x in world_max],
+                "extents_mm": [round(float(x), 3) for x in world_extent_mm],
+            }
+        else:
+            world_bbox = {"min_m": None, "max_m": None, "extents_mm": None}
+
+        total_volume = sum(row["solid_volume_cm3"] for row in part_rows)
+        return {
+            "name": name,
+            "broad_region": broad_region,
+            "part_count": len(assembly_parts),
+            "total_solid_volume_cm3": round(float(total_volume), 4),
+            "volume_by_material_cm3": {k: round(v, 4) for k, v in sorted(volume_by_material.items())},
+            "volume_by_role_cm3": {k: round(v, 4) for k, v in sorted(volume_by_role.items())},
+            "mounted_robot_bodies": sorted(body_to_parts),
+            "body_to_parts": {k: sorted(v) for k, v in sorted(body_to_parts.items())},
+            "oem_baseline_meshes": sorted(source_meshes),
+            "source_connected_part_count": sum(1 for row in part_rows if row["source_robot_connected"]),
+            "disconnected_parts": disconnected_parts,
+            "world_bbox_home_pose": world_bbox,
+            "parts": sorted(part_rows, key=lambda row: row["name"]),
+            "connection_review": (
+                "source-connected-parametric-subassembly"
+                if region_parts and not disconnected_parts
+                else "needs-source-connection-review"
+            ),
+            "mount_design_status": "needs-fastener-boss-rib-insert-detail",
+        }
+
+    assemblies: dict[str, Any] = {}
+    for region in regions:
+        assemblies[region] = assembly_row(region, grouped.get(region, []), broad_region=region)
+
+    source_body_subassemblies = {
+        name: assembly_row(name, assembly_parts, broad_region=_part_region(assembly_parts[0].name) if assembly_parts else None)
+        for name, assembly_parts in sorted(subassembly_grouped.items())
+    }
+
+    report = {
+        "verdict": (
+            "pass"
+            if all(
+                assembly["part_count"] > 0 and not assembly["disconnected_parts"]
+                for assembly in assemblies.values()
+            )
+            else "needs-work"
+        ),
+        "units": {
+            "volume": "cm^3",
+            "surface_area": "cm^2",
+            "bbox": "mm unless key suffix is _m",
+        },
+        "robot_source_model": str(R1_MJCF),
+        "step_root": str(STEP_ROOT),
+        "regional_subassemblies": assemblies,
+        "source_body_subassemblies": source_body_subassemblies,
+        "subassemblies": source_body_subassemblies,
+        "total_solid_volume_cm3": round(
+            float(sum(assembly["total_solid_volume_cm3"] for assembly in assemblies.values())),
+            4,
+        ),
+        "note": (
+            "Subassembly grouping is evidence that parts are mounted to source robot bodies and "
+            "reference OEM meshes. It is not final fastening, screw-boss, insert, or molded-rib design."
+        ),
+    }
+    (REVIEW_ROOT / "subassembly-volume-report.json").write_text(json.dumps(report, indent=2) + "\n")
+    return report
+
+
 def write_manufacturing_outputs(
     params: dict[str, Any],
     parts: list[Part],
@@ -2958,6 +3192,7 @@ def write_manufacturing_outputs(
     reconstruction_audit: dict[str, Any],
     part_review: dict[str, Any],
     face_alignment: dict[str, Any],
+    subassembly_report: dict[str, Any],
 ) -> None:
     REVIEW_ROOT.mkdir(parents=True, exist_ok=True)
     layout_rows = []
@@ -3018,6 +3253,7 @@ def write_manufacturing_outputs(
         "step_export": step_report,
         "design_source_audit": source_audit,
         "parametric_reconstruction_audit": reconstruction_audit,
+        "subassembly_volume_report": subassembly_report,
         "print_layout": layout_rows,
         "dfm_rules": dfm_rules,
         "parts": [
@@ -3139,6 +3375,7 @@ def write_manufacturing_outputs(
         "- `base-cad-reconstruction-report.json`",
         "- `panel-gap-validation.json`",
         "- `part-review-report.json`",
+        "- `subassembly-volume-report.json`",
         "- `face-alignment-validation.json`",
         "- `mechanical-stress-blockers.json`",
         "- `head-keepout-policy.json`",
@@ -3167,6 +3404,7 @@ def main() -> int:
     source_audit = write_design_source_audit(params, parts)
     reconstruction_audit = write_parametric_reconstruction_audit(params, parts, step_report, base_reconstruction)
     part_review = write_part_review_report(parts, fit, panel_gap, face_alignment)
+    subassembly_report = write_subassembly_volume_report(params, parts, mjcf)
     assembled = export_assembled_bodykit(mjcf, parts)
     renders = [] if args.skip_render else render_review(mjcf)
     video = None if args.skip_video or args.skip_render else render_orbit_video(mjcf)
@@ -3181,6 +3419,7 @@ def main() -> int:
         reconstruction_audit,
         part_review,
         face_alignment,
+        subassembly_report,
     )
     stress_blockers = write_mechanical_stress_blocker_report(params, fit)
     print(

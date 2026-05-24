@@ -109,6 +109,34 @@
       "below_gap_gate": false
     },
     {
+      "part_a": "rear_seat_bridge_armor",
+      "body_a": "pelvis",
+      "role_a": "armor",
+      "part_b": "right_rear_hip_fairing",
+      "body_b": "pelvis",
+      "role_b": "armor",
+      "minimum_sampled_gap_mm": 3.989,
+      "articulated_interface": false,
+      "interface_type": "rigid_panel",
+      "gap_gate_mm": 2.5,
+      "below_nominal_gap": false,
+      "below_gap_gate": false
+    },
+    {
+      "part_a": "right_shin_shell",
+      "body_a": "right_knee_link",
+      "role_a": "underbody",
+      "part_b": "right_shin_side_armor",
+      "body_b": "right_knee_link",
+      "role_b": "armor",
+      "minimum_sampled_gap_mm": 4.001,
+      "articulated_interface": false,
+      "interface_type": "rigid_panel",
+      "gap_gate_mm": 2.5,
+      "below_nominal_gap": false,
+      "below_gap_gate": false
+    },
+    {
       "part_a": "torso_chest_shell",
       "body_a": "torso_link",
       "role_a": "armor",
@@ -319,20 +347,6 @@
       "below_gap_gate": false
     },
     {
-      "part_a": "right_rear_hip_fairing",
-      "body_a": "pelvis",
-      "role_a": "armor",
-      "part_b": "right_rear_glute_armor_skin",
-      "body_b": "pelvis",
-      "role_b": "armor",
-      "minimum_sampled_gap_mm": 8.485,
-      "articulated_interface": false,
-      "interface_type": "rigid_panel",
-      "gap_gate_mm": 2.5,
-      "below_nominal_gap": false,
-      "below_gap_gate": false
-    },
-    {
       "part_a": "chest_upper_bridge_armor",
       "body_a": "torso_link",
       "role_a": "armor",
@@ -410,20 +424,6 @@
       "body_b": "torso_link",
       "role_b": "armor",
       "minimum_sampled_gap_mm": 9.265,
-      "articulated_interface": false,
-      "interface_type": "rigid_panel",
-      "gap_gate_mm": 2.5,
-      "below_nominal_gap": false,
-      "below_gap_gate": false
-    },
-    {
-      "part_a": "left_chest_outer_armor_skin",
-      "body_a": "torso_link",
-      "role_a": "armor",
-      "part_b": "chest_under_bust_black",
-      "body_b": "torso_link",
-      "role_b": "face_detail",
-      "minimum_sampled_gap_mm": 9.596,
       "articulated_interface": false,
       "interface_type": "rigid_panel",
       "gap_gate_mm": 2.5,

@@ -6,7 +6,7 @@ Simulator verdict: pass
 Production clearance verdict: pass
 Panel gap verdict: pass
 Face alignment verdict: pass
-Parametric morphs applied: 34
+Parametric morphs applied: 38
 Minimum adjacent-interface clearance: 0.743 mm
 Minimum neck/head/face adjacent-interface clearance: 68.034 mm
 Minimum neck/head/face non-adjacent clearance: 297.955 mm
@@ -32,7 +32,7 @@ Open release gaps:
 - STEP export status: exported (71/71 parts).
 - STEP blocked parts: 0.
 - Design source audit: pass (54 shell parts checked).
-- Parametric reconstruction audit: needs-work (8 shell primitives still need loft reconstruction).
+- Parametric reconstruction audit: pass (0 shell primitives still need loft reconstruction).
 - Panel gap validation: pass (0 sampled nearby pairs below their seam/articulation gate).
 - Worst adjacent/interface clearance: {"base_body": "left_shoulder_yaw_link", "base_geom": "geom_107", "base_geom_type": "mesh", "base_sample_point_m": [0.08041, 0.13863, 0.77384], "body_tree_distance": 1, "clearance_mm": 0.743, "part": "left_forearm_outer_blade", "part_body": "left_elbow_link", "part_sample_point_m": [0.08069, 0.13882, 0.7745], "part_to_base_vector_m": [-0.00028, -0.0002, -0.00066], "part_to_base_vector_mm": [-0.285, -0.195, -0.658]}.
 - Worst non-adjacent static clearance: {"base_body": "left_shoulder_yaw_link", "base_geom": "geom_107", "base_geom_type": "mesh", "base_sample_point_m": [0.03551, 0.10323, 0.75048], "body_tree_distance": 5, "clearance_mm": 69.801, "part": "pelvis_front_shell", "part_body": "pelvis", "part_sample_point_m": [0.024, 0.042, 0.719], "part_to_base_vector_m": [0.01151, 0.06123, 0.03148], "part_to_base_vector_mm": [11.509, 61.229, 31.477]}.

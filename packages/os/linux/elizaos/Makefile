@@ -37,10 +37,12 @@ RISCV64_AGENT_RUNTIME_REPORT ?= $(HERE)/evidence/riscv64_agent_runtime_smoke.jso
 RISCV64_AGENT_RUNTIME_TRANSCRIPT ?= $(HERE)/evidence/riscv64_agent_runtime_smoke.log
 RISCV64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/riscv64_gui_kiosk_iso_check.json
 ARM64_GUI_KIOSK_REPORT ?= $(HERE)/evidence/arm64_gui_kiosk_iso_check.json
+ARM64_QEMU_EVIDENCE ?= $(HERE)/evidence/arm64_qemu_virt_boot.json
+ARM64_QEMU_TRANSCRIPT ?= $(HERE)/evidence/arm64_qemu_virt_boot.transcript.log
 
 SUPPORTED_ARCHES := amd64 arm64 riscv64
 
-.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke riscv64-gui-kiosk-iso-check arm64-gui-kiosk-iso-check qemu-boot release-check-strict release-check check-riscv64-release-arch brand-assets clean lint
+.PHONY: help build builder stage-agent-artifacts riscv64-agent-runtime-smoke riscv64-gui-kiosk-iso-check arm64-gui-kiosk-iso-check arm64-qemu-virt-boot qemu-boot release-check-strict release-check check-riscv64-release-arch brand-assets clean lint
 
 help:
 	@echo "elizaOS Linux build targets:"
@@ -49,6 +51,7 @@ help:
 	@echo "  make riscv64-agent-runtime-smoke"
 	@echo "  make riscv64-gui-kiosk-iso-check"
 	@echo "  make arm64-gui-kiosk-iso-check"
+	@echo "  make arm64-qemu-virt-boot"
 	@echo "  make qemu-boot ARCH=<arch>"
 	@echo "  make release-check ARCH=riscv64"
 	@echo "  make release-check-strict ARCH=riscv64"
@@ -142,6 +145,20 @@ arm64-gui-kiosk-iso-check:
 	scripts/check-riscv64-gui-kiosk-iso.py \
 	    --arch arm64 \
 	    --out "$(ARM64_GUI_KIOSK_REPORT)"
+
+arm64-qemu-virt-boot:
+	docker run --rm --privileged \
+	    -v "$(HERE):/work" \
+	    --entrypoint bash \
+	    elizaos-linux-builder -lc '\
+	        cd /work && \
+	        python3 scripts/qemu_virt_boot_arm64.py \
+	            --evidence "$(patsubst $(HERE)%,/work%,$(ARM64_QEMU_EVIDENCE))" \
+	            --transcript "$(patsubst $(HERE)%,/work%,$(ARM64_QEMU_TRANSCRIPT))" \
+	            --memory "$(QEMU_MEMORY)" \
+	            --cpus "$(QEMU_CPUS)" \
+	            --timeout "$(QEMU_TIMEOUT)" \
+	            $(if $(ISO),--iso "$(patsubst $(HERE)%,/work%,$(ISO))",)'
 
 qemu-boot: check-arch
 	scripts/boot-qemu.sh $(ARCH)

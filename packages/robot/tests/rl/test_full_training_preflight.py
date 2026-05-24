@@ -72,8 +72,11 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
 
     train_script = (tmp_path / "scripts" / "10_nebius_train_alberta.sh").read_text()
     assert "ELIZA_ROBOT_PACKAGE_ROOT" in train_script
+    assert "ALBERTA_STREAMING_STEPS" in train_script
+    assert "export JAX_PLATFORMS=cpu" in train_script
+    assert "export JAX_PLATFORM_NAME=cpu" in train_script
     assert "uv run eliza-robot-train" in train_script
-    assert "--steps 100" in train_script
+    assert '--steps "$ALBERTA_STREAMING_STEPS"' in train_script
     assert "--episode-steps 11" in train_script
     assert "--eval-episodes 2" in train_script
 
@@ -91,12 +94,16 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "NEBIUS_TRAINING_S3_URI" in runner_script
 
     compare_script = (tmp_path / "scripts" / "20_nebius_compare_backends.sh").read_text()
+    assert "export JAX_PLATFORMS=cpu" in compare_script
+    assert "export JAX_PLATFORM_NAME=cpu" in compare_script
     assert "uv run eliza-robot-compare-backends" in compare_script
     assert "--steps 20" in compare_script
     assert "--min-eval-mean-steps 20" in compare_script
     assert "> evidence/backend_compare/asimov-1/validation_report.json" in compare_script
 
     continual_script = (tmp_path / "scripts" / "30_nebius_continual_benchmarks.sh").read_text()
+    assert "export JAX_PLATFORMS=cpu" in continual_script
+    assert "export JAX_PLATFORM_NAME=cpu" in continual_script
     assert "uv run eliza-robot-benchmark-alberta" in continual_script
     assert "uv run eliza-robot-validate-alberta-benchmark" in continual_script
     assert "--env joint_reach" in continual_script
@@ -112,9 +119,10 @@ def test_prepare_end_to_end_full_training_bundle(tmp_path: Path) -> None:
     assert "--require-demo-video" in continual_script
 
     post_script = (tmp_path / "scripts" / "50_post_train_validation.sh").read_text()
+    assert "ALBERTA_STREAMING_STEPS" in post_script
     assert "uv run eliza-robot-validate-alberta-checkpoint" in post_script
     assert "--tasks stand_up walk_forward" in post_script
-    assert "--min-steps 100" in post_script
+    assert '--min-steps "$ALBERTA_STREAMING_STEPS"' in post_script
     assert "--require-domain-rand" in post_script
     assert "--require-inference" in post_script
     assert "uv run eliza-robot-validate-asimov1-production-checkpoint" in post_script

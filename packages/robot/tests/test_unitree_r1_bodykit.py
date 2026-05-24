@@ -276,12 +276,20 @@ def test_unitree_r1_bodykit_generator_outputs_valid_mjcf() -> None:
     assert Path(torso_reconstruction["step"]).is_file()
     assert Path(torso_reconstruction["parameters"]).is_file()
     reconstruction_audit_raw = json.loads(reconstruction_audit.read_text())
-    assert reconstruction_audit_raw["verdict"] == "needs-work"
+    assert reconstruction_audit_raw["verdict"] == "pass"
     assert reconstruction_audit_raw["step_exported_count"] == step_raw["exported_count"]
     assert reconstruction_audit_raw["base_reconstructed_assets"] == base_reconstruction_raw["reconstructed_count"]
     assert reconstruction_audit_raw["official_base_step_source_available"] is False
-    assert reconstruction_audit_raw["primitive_shell_count"] > 0
-    assert "left_rear_hip_fairing" in reconstruction_audit_raw["primitive_shell_parts"]
+    assert reconstruction_audit_raw["primitive_shell_count"] == 0
+    assert reconstruction_audit_raw["primitive_shell_parts"] == []
+    assert "left_rear_hip_fairing" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_rear_hip_fairing" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_rear_glute_armor_skin" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_rear_glute_armor_skin" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_wrist_separated_cuff" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_wrist_separated_cuff" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "left_shin_side_armor" in reconstruction_audit_raw["morph_ready_parts"]
+    assert "right_shin_side_armor" in reconstruction_audit_raw["morph_ready_parts"]
     assert "left_chest_contour_armor" not in reconstruction_audit_raw["primitive_shell_parts"]
     assert "left_foot_top_shell" not in reconstruction_audit_raw["primitive_shell_parts"]
     assert "torso_chest_shell" in reconstruction_audit_raw["morph_ready_parts"]

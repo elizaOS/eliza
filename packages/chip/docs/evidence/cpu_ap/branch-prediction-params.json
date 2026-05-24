@@ -50,6 +50,25 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
+  "full_io_media_shard_sweep_ref": {
+    "baseline_weighted_mpki": 40.207626,
+    "best_config": "h2p_lowconf_only",
+    "best_weighted_mpki": 39.470746,
+    "command": "make bpu-sweep-full-io-media-shard",
+    "harness": "behavioural-bpu-model",
+    "max_branches_per_trace": 0,
+    "path": "docs/evidence/cpu_ap/bpu_sweep_full_io_media_shard.json",
+    "present": true,
+    "schema": "eliza.bpu_sweep.v1",
+    "sha256": "4c2923eecb0063024505b1cc15c222652c3ae835aff9a12f99401b9a3c0baa5e",
+    "trace_filter": [
+      "audio_frames",
+      "file_tlv",
+      "http_parser",
+      "text_log",
+      "video_blocks"
+    ]
+  },
   "full_proxy_shard_sweep_ref": {
     "baseline_weighted_mpki": 49.5413,
     "best_config": "baseline",
@@ -69,7 +88,7 @@
       "wasm_jit_osr_proxy"
     ]
   },
-  "generated_at_utc": "2026-05-24T04:47:27.908443+00:00",
+  "generated_at_utc": "2026-05-24T05:41:31.272721+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
@@ -182,7 +201,7 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "f6100505188f4f7a860d453c200128b6ca98d4db",
+  "source_revision": "02ee810ef18ecf24721f80ca77559f47bf0b89b9",
   "sources": {
     "cbp5_trace_manifest": {
       "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
@@ -191,7 +210,7 @@
     },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "a851cd7f9221a01d039d0e1a9fbeea17a4b507b98270fd1b2fd0d3863ce9166d"
+      "sha256": "5ad880a164a330aa445ab5003916d7980d5cd2ec6511d6a9262ca2c6aa2ebb78"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",

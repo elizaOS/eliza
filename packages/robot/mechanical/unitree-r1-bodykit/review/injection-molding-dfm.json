@@ -448,9 +448,9 @@
     {
       "part": "rear_seat_bridge_armor",
       "bbox_mm": [
-        26.0,
-        112.0,
-        26.0
+        20.0,
+        90.0,
+        20.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
@@ -467,16 +467,16 @@
     {
       "part": "left_rear_hip_fairing",
       "bbox_mm": [
-        52.0,
-        44.0,
-        80.0
+        40.0,
+        30.0,
+        56.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -486,16 +486,16 @@
     {
       "part": "right_rear_hip_fairing",
       "bbox_mm": [
-        40.0,
-        32.0,
-        68.0
+        28.0,
+        20.0,
+        48.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -505,16 +505,16 @@
     {
       "part": "left_rear_glute_armor_skin",
       "bbox_mm": [
-        8.0,
-        40.0,
-        68.0
+        3.6,
+        22.0,
+        40.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -524,16 +524,16 @@
     {
       "part": "right_rear_glute_armor_skin",
       "bbox_mm": [
-        8.0,
-        40.0,
-        68.0
+        3.6,
+        22.0,
+        40.0
       ],
       "service_print_bbox_ok": true,
       "mold_candidate": true,
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "pelvis_link.STL"
@@ -887,7 +887,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_elbow_link.STL"
@@ -961,7 +961,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_annular_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_elbow_link.STL"
@@ -1128,8 +1128,8 @@
     {
       "part": "left_shin_side_armor",
       "bbox_mm": [
-        30.0,
-        12.0,
+        28.0,
+        7.6,
         236.0
       ],
       "service_print_bbox_ok": true,
@@ -1137,7 +1137,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "left_knee_link.STL"
@@ -1186,8 +1186,8 @@
     {
       "part": "right_shin_side_armor",
       "bbox_mm": [
-        30.0,
-        12.0,
+        28.0,
+        7.6,
         236.0
       ],
       "service_print_bbox_ok": true,
@@ -1195,7 +1195,7 @@
       "requires_parting_line_review": true,
       "requires_boss_rib_insert_detail": true,
       "step_solid_exported": true,
-      "source_kind": "primitive",
+      "source_kind": "parametric_loft",
       "source_asset": null,
       "oem_baseline_meshes": [
         "right_knee_link.STL"

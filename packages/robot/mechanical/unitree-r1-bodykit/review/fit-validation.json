@@ -12,7 +12,7 @@
   "bodykit_contact_count": 0,
   "collision_test_model_loads": true,
   "collision_variant_bodykit_contact_count": 0,
-  "samples_checked": 11968,
+  "samples_checked": 13168,
   "minimum_bodykit_to_base_clearance_mm": 0.455,
   "worst_bodykit_to_base_clearance": {
     "part": "left_foot_top_shell",
@@ -107,14 +107,14 @@
     ]
   },
   "required_dynamic_clearance_mm": 18.0,
-  "non_mounted_samples_checked": 11968,
-  "non_adjacent_samples_checked": 11968,
+  "non_mounted_samples_checked": 13168,
+  "non_adjacent_samples_checked": 13168,
   "clearance_sampling": "deterministic_vertices_and_face_centroids",
   "dynamic_joint_sweep": {
     "poses_checked": 69,
     "label": "bodykit_operating",
     "sweep_fraction": 0.25,
-    "samples_checked": 825792,
+    "samples_checked": 908592,
     "minimum_non_mounted_clearance_mm": 0.743,
     "worst_pose": "waist_roll_joint_low",
     "minimum_non_adjacent_clearance_mm": 30.973,
@@ -185,7 +185,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_pitch_joint_low",
@@ -251,7 +251,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_pitch_joint_high",
@@ -317,7 +317,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_low",
@@ -383,7 +383,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_high",
@@ -449,7 +449,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_low",
@@ -515,7 +515,7 @@
             2.493
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_high",
@@ -581,7 +581,7 @@
             1.07
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_knee_joint_low",
@@ -647,7 +647,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_knee_joint_high",
@@ -713,7 +713,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_pitch_joint_low",
@@ -779,7 +779,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_pitch_joint_high",
@@ -845,7 +845,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_roll_joint_low",
@@ -911,7 +911,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_roll_joint_high",
@@ -977,7 +977,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_pitch_joint_low",
@@ -1043,7 +1043,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_pitch_joint_high",
@@ -1109,7 +1109,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_low",
@@ -1175,7 +1175,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_high",
@@ -1241,7 +1241,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_low",
@@ -1307,7 +1307,7 @@
             2.755
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_high",
@@ -1373,7 +1373,7 @@
             7.428
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_knee_joint_low",
@@ -1439,7 +1439,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_knee_joint_high",
@@ -1505,7 +1505,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_pitch_joint_low",
@@ -1571,7 +1571,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_pitch_joint_high",
@@ -1637,7 +1637,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_roll_joint_low",
@@ -1703,7 +1703,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_roll_joint_high",
@@ -1769,7 +1769,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_roll_joint_low",
@@ -1835,7 +1835,7 @@
             17.913
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_roll_joint_high",
@@ -1901,7 +1901,7 @@
             22.025
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low",
@@ -1936,38 +1936,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 60.884,
-        "worst_non_adjacent_part": "right_rear_hip_fairing",
+        "minimum_non_adjacent_clearance_mm": 62.845,
+        "worst_non_adjacent_part": "pelvis_center_plate",
         "worst_non_adjacent_clearance": {
-          "part": "right_rear_hip_fairing",
+          "part": "pelvis_center_plate",
           "part_body": "pelvis",
-          "base_geom": "geom_124",
-          "base_body": "right_shoulder_yaw_link",
+          "base_geom": "geom_107",
+          "base_body": "left_shoulder_yaw_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 60.884,
+          "clearance_mm": 62.845,
           "part_sample_point_m": [
-            -0.07,
-            -0.072,
-            0.704
+            0.106,
+            0.011,
+            0.722
           ],
           "base_sample_point_m": [
-            -0.03618,
-            -0.0851,
-            0.7529
+            0.11416,
+            0.06746,
+            0.74838
           ],
           "part_to_base_vector_m": [
-            0.03382,
-            -0.0131,
-            0.0489
+            0.00816,
+            0.05646,
+            0.02638
           ],
           "part_to_base_vector_mm": [
-            33.821,
-            -13.102,
-            48.901
+            8.162,
+            56.455,
+            26.376
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high",
@@ -2002,38 +2002,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 47.052,
-        "worst_non_adjacent_part": "left_rear_hip_fairing",
+        "minimum_non_adjacent_clearance_mm": 62.237,
+        "worst_non_adjacent_part": "pelvis_center_plate",
         "worst_non_adjacent_clearance": {
-          "part": "left_rear_hip_fairing",
+          "part": "pelvis_center_plate",
           "part_body": "pelvis",
-          "base_geom": "geom_107",
-          "base_body": "left_shoulder_yaw_link",
+          "base_geom": "geom_124",
+          "base_body": "right_shoulder_yaw_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 47.052,
+          "clearance_mm": 62.237,
           "part_sample_point_m": [
-            -0.066,
-            0.092,
-            0.71
+            0.106,
+            -0.011,
+            0.722
           ],
           "base_sample_point_m": [
-            -0.0529,
-            0.11383,
-            0.74957
+            0.1284,
+            -0.05653,
+            0.75804
           ],
           "part_to_base_vector_m": [
-            0.0131,
-            0.02183,
-            0.03957
+            0.0224,
+            -0.04553,
+            0.03604
           ],
           "part_to_base_vector_mm": [
-            13.096,
-            21.826,
-            39.573
+            22.4,
+            -45.53,
+            36.037
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_low",
@@ -2099,7 +2099,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_high",
@@ -2165,7 +2165,7 @@
             28.323
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_low",
@@ -2231,7 +2231,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_high",
@@ -2297,7 +2297,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_yaw_joint_low",
@@ -2363,7 +2363,7 @@
             -17.026
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_yaw_joint_high",
@@ -2429,7 +2429,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_elbow_joint_low",
@@ -2495,7 +2495,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_elbow_joint_high",
@@ -2561,7 +2561,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_wrist_roll_joint_low",
@@ -2627,7 +2627,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_wrist_roll_joint_high",
@@ -2693,7 +2693,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_low",
@@ -2759,7 +2759,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_high",
@@ -2825,7 +2825,7 @@
             38.612
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_low",
@@ -2891,7 +2891,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_high",
@@ -2957,7 +2957,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_yaw_joint_low",
@@ -3023,7 +3023,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_yaw_joint_high",
@@ -3089,7 +3089,7 @@
             -19.603
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_elbow_joint_low",
@@ -3155,7 +3155,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_elbow_joint_high",
@@ -3221,7 +3221,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_wrist_roll_joint_low",
@@ -3287,7 +3287,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_wrist_roll_joint_high",
@@ -3353,7 +3353,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_low__left_knee_joint_low",
@@ -3419,7 +3419,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_high__left_knee_joint_high",
@@ -3454,38 +3454,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 49.814,
-        "worst_non_adjacent_part": "right_shin_side_armor",
+        "minimum_non_adjacent_clearance_mm": 54.39,
+        "worst_non_adjacent_part": "right_thigh_side_armor",
         "worst_non_adjacent_clearance": {
-          "part": "right_shin_side_armor",
-          "part_body": "right_knee_link",
+          "part": "right_thigh_side_armor",
+          "part_body": "right_hip_yaw_link",
           "base_geom": "geom_18",
           "base_body": "left_knee_link",
           "base_geom_type": "mesh",
-          "body_tree_distance": 8,
-          "clearance_mm": 49.814,
+          "body_tree_distance": 7,
+          "clearance_mm": 54.39,
           "part_sample_point_m": [
-            -0.0063,
-            -0.05291,
-            0.30361
+            0.02043,
+            -0.02994,
+            0.41291
           ],
           "base_sample_point_m": [
-            -0.02997,
-            -0.01354,
-            0.32287
+            -0.02101,
+            -0.00378,
+            0.38931
           ],
           "part_to_base_vector_m": [
-            -0.02367,
-            0.03938,
-            0.01926
+            -0.04144,
+            0.02616,
+            -0.0236
           ],
           "part_to_base_vector_mm": [
-            -23.666,
-            39.376,
-            19.257
+            -41.436,
+            26.159,
+            -23.603
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_low__right_knee_joint_low",
@@ -3520,7 +3520,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 34.137,
+        "minimum_non_adjacent_clearance_mm": 35.763,
         "worst_non_adjacent_part": "right_shin_side_armor",
         "worst_non_adjacent_clearance": {
           "part": "right_shin_side_armor",
@@ -3529,29 +3529,29 @@
           "base_body": "left_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 34.137,
+          "clearance_mm": 35.763,
           "part_sample_point_m": [
-            -0.03962,
-            0.02068,
-            0.27436
+            -0.05098,
+            0.02802,
+            0.26524
           ],
           "base_sample_point_m": [
-            -0.02279,
-            0.05001,
-            0.26968
+            -0.02381,
+            0.05083,
+            0.26977
           ],
           "part_to_base_vector_m": [
-            0.01682,
-            0.02933,
-            -0.00467
+            0.02717,
+            0.02281,
+            0.00453
           ],
           "part_to_base_vector_mm": [
-            16.825,
-            29.333,
-            -4.673
+            27.171,
+            22.808,
+            4.535
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_high__right_knee_joint_high",
@@ -3617,7 +3617,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_low__left_knee_joint_low",
@@ -3683,7 +3683,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_high__left_knee_joint_high",
@@ -3749,7 +3749,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_low__right_knee_joint_low",
@@ -3815,7 +3815,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_high__right_knee_joint_high",
@@ -3881,7 +3881,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_low__left_elbow_joint_low",
@@ -3947,7 +3947,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_high__left_elbow_joint_high",
@@ -4013,7 +4013,7 @@
             32.063
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
@@ -4079,7 +4079,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_high__right_elbow_joint_high",
@@ -4114,7 +4114,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 61.126,
+        "minimum_non_adjacent_clearance_mm": 61.592,
         "worst_non_adjacent_part": "right_wrist_separated_cuff",
         "worst_non_adjacent_clearance": {
           "part": "right_wrist_separated_cuff",
@@ -4123,11 +4123,11 @@
           "base_body": "right_hip_pitch_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 7,
-          "clearance_mm": 61.126,
+          "clearance_mm": 61.592,
           "part_sample_point_m": [
-            0.0419,
-            -0.14332,
-            0.71324
+            0.04083,
+            -0.14347,
+            0.71371
           ],
           "base_sample_point_m": [
             0.03999,
@@ -4135,17 +4135,17 @@
             0.65912
           ],
           "part_to_base_vector_m": [
-            -0.00191,
-            0.02836,
-            -0.05412
+            -0.00084,
+            0.02851,
+            -0.05459
           ],
           "part_to_base_vector_mm": [
-            -1.91,
-            28.357,
-            -54.117
+            -0.841,
+            28.513,
+            -54.589
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_low__left_elbow_joint_low",
@@ -4211,7 +4211,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_high__left_elbow_joint_high",
@@ -4277,7 +4277,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_low__right_elbow_joint_low",
@@ -4343,7 +4343,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_high__right_elbow_joint_high",
@@ -4409,7 +4409,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low__left_shoulder_pitch_joint_low",
@@ -4444,38 +4444,38 @@
             -0.564
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 60.884,
-        "worst_non_adjacent_part": "right_rear_hip_fairing",
+        "minimum_non_adjacent_clearance_mm": 66.605,
+        "worst_non_adjacent_part": "pelvis_front_shell",
         "worst_non_adjacent_clearance": {
-          "part": "right_rear_hip_fairing",
+          "part": "pelvis_front_shell",
           "part_body": "pelvis",
           "base_geom": "geom_124",
           "base_body": "right_shoulder_yaw_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 60.884,
+          "clearance_mm": 66.605,
           "part_sample_point_m": [
-            -0.07,
-            -0.072,
-            0.704
+            0.0055,
+            -0.03637,
+            0.719
           ],
           "base_sample_point_m": [
-            -0.03618,
-            -0.0851,
-            0.7529
+            -0.02385,
+            -0.08457,
+            0.75438
           ],
           "part_to_base_vector_m": [
-            0.03382,
-            -0.0131,
-            0.0489
+            -0.02935,
+            -0.0482,
+            0.03538
           ],
           "part_to_base_vector_mm": [
-            33.821,
-            -13.102,
-            48.901
+            -29.35,
+            -48.197,
+            35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high__left_shoulder_pitch_joint_high",
@@ -4510,7 +4510,7 @@
             -0.618
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 38.18,
+        "minimum_non_adjacent_clearance_mm": 55.741,
         "worst_non_adjacent_part": "left_rear_hip_fairing",
         "worst_non_adjacent_clearance": {
           "part": "left_rear_hip_fairing",
@@ -4519,29 +4519,29 @@
           "base_body": "left_shoulder_yaw_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 38.18,
+          "clearance_mm": 55.741,
           "part_sample_point_m": [
-            -0.066,
-            0.092,
-            0.71
+            -0.0845,
+            0.07953,
+            0.698
           ],
           "base_sample_point_m": [
-            -0.04876,
-            0.09617,
-            0.74381
+            -0.07783,
+            0.09408,
+            0.75139
           ],
           "part_to_base_vector_m": [
-            0.01724,
-            0.00417,
-            0.03381
+            0.00667,
+            0.01456,
+            0.05339
           ],
           "part_to_base_vector_mm": [
-            17.241,
-            4.175,
-            33.809
+            6.667,
+            14.558,
+            53.392
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low__right_shoulder_pitch_joint_low",
@@ -4607,7 +4607,7 @@
             26.376
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high__right_shoulder_pitch_joint_high",
@@ -4642,38 +4642,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 47.052,
-        "worst_non_adjacent_part": "left_rear_hip_fairing",
+        "minimum_non_adjacent_clearance_mm": 65.974,
+        "worst_non_adjacent_part": "pelvis_front_shell",
         "worst_non_adjacent_clearance": {
-          "part": "left_rear_hip_fairing",
+          "part": "pelvis_front_shell",
           "part_body": "pelvis",
           "base_geom": "geom_107",
           "base_body": "left_shoulder_yaw_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 47.052,
+          "clearance_mm": 65.974,
           "part_sample_point_m": [
-            -0.066,
-            0.092,
-            0.71
+            0.0055,
+            0.03637,
+            0.719
           ],
           "base_sample_point_m": [
-            -0.0529,
-            0.11383,
-            0.74957
+            -0.02795,
+            0.08373,
+            0.75048
           ],
           "part_to_base_vector_m": [
-            0.0131,
-            0.02183,
-            0.03957
+            -0.03345,
+            0.04736,
+            0.03148
           ],
           "part_to_base_vector_mm": [
-            13.096,
-            21.826,
-            39.573
+            -33.455,
+            47.355,
+            31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       }
     ]
   },
@@ -4681,7 +4681,7 @@
     "poses_checked": 69,
     "label": "mechanical",
     "sweep_fraction": 0.65,
-    "samples_checked": 825792,
+    "samples_checked": 908592,
     "minimum_non_mounted_clearance_mm": 0.738,
     "worst_pose": "left_shoulder_roll_joint_low__left_elbow_joint_low",
     "minimum_non_adjacent_clearance_mm": 1.485,
@@ -4752,7 +4752,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_pitch_joint_low",
@@ -4818,7 +4818,7 @@
             9.523
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_pitch_joint_high",
@@ -4884,7 +4884,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_low",
@@ -4919,38 +4919,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 18.456,
-        "worst_non_adjacent_part": "right_shin_shell",
+        "minimum_non_adjacent_clearance_mm": 15.032,
+        "worst_non_adjacent_part": "left_shin_side_armor",
         "worst_non_adjacent_clearance": {
-          "part": "right_shin_shell",
-          "part_body": "right_knee_link",
-          "base_geom": "geom_18",
-          "base_body": "left_knee_link",
+          "part": "left_shin_side_armor",
+          "part_body": "left_knee_link",
+          "base_geom": "geom_47",
+          "base_body": "right_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 18.456,
+          "clearance_mm": 15.032,
           "part_sample_point_m": [
-            0.00874,
-            -0.06288,
-            0.24161
+            0.0104,
+            -0.11401,
+            0.32376
           ],
           "base_sample_point_m": [
-            0.00961,
-            -0.07648,
-            0.25406
+            0.00911,
+            -0.1261,
+            0.3326
           ],
           "part_to_base_vector_m": [
-            0.00087,
-            -0.0136,
-            0.01245
+            -0.00128,
+            -0.01209,
+            0.00884
           ],
           "part_to_base_vector_mm": [
-            0.869,
-            -13.597,
-            12.449
+            -1.282,
+            -12.091,
+            8.838
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_high",
@@ -5016,7 +5016,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_low",
@@ -5082,7 +5082,7 @@
             1.527
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_high",
@@ -5148,7 +5148,7 @@
             1.833
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_knee_joint_low",
@@ -5214,7 +5214,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_knee_joint_high",
@@ -5280,7 +5280,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_pitch_joint_low",
@@ -5346,7 +5346,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_pitch_joint_high",
@@ -5412,7 +5412,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_roll_joint_low",
@@ -5478,7 +5478,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_ankle_roll_joint_high",
@@ -5544,7 +5544,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_pitch_joint_low",
@@ -5610,7 +5610,7 @@
             17.611
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_pitch_joint_high",
@@ -5676,7 +5676,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_low",
@@ -5742,7 +5742,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_high",
@@ -5777,38 +5777,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 15.554,
-        "worst_non_adjacent_part": "left_shin_shell",
+        "minimum_non_adjacent_clearance_mm": 14.833,
+        "worst_non_adjacent_part": "right_shin_side_armor",
         "worst_non_adjacent_clearance": {
-          "part": "left_shin_shell",
-          "part_body": "left_knee_link",
-          "base_geom": "geom_47",
-          "base_body": "right_knee_link",
+          "part": "right_shin_side_armor",
+          "part_body": "right_knee_link",
+          "base_geom": "geom_18",
+          "base_body": "left_knee_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 8,
-          "clearance_mm": 15.554,
+          "clearance_mm": 14.833,
           "part_sample_point_m": [
-            0.02065,
-            0.06697,
-            0.24861
+            0.01206,
+            0.11393,
+            0.32372
           ],
           "base_sample_point_m": [
-            0.00961,
-            0.07648,
-            0.25406
+            0.0119,
+            0.1261,
+            0.3322
           ],
           "part_to_base_vector_m": [
-            -0.01104,
-            0.0095,
-            0.00545
+            -0.00017,
+            0.01216,
+            0.00848
           ],
           "part_to_base_vector_mm": [
-            -11.043,
-            9.502,
-            5.449
+            -0.166,
+            12.165,
+            8.485
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_low",
@@ -5874,7 +5874,7 @@
             3.225
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_high",
@@ -5940,7 +5940,7 @@
             7.239
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_knee_joint_low",
@@ -6006,7 +6006,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_knee_joint_high",
@@ -6072,7 +6072,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_pitch_joint_low",
@@ -6138,7 +6138,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_pitch_joint_high",
@@ -6204,7 +6204,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_roll_joint_low",
@@ -6270,7 +6270,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_ankle_roll_joint_high",
@@ -6336,7 +6336,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_roll_joint_low",
@@ -6402,7 +6402,7 @@
             -39.671
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_roll_joint_high",
@@ -6468,7 +6468,7 @@
             -39.687
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low",
@@ -6534,7 +6534,7 @@
             28.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high",
@@ -6569,38 +6569,38 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 34.453,
-        "worst_non_adjacent_part": "left_rear_hip_fairing",
+        "minimum_non_adjacent_clearance_mm": 42.068,
+        "worst_non_adjacent_part": "pelvis_center_plate",
         "worst_non_adjacent_clearance": {
-          "part": "left_rear_hip_fairing",
+          "part": "pelvis_center_plate",
           "part_body": "pelvis",
-          "base_geom": "geom_117",
-          "base_body": "left_wrist_roll_link",
+          "base_geom": "geom_124",
+          "base_body": "right_shoulder_yaw_link",
           "base_geom_type": "mesh",
-          "body_tree_distance": 7,
-          "clearance_mm": 34.453,
+          "body_tree_distance": 5,
+          "clearance_mm": 42.068,
           "part_sample_point_m": [
-            -0.118,
-            0.092,
-            0.71
+            0.1074,
+            0.00953,
+            0.722
           ],
           "base_sample_point_m": [
-            -0.12633,
-            0.11303,
-            0.73599
+            0.13214,
+            0.01996,
+            0.75438
           ],
           "part_to_base_vector_m": [
-            -0.00833,
-            0.02103,
-            0.02599
+            0.02474,
+            0.01043,
+            0.03238
           ],
           "part_to_base_vector_mm": [
-            -8.333,
-            21.031,
-            25.985
+            24.745,
+            10.429,
+            32.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_low",
@@ -6666,7 +6666,7 @@
             -0.744
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_high",
@@ -6701,7 +6701,7 @@
             -0.055
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 31.798,
+        "minimum_non_adjacent_clearance_mm": 35.805,
         "worst_non_adjacent_part": "left_rear_hip_fairing",
         "worst_non_adjacent_clearance": {
           "part": "left_rear_hip_fairing",
@@ -6710,11 +6710,11 @@
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 7,
-          "clearance_mm": 31.798,
+          "clearance_mm": 35.805,
           "part_sample_point_m": [
-            -0.10067,
-            0.092,
-            0.68333
+            -0.08939,
+            0.08487,
+            0.67
           ],
           "base_sample_point_m": [
             -0.0884,
@@ -6722,17 +6722,17 @@
             0.67542
           ],
           "part_to_base_vector_m": [
-            0.01227,
-            0.02825,
-            -0.00791
+            0.00099,
+            0.03538,
+            0.00542
           ],
           "part_to_base_vector_mm": [
-            12.266,
-            28.25,
-            -7.912
+            0.988,
+            35.379,
+            5.421
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_low",
@@ -6798,7 +6798,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_high",
@@ -6864,7 +6864,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_yaw_joint_low",
@@ -6899,7 +6899,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 18.199,
+        "minimum_non_adjacent_clearance_mm": 18.002,
         "worst_non_adjacent_part": "left_wrist_separated_cuff",
         "worst_non_adjacent_clearance": {
           "part": "left_wrist_separated_cuff",
@@ -6908,11 +6908,11 @@
           "base_body": "waist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 18.199,
+          "clearance_mm": 18.002,
           "part_sample_point_m": [
-            0.05829,
-            0.05875,
-            0.7761
+            0.05897,
+            0.05858,
+            0.77509
           ],
           "base_sample_point_m": [
             0.05764,
@@ -6920,17 +6920,17 @@
             0.77443
           ],
           "part_to_base_vector_m": [
-            -0.00065,
-            -0.01811,
-            -0.00166
+            -0.00133,
+            -0.01794,
+            -0.00066
           ],
           "part_to_base_vector_mm": [
-            -0.653,
-            -18.111,
-            -1.662
+            -1.33,
+            -17.941,
+            -0.656
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_yaw_joint_high",
@@ -6996,7 +6996,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_elbow_joint_low",
@@ -7062,7 +7062,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_elbow_joint_high",
@@ -7128,7 +7128,7 @@
             31.159
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_wrist_roll_joint_low",
@@ -7194,7 +7194,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_wrist_roll_joint_high",
@@ -7260,7 +7260,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_low",
@@ -7326,7 +7326,7 @@
             4.181
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_high",
@@ -7361,7 +7361,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 49.879,
+        "minimum_non_adjacent_clearance_mm": 55.966,
         "worst_non_adjacent_part": "right_rear_hip_fairing",
         "worst_non_adjacent_clearance": {
           "part": "right_rear_hip_fairing",
@@ -7370,29 +7370,29 @@
           "base_body": "right_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 7,
-          "clearance_mm": 49.879,
+          "clearance_mm": 55.966,
           "part_sample_point_m": [
-            -0.08333,
-            -0.072,
-            0.68133
+            -0.09183,
+            -0.06591,
+            0.67
           ],
           "base_sample_point_m": [
-            -0.07811,
-            -0.12154,
-            0.68378
+            -0.09218,
+            -0.12148,
+            0.67669
           ],
           "part_to_base_vector_m": [
-            0.00522,
-            -0.04954,
-            0.00245
+            -0.00035,
+            -0.05556,
+            0.00669
           ],
           "part_to_base_vector_mm": [
-            5.224,
-            -49.544,
-            2.449
+            -0.349,
+            -55.564,
+            6.687
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_low",
@@ -7458,7 +7458,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_high",
@@ -7524,7 +7524,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_yaw_joint_low",
@@ -7590,7 +7590,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_yaw_joint_high",
@@ -7625,7 +7625,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 18.074,
+        "minimum_non_adjacent_clearance_mm": 18.084,
         "worst_non_adjacent_part": "right_wrist_separated_cuff",
         "worst_non_adjacent_clearance": {
           "part": "right_wrist_separated_cuff",
@@ -7634,11 +7634,11 @@
           "base_body": "waist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 5,
-          "clearance_mm": 18.074,
+          "clearance_mm": 18.084,
           "part_sample_point_m": [
-            0.05903,
-            -0.05864,
-            0.77564
+            0.0595,
+            -0.05857,
+            0.7757
           ],
           "base_sample_point_m": [
             0.05627,
@@ -7646,17 +7646,17 @@
             0.77423
           ],
           "part_to_base_vector_m": [
-            -0.00276,
-            0.01781,
-            -0.00141
+            -0.00324,
+            0.01773,
+            -0.00147
           ],
           "part_to_base_vector_mm": [
-            -2.761,
-            17.805,
-            -1.414
+            -3.238,
+            17.731,
+            -1.47
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_elbow_joint_low",
@@ -7722,7 +7722,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_elbow_joint_high",
@@ -7788,7 +7788,7 @@
             28.409
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_wrist_roll_joint_low",
@@ -7854,7 +7854,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_wrist_roll_joint_high",
@@ -7920,7 +7920,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_low__left_knee_joint_low",
@@ -7986,7 +7986,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_yaw_joint_high__left_knee_joint_high",
@@ -8052,7 +8052,7 @@
             6.03
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_low__right_knee_joint_low",
@@ -8118,7 +8118,7 @@
             19.356
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_yaw_joint_high__right_knee_joint_high",
@@ -8184,7 +8184,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_low__left_knee_joint_low",
@@ -8250,7 +8250,7 @@
             3.893
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_hip_roll_joint_high__left_knee_joint_high",
@@ -8316,7 +8316,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_low__right_knee_joint_low",
@@ -8382,7 +8382,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_hip_roll_joint_high__right_knee_joint_high",
@@ -8448,7 +8448,7 @@
             -18.293
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_low__left_elbow_joint_low",
@@ -8514,7 +8514,7 @@
             -0.596
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_pitch_joint_high__left_elbow_joint_high",
@@ -8580,7 +8580,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_low__right_elbow_joint_low",
@@ -8646,7 +8646,7 @@
             -1.134
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_pitch_joint_high__right_elbow_joint_high",
@@ -8712,7 +8712,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_low__left_elbow_joint_low",
@@ -8778,7 +8778,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "left_shoulder_roll_joint_high__left_elbow_joint_high",
@@ -8844,7 +8844,7 @@
             35.383
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_low__right_elbow_joint_low",
@@ -8910,7 +8910,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "right_shoulder_roll_joint_high__right_elbow_joint_high",
@@ -8976,7 +8976,7 @@
             31.477
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low__left_shoulder_pitch_joint_low",
@@ -9042,7 +9042,7 @@
             -0.744
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high__left_shoulder_pitch_joint_high",
@@ -9077,7 +9077,7 @@
             -0.055
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 21.759,
+        "minimum_non_adjacent_clearance_mm": 27.384,
         "worst_non_adjacent_part": "right_rear_hip_fairing",
         "worst_non_adjacent_clearance": {
           "part": "right_rear_hip_fairing",
@@ -9086,29 +9086,29 @@
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 7,
-          "clearance_mm": 21.759,
+          "clearance_mm": 27.384,
           "part_sample_point_m": [
-            -0.08333,
-            -0.072,
-            0.68133
+            -0.09536,
+            -0.06524,
+            0.67
           ],
           "base_sample_point_m": [
-            -0.08881,
-            -0.09285,
-            0.68429
+            -0.0999,
+            -0.09153,
+            0.67617
           ],
           "part_to_base_vector_m": [
-            -0.00548,
-            -0.02085,
-            0.00295
+            -0.00454,
+            -0.02629,
+            0.00617
           ],
           "part_to_base_vector_mm": [
-            -5.478,
-            -20.85,
-            2.953
+            -4.541,
+            -26.291,
+            6.165
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_low__right_shoulder_pitch_joint_low",
@@ -9174,7 +9174,7 @@
             4.181
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       },
       {
         "pose": "waist_yaw_joint_high__right_shoulder_pitch_joint_high",
@@ -9209,7 +9209,7 @@
             -0.658
           ]
         },
-        "minimum_non_adjacent_clearance_mm": 34.453,
+        "minimum_non_adjacent_clearance_mm": 55.759,
         "worst_non_adjacent_part": "left_rear_hip_fairing",
         "worst_non_adjacent_clearance": {
           "part": "left_rear_hip_fairing",
@@ -9218,29 +9218,29 @@
           "base_body": "left_wrist_roll_link",
           "base_geom_type": "mesh",
           "body_tree_distance": 7,
-          "clearance_mm": 34.453,
+          "clearance_mm": 55.759,
           "part_sample_point_m": [
-            -0.118,
-            0.092,
-            0.71
+            -0.0995,
+            0.07953,
+            0.698
           ],
           "base_sample_point_m": [
-            -0.12633,
-            0.11303,
-            0.73599
+            -0.11273,
+            0.11372,
+            0.74001
           ],
           "part_to_base_vector_m": [
-            -0.00833,
-            0.02103,
-            0.02599
+            -0.01323,
+            0.03419,
+            0.04201
           ],
           "part_to_base_vector_mm": [
-            -8.333,
-            21.031,
-            25.985
+            -13.227,
+            34.19,
+            42.014
           ]
         },
-        "non_adjacent_samples_checked": 11968
+        "non_adjacent_samples_checked": 13168
       }
     ]
   },
@@ -9266,11 +9266,11 @@
     "left_forearm_inner_detail": 23.934,
     "left_forearm_outer_blade": 0.743,
     "left_forearm_shell": 1.736,
-    "left_rear_glute_armor_skin": 61.945,
-    "left_rear_hip_fairing": 60.834,
+    "left_rear_glute_armor_skin": 49.857,
+    "left_rear_hip_fairing": 74.531,
     "left_shin_front_armor": 32.426,
     "left_shin_shell": 8.042,
-    "left_shin_side_armor": 6.195,
+    "left_shin_side_armor": 2.725,
     "left_shoulder_cap": 1.328,
     "left_shoulder_fastener_front": 50.793,
     "left_thigh_front_armor": 48.702,
@@ -9279,7 +9279,7 @@
     "left_upper_arm_front_armor": 5.356,
     "left_upper_arm_outer_blade": 9.707,
     "left_upper_arm_shell": 2.313,
-    "left_wrist_separated_cuff": 34.981,
+    "left_wrist_separated_cuff": 35.399,
     "lip_insert": 26.232,
     "pelvis_center_plate": 45.004,
     "pelvis_front_shell": 2.161,
@@ -9287,7 +9287,7 @@
     "rear_back_spine_plate": 39.483,
     "rear_left_back_cut_black": 32.187,
     "rear_right_back_cut_black": 32.187,
-    "rear_seat_bridge_armor": 75.349,
+    "rear_seat_bridge_armor": 81.246,
     "rear_spine_black_channel": 61.542,
     "right_chest_contour_armor": 61.562,
     "right_chest_outer_armor_skin": 31.979,
@@ -9300,11 +9300,11 @@
     "right_forearm_inner_detail": 24.867,
     "right_forearm_outer_blade": 2.701,
     "right_forearm_shell": 2.839,
-    "right_rear_glute_armor_skin": 62.76,
-    "right_rear_hip_fairing": 67.527,
+    "right_rear_glute_armor_skin": 49.771,
+    "right_rear_hip_fairing": 81.602,
     "right_shin_front_armor": 37.714,
     "right_shin_shell": 5.163,
-    "right_shin_side_armor": 7.771,
+    "right_shin_side_armor": 2.093,
     "right_shoulder_cap": 1.002,
     "right_shoulder_fastener_front": 50.312,
     "right_thigh_front_armor": 59.104,
@@ -9313,7 +9313,7 @@
     "right_upper_arm_front_armor": 3.428,
     "right_upper_arm_outer_blade": 8.817,
     "right_upper_arm_shell": 1.111,
-    "right_wrist_separated_cuff": 33.596,
+    "right_wrist_separated_cuff": 33.691,
     "torso_abdomen_black": 1.526,
     "torso_chest_shell": 2.593
   },
@@ -9339,11 +9339,11 @@
     "left_forearm_inner_detail": 23.934,
     "left_forearm_outer_blade": 0.743,
     "left_forearm_shell": 1.736,
-    "left_rear_glute_armor_skin": 61.945,
-    "left_rear_hip_fairing": 60.834,
+    "left_rear_glute_armor_skin": 49.857,
+    "left_rear_hip_fairing": 74.531,
     "left_shin_front_armor": 122.736,
     "left_shin_shell": 108.047,
-    "left_shin_side_armor": 60.306,
+    "left_shin_side_armor": 63.481,
     "left_shoulder_cap": 47.066,
     "left_shoulder_fastener_front": 59.725,
     "left_thigh_front_armor": 48.702,
@@ -9352,7 +9352,7 @@
     "left_upper_arm_front_armor": 71.866,
     "left_upper_arm_outer_blade": 105.424,
     "left_upper_arm_shell": 67.39,
-    "left_wrist_separated_cuff": 34.981,
+    "left_wrist_separated_cuff": 35.399,
     "lip_insert": 218.505,
     "pelvis_center_plate": 45.004,
     "pelvis_front_shell": 2.161,
@@ -9360,7 +9360,7 @@
     "rear_back_spine_plate": 72.102,
     "rear_left_back_cut_black": 68.621,
     "rear_right_back_cut_black": 68.916,
-    "rear_seat_bridge_armor": 75.349,
+    "rear_seat_bridge_armor": 81.246,
     "rear_spine_black_channel": 99.988,
     "right_chest_contour_armor": 82.821,
     "right_chest_outer_armor_skin": 47.618,
@@ -9373,11 +9373,11 @@
     "right_forearm_inner_detail": 24.867,
     "right_forearm_outer_blade": 2.701,
     "right_forearm_shell": 2.839,
-    "right_rear_glute_armor_skin": 62.76,
-    "right_rear_hip_fairing": 67.527,
+    "right_rear_glute_armor_skin": 49.771,
+    "right_rear_hip_fairing": 81.602,
     "right_shin_front_armor": 113.699,
     "right_shin_shell": 104.738,
-    "right_shin_side_armor": 60.306,
+    "right_shin_side_armor": 63.523,
     "right_shoulder_cap": 46.355,
     "right_shoulder_fastener_front": 59.725,
     "right_thigh_front_armor": 59.104,
@@ -9386,7 +9386,7 @@
     "right_upper_arm_front_armor": 71.866,
     "right_upper_arm_outer_blade": 106.451,
     "right_upper_arm_shell": 69.522,
-    "right_wrist_separated_cuff": 33.596,
+    "right_wrist_separated_cuff": 33.691,
     "torso_abdomen_black": 1.526,
     "torso_chest_shell": 10.34
   },
@@ -9412,11 +9412,11 @@
     "left_forearm_inner_detail": 125.184,
     "left_forearm_outer_blade": 77.463,
     "left_forearm_shell": 86.372,
-    "left_rear_glute_armor_skin": 116.178,
-    "left_rear_hip_fairing": 101.914,
+    "left_rear_glute_armor_skin": 145.583,
+    "left_rear_hip_fairing": 121.744,
     "left_shin_front_armor": 135.952,
     "left_shin_shell": 108.047,
-    "left_shin_side_armor": 103.135,
+    "left_shin_side_armor": 103.889,
     "left_shoulder_cap": 171.267,
     "left_shoulder_fastener_front": 185.827,
     "left_thigh_front_armor": 130.359,
@@ -9425,7 +9425,7 @@
     "left_upper_arm_front_armor": 105.626,
     "left_upper_arm_outer_blade": 120.747,
     "left_upper_arm_shell": 87.145,
-    "left_wrist_separated_cuff": 86.456,
+    "left_wrist_separated_cuff": 86.636,
     "lip_insert": 478.184,
     "pelvis_center_plate": 104.01,
     "pelvis_front_shell": 69.801,
@@ -9433,7 +9433,7 @@
     "rear_back_spine_plate": 241.837,
     "rear_left_back_cut_black": 232.32,
     "rear_right_back_cut_black": 229.193,
-    "rear_seat_bridge_armor": 139.779,
+    "rear_seat_bridge_armor": 146.609,
     "rear_spine_black_channel": 267.442,
     "right_chest_contour_armor": 160.637,
     "right_chest_outer_armor_skin": 134.655,
@@ -9446,11 +9446,11 @@
     "right_forearm_inner_detail": 125.825,
     "right_forearm_outer_blade": 78.796,
     "right_forearm_shell": 86.119,
-    "right_rear_glute_armor_skin": 116.264,
-    "right_rear_hip_fairing": 112.758,
+    "right_rear_glute_armor_skin": 144.193,
+    "right_rear_hip_fairing": 130.1,
     "right_shin_front_armor": 139.919,
     "right_shin_shell": 104.738,
-    "right_shin_side_armor": 104.155,
+    "right_shin_side_armor": 104.176,
     "right_shoulder_cap": 169.602,
     "right_shoulder_fastener_front": 183.725,
     "right_thigh_front_armor": 130.489,
@@ -9459,7 +9459,7 @@
     "right_upper_arm_front_armor": 105.998,
     "right_upper_arm_outer_blade": 120.273,
     "right_upper_arm_shell": 86.48,
-    "right_wrist_separated_cuff": 86.94,
+    "right_wrist_separated_cuff": 86.65,
     "torso_abdomen_black": 172.851,
     "torso_chest_shell": 154.899
   },

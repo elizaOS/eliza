@@ -1,0 +1,72 @@
+diff --git a/package/src/native/linux/nativeWrapper.cpp b/package/src/native/linux/nativeWrapper.cpp
+index c3765d71..24b7a2fc 100644
+--- a/package/src/native/linux/nativeWrapper.cpp
++++ b/package/src/native/linux/nativeWrapper.cpp
+@@ -5674,7 +5674,16 @@ void waitForGTKInit() {
+ template<typename Func>
+ auto dispatch_sync_main(Func&& func) -> decltype(func()) {
+     using ReturnType = decltype(func());
+-    
++
++    // ELIZAOS-PATCH: see dispatch_sync_main_void for rationale. Tracks the first
++    // worker->main-thread call through the value-returning variant separately,
++    // since createX11Window / createWebview go through this path.
++    static std::atomic<bool> s_first_dispatch_logged{false};
++    if (!s_first_dispatch_logged.exchange(true)) {
++        printf("[wrapper-dispatch] first dispatch_sync_main (value) from worker thread\n");
++        fflush(stdout);
++    }
++
+     // If already on main thread, just execute
+     if (g_main_context_is_owner(g_main_context_default())) {
+         return func();
+@@ -5742,6 +5751,16 @@ auto dispatch_sync_main(Func&& func) -> decltype(func()) {
+ template<typename Func>
+ typename std::enable_if<std::is_void<decltype(std::declval<Func>()())>::value>::type
+ dispatch_sync_main_void(Func&& func) {
++    // ELIZAOS-PATCH: record the first time a non-main-thread (i.e. the bun Worker)
++    // dispatches work onto the GTK main loop. If "GTK EVENT LOOP STARTED" appears
++    // in serial but this line never does, the Worker thread is not making FFI
++    // calls into the wrapper — the deadlock is in the Worker's JS init, not in
++    // gtk_main / WebKitGTK.
++    static std::atomic<bool> s_first_dispatch_logged{false};
++    if (!s_first_dispatch_logged.exchange(true)) {
++        printf("[wrapper-dispatch] first dispatch_sync_main_void from worker thread\n");
++        fflush(stdout);
++    }
+     if (g_main_context_is_owner(g_main_context_default())) {
+         func();
+         return;
+@@ -6296,10 +6315,31 @@ void runCEFEventLoop() {
+ void runGTKEventLoop() {
+     // Initialize GTK on the main thread (this MUST be done here)
+     initializeGTK();
+-    printf("=== ELECTROBUN NATIVE WRAPPER VERSION 1.0.2 === GTK EVENT LOOP STARTED ===\n");
++    // ELIZAOS-PATCH: stdout is fully block-buffered when the launcher is run under
++    // systemd-cat / a kiosk service; without an explicit flush the "GTK EVENT LOOP
++    // STARTED" line can sit in libc's stdout buffer indefinitely while gtk_main()
++    // blocks in poll() on the X11 fd, which makes the wrapper look hung when in
++    // fact it is doing exactly what gtk_main is supposed to do. Force line-mode
++    // for the duration of the wrapper's life and flush this milestone explicitly.
++    setvbuf(stdout, nullptr, _IOLBF, 0);
++    printf("=== ELECTROBUN NATIVE WRAPPER VERSION 1.0.2 === GTK EVENT LOOP STARTED (elizaos-patch) ===\n");
++    fflush(stdout);
+ 
+     // Note: GDK_BACKEND=x11 forced for Wayland compatibility
+ 
++    // ELIZAOS-PATCH: emit a heartbeat from inside the GTK main loop so that "wrapper
++    // is alive and gtk_main is pumping" is observable from serial without needing
++    // gdb. Fires once per second. If this stream stops, gtk_main itself has wedged;
++    // if it continues but no createX11Window callback ever runs, the Worker thread
++    // (which is what makes the FFI calls that create windows) is the layer that
++    // is stuck — that is a bun / app-bundle problem, not a wrapper problem.
++    g_timeout_add_seconds(1, [](gpointer) -> gboolean {
++        static unsigned int tick = 0;
++        printf("[wrapper-heartbeat] gtk_main alive tick=%u\n", ++tick);
++        fflush(stdout);
++        return G_SOURCE_CONTINUE;
++    }, nullptr);
++
+     gtk_main();
+     g_shutdownComplete.store(true);
+ }

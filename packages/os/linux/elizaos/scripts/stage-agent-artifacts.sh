@@ -238,7 +238,7 @@ PY
 rm -rf "${OUT_DIR}"
 mkdir -p "${OUT_DIR}/elizaos-app"
 cp -a "${AGENT_DIR}/dist-mobile/." "${OUT_DIR}/elizaos-app/"
-if [ "${ARCH}" = "riscv64" ]; then
+if [ "${ARCH}" = "riscv64" ] || [ "${ARCH}" = "arm64" ]; then
     patch_riscv64_node_bundle "${OUT_DIR}/elizaos-app/agent-bundle.js"
 fi
 if [ -n "${BUN_RISCV64_ZIP}" ]; then
