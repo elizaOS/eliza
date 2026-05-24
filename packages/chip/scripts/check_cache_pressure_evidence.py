@@ -11,15 +11,19 @@ display/QoS service-window violations, and p95 miss latency.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = ROOT / "docs/evidence/cache/cache_pressure_report.json"
 
 SCHEMA = "eliza.cache_pressure_evidence.v1"
+MEASURED_EVIDENCE_CLASS = "rtl_cocotb_pressure_measurement"
 REQUIRED_METRICS = {
     "attempted_misses",
     "completed_misses",
@@ -31,7 +35,26 @@ REQUIRED_METRICS = {
 REQUIRED_COVERAGE_LEVELS = {"l1d", "l2", "l3", "slc"}
 REQUIRED_CONTENTION_AGENTS = {"cpu_miss_stream", "display_qos"}
 PHONE_CLAIM_LEVELS = {"L5_PROTOTYPE_SILICON", "L6_COMPLETE_PHONE"}
+CACHE_PRESSURE_MAX_AGE = timedelta(days=30)
 REQUIRED_HARNESS = ROOT / "verify/cocotb/cache/test_cache_pressure.py"
+EXPECTED_JUNIT_RESULTS = {
+    "e1_l1d_cache": (
+        ROOT / "verify/cocotb/cache/results/e1_l1d_cache_test_cache_pressure.xml",
+        "test_l1d_pressure_records_mshr_depth",
+    ),
+    "e1_l2_tb": (
+        ROOT / "verify/cocotb/cache/results/e1_l2_tb_test_cache_pressure.xml",
+        "test_l2_pressure_miss_path_records_coverage",
+    ),
+    "e1_l3_tb": (
+        ROOT / "verify/cocotb/cache/results/e1_l3_tb_test_cache_pressure.xml",
+        "test_l3_pressure_miss_path_records_coverage",
+    ),
+    "e1_slc_tb": (
+        ROOT / "verify/cocotb/cache/results/e1_slc_tb_test_cache_pressure.xml",
+        "test_slc_pressure_and_display_qos_records_coverage",
+    ),
+}
 LMBENCH_BLOCKED = ROOT / "docs/evidence/memory/lmbench_blocked.json"
 LMBENCH_SUMMARY = ROOT / "docs/evidence/memory/lmbench_summary.json"
 L5_L6_MEMORY_REPORTS = {
@@ -87,6 +110,212 @@ def load_json(path: Path) -> tuple[dict[str, Any] | None, str | None]:
     if not isinstance(data, dict):
         return None, "not_object"
     return data, None
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def parse_utc_timestamp(value: Any) -> datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def resolve_artifact_path(value: Any) -> Path | None:
+    if not isinstance(value, str) or not value:
+        return None
+    path = Path(value)
+    if path.is_absolute() or ".." in path.parts:
+        return None
+    return ROOT / path
+
+
+def generated_by_findings(data: dict[str, Any], report_path: Path) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    if data.get("generated_by") != rel(REQUIRED_HARNESS):
+        findings.append(
+            {
+                "name": "generated_by",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": f"generated_by must be {rel(REQUIRED_HARNESS)}",
+            }
+        )
+    declared_sha = data.get("generated_by_sha256")
+    if not REQUIRED_HARNESS.is_file():
+        findings.append(
+            {
+                "name": "generated_by_sha256",
+                "path": rel(REQUIRED_HARNESS),
+                "status": "missing",
+                "reason": "required cocotb pressure harness is missing",
+            }
+        )
+    elif not isinstance(declared_sha, str) or re.fullmatch(r"[0-9a-f]{64}", declared_sha) is None:
+        findings.append(
+            {
+                "name": "generated_by_sha256",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "generated_by_sha256 must hash-bind the cocotb harness",
+            }
+        )
+    elif sha256_file(REQUIRED_HARNESS) != declared_sha:
+        findings.append(
+            {
+                "name": "generated_by_sha256",
+                "path": rel(REQUIRED_HARNESS),
+                "status": "invalid",
+                "reason": "generated_by_sha256 does not match the cocotb harness",
+            }
+        )
+    return findings
+
+
+def junit_result_artifact_findings(data: dict[str, Any], report_path: Path) -> list[dict[str, Any]]:
+    findings: list[dict[str, Any]] = []
+    artifacts = data.get("result_artifacts")
+    if not isinstance(artifacts, dict):
+        return [
+            {
+                "name": "result_artifacts",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "measured pressure reports must hash-bind cocotb JUnit XML result_artifacts",
+            }
+        ]
+
+    for top, (default_path, active_testcase) in EXPECTED_JUNIT_RESULTS.items():
+        scope = f"result_artifacts.{top}"
+        artifact = artifacts.get(top)
+        if not isinstance(artifact, dict):
+            findings.append(
+                {
+                    "name": scope,
+                    "path": rel(report_path),
+                    "status": "missing",
+                    "reason": "missing required cocotb JUnit XML artifact binding",
+                }
+            )
+            continue
+        path = resolve_artifact_path(artifact.get("path"))
+        expected_rel = rel(default_path)
+        if path is None:
+            findings.append(
+                {
+                    "name": f"{scope}.path",
+                    "path": rel(report_path),
+                    "status": "invalid",
+                    "reason": "path must be a relative chip-tree path",
+                }
+            )
+            continue
+        if rel(path) != expected_rel:
+            findings.append(
+                {
+                    "name": f"{scope}.path",
+                    "path": rel(path),
+                    "status": "invalid",
+                    "reason": f"path must be {expected_rel}",
+                }
+            )
+        if not path.is_file():
+            findings.append(
+                {
+                    "name": f"{scope}.path",
+                    "path": rel(path),
+                    "status": "missing",
+                    "reason": "cocotb JUnit XML artifact is missing",
+                }
+            )
+            continue
+        declared_sha = artifact.get("sha256")
+        if not isinstance(declared_sha, str) or re.fullmatch(r"[0-9a-f]{64}", declared_sha) is None:
+            findings.append(
+                {
+                    "name": f"{scope}.sha256",
+                    "path": rel(path),
+                    "status": "invalid",
+                    "reason": "sha256 must be lowercase SHA-256 hex",
+                }
+            )
+        elif sha256_file(path) != declared_sha:
+            findings.append(
+                {
+                    "name": f"{scope}.sha256",
+                    "path": rel(path),
+                    "status": "invalid",
+                    "reason": "sha256 does not match cocotb JUnit XML artifact",
+                }
+            )
+        try:
+            root = ET.parse(path).getroot()
+        except ET.ParseError as exc:
+            findings.append(
+                {
+                    "name": f"{scope}.xml",
+                    "path": rel(path),
+                    "status": "invalid",
+                    "reason": f"JUnit XML is not parseable: {exc}",
+                }
+            )
+            continue
+        bad_nodes = []
+        for testcase in root.iter("testcase"):
+            name = testcase.attrib.get("name", "<unnamed>")
+            for tag in ("failure", "error", "skipped"):
+                if testcase.find(tag) is not None:
+                    bad_nodes.append(f"{name}:{tag}")
+        if bad_nodes:
+            findings.append(
+                {
+                    "name": f"{scope}.xml",
+                    "path": rel(path),
+                    "status": "invalid",
+                    "reason": "JUnit XML contains non-passing testcase nodes: " + ", ".join(bad_nodes),
+                }
+            )
+        active = None
+        for testcase in root.iter("testcase"):
+            if testcase.attrib.get("name") == active_testcase:
+                active = testcase
+                break
+        if active is None:
+            findings.append(
+                {
+                    "name": f"{scope}.active_testcase",
+                    "path": rel(path),
+                    "status": "missing",
+                    "reason": f"JUnit XML missing expected active testcase {active_testcase}",
+                }
+            )
+        else:
+            sim_time = active.attrib.get("sim_time_ns")
+            try:
+                sim_time_value = float(sim_time) if sim_time is not None else 0.0
+            except ValueError:
+                sim_time_value = 0.0
+            if sim_time_value <= 0.001:
+                findings.append(
+                    {
+                        "name": f"{scope}.active_testcase",
+                        "path": rel(path),
+                        "status": "invalid",
+                        "reason": f"active testcase {active_testcase} has no measured simulation time",
+                    }
+                )
+    return findings
 
 
 def rtl_structural_findings() -> list[dict[str, Any]]:
@@ -205,6 +434,9 @@ def missing_report(report_path: Path) -> dict[str, Any]:
         "schema": SCHEMA,
         "status": "blocked",
         "claim_allowed": False,
+        "rtl_pressure_claim_allowed": False,
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
         "evidence_class": "missing_cocotb_cache_pressure_harness",
         "claim_boundary": (
             "Cache throughput/QoS claims require a measured pressure report from "
@@ -223,7 +455,7 @@ def missing_report(report_path: Path) -> dict[str, Any]:
         },
         "findings": findings,
         "blockers": [
-            "L1D/L2/L3/SLC pressure cocotb harness is not present.",
+            "L1D/L2/L3/SLC pressure cocotb harness has not produced a measured report for this gate invocation.",
             "No measured max in-flight miss depth or blocked-cycle count.",
             "No display/QoS service-window measurement under CPU miss pressure.",
             "No p95 miss latency measurement through the hierarchy.",
@@ -253,6 +485,61 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "source must be cocotb-cache-pressure",
             }
         )
+    if data.get("status") != "pass":
+        findings.append(
+            {
+                "name": "status",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "measured cache-pressure reports must be producer-status pass; stale blocked reports stay blocked",
+                "record_status": data.get("status"),
+            }
+        )
+    captured = parse_utc_timestamp(data.get("captured_utc"))
+    if captured is None:
+        findings.append(
+            {
+                "name": "captured_utc",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "captured_utc must be an ISO-8601 timestamp with timezone",
+            }
+        )
+    else:
+        now = datetime.now(timezone.utc)
+        if captured > now + timedelta(minutes=5):
+            findings.append(
+                {
+                    "name": "captured_utc",
+                    "path": rel(report_path),
+                    "status": "invalid",
+                    "reason": "captured_utc must not be in the future",
+                }
+            )
+        elif now - captured > CACHE_PRESSURE_MAX_AGE:
+            findings.append(
+                {
+                    "name": "captured_utc",
+                    "path": rel(report_path),
+                    "status": "invalid",
+                    "reason": f"captured_utc is older than {CACHE_PRESSURE_MAX_AGE.days} days; refresh pressure evidence",
+                }
+            )
+    claim_boundary = data.get("claim_boundary")
+    if not (
+        isinstance(claim_boundary, str)
+        and "not" in claim_boundary.lower()
+        and "phone" in claim_boundary.lower()
+        and "release" in claim_boundary.lower()
+    ):
+        findings.append(
+            {
+                "name": "claim_boundary",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "claim_boundary must explicitly block phone/release promotion",
+            }
+        )
     if data.get("claim_level") in PHONE_CLAIM_LEVELS:
         findings.append(
             {
@@ -266,18 +553,57 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "claim_level": data.get("claim_level"),
             }
         )
-    if data.get("evidence_class") == "real_target_measurement":
+    for claim_field in ("claim_allowed", "phone_claim_allowed", "release_claim_allowed"):
+        if data.get(claim_field) is not False:
+            findings.append(
+                {
+                    "name": claim_field,
+                    "path": rel(report_path),
+                    "status": "invalid",
+                    "reason": (
+                        "cache-pressure cocotb evidence must explicitly set generic, "
+                        "phone, and release claim flags to false; only "
+                        "rtl_pressure_claim_allowed may be true after validation"
+                    ),
+                }
+            )
+    if data.get("evidence_class") != MEASURED_EVIDENCE_CLASS:
         findings.append(
             {
                 "name": "evidence_class",
                 "path": rel(report_path),
                 "status": "invalid",
                 "reason": (
-                    "cache-pressure cocotb reports are RTL/testbench evidence; "
-                    "real-target memory evidence belongs under docs/evidence/memory"
+                    "measured cache-pressure reports must use "
+                    f"{MEASURED_EVIDENCE_CLASS}"
                 ),
             }
         )
+    findings.extend(generated_by_findings(data, report_path))
+    findings.extend(junit_result_artifact_findings(data, report_path))
+    top_levels = data.get("cocotb_top_levels")
+    if not isinstance(top_levels, list) or not all(isinstance(item, str) for item in top_levels):
+        findings.append(
+            {
+                "name": "cocotb_top_levels",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "cocotb_top_levels must list the top modules used to generate the report",
+            }
+        )
+    else:
+        required_tops = {"e1_l1d_cache", "e1_l2_tb", "e1_l3_tb", "e1_slc_tb"}
+        missing_tops = sorted(required_tops - set(top_levels))
+        if missing_tops:
+            findings.append(
+                {
+                    "name": "cocotb_top_levels",
+                    "path": rel(report_path),
+                    "status": "missing",
+                    "reason": "measured report does not record every required cocotb top level",
+                    "missing": missing_tops,
+                }
+            )
     coverage = data.get("coverage")
     if not isinstance(coverage, list) or not all(isinstance(item, str) for item in coverage):
         findings.append(
@@ -346,6 +672,12 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                     "reason": "metric must be numeric",
                 }
             )
+    attempted_misses = metrics.get("attempted_misses")
+    completed_misses = metrics.get("completed_misses")
+    blocked_cycles = metrics.get("blocked_cycles")
+    p95_miss_latency_cycles = metrics.get("p95_miss_latency_cycles")
+    display_violations = metrics.get("display_service_window_violations")
+    if isinstance(attempted_misses, int | float) and attempted_misses <= 0:
     if (
         isinstance(metrics.get("attempted_misses"), int | float)
         and metrics["attempted_misses"] <= 0
@@ -358,6 +690,49 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "pressure harness must attempt at least one miss",
             }
         )
+    if isinstance(completed_misses, int | float) and completed_misses <= 0:
+        findings.append(
+            {
+                "name": "completed_misses",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "pressure harness must complete at least one miss",
+            }
+        )
+    if (
+        isinstance(attempted_misses, int | float)
+        and isinstance(completed_misses, int | float)
+        and completed_misses > attempted_misses
+    ):
+        findings.append(
+            {
+                "name": "completed_misses",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "completed misses cannot exceed attempted misses",
+            }
+        )
+    if isinstance(blocked_cycles, int | float) and blocked_cycles < 0:
+        findings.append(
+            {
+                "name": "blocked_cycles",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "blocked cycle count cannot be negative",
+            }
+        )
+    if isinstance(p95_miss_latency_cycles, int | float) and p95_miss_latency_cycles <= 0:
+        findings.append(
+            {
+                "name": "p95_miss_latency_cycles",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "p95 miss latency must be positive",
+            }
+        )
+    if isinstance(metrics.get("max_in_flight_misses"), int | float) and metrics[
+        "max_in_flight_misses"
+    ] < 2:
     if (
         isinstance(metrics.get("max_in_flight_misses"), int | float)
         and metrics["max_in_flight_misses"] < 2
@@ -370,6 +745,16 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
                 "reason": "current hierarchy did not sustain multiple in-flight misses",
             }
         )
+    if isinstance(display_violations, int | float) and display_violations < 0:
+        findings.append(
+            {
+                "name": "display_service_window_violations",
+                "path": rel(report_path),
+                "status": "invalid",
+                "reason": "display/QoS service window violations cannot be negative",
+            }
+        )
+    if isinstance(display_violations, int | float) and display_violations > 0:
     if (
         isinstance(metrics.get("display_service_window_violations"), int | float)
         and metrics["display_service_window_violations"] > 0
@@ -386,16 +771,30 @@ def validate_measured_report(data: dict[str, Any], report_path: Path) -> list[di
 
 
 def measured_report(report_path: Path, data: dict[str, Any]) -> dict[str, Any]:
-    findings = validate_measured_report(data, report_path)
-    blocking = [item for item in findings if item["status"] in {"invalid", "missing"}]
-    gaps = [item for item in findings if item["status"] == "gap_observed"]
+    pressure_findings = validate_measured_report(data, report_path)
+    memory_findings = memory_evidence_findings()
+    findings = pressure_findings + memory_findings
+    blocking = [
+        item for item in pressure_findings if item["status"] in {"invalid", "missing"}
+    ]
+    gaps = [item for item in pressure_findings if item["status"] == "gap_observed"]
     status = "pass" if not blocking and not gaps else "blocked"
     return {
         **data,
         "status": status,
-        "claim_allowed": status == "pass",
+        "rtl_pressure_claim_allowed": status == "pass",
+        "phone_claim_allowed": False,
+        "release_claim_allowed": False,
+        "claim_allowed": False,
         "findings": findings,
         "blocked_count": len(blocking) + len(gaps),
+        "memory_blocked_count": len(
+            [
+                item
+                for item in memory_findings
+                if item["status"] in {"invalid", "missing", "gap_observed"}
+            ]
+        ),
     }
 
 
@@ -408,6 +807,9 @@ def build_report(report_path: Path) -> dict[str, Any]:
             "schema": SCHEMA,
             "status": "blocked",
             "claim_allowed": False,
+            "rtl_pressure_claim_allowed": False,
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
             "evidence_class": "invalid_cache_pressure_report",
             "findings": [
                 {

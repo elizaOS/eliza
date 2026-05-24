@@ -75,6 +75,8 @@ module ftq_tb (
     ftq_entry_t push_w;
     ftq_entry_t pop_w;
     ftq_entry_t replay_w;
+    logic [FTQ_IDX_W:0] push_ptr_unused;
+    logic patch_applied_unused;
 
     always_comb begin
         push_w               = '0;
@@ -105,6 +107,12 @@ module ftq_tb (
         .push_valid (push_valid),
         .push_entry (push_w),
         .push_ready (push_ready),
+        .push_ptr   (push_ptr_unused),
+        .patch_valid(1'b0),
+        .patch_ptr  ('0),
+        .patch_entry('0),
+        .patch_flush_younger(1'b0),
+        .patch_applied(patch_applied_unused),
         .pop_ready  (pop_ready),
         .pop_valid  (pop_valid),
         .pop_entry  (pop_w),
@@ -112,6 +120,7 @@ module ftq_tb (
         .replay_entry(replay_w),
         .flush_valid(flush_valid),
         .flush_idx  (flush_idx),
+        .global_flush(1'b0),
         .pmu_full   (pmu_full),
         .pmu_empty  (pmu_empty),
         .occupancy  (occupancy)

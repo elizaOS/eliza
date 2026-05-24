@@ -55,6 +55,9 @@ from eliza_robot.rl.text_conditioned.inference_loop import (
 )
 from eliza_robot.sim.mujoco.demo_env import DemoEnv
 
+PKG_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ALBERTA_CHECKPOINT = PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
+SUPPORTED_PROFILE_ID = "hiwonder-ainex"
 
 PROMPTS = [
     "stand still",
@@ -63,6 +66,26 @@ PROMPTS = [
     "turn right",
     "wave hello",
 ]
+
+
+def _load_checkpoint_manifest(checkpoint: Path) -> dict:
+    manifest = checkpoint / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def _validate_checkpoint_profile(checkpoint: Path) -> dict:
+    manifest = _load_checkpoint_manifest(checkpoint)
+    profile_id = manifest.get("profile_id")
+    if not profile_id:
+        raise ValueError(f"checkpoint manifest has no profile_id: {checkpoint}")
+    if profile_id != SUPPORTED_PROFILE_ID:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"checkpoint={profile_id!r} script_profile={SUPPORTED_PROFILE_ID!r}"
+        )
+    return manifest
 
 
 def _slug(text: str) -> str:
@@ -150,18 +173,20 @@ def _label_strip(
 async def _run(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    manifest = _validate_checkpoint_profile(Path(args.checkpoint))
 
     sim_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-    sim = MuJocoBackend(sim_env, profile_id="hiwonder-ainex")
+    sim = MuJocoBackend(sim_env, profile_id=SUPPORTED_PROFILE_ID)
     if args.sim_only:
         # Sim-only mode: use a NoiseInjector-wrapped second MuJoCo as the
         # stand-in for the real robot. Deterministic, reproducible, and
         # crucially does NOT command the physical AiNex.
         from eliza_robot.bridge.backends.noise_injector import (
-            NoiseInjectorBackend, NoiseProfile,
+            NoiseInjectorBackend,
+            NoiseProfile,
         )
         twin_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-        twin_inner = MuJocoBackend(twin_env, profile_id="hiwonder-ainex")
+        twin_inner = MuJocoBackend(twin_env, profile_id=SUPPORTED_PROFILE_ID)
         real = NoiseInjectorBackend(
             twin_inner,
             profile=NoiseProfile(deterministic_only=True, rng_seed=42),
@@ -304,6 +329,8 @@ async def _run(args) -> int:
 
     summary = {
         "checkpoint": str(args.checkpoint),
+        "checkpoint_regime": manifest.get("regime"),
+        "profile_id": SUPPORTED_PROFILE_ID,
         "host": f"{args.host}:{args.port}",
         "policy_hz": args.policy_hz,
         "episode_s": args.episode_s,
@@ -337,7 +364,7 @@ def main() -> int:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "checkpoints" / "text_conditioned_v2",
+        default=DEFAULT_ALBERTA_CHECKPOINT,
     )
     parser.add_argument("--host", default="192.168.1.218")
     parser.add_argument("--port", type=int, default=9090)

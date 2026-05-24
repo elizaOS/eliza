@@ -13,7 +13,10 @@ export default defineConfig({
     toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
   },
   outputDir: recording
-    ? path.resolve(import.meta.dirname, "../../e2e-recordings/homepage/test-results")
+    ? path.resolve(
+        import.meta.dirname,
+        "../../e2e-recordings/homepage/test-results",
+      )
     : "./test-results",
   use: {
     baseURL: "http://127.0.0.1:4444",

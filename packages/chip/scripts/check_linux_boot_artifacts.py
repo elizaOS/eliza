@@ -177,6 +177,24 @@ def artifact_status(spec: dict[str, Any], forbidden: list[str]) -> dict[str, Any
     return status
 
 
+def artifact_specs_with_located_payload(
+    artifact_specs: list[dict[str, Any]], payload_locator: dict[str, Any]
+) -> list[dict[str, Any]]:
+    selected_payload = str(payload_locator.get("selected_payload") or "").strip()
+    if not selected_payload:
+        return artifact_specs
+    exact_command = (
+        "python3 scripts/locate_chipyard_linux_payload.py --require-preferred && "
+        f"CHIPYARD_LINUX_BINARY={selected_payload} scripts/run_chipyard_eliza_linux_smoke.sh"
+    )
+    updated: list[dict[str, Any]] = []
+    for spec in artifact_specs:
+        if spec.get("id") == SERIAL_ARTIFACT_ID:
+            spec = {**spec, "producer": exact_command, "unblock_command": exact_command}
+        updated.append(spec)
+    return updated
+
+
 def local_serial_candidate_transcripts() -> list[dict[str, Any]]:
     """Report nearby real boot transcripts without letting them substitute evidence.
 
@@ -241,6 +259,15 @@ def code_from_text(text: str, fallback: str) -> str:
     return "_".join(parts[:10]) or fallback
 
 
+def preflight_next_command(ident: str) -> str:
+    commands = {
+        "external_linux_tree": "export ELIZA_LINUX_TREE=/path/to/linux",
+        "external_buildroot_tree": "export ELIZA_BUILDROOT_TREE=/path/to/buildroot",
+        "external_opensbi_tree": "export ELIZA_OPENSBI_TREE=/path/to/opensbi",
+    }
+    return commands.get(ident, "make linux-boot-artifacts-check")
+
+
 def structured_findings(
     preflight: list[dict[str, Any]],
     payload_locator: dict[str, Any],
@@ -248,6 +275,13 @@ def structured_findings(
     local_serial_candidates: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, str]]:
     findings: list[dict[str, str]] = []
+    selected_payload = str(payload_locator.get("selected_payload") or "").strip()
+    serial_unblock_command = (
+        "python3 scripts/locate_chipyard_linux_payload.py --require-preferred && "
+        f"CHIPYARD_LINUX_BINARY={selected_payload} scripts/run_chipyard_eliza_linux_smoke.sh"
+        if selected_payload
+        else ""
+    )
     for item in preflight:
         if item.get("state") == "pass":
             continue
@@ -261,6 +295,7 @@ def structured_findings(
                     "message": text,
                     "evidence": ident,
                     "next_step": "Install the required tool or set the required external checkout path before collecting Linux boot artifacts.",
+                    "next_command": preflight_next_command(ident),
                 }
             )
     if payload_locator.get("state") != "pass":
@@ -273,6 +308,7 @@ def structured_findings(
                     "message": text,
                     "evidence": str(payload_locator.get("report", "")),
                     "next_step": "Run python3 scripts/locate_chipyard_linux_payload.py --require-preferred and use the selected payload for the generated-AP Linux smoke.",
+                    "next_command": "python3 scripts/locate_chipyard_linux_payload.py --require-preferred",
                 }
             )
     for item in artifacts:
@@ -289,13 +325,17 @@ def structured_findings(
                 candidate_note = (
                     f"; local non-substitutable boot transcript candidates: {candidate_paths}"
                 )
+            unblock_command = str(item.get("unblock_command") or item.get("producer") or "")
+            if ident == SERIAL_ARTIFACT_ID and serial_unblock_command:
+                unblock_command = serial_unblock_command
             findings.append(
                 {
                     "code": f"linux_boot_artifact_missing_{code_from_text(ident, 'artifact')}",
                     "severity": "blocker",
                     "message": f"required Linux boot artifact {ident} is missing{candidate_note}",
                     "evidence": str(item.get("path", "")),
-                    "next_step": str(item.get("unblock_command") or item.get("producer") or ""),
+                    "next_step": unblock_command,
+                    "next_command": unblock_command,
                 }
             )
         for problem in item.get("problems", []):
@@ -307,6 +347,7 @@ def structured_findings(
                     "message": text,
                     "evidence": str(item.get("path", "")),
                     "next_step": str(item.get("unblock_command") or item.get("producer") or ""),
+                    "next_command": str(item.get("unblock_command") or item.get("producer") or ""),
                 }
             )
     return findings
@@ -320,10 +361,14 @@ def build_report() -> dict[str, Any]:
     ]
     payload_locator = payload_locator_status()
     local_serial_candidates = local_serial_candidate_transcripts()
-    artifacts = [
-        artifact_status(spec, forbidden)
+    artifact_specs = [
+        spec
         for spec in manifest.get("artifacts", [])
         if isinstance(spec, dict) and "id" in spec and "path" in spec
+    ]
+    artifacts = [
+        artifact_status(spec, forbidden)
+        for spec in artifact_specs_with_located_payload(artifact_specs, payload_locator)
     ]
     if any(item["state"] == "invalid" for item in artifacts):
         state = "FAIL"

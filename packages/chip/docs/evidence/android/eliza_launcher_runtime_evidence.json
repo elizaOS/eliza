@@ -1,0 +1,334 @@
+{
+  "adb_serial": "default",
+  "agent": {
+    "health_http": 0,
+    "health_ready": false,
+    "health_url": "http://127.0.0.1:31337/api/health"
+  },
+  "app": {
+    "foreground_activity": "",
+    "home_resolve_activity": "adb: no devices/emulators found",
+    "package_name": "ai.milady.milady",
+    "permission_file_probes": {
+      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": "adb: no devices/emulators found",
+      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": "adb: no devices/emulators found"
+    },
+    "permission_file_symlink_targets": {
+      "/system/etc/default-permissions/default-permissions-ai.milady.milady.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      },
+      "/system/etc/permissions/privapp-permissions-ai.elizaos.system.bridge.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      },
+      "/system/etc/permissions/privapp-permissions-ai.milady.milady.xml": {
+        "readlink": "",
+        "readlink_f": "",
+        "readlink_f_ok": "false",
+        "readlink_ok": "false"
+      }
+    },
+    "pm_list_eliza": "adb: no devices/emulators found",
+    "pm_path": "adb: no devices/emulators found",
+    "role_holders": {
+      "android.app.role.ASSISTANT": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.BROWSER": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.DIALER": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.HOME": [
+        "adb: no devices/emulators found"
+      ],
+      "android.app.role.SMS": [
+        "adb: no devices/emulators found"
+      ]
+    },
+    "service_component": "ai.milady.milady/.ElizaAgentService",
+    "service_pid": 0,
+    "system_apk_path": "/system/priv-app/Milady/Milady.apk",
+    "system_apk_present": "missing",
+    "system_apk_probe": "adb: no devices/emulators found"
+  },
+  "artifacts": {
+    "transcript_path": "docs/evidence/android/eliza_launcher_runtime_transcript.log"
+  },
+  "claim_boundary": "booted_android_launcher_agent_runtime_evidence_only",
+  "device": {
+    "build_id": "adb: no devices/emulators found",
+    "cpu_abi": "adb: no devices/emulators found",
+    "cpu_abilist": "adb: no devices/emulators found",
+    "sdk": "adb: no devices/emulators found",
+    "sys_boot_completed": "adb: no devices/emulators found",
+    "uname_m": "adb: no devices/emulators found"
+  },
+  "ended_utc": "2026-05-23T06:05:52Z",
+  "logs": {
+    "avc_denial_count": 0,
+    "fatal_crash_count": 0,
+    "logcat_path": "docs/evidence/android/eliza_launcher_runtime_logcat.txt",
+    "package_scan_excerpt": []
+  },
+  "observations": {
+    "adb_devices": "List of devices attached",
+    "adb_get_state": "error: no devices/emulators found",
+    "adb_get_state_available": false,
+    "host_runtime": {
+      "adb_blocker": "no_ready_adb_device",
+      "adb_ready_target_count": 0,
+      "adb_targets": [],
+      "aosp_build_only": {
+        "active_processes": "1741737 1364407       08:46 Ss   python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 600 --label aosp-sepolicy-evidence-refresh -- packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1741743 1741737       08:45 Ss   sh packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1741754 1741743       08:45 S    sh packages/chip/sw/aosp-device/capture-aosp-evidence.sh /home/shaw/aosp sepolicy-build\n1742602 1742595       08:43 Sl   /home/shaw/aosp/out/soong_ui --build-mode --all-modules --dir=/home/shaw/aosp vendor_sepolicy.cil selinux_policy sepolicy_neverallows\n1743756 1742602       08:40 S    -x prebuilts/build-tools/linux-x86/bin/ninja -H android-build --cwd /home/shaw/aosp -t 0 -e --proc_rw -u nobody -g nogroup --rlimit_as soft --rlimit_core soft --rlimit_cpu soft --rlimit_fsize soft --rlimit_nofile soft -R / -B /tmp -B /home/shaw/aosp -B /home/shaw/aosp/out --disable_clone_newcgroup -q -- -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743757 1743756       08:40 SNs  prebuilts/build-tools/linux-x86/bin/ninja -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja",
+        "artifact_inventory": {
+          "blocker_dependency": "repo_artifact_generation",
+          "missing": [
+            "system.img",
+            "product.img",
+            "system_ext.img"
+          ],
+          "next_step": "Finish the eliza_ai_soc AOSP build and produce every required image before staging a release archive.",
+          "present": [
+            "vendor.img"
+          ],
+          "product_out": "/home/shaw/aosp/out/target/product/eliza_ai_soc",
+          "records": [
+            {
+              "exists": true,
+              "mtime_utc": "2026-05-21T13:17:07Z",
+              "name": "vendor.img",
+              "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/vendor.img",
+              "required_for_bootable_chip_archive": true,
+              "size_bytes": 138154156
+            },
+            {
+              "exists": false,
+              "name": "system.img",
+              "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/system.img",
+              "required_for_bootable_chip_archive": true
+            },
+            {
+              "exists": false,
+              "name": "product.img",
+              "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/product.img",
+              "required_for_bootable_chip_archive": true
+            },
+            {
+              "exists": false,
+              "name": "system_ext.img",
+              "path": "/home/shaw/aosp/out/target/product/eliza_ai_soc/system_ext.img",
+              "required_for_bootable_chip_archive": true
+            }
+          ],
+          "status": "partial"
+        },
+        "expected_command": "AOSP_DIR=/home/shaw/aosp python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+        "expected_evidence_logs": [
+          {
+            "exists": true,
+            "mtime_utc": "2026-05-23T05:26:02Z",
+            "path": "docs/evidence/android/eliza_ai_soc_lunch.log",
+            "size_bytes": 946,
+            "tail": [
+              "",
+              "============================================",
+              "PLATFORM_VERSION_CODENAME=Baklava",
+              "PLATFORM_VERSION=Baklava",
+              "TARGET_PRODUCT=eliza_openagent_ai_soc_phone",
+              "TARGET_BUILD_VARIANT=userdebug",
+              "TARGET_ARCH=riscv64",
+              "TARGET_ARCH_VARIANT=riscv64",
+              "TARGET_CPU_VARIANT=generic",
+              "HOST_OS=linux",
+              "HOST_OS_EXTRA=Linux-6.17.0-29-generic-x86_64-Ubuntu-24.04.4-LTS",
+              "HOST_CROSS_OS=linux_musl",
+              "BUILD_ID=MAIN",
+              "OUT_DIR=out",
+              "SOONG_ONLY=false",
+              "============================================",
+              "eliza-evidence: ended_utc=2026-05-23T05:26:02Z",
+              "eliza-evidence: status=PASS",
+              "END_UTC=2026-05-23T05:26:02Z",
+              "RESULT=0"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-05-23T05:52:59Z",
+            "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
+            "size_bytes": 117186,
+            "tail": [
+              "[ 25% 893/3541 16m10s remaining] //external/apache-http:org.apache.http.legacy.impl raw repackaging.txt",
+              "[ 25% 894/3538 16m10s remaining] //external/mesa3d/src/vulkan/wsi:wsi_common_entrypoints_header raw genrule.sbox.textproto",
+              "[ 25% 895/3535 16m10s remaining] //external/mesa3d/src/util:driconf_static_header raw genrule.sbox.textproto",
+              "[ 25% 896/3498 16m10s remaining] //external/mesa3d/src/vulkan/wsi:wsi_common_entrypoints_impl raw genrule.sbox.textproto",
+              "[ 25% 897/3495 16m10s remaining] //external/mesa3d/src/vulkan/util:vk_extensions_impl raw genrule.sbox.textproto",
+              "[ 25% 898/3492 16m10s remaining] //external/mesa3d/src/compiler:builtin_types_impl raw genrule.sbox.textproto",
+              "[ 25% 899/3489 16m10s remaining] //external/mesa3d/src/compiler:ir_expression_operation_header raw genrule.sbox.textproto",
+              "[ 25% 900/3488 16m10s remaining] //hardware/interfaces/audio/aidl/default/config/audioPolicy:audio_policy_configuration_aidl_default raw cpp.sbox.textproto",
+              "[ 25% 901/3484 16m10s remaining] //system/sepolicy:plat_mapping_file Versioning mapping file plat_mapping_file",
+              "[ 25% 902/3484 16m10s remaining] //system/sepolicy:plat_pub_versioned.cil Versioning mapping file plat_pub_versioned.cil",
+              "[ 25% 903/3484 15m44s remaining] //system/sepolicy:plat_sepolicy.cil Building cil for plat_sepolicy.cil",
+              "ninja: build stopped: subcommand failed.",
+              "22:52:59 ninja failed with: exit status 1",
+              "",
+              "\u001b[0;31m#### failed to build some targets (26:50 (mm:ss)) ####\u001b[00m",
+              "",
+              "eliza-evidence: ended_utc=2026-05-23T05:52:59Z",
+              "eliza-evidence: status=FAIL",
+              "END_UTC=2026-05-23T05:52:59Z",
+              "RESULT=1"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-05-23T05:53:24Z",
+            "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
+            "size_bytes": 1365,
+            "tail": [
+              "EXTERNAL_TREE=/home/shaw/aosp",
+              "COMMAND=checkvintf --check-compat",
+              "START_UTC=2026-05-23T05:53:00Z",
+              "COMPATIBILITY_CLAIM=none",
+              "eliza-evidence: started_utc=2026-05-23T05:53:00Z",
+              "TARGET_PRODUCT=eliza_ai_soc",
+              "eliza_e1.xml=out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest.xml",
+              "--- checkvintf --check-one ---",
+              "[INFO] Checking vendor manifest.",
+              "[INFO] Sysprop apex.all.ready is missing, default to ''",
+              "[INFO] getDeviceHalManifest: Reading VINTF information.",
+              "[INFO] Sysprop ro.boot.product.vendor.sku is missing, default to ''",
+              "[INFO] Fetch 'out/target/product/eliza_ai_soc/vendor/etc/vintf/manifest.xml': OK",
+              "\u001b[31mgetDeviceHalManifest: status from fetching VINTF information: -22\u001b[0m",
+              "\u001b[31mgetDeviceHalManifest: -22 VINTF parse error: Illformed file: /vendor/etc/vintf/manifest.xml: Duplicated manifest.hal entry vendor.eliza.e1_npu: Conflicting FqInstance: @1.0::IE1Npu/default (from /vendor/etc/vintf/manifest.xml) vs. @1.0::IE1Npu/default (from /vendor/etc/vintf/manifest.xml). Check whether or not multiple modules providing the same HAL are installed.\u001b[0m",
+              "\u001b[31mERROR: Cannot fetch vendor manifest.\u001b[0m",
+              "eliza-evidence: ended_utc=2026-05-23T05:53:24Z",
+              "eliza-evidence: status=FAIL",
+              "END_UTC=2026-05-23T05:53:24Z",
+              "RESULT=70"
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-05-23T05:57:10Z",
+            "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
+            "size_bytes": 920,
+            "tail": [
+              "COMPATIBILITY_CLAIM=none",
+              "eliza-evidence: started_utc=2026-05-23T05:57:05Z",
+              "Running product configuration...",
+              "============================================",
+              "PLATFORM_VERSION_CODENAME=Baklava",
+              "PLATFORM_VERSION=Baklava",
+              "TARGET_PRODUCT=eliza_openagent_ai_soc_phone",
+              "TARGET_BUILD_VARIANT=userdebug",
+              "TARGET_ARCH=riscv64",
+              "TARGET_ARCH_VARIANT=riscv64",
+              "TARGET_CPU_VARIANT=generic",
+              "HOST_OS=linux",
+              "HOST_OS_EXTRA=Linux-6.17.0-29-generic-x86_64-Ubuntu-24.04.4-LTS",
+              "HOST_CROSS_OS=linux_musl",
+              "BUILD_ID=MAIN",
+              "OUT_DIR=out",
+              "SOONG_ONLY=false",
+              "============================================",
+              "[100% 1/1] bootstrap blueprint",
+              "Running globs..."
+            ]
+          },
+          {
+            "exists": true,
+            "mtime_utc": "2026-05-23T05:57:19Z",
+            "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
+            "size_bytes": 747,
+            "tail": [
+              "eliza-evidence: target=aosp artifact=eliza_ai_soc_selinux_neverallow",
+              "eliza-evidence: external_tree=/home/shaw/aosp",
+              "eliza-evidence: command=m sepolicy_neverallows",
+              "EXTERNAL_TREE=/home/shaw/aosp",
+              "COMMAND=m sepolicy_neverallows",
+              "START_UTC=2026-05-23T05:57:05Z",
+              "COMPATIBILITY_CLAIM=none",
+              "eliza-evidence: started_utc=2026-05-23T05:57:05Z",
+              "22:57:09 Waiting up to 10s to lock out/.lock to ensure no other Soong process is running in the same output directory",
+              "22:57:19 Tried to lock out/.lock, but timed out polling every 1s until 10s . Make sure no other Soong process is using it",
+              "",
+              "\u001b[0;31m#### failed to build some targets (11 seconds) ####\u001b[00m",
+              "",
+              "eliza-evidence: ended_utc=2026-05-23T05:57:19Z",
+              "eliza-evidence: status=FAIL",
+              "END_UTC=2026-05-23T05:57:19Z",
+              "RESULT=1"
+            ]
+          }
+        ],
+        "expected_report": {
+          "exists": true,
+          "mtime_utc": "2026-05-21T23:13:04Z",
+          "path": "build/reports/android_sim_boot.json",
+          "size_bytes": 4277
+        },
+        "full_runtime_command_after_build_only": "AOSP_DIR=/home/shaw/aosp packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+        "purpose": "fail_closed_context_for_concurrent_android_build_only_attempt",
+        "stdout_stderr_access": "run_with_timeout stdout/stderr are inherited pipes; use the evidence logs and android_sim_boot report below as durable artifacts",
+        "validation_commands": [
+          "python3 packages/chip/scripts/check_android_sim_boot.py",
+          "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
+          "python3 packages/chip/scripts/android/capture_system_bridge_runtime_evidence.py",
+          "python3 packages/chip/scripts/check_android_system_bridge_contract.py",
+          "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+        ]
+      },
+      "cuttlefish_runtime": "latest_instance=",
+      "runtime_processes": "1680       1    04:32:17 /usr/lib/cuttlefish-common/bin/operator --log_file=/run/cuttlefish/operator.log --https_port=1443 --tls_cert_dir=/etc/cuttlefish-common/operator/cert --socket_path=/run/cuttlefish/operator --listen_addr=0.0.0.0\n   1772       1    04:32:17 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-ebr --listen-address=192.168.98.1 --bind-interfaces --dhcp-range=192.168.98.2,192.168.98.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-ebr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-ebr.leases --dhcp-no-override\n   1935       1    04:32:16 dnsmasq --port=0 --strict-order --except-interface=lo --interface=cvd-wbr --listen-address=192.168.96.1 --bind-interfaces --dhcp-range=192.168.96.2,192.168.96.255 --dhcp-option=option:dns-server,8.8.8.8,8.8.4.4 --dhcp-option=option6:dns-server,2001:4860:4860::8888,2001:4860:4860::8844 --conf-file= --pid-file=/var/run/cuttlefish-dnsmasq-cvd-wbr.pid --dhcp-leasefile=/var/run/cuttlefish-dnsmasq-cvd-wbr.leases --dhcp-no-override\n1381255    3399       59:12 adb -L tcp:5037 fork-server server --reply-fd 4\n1650304 1588468       37:09 ninja -C /work/src/bun/build/release -j24\n1720724 1720653       15:02 qemu-system-riscv64 -machine virt -nographic -m 4096 -smp 4 -drive if=pflash,format=raw,unit=0,readonly=on,file=/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd -drive if=pflash,format=raw,unit=1,file=/tmp/tmp.vUYnLbhAp5 -drive file=out/elizaos-linux-riscv64-default-20260523T045958Z.iso,if=virtio,format=raw,media=cdrom,readonly=on -monitor none -serial mon:stdio -no-reboot -netdev user,id=net0 -device virtio-net-device,netdev=net0\n1742602 1742595       08:43 /home/shaw/aosp/out/soong_ui --build-mode --all-modules --dir=/home/shaw/aosp vendor_sepolicy.cil selinux_policy sepolicy_neverallows\n1743756 1742602       08:40 -x prebuilts/build-tools/linux-x86/bin/ninja -H android-build --cwd /home/shaw/aosp -t 0 -e --proc_rw -u nobody -g nogroup --rlimit_as soft --rlimit_core soft --rlimit_cpu soft --rlimit_fsize soft --rlimit_nofile soft -R / -B /tmp -B /home/shaw/aosp -B /home/shaw/aosp/out --disable_clone_newcgroup -q -- -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743757 1743756       08:40 prebuilts/build-tools/linux-x86/bin/ninja -d keepdepfile -d stats -o usesphonyoutputs=yes -o preremoveoutputs=yes -w dupbuild=err -w outputdir=err -w missingoutfile=err -j 26 --frontend_file out/.ninja_fifo -f out/soong/bootstrap.ninja out/soong/build.eliza_openagent_ai_soc_phone.ninja\n1743854 1743757       08:39 /bin/sh -c cd \"$(dirname \"out/host/linux-x86/bin/soong_build\")\" && BUILDER=\"$PWD/$(basename \"out/host/linux-x86/bin/soong_build\")\" && cd / && env -i  \"$BUILDER\"     --top \"$TOP\"     --soong_out \"out/soong\"     --out \"out\"     --soong_variables out/soong/soong.eliza_openagent_ai_soc_phone.variables -o out/soong/build.eliza_openagent_ai_soc_phone.ninja --kati_suffix -eliza_openagent_ai_soc_phone -l out/.module_paths/Android.bp.list --available_env out/soong/soong.environment.available --used_env out/soong/soong.environment.used.eliza_openagent_ai_soc_phone.build Android.bp\n1743857 1743854       08:39 /home/shaw/aosp/out/host/linux-x86/bin/soong_build --top /home/shaw/aosp --soong_out out/soong --out out --soong_variables out/soong/soong.eliza_openagent_ai_soc_phone.variables -o out/soong/build.eliza_openagent_ai_soc_phone.ninja --kati_suffix -eliza_openagent_ai_soc_phone -l out/.module_paths/Android.bp.list --available_env out/soong/soong.environment.available --used_env out/soong/soong.environment.used.eliza_openagent_ai_soc_phone.build Android.bp",
+      "tcp_listeners": "LISTEN 0      128             127.0.0.1:5037       0.0.0.0:*    users:((\"adb\",pid=1381255,fd=12))\nLISTEN 0      4096                    *:1443             *:*"
+    },
+    "missing_or_false": [
+      "adb_forward_ready",
+      "agent_health_http_200",
+      "agent_health_ready",
+      "cpu_abi_riscv64",
+      "foreground_is_package",
+      "home_resolves_to_package",
+      "package_installed",
+      "role_holders_include_package",
+      "service_process_running",
+      "sys_boot_completed",
+      "system_privapp_apk_present"
+    ],
+    "next_operator_commands": [
+      "AOSP_DIR=/home/shaw/aosp python3 packages/chip/scripts/run_with_timeout.py --timeout-seconds 2400 --label aosp-build-only-evidence -- packages/chip/scripts/boot_android_simulator.sh --build-only",
+      "AOSP_DIR=/home/shaw/aosp packages/chip/scripts/boot_android_simulator.sh --run-cuttlefish --run-cts --run-vts --run-qemu --run-renode",
+      "python3 packages/chip/scripts/android/capture_launcher_runtime_evidence.py",
+      "python3 packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+    ],
+    "required": {
+      "adb_forward_ready": false,
+      "agent_health_http_200": false,
+      "agent_health_ready": false,
+      "cpu_abi_riscv64": false,
+      "fatal_crash_count_zero": true,
+      "foreground_is_package": false,
+      "home_resolves_to_package": false,
+      "package_installed": false,
+      "role_holders_include_package": false,
+      "selinux_denial_count_zero": true,
+      "service_component_recorded": true,
+      "service_process_running": false,
+      "sys_boot_completed": false,
+      "system_privapp_apk_present": false
+    }
+  },
+  "result": 2,
+  "schema": "eliza.android_launcher_runtime_evidence.v1",
+  "started_utc": "2026-05-23T06:05:51Z",
+  "status": "BLOCKED"
+}

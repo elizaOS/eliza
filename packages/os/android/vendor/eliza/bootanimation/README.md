@@ -1,4 +1,4 @@
-# ElizaOS Boot Animation
+# elizaOS Boot Animation
 
 `bootanimation.zip` lands at `/product/media/bootanimation.zip`; AOSP's `bootanimation` daemon plays it during the boot sequence (after the kernel logo, before the framework starts the launcher).
 
@@ -17,16 +17,29 @@
 p <count> <pause> <part-name>
 ```
 
-`<count>=0` plays until boot completes; the daemon then finishes the current loop and exits. Two parts let you split a one-shot intro from a looped idle, both required for a clean transition.
+`<count>=0` plays until boot completes; the daemon then finishes the current loop and exits. Two parts split a one-shot intro from a looped idle, both required for a clean transition.
 
 ## Building
 
+The frames are the white elizaOS face mark on the elizaOS blue field
+(`#0B35F1`), rendered from the canonical brand SVG
+(`packages/app/public/brand/logos/logo_white_nobg.svg`) — the same source of
+truth as the Linux Plymouth splash. Render the frames, then pack the zip:
+
 ```bash
-node scripts/elizaos/build-bootanimation.mjs --frames assets/boot --out vendor/eliza/bootanimation/bootanimation.zip
+# Render part0/ (intro fade-in) + part1/ (idle loop) + desc.txt from the SVG:
+node ../../scripts/generate-eliza-bootanimation.mjs
+# Pack desc.txt + parts into bootanimation.zip (store mode, no compression):
+node ../../scripts/build-eliza-bootanimation.mjs
 ```
 
-If `bootanimation.zip` is absent, `eliza_common.mk` skips the copy line, and the build falls through to AOSP's default ANDROID animation.
+From the package root both steps run via `make bootanimation` (which depends
+on `make splash`).
 
-## Brand frames
+If `bootanimation.zip` is absent, `eliza_common.mk` skips the copy line, and the build falls through to AOSP's default boot animation.
 
-The Eliza wordmark frames are intentionally **not** in the repo — they're a brand asset and should be sourced from the design pipeline. Drop the rendered PNG sequence under `vendor/eliza/bootanimation/part0/` (intro) and `vendor/eliza/bootanimation/part1/` (loop), then run the script above.
+## Generated frames
+
+`part0/`, `part1/`, and `bootanimation.zip` are **regenerated from the brand
+SVG** by the scripts above and are `.gitignore`d (the SVG is the source of
+truth, not the rendered PNGs). Run `make bootanimation` to (re)produce them.

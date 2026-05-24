@@ -28,6 +28,9 @@ class AsimovEditWorkspace:
     workspace: str
     source_xml: str
     mesh_dir: str
+    mechanical_root: str
+    main_step: str
+    fabrication_manifest: str
     generated_mjcf: str
     generated_urdf: str
     generated_manifest: str
@@ -64,6 +67,9 @@ def create_asimov1_edit_workspace(workspace: Path, *, force: bool = False) -> di
 
     source_xml = workspace / "sim-model" / "xmls" / "asimov.xml"
     mesh_dir = workspace / "sim-model" / "assets" / "meshes"
+    mechanical_root = workspace / "mechanical" / "ASV1"
+    main_step = mechanical_root / "ASIMOV_V1.STEP"
+    fabrication_manifest = workspace / "mechanical" / "FABRICATION_MANIFEST.json"
     generated_mjcf = workspace / "generated" / "asimov-1" / "mjcf" / "asimov_eliza.xml"
     generated_urdf = workspace / "generated" / "asimov-1" / "asimov.urdf"
     generated_manifest = workspace / "generated" / "asimov-1" / "asimov_asset_manifest.json"
@@ -72,11 +78,20 @@ def create_asimov1_edit_workspace(workspace: Path, *, force: bool = False) -> di
         workspace=str(workspace),
         source_xml=str(source_xml),
         mesh_dir=str(mesh_dir),
+        mechanical_root=str(mechanical_root),
+        main_step=str(main_step),
+        fabrication_manifest=str(fabrication_manifest),
         generated_mjcf=str(generated_mjcf),
         generated_urdf=str(generated_urdf),
         generated_manifest=str(generated_manifest),
         vendor_commit=vendor_commit,
-        cad_inventory=cad_inventory_dict(),
+        cad_inventory=cad_inventory_dict(
+            mechanical_root=mechanical_root,
+            main_step=main_step,
+            source_xml=source_xml,
+            mesh_dir=mesh_dir,
+            fabrication_manifest=fabrication_manifest,
+        ),
     )
     meta_path = workspace / WORKSPACE_META
     meta_path.write_text(json.dumps(asdict(meta), indent=2) + "\n", encoding="utf-8")
@@ -175,6 +190,15 @@ def regenerate_asimov1_workspace(workspace: Path) -> dict[str, Any]:
     )
     report = {
         "workspace": str(Path(meta["workspace"])),
+        "source_xml": meta["source_xml"],
+        "source_xml_sha256": sha256_file(Path(meta["source_xml"])),
+        "cad_inventory": cad_inventory_dict(
+            mechanical_root=Path(meta["mechanical_root"]),
+            main_step=Path(meta["main_step"]),
+            source_xml=Path(meta["source_xml"]),
+            mesh_dir=Path(meta["mesh_dir"]),
+            fabrication_manifest=Path(meta["fabrication_manifest"]),
+        ),
         "generated_mjcf": str(generated),
         "generated_urdf": meta["generated_urdf"],
         "generated_manifest": meta["generated_manifest"],
@@ -218,7 +242,28 @@ def promote_asimov1_workspace(workspace: Path, *, dry_run: bool = True) -> dict[
         item["dest_exists"] = dest.is_file()
         item["dest_sha256"] = sha256_file(dest) if dest.is_file() else None
         item["hash_match"] = item["dest_sha256"] == item["source_sha256"] if dest.is_file() else False
-    report = {"dry_run": dry_run, "workspace": str(Path(meta["workspace"])), "copies": copies}
+    report = {
+        "schema": "asimov-1-workspace-promotion-v1",
+        "dry_run": dry_run,
+        "workspace": str(Path(meta["workspace"])),
+        "vendor_commit": meta.get("vendor_commit"),
+        "cad_inventory": cad_inventory_dict(
+            mechanical_root=Path(meta["mechanical_root"]),
+            main_step=Path(meta["main_step"]),
+            source_xml=Path(meta["source_xml"]),
+            mesh_dir=Path(meta["mesh_dir"]),
+            fabrication_manifest=Path(meta["fabrication_manifest"]),
+        ),
+        "source_xml": meta["source_xml"],
+        "source_xml_sha256": sha256_file(Path(meta["source_xml"])),
+        "generated_mjcf": str(src_mjcf),
+        "generated_urdf": str(src_urdf),
+        "generated_manifest": str(src_manifest),
+        "generated_mjcf_sha256": sha256_file(src_mjcf),
+        "generated_urdf_sha256": sha256_file(src_urdf),
+        "generated_manifest_sha256": sha256_file(src_manifest),
+        "copies": copies,
+    }
     (Path(meta["workspace"]) / "asimov_promotion_plan.json").write_text(
         json.dumps(report, indent=2) + "\n",
         encoding="utf-8",

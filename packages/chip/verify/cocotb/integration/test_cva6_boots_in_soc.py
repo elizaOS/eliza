@@ -122,6 +122,7 @@ async def _reset(dut, cycles: int = 16) -> None:
     dut.lkp_pc_i.value = 0
     dut.resolve_i.value = 0
     dut.fetch_pop_i.value = 0
+    dut.fetch_stream_ready_i.value = 1
     dut.zihpm_csr_we_i.value = 0
     dut.zihpm_csr_addr_i.value = 0
     dut.zihpm_csr_wdata_i.value = 0

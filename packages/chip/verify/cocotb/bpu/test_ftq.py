@@ -227,3 +227,37 @@ async def ftq_flush_truncates_back_to_resolver_index(dut):
     dut.flush_valid.value = 0
     await RisingEdge(dut.clk)
     assert int(dut.occupancy.value) == 4
+
+
+@cocotb.test()
+async def ftq_flush_of_popped_head_leaves_queue_empty(dut):
+    """Resolving the head entry can coincide with fetch popping it.
+
+    The flush is inclusive of the resolved entry. If that entry is also the
+    current pop head, the post-edge read and write pointers must both advance
+    past it instead of leaving the write pointer behind the read pointer.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    await push(dut, 0xB000_0000, 0xB000_001F, 0xB000_0040, 1, BR_COND)
+    await Timer(1, units="ns")
+    assert int(dut.pop_valid.value) == 1
+    assert int(dut.pop_ftq_idx.value) == 0
+
+    dut.pop_ready.value = 1
+    dut.flush_valid.value = 1
+    dut.flush_idx.value = 0
+    await RisingEdge(dut.clk)
+    dut.pop_ready.value = 0
+    dut.flush_valid.value = 0
+    await Timer(1, units="ns")
+
+    assert int(dut.occupancy.value) == 0
+    assert int(dut.pop_valid.value) == 0
+
+    await push(dut, 0xB000_0100, 0xB000_011F, 0xB000_0140, 1, BR_COND)
+    await Timer(1, units="ns")
+    assert int(dut.occupancy.value) == 1
+    assert int(dut.pop_valid.value) == 1
+    assert int(dut.pop_start_pc.value) == 0xB000_0100

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import subprocess
 import sys
 from pathlib import Path
@@ -22,6 +23,8 @@ AOSP_GOVERNOR_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trac
 PROCESS_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-14a-process-eval.json"
 COMPETITIVE_ENVELOPE = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
 TAPEOUT_AUDIT = ROOT / "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json"
+PHONE_CPU_GATE = ROOT / "build/reports/cpu_phone_benchmark_claim_gate.json"
+PHONE_CPU_L5_L6_REPORT = ROOT / "build/reports/cpu_phone_l5_l6_benchmark_report.json"
 OPTIMIZER_CHECK = ROOT / "scripts/check_soc_optimization.py"
 WORK_ORDER_CHECK = ROOT / "scripts/check_soc_optimized_work_order.py"
 MODELED_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_modeled_benchmark_eval.py"
@@ -33,11 +36,13 @@ AOSP_GOVERNOR_TRACE_CHECK = ROOT / "scripts/check_cpu_npu_aosp_governor_trace.py
 PROCESS_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_14a_process_eval.py"
 COMPETITIVE_ENVELOPE_CHECK = ROOT / "scripts/check_cpu_npu_competitive_envelope.py"
 TAPEOUT_AUDIT_CHECK = ROOT / "scripts/check_cpu_npu_tapeout_readiness_audit.py"
+PHONE_CPU_GATE_CHECK = ROOT / "scripts/check_cpu_phone_benchmark_claim_gate.py"
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 MAKEFILE = ROOT / "Makefile"
 
 REQUIRED_DOMAINS = {
     "cpu_ap",
+    "branch_prediction",
     "npu_nnapi",
     "aosp_simulator",
     "benchmarks",
@@ -57,6 +62,14 @@ REQUIRED_BENCHMARKS = {
     "npu_arch_sim_sota_2028",
     "simulator_arch_metrics",
     "cpu_arch_sim_sota_2028",
+}
+REQUIRED_PHONE_CPU_L5_L6_ENTRIES = {
+    "spec_cpu2017",
+    "coremark",
+    "dhrystone",
+    "jetstream2",
+    "lmbench_bw_mem",
+    "lmbench_lat_mem_rd",
 }
 
 
@@ -239,6 +252,113 @@ def check_benchmarks(scorecard: dict[str, Any], errors: list[str]) -> None:
     plan_missing = sorted(set(entries) - names)
     if plan_missing:
         errors.append("benchmark plan missing scorecard entries: " + ", ".join(plan_missing))
+
+
+def check_phone_cpu_l5_l6(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("phone_cpu_benchmark_gate")
+        == "build/reports/cpu_phone_benchmark_claim_gate.json",
+        "scorecard must point at phone CPU benchmark gate report",
+        errors,
+    )
+    require(
+        source_artifacts.get("phone_cpu_l5_l6_report")
+        == "build/reports/cpu_phone_l5_l6_benchmark_report.json",
+        "scorecard must point at phone CPU L5/L6 report",
+        errors,
+    )
+    require(
+        source_artifacts.get("phone_cpu_l5_l6_command")
+        == "make cpu-phone-l5-l6-benchmark-report",
+        "scorecard must list phone CPU L5/L6 report command",
+        errors,
+    )
+
+    listed = scorecard.get("required_phone_cpu_l5_l6_entries")
+    if not isinstance(listed, list):
+        errors.append("required_phone_cpu_l5_l6_entries must be a list")
+        listed = []
+    missing_listed = sorted(REQUIRED_PHONE_CPU_L5_L6_ENTRIES - set(listed))
+    if missing_listed:
+        errors.append(
+            "required_phone_cpu_l5_l6_entries missing: " + ", ".join(missing_listed)
+        )
+
+    if not PHONE_CPU_GATE.exists() or not PHONE_CPU_L5_L6_REPORT.exists():
+        run_required_check([sys.executable, str(PHONE_CPU_GATE_CHECK)], errors)
+    if not PHONE_CPU_GATE.exists():
+        errors.append("phone CPU benchmark gate report missing")
+        return
+    if not PHONE_CPU_L5_L6_REPORT.exists():
+        errors.append("phone CPU L5/L6 report missing")
+        return
+    try:
+        gate = load_json_object(PHONE_CPU_GATE)
+        report = load_json_object(PHONE_CPU_L5_L6_REPORT)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+
+    try:
+        spec = importlib.util.spec_from_file_location("check_cpu_phone_benchmark_claim_gate", PHONE_CPU_GATE_CHECK)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"unable to import {PHONE_CPU_GATE_CHECK}")
+        phone_gate = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = phone_gate
+        spec.loader.exec_module(phone_gate)
+        expected_gate = phone_gate.build_report(phone_gate.DEFAULT_REPORT)
+        expected_l5_l6 = phone_gate.build_l5_l6_report(phone_gate.DEFAULT_REPORT, expected_gate)
+        schema_errors = phone_gate.validate_l5_l6_report(expected_l5_l6)
+        if schema_errors:
+            errors.extend("expected phone CPU L5/L6 report invalid: " + error for error in schema_errors)
+        current_schema_errors = phone_gate.validate_l5_l6_report(report)
+        if current_schema_errors:
+            errors.extend("phone CPU L5/L6 report " + error for error in current_schema_errors)
+        if gate != expected_gate:
+            errors.append("phone CPU benchmark gate report is stale; run make cpu-phone-l5-l6-benchmark-report")
+        if report != expected_l5_l6:
+            errors.append("phone CPU L5/L6 report is stale; run make cpu-phone-l5-l6-benchmark-report")
+    except Exception as exc:  # noqa: BLE001 - scorecard should report import/build failures as gate errors.
+        errors.append(f"unable to rebuild expected phone CPU L5/L6 reports: {exc}")
+
+    require(gate.get("status") == "blocked", "phone CPU benchmark gate must be blocked", errors)
+    require(
+        gate.get("claim_allowed") is False,
+        "phone CPU benchmark gate claim_allowed must remain false",
+        errors,
+    )
+    require(
+        report.get("schema") == "eliza.cpu_phone_l5_l6_benchmark_report.v1",
+        "phone CPU L5/L6 report schema mismatch",
+        errors,
+    )
+    require(report.get("status") == "blocked", "phone CPU L5/L6 report must be blocked", errors)
+    require(
+        report.get("claim_allowed") is False,
+        "phone CPU L5/L6 report claim_allowed must remain false",
+        errors,
+    )
+    entries = report.get("entries")
+    if not isinstance(entries, list):
+        errors.append("phone CPU L5/L6 report entries must be a list")
+        return
+    names = {entry.get("name") for entry in entries if isinstance(entry, dict)}
+    missing_entries = sorted(REQUIRED_PHONE_CPU_L5_L6_ENTRIES - names)
+    if missing_entries:
+        errors.append("phone CPU L5/L6 report missing entries: " + ", ".join(missing_entries))
+    satisfied = sorted(
+        str(entry.get("name"))
+        for entry in entries
+        if isinstance(entry, dict) and entry.get("claim_satisfied") is True
+    )
+    if satisfied:
+        errors.append(
+            "phone CPU L5/L6 report unexpectedly satisfies entries: " + ", ".join(satisfied)
+        )
 
 
 def check_modeled_eval(scorecard: dict[str, Any], errors: list[str]) -> None:
@@ -881,6 +1001,7 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
     check_modeled_values(scorecard, optimizer, errors)
     check_domains(scorecard, errors)
     check_benchmarks(scorecard, errors)
+    check_phone_cpu_l5_l6(scorecard, errors)
     check_modeled_eval(scorecard, errors)
     check_npu_context_queue_sim(scorecard, errors)
     check_memory_iommu_qos_sim(scorecard, errors)

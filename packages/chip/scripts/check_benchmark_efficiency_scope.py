@@ -167,7 +167,7 @@ def schema_has_efficiency_release_guards(schema: dict[str, Any], text: str) -> b
         and contains_all(
             text,
             (
-                "Real reports (`dry_run: false`) must include populated software, clocks, memory, thermal, and power metadata",
+                "Real reports (`dry_run: false`) with passed measured results must include populated software, clocks, memory, thermal, power, process, and calibration metadata",
                 "Passed real results must include `calibration.status: calibrated`",
                 "64-character lowercase SHA-256 hex digest",
                 "Simulator wall-clock time must not be compared against commercial phone scores",

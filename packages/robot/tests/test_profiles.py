@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import math
+import shutil
 from pathlib import Path
 
 import pytest
 
 from eliza_robot.profiles import (
     DEFAULT_PROFILE_ID,
+    assets_root,
     list_profiles,
     load_profile,
+    profiles_root,
 )
 from eliza_robot.profiles.schema import RobotProfile
 
@@ -121,16 +124,48 @@ def test_load_unknown_profile_raises() -> None:
         load_profile("does-not-exist")
 
 
+def test_profile_and_asset_roots_can_be_overridden(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    profile_id = DEFAULT_PROFILE_ID
+    profile_src = Path(__file__).resolve().parents[1] / "profiles" / profile_id
+    profiles_dst = tmp_path / "profiles"
+    profile_dst = profiles_dst / profile_id
+    profile_dst.mkdir(parents=True)
+    shutil.copy(profile_src / "profile.yaml", profile_dst / "profile.yaml")
+    assets_dst = tmp_path / "assets" / "profiles"
+
+    monkeypatch.setenv("ELIZA_ROBOT_PROFILES_ROOT", str(profiles_dst))
+    monkeypatch.setenv("ELIZA_ROBOT_ASSETS_ROOT", str(assets_dst))
+
+    assert profiles_root() == profiles_dst.resolve()
+    assert assets_root() == assets_dst.resolve()
+    assert list_profiles() == [profile_id]
+    profile = load_profile(profile_id)
+    assert profile.assets.mjcf_xml == (
+        assets_dst / profile_id / "mjcf" / "ainex.xml"
+    ).resolve()
+    assert profile.assets.mesh_dir == (assets_dst / profile_id / "meshes").resolve()
+
+
 # ---------------------------------------------------------------------------
 # Multi-robot profile registry: every supported profile must load cleanly.
 # ---------------------------------------------------------------------------
 
-SUPPORTED_PROFILE_IDS = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1")
+SUPPORTED_PROFILE_IDS = (
+    "hiwonder-ainex",
+    "asimov-1",
+    "unitree-g1",
+    "unitree-h1",
+    "unitree-r1",
+)
 EXPECTED_DOF = {
     "hiwonder-ainex": 24,
     "asimov-1": 25,
     "unitree-g1": 29,
     "unitree-h1": 19,
+    "unitree-r1": 29,
 }
 
 

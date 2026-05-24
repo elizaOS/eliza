@@ -33,13 +33,23 @@
       "pass": true
     },
     {
+      "id": "button_caps_to_side_frame",
+      "actual_mm": 0.0,
+      "required_mm": 0.0,
+      "pass": true,
+      "cap_to_gasket_gaps_mm": [
+        0.0,
+        0.0
+      ]
+    },
+    {
       "id": "battery_to_pcb_islands",
-      "actual_mm": 1.0,
+      "actual_mm": 0.5,
       "required_mm": 0.5,
       "pass": true,
       "segment_gaps_mm": [
-        1.25,
-        1.0
+        0.5,
+        0.5
       ]
     },
     {
@@ -78,12 +88,12 @@
     },
     {
       "id": "haptic_to_pcb_islands",
-      "actual_mm": 1.581,
+      "actual_mm": 1.118,
       "required_mm": 0.5,
       "pass": true,
       "segment_gaps_mm": [
-        75.752,
-        1.581
+        75.002,
+        1.118
       ]
     },
     {
@@ -103,9 +113,31 @@
       "actual_mm": 9.75,
       "required_mm": 1.0,
       "pass": true
+    },
+    {
+      "id": "rf_keepout_to_orange_shell",
+      "actual_mm": 5.4,
+      "required_mm": 1.0,
+      "pass": true,
+      "shield_to_antenna_keepout_gaps_mm": [
+        5.4,
+        108.4,
+        17.0
+      ]
+    },
+    {
+      "id": "snap_hooks_to_internal_components",
+      "actual_mm": 1.35,
+      "required_mm": 0.5,
+      "pass": true,
+      "retention_to_internal_gaps_mm": [
+        4.45,
+        4.45,
+        1.35
+      ]
     }
   ],
-  "checked_case_count": 15,
+  "checked_case_count": 18,
   "boolean_engine": "OCP.BRepAlgoAPI_Common + BRepExtrema_DistShapeShape",
   "full_assembly_boolean_pass": true,
   "full_assembly_unintentional_clash_count": 0,

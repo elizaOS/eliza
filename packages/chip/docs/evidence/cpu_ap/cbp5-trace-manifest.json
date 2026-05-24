@@ -22,6 +22,7 @@
     {
       "filename": "sample_int_trace.gz",
       "compressed_bytes": 1398973,
+      "compressed_sha256": "b0f1389085ff737b813b58e03950e45060df29e58cf1433b07f9556800edd810",
       "uncompressed_instructions": 997301,
       "branches": 181877,
       "workload_class": "int",
@@ -31,6 +32,7 @@
     {
       "filename": "sample_fp_trace.gz",
       "compressed_bytes": 1235871,
+      "compressed_sha256": "2bb41fdbd05e67c4f2cc40edfab9a963d2d1c101b4492e7771bb5cc085d2ce2c",
       "uncompressed_instructions": 997741,
       "branches": 148723,
       "workload_class": "fp",

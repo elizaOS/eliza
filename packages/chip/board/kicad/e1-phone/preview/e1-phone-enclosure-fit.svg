@@ -77,7 +77,7 @@
     <text x="24" y="82" class="small">USB-C: bottom-center, enclosure-captured shell.</text>
     <text x="24" y="122" class="small">Side keys: VOL+, VOL-, PWR on left-side flex/island.</text>
     <text x="24" y="162" class="small">Top/bottom antenna keepouts require plastic/low metal.</text>
-    <text x="24" y="202" class="small">Camera bump: exact lens z-height and axis still TBD.</text>
+    <text x="24" y="202" class="small">Camera bump: exact lens z-height and axis pending supplier drawing.</text>
     <text x="24" y="242" class="small">Battery pull tab, NTC, and pack ID require vendor drawing.</text>
     <text x="24" y="282" class="small">Speaker/mic ports need acoustic chamber model.</text>
   </g>

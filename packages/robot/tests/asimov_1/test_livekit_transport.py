@@ -41,18 +41,24 @@ class _FirmwareMode:
 
 
 class _Telemetry(_Message):
+    joint_pos_width = ASIMOV1_FULL_ACTION_DIM
+    joint_vel_width = ASIMOV1_FULL_ACTION_DIM
+    imu_quat = [1.0, 0.0, 0.0, 0.0]
+    joint_pos_value = 0.1
+    fw_mode_value = 1
+
     @staticmethod
     def FromString(_payload: bytes):
         return _Telemetry(
             timestamp_us=10,
             fw_timestamp_us=8,
             sequence=7,
-            fw_mode=1,
-            joint_pos=[0.1] * ASIMOV1_FULL_ACTION_DIM,
-            joint_vel=[0.2] * ASIMOV1_FULL_ACTION_DIM,
+            fw_mode=_Telemetry.fw_mode_value,
+            joint_pos=[_Telemetry.joint_pos_value] * _Telemetry.joint_pos_width,
+            joint_vel=[0.2] * _Telemetry.joint_vel_width,
             joint_current=[0.3] * ASIMOV1_FULL_ACTION_DIM,
             joint_temp=[30.0] * ASIMOV1_FULL_ACTION_DIM,
-            imu_quat=[1.0, 0.0, 0.0, 0.0],
+            imu_quat=list(_Telemetry.imu_quat),
             imu_gyro=[0.0, 0.1, 0.2],
             imu_gravity=[0.0, 0.0, 1.0],
             error_flags=0,
@@ -108,6 +114,7 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
                 edge_pb2=_FakeEdgePb2,
             )
             await transport.connect()
+            transport.handle_telemetry_payload(b"telemetry")
             await transport.send_velocity(9.0, -9.0, 3.5)
 
             self.assertEqual(room.local_participant.published[0]["topic"], "commands")
@@ -120,6 +127,34 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
             self.assertEqual(cmd.velocity.vyaw, 2.0)
             self.assertFalse(hasattr(cmd, "mode"))
             self.assertFalse(hasattr(cmd, "trajectory"))
+
+        asyncio.run(run())
+
+    def test_rejects_velocity_before_stand_mode(self) -> None:
+        async def run() -> None:
+            room = _Room()
+            transport = LiveKitAsimovTransport(
+                url="wss://example.invalid",
+                token="token",
+                room=room,
+                edge_pb2=_FakeEdgePb2,
+            )
+            await transport.connect()
+            with self.assertRaises(ValueError):
+                await transport.send_velocity(0.1, 0.0, 0.0)
+            self.assertEqual(room.local_participant.published, [])
+
+            await transport.send_mode("STAND")
+            await transport.send_velocity(0.1, 0.0, 0.0)
+            self.assertEqual(len(room.local_participant.published), 2)
+
+            _Telemetry.fw_mode_value = 0
+            try:
+                transport.handle_telemetry_payload(b"telemetry")
+                with self.assertRaises(ValueError):
+                    await transport.send_velocity(0.1, 0.0, 0.0)
+            finally:
+                _Telemetry.fw_mode_value = 1
 
         asyncio.run(run())
 
@@ -170,6 +205,10 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
         asyncio.run(run())
 
     def test_parses_edge_telemetry_frame(self) -> None:
+        _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM
+        _Telemetry.joint_vel_width = ASIMOV1_FULL_ACTION_DIM
+        _Telemetry.imu_quat = [1.0, 0.0, 0.0, 0.0]
+        _Telemetry.joint_pos_value = 0.1
         transport = LiveKitAsimovTransport(
             url="wss://example.invalid",
             token="token",
@@ -181,6 +220,34 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
         self.assertEqual(frame.sequence, 7)
         self.assertEqual(len(frame.joint_positions), ASIMOV1_FULL_ACTION_DIM)
         self.assertEqual(len(frame.joint_velocities), ASIMOV1_FULL_ACTION_DIM)
+
+    def test_rejects_malformed_edge_telemetry_frame(self) -> None:
+        transport = LiveKitAsimovTransport(
+            url="wss://example.invalid",
+            token="token",
+            room=SimpleNamespace(),
+            edge_pb2=_FakeEdgePb2,
+        )
+        try:
+            _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM - 1
+            with self.assertRaises(ValueError):
+                transport.handle_telemetry_payload(b"telemetry")
+
+            _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM
+            _Telemetry.imu_quat = [1.0, 0.0, 0.0]
+            with self.assertRaises(ValueError):
+                transport.handle_telemetry_payload(b"telemetry")
+
+            _Telemetry.imu_quat = [1.0, 0.0, 0.0, 0.0]
+            _Telemetry.joint_pos_value = float("nan")
+            with self.assertRaises(ValueError):
+                transport.handle_telemetry_payload(b"telemetry")
+        finally:
+            _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM
+            _Telemetry.joint_vel_width = ASIMOV1_FULL_ACTION_DIM
+            _Telemetry.imu_quat = [1.0, 0.0, 0.0, 0.0]
+            _Telemetry.fw_mode_value = 1
+            _Telemetry.joint_pos_value = 0.1
 
     def test_waits_for_livekit_data_packet_telemetry_without_command(self) -> None:
         async def run() -> None:
@@ -197,6 +264,26 @@ class LiveKitAsimovTransportTests(unittest.TestCase):
             frame = await transport.wait_for_telemetry(timeout_s=0.1)
             self.assertEqual(frame.sequence, 7)
             self.assertEqual(room.local_participant.published, [])
+
+        asyncio.run(run())
+
+    def test_data_packet_telemetry_parse_errors_surface_on_read(self) -> None:
+        async def run() -> None:
+            room = _Room()
+            transport = LiveKitAsimovTransport(
+                url="wss://example.invalid",
+                token="token",
+                room=room,
+                edge_pb2=_FakeEdgePb2,
+            )
+            await transport.connect()
+            try:
+                _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM - 1
+                room.callbacks["data_received"](SimpleNamespace(topic="telemetry", data=b"bad"))
+                with self.assertRaises(ValueError):
+                    await transport.read_telemetry()
+            finally:
+                _Telemetry.joint_pos_width = ASIMOV1_FULL_ACTION_DIM
 
         asyncio.run(run())
 

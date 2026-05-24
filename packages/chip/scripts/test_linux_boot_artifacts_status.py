@@ -25,6 +25,7 @@ class LinuxBootArtifactsStatusTests(unittest.TestCase):
                 "state": "blocked",
                 "report": "build/chipyard/eliza_rocket/chipyard-linux-payload.json",
                 "problems": ["no runnable payload found"],
+                "selected_payload": "external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
             },
             [
                 {
@@ -51,6 +52,14 @@ class LinuxBootArtifactsStatusTests(unittest.TestCase):
             "linux_boot_artifact_invalid_dtb_check_missing_required_markers_eliza_e1_npu",
             codes,
         )
+        serial_finding = next(
+            item for item in findings if item["code"] == "linux_boot_artifact_missing_serial_boot_log"
+        )
+        self.assertIn(
+            "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+            serial_finding["next_command"],
+        )
+        self.assertNotIn("<selected_payload>", serial_finding["next_command"])
 
     def test_local_serial_candidates_are_reported_but_not_substituted(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -88,6 +97,28 @@ class LinuxBootArtifactsStatusTests(unittest.TestCase):
         self.assertEqual(len(candidates), 1)
         self.assertFalse(candidates[0]["satisfies_serial_boot_artifact"])
         self.assertIn("local non-substitutable boot transcript candidates", findings[0]["message"])
+
+    def test_artifact_specs_render_exact_located_serial_payload_command(self) -> None:
+        specs = [
+            {
+                "id": "serial_boot_log",
+                "path": "docs/evidence/linux/eliza_e1_serial_boot.log",
+                "producer": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
+                "unblock_command": "CHIPYARD_LINUX_BINARY=<selected_payload> scripts/run_chipyard_eliza_linux_smoke.sh",
+            }
+        ]
+        updated = check.artifact_specs_with_located_payload(
+            specs,
+            {
+                "selected_payload": "external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk"
+            },
+        )
+
+        self.assertIn(
+            "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+            updated[0]["unblock_command"],
+        )
+        self.assertNotIn("<selected_payload>", updated[0]["unblock_command"])
 
 
 if __name__ == "__main__":

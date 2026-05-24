@@ -1,8 +1,27 @@
 {
   "schema": "eliza.cache.mockingjay_cocotb_synthetic.v1",
-  "status": "measured_above_threshold",
+  "status": "scoped_cocotb_synthetic_above_threshold",
   "evidence_class": "cocotb_synthetic_stream",
   "captured_utc": "2026-05-19T23:15:00+00:00",
+  "claim_boundary": "Synthetic cocotb RTL replacement-policy stream only; not phone-class IPC, silicon, full-system simulator, DRAM, Android, or release evidence.",
+  "phone_claim_allowed": false,
+  "release_claim_allowed": false,
+  "provenance": {
+    "source_artifacts": [
+      {
+        "path": "rtl/cache/replacement/e1_mockingjay_prod.sv",
+        "sha256": "4d5cf8ca90f77b3560059834056c335812c1ccaabdf523d44ab87b2bb65d70d6"
+      },
+      {
+        "path": "verify/cocotb/cache/test_mockingjay_accuracy.py",
+        "sha256": "8240183eaee4db37e42c1778e21a1a423f64060614e94d02e3f85ed9a2f27f9e"
+      },
+      {
+        "path": "verify/cocotb/cache/results/e1_mockingjay_prod_tb_test_mockingjay_accuracy.xml",
+        "sha256": "3141ed83bfaac19b111db3497ce6634f38792bc81a11c617156a6d9a34ec6c7b"
+      }
+    ]
+  },
   "harness": "verify/cocotb/cache/test_mockingjay_accuracy.py",
   "dut": "rtl/cache/replacement/e1_mockingjay_prod.sv",
   "simulator": "verilator-5.049",

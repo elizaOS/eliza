@@ -10,35 +10,21 @@ function firstExistingPackage(candidates) {
 }
 
 export function resolveMainAppDir(repoRoot, appName = "app") {
-  const cwd = path.resolve(process.cwd());
-  const elizaRoot = path.join(repoRoot, "eliza");
-  const cwdIsInsideNestedEliza =
-    hasPackageJson(elizaRoot) &&
-    (cwd === path.resolve(elizaRoot) ||
-      cwd.startsWith(`${path.resolve(elizaRoot)}${path.sep}`));
-
   const isOuterMonorepo = hasPackageJson(path.join(repoRoot, "eliza"));
   if (appName === "app") {
     const localCandidates = [
       path.join(repoRoot, "packages", "app"),
       path.join(repoRoot, "apps", "app"),
     ];
-    const outerCandidates = [
-      path.join(repoRoot, "eliza", "packages", "app"),
-      path.join(repoRoot, "eliza", "apps", "app"),
-      path.join(repoRoot, "apps", "app"),
-    ];
     return firstExistingPackage(
-      isOuterMonorepo && !cwdIsInsideNestedEliza
+      isOuterMonorepo
         ? [
             path.join(repoRoot, "apps", "app"),
             path.join(repoRoot, "packages", "app"),
             path.join(repoRoot, "eliza", "packages", "app"),
             path.join(repoRoot, "eliza", "apps", "app"),
           ]
-        : isOuterMonorepo
-          ? outerCandidates
-          : localCandidates,
+        : localCandidates,
     );
   }
 

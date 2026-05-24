@@ -27,7 +27,7 @@ PRODUCT_VENDOR_PROPERTIES += \
 BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy
 BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/cuttlefish_e1/sepolicy
 
-# Cuttlefish-specific VINTF fragment for the sim service. The same
-# package name is declared so checkvintf --check-compat treats it as
-# the same vendor.eliza.e1_npu HAL.
-DEVICE_MANIFEST_FILE += device/eliza/cuttlefish_e1/manifest.fragment.xml
+# The shared eliza_e1.xml is the single VINTF declaration for
+# vendor.eliza.e1_npu. Do not add another Cuttlefish DEVICE_MANIFEST_FILE here:
+# libvintf rejects duplicate @1.0::IE1Npu/default entries before the virtual
+# device can boot.

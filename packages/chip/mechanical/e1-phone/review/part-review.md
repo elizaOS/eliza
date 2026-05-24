@@ -7,11 +7,11 @@ Status: generated part index and contact sheet for every assembly part.
 
 ## Parts
 
-- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell with real rear camera and flash holes
+- `orange_back_shell`: role `molded enclosure`, span [78.0, 153.6, 1.2] mm, material PC+ABS orange rounded back shell
 - `orange_side_frame`: role `molded enclosure`, span [78.0, 153.6, 11.05] mm, material PC+ABS orange rounded perimeter frame
 - `screen_cover_glass`: role `screen`, span [77.1, 151.77, 0.7] mm, material black rounded cover glass
 - `display_lcm`: role `screen`, span [70.78, 129.17, 3.39] mm, material bonded LCD+CTP module (cover lens, touch, polarizers, TFT cell, BLU)
-- `main_pcb`: role `PCB`, span [64.0, 146.75, 0.8] mm, material 8L HDI FR-4 top/bottom split-island board envelope around full-width battery
+- `main_pcb`: role `PCB`, span [64.0, 132.0, 0.8] mm, material 8L HDI FR-4 top/bottom split-island board envelope around full-width battery
 - `battery_pouch`: role `battery`, span [64.0, 87.0, 5.6] mm, material LiPo pouch
 - `battery_back_void_foam_pad`: role `battery support`, span [60.0, 80.0, 0.18] mm, material PORON-style low-compression-set polyurethane foam, low-preload battery back pad
 - `usb_c_receptacle`: role `I/O`, span [8.94, 7.8, 3.25] mm, material stainless shell
@@ -136,16 +136,96 @@ Status: generated part index and contact sheet for every assembly part.
 - `radio_shield_can`: role `EMI shield`, span [18.0, 20.0, 1.2] mm, material stamped radio shield can
 - `cellular_lga_module_keepout`: role `cellular module`, span [29.0, 32.0, 2.4] mm, material Quectel RG255C RedCap LGA module
 - `wifi_bt_module_keepout`: role `Wi-Fi/Bluetooth module`, span [12.5, 9.4, 1.2] mm, material Murata Type 2EA Wi-Fi 6E + Bluetooth module
+- `compute_som_sodimm_connector`: role `compute interconnect`, span [65.0, 2.6, 0.3] mm, material 260-pin 0.5 mm SODIMM compute-SoM carrier connector envelope
+- `compute_som_daughterboard_keepout`: role `compute module keepout`, span [68.0, 30.0, 1.2] mm, material Firefly Core-3566JD4-class SoM daughterboard swept keepout; non-release fit envelope
 - `soc_package_marker`: role `PCB component marker`, span [13.0, 13.0, 0.24] mm, material visual marker for application processor package under SoC shield
 - `dram_package_marker`: role `PCB component marker`, span [9.5, 8.0, 0.22] mm, material visual marker for LPDDR memory package near SoC
 - `storage_package_marker`: role `PCB component marker`, span [11.5, 9.0, 0.22] mm, material visual marker for eMMC/UFS storage package
 - `pmic_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for PMIC package under power shield
+- `audio_codec_package_marker`: role `PCB component marker`, span [7.0, 7.0, 0.22] mm, material visual marker for 48-pin audio codec package in bottom audio region
 - `rf_transceiver_package_marker`: role `PCB component marker`, span [7.5, 7.5, 0.22] mm, material visual marker for RF transceiver/front-end package under radio shield
 - `gnss_lna_package_marker`: role `PCB component marker`, span [3.0, 2.5, 0.2] mm, material visual marker for GNSS/RF low-noise amplifier placement
-- `wifi_bt_rf_feed_coax_stub`: role `RF feed`, span [10.0, 0.45, 0.35] mm, material concept coax/feed stub from Wi-Fi/Bluetooth module toward side antenna keepout
-- `cellular_rf_feed_coax_stub`: role `RF feed`, span [0.45, 15.0, 0.35] mm, material concept coax/feed stub from cellular module toward top antenna keepout
+- `backlight_bias_package_marker`: role `PCB component marker`, span [4.0, 4.0, 0.22] mm, material visual marker for display backlight/bias power IC package
+- `fuel_gauge_package_marker`: role `PCB component marker`, span [1.9, 1.5, 0.18] mm, material visual marker for battery fuel-gauge WLCSP package
+- `haptic_driver_package_marker`: role `PCB component marker`, span [1.4, 1.4, 0.18] mm, material visual marker for haptic driver WLCSP package
+- `usim_levelshift_package_marker`: role `PCB component marker`, span [2.6, 2.1, 0.18] mm, material visual marker for USIM level-shifter/ESD package
+- `esim_package_marker`: role `PCB component marker`, span [2.0, 2.0, 0.18] mm, material visual marker for MFF2 eSIM package
+- `nfc_controller_package_marker`: role `PCB component marker`, span [5.0, 5.0, 0.22] mm, material visual marker for NFC controller package
+- `nfc_loop_match_marker`: role `PCB passive marker`, span [4.0, 1.4, 0.12] mm, material visual marker for NFC loop matching network
+- `sensor_hub_package_marker`: role `PCB component marker`, span [3.0, 3.0, 0.2] mm, material visual marker for always-on sensor hub package
+- `esd_array_6ch_marker`: role `PCB protection marker`, span [2.0, 1.0, 0.16] mm, material visual marker for six-channel ESD protection arrays
+- `tvs_diode_2p_marker`: role `PCB protection marker`, span [1.2, 0.8, 0.16] mm, material visual marker for two-terminal TVS diodes
+- `testpoint_1mm_marker`: role `PCB test marker`, span [1.0, 1.0, 0.04] mm, material visual marker for one-millimeter board test pads
+- `fiducial_1mm_marker`: role `PCB assembly marker`, span [1.0, 1.0, 0.03] mm, material visual marker for one-millimeter global fiducials
+- `mounting_hole_1p2_marker`: role `PCB mechanical marker`, span [1.2, 1.2, 0.04] mm, material visual marker for 1.2 mm mounting-hole annular keepouts
+- `r0402_component_marker`: role `PCB passive marker`, span [1.0, 0.5, 0.16] mm, material visual marker for 0402 resistor packages
+- `c0402_component_marker`: role `PCB passive marker`, span [1.0, 0.5, 0.16] mm, material visual marker for 0402 capacitor packages
+- `l0402_component_marker`: role `PCB passive marker`, span [1.0, 0.6, 0.2] mm, material visual marker for 0402 inductor/ferrite packages
+- `pi_match_0402_marker`: role `PCB passive marker`, span [2.4, 1.1, 0.18] mm, material visual marker for RF pi matching component triplets
+- `rc_array_4ch_marker`: role `PCB passive marker`, span [2.0, 1.0, 0.18] mm, material visual marker for four-channel RC conditioning arrays
+- `shunt_1206_marker`: role `PCB passive marker`, span [3.2, 1.6, 0.22] mm, material visual marker for 1206 current-shunt packages
+- `wifi_bt_rf_feed_development_envelope`: role `RF feed`, span [10.0, 0.45, 0.35] mm, material development coax/feed envelope from Wi-Fi/Bluetooth module toward side antenna keepout
+- `cellular_rf_feed_development_envelope`: role `RF feed`, span [0.45, 15.0, 0.35] mm, material development coax/feed envelope from cellular module toward top antenna keepout
+- `display_fpc_tail`: role `flex/cable`, span [10.0, 6.0, 0.12] mm, material display/touch FPC tail route marker from connector into the display stack
+- `rear_camera_fpc_tail`: role `flex/cable`, span [12.0, 0.8, 0.12] mm, material rear camera CSI FPC tail marker from top board connector to camera module
+- `front_camera_fpc_tail`: role `flex/cable`, span [9.0, 0.8, 0.12] mm, material front camera CSI FPC tail marker under the cover-glass camera region
+- `side_key_flex_tail`: role `flex/cable`, span [1.0, 28.0, 0.12] mm, material power/volume side-key flex tail along the right side wall
+- `battery_connector_lead_flex`: role `flex/cable`, span [8.0, 1.2, 0.12] mm, material battery pack positive/negative/NTC/ID lead flex landing on bottom island
+- `usb_c_power_data_escape_tail`: role `flex/cable`, span [18.0, 1.0, 0.12] mm, material USB-C VBUS/CC/USB2 escape tail marker on the bottom island
+- `bottom_speaker_lead_pair`: role `flex/cable`, span [10.0, 1.0, 0.12] mm, material bottom speaker differential lead pair marker
+- `bottom_microphone_flex_leads`: role `flex/cable`, span [8.0, 1.0, 0.12] mm, material bottom microphone bias/data flex lead marker
+- `top_microphone_flex_tail`: role `flex/cable`, span [0.8, 18.0, 0.12] mm, material top microphone PDM flex tail marker from top microphone port region to top PCB island
+- `earpiece_receiver_lead_flex`: role `flex/cable`, span [14.0, 0.8, 0.12] mm, material earpiece receiver lead flex marker behind the handset acoustic slot
+- `haptic_flex_tail`: role `flex/cable`, span [12.0, 1.0, 0.12] mm, material LRA haptic drive flex tail marker
+- `sim_esim_signal_flex_marker`: role `flex/cable`, span [1.0, 9.0, 0.12] mm, material SIM/eSIM signal route marker to the side tray region
+- `nfc_loop_antenna_flex_marker`: role `flex/cable`, span [6.0, 1.0, 0.12] mm, material NFC controller to loop-match antenna flex marker for NFC_RF_P/N
+- `cellular_div_rf_feed_development_envelope`: role `RF feed`, span [0.45, 12.0, 0.28] mm, material development cellular diversity RF feed envelope
+- `cellular_gnss_rf_feed_development_envelope`: role `RF feed`, span [0.45, 10.0, 0.28] mm, material development GNSS RF feed envelope
+- `wifi_bt_rf1_feed_development_envelope`: role `RF feed`, span [10.0, 0.45, 0.28] mm, material development second Wi-Fi/Bluetooth RF feed envelope
 - `haptic_lra`: role `haptics`, span [6.0, 12.0, 2.5] mm, material compact 0612 X-axis linear resonant actuator
 - `sim_tray_keepout`: role `service`, span [14.5, 22.0, 2.0] mm, material side SIM tray keepout
 - `sim_tray_outline`: role `service`, span [0.8, 18.0, 4.0] mm, material orange side service tray outline
 - `rear_camera_cover_glass`: role `camera`, span [9.2, 9.2, 0.55] mm, material rear camera cover glass
 - `service_label_recess`: role `service`, span [32.0, 9.0, 0.25] mm, material recessed regulatory/service label pad
+- `display_touch_fpc_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for display_touch_fpc on display_fpc_connector; local CAD connection evidence only
+- `display_touch_fpc_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for display_touch_fpc on display_lcm; local CAD connection evidence only
+- `rear_camera_csi_fpc_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for rear_camera_csi_fpc on main_pcb; local CAD connection evidence only
+- `rear_camera_csi_fpc_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for rear_camera_csi_fpc on rear_camera_module; local CAD connection evidence only
+- `front_camera_csi_fpc_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for front_camera_csi_fpc on main_pcb; local CAD connection evidence only
+- `front_camera_csi_fpc_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for front_camera_csi_fpc on front_camera_module; local CAD connection evidence only
+- `side_key_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for side_key_flex on main_pcb; local CAD connection evidence only
+- `side_key_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for side_key_flex on power_button_cap; local CAD connection evidence only
+- `battery_lead_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for battery_lead_flex on battery_pouch; local CAD connection evidence only
+- `battery_lead_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for battery_lead_flex on main_pcb; local CAD connection evidence only
+- `usb_c_escape_tail_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for usb_c_escape_tail on usb_c_receptacle; local CAD connection evidence only
+- `usb_c_escape_tail_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for usb_c_escape_tail on main_pcb; local CAD connection evidence only
+- `bottom_speaker_lead_pair_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_speaker_lead_pair on main_pcb; local CAD connection evidence only
+- `bottom_speaker_lead_pair_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for bottom_speaker_lead_pair on bottom_speaker_module; local CAD connection evidence only
+- `bottom_microphone_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for bottom_microphone_flex on main_pcb; local CAD connection evidence only
+- `bottom_microphone_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for bottom_microphone_flex on bottom_mic; local CAD connection evidence only
+- `top_microphone_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for top_microphone_flex on main_pcb; local CAD connection evidence only
+- `top_microphone_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for top_microphone_flex on top_mic; local CAD connection evidence only
+- `earpiece_receiver_lead_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for earpiece_receiver_lead_flex on main_pcb; local CAD connection evidence only
+- `earpiece_receiver_lead_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for earpiece_receiver_lead_flex on earpiece_receiver; local CAD connection evidence only
+- `haptic_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for haptic_flex on main_pcb; local CAD connection evidence only
+- `haptic_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for haptic_flex on haptic_lra; local CAD connection evidence only
+- `sim_esim_signal_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for sim_esim_signal_flex on main_pcb; local CAD connection evidence only
+- `sim_esim_signal_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for sim_esim_signal_flex on sim_tray_keepout; local CAD connection evidence only
+- `nfc_loop_antenna_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for nfc_loop_antenna_flex on nfc_controller_package_marker; local CAD connection evidence only
+- `nfc_loop_antenna_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for nfc_loop_antenna_flex on nfc_loop_match_marker; local CAD connection evidence only
+- `compute_som_sodimm_carrier_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for compute_som_sodimm_carrier on main_pcb; local CAD connection evidence only
+- `compute_som_sodimm_carrier_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for compute_som_sodimm_carrier on compute_som_daughterboard_keepout; local CAD connection evidence only
+- `cellular_main_rf_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_main_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only
+- `cellular_main_rf_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_main_rf_feed on cellular_top_antenna_keepout; local CAD connection evidence only
+- `cellular_diversity_rf_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_diversity_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only
+- `cellular_diversity_rf_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_diversity_rf_feed on cellular_bottom_antenna_keepout; local CAD connection evidence only
+- `cellular_antenna_aperture_tuner_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_antenna_aperture_tuner on cellular_lga_module_keepout; local CAD connection evidence only
+- `cellular_antenna_aperture_tuner_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_antenna_aperture_tuner on cellular_bottom_antenna_keepout; local CAD connection evidence only
+- `cellular_gnss_rf_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for cellular_gnss_rf_feed on cellular_lga_module_keepout; local CAD connection evidence only
+- `cellular_gnss_rf_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for cellular_gnss_rf_feed on gnss_lna_package_marker; local CAD connection evidence only
+- `wifi_bt_rf0_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for wifi_bt_rf0_feed on wifi_bt_module_keepout; local CAD connection evidence only
+- `wifi_bt_rf0_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for wifi_bt_rf0_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only
+- `wifi_bt_rf1_feed_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for wifi_bt_rf1_feed on wifi_bt_module_keepout; local CAD connection evidence only
+- `wifi_bt_rf1_feed_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for wifi_bt_rf1_feed on wifi_bt_side_antenna_keepout; local CAD connection evidence only
+- `split_interconnect_side_flex_from_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material from terminal marker for split_interconnect_side_flex on split_interconnect_top_connector; local CAD connection evidence only
+- `split_interconnect_side_flex_to_terminal`: role `connection terminal`, span [0.45, 0.22, 0.02] mm, material to terminal marker for split_interconnect_side_flex on split_interconnect_bottom_connector; local CAD connection evidence only

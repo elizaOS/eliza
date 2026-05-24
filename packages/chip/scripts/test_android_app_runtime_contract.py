@@ -151,7 +151,9 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
         codes = {finding["code"] for finding in payload["findings"]}
         self.assertIn("android_package_identity_mismatch", codes)
         self.assertIn("apk_missing_riscv64_native_libs", codes)
+        self.assertIn("apk_missing_riscv64_runtime_jni_payload", codes)
         self.assertIn("apk_missing_riscv64_agent_assets", codes)
+        self.assertIn("apk_missing_riscv64_runtime_agent_payload", codes)
         self.assertIn("android_service_identity_mismatch", codes)
         self.assertIn("android_agent_service_not_exported_for_adb_smoke", codes)
         self.assertIn("android_agent_health_contract_mismatch", codes)
@@ -162,8 +164,14 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
             patches = self._patch_paths(
                 tmp,
                 [
-                    "lib/riscv64/libfoo.so",
-                    "assets/agent/riscv64/launch.sh",
+                    "lib/riscv64/libeliza_bun.so",
+                    "lib/riscv64/libeliza_ld_musl_riscv64.so",
+                    "lib/riscv64/libeliza_stdcpp.so",
+                    "lib/riscv64/libeliza_gcc_s.so",
+                    "assets/agent/riscv64/bun",
+                    "assets/agent/riscv64/ld-musl-riscv64.so.1",
+                    "assets/agent/riscv64/libstdc++.so.6.0.33",
+                    "assets/agent/riscv64/libgcc_s.so.1",
                 ],
             )
             with contextlib_stack(patches):

@@ -44,6 +44,7 @@ def test_real_hardware_evidence_runs_preflight_telemetry_and_damp_probe(
             "profile_id": "asimov-1",
             "probe": "telemetry_only",
             "command_messages_published": 0,
+            "checks": {"connected": True, "telemetry_received": True},
         }
 
     async def fake_command(args: argparse.Namespace) -> dict:
@@ -52,7 +53,19 @@ def test_real_hardware_evidence_runs_preflight_telemetry_and_damp_probe(
             "ok": True,
             "profile_id": "asimov-1",
             "probe": "staged_real_command",
+            "non_default_motion_stages_enabled": {
+                "stand": False,
+                "zero_velocity": False,
+            },
             "commands_sent": ["mode:DAMP"],
+            "checks": {
+                "connected": True,
+                "telemetry_before_commands": True,
+                "telemetry_after_commands": True,
+                "damp_command_sent": True,
+                "stand_requires_flag": True,
+                "zero_velocity_requires_flag": True,
+            },
         }
 
     monkeypatch.setattr(evidence, "check_asimov1_real_prereqs", fake_prereqs)
@@ -62,6 +75,7 @@ def test_real_hardware_evidence_runs_preflight_telemetry_and_damp_probe(
     report = asyncio.run(evidence.collect_asimov1_real_hardware_evidence(_args(tmp_path)))
 
     assert report["ok"] is True
+    assert report["schema"] == "asimov-1-real-hardware-evidence-v1"
     assert [stage["name"] for stage in report["stages"]] == [
         "strict_preflight",
         "telemetry_only",

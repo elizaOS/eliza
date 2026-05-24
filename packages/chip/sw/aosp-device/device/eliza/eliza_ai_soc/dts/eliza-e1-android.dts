@@ -2,7 +2,7 @@
 
 / {
     compatible = "eliza,eliza-ai-soc", "eliza,e1-soc";
-    model = "Eliza e1 AI SoC Android scaffold";
+    model = "Eliza e1 AI SoC Android target";
     #address-cells = <2>;
     #size-cells = <2>;
 
@@ -102,7 +102,7 @@
         compatible = "mmc-pwrseq-simple";
         status = "disabled";
         /*
-         * Android-facing mirror of the Linux WiFi scaffold. Do not set this
+         * Android-facing mirror of the Linux WiFi contract. Do not set this
          * node or the SDIO/UART nodes to okay until the board has real GPIO,
          * pinctrl, regulators, IRQ wake, firmware, and regulatory evidence.
          */

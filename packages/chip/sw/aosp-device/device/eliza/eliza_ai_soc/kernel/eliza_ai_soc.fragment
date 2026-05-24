@@ -3,8 +3,8 @@
 # Merge order: base AOSP riscv64 GKI defconfig + this fragment.
 # Backing contract: sw/platform/e1_platform_contract.json
 #
-# Only what Android requires for first boot of the e1_npu/hwcomposer
-# stub HALs. Does not enable WiFi, BT, audio, camera, modem, USB gadgets,
+# Only what Android requires for first boot of the e1_npu service and inherited
+# Cuttlefish display stack. Does not enable WiFi, BT, audio, camera, modem, USB gadgets,
 # or any vendor subsystem that lacks a checked-in driver and DTS node.
 
 # Core arch
@@ -60,8 +60,8 @@ CONFIG_FREEZER=y
 CONFIG_SECCOMP=y
 CONFIG_SECCOMP_FILTER=y
 
-# Storage: ext4 for /vendor, f2fs for /data. dm-verity for future AVB; not
-# yet wired up by fstab.eliza but kernel support is needed before AVB
+# Storage: ext4 for /vendor, f2fs for /data. dm-verity support is present for
+# the later AVB enablement path; fstab.eliza does not claim AVB evidence.
 # can be enabled.
 CONFIG_EXT4_FS=y
 CONFIG_F2FS_FS=y
@@ -70,7 +70,7 @@ CONFIG_TMPFS_POSIX_ACL=y
 CONFIG_DM_VERITY=y
 CONFIG_DM_INIT=y
 
-# Display: simple framebuffer is enough for the hwcomposer stub.
+# Display: simple framebuffer remains available for compatibility diagnostics.
 CONFIG_DRM=y
 CONFIG_FB=y
 CONFIG_FB_SIMPLE=y

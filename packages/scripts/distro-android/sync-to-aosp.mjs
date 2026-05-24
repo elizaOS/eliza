@@ -14,7 +14,10 @@ import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "../..");
+// repoRoot is the workspace root (.../eliza), three levels up from
+// packages/scripts/distro-android. brand.vendorDir is relative to it
+// (it includes the leading `packages/`). Matches validate.mjs.
+const repoRoot = path.resolve(here, "../../..");
 
 const USAGE =
   "Usage: node packages/scripts/distro-android/sync-to-aosp.mjs [--brand-config <PATH>] [--source-vendor <VENDOR_DIR>] <AOSP_ROOT>";

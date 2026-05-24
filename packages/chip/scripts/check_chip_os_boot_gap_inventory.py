@@ -43,6 +43,7 @@ STRUCTURED_DETAIL_KEYS = (
     "blockers",
     "errors",
     "failures",
+    "entries",
     "blockers_to_on_chip_os_boot",
     "blockers_to_minimum_linux_npu_target",
 )
@@ -206,6 +207,19 @@ def report_mismatch_entry(gate: dict[str, Any], source: str, status: object) -> 
     }
 
 
+def stale_aggregate_entry(gate: dict[str, Any], source: str, status: object) -> dict[str, Any]:
+    name = str(gate.get("name", "aggregate_gate"))
+    return {
+        "source_report": source,
+        "kind": "stale_aggregate_gate",
+        "code": f"stale_aggregate_gate_{code_from_text(name, 'gate')}",
+        "severity": "blocker",
+        "message": "nonpassing aggregate gate is stale relative to a newer passing detailed report",
+        "evidence": f"gate_status={gate.get('status')} report_status={status!r} gate_evidence={gate.get('evidence')}",
+        "next_step": "Regenerate the aggregate readiness report so it reflects the newer passing detailed checker output.",
+    }
+
+
 def finding_entry(source: Path, finding: dict[str, Any]) -> dict[str, Any] | None:
     severity = str(finding.get("severity", "")).lower()
     if severity in PASS_STATUSES:
@@ -256,6 +270,12 @@ def dict_entry(source: Path, kind: str, value: dict[str, Any]) -> dict[str, Any]
         "evidence": evidence,
         "next_step": next_step,
     }
+
+
+def detail_kind_for_key(key: str) -> str:
+    if key == "entries":
+        return "entry"
+    return key[:-1] if key.endswith("s") else key
 
 
 def gate_status_entry(source: Path, data: dict[str, Any]) -> dict[str, Any] | None:
@@ -357,13 +377,14 @@ def collect_report_entries(source: Path, data: dict[str, Any]) -> list[dict[str,
         "blockers",
         "errors",
         "failures",
+        "entries",
         "blockers_to_on_chip_os_boot",
         "blockers_to_minimum_linux_npu_target",
     ):
         values = data.get(key, [])
         if isinstance(values, list):
             for value in values:
-                kind = key[:-1] if key.endswith("s") else key
+                kind = detail_kind_for_key(key)
                 if isinstance(value, dict):
                     entries.append(dict_entry(source, kind, value))
                 else:
@@ -441,6 +462,8 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     entries: list[dict[str, Any]] = []
     sources: list[str] = []
     report_statuses: dict[str, object] = {}
+    report_mtimes: dict[str, float] = {}
+    aggregate_mtime = aggregate.stat().st_mtime if aggregate.is_file() else 0.0
     shallow_detail_reports: list[dict[str, Any]] = []
     for path in report_paths(Path(args.report_dir), aggregate, args.finding_report):
         if not path.is_file():
@@ -471,7 +494,9 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 }
             )
             continue
-        report_statuses[rel(path)] = data.get("status", "aggregate")
+        source_rel = rel(path)
+        report_statuses[source_rel] = data.get("status", "aggregate")
+        report_mtimes[source_rel] = path.stat().st_mtime
         if status_is_nonpass(data.get("status")) and not has_structured_detail_rows(data):
             shallow_detail_reports.append(
                 {
@@ -500,12 +525,25 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
                 if str(entry.get("source_report")) in matches
             }
         )
+        matching_current_pass_reports = [
+            source
+            for source in matches
+            if source not in matching_blocker_reports
+            and not status_is_nonpass(report_statuses[source])
+            and report_mtimes.get(source, 0.0) > aggregate_mtime
+        ]
         mismatched_reports = [
             source
             for source in matches
             if source not in matching_blocker_reports
             and not status_is_nonpass(report_statuses[source])
+            and source not in matching_current_pass_reports
         ]
+        matching_aggregate_blockers: list[str] = []
+        if not matches:
+            aggregate_entry = aggregate_gate_entry(gate)
+            entries.append(aggregate_entry)
+            matching_aggregate_blockers.append(str(aggregate_entry["code"]))
         coverage = {
             "name": gate.get("name"),
             "status": gate.get("status"),
@@ -514,16 +552,23 @@ def build_inventory(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             "expected_report_candidates": gate.get("expected_report_candidates", []),
             "matched_detail_reports": matches,
             "matching_blocker_reports": matching_blocker_reports,
+            "matching_aggregate_blockers": matching_aggregate_blockers,
+            "matching_current_pass_reports": matching_current_pass_reports,
             "mismatched_detail_reports": mismatched_reports,
-            "has_detailed_report": bool(matching_blocker_reports),
+            "has_detailed_report": bool(matching_blocker_reports or matching_current_pass_reports),
+            "has_structured_blocker": bool(
+                matching_blocker_reports
+                or matching_current_pass_reports
+                or matching_aggregate_blockers
+            ),
         }
         gate_detail_coverage.append(coverage)
+        for source in matching_current_pass_reports:
+            entries.append(stale_aggregate_entry(gate, source, report_statuses[source]))
         for source in mismatched_reports:
             entries.append(report_mismatch_entry(gate, source, report_statuses[source]))
-        if not matching_blocker_reports:
+        if not coverage["has_structured_blocker"]:
             uncovered_gates.append(coverage)
-            if not matches:
-                entries.append(aggregate_gate_entry(gate))
 
     codes = sorted({str(entry["code"]) for entry in entries})
     blocked_gates = [gate for gate in gates if gate["status"] == "BLOCKED"]

@@ -84,11 +84,21 @@ emit "${PLY_DOT}"
 convert -size 16x16 xc:none -fill "${BLUE}" -draw 'circle 8,8 8,2' "${PLY_DOT}"
 
 # GRUB splash — staged in config/includes.binary (boot-stage includes).
+# The live live-build GRUB theme (binary/boot/grub/live-theme/theme.txt)
+# reads "../splash.png" and theme.cfg gates on /boot/grub/splash.png, so the
+# branded splash must land at boot/grub/splash.png to actually display. We
+# stage it under BOTH the branded name (for traceability) and splash.png (the
+# path GRUB consumes); config/includes.binary overlays last onto binary/, so
+# the branded splash deterministically replaces the generic Debian splash.
 GRUB_SPLASH="${BINARY}/boot/grub/elizaos-splash.png"
 emit "${GRUB_SPLASH}"
 convert -size 1920x1080 "xc:${BLUE}" \
     \( -background none "${WORDMARK_WHITE_SVG}" -resize 560x \) \
     -gravity center -geometry +0+0 -composite \
     "${GRUB_SPLASH}"
+
+GRUB_SPLASH_LIVE="${BINARY}/boot/grub/splash.png"
+emit "${GRUB_SPLASH_LIVE}"
+cp -f "${GRUB_SPLASH}" "${GRUB_SPLASH_LIVE}"
 
 echo "brand assets generated under ${CHROOT} and ${BINARY}"

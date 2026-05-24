@@ -319,6 +319,67 @@ production_enclosure_handoff_evidence:
     - CMM/FAI results for enclosure, board, display, USB-C aperture, side buttons, camera windows, and acoustic ports
     - gasket, adhesive, foam, and compression process limits
     - drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection results
+  required_handoff_packets:
+    - id: enclosure_drawing_pack
+      deliverable: production enclosure drawing pack with datums, GD&T, material, finish, color, texture, and inspection plan
+      expected_path: board/kicad/e1-phone/production/enclosure/drawing-pack.yaml
+      owner: mechanical_release
+      required_action: collect supplier/toolmaker drawing pack, verify datums/GD&T/material/finish/color/texture/inspection content, and record approval signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: signed_supplier_drawing_pack
+      required_fields: [supplier, drawing_revision, datum_scheme, gd_t_callouts, material_spec, finish_spec, color_texture_spec, inspection_plan, approval_signature]
+      status: missing
+      release_credit: false
+    - id: toolmaker_dfm_pack
+      deliverable: toolmaker DFM markup, mold-flow plan, gate/runner/ejector strategy, and critical-to-fit dimensions
+      expected_path: board/kicad/e1-phone/production/enclosure/toolmaker-dfm-pack.yaml
+      owner: toolmaker_dfm
+      required_action: capture toolmaker DFM response with mold-flow plan, gate/runner/ejector strategy, critical-to-fit dimensions, open issues, and approval signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: toolmaker_dfm_response
+      required_fields: [toolmaker, dfm_markup_revision, mold_flow_plan, gate_runner_ejector_strategy, critical_to_fit_dimensions, open_issues, approval_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_assembly_traveler
+      deliverable: assembly traveler with signed mechanical inspection, functional logs, and nonconformance disposition
+      expected_path: board/kicad/e1-phone/production/enclosure/assembly-traveler.yaml
+      owner: manufacturing_engineering
+      required_action: execute first-article assembly traveler against routed board and enclosure revisions, attach functional logs, nonconformance disposition, operator signature, and QA signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: executed_assembly_traveler
+      required_fields: [unit_serial, routed_board_revision, enclosure_revision, signed_mechanical_inspection, functional_log_refs, nonconformance_disposition, operator_signature, qa_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_cmm_fai_results
+      deliverable: CMM/FAI results for enclosure, board, display, USB-C aperture, side buttons, camera windows, and acoustic ports
+      expected_path: board/kicad/e1-phone/production/enclosure/cmm-fai-results.yaml
+      owner: quality_metrology
+      required_action: run CMM/FAI on release units and attach fixture ID, measured features, tolerance limits, pass/fail disposition, measurement artifacts, and inspector signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: cmm_fai_measurement_report
+      required_fields: [unit_serial, fixture_id, measured_features, tolerance_limits, pass_fail_disposition, measurement_artifacts, inspector_signature]
+      status: missing
+      release_credit: false
+    - id: compression_process_limits
+      deliverable: gasket, adhesive, foam, and compression process limits
+      expected_path: board/kicad/e1-phone/production/enclosure/compression-process-limits.yaml
+      owner: process_engineering
+      required_action: approve controlled gasket, adhesive, foam, and compression windows with inspection method and release signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: controlled_process_limits
+      required_fields: [process_revision, gasket_limits, adhesive_limits, foam_limits, compression_limits, inspection_method, approval_signature]
+      status: missing
+      release_credit: false
+    - id: enclosure_validation_results
+      deliverable: drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection results
+      expected_path: board/kicad/e1-phone/production/enclosure/validation-results.yaml
+      owner: validation_engineering
+      required_action: execute release validation across drop, side-key cycle, USB-C insertion-cycle, ingress path, thermal, RF/SAR pre-scan, and cosmetic inspection; attach unit serials and QA signature
+      validation_command: python3 scripts/check_e1_phone_enclosure_mechanical_content.py
+      evidence_type: executed_validation_results
+      required_fields: [unit_serials, drop_results, side_key_cycle_results, usb_c_insertion_cycle_results, ingress_path_results, thermal_results, rf_sar_prescan_refs, cosmetic_inspection, pass_fail_disposition, qa_signature]
+      status: missing
+      release_credit: false
   present_handoff_output_count: 0
   production_enclosure_handoff_allowed: false
 
@@ -380,7 +441,7 @@ release_blockers:
   - USB-C plug overmold sweep, insertion-cycle, saddle or shell-stake load path, and ESD/chassis review are missing
   - side power/volume button force-travel, load-bypass, wake, recovery-combo, lifecycle, and side-load evidence are missing
   - tolerance stack lacks measured supplier geometry, GD&T FAI, CMM, compression, swelling, adhesive, gasket, thermal, and lifecycle evidence
-  - routed clearance release, full CAD boolean interference with supplier geometry, and all 12 clearance case reports are missing
+  - local concept-envelope full CAD boolean interference passes with zero unintentional clashes, but routed clearance release, routed-board/supplier-geometry boolean rerun, and all 12 clearance case reports are still missing
   - first-article physical-fit traveler, assembly drawing, functional logs, and signed inspection evidence are missing
   - production enclosure handoff pack, toolmaker DFM, CMM/FAI, lifecycle, ingress path, RF/SAR, thermal, and cosmetic evidence are missing
 

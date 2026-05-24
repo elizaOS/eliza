@@ -3,15 +3,15 @@
 
 PASS only if BOTH hold, with executable evidence:
 
-  1. The real OpenHW CVA6 v5.3.0 core ELABORATES clean under Verilator inside
-     `e1_cva6_dram_boot_top` (real NoC->AXI4 adapter, real 64->128 width
-     converter, real e1_axi4_interconnect fabric, real e1_dram_ctrl DRAM
-     controller, real e1_clint, real e1_rot_reset_seq gate).
+  1. The OpenHW CVA6 v5.3.0 core RTL ELABORATES clean under Verilator inside
+     `e1_cva6_dram_boot_top` (NoC->AXI4 adapter RTL, 64->128 width converter
+     RTL, e1_axi4_interconnect fabric RTL, e1_dram_ctrl DRAM-controller RTL
+     model, e1_clint RTL, e1_rot_reset_seq gate).
 
-  2. A bare-metal RV64 M-mode firmware image PROVABLY EXECUTES from the real
-     DRAM controller through the real datapath: the cocotb sim asserts the
-     CPU fetched + wrote real DRAM, programmed the CLINT, took the machine
-     timer trap, and emitted the "E1BOOT-OK" marker.
+  2. A bare-metal RV64 M-mode firmware image PROVABLY EXECUTES from the
+     DRAM-controller RTL model through the RTL datapath: the cocotb sim asserts
+     the CPU fetched + wrote through the RTL DRAM path, programmed the CLINT,
+     took the machine timer trap, and emitted the "E1BOOT-OK" marker.
 
 Both are produced by running the cocotb test `test_cva6_dram_boot.py`, which
 elaborates the full stack (proving #1) and asserts the execution proof (#2).
@@ -56,7 +56,7 @@ def _write(
     extra: dict | None = None,
 ) -> None:
     REPORT.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
+    payload: dict[str, object] = {
         "schema": "eliza.gate_status.v1",
         "gate": GATE,
         "status": status,
@@ -114,6 +114,8 @@ def _parse_results() -> tuple[bool, str]:
             return False, f"test skipped: {case.get('name')}"
         if failure is not None or error is not None:
             node = failure if failure is not None else error
+            if node is None:
+                continue
             msg = (node.get("message") or node.text or "assertion failed").strip()
             return False, f"{case.get('name')}: {msg[:400]}"
     if seen == 0:
@@ -201,6 +203,15 @@ def main() -> int:
         print(f"FAIL: {reason}")
         return 1
 
+    _write("PASS", None, None, evidence + [
+        "verify/cocotb/integration/Makefile.cva6-dram-boot",
+        "build/reports/cva6_boot_substrate.sim.log",
+    ], extra={
+        "proof": "CVA6 elaborated + bare-metal image executed through the RTL "
+                 "DRAM path (markers + timer trap asserted)",
+    })
+    print("PASS: CVA6 elaborated and the bare-metal image provably executed "
+          "through the RTL DRAM path (DRAM markers + CLINT timer trap asserted).")
     _write(
         "PASS",
         None,

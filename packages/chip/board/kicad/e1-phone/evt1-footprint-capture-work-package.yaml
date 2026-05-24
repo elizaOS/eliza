@@ -121,7 +121,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/display_touch.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/display_touch.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/display_touch.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_02_rear_camera
     function: rear_camera
     status: blocked_waiting_supplier_intake_and_review
@@ -201,7 +201,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/rear_camera.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/rear_camera.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/rear_camera.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_03_front_camera
     function: front_camera
     status: blocked_waiting_supplier_intake_and_review
@@ -272,7 +272,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/front_camera.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/front_camera.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/front_camera.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_04_cellular
     function: cellular
     status: blocked_waiting_supplier_intake_and_review
@@ -345,7 +345,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/cellular.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/cellular.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/cellular.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_05_wifi_bluetooth
     function: wifi_bluetooth
     status: blocked_waiting_supplier_intake_and_review
@@ -417,7 +417,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/wifi_bluetooth.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/wifi_bluetooth.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/wifi_bluetooth.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_06_usb_c_receptacle_evt0
     function: usb_c_receptacle_evt0
     status: blocked_waiting_supplier_intake_and_review
@@ -481,7 +481,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/usb_c_receptacle_evt0.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/usb_c_receptacle_evt0.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/usb_c_receptacle_evt0.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_07_side_buttons
     function: side_buttons
     status: blocked_waiting_supplier_intake_and_review
@@ -543,7 +543,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/side_buttons.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/side_buttons.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/side_buttons.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_08_battery_pack
     function: battery_pack
     status: blocked_waiting_supplier_intake_and_review
@@ -604,7 +604,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/battery_pack.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/battery_pack.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/battery_pack.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_09_audio_speaker_microphone_flexes
     function: audio_speaker_microphone_flexes
     status: blocked_waiting_supplier_intake_and_review
@@ -673,7 +673,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/audio_speaker_microphone_flexes.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/audio_speaker_microphone_flexes.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/audio_speaker_microphone_flexes.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
   - id: evt1_footprint_capture_10_top_bottom_interconnect
     function: top_bottom_interconnect
     status: blocked_waiting_supplier_intake_and_review
@@ -761,7 +761,7 @@ work_items:
       symbol_review: board/kicad/e1-phone/production/reports/symbol-review/top_bottom_interconnect.yaml
       footprint_review: board/kicad/e1-phone/production/reports/footprint-review/top_bottom_interconnect.yaml
       footprint_3d_binding: board/kicad/e1-phone/production/reports/footprint-3d-binding/top_bottom_interconnect.yaml
-    current_blocker: supplier intake gates are false and current KiCad board still uses placeholder footprints
+    current_blocker: supplier intake gates are false; production concept PCB still uses placeholder footprints while local real-footprint development replacements remain non-release
 cross_checks:
   work_item_count_matches_supplier_intake_records: true
   every_work_item_has_freeze_record: true
@@ -775,7 +775,7 @@ release_blockers:
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter EVT1 footprint capture until supplier packs and promotion review close
   - production KiCad symbol and footprint libraries are missing
   - pinout, symbol, footprint, and 3D binding reviews are missing
-  - placeholder footprints have not been replaced
+  - production concept placeholders have local real-footprint development replacements, but supplier-approved release footprints/courtyards/paste/STEP are still missing
   - ERC, DRC, routed-board STEP, and enclosure clearance reports are missing
 forbidden_claims:
   - evt1_footprint_capture_complete

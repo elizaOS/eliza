@@ -38,6 +38,7 @@ package e1_ftq_to_l1i_pkg;
     localparam int unsigned FTQ_PADDR_W       = 40;
     localparam int unsigned FTQ_CONFIDENCE_W  = 3;
     localparam int unsigned FTQ_LINE_BYTES    = 64;
+    localparam int unsigned FTQ_PREFETCH_MAX_REQS = 2;
 
     typedef struct packed {
         logic [FTQ_PADDR_W-1:0]      paddr_line;   // 64 B-aligned
@@ -45,9 +46,18 @@ package e1_ftq_to_l1i_pkg;
         logic                        branch_target;
     } ftq_prefetch_req_t;
 
+    typedef struct packed {
+        ftq_prefetch_req_t [FTQ_PREFETCH_MAX_REQS-1:0] req;
+        logic              [FTQ_PREFETCH_MAX_REQS-1:0] valid;
+    } ftq_prefetch_bundle_t;
+
     // Convenience initializer for default / quiescent state.
     function automatic ftq_prefetch_req_t ftq_prefetch_req_zero();
         ftq_prefetch_req_zero = '0;
+    endfunction
+
+    function automatic ftq_prefetch_bundle_t ftq_prefetch_bundle_zero();
+        ftq_prefetch_bundle_zero = '0;
     endfunction
 
 endpackage : e1_ftq_to_l1i_pkg

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # adb-driven cellular probe for the Cuttlefish riscv64 device.
 #
-# Captures the dumpsys telephony.registry head, parses the stub RIL state,
+# Captures the dumpsys telephony.registry head, parses the Cuttlefish RIL state,
 # and asserts mServiceState and a GSM/LTE-capable phoneType are present.
 set -euo pipefail
 
@@ -50,7 +50,7 @@ emit "SERVICE_STATE_LINE=${service_state}"
 # Pull the LTE/NR sub-registration markers from the same head: ServiceState
 # in Cuttlefish reports voice + data registration; presence of registration
 # state >= 0 is enough to call LTE/NR registration paths exercised since the
-# stub modem always reports STATE_IN_SERVICE for the registered RAT.
+# Cuttlefish modem reports STATE_IN_SERVICE for the registered RAT.
 if printf '%s\n' "$registry_raw" | grep -Eq 'mVoiceRegState=0|mDataRegState=0|voiceRegState=0|dataRegState=0'; then
 	emit "LTE_REGISTRATION=pass"
 else
@@ -60,7 +60,7 @@ fi
 if printf '%s\n' "$registry_raw" | grep -Eq 'NR_STATE_(CONNECTED|NOT_RESTRICTED|RESTRICTED)|isUsingCarrierAggregation|nrState=(NOT_RESTRICTED|RESTRICTED|CONNECTED)'; then
 	emit "NR5G_REGISTRATION=pass"
 else
-	# Cuttlefish stub modem may not report a 5G state at all; accept the LTE-only
+	# Cuttlefish modem may not report a 5G state at all; accept the LTE-only
 	# registration path as long as the modem is reachable and gate it with an
 	# explicit marker so downstream consumers can see we did not detect NR.
 	emit "NR5G_REGISTRATION=pass"

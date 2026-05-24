@@ -15,12 +15,14 @@
     "requiredEvidence": [
       "qemu-virt-boot",
       "grub-efi-riscv64-boot",
-      "elizaos-agent-live"
+      "elizaos-agent-live",
+      "riscv64-agent-runtime"
     ],
     "evidence": [
       { "id": "qemu-virt-boot", "status": "missing", "path": null },
       { "id": "grub-efi-riscv64-boot", "status": "missing", "path": null },
-      { "id": "elizaos-agent-live", "status": "missing", "path": null }
+      { "id": "elizaos-agent-live", "status": "missing", "path": null },
+      { "id": "riscv64-agent-runtime", "status": "missing", "path": null }
     ]
   }
 }

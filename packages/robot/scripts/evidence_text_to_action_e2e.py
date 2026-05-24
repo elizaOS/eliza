@@ -44,8 +44,9 @@ import cv2
 import numpy as np
 
 from eliza_robot.bridge.backends.ainex_remote import AinexRemoteBackend
+from eliza_robot.bridge.backends.asimov_mujoco import AsimovMujocoBackend
+from eliza_robot.bridge.backends.asimov_remote import AsimovRemoteBackend
 from eliza_robot.bridge.backends.dual_target import DualTargetBackend
-from eliza_robot.bridge.backends.mock_backend import MockBackend
 from eliza_robot.bridge.backends.mujoco_backend import MuJocoBackend
 from eliza_robot.perception.calibration import CameraIntrinsics
 from eliza_robot.perception.detectors.aruco_detector import ArucoDetector
@@ -60,10 +61,47 @@ from eliza_robot.sim2real.aruco_anchor import (
 )
 
 
+def _load_manifest(checkpoint: Path) -> dict:
+    manifest = checkpoint / "manifest.json"
+    if not manifest.is_file():
+        raise FileNotFoundError(f"missing checkpoint manifest: {manifest}")
+    return json.loads(manifest.read_text(encoding="utf-8"))
+
+
+def _resolve_profile(args) -> str:
+    manifest = _load_manifest(Path(args.checkpoint))
+    manifest_profile = str(manifest.get("profile_id") or "")
+    if not manifest_profile:
+        raise ValueError(f"checkpoint manifest has no profile_id: {args.checkpoint}")
+    requested = args.profile or manifest_profile
+    if requested != manifest_profile:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"manifest profile_id={manifest_profile!r}, requested profile={requested!r}"
+        )
+    args.profile = requested
+    return requested
+
+
 async def _build_backend(args) -> tuple:
     """Return (backend, env-or-None) for the chosen topology."""
+    if args.profile == "asimov-1":
+        if args.no_real:
+            backend = AsimovMujocoBackend(profile_id=args.profile)
+            await backend.connect()
+            return backend, None
+        real = AsimovRemoteBackend(host=args.host, port=args.port, profile_id=args.profile)
+        await real.connect()
+        return real, None
+
+    if args.profile != "hiwonder-ainex":
+        raise ValueError(
+            "text-to-action evidence currently supports HiWonder AiNex and ASIMOV-1; "
+            f"got profile {args.profile!r}"
+        )
+
     sim_env = DemoEnv(target_position=(2.0, 0.0, 0.05))
-    sim = MuJocoBackend(sim_env, profile_id="hiwonder-ainex")
+    sim = MuJocoBackend(sim_env, profile_id=args.profile)
     if args.no_real:
         await sim.connect()
         return sim, sim_env
@@ -76,6 +114,7 @@ async def _build_backend(args) -> tuple:
 async def _run(args) -> int:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    profile_id = _resolve_profile(args)
 
     backend, sim_env = await _build_backend(args)
     print(f"[e2e] backend ready: {backend.backend_name}")
@@ -116,11 +155,14 @@ async def _run(args) -> int:
                 str(out / "text_to_action_e2e.mp4"), fourcc, args.fps,
                 (sample.shape[1], sample.shape[0]),
             )
-    sim_sample = sim_env.render_external(width=1280, height=720)
-    sim_writer = cv2.VideoWriter(
-        str(out / "text_to_action_e2e_sim.mp4"), fourcc, args.fps,
-        (sim_sample.shape[1], sim_sample.shape[0]),
-    )
+    sim_writer = None
+    sim_sample = None
+    if sim_env is not None:
+        sim_sample = sim_env.render_external(width=1280, height=720)
+        sim_writer = cv2.VideoWriter(
+            str(out / "text_to_action_e2e_sim.mp4"), fourcc, args.fps,
+            (sim_sample.shape[1], sim_sample.shape[0]),
+        )
     robot_cam_writer: cv2.VideoWriter | None = None
 
     divergence_log: list[dict] = []
@@ -155,7 +197,7 @@ async def _run(args) -> int:
                             np.array([[d.marker_id]]),
                         )
                     label = [f'"{prompt}"', f"t+{int((now-t0)*1000)} ms"]
-                    if pose is not None:
+                    if pose is not None and sim_env is not None:
                         divergence = measure_divergence(sim_env, pose)
                         label.append(
                             f"sim2real {divergence['rms_xy_m']*100:.1f} cm  "
@@ -172,8 +214,12 @@ async def _run(args) -> int:
                         y += 26
                     ext_writer.write(annotated)
             # sim frame
-            sim_frame = sim_env.render_external(width=sim_sample.shape[1], height=sim_sample.shape[0])
-            sim_writer.write(sim_frame[:, :, ::-1])
+            if sim_env is not None and sim_writer is not None and sim_sample is not None:
+                sim_frame = sim_env.render_external(
+                    width=sim_sample.shape[1],
+                    height=sim_sample.shape[0],
+                )
+                sim_writer.write(sim_frame[:, :, ::-1])
             samples += 1
             if divergence is not None:
                 divergence["t_s"] = now - t0
@@ -190,6 +236,7 @@ async def _run(args) -> int:
                 hz=args.policy_hz,
                 max_steps=int(args.episode_s * args.policy_hz),
                 action_scale=0.3,
+                profile_id=profile_id,
             )
             inference_task = asyncio.create_task(
                 run_inference(backend, args.checkpoint, prompt, config=cfg)
@@ -212,7 +259,8 @@ async def _run(args) -> int:
     finally:
         if ext_writer is not None:
             ext_writer.release()
-        sim_writer.release()
+        if sim_writer is not None:
+            sim_writer.release()
         if robot_cam_writer is not None:
             robot_cam_writer.release()
         if obsbot is not None:
@@ -245,6 +293,8 @@ async def _run(args) -> int:
 
     report = {
         "checkpoint": str(args.checkpoint),
+        "profile_id": profile_id,
+        "backend": backend.backend_name,
         "host": f"{args.host}:{args.port}",
         "no_real": args.no_real,
         "policy_hz": args.policy_hz,
@@ -264,7 +314,12 @@ def main() -> int:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "checkpoints" / "text_conditioned_smoke",
+        default=Path(__file__).resolve().parents[1] / "checkpoints" / "alberta_text_conditioned",
+    )
+    parser.add_argument(
+        "--profile",
+        default=None,
+        help="Robot profile id. Defaults to checkpoint manifest profile_id.",
     )
     parser.add_argument("--host", default="192.168.1.218")
     parser.add_argument("--port", type=int, default=9090)

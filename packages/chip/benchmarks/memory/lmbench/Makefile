@@ -46,13 +46,13 @@ bw_mem: check-src
 
 run: build
 	@mkdir -p $(ARTIFACT_DIR)
-	./bw_mem 1024M rd  > $(ARTIFACT_DIR)/lmbench_bw_rd.raw   2>&1 || true
-	./bw_mem 1024M wr  > $(ARTIFACT_DIR)/lmbench_bw_wr.raw   2>&1 || true
-	./bw_mem 1024M rdwr > $(ARTIFACT_DIR)/lmbench_bw_rdwr.raw 2>&1 || true
-	./bw_mem 1024M cp   > $(ARTIFACT_DIR)/lmbench_bw_cp.raw   2>&1 || true
-	./bw_mem 1024M bzero > $(ARTIFACT_DIR)/lmbench_bw_bzero.raw 2>&1 || true
-	./lat_mem_rd 1024 128 > $(ARTIFACT_DIR)/lmbench_lat_random.raw 2>&1 || true
-	./lat_mem_rd 1024     > $(ARTIFACT_DIR)/lmbench_lat_stride.raw 2>&1 || true
+	./bw_mem 1024M rd  > $(ARTIFACT_DIR)/lmbench_bw_rd.raw   2>&1
+	./bw_mem 1024M wr  > $(ARTIFACT_DIR)/lmbench_bw_wr.raw   2>&1
+	./bw_mem 1024M rdwr > $(ARTIFACT_DIR)/lmbench_bw_rdwr.raw 2>&1
+	./bw_mem 1024M cp   > $(ARTIFACT_DIR)/lmbench_bw_cp.raw   2>&1
+	./bw_mem 1024M bzero > $(ARTIFACT_DIR)/lmbench_bw_bzero.raw 2>&1
+	./lat_mem_rd 1024 128 > $(ARTIFACT_DIR)/lmbench_lat_random.raw 2>&1
+	./lat_mem_rd 1024     > $(ARTIFACT_DIR)/lmbench_lat_stride.raw 2>&1
 	python3 ../../../scripts/check_bandwidth_sustained.py \
 	    --lmbench-rd-raw  $(ARTIFACT_DIR)/lmbench_bw_rd.raw \
 	    --lmbench-wr-raw  $(ARTIFACT_DIR)/lmbench_bw_wr.raw \

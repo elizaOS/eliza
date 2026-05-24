@@ -1,0 +1,23 @@
+{
+  "schema": "robot-nebius-clean-launch-v1",
+  "ok": false,
+  "state": "awaiting_nebius_cli_auth",
+  "run_id": "robot-full-clean-1779556360",
+  "generated_at": "2026-05-24T02:21:27.684161Z",
+  "disk_id": null,
+  "instance_id": null,
+  "instance_name": null,
+  "public_ip": null,
+  "ssh_ready": false,
+  "runtime_env_injected": false,
+  "payload_uri": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/payload.tar.gz",
+  "nebius_auth": {
+    "ok": false,
+    "reason": "nebius_cli_auth_required",
+    "returncode": 7,
+    "timeout_seconds": 20,
+    "auth_prompt_detected": true,
+    "redacted": true
+  },
+  "redacted": true
+}

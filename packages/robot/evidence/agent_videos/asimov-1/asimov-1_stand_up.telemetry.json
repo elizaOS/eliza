@@ -1,0 +1,37 @@
+{
+  "profile": "asimov-1",
+  "label": "stand up",
+  "task_id": "stand_up",
+  "policy_source": "sb3_smoke",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.378,
+  "torso_z": {
+    "min": 0.6276375671107455,
+    "max": 0.6322463535181174,
+    "final": 0.6322463535181174,
+    "mean": 0.6296108652656484
+  },
+  "upright_proj": {
+    "min": 0.9868647231660302,
+    "max": 0.9999990726811666,
+    "final": 0.9868647231660302,
+    "mean": 0.9977601602109166
+  },
+  "reward": {
+    "min": 3.4583592168716377,
+    "max": 3.4986502158142296,
+    "final": 3.4583592168716377,
+    "mean": 3.490206471546604
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

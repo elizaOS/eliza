@@ -58,7 +58,9 @@ class LiveKitAsimovTransport:
         self.edge_pb2: Any = edge_pb2
         self._seq = itertools.count(1)
         self._latest_telemetry: AsimovTelemetryFrame | None = None
+        self._telemetry_error: Exception | None = None
         self._telemetry_event = asyncio.Event()
+        self._commanded_mode = "DAMP"
 
     async def connect(self) -> None:
         if not self.url:
@@ -103,8 +105,11 @@ class LiveKitAsimovTransport:
             mode=pb.ModeCommand(mode=self._enum_value(pb.Mode, enum_name, enum_name)),
         )
         await self._publish_command(command)
+        self._commanded_mode = mode
 
     async def send_velocity(self, vx_mps: float, vy_mps: float, yaw_rad_s: float) -> None:
+        if self._effective_mode() != "STAND":
+            raise ValueError("ASIMOV velocity commands require STAND mode")
         for value in (vx_mps, vy_mps, yaw_rad_s):
             if not math.isfinite(float(value)):
                 raise ValueError("ASIMOV velocity commands must be finite")
@@ -159,6 +164,10 @@ class LiveKitAsimovTransport:
         await self._publish_command(command)
 
     async def read_telemetry(self) -> AsimovTelemetryFrame:
+        if self._telemetry_error is not None:
+            error = self._telemetry_error
+            self._telemetry_error = None
+            raise ValueError(f"ASIMOV telemetry parse failed: {error}") from error
         if self._latest_telemetry is not None:
             return self._latest_telemetry
         return AsimovTelemetryFrame(
@@ -168,9 +177,17 @@ class LiveKitAsimovTransport:
 
     async def wait_for_telemetry(self, *, timeout_s: float = 10.0) -> AsimovTelemetryFrame:
         """Wait for a real telemetry frame without sending a command."""
+        if self._telemetry_error is not None:
+            error = self._telemetry_error
+            self._telemetry_error = None
+            raise ValueError(f"ASIMOV telemetry parse failed: {error}") from error
         if self._latest_telemetry is not None:
             return self._latest_telemetry
         await asyncio.wait_for(self._telemetry_event.wait(), timeout=float(timeout_s))
+        if self._telemetry_error is not None:
+            error = self._telemetry_error
+            self._telemetry_error = None
+            raise ValueError(f"ASIMOV telemetry parse failed: {error}") from error
         if self._latest_telemetry is None:
             raise TimeoutError("ASIMOV telemetry event fired but no frame was cached")
         return self._latest_telemetry
@@ -179,14 +196,26 @@ class LiveKitAsimovTransport:
         pb = self._require_pb2()
         telemetry = pb.EdgeTelemetry.FromString(payload)
         frame = AsimovTelemetryFrame(
-            joint_positions=self._joint_map(getattr(telemetry, "joint_pos", [])),
-            joint_velocities=self._joint_map(getattr(telemetry, "joint_vel", [])),
+            joint_positions=self._joint_map(getattr(telemetry, "joint_pos", []), "joint_pos"),
+            joint_velocities=self._joint_map(getattr(telemetry, "joint_vel", []), "joint_vel"),
             mode=self._firmware_mode_name(getattr(telemetry, "fw_mode", 0)),
-            joint_current=[float(v) for v in getattr(telemetry, "joint_current", [])],
-            joint_temp=[float(v) for v in getattr(telemetry, "joint_temp", [])],
-            imu_quat=[float(v) for v in getattr(telemetry, "imu_quat", [])],
-            imu_gyro=[float(v) for v in getattr(telemetry, "imu_gyro", [])],
-            imu_gravity=[float(v) for v in getattr(telemetry, "imu_gravity", [])],
+            joint_current=self._float_list(
+                getattr(telemetry, "joint_current", []),
+                "joint_current",
+                allowed_widths={0, ASIMOV1_FULL_ACTION_DIM},
+            ),
+            joint_temp=self._float_list(
+                getattr(telemetry, "joint_temp", []),
+                "joint_temp",
+                allowed_widths={0, ASIMOV1_FULL_ACTION_DIM},
+            ),
+            imu_quat=self._float_list(getattr(telemetry, "imu_quat", []), "imu_quat", allowed_widths={0, 4}),
+            imu_gyro=self._float_list(getattr(telemetry, "imu_gyro", []), "imu_gyro", allowed_widths={0, 3}),
+            imu_gravity=self._float_list(
+                getattr(telemetry, "imu_gravity", []),
+                "imu_gravity",
+                allowed_widths={0, 3},
+            ),
             sequence=int(getattr(telemetry, "sequence", 0)),
             timestamp_us=int(getattr(telemetry, "timestamp_us", 0)),
             fw_timestamp_us=int(getattr(telemetry, "fw_timestamp_us", 0)),
@@ -194,6 +223,7 @@ class LiveKitAsimovTransport:
             fw_age_ms=int(getattr(telemetry, "fw_age_ms", 0)),
         )
         self._latest_telemetry = frame
+        self._commanded_mode = frame.mode
         self._telemetry_event.set()
         return frame
 
@@ -227,7 +257,11 @@ class LiveKitAsimovTransport:
             payload = getattr(data_packet, "payload", data_packet)
         if isinstance(payload, str):
             payload = payload.encode("utf-8")
-        self.handle_telemetry_payload(bytes(payload))
+        try:
+            self.handle_telemetry_payload(bytes(payload))
+        except Exception as exc:
+            self._telemetry_error = exc
+            self._telemetry_event.set()
 
     def _register_room_event(self, event: str, callback: Any) -> None:
         registrar = self.room.on(event)
@@ -242,7 +276,11 @@ class LiveKitAsimovTransport:
         stream = track.subscribe()
         async for frame in stream:
             payload = getattr(frame, "payload", frame)
-            self.handle_telemetry_payload(payload)
+            try:
+                self.handle_telemetry_payload(payload)
+            except Exception as exc:
+                self._telemetry_error = exc
+                self._telemetry_event.set()
 
     def _require_pb2(self) -> Any:
         if self.edge_pb2 is None:
@@ -251,6 +289,11 @@ class LiveKitAsimovTransport:
 
     def _next_sequence(self) -> int:
         return next(self._seq)
+
+    def _effective_mode(self) -> str:
+        if self._latest_telemetry is not None:
+            return self._latest_telemetry.mode.upper()
+        return self._commanded_mode.upper()
 
     @staticmethod
     def _timestamp_us() -> int:
@@ -268,11 +311,26 @@ class LiveKitAsimovTransport:
         raise AttributeError(f"ASIMOV protobuf enum is missing {name}")
 
     @staticmethod
-    def _joint_map(values: Any) -> dict[str, float]:
-        vals = list(values)
-        if len(vals) != ASIMOV1_FULL_ACTION_DIM:
-            vals = (vals + [0.0] * ASIMOV1_FULL_ACTION_DIM)[:ASIMOV1_FULL_ACTION_DIM]
-        return {name: float(value) for name, value in zip(ASIMOV1_FIRMWARE_JOINT_ORDER, vals, strict=True)}
+    def _joint_map(values: Any, field_name: str) -> dict[str, float]:
+        vals = LiveKitAsimovTransport._float_list(
+            values,
+            field_name,
+            allowed_widths={ASIMOV1_FULL_ACTION_DIM},
+        )
+        return {
+            name: value
+            for name, value in zip(ASIMOV1_FIRMWARE_JOINT_ORDER, vals, strict=True)
+        }
+
+    @staticmethod
+    def _float_list(values: Any, field_name: str, *, allowed_widths: set[int]) -> list[float]:
+        vals = [float(value) for value in list(values)]
+        if len(vals) not in allowed_widths:
+            allowed = ", ".join(str(width) for width in sorted(allowed_widths))
+            raise ValueError(f"ASIMOV telemetry {field_name} width {len(vals)} not in {{{allowed}}}")
+        if not all(math.isfinite(value) for value in vals):
+            raise ValueError(f"ASIMOV telemetry {field_name} contains non-finite values")
+        return vals
 
     def _firmware_mode_name(self, value: Any) -> str:
         pb = self._require_pb2()

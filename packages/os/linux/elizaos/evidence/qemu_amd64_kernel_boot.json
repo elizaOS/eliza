@@ -1,0 +1,25 @@
+{
+  "boot_completed": true,
+  "claim_boundary": "qemu_amd64_kernel_initrd_live_iso_boot_transcript_evidence_only_no_grub_or_silicon_claim",
+  "created_at": "2026-05-21T22:45:09Z",
+  "iso_path": "out/elizaos-linux-amd64-default-20260521T213750Z.iso",
+  "iso_sha256": "e655c41a25160af73cec8ca8bc27a4fd68b14dca281e4667d6c64707f1136ca2",
+  "markers_present": [
+    "Linux version",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "provenance": "qemu_amd64_kernel_initrd_live_iso",
+  "required_markers": [
+    "Linux version",
+    "elizaos-firstboot-ready",
+    "elizaos-curl-health-ready",
+    "elizaos-agent-ready",
+    "elizaos-tui-ready"
+  ],
+  "schema": "eliza.os.linux.qemu_amd64_kernel_boot.v1",
+  "transcript_path": "evidence/qemu_amd64_kernel_boot.transcript.log",
+  "transcript_sha256": "8a94a4bd3b6616945600efff9b283123fe8b890c49b0129887290e242d0acca5"
+}

@@ -31,6 +31,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -64,6 +65,7 @@ REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
     "qemu-virt-boot",
     "grub-efi-riscv64-boot",
     "elizaos-agent-live",
+    "riscv64-agent-runtime",
 )
 
 # Promoted artifact statuses require every evidence row to be ``collected``;
@@ -82,7 +84,6 @@ REQUIRED_TRANSCRIPT_MARKERS: tuple[str, ...] = (
 REQUIRED_TRANSCRIPT_MARKER = REQUIRED_TRANSCRIPT_MARKERS[0]
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "GNU GRUB",
-    "Live system (riscv64)",
     "EFI stub: Booting Linux Kernel",
 )
 
@@ -112,6 +113,10 @@ TEMPLATE_STRING_PLACEHOLDERS: dict[str, str] = {
 # ``TEMPLATE_STRING_PLACEHOLDERS`` above.
 TEMPLATE_SENTINEL_SHA256 = "0" * 64
 TEMPLATE_SENTINEL_FILENAME = "elizaos-linux-riscv64-template.iso"
+RISCV64_AGENT_RUNTIME_SCHEMA = "eliza.os.linux.riscv64_agent_runtime_smoke.v1"
+RISCV64_BUN_PROVENANCE_SCHEMA = "eliza.os.linux.riscv64_bun_stage_provenance.v1"
+RISCV64_BUN_VERSION_INPUT = "packages/app-core/scripts/bun-riscv64/bun-version.json"
+SHA256_RE = re.compile(r"^[a-f0-9]{64}$")
 
 Status = Literal["PASS", "BLOCKED", "FAIL"]
 
@@ -128,6 +133,14 @@ def _load_json(path: Path) -> dict:
     """Read a JSON file or raise FileNotFoundError / json.JSONDecodeError."""
     text = path.read_text()
     return json.loads(text)
+
+
+def _sha256_file(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            hasher.update(block)
+    return hasher.hexdigest()
 
 
 def _load_template(path: Path) -> dict:
@@ -520,6 +533,204 @@ def check_grub_efi_evidence(
     return out
 
 
+def _resolve_runtime_artifacts_dir(variant_dir: Path, payload: dict) -> Path:
+    artifacts_value = payload.get("artifacts")
+    if isinstance(artifacts_value, str) and artifacts_value:
+        artifacts = Path(artifacts_value)
+        if artifacts.is_absolute():
+            return artifacts
+        return (variant_dir / artifacts).resolve()
+    return variant_dir / "artifacts" / "riscv64"
+
+
+def check_riscv64_agent_runtime_evidence(
+    manifest: dict, is_template: bool, variant_dir: Path
+) -> list[GateResult]:
+    """Cross-check staged riscv64 Bun/agent runtime smoke and provenance."""
+    rows = _evidence_index(manifest)
+    row = rows.get("riscv64-agent-runtime")
+    if row is None:
+        return [
+            GateResult(
+                "FAIL",
+                "manifest.validation.evidence missing row id=riscv64-agent-runtime",
+            )
+        ]
+
+    path_value = row.get("path")
+    if not isinstance(path_value, str) or not path_value:
+        if is_template:
+            return [
+                GateResult(
+                    "BLOCKED",
+                    "riscv64-agent-runtime.path not filled (template manifest)",
+                )
+            ]
+        return [GateResult("BLOCKED", "riscv64-agent-runtime.path not filled")]
+
+    evidence_path = _resolve_evidence_path(variant_dir, path_value)
+    if not evidence_path.is_file():
+        return [
+            GateResult(
+                "BLOCKED", f"riscv64 agent runtime evidence file not present: {evidence_path}"
+            )
+        ]
+
+    try:
+        payload = _load_json(evidence_path)
+    except json.JSONDecodeError as exc:
+        return [GateResult("FAIL", f"runtime evidence JSON invalid at {evidence_path}: {exc}")]
+    if not isinstance(payload, dict):
+        return [GateResult("FAIL", f"runtime evidence JSON must be an object: {evidence_path}")]
+
+    out: list[GateResult] = []
+    if payload.get("schema") != RISCV64_AGENT_RUNTIME_SCHEMA:
+        out.append(
+            GateResult(
+                "FAIL",
+                "riscv64 agent runtime evidence schema mismatch: "
+                f"{payload.get('schema')!r}",
+            )
+        )
+    if payload.get("status") != "pass":
+        out.append(
+            GateResult(
+                "FAIL",
+                "riscv64 agent runtime smoke did not pass: "
+                f"status={payload.get('status')!r}",
+            )
+        )
+    failures = payload.get("failures")
+    if failures not in ([], None):
+        out.append(
+            GateResult(
+                "FAIL",
+                "riscv64 agent runtime smoke recorded failures: "
+                + ", ".join(str(item) for item in failures[:6])
+                if isinstance(failures, list)
+                else f"riscv64 agent runtime smoke failures must be an array: {failures!r}",
+            )
+        )
+
+    transcript_value = payload.get("transcript")
+    transcript_sha = payload.get("transcript_sha256")
+    if not isinstance(transcript_sha, str) or not SHA256_RE.fullmatch(transcript_sha):
+        out.append(GateResult("FAIL", "riscv64 agent runtime evidence missing transcript_sha256"))
+    if isinstance(transcript_value, str) and transcript_value:
+        transcript_path = _resolve_transcript_path(variant_dir, transcript_value)
+        if not transcript_path.is_file():
+            out.append(
+                GateResult(
+                    "BLOCKED",
+                    f"riscv64 agent runtime transcript not present: {transcript_path}",
+                )
+            )
+        elif isinstance(transcript_sha, str) and SHA256_RE.fullmatch(transcript_sha):
+            actual = _sha256_file(transcript_path)
+            if actual != transcript_sha:
+                out.append(
+                    GateResult(
+                        "FAIL",
+                        "riscv64 agent runtime transcript sha256 mismatch: "
+                        f"evidence={transcript_sha!r} actual={actual!r}",
+                    )
+                )
+    else:
+        out.append(GateResult("FAIL", "riscv64 agent runtime evidence missing transcript"))
+
+    artifacts_dir = _resolve_runtime_artifacts_dir(variant_dir, payload)
+    runtime_mode = payload.get("runtime_mode", "bun")
+    if runtime_mode not in ("bun", "node"):
+        out.append(
+            GateResult(
+                "FAIL",
+                f"riscv64 agent runtime evidence has invalid runtime_mode: {runtime_mode!r}",
+            )
+        )
+    agent_bundle = artifacts_dir / "elizaos-app" / "agent-bundle.js"
+    if runtime_mode == "node":
+        if not agent_bundle.is_file():
+            out.append(GateResult("BLOCKED", f"staged node agent bundle not present: {agent_bundle}"))
+        else:
+            first_line = agent_bundle.read_text(encoding="utf-8", errors="ignore").splitlines()[:1]
+            if first_line not in (["#!/usr/bin/env node"], ["#!/usr/bin/node"]):
+                out.append(
+                    GateResult(
+                        "FAIL",
+                        f"staged node agent bundle missing node shebang: {agent_bundle}",
+                    )
+                )
+        if (artifacts_dir / "bun").exists() or (artifacts_dir / "riscv64-bun-provenance.json").exists():
+            out.append(
+                GateResult(
+                    "FAIL",
+                    "node-mode riscv64 runtime evidence must not stage Bun artifacts",
+                )
+            )
+    else:
+        bun_path = artifacts_dir / "elizaos-app" / "musl-runtime" / "bun"
+        provenance_path = artifacts_dir / "riscv64-bun-provenance.json"
+        if not bun_path.is_file():
+            out.append(GateResult("BLOCKED", f"staged riscv64 Bun not present: {bun_path}"))
+        if not provenance_path.is_file():
+            out.append(
+                GateResult(
+                    "FAIL",
+                    f"staged riscv64 Bun provenance missing: {provenance_path}",
+                )
+            )
+        else:
+            try:
+                provenance = _load_json(provenance_path)
+            except json.JSONDecodeError as exc:
+                out.append(
+                    GateResult(
+                        "FAIL",
+                        f"riscv64 Bun provenance JSON invalid at {provenance_path}: {exc}",
+                    )
+                )
+            else:
+                if provenance.get("schema") != RISCV64_BUN_PROVENANCE_SCHEMA:
+                    out.append(
+                        GateResult(
+                            "FAIL",
+                            "riscv64 Bun provenance schema mismatch: "
+                            f"{provenance.get('schema')!r}",
+                        )
+                    )
+                inputs = provenance.get("inputs")
+                if not isinstance(inputs, dict) or RISCV64_BUN_VERSION_INPUT not in inputs:
+                    out.append(
+                        GateResult(
+                            "FAIL",
+                            "riscv64 Bun provenance does not record current Bun version input",
+                        )
+                    )
+                artifact = provenance.get("artifact")
+                staged_sha = artifact.get("staged_bun_sha256") if isinstance(artifact, dict) else None
+                if not isinstance(staged_sha, str) or not SHA256_RE.fullmatch(staged_sha):
+                    out.append(
+                        GateResult(
+                            "FAIL",
+                            "riscv64 Bun provenance missing staged_bun_sha256",
+                        )
+                    )
+                elif bun_path.is_file():
+                    actual = _sha256_file(bun_path)
+                    if actual != staged_sha:
+                        out.append(
+                            GateResult(
+                                "FAIL",
+                                "riscv64 Bun provenance staged_bun_sha256 mismatch: "
+                                f"provenance={staged_sha!r} actual={actual!r}",
+                            )
+                        )
+
+    if not out:
+        out.append(GateResult("PASS", "riscv64 agent runtime evidence verified"))
+    return out
+
+
 def check_iso_sha256_against_file(
     manifest: dict, is_template: bool, variant_dir: Path
 ) -> list[GateResult]:
@@ -535,11 +746,7 @@ def check_iso_sha256_against_file(
     iso_path = variant_dir / "out" / filename
     if not iso_path.is_file():
         return [GateResult("BLOCKED", f"ISO file not present locally: {iso_path}")]
-    hasher = hashlib.sha256()
-    with iso_path.open("rb") as fh:
-        for block in iter(lambda: fh.read(1 << 20), b""):
-            hasher.update(block)
-    actual = hasher.hexdigest()
+    actual = _sha256_file(iso_path)
     if actual != sha256:
         return [
             GateResult(
@@ -569,6 +776,7 @@ def run_checks(variant_dir: Path) -> tuple[Status, list[GateResult], Path, bool]
     results.extend(check_evidence_rows_collected(manifest, is_template))
     results.extend(check_qemu_virt_evidence(manifest, is_template, variant_dir))
     results.extend(check_grub_efi_evidence(manifest, is_template, variant_dir))
+    results.extend(check_riscv64_agent_runtime_evidence(manifest, is_template, variant_dir))
     results.extend(check_iso_sha256_against_file(manifest, is_template, variant_dir))
     return aggregate(results), results, manifest_path, is_template
 

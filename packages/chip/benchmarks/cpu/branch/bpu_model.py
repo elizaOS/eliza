@@ -18,6 +18,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from typing import Any
 
 BR_NONE = 0
 BR_COND = 1
@@ -27,9 +28,12 @@ BR_RET = 3
 # but does NOT push or pop the RAS. Kept distinct from BR_CALL so that
 # real traces (CBP-5, SPEC, AOSP) do not corrupt the RAS.
 BR_IND = 4
+# Unconditional direct jump. This trains target arrays without consuming
+# conditional direction capacity and without mutating the RAS.
+BR_DIRECT = 5
 
 # Per-table geometry mirrors rtl/cpu/bpu/bpu_pkg.sv.
-DEFAULT_GEOMETRY: dict[str, object] = {
+DEFAULT_GEOMETRY: dict[str, Any] = {
     "FETCH_BLOCK_BYTES": 32,
     # Experiment-only front-end limit: how many conditional-branch predictions
     # can be carried for one fetched block. Many production predictors carry
@@ -50,39 +54,68 @@ DEFAULT_GEOMETRY: dict[str, object] = {
     "TAGE_ALLOC_DECREMENT": True,
     "TAGE_UBIT_RESET_PERIOD": 100_000,  # branches between useful-bit aging
     "TAGE_HIST_LEN": (8, 16, 44, 90, 195),
-    "SC_TABLES": 4,
-    "SC_ENTRIES_TABLE": 512,
+    "SC_TABLES": 6,
+    "SC_ENTRIES_TABLE": 1024,
     "SC_CTR_W": 6,
-    "SC_HIST_LEN": (0, 4, 10, 16),
-    "SC_THRESH_INIT": 8,
+    "SC_HIST_LEN": (0, 4, 10, 16, 27, 44),
+    "SC_THRESH_INIT": 6,
     "SC_ADAPTIVE": True,
     "SC_LOCAL_HISTORY_BITS": 8,
     "SC_LOCAL_HISTORY_ENTRIES": 1024,
+    "SC_BIAS_ENABLE": 0,
+    "SC_BIAS_ENTRIES": 2048,
+    "SC_BIAS_CTR_W": 5,
+    "H2P_ENABLE": 1,
+    "H2P_ENTRIES": 512,
+    "H2P_HIST_LEN": 64,
+    "H2P_TARGET_HIST_LEN": 0,
+    "H2P_PATH_HIST_LEN": 0,
+    "H2P_WEIGHT_W": 6,
+    "H2P_THRESHOLD": 36,
+    "H2P_META_ENABLE": 0,
+    "H2P_META_ENTRIES": 1024,
+    "H2P_META_CTR_W": 3,
+    "H2P_META_THRESHOLD": 1,
+    "LOCAL_DIR_ENABLE": 1,
+    "LOCAL_DIR_ENTRIES": 1024,
+    "LOCAL_DIR_HIST_W": 2,
+    "LOCAL_DIR_PHT_ENTRIES": 4,
+    "LOCAL_DIR_META_ENABLE": 1,
+    "LOCAL_DIR_META_ENTRIES": 1024,
+    "LOCAL_DIR_META_CTR_W": 3,
+    "LOCAL_DIR_META_THRESHOLD": 1,
     "LOOP_ENTRIES": 64,
     "LOOP_CTR_W": 14,
     "LOOP_CONF_W": 3,
+    "LOOP_IMLI_ENABLE": 0,
+    "LOOP_IMLI_HIST_W": 16,
+    "LOOP_IMLI_TOKEN_W": 4,
+    "LOOP_PATH_SIG_W": 8,
     "FTB_ENTRIES": 4096,
     "FTB_WAYS": 4,
     "FTB_TARGET_CONF_W": 2,
+    "L2_FTB_ENTRIES": 8192,
+    "L2_FTB_WAYS": 8,
     "UFTB_ENTRIES": 512,
     "UFTB_WAYS": 4,
     "UFTB_STEER_CONF_MIN": 2,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
     "ITTAGE_TABLES": 5,
-    "ITTAGE_ENTRIES": (512, 512, 1024, 1024, 1024),
+    "ITTAGE_ENTRIES": (1024, 1024, 2048, 2048, 2048),
+    "ITTAGE_WAYS": 2,
     "ITTAGE_HIST_LEN": (4, 10, 20, 40, 80),
-    "ITTAGE_TAG_W": 9,
+    "ITTAGE_TAG_W": 11,
     "ITTAGE_CTR_W": 3,
     "ITTAGE_USEFUL_W": 2,
     "ITTAGE_USEFUL_RESET_PERIOD": 100_000,
     "ITTAGE_REPLACE_WEAK_CTR": 3,
     "ITTAGE_REPLACE_MIN_PROVIDER": 4,
     "ITTAGE_TARGET_HISTORY_BITS": 64,
-    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 5,
     "ITTAGE_TARGET_HISTORY_SHIFT": 8,
-    "ITTAGE_PATH_HISTORY_BITS": 0,
-    "ITTAGE_PATH_HISTORY_TOKEN_BITS": 6,
+    "ITTAGE_PATH_HISTORY_BITS": 64,
+    "ITTAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "ITTAGE_PATH_HISTORY_SHIFT": 2,
 }
 
@@ -104,6 +137,11 @@ class BranchEvent:
     taken: bool
     kind: int
     call_return_pc: int | None = None
+    asid: int = 0
+    vmid: int = 0
+    priv: int = 0
+    secure: int = 0
+    workload_class: int = 0
 
 
 def _mask(width: int) -> int:
@@ -503,6 +541,14 @@ class _FTB:
 
 
 @dataclass
+class _LocalDirMeta:
+    entries: int
+
+    def _idx(self, pc: int) -> int:
+        return (pc >> 2) % self.entries
+
+
+@dataclass
 class _ITTAGE:
     geo: dict
     storage: list[dict[int, dict]] = field(default_factory=list)
@@ -537,26 +583,28 @@ class _ITTAGE:
                     entry["useful"] = max(entry.get("useful", 0) - 1, 0)
         if provider > 0:
             idx, tag = self._index_tag(provider - 1, pc, hist)
-            entry = self.storage[provider - 1].get(idx)
-            if entry is not None and entry["tag"] == tag:
-                if entry["target"] == target:
-                    entry["ctr"] = min(entry["ctr"] + 1, _mask(self.geo["ITTAGE_CTR_W"]))
-                    entry["useful"] = min(
-                        entry.get("useful", 0) + 1,
+            provider_entry = self.storage[provider - 1].get(idx)
+            if provider_entry is not None and provider_entry["tag"] == tag:
+                if provider_entry["target"] == target:
+                    provider_entry["ctr"] = min(
+                        provider_entry["ctr"] + 1, _mask(self.geo["ITTAGE_CTR_W"])
+                    )
+                    provider_entry["useful"] = min(
+                        provider_entry.get("useful", 0) + 1,
                         _mask(self.geo["ITTAGE_USEFUL_W"]),
                     )
                 elif (
                     provider >= self.geo["ITTAGE_REPLACE_MIN_PROVIDER"]
-                    and entry["ctr"] <= self.geo["ITTAGE_REPLACE_WEAK_CTR"]
+                    and provider_entry["ctr"] <= self.geo["ITTAGE_REPLACE_WEAK_CTR"]
                 ):
-                    entry["target"] = target
-                    entry["ctr"] = 1 << (self.geo["ITTAGE_CTR_W"] - 1)
-                    entry["useful"] = 0
-                elif entry["ctr"] == 0:
+                    provider_entry["target"] = target
+                    provider_entry["ctr"] = 1 << (self.geo["ITTAGE_CTR_W"] - 1)
+                    provider_entry["useful"] = 0
+                elif provider_entry["ctr"] == 0:
                     self.storage[provider - 1].pop(idx, None)
                 else:
-                    entry["ctr"] -= 1
-                    entry["useful"] = max(entry.get("useful", 0) - 1, 0)
+                    provider_entry["ctr"] -= 1
+                    provider_entry["useful"] = max(provider_entry.get("useful", 0) - 1, 0)
         if misp:
             for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
                 idx, tag = self._index_tag(higher, pc, hist)
@@ -571,7 +619,7 @@ class _ITTAGE:
             for higher in range(max(provider, 0), self.geo["ITTAGE_TABLES"]):
                 idx, tag = self._index_tag(higher, pc, hist)
                 victim = self.storage[higher].get(idx)
-                if victim.get("useful", 0) == 0:
+                if victim is not None and victim.get("useful", 0) == 0:
                     self.storage[higher][idx] = {
                         "tag": tag,
                         "target": target,
@@ -612,6 +660,9 @@ class BPUSimulator:
             entries=self.geometry["FTB_ENTRIES"],
             target_conf_w=self.geometry["FTB_TARGET_CONF_W"],
         )
+        self.local_dir_meta = _LocalDirMeta(
+            entries=self.geometry["LOCAL_DIR_META_ENTRIES"]
+        )
         self.ittage = _ITTAGE.build(self.geometry)
 
     def feed(self, events: Iterable[BranchEvent]) -> None:
@@ -619,7 +670,8 @@ class BPUSimulator:
             self._step(event)
 
     def _predict(self, event: BranchEvent) -> tuple[bool, int]:
-        ftb_entry = self.ftb.lookup(event.pc)
+        pc = self._context_pc(event)
+        ftb_entry = self.ftb.lookup(pc)
         ittage_hist = self._ittage_history()
         if event.kind == BR_RET:
             top = self.ras.pop()
@@ -628,7 +680,7 @@ class BPUSimulator:
             )
             return True, predicted_target
         if event.kind == BR_CALL:
-            itt_target, _provider, itt_ctr = self.ittage.predict(event.pc, ittage_hist)
+            itt_target, _provider, itt_ctr = self.ittage.predict(pc, ittage_hist)
             target = (
                 ftb_entry["target"]
                 if self._prefer_ftb_indirect_target(ftb_entry, itt_target, itt_ctr)
@@ -638,10 +690,12 @@ class BPUSimulator:
                     else (
                         ftb_entry["target"]
                         if ftb_entry
-                        else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                        else None
                     )
                 )
             )
+            if target is None:
+                return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
             return_pc = (
                 event.call_return_pc
                 if event.call_return_pc is not None
@@ -650,7 +704,7 @@ class BPUSimulator:
             self.ras.push(return_pc)
             return True, target
         if event.kind == BR_IND:
-            itt_target, _provider, itt_ctr = self.ittage.predict(event.pc, ittage_hist)
+            itt_target, _provider, itt_ctr = self.ittage.predict(pc, ittage_hist)
             target = (
                 ftb_entry["target"]
                 if self._prefer_ftb_indirect_target(ftb_entry, itt_target, itt_ctr)
@@ -660,15 +714,21 @@ class BPUSimulator:
                     else (
                         ftb_entry["target"]
                         if ftb_entry
-                        else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                        else None
                     )
                 )
             )
+            if target is None:
+                return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
             return True, target
+        if event.kind == BR_DIRECT:
+            if ftb_entry:
+                return True, ftb_entry["target"]
+            return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
         if event.kind == BR_COND:
-            loop_conf, loop_taken = self.loop.predict(event.pc)
-            tage_taken, provider, low_conf = self.tage.predict(event.pc, self.hist)
-            sc_override, sc_taken = self.sc.predict(event.pc, self.hist, low_conf)
+            loop_conf, loop_taken = self.loop.predict(pc)
+            tage_taken, provider, low_conf = self.tage.predict(pc, self.hist)
+            sc_override, sc_taken = self.sc.predict(pc, self.hist, low_conf)
             if loop_conf:
                 taken = loop_taken
             elif sc_override:
@@ -684,6 +744,7 @@ class BPUSimulator:
         return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
 
     def _step(self, event: BranchEvent) -> None:
+        pc = self._context_pc(event)
         ittage_hist = self._ittage_history()
         pred_taken, pred_target = self._predict(event)
         pred_taken, pred_target = self._apply_fetch_block_slot_limit(event, pred_taken, pred_target)
@@ -705,6 +766,8 @@ class BPUSimulator:
             self.counters["ind"] = self.counters.get("ind", 0) + 1
             if misp:
                 self.counters["ind_misp"] += 1
+        elif event.kind == BR_DIRECT:
+            self.counters["direct"] += 1
         elif event.kind == BR_RET:
             self.counters["ret"] += 1
             if misp:
@@ -714,38 +777,40 @@ class BPUSimulator:
 
         # Train tables.
         if event.kind == BR_COND:
-            _, provider, low_conf = self.tage.predict(event.pc, self.hist)
-            sc_override, _ = self.sc.predict(event.pc, self.hist, low_conf)
+            _, provider, low_conf = self.tage.predict(pc, self.hist)
+            sc_override, _ = self.sc.predict(pc, self.hist, low_conf)
             if sc_override:
                 self.counters["sc_override"] += 1
-            self.tage.update(event.pc, self.hist, self.hist, actual_taken, provider, misp)
-            self.sc.update(event.pc, self.hist, actual_taken, low_conf)
-            self.loop.update(event.pc, actual_target, actual_taken)
-            self.ftb.update(event.pc, actual_target, event.kind)
+            self.tage.update(pc, self.hist, self.hist, actual_taken, provider, misp)
+            self.sc.update(pc, self.hist, actual_taken, low_conf)
+            self.loop.update(pc, actual_target, actual_taken)
+            self.ftb.update(pc, actual_target, event.kind)
         elif event.kind == BR_CALL:
-            _, provider, _ = self.ittage.predict(event.pc, ittage_hist)
-            self.ittage.update(event.pc, ittage_hist, actual_target, provider, misp)
+            _, provider, _ = self.ittage.predict(pc, ittage_hist)
+            self.ittage.update(pc, ittage_hist, actual_target, provider, misp)
             return_pc = (
                 event.call_return_pc
                 if event.call_return_pc is not None
                 else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
             )
             self.ras.commit_push(return_pc)
-            self.ftb.update(event.pc, actual_target, event.kind)
+            self.ftb.update(pc, actual_target, event.kind)
         elif event.kind == BR_IND:
-            _, provider, _ = self.ittage.predict(event.pc, ittage_hist)
-            self.ittage.update(event.pc, ittage_hist, actual_target, provider, misp)
-            self.ftb.update(event.pc, actual_target, event.kind)
+            _, provider, _ = self.ittage.predict(pc, ittage_hist)
+            self.ittage.update(pc, ittage_hist, actual_target, provider, misp)
+            self.ftb.update(pc, actual_target, event.kind)
+        elif event.kind == BR_DIRECT:
+            self.ftb.update(pc, actual_target, event.kind)
         elif event.kind == BR_RET:
             self.ras.commit_pop()
-            self.ftb.update(event.pc, actual_target, event.kind)
+            self.ftb.update(pc, actual_target, event.kind)
 
         # Shift the global history register.
         if event.kind == BR_COND:
             self.hist = ((self.hist << 1) | int(actual_taken)) & _mask(
                 self.geometry["TAGE_HIST_LEN"][-1]
             )
-        elif event.kind in (BR_CALL, BR_IND):
+        elif event.kind in (BR_CALL, BR_IND, BR_DIRECT):
             self._update_target_history(actual_target)
         self._update_path_history(event.pc)
 
@@ -758,6 +823,16 @@ class BPUSimulator:
         if int(self.geometry.get("ITTAGE_PATH_HISTORY_BITS", 0)) > 0:
             hist ^= self.path_hist
         return hist
+
+    def _context_pc(self, event: BranchEvent) -> int:
+        ctx = (
+            ((int(event.asid) & 0xFF) << 4)
+            ^ ((int(event.vmid) & 0xF) << 13)
+            ^ ((int(event.priv) & 0x3) << 19)
+            ^ ((int(event.secure) & 0x1) << 23)
+            ^ ((int(event.workload_class) & 0x3) << 27)
+        )
+        return int(event.pc) ^ ctx
 
     def _prefer_ftb_indirect_target(
         self, ftb_entry: dict | None, itt_target: int | None, itt_ctr: int

@@ -1,0 +1,27 @@
+{
+  "topology": "cloud",
+  "summary": "TeeEvidencePolicy the E1 device ships for the cloud-routed-inference topology: the on-device agent runs in the E1 CoVE TVM, but private inference is routed to a remote dstack CVM behind a confidential H100 GPU. Per assertNpuPrivateInferenceAllowed('cloud') in packages/agent/src/services/tee-confidential-inference.ts, the GPU equivalent is gated: claims.gpuProtected + a measurements.gpuFirmware golden digest, and the remote KMS provider (dstack/tdx) is added to allowedProviders. rejectSimulatedEvidence is true: a cloud verifier must refuse self-declared dev/mock evidence (dstack #608 defense). Consumed by evaluateTeeEvidencePolicy (tee-policy.ts).",
+  "policy": {
+    "required": true,
+    "allowedKinds": ["tdx", "dstack", "cove"],
+    "allowedProviders": ["dstack", "tdx"],
+    "minSecurityVersion": 1,
+    "maxAgeMs": 60000,
+    "rejectSimulatedEvidence": true,
+    "requiredMeasurements": {
+      "boot": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "os": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "policy": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "agent": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "gpuFirmware": "sha256:4444444444444444444444444444444444444444444444444444444444444444"
+    },
+    "requiredClaims": {
+      "secureBoot": true,
+      "debugDisabled": true,
+      "productionLifecycle": true,
+      "memoryEncrypted": true,
+      "ioProtected": true,
+      "gpuProtected": true
+    }
+  }
+}

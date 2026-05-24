@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -68,6 +71,19 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
         self.assertEqual(report["summary"]["findings"], 0)
         self.assertEqual(report["scan_root_summary"], [])
 
+    def test_binary_payloads_are_not_scanned_as_source(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            binary = repo / "packages/chip/sw/firemarshal/eliza-e1-linux-smoke/e1-npu-ml-smoke"
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b"\x7fELF\x00unsupported workload: %s (expected %s)\x00")
+
+            with mock.patch.object(inv, "REPO", repo):
+                report = inv.build_report(["packages/chip/sw"])
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["findings"], 0)
+
     def test_default_roots_cover_os_forks_and_launcher_agent_sources(self) -> None:
         expected = {
             "packages/chip/sw",
@@ -85,6 +101,27 @@ class ChipOsGapKeywordInventoryTests(unittest.TestCase):
             "packages/app/scripts",
         }
         self.assertTrue(expected.issubset(set(inv.DEFAULT_SCAN_ROOTS)))
+
+    def test_json_only_prints_report_without_status_line(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Path(tmp)
+            root = repo / "packages/chip/sw"
+            root.mkdir(parents=True)
+            (root / "ready.sh").write_text("echo ready\n", encoding="utf-8")
+            output = repo / "report.json"
+            stdout = io.StringIO()
+            with (
+                mock.patch.object(inv, "REPO", repo),
+                contextlib.redirect_stdout(stdout),
+            ):
+                rc = inv.main(["--root", "packages/chip/sw", "--report", str(output), "--json-only"])
+            written = json.loads(output.read_text(encoding="utf-8"))
+
+        self.assertEqual(rc, 0)
+        self.assertNotIn("STATUS:", stdout.getvalue())
+        data = json.loads(stdout.getvalue())
+        self.assertEqual(data["status"], "pass")
+        self.assertEqual(written, data)
 
 
 if __name__ == "__main__":

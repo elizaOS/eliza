@@ -4,15 +4,16 @@ Used by the bridge's `policy.start` / `policy.tick` handlers (and by the
 real-robot evidence sweep) to load a checkpoint and emit 24-D joint
 targets given (text instruction, proprioception).
 
-The wrapper is intentionally agnostic to the training framework: it
-expects a `policy.zip` (stable-baselines3) OR a `policy_brax.pkl`
-(Brax-PPO) alongside `manifest.json`. The right loader is picked from
-the manifest's `regime` field.
+The wrapper is intentionally agnostic to the training framework: it expects an
+`alberta_policy.npz` (Alberta streaming controller), `policy.zip`
+(stable-baselines3), or `policy_brax.pkl` (Brax-PPO) alongside
+`manifest.json`. The right loader is picked from the manifest's `regime` field.
 """
 
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,6 +38,9 @@ class CheckpointManifest:
     proprio_dim: int | None = None
     text_dim: int | None = None
     output_dim: int = 24
+    critic_obs_dim: int | None = None
+    policy_obs_key: str = "state"
+    value_obs_key: str = "state"
     encoder_model: str = "sentence-transformers/all-MiniLM-L6-v2"
     ckpt: str = "policy.zip"
     policy_hidden_layer_sizes: tuple[int, ...] = (512, 256, 128)
@@ -57,6 +61,11 @@ def _load_manifest(ckpt_dir: Path) -> CheckpointManifest:
         proprio_dim=raw.get("proprio_dim"),
         text_dim=raw.get("text_dim"),
         output_dim=int(raw.get("output_dim", raw.get("action_dim", 24))),
+        critic_obs_dim=(
+            int(raw["critic_obs_dim"]) if raw.get("critic_obs_dim") is not None else None
+        ),
+        policy_obs_key=raw.get("policy_obs_key", "state"),
+        value_obs_key=raw.get("value_obs_key", "state"),
         encoder_model=raw.get(
             "encoder_model", "sentence-transformers/all-MiniLM-L6-v2"
         ),
@@ -69,6 +78,37 @@ def _load_manifest(ckpt_dir: Path) -> CheckpointManifest:
         ),
         normalize_observations=bool(raw.get("normalize_observations", True)),
     )
+
+
+def _normalize_task_text(text: str) -> str:
+    text = text.lower().replace("_", " ").replace("-", " ")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _fallback_task_match(
+    text: str,
+    *,
+    active_tasks: list[str],
+    embeddings: dict[str, TaskEmbedding],
+) -> tuple[str, float]:
+    candidates = [task for task in (active_tasks or list(embeddings)) if task in embeddings]
+    if not candidates:
+        raise ValueError("checkpoint/curriculum has no task embeddings")
+
+    normalized_text = _normalize_task_text(text)
+    for candidate in candidates:
+        embedding = embeddings[candidate]
+        aliases = [candidate, *embedding.variants]
+        for alias in aliases:
+            normalized = _normalize_task_text(alias)
+            if not normalized:
+                continue
+            tokens = normalized.split()
+            if normalized == normalized_text or normalized in normalized_text:
+                return candidate, 1.0
+            if tokens and all(token in normalized_text for token in tokens):
+                return candidate, 0.9
+    return candidates[0], 0.0
 
 
 class TextConditionedPolicy:
@@ -98,6 +138,8 @@ class TextConditionedPolicy:
             )
         if self.manifest.regime == "numpy_linear_rl_smoke":
             return _NumpyLinearPolicyModelAdapter(self.ckpt_dir / self.manifest.ckpt)
+        if self.manifest.regime == "alberta_streaming":
+            return _AlbertaStreamingModelAdapter(self.ckpt_dir)
         raise NotImplementedError(
             f"unsupported regime in manifest: {self.manifest.regime}"
         )
@@ -116,14 +158,12 @@ class TextConditionedPolicy:
             try:
                 task_id, embed, sim = project_text(text, embeddings=self._embeddings)
             except ModuleNotFoundError:
-                task_id = self.manifest.active_tasks[0] if self.manifest.active_tasks else next(iter(self._embeddings))
-                lowered = text.lower()
-                for candidate in self.manifest.active_tasks:
-                    if candidate.lower() in lowered:
-                        task_id = candidate
-                        break
+                task_id, sim = _fallback_task_match(
+                    text,
+                    active_tasks=self.manifest.active_tasks,
+                    embeddings=self._embeddings,
+                )
                 embed = self._embeddings[task_id].reduced_embed
-                sim = 1.0 if task_id in lowered else 0.0
         text_dim = int(self.manifest.text_dim or self.manifest.pca_dim)
         embed = _pad_or_trim(np.asarray(embed, dtype=np.float32), text_dim)
         self._policy_cache_text = text
@@ -218,12 +258,23 @@ class _BraxPPOModelAdapter:
             if manifest.normalize_observations
             else lambda x, _: x
         )
+        asymmetric_obs = manifest.value_obs_key != manifest.policy_obs_key
+        observation_size = (
+            {
+                manifest.policy_obs_key: manifest.obs_dim,
+                manifest.value_obs_key: int(manifest.critic_obs_dim or manifest.obs_dim),
+            }
+            if asymmetric_obs
+            else manifest.obs_dim
+        )
         networks = ppo_networks.make_ppo_networks(
-            observation_size=manifest.obs_dim,
+            observation_size=observation_size,
             action_size=manifest.action_dim,
             preprocess_observations_fn=preprocess,
             policy_hidden_layer_sizes=tuple(manifest.policy_hidden_layer_sizes),
             value_hidden_layer_sizes=tuple(manifest.value_hidden_layer_sizes),
+            policy_obs_key=manifest.policy_obs_key,
+            value_obs_key=manifest.value_obs_key,
         )
         make_inference_fn = ppo_networks.make_inference_fn(networks)
         self._inference_fn = make_inference_fn(params, deterministic=True)
@@ -233,7 +284,8 @@ class _BraxPPOModelAdapter:
         # Cache the jitted apply for low-latency repeated calls.
         @jax.jit
         def _act(obs, key):
-            action, _ = self._inference_fn(obs, key)
+            model_obs = {manifest.policy_obs_key: obs} if asymmetric_obs else obs
+            action, _ = self._inference_fn(model_obs, key)
             return action
 
         self._jit_act = _act
@@ -264,3 +316,63 @@ class _NumpyLinearPolicyModelAdapter:
     def predict(self, obs, deterministic: bool = True):
         obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
         return obs_arr @ self._weights + self._bias, None
+
+
+class _AlbertaStreamingModelAdapter:
+    """Loads an Alberta streaming controller checkpoint and exposes the
+    SB3-style ``predict(obs, deterministic) -> (action, None)`` interface.
+
+    Rebuilds the exact feature map + actor-critic from the manifest's
+    ``controller`` block, restores the learned weights from the ``.npz`` snapshot,
+    and emits the greedy (policy-mean) action — the same path the continual
+    benchmark evaluates.
+    """
+
+    def __init__(self, ckpt_dir: Path) -> None:
+        from eliza_robot.rl.alberta.agent import (
+            AlbertaContinualController,
+            AlbertaControllerConfig,
+        )
+        from eliza_robot.rl.alberta.features import FeatureConfig
+
+        raw = json.loads((ckpt_dir / "manifest.json").read_text())
+        c = raw["controller"]
+        f = c["features"]
+        feature_cfg = FeatureConfig(
+            mode=f["mode"],
+            embed_dim=int(f["embed_dim"]),
+            n_prototypes=int(f["n_prototypes"]),
+            gate_hard=bool(f["gate_hard"]),
+            gate_temperature=float(f["gate_temperature"]),
+            proprio_random_dim=int(f["proprio_random_dim"]),
+            random_dim=int(f["random_dim"]),
+            scale=float(f["scale"]),
+            seed=int(f["seed"]),
+        )
+        controller_cfg = AlbertaControllerConfig(
+            obs_dim=int(raw["obs_dim"]),
+            action_dim=int(raw["action_dim"]),
+            gamma=float(c["gamma"]),
+            actor_step_size=float(c["actor_step_size"]),
+            critic_step_size=float(c["critic_step_size"]),
+            actor_lamda=float(c["actor_lamda"]),
+            critic_lamda=float(c["critic_lamda"]),
+            log_sigma_init=float(c["log_sigma_init"]),
+            log_sigma_min=float(c["log_sigma_min"]),
+            log_sigma_max=float(c["log_sigma_max"]),
+            action_low=float(c["action_low"]),
+            action_high=float(c["action_high"]),
+            obgd_kappa=c["obgd_kappa"],
+            normalize=bool(c["normalize"]),
+            normalizer_decay=float(c["normalizer_decay"]),
+            features=feature_cfg,
+            seed=int(f["seed"]),
+            decouple_global_bias=bool(c["decouple_global_bias"]),
+        )
+        self._controller = AlbertaContinualController(controller_cfg)
+        snap = dict(np.load(ckpt_dir / raw["ckpt"]))
+        self._controller.load_state_dict(snap)
+
+    def predict(self, obs, deterministic: bool = True):
+        obs_arr = np.asarray(obs, dtype=np.float32).reshape(-1)
+        return self._controller.act_greedy(obs_arr), None

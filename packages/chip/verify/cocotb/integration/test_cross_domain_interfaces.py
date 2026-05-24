@@ -66,6 +66,7 @@ PMU_UFTB_HIT = 16
 PMU_TAGE_ALLOC = 17
 PMU_LOOP_HIT = 18
 PMU_SC_OVERRIDE = 19
+PMU_H2P_OVERRIDE = 20
 
 # zihpm_pkg::EVT_* IDs (must match rtl/cpu/csr/zihpm.sv).
 EVT_BR_PRED = 1
@@ -75,6 +76,8 @@ EVT_BR_COND = 4
 EVT_BR_COND_MISP = 5
 EVT_BTB_MISS = 16
 EVT_UFTB_HIT = 17
+EVT_SC_OVERRIDE = 20
+EVT_H2P_OVERRIDE = 21
 
 # Zihpm CSR addresses.
 CSR_MCYCLE = 0xB00
@@ -87,13 +90,18 @@ BR_NONE = 0
 BR_COND = 1
 BR_CALL = 2
 BR_RET = 3
+BR_DIRECT = 5
 
 VADDR_W = 39
+BPU_ASID_W = 8
+BPU_VMID_W = 4
+BPU_PRIV_W = 2
+BPU_WORKLOAD_CLASS_W = 2
+BPU_CONTEXT_W = BPU_ASID_W + BPU_VMID_W + BPU_PRIV_W + 1 + BPU_WORKLOAD_CLASS_W
 FTQ_IDX_W = 6  # $clog2(FTQ_ENTRIES=64)
 RAS_IDX_W = 6  # $clog2(RAS_SPEC_ENTRIES=64)
 BR_KIND_W = 3
-TAGE_PROVIDER_W = 3  # $clog2(TAGE_TABLES+1), TAGE_TABLES=5
-ITTAGE_PROVIDER_W = 3  # $clog2(ITTAGE_TABLES+1), ITTAGE_TABLES=5
+DRAM_BASE = 0x8000_0000
 
 
 async def reset(dut):
@@ -106,6 +114,10 @@ async def reset(dut):
     dut.lkp_pc_i.value = 0
     dut.resolve_i.value = 0
     dut.fetch_pop_i.value = 0
+    dut.fetch_stream_ready_i.value = 1
+    dut.l1i_demand_enable_i.value = 0
+    dut.l1i_demand_ready_i.value = 1
+    dut.l1i_demand_ready_lane1_i.value = 1
     dut.zihpm_csr_we_i.value = 0
     dut.zihpm_csr_addr_i.value = 0
     dut.zihpm_csr_wdata_i.value = 0
@@ -182,13 +194,14 @@ def encode_resolve(
     ftq_idx=0,
     call_return_pc=None,
     ras_restore_top=0,
-    tage_provider=0,
-    ittage_provider=0,
+    ras_restore_valid=0,
+    ras_restore_addr=0,
 ):
     """Pack a bpu_resolve_t.
 
     Packed struct order in `bpu_pkg` (declaration order = MSB-first):
       logic                 valid;
+      bpu_context_t         ctx;          // 17 bits
       logic                 misprediction;
       logic [VADDR_W-1:0]   pc;
       logic [VADDR_W-1:0]   actual_target;
@@ -197,15 +210,16 @@ def encode_resolve(
       br_kind_e             actual_kind;   // 3 bits
       logic [FTQ_IDX_W-1:0] ftq_idx;       // 6 bits
       logic [RAS_IDX_W:0]   ras_restore_top; // 7 bits
-      logic [$clog2(TAGE_TABLES+1)-1:0] tage_provider; // 3 bits
-      logic [$clog2(ITTAGE_TABLES+1)-1:0] ittage_provider; // 3 bits
+      logic                 ras_restore_valid;
+      logic [VADDR_W-1:0]   ras_restore_addr;
 
-    Total width: 1+1+39+39+39+1+3+6+7+3+3 = 142 bits.
+    Total width: 1+17+1+39+39+39+1+3+6+7+1+39 = 193 bits.
     """
     if call_return_pc is None:
         call_return_pc = pc + 4
     bits = 0
     bits = (bits << 1) | (1 if valid else 0)
+    bits = (bits << BPU_CONTEXT_W) | 0
     bits = (bits << 1) | (1 if misp else 0)
     bits = (bits << VADDR_W) | (pc & ((1 << VADDR_W) - 1))
     bits = (bits << VADDR_W) | (target & ((1 << VADDR_W) - 1))
@@ -215,8 +229,8 @@ def encode_resolve(
     bits = (bits << FTQ_IDX_W) | (ftq_idx & ((1 << FTQ_IDX_W) - 1))
     ras_top_w = RAS_IDX_W + 1
     bits = (bits << ras_top_w) | (ras_restore_top & ((1 << ras_top_w) - 1))
-    bits = (bits << TAGE_PROVIDER_W) | (tage_provider & ((1 << TAGE_PROVIDER_W) - 1))
-    bits = (bits << ITTAGE_PROVIDER_W) | (ittage_provider & ((1 << ITTAGE_PROVIDER_W) - 1))
+    bits = (bits << 1) | (1 if ras_restore_valid else 0)
+    bits = (bits << VADDR_W) | (ras_restore_addr & ((1 << VADDR_W) - 1))
     return bits
 
 
@@ -440,6 +454,163 @@ async def ftq_l1i_shim_emits_prefetch_on_taken_target(dut):
 
 
 @cocotb.test()
+async def bpu_vector_redirect_lanes_are_soc_visible(dut):
+    """The SoC-facing BPU surface must expose widened redirect lanes."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    block_pc = 0x8000_7C00
+    first_target_block = 0x8000_8800
+    final_target = 0x8000_9C00
+
+    for pc, target in (
+        (block_pc, first_target_block),
+        (first_target_block, final_target),
+    ):
+        dut.resolve_i.value = encode_resolve(
+            pc=pc,
+            valid=True,
+            taken=True,
+            misp=False,
+            kind=BR_DIRECT,
+            target=target,
+        )
+        await RisingEdge(dut.clk)
+        dut.resolve_i.value = 0
+        await RisingEdge(dut.clk)
+
+    dut.lkp_valid_i.value = 1
+    dut.lkp_pc_i.value = block_pc
+    await RisingEdge(dut.clk)
+    dut.lkp_valid_i.value = 0
+
+    assert int(dut.pred_valid_o.value) == 1
+    assert int(dut.pred_redirect_valid_o.value) == 0b11
+    assert int(dut.pred_redirect_pc_o[0].value) == first_target_block
+    assert int(dut.pred_redirect_pc_o[1].value) == final_target
+
+
+@cocotb.test()
+async def bpu_fetch_stream_backpressures_soc_ftq_pop(dut):
+    """SoC fetch-control stream ready must stall FTQ pop without losing lane 1."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    block_pc = 0x8000_A000
+    first_target_block = 0x8000_C000
+    final_target = 0x8000_E000
+
+    for pc, target in (
+        (block_pc, first_target_block),
+        (first_target_block, final_target),
+    ):
+        dut.resolve_i.value = encode_resolve(
+            pc=pc,
+            valid=True,
+            taken=True,
+            misp=False,
+            kind=BR_DIRECT,
+            target=target,
+        )
+        await RisingEdge(dut.clk)
+        dut.resolve_i.value = 0
+        await RisingEdge(dut.clk)
+
+    dut.lkp_valid_i.value = 1
+    dut.lkp_pc_i.value = block_pc
+    await RisingEdge(dut.clk)
+    dut.lkp_valid_i.value = 0
+    assert int(dut.pred_redirect_valid_o.value) == 0b11
+
+    dut.fetch_stream_ready_i.value = 0
+    dut.fetch_pop_i.value = 1
+    saw_stalled_stream = False
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        if int(dut.fetch_valid_o.value) == 1:
+            assert int(dut.fetch_stream_valid_o.value) == 0b11
+            assert int(dut.fetch_stream_target_pc_o[0].value) == first_target_block
+            assert int(dut.fetch_stream_target_pc_o[1].value) == final_target
+            assert int(dut.l1i_prefetch_valid_o.value) == 0
+            saw_stalled_stream = True
+    assert saw_stalled_stream, "FTQ head was not held while fetch stream ready was low"
+
+    dut.fetch_stream_ready_i.value = 1
+    accepted = False
+    for _ in range(8):
+        await RisingEdge(dut.clk)
+        if int(dut.fetch_stream_valid_o.value) == 0b11:
+            accepted = True
+            break
+    dut.fetch_pop_i.value = 0
+    assert accepted, "fetch stream did not reappear for acceptance after ready returned"
+
+
+@cocotb.test()
+async def bpu_fetch_stream_drives_soc_l1i_demand_lanes(dut):
+    """SoC exposes target-block lanes as dual L1I IFU demand requests."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    dut.l1i_demand_enable_i.value = 1
+    dut.l1i_demand_ready_i.value = 0
+    dut.l1i_demand_ready_lane1_i.value = 0
+
+    block_pc = 0x8001_2000
+    first_target_block = 0x8001_4000
+    final_target = 0x8001_8000
+
+    for pc, target in (
+        (block_pc, first_target_block),
+        (first_target_block, final_target),
+    ):
+        dut.resolve_i.value = encode_resolve(
+            pc=pc,
+            valid=True,
+            taken=True,
+            misp=False,
+            kind=BR_DIRECT,
+            target=target,
+        )
+        await RisingEdge(dut.clk)
+        dut.resolve_i.value = 0
+        await RisingEdge(dut.clk)
+
+    dut.lkp_valid_i.value = 1
+    dut.lkp_pc_i.value = block_pc
+    await RisingEdge(dut.clk)
+    dut.lkp_valid_i.value = 0
+    assert int(dut.pred_redirect_valid_o.value) == 0b11
+
+    dut.fetch_pop_i.value = 1
+    saw_demand_lanes = False
+    for _ in range(16):
+        await RisingEdge(dut.clk)
+        if (
+            int(dut.l1i_demand_valid_o.value) == 1
+            and int(dut.l1i_demand_valid_lane1_o.value) == 1
+        ):
+            saw_demand_lanes = True
+            break
+    dut.fetch_pop_i.value = 0
+
+    assert saw_demand_lanes, "SoC did not expose both L1I demand lanes"
+    assert int(dut.l1i_demand_paddr_o.value) == first_target_block
+    assert int(dut.l1i_demand_paddr_lane1_o.value) == final_target
+    assert int(dut.l1i_demand_segment_idx_o.value) == 0
+    assert int(dut.l1i_demand_segment_idx_lane1_o.value) == 1
+    assert int(dut.l1i_demand_kind_o.value) == BR_DIRECT
+    assert int(dut.l1i_demand_kind_lane1_o.value) == BR_DIRECT
+    assert int(dut.l1i_demand_overflow_o.value) == 0
+
+    dut.l1i_demand_ready_i.value = 1
+    dut.l1i_demand_ready_lane1_i.value = 1
+    for _ in range(4):
+        await RisingEdge(dut.clk)
+    assert int(dut.l1i_demand_valid_o.value) == 0
+    assert int(dut.l1i_demand_valid_lane1_o.value) == 0
+
+
+@cocotb.test()
 async def ftq_l1i_shim_flushes_on_misprediction(dut):
     """Misprediction asserts the shim flush wire."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
@@ -608,13 +779,13 @@ async def test_slc_passthrough(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    await trigger_slc_request(dut, paddr_line=0x0000_0000, is_write=False)
+    await trigger_slc_request(dut, paddr_line=DRAM_BASE, is_write=False)
     granted = await wait_for_slc_grant(dut)
     assert granted, (
         "SLC fixture never observed dram_grant after a read request -- the "
         "SLC -> line-shim -> CHI -> AXI4 -> DRAM-ctrl chain did not complete."
     )
-    # The line at address zero is all zeros from a cold DRAM, so the
+    # The first line in the DRAM aperture is all zeros from a cold DRAM, so the
     # latched low-32 grant data should be 0.
     grant_lo = await read_mmio(dut, SLC_BASE + SLC_GRANT_LO)
     assert grant_lo == 0, f"SLC grant low-word expected 0 from cold DRAM, got {grant_lo:#x}"
@@ -641,7 +812,7 @@ async def test_dram_ctrl_dfi_traffic(dut):
     await reset(dut)
 
     # First miss/read.
-    await trigger_slc_request(dut, paddr_line=0x0000_0100, is_write=False)
+    await trigger_slc_request(dut, paddr_line=DRAM_BASE + 0x100, is_write=False)
     granted_a = await wait_for_slc_grant(dut)
     assert granted_a, (
         "DRAM-ctrl read[0] never granted -- fabric s[0] -> e1_dram_ctrl "
@@ -652,7 +823,7 @@ async def test_dram_ctrl_dfi_traffic(dut):
 
     # Second miss/read at a different line address.  Two transactions
     # demonstrate the DRAM controller services back-to-back AXI4 traffic.
-    await trigger_slc_request(dut, paddr_line=0x0000_0200, is_write=False)
+    await trigger_slc_request(dut, paddr_line=DRAM_BASE + 0x200, is_write=False)
     granted_b = await wait_for_slc_grant(dut)
     assert granted_b, (
         "DRAM-ctrl read[1] never granted -- fabric s[0] -> e1_dram_ctrl "

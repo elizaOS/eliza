@@ -17,6 +17,7 @@ Keep in sync with `plugins/plugin-ainex/src/types.ts` (TS mirror types).
 from __future__ import annotations
 
 import math
+import os
 from pathlib import Path
 from typing import Literal
 
@@ -317,10 +318,38 @@ PROFILES_ROOT = Path(__file__).resolve().parents[2] / "profiles"
 ASSETS_ROOT = Path(__file__).resolve().parents[2] / "assets" / "profiles"
 
 
+def profiles_root() -> Path:
+    """Return the active profile-manifest root.
+
+    Editable/source checkouts use ``packages/robot/profiles``. Installed
+    deployments can set ``ELIZA_ROBOT_PROFILES_ROOT`` to a mounted profile tree
+    without repackaging the Python wheel.
+    """
+
+    override = os.environ.get("ELIZA_ROBOT_PROFILES_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    return PROFILES_ROOT
+
+
+def assets_root() -> Path:
+    """Return the active profile-asset root.
+
+    This can be large because it contains MJCF/URDF/mesh assets. Wheel-style
+    deployments should mount/copy it separately and set
+    ``ELIZA_ROBOT_ASSETS_ROOT``.
+    """
+
+    override = os.environ.get("ELIZA_ROBOT_ASSETS_ROOT")
+    if override:
+        return Path(override).expanduser().resolve()
+    return ASSETS_ROOT
+
+
 def _resolve_assets(profile_id: str, raw: dict) -> dict:
     """Rewrite asset paths in a raw YAML dict to absolute paths."""
     assets = raw.get("assets") or {}
-    base = ASSETS_ROOT / profile_id
+    base = assets_root() / profile_id
     resolved = {}
     for key in ("mjcf_xml", "mjx_xml", "urdf", "mesh_dir"):
         value = assets.get(key)
@@ -345,7 +374,7 @@ def _resolve_assets(profile_id: str, raw: dict) -> dict:
 
 def load_profile(profile_id: str) -> RobotProfile:
     """Load and validate `profiles/<profile_id>/profile.yaml`."""
-    manifest = PROFILES_ROOT / profile_id / "profile.yaml"
+    manifest = profiles_root() / profile_id / "profile.yaml"
     if not manifest.is_file():
         raise FileNotFoundError(
             f"no profile manifest at {manifest} for id={profile_id!r}"
@@ -368,10 +397,11 @@ def load_profile(profile_id: str) -> RobotProfile:
 
 def list_profiles() -> list[str]:
     """Return sorted ids of all available profiles."""
-    if not PROFILES_ROOT.is_dir():
+    root = profiles_root()
+    if not root.is_dir():
         return []
     return sorted(
         p.name
-        for p in PROFILES_ROOT.iterdir()
+        for p in root.iterdir()
         if p.is_dir() and (p / "profile.yaml").is_file()
     )

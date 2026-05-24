@@ -16,6 +16,7 @@ module ras_tb (
     input  logic               commit_push,
     input  logic [VADDR_W-1:0] commit_push_addr,
     input  logic               commit_pop,
+    input  logic               flush,
     input  logic               restore_valid,
     input  logic [RAS_IDX_W:0] restore_top,
     input  logic               restore_entry_valid,

@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Measured-launch chain -> TeeEvidence quote serializer (C5).
+"""Measured-launch chain -> TeeEvidence measurement/claim MODEL (C5).
 
-Models the on-device CoVE-quote -> TeeEvidence assembly the RoT/TSM must emit.
-The output shape is bound field-by-field to the canonical agent type at
-packages/agent/src/services/tee-evidence.ts (NOT packages/core/src/types/tee.ts;
-see tee-plan/07 section 0 drift correction). This is a pure-software model: it
-folds a measured-launch chain into the measurement set and derives the claim
-booleans from explicit launch conditions. It does NOT sign anything (the DICE
-attestation key is silicon-BLOCKED); the `quote` field is a model placeholder.
+This is the pure measurement-folding + claim-derivation model: it folds a
+measured-launch chain into the measurement set and derives the claim booleans
+from explicit launch conditions. The output shape is bound field-by-field to
+the canonical agent type at packages/agent/src/services/tee-evidence.ts (NOT
+packages/core/src/types/tee.ts; see tee-plan/07 section 0 drift correction).
+
+It does NOT sign anything; the `quote` field is a model placeholder. The SIGNED
+on-device producer is the M-mode TSM firmware fw/dice/cove_quote.c, which mirrors
+this folding exactly and emits a real RoT-rooted, Ed25519-signed CoVE quote whose
+canonical JSON the agent verifier (cove-quote.ts, verifyCoveQuote) accepts; the
+byte-exact round-trip is gated by scripts/check_cove_quote.py. This model stays
+as the readable folding reference and as the input the firmware reproduces. Only
+the silicon UDS / provisioned DeviceID key ceremony remains physically BLOCKED.
 
 Reference (read-only) for the consumed type:
   TeeEvidence.measurements: boot, os, agent, policy, device, monitor,

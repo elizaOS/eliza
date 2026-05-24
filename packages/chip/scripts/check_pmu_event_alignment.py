@@ -2,9 +2,9 @@
 """Cross-domain harmonization check: BPU PMU enum vs Zihpm event enum.
 
 The BPU agent owns ``rtl/cpu/bpu/bpu_pkg.sv`` which declares the
-``pmu_event_e`` enum (5-bit IDs 0..19). The OoO / CSR domain owns
+``pmu_event_e`` enum (5-bit IDs 0..25). The OoO / CSR domain owns
 ``rtl/cpu/csr/zihpm.sv`` which declares the ``hpm_event_e`` enum (8-bit
-IDs, EVT_NONE=0 + branch block 1..20 + cache/memory/OoO blocks).
+IDs, EVT_NONE=0 + branch block 1..PMU_EVENTS + cache/memory/OoO blocks).
 
 The cross-domain wiring lives in ``rtl/cpu/csr/bpu_to_zihpm_remap.sv``. This
 script enforces that every BPU branch event has a unique destination in the
@@ -21,6 +21,7 @@ Emit a JSON evidence record at ``docs/evidence/cpu_ap/pmu-event-alignment.json``
 
 from __future__ import annotations
 
+import argparse
 import datetime as _dt
 import json
 import re
@@ -36,6 +37,9 @@ EVIDENCE = ROOT / "docs/evidence/cpu_ap/pmu-event-alignment.json"
 # left side is the BPU enumerant; the right side is the Zihpm enumerant.
 NAME_ALIASES = {
     "PMU_FTB_MISS": "EVT_BTB_MISS",
+    "PMU_L2_FTB_HIT": "EVT_L2_BTB_HIT",
+    "PMU_L2_FTB_MISS": "EVT_L2_BTB_MISS",
+    "PMU_META_TRAIN": "EVT_BPU_META_TRAIN",
 }
 
 
@@ -76,7 +80,17 @@ def parse_remap(path: Path) -> dict[str, str]:
     return pairs
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--print-only",
+        "--no-write",
+        action="store_true",
+        dest="print_only",
+        help="run the alignment check without rewriting the evidence JSON",
+    )
+    args = parser.parse_args(argv)
+
     bpu = parse_enum(BPU_PKG, "pmu_event_e", 5)
     zihpm = parse_enum(ZIHPM_SV, "hpm_event_e", 8)
     remap = parse_remap(REMAP_SV)
@@ -99,8 +113,10 @@ def main() -> int:
                 f"remap destination {zihpm_name} (from {bpu_name}) not declared in hpm_event_e"
             )
 
-    # Branch-block Zihpm entries (1..20) must all have a remap source.
-    branch_block_zihpm = {name: val for name, val in zihpm.items() if 1 <= val <= 20}
+    # Branch-block Zihpm entries (1..PMU_EVENTS) must all have a remap source.
+    branch_block_zihpm = {
+        name: val for name, val in zihpm.items() if 1 <= val <= len(bpu)
+    }
     seen_zihpm_dests = set(remap.values())
     for zihpm_name in branch_block_zihpm:
         if zihpm_name not in seen_zihpm_dests:
@@ -110,9 +126,10 @@ def main() -> int:
     # accidental aliasing into cache/memory event IDs.
     for bpu_name, zihpm_name in remap.items():
         v = zihpm.get(zihpm_name)
-        if v is None or not (1 <= v <= 20):
+        if v is None or not (1 <= v <= len(bpu)):
             errors.append(
-                f"remap target {zihpm_name}={v} for {bpu_name} is outside the branch block 1..20"
+                f"remap target {zihpm_name}={v} for {bpu_name} is outside "
+                f"the branch block 1..{len(bpu)}"
             )
 
     summary = {
@@ -125,8 +142,9 @@ def main() -> int:
         "errors": errors,
         "verdict": "ok" if not errors else "fail",
     }
-    EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
-    EVIDENCE.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+    if not args.print_only:
+        EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
+        EVIDENCE.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
 
     if errors:
         print("STATUS: FAIL cpu.pmu_event_alignment")

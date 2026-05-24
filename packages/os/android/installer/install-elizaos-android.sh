@@ -11,6 +11,7 @@ REBOOT_AFTER_FLASH=0
 DEVICE_SERIAL=""
 ARTIFACT_DIR=""
 SLOT=""
+POST_FLASH_VALIDATOR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/scripts/validate-post-flash.sh"
 declare -a IMAGE_SPECS=()
 declare -a PLAN=()
 declare -a VALIDATION_PLAN=()
@@ -323,10 +324,20 @@ build_plan() {
 
   if [[ "$REBOOT_AFTER_FLASH" -eq 1 ]]; then
     add_plan "${fastboot_cmd[@]}" reboot
-    add_validation_plan "${adb_cmd[@]}" wait-for-device
-    add_validation_plan "${adb_cmd[@]}" shell getprop ro.product.device
-    add_validation_plan "${adb_cmd[@]}" shell getprop ro.build.fingerprint
-    add_validation_plan "${adb_cmd[@]}" shell getprop sys.boot_completed
+    if [[ -n "$DEVICE_SERIAL" ]]; then
+      add_validation_plan "$POST_FLASH_VALIDATOR" --device "$DEVICE_SERIAL" --execute
+    else
+      add_validation_plan "$POST_FLASH_VALIDATOR" --execute
+    fi
+    add_validation_plan "${adb_cmd[@]}" shell pm path ai.elizaos.app
+    add_validation_plan "${adb_cmd[@]}" shell cmd role holders android.app.role.HOME
+    add_validation_plan "${adb_cmd[@]}" shell cmd package resolve-activity --brief -a android.intent.action.MAIN -c android.intent.category.HOME
+    add_validation_plan "${adb_cmd[@]}" shell dumpsys package ai.elizaos.app
+    add_validation_plan "${adb_cmd[@]}" shell dumpsys activity activities
+    add_validation_plan "${adb_cmd[@]}" shell pidof ai.elizaos.app
+    add_validation_plan "${adb_cmd[@]}" shell curl -fsS http://127.0.0.1:31337/api/health
+    add_validation_plan "${adb_cmd[@]}" logcat -d
+    add_validation_plan "${adb_cmd[@]}" logcat -d
   fi
 }
 

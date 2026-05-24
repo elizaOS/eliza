@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from collections.abc import Iterable
@@ -25,8 +26,14 @@ APP_CORE = WORKSPACE / "app-core"
 OS_RV64 = WORKSPACE / "os/linux/elizaos"
 
 BUN_VERSION_JSON = APP_CORE / "scripts/bun-riscv64/bun-version.json"
+BUN_RISCV64_DOCKERFILE = APP_CORE / "scripts/bun-riscv64/Dockerfile"
+BUN_RISCV64_BUILD = APP_CORE / "scripts/bun-riscv64/build.sh"
 ANDROID_STAGE = APP_CORE / "scripts/lib/stage-android-agent.mjs"
 ANDROID_AGENT_SERVICE = (
+    APP_CORE / "platforms/android/app/src/main/java/ai/milady/milady/ElizaAgentService.java"
+)
+ANDROID_AGENT_SERVICE_CANDIDATES = (
+    ANDROID_AGENT_SERVICE,
     APP_CORE / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java"
 )
 LINUX_AGENT_HOOK = OS_RV64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
@@ -40,6 +47,17 @@ LINUX_MANIFEST_CANDIDATES = (
     OS_RV64 / "manifest.json",
     OS_RV64 / "manifest.json.template",
 )
+LINUX_CONTRACT_SCAN_EXCLUDED_DIRS = {
+    ".git",
+    "build",
+    "cache",
+    "chroot",
+    "dist",
+    "node_modules",
+    "out",
+    "target",
+    "tmp",
+}
 
 REPORT = ROOT / "build/reports/cross_fork_agent_payload_contract.json"
 SCHEMA = "eliza.cross_fork_agent_payload_contract.v1"
@@ -66,6 +84,15 @@ def rel(path: Path) -> str:
         return str(path)
 
 
+def resolve_android_agent_service() -> Path:
+    if ANDROID_AGENT_SERVICE.is_file():
+        return ANDROID_AGENT_SERVICE
+    for path in ANDROID_AGENT_SERVICE_CANDIDATES:
+        if path.is_file():
+            return path
+    return ANDROID_AGENT_SERVICE
+
+
 def add_if(
     findings: list[Finding],
     condition: bool,
@@ -89,6 +116,68 @@ def service_execstart(text: str) -> str | None:
         if line.startswith("ExecStart="):
             return line.split("=", 1)[1].strip()
     return None
+
+
+def heredoc_block(text: str, output_path: str) -> str | None:
+    pattern = rf"cat\s*>\s*{re.escape(output_path)}\s*<<'WRAPPER_EOF'\n(.*?)\nWRAPPER_EOF"
+    match = re.search(pattern, text, flags=re.DOTALL)
+    return match.group(1) if match else None
+
+
+def bun_riscv64_toolchain_contract_gaps(dockerfile: str, build_sh: str) -> list[str]:
+    gaps: list[str] = []
+    wrapper_requirements = {
+        "/opt/cross/bin/riscv64-linux-musl-clang": (
+            "/usr/local/bin/clang",
+            "--target=riscv64-unknown-linux-musl",
+            "--sysroot=/sysroot",
+            "--gcc-toolchain=/sysroot/usr",
+            "-Qunused-arguments",
+            "-B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/",
+            "-L/sysroot/usr/lib",
+            "-fuse-ld=lld",
+            "-march=rv64gc",
+            "-mabi=lp64d",
+        ),
+        "/opt/cross/bin/riscv64-linux-musl-clang++": (
+            "/usr/local/bin/clang++",
+            "--target=riscv64-unknown-linux-musl",
+            "--sysroot=/sysroot",
+            "--gcc-toolchain=/sysroot/usr",
+            "-Qunused-arguments",
+            "-B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/",
+            "-L/sysroot/usr/lib",
+            "-fuse-ld=lld",
+            "-stdlib=libstdc++",
+            "-march=rv64gc",
+            "-mabi=lp64d",
+        ),
+    }
+    for wrapper, required in wrapper_requirements.items():
+        body = heredoc_block(dockerfile, wrapper)
+        if body is None:
+            gaps.append(f"missing wrapper heredoc {wrapper}")
+            continue
+        for token in required:
+            if token not in body:
+                gaps.append(f"{wrapper} missing {token}")
+    for token in (
+        "ln -s /usr/local/bin/ld.lld /opt/cross/bin/riscv64-linux-musl-ld",
+        "CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_LINKER=/opt/cross/bin/riscv64-linux-musl-clang",
+    ):
+        if token not in dockerfile:
+            gaps.append(f"Dockerfile missing {token}")
+    for token in (
+        'WK_LINKER_FLAGS="-fuse-ld=lld"',
+        "-DCMAKE_LINKER=/usr/local/bin/ld.lld",
+        '-DCMAKE_EXE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}"',
+        '-DCMAKE_SHARED_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}"',
+        '-DCMAKE_MODULE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}"',
+        "export BUN_LD=/usr/local/bin/ld.lld",
+    ):
+        if token not in build_sh:
+            gaps.append(f"build.sh missing {token}")
+    return gaps
 
 
 def manifest_evidence_ids(data: dict[str, Any]) -> set[str]:
@@ -119,9 +208,26 @@ def load_linux_manifest_evidence_ids() -> tuple[Path | None, set[str]]:
     return None, set()
 
 
-def linux_variant_mentions_shared_bun() -> bool:
+def iter_linux_variant_contract_files() -> Iterable[Path]:
     if not OS_RV64.is_dir():
-        return False
+        return
+    for dirpath, dirnames, filenames in os.walk(OS_RV64):
+        dirnames[:] = [
+            dirname
+            for dirname in dirnames
+            if dirname not in LINUX_CONTRACT_SCAN_EXCLUDED_DIRS
+            and not dirname.startswith(".")
+        ]
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            try:
+                if path.is_file() and path.stat().st_size <= 2_000_000:
+                    yield path
+            except OSError:
+                continue
+
+
+def linux_variant_mentions_shared_bun() -> bool:
     needles = (
         "bun-linux-riscv64-musl",
         "bun-version.json",
@@ -129,9 +235,7 @@ def linux_variant_mentions_shared_bun() -> bool:
         "ELIZA_BUN_RISCV64_URL",
         "ELIZA_BUN_RISCV64_URL",
     )
-    for path in OS_RV64.rglob("*"):
-        if not path.is_file() or path.stat().st_size > 2_000_000:
-            continue
+    for path in iter_linux_variant_contract_files():
         try:
             text = read_text(path)
         except OSError:
@@ -142,11 +246,7 @@ def linux_variant_mentions_shared_bun() -> bool:
 
 
 def linux_variant_contains_status_later_marker() -> bool:
-    if not OS_RV64.is_dir():
-        return False
-    for path in OS_RV64.rglob("*"):
-        if not path.is_file() or path.stat().st_size > 2_000_000:
-            continue
+    for path in iter_linux_variant_contract_files():
         try:
             if "STATUS_LATER_AGENT_BINARY" in read_text(path):
                 return True
@@ -158,10 +258,13 @@ def linux_variant_contains_status_later_marker() -> bool:
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     del args
     findings: list[Finding] = []
+    android_agent_service = resolve_android_agent_service()
     inputs = (
         BUN_VERSION_JSON,
+        BUN_RISCV64_DOCKERFILE,
+        BUN_RISCV64_BUILD,
         ANDROID_STAGE,
-        ANDROID_AGENT_SERVICE,
+        android_agent_service,
         LINUX_AGENT_HOOK,
         LINUX_AGENT_UNIT,
         LINUX_AGENT_RUNNER,
@@ -194,7 +297,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         )
         return payload(findings, {})
     android_stage = read_text(ANDROID_STAGE)
-    android_service = read_text(ANDROID_AGENT_SERVICE)
+    bun_riscv64_dockerfile = read_text(BUN_RISCV64_DOCKERFILE)
+    bun_riscv64_build = read_text(BUN_RISCV64_BUILD)
+    android_service = read_text(android_agent_service)
     linux_agent_hook = read_text(LINUX_AGENT_HOOK)
     linux_agent_unit = read_text(LINUX_AGENT_UNIT)
     linux_agent_runner = read_text(LINUX_AGENT_RUNNER)
@@ -213,6 +318,9 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     linux_manifest_path, linux_evidence_ids = load_linux_manifest_evidence_ids()
     shared_bun_in_linux = linux_variant_mentions_shared_bun()
     webkit_status = str(bun_data.get("patch_series", {}).get("webkit_recipes_status", ""))
+    toolchain_gaps = bun_riscv64_toolchain_contract_gaps(
+        bun_riscv64_dockerfile, bun_riscv64_build
+    )
 
     add_if(
         findings,
@@ -267,7 +375,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "riscv64" not in android_stage or "/api/health" not in android_service,
         "android_agent_payload_contract_incomplete",
         "Android agent staging/service does not expose the expected riscv64 payload plus /api/health contract",
-        f"{rel(ANDROID_STAGE)} {rel(ANDROID_AGENT_SERVICE)}",
+        f"{rel(ANDROID_STAGE)} {rel(android_agent_service)}",
         "Keep the Android APK staging riscv64 asset path and ElizaAgentService /api/health watchdog in lockstep.",
     )
     add_if(
@@ -358,12 +466,21 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         rel(BUN_VERSION_JSON),
         "Materialize the WebKit recipe chain into checked patch files and validate the non-C_LOOP riscv64 build path, or update the artifact contract to say C_LOOP-only.",
     )
+    add_if(
+        findings,
+        bool(toolchain_gaps),
+        "bun_riscv64_toolchain_can_use_host_ld",
+        "Bun riscv64 cross-build toolchain is not pinned tightly enough to prevent host GNU ld from handling riscv64 links",
+        "; ".join(toolchain_gaps),
+        "Keep clang/clang++ wrappers and WebKit/Bun CMake configuration on lld so CMake compiler probes cannot fall back to /usr/bin/ld.",
+    )
 
     evidence = {
         "bun_tag": bun_tag,
         "android_bun_version": android_bun_version,
         "bun_channel": bun_channel,
         "android_bun_channel": android_bun_channel,
+        "android_agent_service": rel(android_agent_service),
         "artifact_filename": artifact_filename,
         "artifact_layout": artifact_layout,
         "linux_agent_execstart": execstart,
@@ -371,6 +488,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "linux_manifest_evidence_ids": sorted(linux_evidence_ids),
         "linux_manifest_path": rel(linux_manifest_path) if linux_manifest_path else None,
         "linux_mentions_shared_bun_payload": shared_bun_in_linux,
+        "bun_riscv64_toolchain_uses_lld": not toolchain_gaps,
     }
     return payload(findings, evidence)
 

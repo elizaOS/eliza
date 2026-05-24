@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""RISC-V IOMMU two-stage translation gate.
+"""RISC-V IOMMU local translation-subset gate.
 
-Proves that the IOMMU page-table walker in rtl/iommu/e1_riscv_iommu.sv is a
-real translating IOMMU, not an identity/allowlist stub:
+Proves the local RTL subset in rtl/iommu/e1_riscv_iommu.sv: register/fault
+surface, minimal DDT + Sv39 first-stage read walk under identity G-stage,
+fail-closed unmapped faults, BARE identity mode, and IOFENCE.C CQ fetch/decode.
+It intentionally does not claim full phone/Linux IOMMU completion:
 
   1. Verilator --lint-only must be clean for the IOMMU package + RTL + the
      AXI4 package and the cocotb testbench (the reserved walk port uses the
@@ -10,10 +12,11 @@ real translating IOMMU, not an identity/allowlist stub:
   2. The cocotb suite verify/cocotb/iommu/test_riscv_iommu.py must pass in
      full, including the walker known-answer tests:
        * walker_single_stage_iova_to_pa  (DDT -> Sv39 first-stage -> PA)
-       * walker_two_stage_iova_to_pa     (Sv39 S1 composed with Sv39x4 GS)
+       * walker_two_stage_iova_to_pa     (Sv39 S1 under identity G-stage)
        * walker_unmapped_iova_faults_with_record (fail-closed fault + FQ record)
        * walker_bare_mode_identity       (BARE pass-through)
-       * command_queue_iofence_completes (CQ IOFENCE.C completion)
+       * command_queue_iofence_completes (CQ IOFENCE.C fetch/decode/completion)
+       * command_queue_invalid_opcode_stops_without_advancing (CQ fail-closed)
 
 Writes build/reports/iommu_translation.json (schema eliza.gate_status.v1).
 PASS only when lint is clean and every required test passes; otherwise the
@@ -31,6 +34,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/iommu_translation.json"
+OSS_CAD_BIN = ROOT / "external/oss-cad-suite/bin"
 
 AXI4_PKG = "rtl/interconnect/axi4/e1_axi4_pkg.sv"
 IOMMU_PKG = "rtl/iommu/e1_riscv_iommu_pkg.sv"
@@ -44,19 +48,20 @@ REQUIRED_TESTS = (
     "walker_unmapped_iova_faults_with_record",
     "walker_bare_mode_identity",
     "command_queue_iofence_completes",
+    "command_queue_invalid_opcode_stops_without_advancing",
 )
 
-# A real walker must not regress to an identity/allowlist-only translator:
-# these tokens prove the page-table-walk FSM, the fault path, and the CQ
-# engine are present in the RTL.
+# These tokens prove the local translation subset did not regress back to
+# identity/allowlist-only behavior.
 REQUIRED_RTL_TOKENS = (
-    "real two-stage walker",
-    "TR_DDT_REQ",
-    "TR_FS_REQ",
-    "TR_GS_REQ",
-    "ddte_next_ptr",
-    "CAUSE_LOAD_PAGE_FAULT",
-    "CMD_OP_IOFENCE",
+    "WALK_DC0_REQ",
+    "WALK_PT_REQ",
+    "WALK_DATA_REQ",
+    "walk_iohgatp",
+    "CMD_OP_IOFENCE_C",
+    "CMD_FETCH_REQ",
+    "CMD_FETCH_RSP",
+    "reg_cqcsr[8]",
     "cmd_complete_irq",
 )
 
@@ -86,14 +91,14 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
                 "as_of": datetime.now(UTC).isoformat(),
                 "subsystem": "security",
                 "claim_boundary": (
-                    "Proves the IOMMU performs a real RISC-V v1.0.1 two-stage "
-                    "page-table walk (DDT 1/2/3-level -> device context -> "
-                    "Sv39/Sv48 first-stage composed with Sv39x4/Sv48x4 G-stage), "
-                    "fail-closed faults to the fault queue, BARE identity "
-                    "pass-through, and CQ IOFENCE.C completion, verified under "
-                    "Verilator + cocotb. Does NOT cover IOATC/TLB persistence, "
-                    "PASID/PDT walks, MSI/MRIF translation, FQ DMA-to-DRAM, or "
-                    "the IOPMP region layer (separate gates)."
+                    "Proves the local IOMMU subset performs DDT + Sv39 "
+                    "first-stage reads under identity G-stage, fail-closed "
+                    "unmapped faults, BARE identity pass-through, and CQ "
+                    "IOFENCE.C fetch/decode/completion with invalid-opcode "
+                    "fail-closed behavior, verified under Verilator + cocotb. "
+                    "Does NOT cover non-identity G-stage walks, Sv48/Sv57, "
+                    "IOATC/TLB persistence, PASID/PDT walks, ATS/PRI/MSI/MRIF "
+                    "transactions, FQ DMA-to-DRAM, Linux attach, or IOPMP."
                 ),
                 "required_tests": list(REQUIRED_TESTS),
                 "detail": detail,
@@ -105,6 +110,9 @@ def write_report(status: str, blocker_id, blocker_reason, detail) -> None:
 
 
 def verilator_lint() -> tuple[bool, str]:
+    env = dict(os.environ)
+    if OSS_CAD_BIN.is_dir():
+        env["PATH"] = f"{OSS_CAD_BIN}{os.pathsep}{env.get('PATH', '')}"
     binary = "verilator"
     cmd = [
         binary,
@@ -118,7 +126,7 @@ def verilator_lint() -> tuple[bool, str]:
         str(ROOT / IOMMU_RTL),
         str(ROOT / TB),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT, env=env)
     ok = proc.returncode == 0 and "%Error" not in proc.stderr
     return ok, (proc.stderr or proc.stdout).strip()
 
@@ -172,11 +180,11 @@ def main() -> int:
     if not tokens_ok:
         write_report(
             "BLOCKED",
-            "walker_rtl_absent",
-            "RTL is missing real two-stage walker tokens: " + ", ".join(missing_tokens),
+            "translation_subset_rtl_absent",
+            "RTL is missing local translation-subset tokens: " + ", ".join(missing_tokens),
             {"missing_rtl_tokens": missing_tokens},
         )
-        print("BLOCKED: walker RTL tokens missing:", ", ".join(missing_tokens))
+        print("BLOCKED: local translation-subset RTL tokens missing:", ", ".join(missing_tokens))
         return 1
 
     tests_ok, missing_tests = check_required_tests_present()
@@ -184,7 +192,7 @@ def main() -> int:
         write_report(
             "BLOCKED",
             "required_tests_absent",
-            "cocotb suite is missing required walker tests: " + ", ".join(missing_tests),
+            "cocotb suite is missing required translation-subset tests: " + ", ".join(missing_tests),
             {"missing_tests": missing_tests},
         )
         print("BLOCKED: required tests missing:", ", ".join(missing_tests))
@@ -224,10 +232,10 @@ def main() -> int:
             "required_tests": list(REQUIRED_TESTS),
         },
     )
-    print("PASS: IOMMU two-stage translation gate")
+    print("PASS: IOMMU local translation-subset gate")
     print("  verilator --lint-only: clean")
     print(f"  cocotb {TEST}: all tests pass (FAIL=0)")
-    print(f"  required walker tests: {len(REQUIRED_TESTS)} present and green")
+    print(f"  required local subset tests: {len(REQUIRED_TESTS)} present and green")
     print(f"  report: {REPORT.relative_to(ROOT)}")
     return 0
 

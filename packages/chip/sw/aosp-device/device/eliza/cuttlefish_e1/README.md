@@ -36,5 +36,5 @@ The on-silicon `eliza_ai_soc` product expects the real HAL pointed at
 `/dev/e1-npu`. The sim HAL is only correct under Cuttlefish where the
 char device does not exist. Keeping the overlays separate keeps both
 paths fail-closed: the on-silicon path refuses to fall back to a
-software fake, and the Cuttlefish path does not claim hardware
+software simulator, and the Cuttlefish path does not claim hardware
 acceleration.

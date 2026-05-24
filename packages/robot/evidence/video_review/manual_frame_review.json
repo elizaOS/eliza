@@ -1,0 +1,68 @@
+{
+  "schema": "robot-video-manual-frame-review-v1",
+  "reviewed_at": "2026-05-23T23:35:30Z",
+  "reviewer": "codex",
+  "basis": "Direct inspection of contact sheets regenerated after actuator-resolution fixes and R1 position-actuator conversion in evidence/video_review; telemetry sidecars are required and passing.",
+  "videos": [
+    {
+      "video": "unitree-h1/unitree-h1_combined_actions.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled combined-action frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-h1/unitree-h1_stand_up.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows H1 remains upright through the sampled stand-up preview; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-h1/unitree-h1_turn_left.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled turn-left frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-h1/unitree-h1_turn_right.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled turn-right frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-h1/unitree-h1_walk_forward.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows an upright H1 preview through the sampled walk-forward frames; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-r1/unitree-r1_combined_actions.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled combined-action frames after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-r1/unitree-r1_stand_up.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled stand-up preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-r1/unitree-r1_turn_left.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled turn-left preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-r1/unitree-r1_turn_right.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled turn-right preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    },
+    {
+      "video": "unitree-r1/unitree-r1_walk_forward.mp4",
+      "verdict": "good",
+      "review_notes": "Regenerated contact sheet shows R1 remains upright through the sampled walk-forward preview after position-actuator conversion; telemetry completes the requested horizon without a fall.",
+      "failed_checks": []
+    }
+  ]
+}

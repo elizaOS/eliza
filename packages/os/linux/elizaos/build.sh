@@ -124,7 +124,9 @@ patch_live_build_riscv64_grub_efi() {
         echo "ERROR: cannot patch ${GRUB_EFI_SCRIPT}; builder image is not writable." >&2
         exit 66
     fi
-    if grep -q 'grub-efi-riscv64-bin' "${GRUB_EFI_SCRIPT}"; then
+    if grep -q 'grub-efi-riscv64-bin' "${GRUB_EFI_SCRIPT}" \
+        && grep -q 'gen_efi_boot_img "riscv64-efi" "riscv64"' "${GRUB_EFI_SCRIPT}" \
+        && grep -q 'binary/boot/grub/riscv64-efi' "${GRUB_EFI_SCRIPT}"; then
         return 0
     fi
 
@@ -248,6 +250,15 @@ path.write_text(text.replace(old, new, 1))
 PY
 }
 
+configure_wget_ipv4_only() {
+    # live-build fetches Contents indexes with wget outside debootstrap.
+    # The mirrors' IPv6 path can time out repeatedly here before succeeding
+    # over IPv4, so force IPv4 for deterministic multi-arch build latency.
+    if ! grep -q '^inet4_only = on$' /etc/wgetrc 2>/dev/null; then
+        echo "inet4_only = on" >> /etc/wgetrc
+    fi
+}
+
 patch_debootstrap_foreign_dpkg_io() {
     if [ "${ARCH}" = "amd64" ]; then
         return 0
@@ -308,6 +319,79 @@ path.write_text(text.replace(old, new))
 PY
 }
 
+stage_agent_artifacts_for_live_build() {
+    ART="${ELIZAOS_AGENT_ARTIFACTS_DIR:-/opt/elizaos-artifacts}"
+    CHROOT_ART="${HERE}/config/includes.chroot/opt/elizaos-artifacts"
+
+    if [ ! -d "${ART}" ]; then
+        if [ "${ELIZAOS_REQUIRE_AGENT_ARTIFACTS:-0}" = "1" ]; then
+            echo "ERROR: ${ART} missing; objective images require real elizaOS agent artifacts." >&2
+            exit 69
+        fi
+        echo "    no elizaOS agent artifacts mounted at ${ART}; agent hook will fail if required."
+        return 0
+    fi
+
+    for required in elizaos-app; do
+        if [ ! -e "${ART}/${required}" ]; then
+            echo "ERROR: required elizaOS agent artifact missing: ${ART}/${required}" >&2
+            exit 69
+        fi
+    done
+    if [ ! -e "${ART}/bun" ] && [ "${ARCH}" != "riscv64" ]; then
+        echo "ERROR: required elizaOS agent artifact missing: ${ART}/bun" >&2
+        exit 69
+    fi
+    if [ ! -e "${ART}/bun" ] && [ ! -f "${ART}/elizaos-app/agent-bundle.js" ]; then
+        echo "ERROR: riscv64 Node fallback requires ${ART}/elizaos-app/agent-bundle.js when Bun is absent." >&2
+        exit 69
+    fi
+    if [ "${ARCH}" = "riscv64" ] && [ -e "${ART}/bun" ] && grep -q 'musl-runtime/bun' "${ART}/bun"; then
+        if [ ! -x "${ART}/elizaos-app/musl-runtime/bun" ]; then
+            echo "ERROR: riscv64 Bun wrapper requires ${ART}/elizaos-app/musl-runtime/bun." >&2
+            exit 69
+        fi
+        if [ ! -f "${ART}/riscv64-bun-provenance.json" ]; then
+            echo "ERROR: riscv64 agent artifacts require ${ART}/riscv64-bun-provenance.json." >&2
+            echo "Run make stage-agent-artifacts ARCH=riscv64 after rebuilding the current Bun riscv64 zip." >&2
+            exit 69
+        fi
+        python3 - "${ART}/riscv64-bun-provenance.json" "${ART}/elizaos-app/musl-runtime/bun" <<'PY'
+import hashlib
+import json
+import sys
+from pathlib import Path
+
+provenance = Path(sys.argv[1])
+bun = Path(sys.argv[2])
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+data = json.loads(provenance.read_text(encoding="utf-8"))
+if data.get("schema") != "eliza.os.linux.riscv64_bun_stage_provenance.v1":
+    raise SystemExit(f"ERROR: riscv64 Bun provenance schema mismatch: {data.get('schema')!r}")
+artifact = data.get("artifact", {})
+if artifact.get("staged_bun_sha256") != sha256_file(bun):
+    raise SystemExit("ERROR: riscv64 Bun provenance staged_bun_sha256 does not match staged Bun")
+inputs = data.get("inputs", {})
+if not isinstance(inputs, dict) or "packages/app-core/scripts/bun-riscv64/bun-version.json" not in inputs:
+    raise SystemExit("ERROR: riscv64 Bun provenance does not record bun-version.json")
+PY
+    fi
+
+    echo "    staging elizaOS agent artifacts into live-build chroot includes..."
+    rm -rf "${CHROOT_ART}"
+    mkdir -p "${CHROOT_ART}"
+    rsync -a "${ART}/" "${CHROOT_ART}/"
+}
+
 # Clear stale live-build working state from any prior/interrupted run so each
 # build starts from a clean tree (cache/ is kept for download speed). Runs as
 # root here, so it can remove the root-owned chroot from earlier runs.
@@ -325,6 +409,7 @@ echo "    build ts:    ${BUILD_TS}"
 
 ensure_foreign_binfmt
 patch_debootstrap_curl_downloader
+configure_wget_ipv4_only
 patch_debootstrap_foreign_dpkg_io
 patch_live_build_riscv64_grub_efi
 
@@ -351,6 +436,7 @@ if command -v convert >/dev/null 2>&1; then
 else
     echo "    convert (ImageMagick) not found — skipping brand-asset generation." >&2
 fi
+stage_agent_artifacts_for_live_build
 
 # ── Step 2: lb build ─────────────────────────────────────────────────
 echo

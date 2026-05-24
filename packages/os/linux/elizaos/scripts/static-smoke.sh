@@ -11,7 +11,9 @@ fail=0
 while IFS= read -r f; do
     python3 -c "import json,sys; json.load(open(sys.argv[1]))" "${f}" \
         || { echo "INVALID JSON: ${f}"; fail=1; }
-done < <(find . -name "*.json" -not -path "./out/*" -not -path "./cache/*")
+done < <(find . \
+    \( -path "./out" -o -path "./cache" -o -path "./chroot" -o -path "./binary" -o -path "./artifacts" \) -prune \
+    -o -name "*.json" -print)
 
 # Hooks must be executable and start with a shebang.
 for f in config/hooks/normal/*.hook.chroot; do

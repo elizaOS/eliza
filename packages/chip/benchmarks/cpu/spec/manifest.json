@@ -3,7 +3,7 @@
   "benchmark": "spec-cpu-2017",
   "status": "blocked_license_required",
   "claim_boundary": "spec_cpu_2017_results_are_BLOCKED_until_licensed_install_and_silicon_evidence",
-  "license_constraint": "SPEC CPU 2017 is paid commercial software. The repository never holds SPEC sources, binaries, or license keys. The harness reads SPEC artifacts from $SPEC_DIR at runtime and only records numeric scores plus configuration metadata.",
+  "license_constraint": "SPEC CPU 2017 is paid commercial software. The repository never holds SPEC sources, binaries, or license keys. The harness either reads SPEC artifacts from $SPEC_DIR at runtime or ingests an archived target runcpu report, and only records numeric scores plus hashes/configuration metadata.",
   "upstream": {
     "name": "SPEC CPU 2017",
     "vendor": "Standard Performance Evaluation Corporation",
@@ -12,24 +12,54 @@
   },
   "suite_scope": {
     "intspeed": [
-      "600.perlbench_s", "602.gcc_s", "605.mcf_s", "620.omnetpp_s",
-      "623.xalancbmk_s", "625.x264_s", "631.deepsjeng_s", "641.leela_s",
-      "648.exchange2_s", "657.xz_s"
+      "600.perlbench_s",
+      "602.gcc_s",
+      "605.mcf_s",
+      "620.omnetpp_s",
+      "623.xalancbmk_s",
+      "625.x264_s",
+      "631.deepsjeng_s",
+      "641.leela_s",
+      "648.exchange2_s",
+      "657.xz_s"
     ],
     "intrate": [
-      "500.perlbench_r", "502.gcc_r", "505.mcf_r", "520.omnetpp_r",
-      "523.xalancbmk_r", "525.x264_r", "531.deepsjeng_r", "541.leela_r",
-      "548.exchange2_r", "557.xz_r"
+      "500.perlbench_r",
+      "502.gcc_r",
+      "505.mcf_r",
+      "520.omnetpp_r",
+      "523.xalancbmk_r",
+      "525.x264_r",
+      "531.deepsjeng_r",
+      "541.leela_r",
+      "548.exchange2_r",
+      "557.xz_r"
     ],
     "fpspeed": [
-      "603.bwaves_s", "607.cactuBSSN_s", "619.lbm_s", "621.wrf_s",
-      "627.cam4_s", "628.pop2_s", "638.imagick_s", "644.nab_s",
-      "649.fotonik3d_s", "654.roms_s"
+      "603.bwaves_s",
+      "607.cactuBSSN_s",
+      "619.lbm_s",
+      "621.wrf_s",
+      "627.cam4_s",
+      "628.pop2_s",
+      "638.imagick_s",
+      "644.nab_s",
+      "649.fotonik3d_s",
+      "654.roms_s"
     ],
     "fprate": [
-      "503.bwaves_r", "507.cactuBSSN_r", "508.namd_r", "510.parest_r",
-      "511.povray_r", "519.lbm_r", "521.wrf_r", "526.blender_r",
-      "527.cam4_r", "538.imagick_r", "544.nab_r", "549.fotonik3d_r",
+      "503.bwaves_r",
+      "507.cactuBSSN_r",
+      "508.namd_r",
+      "510.parest_r",
+      "511.povray_r",
+      "519.lbm_r",
+      "521.wrf_r",
+      "526.blender_r",
+      "527.cam4_r",
+      "538.imagick_r",
+      "544.nab_r",
+      "549.fotonik3d_r",
       "554.roms_r"
     ]
   },
@@ -48,7 +78,7 @@
     "rvv_intrinsics_allowed": true,
     "spec_config_filename": "eliza-rva23u64.cfg",
     "llvm_binary": "build/llvm-stage2/bin/clang",
-    "blocked_until_built": "resolved when build/llvm-stage2/bin/clang exists; remaining blockers are a licensed SPEC_DIR install and an implemented target runner for silicon or FireSim"
+    "blocked_until_built": "resolved when build/llvm-stage2/bin/clang exists; remaining blockers are a licensed SPEC_DIR install and an implemented target runner for prototype, silicon, or phone"
   },
   "expected_results": {
     "e1_ultra_target_4.0_ghz": {
@@ -59,10 +89,14 @@
     }
   },
   "result_artifact": "benchmarks/results/cpu/spec/result.json",
-  "run_command": "scripts/run_spec.sh",
+  "run_command": "E1_SPEC_RAW_OUTPUT=<target-runcpu-report> E1_SPEC_TARGET_METADATA=<metadata.json> E1_SPEC_TARGET_RUNNER=<prototype|silicon|phone> E1_SPEC_RUN_MANIFEST=<run-manifest.json> SPEC_LICENSE_SHA256=<sha256> scripts/run_spec.sh",
   "fail_closed_until": [
-    "SPEC_DIR env var set and pointing at a licensed install",
-    "version.txt at $SPEC_DIR matches pinned_version",
-    "DUT silicon or FireSim with sufficient sample size (>4 hr per workload)"
+    "SPEC_DIR env var set and pointing at a licensed install for local execution, or E1_SPEC_RAW_OUTPUT points at an archived target runcpu report/transcript",
+    "version.txt at $SPEC_DIR matches pinned_version for local execution",
+    "SPEC_LICENSE_FILE hash matches SPEC_LICENSE_SHA256 for local execution, or SPEC_LICENSE_SHA256/E1_SPEC_LICENSE_SHA256 records the licensed archived run entitlement hash",
+    "DUT prototype, silicon, or phone target with sufficient sample size (>4 hr per workload)",
+    "Raw runcpu output and report bundle archived with artifacts.raw_output_sha256",
+    "Archived SPEC run manifest records SPEC CPU2017 version, runcpu command, archived config path/hash, reportable=true, and result bundle hash",
+    "L5/L6 target metadata captures clocks, memory, power, thermal, process, software, and calibration context"
   ]
 }

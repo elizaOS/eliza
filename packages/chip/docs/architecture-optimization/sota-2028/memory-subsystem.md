@@ -51,9 +51,14 @@ Repo-grounded:
 - Chipyard generated AP gives SimDRAM at `0x8000_0000` / 256 MiB; Verilator behavioural model, not controller/PHY.
 - `docs/arch/interconnect.md` notes "not AXI4, not TileLink, not CHI, not ACE".
 - `docs/spec-db/process-14a-effects.yaml` calls out `14a_sram_macro_vmin_ecc_evidence_missing`.
-- `docs/architecture-optimization/soc-optimized-operating-point.yaml`: presumes 240 GB/s sustained DRAM BW. That is higher than the gate's 120 GB/s; the optimizer runs off an aspirational number that the rest of the contract has not signed off.
+- `docs/architecture-optimization/soc-optimized-operating-point.yaml`: keeps a 240 GB/s sustained DRAM operating-point target. `docs/evidence/memory/uma-dram-evidence-gate.yaml` reconciles that with a stricter phone profile and split LPDDR5X baseline / LPDDR6 AI SKUs; real phone bandwidth claims remain blocked until target measurements exist.
 
-Bottom line: entire memory stack below the AXI-Lite scaffold is fictional from a silicon standpoint. The repo is honest about this. No PHY, no controller, no cache, no SLC, no coherency fabric, no IOMMU, no QoS arbiter, no ECC, no measurement target.
+Bottom line: the phone-class memory stack remains blocked from a silicon
+standpoint. The repo now has local RTL/cocotb evidence for pieces of the cache
+hierarchy, a DRAM-controller simulation path, and a partial IOMMU subset, but
+there is still no LPDDR PHY, no real DRAM capacity/timing evidence, no complete
+coherent phone fabric, no full Linux IOMMU isolation, no phone QoS signoff, and
+no measurement target.
 
 ## C. Recommended 2028 target
 
@@ -70,7 +75,7 @@ Bottom line: entire memory stack below the AXI-Lite scaffold is fictional from a
 | Refresh | Per-bank refresh; fine-grained tRFCab/tRFCpb knobs | Plus temperature-compensated refresh (TCSR) |
 | Training | Full read/write leveling, gate training, vref, periodic ZQ cal | Plus per-byte-lane DFE/FFE training (LPDDR6) |
 
-To hit the gate's 120 GB/s sustained / 180 GB/s peak, the stretch SKU is mandatory; LPDDR5X-10667 at 64-bit caps at 85.3 GB/s. Either downgrade gate to ~80 GB/s sustained on LPDDR5X SKU (120-180 GB/s reserved for LPDDR6 SKU), or widen bus to 128-bit (M-series / AI-PC territory, breaks phone power budget). Recommend split SKUs: baseline LPDDR5X 70 GB/s sustained; AI SKU LPDDR6 140 GB/s sustained.
+The 120 GB/s sustained target requires the stretch SKU; LPDDR5X-10667 at 64-bit caps at 85.3 GB/s peak. The tracked 96-bit LPDDR6-14400 AI SKU reaches 172.8 GB/s peak, so it must be recorded as a peak-gate downgrade against the 180 GB/s phone profile unless the target profile changes or the bus widens to 128-bit (M-series / AI-PC territory, breaks phone power budget). Recommend split SKUs: baseline LPDDR5X 70 GB/s sustained; AI SKU LPDDR6 140 GB/s sustained with explicit peak-gate downgrade semantics.
 
 ### C.2 PHY / controller IP path
 
@@ -180,13 +185,13 @@ Use chipsandcheese latency curves and Anandtech BW plots as the public comparato
 1. **No open LPDDR5X/6 PHY**. Must license Synopsys/Cadence/Rambus or take foundry-bundled PHY. Promote in `mobile-sota-2026.yaml` from non-goal to procurement requirement.
 2. **PHY cost and area**: 64-bit LPDDR5X PHY at 10.67 Gbps on N3/N2 ~5-7 mm²; license mid-7-figures + royalty. LPDDR6 14.4 Gbps more area for DFE/FFE.
 3. **RISC-V IOMMU maturity**: spec ratified Sep 2024, Linux driver merged ~v6.10-6.12, QEMU base 2024. No shipping Android phone with RISC-V IOMMU + tested HAL. Plan multi-quarter contributor work on Android IOMMU bindings, dma-buf v2, gralloc, NN HAL.
-4. **Gate-vs-target inconsistency**: `uma-dram-evidence-gate.yaml` 120 GB/s sustained / 180 GB/s peak; `soc-optimized-operating-point.yaml` 240 GB/s sustained. LPDDR5X-10667 × 64-bit caps at 85.3 GB/s peak. Split SKUs.
+4. **Memory target split remains evidence-gated**: `uma-dram-evidence-gate.yaml` records the 120 GB/s sustained / 180 GB/s peak phone profile and split LPDDR5X baseline / LPDDR6 AI SKUs, while `soc-optimized-operating-point.yaml` keeps the aspirational 240 GB/s operating point. LPDDR measurements are still required before any phone-class memory claim is promoted.
 5. **SRAM-wall on 14A**: N3 only ~5% SRAM density vs N5. N2 ~17% recovery via nanosheets (38 Mb/mm² macro). Plan SLC twice — N2-class (24-32 MiB), 14A-class (assume similar).
 
 ## Recommended next steps
 
 1. Promote "custom LPDDR5X/LPDDR6 PHY" to procurement decision in `mobile-sota-2026.yaml`.
-2. Reconcile `soc-optimized-operating-point.yaml` (240) with `uma-dram-evidence-gate.yaml` (120/180). Split SKUs.
+2. Keep `soc-optimized-operating-point.yaml` (240 GB/s operating point) and `uma-dram-evidence-gate.yaml` (120/180 profile plus split SKUs) synchronized as target measurements arrive.
 3. Add phase1.5 to `memory_roadmap_phases`: burst-capable scaffold with AXI4 IDs + outstanding counters before coherency jump.
 4. Pull RISC-V IOMMU reference model (`riscv-non-isa/riscv-iommu`) under `verify/external/`.
 5. Define LPDDR PHY attach contract via DFI 5.0 boundary signals as controller's "south" interface (Synopsys + Cadence both speak DFI 5.0).

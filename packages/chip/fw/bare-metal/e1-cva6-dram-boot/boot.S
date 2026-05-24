@@ -2,8 +2,8 @@
  * e1-cva6-dram-boot — bare-metal RV64 M-mode CPU-execution proof.
  *
  * This program is the executable substrate proof for booting the E1 SoC:
- * a real CVA6 RV64 core fetches and executes these instructions from the
- * real AXI4 DRAM controller through the real on-chip fabric.  It is NOT a
+ * a CVA6 RV64 core RTL fetches and executes these instructions from the
+ * AXI4 DRAM-controller RTL model through the on-chip fabric RTL. It is NOT a
  * Linux boot — it is the minimal program that proves the CPU↔DRAM↔CLINT
  * datapath is alive and correct end to end.
  *
@@ -12,12 +12,12 @@
  * ExecuteRegionAddrBase[0]=0x8000_0000, length 0x4000_0000).
  *
  * What it proves, in order:
- *   1. Instruction fetch from real DRAM:  the core fetches this code from
+ *   1. Instruction fetch from the RTL DRAM path: the core fetches this code from
  *      0x8000_0000 through the fabric and the DRAM controller.
  *   2. DRAM data writes:  it stores a deterministic marker pattern to a
  *      scratch region in DRAM and reads it back.
  *   3. CLINT timer trap:  it programs CLINT mtimecmp (@0x0200_4000), enables
- *      mie.MTIE + mstatus.MIE, and waits; the real CLINT raises mtip; the
+ *      mie.MTIE + mstatus.MIE, and waits; the CLINT RTL raises mtip; the
  *      core takes the machine timer trap into mtvec; the handler records
  *      mepc/mcause to DRAM and disarms the timer.
  *   4. Boot-OK marker:  after the trap returns it writes the ASCII marker

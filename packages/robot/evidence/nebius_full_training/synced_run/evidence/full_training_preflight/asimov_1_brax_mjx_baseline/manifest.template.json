@@ -1,0 +1,61 @@
+{
+  "regime": "brax_ppo",
+  "profile_id": "asimov-1",
+  "curriculum_version": 2,
+  "pca_dim": 32,
+  "active_tasks": [
+    "stand_up",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right"
+  ],
+  "obs_dim": 77,
+  "proprio_dim": 45,
+  "text_dim": 32,
+  "critic_obs_dim": 86,
+  "policy_obs_key": "state",
+  "value_obs_key": "privileged_state",
+  "action_dim": 12,
+  "output_dim": 25,
+  "policy_hidden_layer_sizes": [
+    512,
+    256,
+    128
+  ],
+  "value_hidden_layer_sizes": [
+    512,
+    256,
+    128
+  ],
+  "observation_delay_steps": {
+    "left_leg": 1,
+    "right_leg": 2
+  },
+  "observation_delay_groups": {
+    "left_leg": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "right_leg": [
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ]
+  },
+  "normalize_observations": true,
+  "ckpt": "policy_brax.pkl",
+  "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "total_steps": 150000000,
+  "seed": 0,
+  "training_job": "asimov-1-text-conditioned-mjx-brax"
+}

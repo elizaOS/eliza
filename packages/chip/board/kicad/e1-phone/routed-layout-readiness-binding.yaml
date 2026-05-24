@@ -14,6 +14,8 @@ source_artifacts:
   - board/kicad/e1-phone/schematic-capture-readiness-binding.yaml
   - board/kicad/e1-phone/routed-pcb-implementation-execution.yaml
   - board/kicad/e1-phone/routed-release-plan.yaml
+  - board/kicad/e1-phone/kicad-route-readiness-inventory-2026-05-22.yaml
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
   - board/kicad/e1-phone/pcb-implementation-audit.yaml
   - board/kicad/e1-phone/component-height-step-integration.yaml
   - board/kicad/e1-phone/routed-board-step-export-contract.yaml
@@ -57,9 +59,21 @@ current_live_layout_state:
   has_filled_zones: false
   has_production_outputs: false
   concept_placeholder_footprints: 87
+  local_development_layout_state:
+    status: development_routed_real_footprint_board_present_not_release
+    source_board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+    source_step: board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+    footprint_count: 89
+    remaining_placeholder_marker_count: 0
+    segment_count: 306
+    via_count: 24
+    step_envelope_count: 89
+    step_pad_contact_visual_count: 1452
+    step_route_segment_visual_count: 306
+    release_credit: false
 
 release_output_gate:
-  required_output_count: 20
+  required_output_count: 21
   present_output_count: 0
   ready_to_fabricate: false
   ready_for_enclosure: false
@@ -77,6 +91,7 @@ release_output_gate:
     - production_bom_avl
     - assembly_drawing
     - split_interconnect_assembly_drawing
+    - supplier_component_3d_model_manifest
     - board_step_with_supplier_models
     - enclosure_clearance_report_using_routed_step
     - si_pi_reports
@@ -180,11 +195,11 @@ cross_checks:
   fail_closed_until_routed_pcb_drc_si_pi_rf_factory_outputs_and_enclosure_clearance_exist: true
 
 release_blockers:
-  - routed KiCad PCB source is missing
+  - production routed KiCad PCB source is present only as non-release local candidate evidence
   - current KiCad PCB is a concept placeholder scaffold
   - no routed copper segments or filled zones are present in the KiCad PCB
   - PCB has no routed copper, filled zones, or DRC evidence
-  - production STEP export is missing
+  - candidate routed board STEP exists for review only; supplier-approved production STEP export is missing
   - supplier component STEP/B-rep models are missing
   - selected supplier response packs for display, camera, USB-C/side-key, cellular, and Wi-Fi/Bluetooth are missing
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter routed layout release until supplier packs, route evidence, STEP/B-rep, promotion review, and enclosure clearance exist

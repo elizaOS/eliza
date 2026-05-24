@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
+from xml.etree import ElementTree
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE = ROOT / "docs/evidence/memory/iommu-evidence-gate.yaml"
 REFMODEL_MANIFEST = ROOT / "verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml"
+COCOTB_RESULT = ROOT / "verify/cocotb/iommu/results.xml"
 
 REQUIRED_RTL = [
     "rtl/iommu/e1_riscv_iommu.sv",
@@ -55,6 +58,12 @@ REQUIRED_TESTS = {
     "page_request_interface_counter_visible",
     "ats_translation_capability_advertised",
     "translation_request_interface_round_trip",
+    "walker_single_stage_iova_to_pa",
+    "walker_two_stage_iova_to_pa",
+    "walker_unmapped_iova_faults_with_record",
+    "walker_bare_mode_identity",
+    "command_queue_iofence_completes",
+    "command_queue_invalid_opcode_stops_without_advancing",
 }
 
 REQUIRED_ARTIFACTS = {
@@ -70,6 +79,28 @@ REQUIRED_ARTIFACTS = {
 def require(condition: bool, message: str, errors: list[str]) -> None:
     if not condition:
         errors.append(message)
+
+
+def testcase_id(testcase: ElementTree.Element) -> str | None:
+    name = testcase.get("name")
+    if not name:
+        return None
+    return name.rsplit(".", 1)[-1]
+
+
+def cocotb_result_summary(path: Path) -> dict[str, Any] | None:
+    try:
+        root = ElementTree.parse(path).getroot()
+    except (FileNotFoundError, ElementTree.ParseError):
+        return None
+    testcases = root.findall(".//testcase")
+    return {
+        "tests": len(testcases),
+        "failures": len(root.findall(".//failure")),
+        "errors": len(root.findall(".//error")),
+        "skipped": len(root.findall(".//skipped")),
+        "test_names": {name for tc in testcases if (name := testcase_id(tc))},
+    }
 
 
 def main() -> int:
@@ -148,6 +179,16 @@ def main() -> int:
             errors,
         )
 
+    summary = cocotb_result_summary(COCOTB_RESULT)
+    require(summary is not None, "cocotb-iommu results.xml missing or invalid", errors)
+    if summary is not None:
+        missing_xml = sorted(REQUIRED_TESTS - summary["test_names"])
+        require(not missing_xml, "cocotb-iommu XML missing tests: " + ", ".join(missing_xml), errors)
+        require(summary["tests"] >= len(REQUIRED_TESTS), "cocotb-iommu did not run every required test", errors)
+        require(summary["failures"] == 0, f"cocotb-iommu failures present: {summary['failures']}", errors)
+        require(summary["errors"] == 0, f"cocotb-iommu errors present: {summary['errors']}", errors)
+        require(summary["skipped"] == 0, f"cocotb-iommu skipped tests present: {summary['skipped']}", errors)
+
     if errors:
         print("IOMMU evidence gate failed:")
         for e in errors:
@@ -157,6 +198,12 @@ def main() -> int:
     print("IOMMU evidence gate passed.")
     print(f"  rtl_files: {len(REQUIRED_RTL)} required RTL units present")
     print(f"  test_ids:  {len(REQUIRED_TESTS)} cocotb tests declared")
+    if summary is not None:
+        print(
+            "  cocotb:    "
+            f"{summary['tests']} tests, failures={summary['failures']}, "
+            f"errors={summary['errors']}, skipped={summary['skipped']}"
+        )
     print(f"  artifacts: {len(REQUIRED_ARTIFACTS)} BLOCKED evidence files tracked")
     print(f"  ref_model: {REFMODEL_MANIFEST.relative_to(ROOT)} pinned")
     return 0

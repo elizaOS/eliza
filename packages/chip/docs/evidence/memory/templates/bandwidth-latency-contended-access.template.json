@@ -62,6 +62,7 @@
     },
     "pass_fail_against_phone_2028_target_profile": {
       "capacity_gib_min_12": "__PASS_FAIL_OR_DOWNGRADED__",
+      "peak_bandwidth_gbps_min_180": "__PASS_FAIL_OR_DOWNGRADED__",
       "sustained_bandwidth_gbps_min_120": "__PASS_FAIL_OR_DOWNGRADED__",
       "p95_random_read_latency_ns_max_120": "__PASS_FAIL_OR_DOWNGRADED__",
       "contended_trace_present": "__PASS_FAIL__",

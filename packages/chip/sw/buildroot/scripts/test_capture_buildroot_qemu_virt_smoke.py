@@ -5,12 +5,12 @@ The tests never launch a real ``qemu-system-riscv64``. They exercise:
 
 * The bash harness fail-closed behaviour when ``qemu-system-riscv64`` is
   not on PATH or when the kernel/rootfs inputs are missing.
-* The success branch with a stubbed ``qemu-system-riscv64`` that prints all
+* The success branch with a test-double ``qemu-system-riscv64`` that prints all
   required markers.
 * The missing-marker branch (kernel boots but never reaches ``login:``).
 * The forbidden-marker branch (``Kernel panic`` appears in the
   transcript).
-* The timeout branch where the stub sleeps longer than the harness allows.
+* The timeout branch where the test double sleeps longer than the harness allows.
 * JSON schema validation of the emitted evidence document.
 
 Run with::
@@ -161,7 +161,7 @@ def _validate_evidence(doc: dict[str, Any]) -> None:
 
 
 class _HarnessTestBase(unittest.TestCase):
-    """Common scaffolding: synthetic kernel/rootfs, stub PATH, evidence paths."""
+    """Common fixture setup: synthetic kernel/rootfs, test-double PATH, evidence paths."""
 
     def setUp(self) -> None:
         if shutil.which("bash") is None:
@@ -176,24 +176,24 @@ class _HarnessTestBase(unittest.TestCase):
         self.tmpdir = Path(self._tmp.name)
 
         self.kernel = self.tmpdir / "Image"
-        self.kernel.write_bytes(b"fake-kernel-payload")
+        self.kernel.write_bytes(b"synthetic-kernel-payload")
         self.rootfs = self.tmpdir / "rootfs.cpio"
-        self.rootfs.write_bytes(b"fake-rootfs-payload")
+        self.rootfs.write_bytes(b"synthetic-rootfs-payload")
 
         self.evidence = self.tmpdir / "evidence" / "buildroot_qemu_virt_smoke.json"
         self.transcript = self.tmpdir / "evidence" / "buildroot_qemu_virt_smoke.transcript.log"
 
-        self.stub_bin = self.tmpdir / "bin"
-        self.stub_bin.mkdir()
+        self.double_bin = self.tmpdir / "bin"
+        self.double_bin.mkdir()
 
-    def _write_stub(self, name: str, body: str) -> None:
-        path = self.stub_bin / name
+    def _write_double(self, name: str, body: str) -> None:
+        path = self.double_bin / name
         path.write_text(body, encoding="utf-8")
         path.chmod(0o755)
 
-    def _install_qemu_stub(self) -> None:
-        """Stub ``qemu-system-riscv64`` parameterised by environment variables."""
-        self._write_stub(
+    def _install_qemu_double(self) -> None:
+        """Test double ``qemu-system-riscv64`` parameterised by environment variables."""
+        self._write_double(
             "qemu-system-riscv64",
             r"""#!/usr/bin/env bash
 set -eu
@@ -231,20 +231,20 @@ esac
         self,
         *,
         env_overrides: dict[str, str] | None = None,
-        omit_qemu_stub: bool = False,
+        omit_qemu_double: bool = False,
         kernel_override: Path | None = None,
         rootfs_override: Path | None = None,
         path_includes_qemu: bool = True,
     ) -> subprocess.CompletedProcess[str]:
-        if not omit_qemu_stub:
-            self._install_qemu_stub()
+        if not omit_qemu_double:
+            self._install_qemu_double()
 
         env = os.environ.copy()
         if path_includes_qemu:
-            env["PATH"] = f"{self.stub_bin}{os.pathsep}{env.get('PATH', '')}"
+            env["PATH"] = f"{self.double_bin}{os.pathsep}{env.get('PATH', '')}"
         else:
             # Build a PATH that has only standard system utilities and the
-            # tmpdir stub (which we intentionally leave without a qemu stub)
+            # tmpdir test double (which we intentionally leave without a qemu test double)
             # so the harness must hit its "qemu-system-riscv64 not on PATH"
             # branch deterministically.
             scrubbed: list[str] = []
@@ -256,7 +256,7 @@ esac
                     self.skipTest(f"{required} not available in scrubbed PATH")
             if shutil.which("qemu-system-riscv64", path=os.pathsep.join(scrubbed)):
                 self.skipTest("qemu-system-riscv64 unexpectedly present in scrubbed PATH")
-            env["PATH"] = f"{self.stub_bin}{os.pathsep}{os.pathsep.join(scrubbed)}"
+            env["PATH"] = f"{self.double_bin}{os.pathsep}{os.pathsep.join(scrubbed)}"
 
         if env_overrides:
             env.update(env_overrides)
@@ -292,7 +292,7 @@ esac
 
 class BlockedBranchTests(_HarnessTestBase):
     def test_missing_qemu_binary_is_blocked(self) -> None:
-        result = self._run_harness(omit_qemu_stub=True, path_includes_qemu=False)
+        result = self._run_harness(omit_qemu_double=True, path_includes_qemu=False)
         self.assertEqual(result.returncode, 1, msg=result.stderr)
         self.assertIn("STATUS: BLOCKED", result.stderr)
         self.assertTrue(self.evidence.is_file())
@@ -372,7 +372,7 @@ class BootBranchTests(_HarnessTestBase):
         self.assertIn("Kernel panic", doc["forbidden_markers_found"])
 
     def test_timeout_branch(self) -> None:
-        # Stub sleeps longer than the harness timeout; harness must kill it
+        # Test double sleeps longer than the harness timeout; harness must kill it
         # and record boot_completed=false with qemu_exit_code=124.
         result = self._run_harness(
             env_overrides={"QVB_STUB_MODE": "empty", "QVB_STUB_SLEEP": "10"},

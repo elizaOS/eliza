@@ -152,7 +152,7 @@ release_blockers:
   - factory-test limits not derived from first article measurements
   - RF conducted and shield-box procedures not approved
   - display, camera, audio, haptic, button, NFC, sensor, and split-interconnect fixtures not built
-  - secure provisioning and traceability flow not implemented
+  - secure provisioning and traceability flow pending factory process definition
 
 forbidden_claims:
   - factory_test_ready

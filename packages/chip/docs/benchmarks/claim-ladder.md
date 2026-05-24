@@ -96,7 +96,11 @@ Cannot support:
 
 Substrate: prototype silicon running bare-metal or a minimal kernel,
 with calibrated clock source and external power meter. Maps to schema
-`claim_level: L5_PROTOTYPE_SILICON`. Result `provenance: measured`.
+`claim_level: L5_PROTOTYPE_SILICON`. Result `provenance` should be
+`target-measured` for prototype/board-target transcripts or
+`silicon-measured` for fabricated-silicon transcripts; legacy `measured`
+is accepted only when target execution metadata still proves a real
+prototype, silicon, or phone runner.
 Calibration assets must include `clock_source` and `power_meter` with
 real evidence, not placeholders.
 
@@ -152,8 +156,8 @@ Cannot support:
 | L0 dry-run | L0_RTL_UNIT | dry_run | No |
 | L1 simulator-with-model | L1_RTL_FULL_SOC / L2_ARCH_SIM | simulator | No |
 | L2 FPGA bitstream | L3_FPGA | measured | Linux yes, Android scaffolding only |
-| L3 silicon bare-metal | L5_PROTOTYPE_SILICON | measured | No |
-| L4 silicon-Android | L5_PROTOTYPE_SILICON or L6_COMPLETE_PHONE | measured | Yes |
+| L3 silicon bare-metal | L5_PROTOTYPE_SILICON | target-measured or silicon-measured | No |
+| L4 silicon-Android | L5_PROTOTYPE_SILICON or L6_COMPLETE_PHONE | target-measured or silicon-measured | Yes |
 
 ## How To Use This Ladder
 

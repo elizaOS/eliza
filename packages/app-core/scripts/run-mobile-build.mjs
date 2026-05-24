@@ -70,7 +70,10 @@ import {
   syncPlatformTemplateFiles as syncPlatformTemplateFilesImpl,
 } from "./lib/capacitor-platform-templates.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
-import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
+import {
+  RUNTIME_PROVENANCE_FILENAME,
+  stageAndroidAgentRuntime,
+} from "./lib/stage-android-agent.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -892,8 +895,22 @@ async function buildWeb(platform) {
           VITE_ELIZA_IOS_FULL_BUN_STRICT: "1",
         }
       : {}),
+    ...(fs.existsSync(path.join(repoRoot, "eliza", "package.json"))
+      ? {
+          ELIZA_FORCE_LOCAL_UPSTREAMS:
+            process.env.ELIZA_FORCE_LOCAL_UPSTREAMS ?? "1",
+        }
+      : {}),
   };
   const bun = resolveBunExecutable();
+  const packageStylesPatch = path.join(
+    repoRoot,
+    "scripts",
+    "patch-elizaos-package-styles.mjs",
+  );
+  if (fs.existsSync(packageStylesPatch)) {
+    await run(process.execPath, [packageStylesPatch], { cwd: repoRoot, env });
+  }
   if (bun) {
     const sharedEntry = path.join(packagesRoot, "shared", "dist", "index.js");
     if (!fs.existsSync(sharedEntry)) {
@@ -1783,7 +1800,17 @@ function ensureManifestApplicationClosedBeforeTopLevelEntries(xml) {
   return xml.replace("</manifest>", "    </application>\n</manifest>");
 }
 
-function removeStaleAndroidJavaSourceRoots(dstJava) {
+export function shouldRemoveAndroidJavaSourceRoot(
+  candidate,
+  dstJava,
+  protectedRoots = [],
+) {
+  const normalized = path.resolve(candidate);
+  if (normalized === path.resolve(dstJava)) return false;
+  return !protectedRoots.some((root) => normalized === path.resolve(root));
+}
+
+function removeStaleAndroidJavaSourceRoots(dstJava, { protectedRoots = [] } = {}) {
   const candidates = [
     "ai.elizaos.app",
     "com.elizaai.eliza",
@@ -1799,7 +1826,10 @@ function removeStaleAndroidJavaSourceRoots(dstJava) {
       "java",
       packageNameToPath(packageName),
     );
-    if (candidate !== dstJava && fs.existsSync(candidate)) {
+    if (
+      shouldRemoveAndroidJavaSourceRoot(candidate, dstJava, protectedRoots) &&
+      fs.existsSync(candidate)
+    ) {
       fs.rmSync(candidate, { recursive: true, force: true });
     }
   }
@@ -2195,7 +2225,7 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
 }
 
 function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
-  const srcJava = path.join(
+  const templateJava = path.join(
     platformsDir,
     "android",
     "app",
@@ -2234,11 +2264,27 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
     "java",
     ...APP.appId.split("."),
   );
+  const defaultJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    "app",
+    "eliza",
+  );
+  const srcJava =
+    [templateJava, dstJava, defaultJava, legacyJava].find((candidate) =>
+      fs.existsSync(candidate),
+    ) ?? templateJava;
 
   if (fs.existsSync(srcJava)) {
-    removeStaleAndroidJavaSourceRoots(dstJava);
-    for (const staleJava of [legacyJava, appIdJava]) {
-      if (staleJava !== dstJava) {
+    const protectedJavaRoots = [srcJava, dstJava];
+    removeStaleAndroidJavaSourceRoots(dstJava, {
+      protectedRoots: protectedJavaRoots,
+    });
+    for (const staleJava of [legacyJava, appIdJava, defaultJava]) {
+      if (shouldRemoveAndroidJavaSourceRoot(staleJava, dstJava, protectedJavaRoots)) {
         fs.rmSync(staleJava, { recursive: true, force: true });
       }
     }
@@ -2248,6 +2294,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "AgentPlugin.java",
       "AndroidVirtualizationBridge.java",
       "BatteryOptimizationPlugin.java",
+      "ElizaAndroidSystemBridge.java",
       "ElizaNativeBridge.java",
       "MainActivity.java",
       "ElizaAgentService.java",
@@ -2256,6 +2303,7 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       "ElizaBootReceiver.java",
       "ElizaNotificationListenerService.java",
       "ElizaVoiceCaptureService.java",
+      "VoiceCapturePlugin.java",
       "ElizaBrowserActivity.java",
       "ElizaCalendarActivity.java",
       "ElizaCameraActivity.java",
@@ -2275,23 +2323,18 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
       if (!fs.existsSync(src)) continue;
       let code = fs.readFileSync(src, "utf8");
       code = code.replace(
-        /^package\s+ai\.elizaos\.app;/m,
+        /^package\s+(?:ai\.elizaos\.app|app\.eliza);/m,
         `package ${androidPackage};`,
       );
       code = code.replaceAll(
         "ai.elizaos.app.action.",
         `${androidPackage}.action.`,
       );
-      // Source Java declares `import app.eliza.{BuildConfig,R};` because the
-      // upstream gradle namespace is `app.eliza` and that is where the
-      // generated symbols live. For overlay apps the namespace becomes
-      // `${APP.appId}` (see gradle namespace patch at ~L2226), so BuildConfig
-      // and R are emitted under `${androidPackage}` instead. Rewrite the
-      // imports here so compilation finds them. Without this rewrite gradle
-      // fails with `error: package app.eliza does not exist` on every Java
-      // source that touches BuildConfig or R.
+      // Generated symbols follow the Gradle namespace. Rewrite stale imports
+      // from either the legacy package or the default package so R/BuildConfig
+      // resolve after the package overlay.
       code = code.replaceAll(
-        /\bimport\s+app\.eliza\.(BuildConfig|R)\s*;/g,
+        /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
         `import ${androidPackage}.$1;`,
       );
       code = code.replaceAll("ai.elizaos.app://", `${APP.urlScheme}://`);
@@ -2307,6 +2350,21 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
         code = injectBrandUserAgentMarkers(code, APP.userAgentMarkers ?? []);
       }
       fs.writeFileSync(path.join(dstJava, file), code, "utf8");
+      if (path.resolve(src) !== path.resolve(path.join(dstJava, file))) {
+        const legacyCode = fs
+          .readFileSync(src, "utf8")
+          .replaceAll(
+            /\bimport\s+(?:ai\.elizaos\.app|app\.eliza)\.(BuildConfig|R)\s*;/g,
+            `import ${androidPackage}.$1;`,
+          );
+        fs.writeFileSync(src, legacyCode, "utf8");
+      }
+    }
+    if (
+      path.resolve(srcJava) !== path.resolve(templateJava) &&
+      path.resolve(srcJava) !== path.resolve(dstJava)
+    ) {
+      fs.rmSync(srcJava, { recursive: true, force: true });
     }
     console.log("[mobile-build] Overlaid Android Java sources.");
   }
@@ -3608,7 +3666,15 @@ function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "elizaos",
     "app",
   );
-  if (fs.existsSync(srcJava)) return;
+  const activeJava = path.join(
+    androidDir,
+    "app",
+    "src",
+    "main",
+    "java",
+    packageNameToPath(APP.appId),
+  );
+  if (fs.existsSync(srcJava) || fs.existsSync(activeJava)) return;
 
   restoreAndroidManifestFromPlatformTemplateIfMissing();
   const manifestPath = path.join(
@@ -6215,6 +6281,18 @@ function writeAndroidSystemProvenance(apkPath) {
   try {
     const rel = path.join("META-INF", "eliza", "aosp-build-provenance.json");
     const target = path.join(tmpDir, rel);
+    const runtimeProvenancePath = path.join(
+      androidDir,
+      "app",
+      "src",
+      "main",
+      "assets",
+      "agent",
+      RUNTIME_PROVENANCE_FILENAME,
+    );
+    const runtimeProvenance = fs.existsSync(runtimeProvenancePath)
+      ? JSON.parse(fs.readFileSync(runtimeProvenancePath, "utf8"))
+      : null;
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(
       target,
@@ -6222,10 +6300,16 @@ function writeAndroidSystemProvenance(apkPath) {
         {
           schema: "eliza.aosp_build_provenance.v1",
           staged_at: new Date().toISOString(),
-          repo_root: repoRoot,
+          repo_root: ".",
+          repo_root_provenance: "relative_to_git_checkout",
           git_revision: currentGitRevision(),
           apk_name: path.basename(apkPath),
           apk_sha256_before_provenance: sha256File(apkPath),
+          runtime_provenance_entry: `assets/agent/${RUNTIME_PROVENANCE_FILENAME}`,
+          runtime_provenance_sha256: runtimeProvenance
+            ? sha256File(runtimeProvenancePath)
+            : null,
+          runtime_provenance: runtimeProvenance,
           android_system_variant: APP.appName,
           android_package: APP.appId,
           claim_boundary:

@@ -5,13 +5,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from eliza_robot.asimov_1.cad import sha256_file
 from eliza_robot.asimov_1.constants import (
     ASIMOV1_ACTOR_OBSERVATION_DIM,
     ASIMOV1_CONTROL_HZ,
     ASIMOV1_FIRMWARE_JOINT_ORDER,
+    ASIMOV1_GENERATED_MANIFEST,
     ASIMOV1_GENERATED_MJCF,
     ASIMOV1_LEG_ACTION_DIM,
+    ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS,
     ASIMOV1_PHYSICS_HZ,
+    ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM,
 )
 
 
@@ -30,6 +34,7 @@ class AsimovTrainingContract:
     privileged_critic_terms: tuple[str, ...]
     text_conditioned_tasks: tuple[str, ...]
     domain_randomization: dict[str, tuple[float, float]]
+    observation_delay_steps: dict[str, int]
 
 
 def default_asimov_training_contract() -> AsimovTrainingContract:
@@ -47,6 +52,7 @@ def default_asimov_training_contract() -> AsimovTrainingContract:
         privileged_critic_terms=("ground_truth_base_linear_velocity", "toe_contact_state", "foot_contact_forces", "root_height"),
         text_conditioned_tasks=("stand_up", "walk_forward", "walk_backward", "sidestep_left", "sidestep_right", "turn_left", "turn_right"),
         domain_randomization={"encoder_zero_offset_rad": (-0.02, 0.02), "pd_gain_scale": (0.9, 1.1)},
+        observation_delay_steps={"left_leg": 1, "right_leg": 2},
     )
 
 
@@ -67,10 +73,19 @@ def asimov_text_conditioned_manifest_template(
         "obs_dim": contract.actor_observation_dim + int(pca_dim),
         "proprio_dim": contract.actor_observation_dim,
         "text_dim": int(pca_dim),
+        "critic_obs_dim": contract.actor_observation_dim
+        + int(pca_dim)
+        + ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM,
+        "policy_obs_key": "state",
+        "value_obs_key": "privileged_state",
         "action_dim": contract.leg_action_dim,
         "output_dim": len(contract.joint_order),
         "policy_hidden_layer_sizes": list(contract.actor_hidden_sizes),
         "value_hidden_layer_sizes": list(contract.critic_hidden_sizes),
+        "observation_delay_steps": dict(contract.observation_delay_steps),
+        "observation_delay_groups": {
+            group: list(indices) for group, indices in ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS.items()
+        },
         "normalize_observations": True,
         "ckpt": "policy_brax.pkl",
         "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
@@ -114,12 +129,17 @@ def asimov_full_training_job_spec(
         "max_grad_norm": 1.0,
         "policy_hidden_layer_sizes": list(contract.actor_hidden_sizes),
         "value_hidden_layer_sizes": list(contract.critic_hidden_sizes),
+        "policy_obs_key": "state",
+        "value_obs_key": "privileged_state",
     }
     return {
         "job": "asimov-1-text-conditioned-mjx-brax",
         "profile_id": "asimov-1",
         "output_dir": output_dir,
         "mjcf_xml": contract.mjcf_xml,
+        "mjcf_xml_sha256": sha256_file(ASIMOV1_GENERATED_MJCF),
+        "asset_manifest": str(ASIMOV1_GENERATED_MANIFEST),
+        "asset_manifest_sha256": sha256_file(ASIMOV1_GENERATED_MANIFEST),
         "control_hz": contract.control_hz,
         "physics_hz": contract.physics_hz,
         "actor_observation_layout": [
@@ -131,21 +151,41 @@ def asimov_full_training_job_spec(
             {"name": "previous_leg_action", "dim": 12},
         ],
         "actor_observation_dim": 45,
+        "critic_observation_dim": 45 + pca_dim + ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM,
+        "critic_observation_layout": [
+            {"name": "actor_state", "dim": 45 + pca_dim},
+            {"name": "ground_truth_base_linear_velocity", "dim": 3},
+            {"name": "root_height", "dim": 1},
+            {"name": "root_angular_momentum", "dim": 3},
+            {"name": "toe_contact_proxy", "dim": 2},
+        ],
         "leg_action_dim": 12,
         "output_dim": 25,
         "joint_order": list(contract.joint_order),
         "active_tasks": list(contract.text_conditioned_tasks),
+        "observation_delay_steps": dict(contract.observation_delay_steps),
+        "observation_delay_groups": {
+            group: list(indices) for group, indices in ASIMOV1_LEG_OBSERVATION_DELAY_GROUPS.items()
+        },
         "ppo": ppo,
         "trainer_entrypoint": "eliza_robot.sim.mujoco.asimov_mjx_training:train_from_job",
         "runner": "scripts/run_asimov1_full_training.py",
         "domain_randomization": {k: [float(v[0]), float(v[1])] for k, v in contract.domain_randomization.items()} if domain_rand else {},
         "manifest_template": manifest,
-        "expected_artifacts": ["policy_brax.pkl", "manifest.json", "metrics.json", "config.json"],
+        "expected_artifacts": [
+            "policy_brax.pkl",
+            "manifest.json",
+            "metrics.json",
+            "config.json",
+            "inference_check.json",
+            "full_training_run.json",
+        ],
         "validation_commands": [
-            f"python3 scripts/run_asimov1_full_training.py --job-dir {output_dir} --check-only",
-            f"python3 scripts/verify_brax_text_policy.py --ckpt {output_dir} --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25",
-            f"python3 scripts/validate_asimov1_production_checkpoint.py {output_dir} --min-steps {total_steps}",
-            f"python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
-            f"python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint {output_dir}",
+            f"uv run python scripts/run_asimov1_full_training.py --job-dir {output_dir} --check-only",
+            f"uv run python scripts/verify_brax_text_policy.py --ckpt {output_dir} --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim {45 + pca_dim + ASIMOV1_PRIVILEGED_OBSERVATION_EXTRA_DIM} --require-policy-obs-key state --require-value-obs-key privileged_state",
+            f"uv run python scripts/validate_asimov1_production_checkpoint.py {output_dir} --min-steps {total_steps} --require-inference-check",
+            f"uv run python scripts/validate_asimov1_full_training_run.py {output_dir}/full_training_run.json --job-dir {output_dir}",
+            f"uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt {output_dir} --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200",
+            f"uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint {output_dir} --require-asimov-model-provenance",
         ],
     }

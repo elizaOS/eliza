@@ -1,0 +1,143 @@
+{
+  "schema": "robot-brax-mjx-contract-artifact-v1",
+  "ok": true,
+  "contract_only": true,
+  "production_training": false,
+  "out_dir": "evidence/brax_mjx_contract_artifact",
+  "checks": {
+    "policy_artifact": true,
+    "manifest": true,
+    "metrics": true,
+    "config": true,
+    "regime": true,
+    "profile_id": true,
+    "proprio_dim": true,
+    "action_dim": true,
+    "output_dim": true,
+    "asymmetric_actor_critic": true,
+    "config_tasks_match_manifest": true,
+    "contract_not_production": true
+  },
+  "manifest": {
+    "regime": "brax_ppo",
+    "profile_id": "asimov-1",
+    "curriculum_version": 2,
+    "pca_dim": 6,
+    "active_tasks": [
+      "stand_up",
+      "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
+      "turn_left",
+      "turn_right"
+    ],
+    "obs_dim": 51,
+    "proprio_dim": 45,
+    "text_dim": 6,
+    "critic_obs_dim": 60,
+    "policy_obs_key": "state",
+    "value_obs_key": "privileged_state",
+    "action_dim": 12,
+    "output_dim": 25,
+    "policy_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "value_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "observation_delay_steps": {
+      "left_leg": 1,
+      "right_leg": 2
+    },
+    "observation_delay_groups": {
+      "left_leg": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "right_leg": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ]
+    },
+    "normalize_observations": true,
+    "ckpt": "policy_brax.pkl",
+    "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "total_steps": 8,
+    "seed": 11,
+    "training_job": "asimov-1-text-conditioned-mjx-brax",
+    "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+    "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+    "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+    "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415",
+    "wall_clock_s": 0.0
+  },
+  "metrics": [
+    {
+      "steps": 8,
+      "reward": 1.0,
+      "elapsed_s": 0.0
+    }
+  ],
+  "config": {
+    "job": "asimov-1-text-conditioned-mjx-brax",
+    "mjcf_xml": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/mjcf/asimov_eliza.xml",
+    "mjcf_xml_sha256": "bf4125c9f63ed3027b6c8513de9dda02e97cbee4f55ff8e0f06a4b92aefb7bb0",
+    "asset_manifest": "/home/shaw/milady/eliza/packages/robot/assets/profiles/asimov-1/asimov_asset_manifest.json",
+    "asset_manifest_sha256": "9ebde2c4a976c3b2d13e8746628e0918a51c4067eb95d1356ffbdadca8edf415",
+    "active_tasks": [
+      "stand_up",
+      "walk_forward",
+      "walk_backward",
+      "sidestep_left",
+      "sidestep_right",
+      "turn_left",
+      "turn_right"
+    ],
+    "observation_delay_steps": {
+      "left_leg": 1,
+      "right_leg": 2
+    },
+    "ppo": {
+      "algorithm": "brax_ppo",
+      "num_timesteps": 8,
+      "num_envs": 2,
+      "num_evals": 1,
+      "learning_rate": 0.0003,
+      "reward_scaling": 1.0,
+      "normalize_observations": true,
+      "action_repeat": 1,
+      "unroll_length": 2,
+      "num_minibatches": 1,
+      "num_updates_per_batch": 1,
+      "discounting": 0.97,
+      "entropy_cost": 0.01,
+      "batch_size": 2,
+      "max_grad_norm": 1.0,
+      "policy_hidden_layer_sizes": [
+        512,
+        256,
+        128
+      ],
+      "value_hidden_layer_sizes": [
+        512,
+        256,
+        128
+      ],
+      "policy_obs_key": "state",
+      "value_obs_key": "privileged_state"
+    }
+  }
+}

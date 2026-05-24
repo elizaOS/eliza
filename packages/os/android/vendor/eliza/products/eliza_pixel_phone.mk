@@ -1,4 +1,4 @@
-# Parameterized Pixel product makefile for ElizaOS.
+# Parameterized Pixel product makefile for elizaOS.
 #
 # Per-codename wrappers (eliza_oriole_phone.mk, eliza_panther_phone.mk,
 # eliza_shiba_phone.mk, ...) set ELIZA_PIXEL_CODENAME and inherit this
@@ -20,7 +20,7 @@ $(call inherit-product, device/google/$(ELIZA_PIXEL_CODENAME)/aosp_$(ELIZA_PIXEL
 
 PRODUCT_NAME := eliza_$(ELIZA_PIXEL_CODENAME)_phone
 PRODUCT_DEVICE := $(ELIZA_PIXEL_CODENAME)
-PRODUCT_MODEL := ElizaOS Phone ($(ELIZA_PIXEL_CODENAME))
+PRODUCT_MODEL := elizaOS Phone ($(ELIZA_PIXEL_CODENAME))
 
 ELIZA_PRODUCT_TAG := eliza_$(ELIZA_PIXEL_CODENAME)_phone
 

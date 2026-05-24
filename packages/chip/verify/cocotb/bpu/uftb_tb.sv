@@ -21,6 +21,9 @@ module uftb_tb (
     input  logic [VADDR_W-1:0] upd_next_pc,
     input  logic [VADDR_W-1:0] upd_fall_through_pc,
     input  logic [2:0]         upd_kind,
+    input  logic               test_corrupt_parity_valid,
+    input  logic [UFTB_IDX_W-1:0] test_corrupt_parity_idx,
+    input  logic [$clog2(UFTB_WAYS)-1:0] test_corrupt_parity_way,
     output logic               pmu_hit
 );
     br_kind_e lkp_kind_w;
@@ -30,6 +33,7 @@ module uftb_tb (
         .rst_n      (rst_n),
         .lkp_valid  (lkp_valid),
         .lkp_pc     (lkp_pc),
+        .lkp_context(bpu_default_context()),
         .lkp_hit    (lkp_hit),
         .lkp_next_pc(lkp_next_pc),
         .lkp_fall_through_pc(lkp_fall_through_pc),
@@ -37,9 +41,16 @@ module uftb_tb (
         .lkp_conf   (lkp_conf),
         .upd_valid  (upd_valid),
         .upd_pc     (upd_pc),
+        .upd_context(bpu_default_context()),
         .upd_next_pc(upd_next_pc),
         .upd_fall_through_pc(upd_fall_through_pc),
         .upd_kind   (br_kind_e'(upd_kind)),
+        .flush_valid(1'b0),
+        .flush_context_valid(1'b0),
+        .flush_context(bpu_default_context()),
+        .test_corrupt_parity_valid(test_corrupt_parity_valid),
+        .test_corrupt_parity_idx(test_corrupt_parity_idx),
+        .test_corrupt_parity_way(test_corrupt_parity_way),
         .pmu_hit    (pmu_hit)
     );
 

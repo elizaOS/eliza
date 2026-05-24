@@ -17,7 +17,7 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
-BR_NONE, BR_COND, BR_CALL, BR_RET, BR_IND = 0, 1, 2, 3, 4
+BR_NONE, BR_COND, BR_CALL, BR_RET, BR_IND, BR_DIRECT = 0, 1, 2, 3, 4, 5
 FETCH_BLOCK_OFF_W = 5
 MAX_BR_PER_BLOCK = 2
 VADDR_W = 39
@@ -46,15 +46,31 @@ PMU_UFTB_HIT = 16
 PMU_TAGE_ALLOC = 17
 PMU_LOOP_HIT = 18
 PMU_SC_OVERRIDE = 19
+PMU_H2P_OVERRIDE = 20
+PMU_L2_FTB_HIT = 21
+PMU_L2_FTB_MISS = 22
+PMU_TWO_AHEAD_REDIRECT = 23
+PMU_LOCAL_DIR_OVERRIDE = 24
+PMU_META_TRAIN = 25
 
 
 async def reset(dut):
     dut.rst_n.value = 0
     dut.lkp_valid.value = 0
     dut.lkp_pc.value = 0
+    dut.lkp_asid.value = 0
+    dut.lkp_vmid.value = 0
+    dut.lkp_priv.value = 0
+    dut.lkp_secure.value = 0
+    dut.lkp_workload_class.value = 0
     dut.fetch_pop.value = 0
     dut.resolve_valid.value = 0
     dut.resolve_misp.value = 0
+    dut.resolve_asid.value = 0
+    dut.resolve_vmid.value = 0
+    dut.resolve_priv.value = 0
+    dut.resolve_secure.value = 0
+    dut.resolve_workload_class.value = 0
     dut.resolve_pc.value = 0
     dut.resolve_target.value = 0
     dut.resolve_call_return_pc.value = 0
@@ -64,8 +80,13 @@ async def reset(dut):
     dut.resolve_ras_restore_top.value = 0
     dut.resolve_ras_restore_valid.value = 0
     dut.resolve_ras_restore_addr.value = 0
-    dut.resolve_tage_provider.value = 0
-    dut.resolve_ittage_provider.value = 0
+    dut.predictor_flush_valid.value = 0
+    dut.predictor_flush_context_valid.value = 0
+    dut.predictor_flush_asid.value = 0
+    dut.predictor_flush_vmid.value = 0
+    dut.predictor_flush_priv.value = 0
+    dut.predictor_flush_secure.value = 0
+    dut.predictor_flush_workload_class.value = 0
     dut.csr_re.value = 0
     dut.csr_addr.value = 0
     for _ in range(4):
@@ -74,9 +95,14 @@ async def reset(dut):
     await RisingEdge(dut.clk)
 
 
-async def predict(dut, pc):
+async def predict(dut, pc, asid=0, vmid=0, priv=0, secure=0, workload_class=0):
     dut.lkp_valid.value = 1
     dut.lkp_pc.value = pc
+    dut.lkp_asid.value = asid
+    dut.lkp_vmid.value = vmid
+    dut.lkp_priv.value = priv
+    dut.lkp_secure.value = secure
+    dut.lkp_workload_class.value = workload_class
     await RisingEdge(dut.clk)
     dut.lkp_valid.value = 0
 
@@ -93,11 +119,19 @@ async def resolve(
     ras_restore_top=0,
     ras_restore_valid=0,
     ras_restore_addr=0,
-    tage_provider=0,
-    ittage_provider=0,
+    asid=0,
+    vmid=0,
+    priv=0,
+    secure=0,
+    workload_class=0,
 ):
     dut.resolve_valid.value = 1
     dut.resolve_misp.value = 1 if misp else 0
+    dut.resolve_asid.value = asid
+    dut.resolve_vmid.value = vmid
+    dut.resolve_priv.value = priv
+    dut.resolve_secure.value = secure
+    dut.resolve_workload_class.value = workload_class
     dut.resolve_pc.value = pc
     dut.resolve_target.value = target
     dut.resolve_call_return_pc.value = (pc + 4) if call_return_pc is None else call_return_pc
@@ -107,8 +141,6 @@ async def resolve(
     dut.resolve_ras_restore_top.value = ras_restore_top
     dut.resolve_ras_restore_valid.value = 1 if ras_restore_valid else 0
     dut.resolve_ras_restore_addr.value = ras_restore_addr
-    dut.resolve_tage_provider.value = tage_provider
-    dut.resolve_ittage_provider.value = ittage_provider
     await RisingEdge(dut.clk)
     dut.resolve_valid.value = 0
     dut.resolve_misp.value = 0
@@ -189,6 +221,142 @@ async def bpu_always_taken_loop_trains_to_taken(dut):
 
     pred_count = await read_counter(dut, PMU_BR_PRED)
     assert pred_count > 0
+
+
+@cocotb.test()
+async def bpu_direct_branch_uses_target_without_direction_or_ittage_counters(dut):
+    """Direct unconditional branches steer from FTB target state without
+    being counted as conditional or indirect predictions."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_1600
+    target = 0x8000_2A00
+    for _ in range(3):
+        await resolve(dut, pc, target, taken=True, kind=BR_DIRECT, misp=False)
+
+    await predict(dut, pc)
+    assert int(dut.pred_valid.value) == 1
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_kind.value) == BR_DIRECT
+    assert int(dut.pred_target.value) == target
+
+    assert await read_counter(dut, PMU_BR_PRED) >= 1
+    assert await read_counter(dut, PMU_BR_TAKEN) >= 1
+    assert await read_counter(dut, PMU_BR_COND) == 0
+    assert await read_counter(dut, PMU_BR_IND) == 0
+    assert await read_counter(dut, PMU_BR_CALL) == 0
+    assert await read_counter(dut, PMU_BR_RET) == 0
+
+
+@cocotb.test()
+async def bpu_context_isolates_target_predictions_and_flushes(dut):
+    """Same virtual PC in different predictor contexts must not share target
+    entries; a predictor flush must clear trained target state."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_1800
+    target_a = 0x8000_2800
+    target_b = 0x8000_3800
+
+    for _ in range(2):
+        await resolve(
+            dut, pc, target_a, taken=True, kind=BR_CALL, misp=False, asid=1, vmid=0
+        )
+
+    await predict(dut, pc, asid=1, vmid=0)
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_target.value) == target_a
+    assert int(dut.pred_from_uftb.value) == 1 or int(dut.pred_from_ftb.value) == 1
+
+    await predict(dut, pc, asid=2, vmid=0)
+    assert int(dut.pred_target.value) != target_a
+    assert int(dut.pred_from_uftb.value) == 0
+    assert int(dut.pred_from_ftb.value) == 0
+
+    for _ in range(2):
+        await resolve(
+            dut, pc, target_b, taken=True, kind=BR_CALL, misp=False, asid=2, vmid=0
+        )
+
+    await predict(dut, pc, asid=2, vmid=0)
+    assert int(dut.pred_target.value) == target_b
+
+    dut.predictor_flush_valid.value = 1
+    await RisingEdge(dut.clk)
+    dut.predictor_flush_valid.value = 0
+    await predict(dut, pc, asid=1, vmid=0)
+    assert int(dut.pred_from_uftb.value) == 0
+    assert int(dut.pred_from_ftb.value) == 0
+    await predict(dut, pc, asid=2, vmid=0)
+    assert int(dut.pred_from_uftb.value) == 0
+    assert int(dut.pred_from_ftb.value) == 0
+
+
+@cocotb.test()
+async def bpu_workload_class_isolates_target_predictions_and_flushes(dut):
+    """A runtime workload class partitions predictor target state.
+
+    This is the hardware-visible hook for GPU/ML/general phase policy: same
+    ASID/VMID/priv/secure and same virtual PC must not share target-array
+    entries when software selects a different workload class.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_1A00
+    target_general = 0x8000_2A00
+    target_gpu = 0x8000_3A00
+
+    for _ in range(2):
+        await resolve(
+            dut,
+            pc,
+            target_general,
+            taken=True,
+            kind=BR_CALL,
+            misp=False,
+            workload_class=0,
+        )
+
+    await predict(dut, pc, workload_class=0)
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_target.value) == target_general
+
+    await predict(dut, pc, workload_class=1)
+    assert int(dut.pred_target.value) != target_general
+    assert int(dut.pred_from_uftb.value) == 0
+    assert int(dut.pred_from_ftb.value) == 0
+
+    for _ in range(2):
+        await resolve(
+            dut,
+            pc,
+            target_gpu,
+            taken=True,
+            kind=BR_CALL,
+            misp=False,
+            workload_class=1,
+        )
+
+    await predict(dut, pc, workload_class=1)
+    assert int(dut.pred_target.value) == target_gpu
+    await predict(dut, pc, workload_class=0)
+    assert int(dut.pred_target.value) == target_general
+
+    dut.predictor_flush_valid.value = 1
+    dut.predictor_flush_context_valid.value = 1
+    dut.predictor_flush_workload_class.value = 0
+    await RisingEdge(dut.clk)
+    dut.predictor_flush_valid.value = 0
+    dut.predictor_flush_context_valid.value = 0
+
+    await predict(dut, pc, workload_class=0)
+    assert int(dut.pred_from_uftb.value) == 0
+    assert int(dut.pred_from_ftb.value) == 0
+    await predict(dut, pc, workload_class=1)
+    assert int(dut.pred_target.value) == target_gpu
 
 
 @cocotb.test()
@@ -367,6 +535,77 @@ async def bpu_mispredict_restores_ras_entry_after_wrong_path_return(dut):
 
 
 @cocotb.test()
+async def bpu_return_fallback_predicts_when_ras_empty(dut):
+    """A stable non-LIFO return should use the bounded return-target backup
+    when the live RAS has no usable entry."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    ret_pc = 0x8000_2C00
+    fallback_target = 0x8000_3400
+
+    for _ in range(3):
+        await resolve(
+            dut,
+            ret_pc,
+            fallback_target,
+            taken=True,
+            kind=BR_RET,
+            misp=True,
+        )
+
+    await predict(dut, ret_pc)
+    assert int(dut.pred_kind.value) == BR_RET
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_from_ras.value) == 0
+    assert int(dut.pred_target.value) == fallback_target
+
+
+@cocotb.test()
+async def bpu_return_fallback_overrides_confident_ras_mismatch(dut):
+    """After repeated resolved mismatches, the return fallback may override
+    a live RAS top for the same return PC."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    wrong_call_pc = 0x8000_2D00
+    wrong_call_target = 0x8000_3D00
+    ret_pc = 0x8000_3D40
+    wrong_return = wrong_call_pc + 4
+    fallback_target = 0x8000_4600
+
+    for _ in range(3):
+        await resolve(
+            dut,
+            ret_pc,
+            fallback_target,
+            taken=True,
+            kind=BR_RET,
+            misp=True,
+        )
+    await resolve(
+        dut,
+        wrong_call_pc,
+        wrong_call_target,
+        taken=True,
+        kind=BR_CALL,
+        misp=False,
+        call_return_pc=wrong_return,
+    )
+
+    await predict(dut, wrong_call_pc)
+    assert int(dut.pred_kind.value) == BR_CALL
+    await Timer(1, units="ns")
+    assert int(dut.u_bpu.u_ras.spec_top_valid.value) == 1
+    assert int(dut.u_bpu.u_ras.spec_top_addr.value) == wrong_return
+
+    await predict(dut, ret_pc)
+    assert int(dut.pred_kind.value) == BR_RET
+    assert int(dut.pred_from_ras.value) == 0
+    assert int(dut.pred_target.value) == fallback_target
+
+
+@cocotb.test()
 async def bpu_misprediction_increments_misp_counter(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
@@ -474,6 +713,257 @@ async def bpu_ftq_entry_carries_two_predicted_slots(dut):
 
 
 @cocotb.test()
+async def bpu_l2_ftb_refills_l1_after_conflict_eviction(dut):
+    """An L1 FTB conflict miss should promote a surviving L2 FTB entry back
+    into the single-cycle L1 target tier."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6A00
+    target = 0x8000_7A00
+
+    await resolve(dut, pc, target, taken=True, kind=BR_COND, misp=False)
+    await evict_ftb_entry(dut, pc, 0x8000_B000)
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 0
+    await Timer(1, units="ns")
+    assert int(dut.u_bpu.l2_refill_valid.value) == 1
+    await RisingEdge(dut.clk)
+    assert await read_counter(dut, PMU_L2_FTB_HIT) >= 1
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 1
+    assert int(dut.pred_target.value) == target
+
+
+@cocotb.test()
+async def bpu_l2_ftb_patches_ftq_and_redirects_call_after_l1_miss(dut):
+    """A delayed L2 FTB hit for an always-taken branch class should patch
+    the queued fetch entry and emit an explicit late redirect."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6B00
+    target = 0x8000_7B00
+
+    await resolve(
+        dut,
+        pc,
+        target,
+        taken=True,
+        kind=BR_CALL,
+        misp=False,
+        call_return_pc=pc + 4,
+    )
+    await evict_ftb_entry(dut, pc, 0x8000_D000)
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 0
+
+    await Timer(1, units="ns")
+    assert int(dut.late_redirect_valid.value) == 1
+    assert int(dut.late_redirect_pc.value) == target
+    assert ((int(dut.pmu_strb.value) >> PMU_L2_FTB_HIT) & 0x1) == 1
+    assert int(dut.late_redirect_valid_lanes.value) & 0b1
+    assert packed_slot(
+        int(dut.late_redirect_pc_lanes.value), 0, VADDR_W
+    ) == target
+
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.fetch_valid.value) == 1
+    assert int(dut.fetch_target_pc.value) == target
+    assert int(dut.fetch_taken.value) == 1
+    assert int(dut.fetch_kind.value) == BR_CALL
+    assert int(dut.fetch_br_taken_mask.value) != 0
+    assert int(dut.fetch_segment_valid.value) & 0b1
+    assert int(dut.fetch_segment_taken.value) & 0b1
+    assert packed_slot(
+        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
+    ) == target
+
+
+@cocotb.test()
+async def bpu_l2_ftb_patches_strong_taken_conditional_after_l1_miss(dut):
+    """A delayed L2 FTB hit for a strongly taken conditional should patch
+    the queued fetch entry, while weak/unknown conditionals remain refill-only."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6B80
+    target = 0x8000_7B80
+
+    await resolve(dut, pc, target, taken=True, kind=BR_COND, misp=False)
+    await resolve(dut, pc, target, taken=True, kind=BR_COND, misp=False)
+    await evict_ftb_entry(dut, pc, 0x8000_D800)
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 0
+
+    await Timer(1, units="ns")
+    assert int(dut.late_redirect_valid.value) == 1
+    assert int(dut.late_redirect_pc.value) == target
+
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.u_bpu.ghist_spec_q.value) & 0b1
+    assert int(dut.fetch_valid.value) == 1
+    assert int(dut.fetch_target_pc.value) == target
+    assert int(dut.fetch_taken.value) == 1
+    assert int(dut.fetch_kind.value) == BR_COND
+    assert int(dut.fetch_br_taken_mask.value) != 0
+    assert int(dut.fetch_segment_valid.value) & 0b1
+    assert int(dut.fetch_segment_taken.value) & 0b1
+    assert packed_slot(
+        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
+    ) == target
+
+
+@cocotb.test()
+async def bpu_l2_ftb_patches_return_from_ras_snapshot_after_l1_miss(dut):
+    """A delayed L2 return hit should use the RAS snapshot captured with the
+    miss request, then pop that checkpointed return exactly once."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    call_pc = 0x8000_6D00
+    call_target = 0x8000_7100
+    ret_pc = 0x8000_7200
+    stored_ret_target = 0x8000_7D00
+    return_to = call_pc + 4
+
+    await resolve(
+        dut,
+        call_pc,
+        call_target,
+        taken=True,
+        kind=BR_CALL,
+        misp=False,
+        call_return_pc=return_to,
+    )
+    await predict(dut, call_pc)
+    assert int(dut.pred_kind.value) == BR_CALL
+    dut.fetch_pop.value = 1
+    await RisingEdge(dut.clk)
+    dut.fetch_pop.value = 0
+
+    await resolve(dut, ret_pc, stored_ret_target, taken=True, kind=BR_RET, misp=False)
+    await evict_ftb_entry(dut, ret_pc, 0x8000_E000)
+
+    await predict(dut, ret_pc)
+    assert int(dut.pred_from_ftb.value) == 0
+    assert int(dut.pred_from_uftb.value) == 0
+
+    await Timer(1, units="ns")
+    assert int(dut.late_redirect_valid.value) == 1
+    assert int(dut.late_redirect_pc.value) == return_to
+
+    await RisingEdge(dut.clk)
+    await Timer(1, units="ns")
+    assert int(dut.fetch_valid.value) == 1
+    assert int(dut.fetch_target_pc.value) == return_to
+    assert int(dut.fetch_taken.value) == 1
+    assert int(dut.fetch_kind.value) == BR_RET
+    assert int(dut.u_bpu.u_ras.spec_top_valid.value) == 0
+
+
+@cocotb.test()
+async def bpu_l2_ftb_return_does_not_double_pop_after_uftb_steer(dut):
+    """If a confident uFTB return already popped the RAS, the delayed L2
+    return hit must refill only and avoid a second late redirect/pop."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    call_pc = 0x8000_6D80
+    call_target = 0x8000_7180
+    ret_pc = 0x8000_7280
+    stored_ret_target = 0x8000_7D80
+    return_to = call_pc + 4
+
+    await resolve(
+        dut,
+        call_pc,
+        call_target,
+        taken=True,
+        kind=BR_CALL,
+        misp=False,
+        call_return_pc=return_to,
+    )
+    await predict(dut, call_pc)
+    assert int(dut.pred_kind.value) == BR_CALL
+    dut.fetch_pop.value = 1
+    await RisingEdge(dut.clk)
+    dut.fetch_pop.value = 0
+
+    await resolve(dut, ret_pc, stored_ret_target, taken=True, kind=BR_RET, misp=False)
+    await resolve(dut, ret_pc, stored_ret_target, taken=True, kind=BR_RET, misp=False)
+    await evict_ftb_entry(dut, ret_pc, 0x8000_E800)
+
+    await predict(dut, ret_pc)
+    assert int(dut.pred_from_ftb.value) == 0
+    assert int(dut.pred_from_uftb.value) == 1
+    assert int(dut.pred_from_ras.value) == 1
+
+    await Timer(1, units="ns")
+    assert int(dut.late_redirect_valid.value) == 0
+
+
+@cocotb.test()
+async def bpu_l2_ftb_drops_stale_refill_on_redirect(dut):
+    """A delayed L2 response from a flushed lookup must not refill L1."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6C00
+    target = 0x8000_7C00
+
+    await resolve(dut, pc, target, taken=True, kind=BR_COND, misp=False)
+    await evict_ftb_entry(dut, pc, 0x8000_C000)
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 0
+
+    dut.resolve_valid.value = 1
+    dut.resolve_misp.value = 1
+    dut.resolve_pc.value = pc + 0x40
+    dut.resolve_target.value = pc + 0x80
+    dut.resolve_call_return_pc.value = pc + 0x44
+    dut.resolve_taken.value = 1
+    dut.resolve_kind.value = BR_COND
+    await Timer(1, units="ns")
+    assert int(dut.u_bpu.l2_refill_valid.value) == 0
+    assert int(dut.late_redirect_valid.value) == 0
+    await RisingEdge(dut.clk)
+    dut.resolve_valid.value = 0
+    dut.resolve_misp.value = 0
+
+    await predict(dut, pc)
+    assert int(dut.pred_from_ftb.value) == 0
+
+
+@cocotb.test()
+async def bpu_br_none_resolve_does_not_corrupt_ftb_block(dut):
+    """A no-branch resolve in the same fetch block must not overwrite the
+    trained FTB branch slot or become the earliest slot."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    block_pc = 0x8000_6E00
+    branch_pc = block_pc + 0x18
+    no_branch_pc = block_pc + 0x04
+    target = 0x8000_7E00
+
+    await resolve(dut, branch_pc, target, taken=True, kind=BR_COND, misp=False)
+    await resolve(dut, no_branch_pc, no_branch_pc + 4, taken=False, kind=BR_NONE, misp=False)
+
+    await predict(dut, block_pc)
+    assert int(dut.pred_from_ftb.value) == 1
+    assert int(dut.pred_kind.value) == BR_COND
+    assert int(dut.pred_target.value) == target
+
+
+@cocotb.test()
 async def bpu_ftq_entry_captures_prediction_time_histories(dut):
     """Top-level FTQ entries must preserve the history snapshots generated
     during prediction, not just standalone queue payload fields."""
@@ -493,9 +983,9 @@ async def bpu_ftq_entry_captures_prediction_time_histories(dut):
     assert int(dut.fetch_valid.value) == 1
     assert int(dut.fetch_ghist_snapshot.value) & 0x1 == 1
     assert int(dut.fetch_ittage_target_hist_snapshot.value) != 0
-    # Path history is intentionally disabled in the current tuned geometry,
-    # but the field is still carried through the top-level FTQ entry.
-    assert int(dut.fetch_ittage_path_hist_snapshot.value) == 0
+    # The promoted ITTAGE geometry uses path history; the FTQ must carry the
+    # prediction-time snapshot for replay and redirect recovery.
+    assert int(dut.fetch_ittage_path_hist_snapshot.value) != 0
     assert int(dut.fetch_tage_provider_ctr.value) >= 0
     assert int(dut.fetch_tage_lowconf.value) in (0, 1)
     assert int(dut.fetch_sc_override.value) in (0, 1)
@@ -505,7 +995,7 @@ async def bpu_ftq_entry_captures_prediction_time_histories(dut):
 @cocotb.test()
 async def bpu_commit_update_replays_ftq_tage_metadata(dut):
     """Commit-time TAGE training must use the resolved FTQ entry's
-    prediction metadata, not resolver-supplied provider/history mirrors."""
+    prediction metadata rather than backend-supplied mirrors."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
@@ -530,8 +1020,6 @@ async def bpu_commit_update_replays_ftq_tage_metadata(dut):
     dut.resolve_taken.value = 0
     dut.resolve_kind.value = BR_COND
     dut.resolve_ftq_idx.value = ftq_idx
-    dut.resolve_tage_provider.value = TAGE_TABLES
-    dut.resolve_ittage_provider.value = TAGE_TABLES
     await Timer(1, units="ns")
 
     assert int(dut.u_bpu.ftq_replay_valid.value) == 1
@@ -581,7 +1069,6 @@ async def bpu_redirect_recovers_spec_history_from_ftq_snapshot(dut):
         kind=BR_COND,
         misp=True,
         ftq_idx=ftq_idx,
-        tage_provider=TAGE_TABLES,
     )
     await Timer(1, units="ns")
 
@@ -609,6 +1096,10 @@ async def bpu_second_conditional_slot_redirects_after_first_falls_through(dut):
     await predict(dut, block_pc)
     assert int(dut.pred_taken.value) == 1
     assert int(dut.pred_target.value) == redirect_target
+    assert int(dut.pred_redirect_valid.value) == 0b10
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 1, VADDR_W
+    ) == redirect_target
     await Timer(1, units="ns")
     assert int(dut.fetch_valid.value) == 1
 
@@ -620,6 +1111,182 @@ async def bpu_second_conditional_slot_redirects_after_first_falls_through(dut):
         if (taken_mask >> slot) & 0x1
     }
     assert taken_offsets == {0x18}
+    assert int(dut.fetch_segment_valid.value) == 0b11
+    assert int(dut.fetch_segment_taken.value) == 0b10
+    assert packed_slot(
+        int(dut.fetch_segment_start_pc.value), 0, VADDR_W
+    ) == block_pc
+    assert packed_slot(
+        int(dut.fetch_segment_end_pc.value), 0, VADDR_W
+    ) == guard_pc
+    assert packed_slot(
+        int(dut.fetch_segment_target_pc.value), 0, VADDR_W
+    ) == guard_pc + 4
+    assert packed_slot(
+        int(dut.fetch_segment_branch_offset.value), 0, FETCH_BLOCK_OFF_W
+    ) == 0x04
+    assert packed_slot(
+        int(dut.fetch_segment_slot_idx.value), 0, 1
+    ) in range(MAX_BR_PER_BLOCK)
+    assert packed_slot(
+        int(dut.fetch_segment_start_pc.value), 1, VADDR_W
+    ) == guard_pc + 4
+    assert packed_slot(
+        int(dut.fetch_segment_end_pc.value), 1, VADDR_W
+    ) == redirect_pc
+    assert packed_slot(
+        int(dut.fetch_segment_target_pc.value), 1, VADDR_W
+    ) == redirect_target
+    assert packed_slot(
+        int(dut.fetch_segment_branch_offset.value), 1, FETCH_BLOCK_OFF_W
+    ) == 0x18
+    assert packed_slot(
+        int(dut.fetch_segment_slot_idx.value), 1, 1
+    ) in range(MAX_BR_PER_BLOCK)
+
+
+@cocotb.test()
+async def bpu_two_ahead_target_block_direct_redirect_lane(dut):
+    """A taken branch target block can contribute a second redirect lane."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    block_pc = 0x8000_7C00
+    first_target_block = 0x8000_8800
+    final_target = 0x8000_9C00
+
+    await resolve(
+        dut,
+        block_pc,
+        first_target_block,
+        taken=True,
+        kind=BR_DIRECT,
+        misp=False,
+    )
+    await resolve(
+        dut,
+        first_target_block,
+        final_target,
+        taken=True,
+        kind=BR_DIRECT,
+        misp=False,
+    )
+
+    await predict(dut, block_pc)
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_target.value) == first_target_block
+    assert int(dut.pred_redirect_valid.value) == 0b11
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 0, VADDR_W
+    ) == first_target_block
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 1, VADDR_W
+    ) == final_target
+    assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
+
+
+@cocotb.test()
+async def bpu_two_ahead_target_block_strong_conditional_redirect_lane(dut):
+    """A strongly taken conditional in the target block can use lane 1."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    block_pc = 0x8000_7D00
+    first_target_block = 0x8000_8900
+    final_target = 0x8000_9D00
+
+    await resolve(
+        dut,
+        block_pc,
+        first_target_block,
+        taken=True,
+        kind=BR_DIRECT,
+        misp=False,
+    )
+    for _ in range(2):
+        await resolve(
+            dut,
+            first_target_block,
+            final_target,
+            taken=True,
+            kind=BR_COND,
+            misp=False,
+        )
+
+    await predict(dut, block_pc)
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_target.value) == first_target_block
+    assert int(dut.pred_redirect_valid.value) == 0b11
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 0, VADDR_W
+    ) == first_target_block
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 1, VADDR_W
+    ) == final_target
+    assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
+
+
+@cocotb.test()
+async def bpu_two_ahead_target_block_return_after_call_uses_call_fallthrough(dut):
+    """A target-block return after a predicted call can use call fallthrough."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    call_pc = 0x8000_7E00
+    function_block = 0x8000_8A00
+    return_to = call_pc + 4
+    stale_ret_target = 0x8000_9E00
+
+    await resolve(
+        dut,
+        call_pc,
+        function_block,
+        taken=True,
+        kind=BR_CALL,
+        misp=False,
+        call_return_pc=return_to,
+    )
+    await resolve(
+        dut,
+        function_block,
+        stale_ret_target,
+        taken=True,
+        kind=BR_RET,
+        misp=False,
+    )
+
+    await predict(dut, call_pc)
+    assert int(dut.pred_taken.value) == 1
+    assert int(dut.pred_target.value) == function_block
+    assert int(dut.pred_redirect_valid.value) == 0b11
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 0, VADDR_W
+    ) == function_block
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 1, VADDR_W
+    ) == return_to
+    assert packed_slot(
+        int(dut.pred_redirect_pc.value), 1, VADDR_W
+    ) != stale_ret_target
+    assert await read_counter(dut, PMU_TWO_AHEAD_REDIRECT) >= 1
+
+
+@cocotb.test()
+async def bpu_local_direction_corrector_enabled_by_default(dut):
+    """The default local direction path remains safe on short alternation."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    pc = 0x8000_6100
+    target = 0x8000_6180
+
+    for i in range(16):
+        taken = (i % 2) == 0
+        await resolve(dut, pc, target, taken=taken, kind=BR_COND, misp=True)
+
+    await predict(dut, pc)
+    assert int(dut.pred_valid.value) == 1
+    assert int(dut.pred_kind.value) in (BR_NONE, BR_COND)
 
 
 @cocotb.test()
@@ -693,7 +1360,9 @@ async def bpu_weak_ittage_yields_to_stable_ftb_target(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    pc = 0x8003_2000
+    # Pick a PC whose folded path-history token is zero so this test isolates
+    # the weak-ITTAGE-vs-stable-FTB arbitration path instead of path phase.
+    pc = 0x0
     stale_target = 0x9002_0000
     stable_target = 0x9003_0000
 
@@ -704,7 +1373,6 @@ async def bpu_weak_ittage_yields_to_stable_ftb_target(dut):
         taken=True,
         kind=BR_IND,
         misp=True,
-        ittage_provider=0,
     )
     for _ in range(3):
         await resolve(
@@ -714,7 +1382,6 @@ async def bpu_weak_ittage_yields_to_stable_ftb_target(dut):
             taken=True,
             kind=BR_IND,
             misp=False,
-            ittage_provider=0,
         )
 
     await predict(dut, pc)

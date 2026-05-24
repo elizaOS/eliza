@@ -2,52 +2,84 @@
   "blockers": [],
   "cbp5_mpki_results_ref": {
     "android_claim": false,
-    "cbp5_claim": true,
+    "cbp5_claim": false,
     "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
     "evidence_class": "cbp5_train_traces_only",
     "model": {
+      "accuracy_claim": false,
+      "aggregate_mpki": 41.315421,
+      "android_claim": false,
+      "cbp5_claim": false,
       "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+      "generated_at_utc": "2026-05-23T23:54:30.363771+00:00",
       "harness": "behavioural-bpu-model",
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "29019f2ce0373f49f8f7009bdb861ab55ea3743d7c2bce9122a4ad0b538db2ed"
+      "sha256": "12f8a7e0d0667ad09de6d65b46b37a083d6e3467e7b2899cdf325b3a3410ec16",
+      "spec2017_claim": false,
+      "target_2028_mpki": 4.0,
+      "target_met": false,
+      "v8_claim": false
     },
     "rtl": {
+      "accuracy_claim": false,
+      "aggregate_mpki": 33.84841,
+      "android_claim": false,
+      "cbp5_claim": false,
       "command": "make mpki-eval-rtl",
+      "generated_at_utc": "2026-05-23T23:31:57.896472+00:00",
       "harness": "cocotb-rtl-bpu_top",
       "path": "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json",
       "present": true,
       "schema": "eliza.bpu_mpki.v1",
-      "sha256": "e5d58b6a0d9c8c76f6ed96b92f746449bfbe58c945c288ac4a5bf3295bd25345"
+      "sha256": "d41e584f74fe5cc2322887fa7fb610cd7fc16085faaa0893673470027db2679b",
+      "spec2017_claim": false,
+      "target_2028_mpki": 4.0,
+      "target_met": false,
+      "v8_claim": false
     },
     "spec2017_claim": false,
     "v8_claim": false
   },
   "claim_policy": {
     "android_mpki_claim": false,
-    "cbp5_mpki_claim": true,
+    "cbp5_mpki_claim": false,
     "fdip_claim": false,
-    "reason": "Open RTL geometry verified against 2028 thresholds. CBP-5 train-trace MPKI is on file (evidence_class cbp5_train_traces_only); SPEC, AOSP, and JS-engine MPKI claims remain blocked until those trace sets land in benchmarks/cpu/branch/.",
+    "reason": "Open RTL geometry verified against 2028 thresholds. CBP-5 train-trace RTL evidence is on file but aggregate RTL MPKI is above target_2028_mpki, so CBP-5 target-met, SPEC, AOSP, and JS-engine MPKI claims remain blocked.",
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-22T20:54:32.840736+00:00",
+  "generated_at_utc": "2026-05-24T02:14:17.979719+00:00",
   "parameters": {
     "BIM_CTR_W": 2,
     "BIM_ENTRIES": 16384,
+    "BPU_CONTEXT_HASH_W": 12,
+    "BPU_WORKLOAD_CLASS_W": 2,
     "FETCH_BLOCK_BYTES": 32,
     "FTB_ENTRIES": 4096,
     "FTB_TARGET_CONF_W": 2,
     "FTB_WAYS": 4,
     "FTQ_ENTRIES": 64,
+    "H2P_ENABLE": 1,
+    "H2P_ENTRIES": 512,
+    "H2P_HIST_LEN": 64,
+    "H2P_META_CTR_W": 3,
+    "H2P_META_ENABLE": 0,
+    "H2P_META_ENTRIES": 1024,
+    "H2P_META_THRESHOLD": 1,
+    "H2P_PATH_HIST_LEN": 0,
+    "H2P_SCORE_W": 16,
+    "H2P_TARGET_HIST_LEN": 0,
+    "H2P_THRESHOLD": 36,
+    "H2P_WEIGHT_W": 6,
     "ITTAGE_CTR_W": 3,
     "ITTAGE_ENTRIES": [
-      512,
-      512,
       1024,
       1024,
-      1024
+      2048,
+      2048,
+      2048
     ],
     "ITTAGE_HIST_LEN": [
       4,
@@ -56,38 +88,55 @@
       40,
       80
     ],
-    "ITTAGE_PATH_HISTORY_BITS": 0,
+    "ITTAGE_PATH_HISTORY_BITS": 64,
     "ITTAGE_PATH_HISTORY_SHIFT": 2,
-    "ITTAGE_PATH_HISTORY_TOKEN_BITS": 6,
+    "ITTAGE_PATH_HISTORY_TOKEN_BITS": 8,
     "ITTAGE_REPLACE_MIN_PROVIDER": 4,
     "ITTAGE_REPLACE_WEAK_CTR": 3,
     "ITTAGE_TABLES": 5,
-    "ITTAGE_TAG_W": 9,
+    "ITTAGE_TAG_W": 11,
     "ITTAGE_TARGET_HISTORY_BITS": 64,
     "ITTAGE_TARGET_HISTORY_SHIFT": 8,
-    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 5,
     "ITTAGE_USEFUL_RESET_PERIOD": 100000,
     "ITTAGE_USEFUL_W": 2,
+    "L2_FTB_ENTRIES": 8192,
+    "L2_FTB_TAG_W": 19,
+    "L2_FTB_WAYS": 8,
+    "LOCAL_DIR_ENABLE": 1,
+    "LOCAL_DIR_ENTRIES": 1024,
+    "LOCAL_DIR_HIST_W": 2,
+    "LOCAL_DIR_META_CTR_W": 3,
+    "LOCAL_DIR_META_ENABLE": 1,
+    "LOCAL_DIR_META_ENTRIES": 1024,
+    "LOCAL_DIR_META_THRESHOLD": 1,
+    "LOCAL_DIR_PHT_ENTRIES": 4,
     "LOOP_CONF_W": 3,
     "LOOP_CTR_W": 14,
     "LOOP_ENTRIES": 64,
+    "LOOP_PATH_SIG_W": 8,
     "MAX_BR_PER_BLOCK": 2,
     "RAS_ARCH_ENTRIES": 32,
     "RAS_SPEC_ENTRIES": 64,
     "SC_CTR_W": 6,
-    "SC_ENTRIES_TABLE": 512,
+    "SC_ENTRIES_TABLE": 1024,
     "SC_HIST_LEN": [
       0,
       4,
       10,
-      16
+      16,
+      27,
+      44
     ],
     "SC_LOCAL_HISTORY_BITS": 8,
     "SC_LOCAL_HISTORY_ENTRIES": 1024,
-    "SC_TABLES": 4,
-    "SC_THRESH_INIT": 8,
+    "SC_TABLES": 6,
+    "SC_THRESH_INIT": 6,
     "SC_THRESH_MAX": 31,
     "SC_THRESH_MIN": 4,
+    "TAGE_ALT_ON_NA_CTR_W": 4,
+    "TAGE_ALT_ON_NA_ENTRIES": 1024,
+    "TAGE_ALT_ON_NA_THRESHOLD": 1,
     "TAGE_CTR_W": 3,
     "TAGE_ENTRIES_TABLE": 8192,
     "TAGE_HIST_LEN": [
@@ -107,11 +156,16 @@
     "UFTB_WAYS": 4
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "fd8c39201d268f454f2b62fccaaa52854b7a73fe",
+  "source_revision": "03f7f84067e7338aaaeb31f6418c69d0ba68e236",
   "sources": {
+    "cbp5_trace_manifest": {
+      "path": "docs/evidence/cpu_ap/cbp5-trace-manifest.json",
+      "present": true,
+      "sha256": "1f82d7d9171e49fe1e2a5285a411e15d265778988d5e7ab3a4c8b485cc4f3390"
+    },
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "dc7eb5ef7d6c804e548c15dd17bdd3ab29b25f60012ebc613329ab97623b22cf"
+      "sha256": "8d5bbc7638b961dd9fef1efcca443688a3df1521352fcaa1a4689f6e44e18166"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -119,26 +173,32 @@
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "e0fbfda17fe030e7415dbac6fe820ea1d701f9b1806aa36dac0c974b80bbc925"
+      "sha256": "17e2a16cb9b51fd09db3ace4e804cce511d0b83bf9d84833208058a9bae732cf"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "1497c01143ba7b657204aed930c98ddc8c0976226fb4b106dadeb0c6a4e00fe0"
+      "sha256": "59f821d4046d6286931227b9110b98d2be31853478cf5986b5136046bd2c05d3"
     }
   },
   "status": "clean",
   "synthetic_mpki_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 66.119029,
     "android_claim": false,
     "cbp5_claim": false,
     "command": "make mpki-eval-rtl",
     "comparison_table": "docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md",
+    "generated_at_utc": "2026-05-23T23:30:07.211632+00:00",
     "harness": "cocotb-rtl-bpu_top",
     "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "present": true,
     "schema": "eliza.bpu_mpki.v1",
-    "sha256": "aa43a594eb3dbfec9ba8eac2f76085609a76bd567d92d970770dc16bc41371d9",
+    "sha256": "6bc0a18ebf32cd018ac28d7cda4fc5cc19b53bc76d3dc700ed579dcb3dde0c7a",
     "spec2017_claim": false,
-    "trace_class": "synthetic_planning_only"
+    "target_2028_mpki": 4.0,
+    "target_met": false,
+    "trace_class": "synthetic_planning_only",
+    "v8_claim": false
   },
   "thresholds": {
     "BIM_ENTRIES": 8192,
@@ -149,8 +209,11 @@
     "ITTAGE_TABLES": 5,
     "ITTAGE_TARGET_HISTORY_BITS": 64,
     "ITTAGE_TARGET_HISTORY_SHIFT": 8,
-    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 7,
+    "ITTAGE_TARGET_HISTORY_TOKEN_BITS": 5,
+    "L2_FTB_ENTRIES": 4096,
+    "L2_FTB_WAYS": 8,
     "LOOP_ENTRIES": 32,
+    "LOOP_PATH_SIG_W": 8,
     "MAX_BR_PER_BLOCK": 2,
     "RAS_ARCH_ENTRIES": 16,
     "RAS_SPEC_ENTRIES": 32,
@@ -165,9 +228,149 @@
   },
   "tool_versions": {
     "cocotb": "cocotb 1.9.2",
-    "iverilog": "unavailable",
-    "sby": "unavailable",
-    "verilator": "unavailable",
-    "yosys": "unavailable"
+    "iverilog": "Icarus Verilog version 14.0 (devel) (s20251012-184-ge4c424726-dirty)",
+    "sby": "SBY v0.64-2-gf57802a",
+    "verilator": "Verilator 5.049 devel rev v5.048-46-g7c5069c7d (mod)",
+    "yosys": "Yosys 0.64+197 (git sha1 4e35ed595, clang++ 18.1.8 -fPIC -O3)"
+  },
+  "verification_reports": {
+    "cocotb": {
+      "path": "build/reports/bpu/cocotb-aggregate.json",
+      "present": true,
+      "sha256": "43796cdaa9065077953345cdadf20176552ba77366b6590721b365fd757faef6"
+    },
+    "formal": {
+      "path": "build/reports/bpu/formal-status.yaml",
+      "present": true,
+      "sha256": "d1128ce88a13dd8c2faa8f87aaad85a830b2763efe9b90eaa14d0a1634eda759"
+    },
+    "lint": {
+      "path": "build/reports/bpu/lint-status.yaml",
+      "present": true,
+      "sha256": "92a13a75c440d96ae9610be4c73535f9bc7d2ce1af489d6881b859ae07e88da0"
+    }
+  },
+  "workload_mpki_results_ref": {
+    "accuracy_claim": false,
+    "aggregate_mpki": 89.806403,
+    "android_claim": false,
+    "cbp5_claim": false,
+    "command": "ELIZA_BPU_MPKI_WORKLOAD_MAX_BRANCHES=5000 TESTCASE=bpu_mpki_workload_traces scripts/run_cocotb_bpu.sh",
+    "generated_at_utc": "2026-05-23T23:22:14.554568+00:00",
+    "harness": "cocotb-rtl-bpu_top",
+    "path": "docs/evidence/cpu_ap/mpki_results_workload_rtl.json",
+    "present": true,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "f0cba9368f4d0b91342a525f75fcd62e8258723d4fe60d769b001d58886e0924",
+    "spec2017_claim": false,
+    "trace_class": "qemu_rv64_workload",
+    "v8_claim": false,
+    "warnings": [
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.000755,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 6622719,
+        "workload": "agent_decode"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.001302,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 3839663,
+        "workload": "agent_loop"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.011568,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 432230,
+        "workload": "audio_frames"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.001865,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 2680318,
+        "workload": "browser_layout_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.003525,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 1418554,
+        "workload": "build_compiler_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.000926,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 5396802,
+        "workload": "compression_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.003905,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 1280333,
+        "workload": "crypto_packet_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.064102,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 78001,
+        "workload": "database_btree_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.010609,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 471277,
+        "workload": "file_tlv"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.027897,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 179229,
+        "workload": "gc_runtime_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.003697,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 1352610,
+        "workload": "gpu_control_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.00646,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 774042,
+        "workload": "http_parser"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.074827,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 66821,
+        "workload": "kernel_syscall_proxy"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.010844,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 461102,
+        "workload": "text_log"
+      },
+      {
+        "reason": "RTL workload evidence is prefix-only below 10% of the trace",
+        "replay_fraction": 0.018121,
+        "replayed_branch_count": 5000,
+        "trace_branch_count": 275928,
+        "workload": "video_blocks"
+      }
+    ]
   }
 }

@@ -1,4 +1,4 @@
-# Board config scaffold for the Eliza e1 AOSP target.
+# Board config for the Eliza e1 AOSP target.
 #
 # This belongs in an external AOSP tree at device/eliza/eliza_ai_soc.
 # It references the local BSP contract source:
@@ -21,8 +21,10 @@ TARGET_NO_KERNEL := false
 BOARD_KERNEL_CMDLINE += console=ttyS0 earlycon androidboot.hardware=eliza_ai_soc
 BOARD_KERNEL_SEPARATED_DTBO := false
 BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy
-DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/manifest.xml
-DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/eliza_e1.xml
+# vendor.eliza.e1_npu is declared by the per-service vintf_fragment in its
+# Android.bp. Graphics composition comes from the inherited Cuttlefish composer3
+# APEX packages. Do not add the local deprecated composer@2.4 fragment here:
+# FCM 202604 rejects that HIDL HAL and checkvintf blocks the image.
 DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += device/eliza/eliza_ai_soc/device_framework_matrix.xml
 TARGET_COPY_OUT_VENDOR := vendor
 BOARD_USES_VENDORIMAGE := true
@@ -30,7 +32,7 @@ BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4
 BOARD_VENDORIMAGE_PARTITION_SIZE := 268435456
 TARGET_USERIMAGES_USE_EXT4 := true
 
-# Scaffold inputs for the external Android kernel/device-tree integration.
+# Inputs for the external Android kernel/device-tree integration.
 # The exact AOSP build variables depend on the selected kernel build flow.
 ELIZA_KERNEL_CONFIG_FRAGMENT := device/eliza/eliza_ai_soc/kernel/eliza_ai_soc.fragment
 ELIZA_DTS := device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts

@@ -10,6 +10,7 @@ or when reference-only qemu-virt evidence can be mistaken for chip boot proof.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -19,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = ROOT.parents[1]
 EVIDENCE_MANIFEST = ROOT / "docs/evidence/software-bsp-evidence-manifest.json"
 PREFLIGHT_REPORT = ROOT / "docs/evidence/software-bsp-external-preflight-status.json"
 CHECK_SOFTWARE_BSP = ROOT / "scripts/check_software_bsp.py"
@@ -27,11 +29,24 @@ OPENSBI_README = ROOT / "docs/sw/opensbi/README.md"
 UBOOT_README = ROOT / "docs/sw/u-boot/README.md"
 QEMU_VIRT_SCRIPT = ROOT / "sw/buildroot/scripts/capture-buildroot-qemu-virt-smoke.sh"
 BUILDROOT_BLOCKED_DIR = ROOT / "docs/evidence/buildroot"
+ELIZAOS_MULTIARCH_BOOT_MATRIX = (
+    REPO_ROOT / "packages/os/linux/elizaos/evidence/multiarch_boot_matrix.json"
+)
 REPORT = ROOT / "build/reports/linux_firmware_boot_chain_contract.json"
 
 SCHEMA = "eliza.linux_firmware_boot_chain_contract.v1"
 CLAIM_BOUNDARY = "static_firmware_boot_chain_contract_only_not_external_boot_evidence"
 TARGETS = ("buildroot", "opensbi", "u-boot")
+SELECTED_RISCV64_FIRMWARE_CHAIN = "EDK2/OpenSBI -> GRUB EFI -> Linux"
+SELECTED_RISCV64_BOOTLOADER_PACKAGES = {"grub-efi-riscv64", "grub-efi-riscv64-bin"}
+PRODUCTION_BLOCKING_GAP_TOKENS = (
+    "fallback agent",
+    "missing-current-iso-evidence",
+    "must be staged",
+    "must be recaptured",
+    "need to be collected",
+    "predates verified",
+)
 FORBIDDEN_TRANSCRIPT_MARKERS = (
     "placeholder transcript",
     "synthetic placeholder",
@@ -65,6 +80,8 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    next_command: str = ""
+    evidence_requirements: list[dict[str, Any]] | None = None
 
 
 def rel(path: Path) -> str:
@@ -76,6 +93,14 @@ def rel(path: Path) -> str:
 
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8", errors="replace")
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_json(path: Path, findings: list[Finding]) -> dict[str, Any]:
@@ -169,6 +194,30 @@ def evidence_problems(item: Mapping[str, Any]) -> list[str]:
     return problems
 
 
+def evidence_requirement(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "path": item.get("path", ""),
+        "artifact": item.get("artifact", ""),
+        "capture_command": item.get("capture_command", ""),
+        "validation_command": item.get("validation_command", ""),
+        "claim_boundary": item.get("claim_boundary", ""),
+        "required_strings": item.get("required_strings", []),
+        "at_least_one": item.get("at_least_one", []),
+        "min_bytes": item.get("min_bytes", 0),
+    }
+
+
+def evidence_next_command(target: str, items: list[dict[str, Any]]) -> str:
+    commands = [
+        str(item.get("capture_command", "")).strip()
+        for item in items
+        if str(item.get("capture_command", "")).strip()
+    ]
+    if commands:
+        return " && ".join([*commands, "python3 scripts/check_linux_firmware_boot_chain_contract.py"])
+    return f"python3 scripts/check_software_bsp.py {target} --evidence-plan"
+
+
 def collect_evidence_findings(
     findings: list[Finding], manifest: Mapping[str, Any], target: str, code: str
 ) -> None:
@@ -181,6 +230,8 @@ def collect_evidence_findings(
                 f"{target} firmware boot-chain evidence is not declared in the manifest",
                 f"target={target} manifest={rel(EVIDENCE_MANIFEST)}",
                 f"Declare {target} evidence requirements and capture real PASS transcripts.",
+                f"python3 scripts/check_software_bsp.py {target} --evidence-plan",
+                [],
             )
         )
         return
@@ -189,6 +240,7 @@ def collect_evidence_findings(
     for item in items:
         problems.extend(evidence_problems(item))
     if problems:
+        requirements = [evidence_requirement(item) for item in items]
         findings.append(
             Finding(
                 code,
@@ -196,23 +248,148 @@ def collect_evidence_findings(
                 f"{target} firmware boot-chain evidence is missing or invalid",
                 "; ".join(problems),
                 f"Capture the {target} evidence files from a real external tree and validate them with the software BSP evidence checker.",
+                evidence_next_command(target, items),
+                requirements,
             )
         )
 
 
-def check_uboot_gate(findings: list[Finding], manifest: Mapping[str, Any]) -> None:
+def architecture_row(matrix: Mapping[str, Any], arch: str) -> Mapping[str, Any] | None:
+    rows = matrix.get("architectures")
+    if not isinstance(rows, list):
+        return None
+    for row in rows:
+        if isinstance(row, Mapping) and row.get("arch") == arch:
+            return row
+    return None
+
+
+def selected_grub_chain_declared(matrix: Mapping[str, Any]) -> bool:
+    contract = matrix.get("debian_riscv64_port_contract")
+    if not isinstance(contract, Mapping):
+        return False
+    packages = contract.get("bootloader_packages")
+    if not isinstance(packages, list):
+        return False
+    return (
+        contract.get("firmware_chain") == SELECTED_RISCV64_FIRMWARE_CHAIN
+        and SELECTED_RISCV64_BOOTLOADER_PACKAGES <= set(packages)
+        and contract.get("removable_uefi_path") == "EFI/boot/bootriscv64.efi"
+    )
+
+
+def check_selected_grub_chain(
+    findings: list[Finding], matrix: Mapping[str, Any]
+) -> bool:
+    if not selected_grub_chain_declared(matrix):
+        findings.append(
+            Finding(
+                "selected_riscv64_grub_chain_not_declared",
+                "blocker",
+                "selected riscv64 Linux boot chain is not declared as EDK2/OpenSBI plus GRUB EFI",
+                rel(ELIZAOS_MULTIARCH_BOOT_MATRIX),
+                "Declare the Debian riscv64 UEFI/GRUB bootloader chain and keep U-Boot as an alternate BSP target unless it is selected for production boot.",
+            )
+        )
+        return False
+
+    row = architecture_row(matrix, "riscv64")
+    problems: list[str] = []
+    if row is None:
+        problems.append("multiarch matrix has no riscv64 runtime row")
+    else:
+        if row.get("status") != "candidate":
+            problems.append(f"riscv64 status is {row.get('status')!r}, not 'candidate'")
+        gaps = row.get("gaps")
+        if not isinstance(gaps, list):
+            problems.append("riscv64 gaps field is not a list")
+        else:
+            blocking_gaps = [
+                gap
+                for gap in gaps
+                if isinstance(gap, str)
+                and any(token in gap.lower() for token in PRODUCTION_BLOCKING_GAP_TOKENS)
+            ]
+            if blocking_gaps:
+                problems.append(
+                    "riscv64 still has production-blocking gaps: "
+                    + "; ".join(blocking_gaps)
+                )
+        iso = row.get("iso")
+        sha = row.get("sha256")
+        evidence = row.get("evidence")
+        if not isinstance(iso, str) or not iso:
+            problems.append("riscv64 row does not record an ISO")
+        elif (REPO_ROOT / "packages/os/linux/elizaos" / iso).is_file():
+            iso_path = REPO_ROOT / "packages/os/linux/elizaos" / iso
+            actual = sha256_file(iso_path)
+            if sha != actual:
+                problems.append(f"riscv64 ISO sha256 mismatch: {actual}")
+        else:
+            problems.append(f"riscv64 ISO artifact is missing: {iso}")
+        if not isinstance(sha, str) or len(sha) != 64:
+            problems.append("riscv64 row does not record a 64-character ISO sha256")
+        if not isinstance(evidence, str) or not evidence:
+            problems.append("riscv64 row does not record QEMU boot evidence")
+        elif not (REPO_ROOT / "packages/os/linux/elizaos" / evidence).is_file():
+            problems.append(f"riscv64 boot evidence artifact is missing: {evidence}")
+
+    if problems:
+        findings.append(
+            Finding(
+                "selected_riscv64_grub_chain_evidence_incomplete",
+                "blocker",
+                "selected riscv64 UEFI/GRUB Linux boot-chain evidence is incomplete",
+                "; ".join(problems),
+                "Build the current riscv64 elizaOS ISO with staged runtime artifacts, run qemu_virt_smoke.py, and promote passing evidence into the multiarch boot matrix.",
+                "make -C packages/os/linux/elizaos qemu-virt-smoke "
+                "ARCH=riscv64 ISO=<iso> && make -C packages/os/linux/elizaos "
+                "update-boot-matrix ARCH=riscv64 EVIDENCE=<report> ISO=<iso>",
+            )
+        )
+        return False
+    return True
+
+
+def check_alternate_uboot_status(findings: list[Finding], manifest: Mapping[str, Any]) -> None:
+    items = manifest_items(manifest, "u-boot")
+    problems: list[str] = []
+    for item in items:
+        problems.extend(evidence_problems(item))
+    if problems:
+        findings.append(
+            Finding(
+                "u_boot_alternate_boot_chain_not_selected",
+                "info",
+                "U-Boot evidence is incomplete, but the selected Linux bootloader chain is Debian riscv64 UEFI/GRUB",
+                "; ".join(problems),
+                "Capture U-Boot evidence only if U-Boot is selected as a production boot path; otherwise keep it scoped as an alternate BSP target.",
+                "python3 scripts/check_software_bsp.py u-boot --evidence-plan",
+                [evidence_requirement(item) for item in items],
+            )
+        )
+
+
+def check_uboot_gate(
+    findings: list[Finding], manifest: Mapping[str, Any], *, selected_grub_declared: bool
+) -> None:
     uboot_items = manifest_items(manifest, "u-boot")
     software_bsp_text = read_text(CHECK_SOFTWARE_BSP) if CHECK_SOFTWARE_BSP.is_file() else ""
-    add_if(
-        findings,
+    missing_checker_target = (
         bool(uboot_items)
         and '"u-boot"' not in software_bsp_text
-        and "'u-boot'" not in software_bsp_text,
-        "uboot_evidence_not_in_software_bsp_gate",
-        "U-Boot evidence is declared, but check_software_bsp.py has no u-boot target",
-        f"manifest_target=u-boot checker={rel(CHECK_SOFTWARE_BSP)}",
-        "Add U-Boot to the software BSP checker or keep this firmware boot-chain gate blocking until U-Boot evidence is validated elsewhere.",
+        and "'u-boot'" not in software_bsp_text
     )
+    if missing_checker_target:
+        findings.append(
+            Finding(
+                "uboot_evidence_not_in_software_bsp_gate",
+                "info" if selected_grub_declared else "blocker",
+                "U-Boot evidence is declared, but check_software_bsp.py has no u-boot target",
+                f"manifest_target=u-boot checker={rel(CHECK_SOFTWARE_BSP)}",
+                "Add U-Boot to the software BSP checker if U-Boot is selected; otherwise keep it as an alternate BSP target behind the selected UEFI/GRUB chain.",
+            )
+        )
 
 
 def check_reference_only_qemu(findings: list[Finding]) -> None:
@@ -294,8 +471,10 @@ def check_docs_present(findings: list[Finding]) -> None:
 
 def run_check(args: argparse.Namespace) -> dict[str, Any]:
     findings: list[Finding] = []
+    selected_grub_ready = False
     manifest = load_json(EVIDENCE_MANIFEST, findings)
     preflight = load_json(PREFLIGHT_REPORT, findings)
+    boot_matrix = load_json(ELIZAOS_MULTIARCH_BOOT_MATRIX, findings)
     check_docs_present(findings)
 
     if manifest:
@@ -305,10 +484,15 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         collect_evidence_findings(
             findings, manifest, "opensbi", "opensbi_external_evidence_missing"
         )
-        collect_evidence_findings(
-            findings, manifest, "u-boot", "u_boot_boot_chain_evidence_missing"
-        )
-        check_uboot_gate(findings, manifest)
+        selected_grub_declared = selected_grub_chain_declared(boot_matrix)
+        selected_grub_ready = check_selected_grub_chain(findings, boot_matrix)
+        if selected_grub_declared:
+            check_alternate_uboot_status(findings, manifest)
+        else:
+            collect_evidence_findings(
+                findings, manifest, "u-boot", "u_boot_boot_chain_evidence_missing"
+            )
+        check_uboot_gate(findings, manifest, selected_grub_declared=selected_grub_declared)
 
     check_reference_only_qemu(findings)
     check_stale_sidecars(findings)
@@ -319,6 +503,11 @@ def run_check(args: argparse.Namespace) -> dict[str, Any]:
         "manifest": rel(EVIDENCE_MANIFEST),
         "preflight_report": rel(PREFLIGHT_REPORT),
         "software_bsp_checker": rel(CHECK_SOFTWARE_BSP),
+        "elizaos_multiarch_boot_matrix": str(
+            ELIZAOS_MULTIARCH_BOOT_MATRIX.relative_to(REPO_ROOT)
+        ),
+        "selected_riscv64_firmware_chain": SELECTED_RISCV64_FIRMWARE_CHAIN,
+        "selected_grub_ready": selected_grub_ready if manifest and boot_matrix else False,
         "targets": list(TARGETS),
     }
     return payload(findings, evidence)

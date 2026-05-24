@@ -1,0 +1,17 @@
+{
+  "name": "eliza-e1-ap-benchmarks",
+  "base": "br-base.json",
+  "linux-config": "eliza-e1-ap-benchmarks-kfrag",
+  "files": [
+    ["eliza-e1-ap-benchmarks.sh", "/usr/bin/eliza-e1-ap-benchmarks"],
+    ["bin/coremark", "/usr/bin/coremark"],
+    ["bin/stream_c.exe", "/usr/bin/stream_c.exe"],
+    ["bin/lat_mem_rd", "/usr/bin/lat_mem_rd"],
+    ["bin/fio", "/usr/bin/fio"],
+    ["ufs-dram-contention.fio", "/root/ufs-dram-contention.fio"]
+  ],
+  "command": "/usr/bin/eliza-e1-ap-benchmarks",
+  "firmware": {
+    "opensbi-build-args": "FW_OPTIONS=1"
+  }
+}

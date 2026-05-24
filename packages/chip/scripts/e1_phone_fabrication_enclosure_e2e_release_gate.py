@@ -47,6 +47,23 @@ class NoAliasDumper(yaml.SafeDumper):
         return True
 
 
+class ObjectiveProgress(dict):
+    """Backward-compatible view for older objective-audit progress fields."""
+
+    def __missing__(self, key: str) -> object:
+        if key == "routed_step_visual_detail":
+            return {
+                "footprint_envelope_count": 0,
+                "pad_contact_visual_count": 0,
+                "route_segment_visual_count": 0,
+            }
+        if key.endswith("_path") or key.endswith("_sha256"):
+            return ""
+        if key.startswith("routed_step_candidate_") or key.endswith("_allowed"):
+            return False
+        return 0
+
+
 def load_yaml(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
@@ -104,6 +121,18 @@ def source_blocker(
     }
 
 
+def blocker_key(blocker: dict[str, Any]) -> tuple[str, str, str]:
+    return (
+        str(blocker.get("source", "")),
+        str(blocker.get("metric", "")),
+        str(blocker.get("reason", "")),
+    )
+
+
+def unique_blocker_count(blockers: list[dict[str, Any]]) -> int:
+    return len({blocker_key(blocker) for blocker in blockers})
+
+
 def build_report(
     content_path: Path,
     validation_path: Path,
@@ -136,6 +165,14 @@ def build_report(
     mechanical_release = mechanical["release_readiness"]
     e2e_decision = end_to_end["release_decision"]
     objective_summary = objective["summary"]
+    objective_local_progress = ObjectiveProgress(
+        objective.get("local_non_release_progress_evidence") or {}
+    )
+    objective_production_output_presence = dict(objective.get("production_output_presence") or {})
+    objective_production_output_presence.setdefault("required_count", 0)
+    objective_production_output_presence.setdefault("present_count", 0)
+    objective_production_output_presence.setdefault("non_release_present_count", 0)
+    objective_production_output_presence.setdefault("release_valid_present_count", 0)
 
     content_blockers = [
         source_blocker(
@@ -164,24 +201,31 @@ def build_report(
     fabrication_blockers = content_blockers + [
         source_blocker(
             rel(routed_path),
-            "missing_required_output_path_count",
-            routed_summary["missing_required_output_path_count"],
+            "candidate_present_blocked_required_output_path_count",
+            routed_summary["candidate_present_blocked_required_output_path_count"],
             0,
-            "routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs are not complete",
+            "routed board, ERC/DRC, SI/PI/RF, fab, assembly, and STEP outputs exist only as blocked candidates",
         ),
         source_blocker(
             rel(routed_path),
-            "missing_validation_evidence_category_count",
-            routed_summary["missing_validation_evidence_category_count"],
+            "candidate_step_size_bytes",
+            routed_summary["candidate_step_size_bytes"],
             0,
-            "routed validation evidence categories are still missing",
+            "local routed STEP candidate exists but is not release evidence",
         ),
         source_blocker(
-            rel(production_path),
-            "missing_required_output_path_count",
-            production_summary["missing_required_output_path_count"],
+            rel(objective_path),
+            "production_output_release_valid_present_count",
+            objective_production_output_presence["release_valid_present_count"],
+            objective_production_output_presence["required_count"],
+            "production/factory output paths are present but all are non-release candidate/template/sentinel artifacts",
+        ),
+        source_blocker(
+            rel(objective_path),
+            "production_output_non_release_present_count",
+            objective_production_output_presence["non_release_present_count"],
             0,
-            "production/factory output package is absent",
+            "production/factory output package has no release-valid artifacts",
         ),
         source_blocker(
             rel(end_to_end_path),
@@ -243,7 +287,7 @@ def build_report(
             "missing_required_output_path_count",
             production_summary["missing_required_output_path_count"],
             0,
-            "factory outputs, fixture, limits, calibration, and traceability are absent",
+            "factory outputs, fixture, limits, calibration, and traceability paths are present only as non-release candidates or templates",
         ),
         source_blocker(
             rel(first_article_path),
@@ -332,6 +376,9 @@ def build_report(
             end_to_end_blockers,
         ),
     ]
+    all_blockers = [
+        blocker for gate in gates for blocker in gate.get("blockers", [])
+    ]
 
     return {
         "schema": "eliza.e1_phone_fabrication_enclosure_e2e_release_gate.v1",
@@ -365,7 +412,239 @@ def build_report(
             "factory_first_article_allowed": False,
             "end_to_end_release_allowed": False,
             "total_blocker_count": sum(gate["blocker_count"] for gate in gates),
+            "blocker_instance_count": sum(gate["blocker_count"] for gate in gates),
+            "unique_blocker_count": unique_blocker_count(all_blockers),
             "release_state": "blocked_fail_closed",
+        },
+        "local_non_release_progress": {
+            "development_route_count": objective_local_progress["development_route_count"],
+            "development_segment_count": objective_local_progress["development_segment_count"],
+            "development_via_count": objective_local_progress["development_via_count"],
+            "development_required_shared_net_category_count": objective_local_progress[
+                "development_required_shared_net_category_count"
+            ],
+            "development_required_shared_net_count": objective_local_progress[
+                "development_required_shared_net_count"
+            ],
+            "development_routed_shared_net_count": objective_local_progress[
+                "development_routed_shared_net_count"
+            ],
+            "development_missing_required_shared_net_count": objective_local_progress[
+                "development_missing_required_shared_net_count"
+            ],
+            "development_route_domain_count": objective_local_progress[
+                "development_route_domain_count"
+            ],
+            "development_route_domain_required_net_count_total": objective_local_progress[
+                "development_route_domain_required_net_count_total"
+            ],
+            "development_route_domain_routed_or_aliased_net_count_total": objective_local_progress[
+                "development_route_domain_routed_or_aliased_net_count_total"
+            ],
+            "development_missing_route_domain_net_count": objective_local_progress[
+                "development_missing_route_domain_net_count"
+            ],
+            "development_all_route_domains_complete": objective_local_progress[
+                "development_all_route_domains_complete"
+            ],
+            "real_footprint_development_refs": objective_local_progress[
+                "real_footprint_development_refs"
+            ],
+            "real_footprint_remaining_placeholder_markers": objective_local_progress[
+                "real_footprint_remaining_placeholder_markers"
+            ],
+            "routed_step_candidate_present": objective_local_progress[
+                "routed_step_candidate_present"
+            ],
+            "routed_step_candidate_path": objective_local_progress["routed_step_candidate_path"],
+            "routed_step_candidate_release_credit": objective_local_progress[
+                "routed_step_candidate_release_credit"
+            ],
+            "routed_step_candidate_sha256": objective_local_progress[
+                "routed_step_candidate_sha256"
+            ],
+            "routed_step_candidate_matches_development_source": objective_local_progress[
+                "routed_step_candidate_matches_development_source"
+            ],
+            "routed_step_candidate_footprint_envelope_count": objective_local_progress[
+                "routed_step_visual_detail"
+            ]["footprint_envelope_count"],
+            "routed_step_candidate_pad_contact_visual_count": objective_local_progress[
+                "routed_step_visual_detail"
+            ]["pad_contact_visual_count"],
+            "routed_step_candidate_route_segment_visual_count": objective_local_progress[
+                "routed_step_visual_detail"
+            ]["route_segment_visual_count"],
+            "pinout_captured_file_count": objective_local_progress[
+                "pinout_captured_file_count"
+            ],
+            "pinout_declared_pin_count_total": objective_local_progress[
+                "pinout_declared_pin_count_total"
+            ],
+            "pinout_record_count_total": objective_local_progress[
+                "pinout_record_count_total"
+            ],
+            "pinout_public_source_count": objective_local_progress[
+                "pinout_public_source_count"
+            ],
+            "pinout_bound_footprint_count": objective_local_progress[
+                "pinout_bound_footprint_count"
+            ],
+            "pinout_exact_public_match_count": objective_local_progress[
+                "pinout_exact_public_match_count"
+            ],
+            "pinout_pending_supplier_pad_map_or_order_count": objective_local_progress[
+                "pinout_pending_supplier_pad_map_or_order_count"
+            ],
+            "pinout_all_bound_footprints_have_terminal_contract": objective_local_progress[
+                "pinout_all_bound_footprints_have_terminal_contract"
+            ],
+            "pinout_all_expected_public_pins_present": objective_local_progress[
+                "pinout_all_expected_public_pins_present"
+            ],
+            "pattern_explicit_support_pattern_count": objective_local_progress[
+                "pattern_explicit_support_pattern_count"
+            ],
+            "pattern_all_support_patterns_have_explicit_provenance": objective_local_progress[
+                "pattern_all_support_patterns_have_explicit_provenance"
+            ],
+            "pattern_all_electrical_pad_counts_match_manifest": objective_local_progress[
+                "pattern_all_electrical_pad_counts_match_manifest"
+            ],
+            "cad_connection_passing_count": objective_local_progress[
+                "cad_connection_passing_count"
+            ],
+            "cad_connection_terminal_marker_count": objective_local_progress[
+                "cad_connection_terminal_marker_count"
+            ],
+            "cad_connection_terminal_pair_count": objective_local_progress[
+                "cad_connection_terminal_pair_count"
+            ],
+            "cad_connection_solid_step_part_count": objective_local_progress[
+                "cad_connection_solid_step_part_count"
+            ],
+            "cad_connection_solid_step_part_set_count": objective_local_progress[
+                "cad_connection_solid_step_part_set_count"
+            ],
+            "cad_connection_solid_step_part_bytes_total": objective_local_progress[
+                "cad_connection_solid_step_part_bytes_total"
+            ],
+            "cad_connection_assembly_manifest_part_count": objective_local_progress[
+                "cad_connection_assembly_manifest_part_count"
+            ],
+            "cad_connection_assembly_manifest_terminal_marker_count": objective_local_progress[
+                "cad_connection_assembly_manifest_terminal_marker_count"
+            ],
+            "cad_connection_assembly_manifest_solid_step_part_count": objective_local_progress[
+                "cad_connection_assembly_manifest_solid_step_part_count"
+            ],
+            "cad_connection_assembly_manifest_missing_solid_step_part_count": objective_local_progress[
+                "cad_connection_assembly_manifest_missing_solid_step_part_count"
+            ],
+            "cad_connection_represented_net_count_total": objective_local_progress[
+                "cad_connection_represented_net_count_total"
+            ],
+            "cad_connection_record_count": objective_local_progress[
+                "cad_connection_record_count"
+            ],
+            "cad_connection_represented_net_list_total": objective_local_progress[
+                "cad_connection_represented_net_list_total"
+            ],
+            "cad_connection_all_records_have_represented_nets": objective_local_progress[
+                "cad_connection_all_records_have_represented_nets"
+            ],
+            "cad_connection_all_represented_nets_match_routed_nets": objective_local_progress[
+                "cad_connection_all_represented_nets_match_routed_nets"
+            ],
+            "cad_connection_controlled_impedance_count": objective_local_progress[
+                "cad_connection_controlled_impedance_count"
+            ],
+            "cad_connection_controlled_impedance_requirement_defined_count": (
+                objective_local_progress[
+                    "cad_connection_controlled_impedance_requirement_defined_count"
+                ]
+            ),
+            "cad_connection_bend_radius_requirement_defined_count": objective_local_progress[
+                "cad_connection_bend_radius_requirement_defined_count"
+            ],
+            "cad_connection_supplier_release_required_count": objective_local_progress[
+                "cad_connection_supplier_release_required_count"
+            ],
+            "cad_connection_release_credit": objective_local_progress[
+                "cad_connection_release_credit"
+            ],
+            "component_model_count": objective_local_progress["component_model_count"],
+            "component_model_supplier_approved_count": objective_local_progress[
+                "component_model_supplier_approved_count"
+            ],
+            "component_model_release_allowed": objective_local_progress[
+                "component_model_release_allowed"
+            ],
+            "component_model_pinout_bound_model_count": objective_local_progress[
+                "component_model_pinout_bound_model_count"
+            ],
+            "component_model_support_pattern_model_count": objective_local_progress[
+                "component_model_support_pattern_model_count"
+            ],
+            "component_model_terminal_contract_or_no_pad_model_count": objective_local_progress[
+                "component_model_terminal_contract_or_no_pad_model_count"
+            ],
+            "component_model_non_signal_pad_contract_count": objective_local_progress[
+                "component_model_non_signal_pad_contract_count"
+            ],
+            "component_model_npth_mechanical_feature_contract_count": objective_local_progress[
+                "component_model_npth_mechanical_feature_contract_count"
+            ],
+            "component_model_all_terminal_contract_flags_pass": objective_local_progress[
+                "component_model_all_terminal_contract_flags_pass"
+            ],
+            "component_model_directory_record_count": objective_local_progress[
+                "component_model_directory_record_count"
+            ],
+            "component_model_directory_terminal_contract_model_record_count": (
+                objective_local_progress[
+                    "component_model_directory_terminal_contract_model_record_count"
+                ]
+            ),
+            "component_model_directory_terminal_contract_total_count": objective_local_progress[
+                "component_model_directory_terminal_contract_total_count"
+            ],
+            "component_model_directory_non_signal_pad_contract_total_count": (
+                objective_local_progress[
+                    "component_model_directory_non_signal_pad_contract_total_count"
+                ]
+            ),
+            "component_model_directory_npth_mechanical_feature_contract_total_count": (
+                objective_local_progress[
+                    "component_model_directory_npth_mechanical_feature_contract_total_count"
+                ]
+            ),
+            "component_model_directory_source_routed_step_bound": objective_local_progress[
+                "component_model_directory_source_routed_step_bound"
+            ],
+            "component_model_directory_records_release_credit_false": objective_local_progress[
+                "component_model_directory_records_release_credit_false"
+            ],
+            "component_model_directory_all_terminal_contract_flags_pass": (
+                objective_local_progress[
+                    "component_model_directory_all_terminal_contract_flags_pass"
+                ]
+            ),
+            "component_model_directory_release_allowed": objective_local_progress[
+                "component_model_directory_release_allowed"
+            ],
+            "production_output_required_count": objective_production_output_presence[
+                "required_count"
+            ],
+            "production_output_present_count": objective_production_output_presence[
+                "present_count"
+            ],
+            "production_output_non_release_present_count": objective_production_output_presence[
+                "non_release_present_count"
+            ],
+            "production_output_release_valid_present_count": objective_production_output_presence[
+                "release_valid_present_count"
+            ],
         },
         "release_gates": gates,
         "hard_stop_conditions": [

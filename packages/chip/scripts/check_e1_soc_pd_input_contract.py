@@ -361,7 +361,13 @@ def build_report() -> dict[str, Any]:
                 "actual": clock_port,
             }
         )
-    if clock_period != float(config.get("CLOCK_PERIOD")):
+    expected_clock_period_raw = config.get("CLOCK_PERIOD")
+    expected_clock_period = (
+        float(expected_clock_period_raw)
+        if isinstance(expected_clock_period_raw, (int, float, str))
+        else None
+    )
+    if clock_period != expected_clock_period:
         sdc_semantic_failures.append(
             {
                 "id": "clock_period_mismatch",
@@ -420,10 +426,10 @@ def build_report() -> dict[str, Any]:
         )
 
     blockers: list[dict[str, Any]] = []
-    for path in missing_verilog_entries:
-        blockers.append({"id": "missing_required_verilog_entry", "path": path})
-    for path in nonexistent_verilog:
-        blockers.append({"id": "nonexistent_verilog_file", "path": path})
+    for missing_path in missing_verilog_entries:
+        blockers.append({"id": "missing_required_verilog_entry", "path": missing_path})
+    for nonexistent_path in nonexistent_verilog:
+        blockers.append({"id": "nonexistent_verilog_file", "path": nonexistent_path})
     for row in frontend_rows:
         blockers.append({"id": "rtl_frontend_blocker", **row})
     for row in macro_ref_drift:
@@ -438,8 +444,8 @@ def build_report() -> dict[str, Any]:
         blockers.append({"id": "io_pin_order_drift", **row})
     for row in port_compat_failures:
         blockers.append({"id": "blackbox_wrapper_port_incompatibility", **row})
-    for path in duplicate_verilog_files:
-        blockers.append({"id": "duplicate_verilog_file", "path": path})
+    for duplicate_path in duplicate_verilog_files:
+        blockers.append({"id": "duplicate_verilog_file", "path": duplicate_path})
     for path in duplicate_instance_paths:
         blockers.append({"id": "duplicate_macro_instance_path", "path": path})
     for flag in release_flag_failures:

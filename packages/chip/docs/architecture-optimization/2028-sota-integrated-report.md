@@ -9,7 +9,7 @@ This is a planning and claim-boundary artifact, not an implementation claim. Eve
 The 2028 phone-class envelope is concrete and well-bounded by the 2025-2026 flagship cohort: Apple A19 Pro, Snapdragon 8 Elite Gen 5, Dimensity 9500, Exynos 2600, Tensor G5. Across every domain the same shape repeats:
 
 - **Architectural target for 2028:** parity with C1-Ultra / Oryon Gen 3 in CPU (GB6 ST ≈ 3500, MT ≈ 9000); Dimensity 9500 in cache / SLC (~31-55 MB on-die SRAM); LPDDR5X-10667 baseline / LPDDR6-14400 stretch with 70-140 GB/s sustained; 80 TOPS sustained INT8 NPU; ~5 W peak / 3.5 W sustained at 95 °C Tj.
-- **The repo today is at the L0 RTL prototype tier.** A tiny RV32 stub, an unwired CVA6 wrapper, a 4 KiB SRAM masquerading as DRAM, a Python NPU contract enforcer, Sky130 130 nm preflight at 10 MHz, 2-rail padframe, no LLVM build flow, no IOMMU, no caches, no PHY. Documentation honesty is excellent (every gate fail-closes); implementation is essentially zero.
+- **The repo today is still below phone-silicon readiness.** It has local RTL/cocotb evidence for several CPU/cache, DRAM-controller simulation, and partial IOMMU paths, plus fail-closed product gates. It still lacks the external LPDDR PHY, full coherent phone fabric, full Linux IOMMU isolation, real target CPU/memory benchmark evidence, commercial-node signoff, and phone measurement target required for L5/L6 claims.
 - **The binary risk is foundry and IP access.** Every credible 2028 path requires (a) TSMC N2P / A14 or Intel 14A wafer access (Apple holds >50% of TSMC N2; tapeout NRE $250-400M), (b) licensed LPDDR5X/6 PHY from Synopsys/Cadence/Rambus (no open PHY exists), (c) commercial signoff EDA seats (Voltus/RedHawk-SC/PrimeTime; OpenROAD is unproven sub-7 nm), (d) a closed mobile-class PMIC or a multi-chip catalog PMIC daughtercard. The "open RISC-V" story has a hard wall at the analog/foundry tier.
 - **Realistic schedule:** 2028 dev-board silicon, 2029 phone product. Hold this line in the spec docs.
 
@@ -79,7 +79,7 @@ Management hart: Ibex (lowRISC, Apache-2.0) on AON rail for boot, security, PMU,
 - IOMMU: RISC-V IOMMU v1.0.1 (ratified Sep 2024) with G-stage, PASID, page-request, fault queue, ATS. Per-stream contexts for NPU command queues, display planes, camera ISP, GPU, DMA.
 - Refresh: per-bank refresh + temperature-compensated; scrub on TEE/keyslot regions.
 - AFBC display compression + lossless NPU activation compression to recover 30 GB/s headroom.
-- Repo gate inconsistency to reconcile: `soc-optimized-operating-point.yaml` presumes 240 GB/s; `uma-dram-evidence-gate.yaml` requires 120 GB/s; LPDDR5X 64-bit caps at 85 GB/s. Split SKUs.
+- Repo gate reconciliation: `soc-optimized-operating-point.yaml` keeps the 240 GB/s aspirational operating point, while `uma-dram-evidence-gate.yaml` tracks a stricter phone profile plus split LPDDR5X baseline / LPDDR6 AI SKUs. No SKU currently promotes a phone memory claim without real target measurements.
 
 ### 2.4 Process + power + PD
 
@@ -139,7 +139,7 @@ Most-cited blockers, deduplicated across the 8 sub-reports:
 | Closed-vendor NPU stacks (QNN, NeuroPilot, Core ML) are years ahead | Compiler, NPU | IREE+ExecuTorch is the best open answer but is 1.5-3× slower than vendor SDKs on like-for-like models in 2026. |
 | BSPDN thermal penalty + DFT complications | Process, PD | If 2029 A14P / Intel 14A variant is built. Active layer buried in BEOL; Tj rises 5-10 °C; probe access changes; multi-quarter learning curve. |
 | SRAM scaling stalled at N3 | Process, Cache | TSMC N3 only ~5% SRAM density improvement vs N5. N2 resumes via macro-level density (38.1 Mb/mm²), not bitcell shrink. Size SLC twice — once for N2, once for 14A. |
-| Repo gate inconsistency: 240 vs 120 GB/s | Memory, Power | `soc-optimized-operating-point.yaml` presumes 240 GB/s sustained; gate requires 120 GB/s. LPDDR5X 64-bit caps at 85 GB/s. Split SKUs to reconcile. |
+| Memory target split: 240 vs 120 GB/s | Memory, Power | `soc-optimized-operating-point.yaml` keeps the 240 GB/s aspirational point; `uma-dram-evidence-gate.yaml` now records the split LPDDR5X baseline / LPDDR6 AI SKUs and keeps real phone bandwidth claims blocked. |
 
 ## 4. Benchmark + comparison matrix
 
@@ -180,7 +180,7 @@ Unified eval gauntlet across all domains. Mandatory artifacts before any 2028 cl
 ## 5. Optimization inventory: has / should / needs
 
 ### Has (today)
-- Tiny RV32 stub + CVA6 wrapper (toy BPU); Chipyard Rocket integration manifest.
+- CPU scaffold plus CVA6/Chipyard integration manifests; the BPU RTL now includes TAGE/SC/ITTAGE/FTB/RAS/H2P structures with cocotb and capped workload-replay evidence, while full phone/SPEC/AOSP MPKI claims remain blocked.
 - AXI-Lite scaffold with CPU-priority arbitration, decode-err sticky reg, watchdog.
 - 4 KiB SRAM "DRAM" model; Chipyard SimDRAM 256 MiB Verilator model (generated, no built sim).
 - Python NPU contract enforcer with scalar/packed dot ops, bounded 3×3×7 INT8/INT4 GEMM, descriptor ring, INT2 / FP8 E4M3 scalar opcodes, 2:4 structured sparse INT4 dot.
@@ -199,16 +199,17 @@ Unified eval gauntlet across all domains. Mandatory artifacts before any 2028 cl
 7. ASAP7 predictive sign-off for big core / NPU tile / SLC slice — gives FinFET-class timing/power shape.
 8. Multi-corner STA at open PDKs (SS/TT/FF + 2 RC corners on Sky130) — exercises methodology.
 9. NoC + IOMMU + cache-coherent fabric RTL (TileLink TL-C + CHI bridge, RISC-V IOMMU v1.0.1).
-10. Cache-hierarchy RTL (real L1, private L2, shared L3, SLC with Mockingjay/Hawkeye replacement, Berti + FDIP prefetchers, BDI compression on SLC).
-11. Branch predictor RTL (track XiangShan Kunminghu v2→v3: TAGE-SC + ITTAGE + FTB + RAS + SC + loop) — currently zero in repo.
-12. `docs/arch/branch-prediction.md` contract + `eliza-kunminghu-manifest.json` pinning open BPU IP commit hash.
+10. Cache hierarchy SoC integration and phone-class evidence (the local L1/L2/L3/SLC scaffold, replacement/prefetcher RTL, and MESI directory gate exist; IPC/latency/bandwidth evidence remains blocked).
+11. Branch predictor full-trace/phone workload evidence (SPEC/AOSP/JS traces and uncapped RV64 duty-cycle replay); RTL structures are present but target-met MPKI claims remain gated.
+12. Branch-prediction scorecard entry and full-trace/phone workload closure for
+    the existing `docs/arch/branch-prediction.md` contract and evidence gate.
 13. Droop sensor + clock stretcher RTL (port public 22 nm-style ADCD; ~1 engineer-month).
 14. UPF / multi-power-domain flow authored: 16 power domains, isolation cells, retention strategy.
 15. DFT / scan / ATPG flow (Yosys+ABC scan insertion + Fault for SG13/Sky130 baseline).
 16. OpenROAD AutoTuner sweep around utilization/density/CTS skew/route caps.
 17. DREAMPlace 4.0 GPU-placer benchmark side-by-side with TritonRoute.
 18. `pd/openlane/config.<node>.json` per target (sky130, gf180, ihp-sg13, asap7-predictive, n2p-stub, a14-stub).
-19. Reconcile 240 GB/s vs 120 GB/s in `soc-optimized-operating-point.yaml` and `uma-dram-evidence-gate.yaml` — split LPDDR5X baseline / LPDDR6 stretch SKUs.
+19. Keep the 240 GB/s operating-point target and split-SKU memory gate in sync as LPDDR target evidence arrives.
 20. RFC: SBI MPxy + RPMI as power-management ABI.
 
 ### Needs (2028 hard requirements; gates ship)
@@ -223,7 +224,7 @@ Unified eval gauntlet across all domains. Mandatory artifacts before any 2028 cl
 9. NPU command-queue + DMA + IOMMU isolation + per-context faults + thermal counters (vs current MMIO scalar prototype).
 10. Tensor execution paths for FP8 E4M3 and INT2 (vs current scalar-only DOT4_FP8_E4M3 / DOT16_S2).
 11. Open-flow validation track: end-to-end OpenLane closure at Sky130 + IHP SG13G2 with hard macros, scan, MBIST — proves methodology before $250M tapeout.
-12. Real DRAM controller RTL (not the 4 KiB SRAM stand-in) attached to licensed PHY.
+12. LPDDR PHY attachment, training, timing closure, capacity proof, and phone-class bandwidth evidence for the existing DRAM-controller boundary (not the 4 KiB SRAM stand-in used by current Linux scaffolding).
 13. Memory-side QoS with 4-class scheduler (display RT > camera > CPU-FG > NPU > GPU > DMA-bulk) + per-master BW meters + latency targets.
 14. AFBC + lossless NPU activation compression to recover bandwidth headroom.
 15. Multi-mode multi-corner STA + POCV/SOCV with LVF at advanced node.
@@ -241,7 +242,8 @@ Unified eval gauntlet across all domains. Mandatory artifacts before any 2028 cl
 - Pick fabric: TileLink TL-C inside cluster + CHI bridge at SLC. Commit one.
 - Reconcile `soc-optimized-operating-point.yaml` vs `uma-dram-evidence-gate.yaml`; split LPDDR5X / LPDDR6 SKUs.
 - Promote "custom LPDDR5X/LPDDR6 PHY" in `mobile-sota-2026.yaml` from non-goal to procurement requirement with vendor shortlist.
-- Add branch-prediction scorecard entry + `docs/arch/branch-prediction.md` contract.
+- Add branch-prediction scorecard entry; keep the existing branch-prediction
+  contract/gate tied to full-trace and phone workload evidence.
 - LLVM trunk pinned + RISC-V toolchain prebuilts for RVA23U64.
 
 **P1 (Q1-Q2 2027): buildout that does not need an advanced-node PDK.**

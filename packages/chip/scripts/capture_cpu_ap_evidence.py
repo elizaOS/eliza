@@ -23,6 +23,7 @@ from cpu_ap_evidence_lib import (
     artifact_specs,
     load_evidence_manifest,
     rel,
+    reconstruct_uart_tx_text,
     sha256_path,
     text_problems,
     transcript_specs,
@@ -168,7 +169,15 @@ def intake(args: argparse.Namespace) -> int:
         return 1
 
     raw_text = source.read_text(encoding="utf-8", errors="ignore")
-    problems = text_problems(str(args.command) + "\n" + raw_text, spec, str(source), raw=True)
+    reconstructed_uart = reconstruct_uart_tx_text(raw_text)
+    validation_text = str(args.command) + "\n" + raw_text
+    if reconstructed_uart:
+        validation_text += (
+            "\neliza-evidence: reconstructed_uart_tx_begin\n"
+            + reconstructed_uart
+            + "\neliza-evidence: reconstructed_uart_tx_end\n"
+        )
+    problems = text_problems(validation_text, spec, str(source), raw=True)
     if problems:
         print("STATUS: FAIL cpu_ap.transcript_intake - source transcript is not acceptable")
         for problem in problems:
@@ -194,6 +203,15 @@ def intake(args: argparse.Namespace) -> int:
             f"eliza-evidence: intake_utc={utc_now()}",
             "eliza-evidence: raw_transcript_begin",
             raw_text.rstrip(),
+            *(
+                [
+                    "eliza-evidence: reconstructed_uart_tx_begin",
+                    reconstructed_uart.rstrip(),
+                    "eliza-evidence: reconstructed_uart_tx_end",
+                ]
+                if reconstructed_uart
+                else []
+            ),
             "eliza-evidence: raw_transcript_end",
             "eliza-evidence: status=PASS",
             "",

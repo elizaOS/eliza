@@ -1,16 +1,17 @@
 # AGENTS.md — Eliza robotics stack
 
 This file is the canonical contract for everything under `packages/robot/`.
-It hosts the Python robotics stack (MuJoCo sim, Brax-PPO RL, websocket
-bridge, perception, trajectory DB) and a thin TS surface consumed by
-`@elizaos/plugin-ainex`.
+It hosts the Python robotics stack (MuJoCo sim, Alberta continual-RL training,
+Brax/MJX full-training support, websocket bridge, perception, trajectory DB)
+and a thin TS surface consumed by `@elizaos/plugin-ainex`.
 
 ---
 
 ## 1. What this package owns
 
 - MuJoCo + MJX simulation environments and rollout harnesses.
-- Brax-PPO RL training (skill-conditioned and text-conditioned).
+- Alberta continual-RL training for text-conditioned robot control.
+- Brax/MJX and PPO training baselines for full-training and comparison.
 - Websocket bridge between the runtime and physical/simulated robots.
 - Perception adapters (camera, ASR, embeddings, ONNX inference).
 - Trajectory database (SQLite-backed) for demos, replays, datasets.

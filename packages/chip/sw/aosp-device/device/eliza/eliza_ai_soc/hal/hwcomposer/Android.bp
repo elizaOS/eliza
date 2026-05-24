@@ -1,6 +1,6 @@
-// hwcomposer v0 - framebuffer-only stub for eliza_ai_soc.
+// hwcomposer v0 - framebuffer-only legacy module for eliza_ai_soc.
 //
-// Status: stub. Exposes the legacy hwcomposer module shape so
+// Status: compatibility source. Exposes the legacy hwcomposer module shape so
 // android.hardware.graphics.composer@2.4-service can load it and present
 // a single primary display backed by /dev/graphics/fb0 (or the simple
 // framebuffer registered by CONFIG_FB_SIMPLE). It MUST NOT advertise GLES

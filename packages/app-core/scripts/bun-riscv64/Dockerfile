@@ -213,7 +213,7 @@ RUN set -eux; \
               if (p == pkg && v != "") print p "-" v ".apk"; \
             }' "$2" | head -1; \
     }; \
-    for pkg in musl musl-dev musl-utils libgcc libstdc++ libstdc++-dev libucontext libucontext-dev icu icu-data-full icu-dev icu-libs zlib zlib-dev libssl3 libcrypto3 openssl-dev linux-headers libffi libffi-dev libuv libuv-dev libxml2 libxml2-dev; do \
+    for pkg in musl musl-dev musl-utils gcc libgcc libatomic libstdc++ libstdc++-dev libucontext libucontext-dev icu icu-data-full icu-dev icu-libs zlib zlib-dev libssl3 libcrypto3 openssl-dev linux-headers libffi libffi-dev libuv libuv-dev libxml2 libxml2-dev; do \
         fetched=""; \
         for repo in main community; do \
             fname=$(resolve "$pkg" "APKINDEX-${repo}"); \
@@ -262,21 +262,72 @@ RUN set -eux; \
     install -d /opt/cross/bin; \
     cat > /opt/cross/bin/riscv64-linux-musl-clang <<'WRAPPER_EOF'
 #!/bin/sh
+compile_only=0
+for arg in "$@"; do
+    case "$arg" in
+        -c|-S|-E|-M|-MM|-emit-pch|--analyze)
+            compile_only=1
+            ;;
+    esac
+done
+if [ "$compile_only" = "1" ]; then
+    exec /usr/local/bin/clang \
+        --target=riscv64-unknown-linux-musl \
+        --sysroot=/sysroot \
+        --gcc-toolchain=/sysroot/usr \
+        -Qunused-arguments \
+        -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+        -march=rv64gc \
+        -mabi=lp64d \
+        "$@"
+fi
 exec /usr/local/bin/clang \
     --target=riscv64-unknown-linux-musl \
     --sysroot=/sysroot \
     --gcc-toolchain=/sysroot/usr \
+    -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib \
+    -fuse-ld=lld \
     -march=rv64gc \
     -mabi=lp64d \
     "$@"
 WRAPPER_EOF
 RUN cat > /opt/cross/bin/riscv64-linux-musl-clang++ <<'WRAPPER_EOF'
 #!/bin/sh
+compile_only=0
+for arg in "$@"; do
+    case "$arg" in
+        -c|-S|-E|-M|-MM|-emit-pch|--analyze)
+            compile_only=1
+            ;;
+    esac
+done
+if [ "$compile_only" = "1" ]; then
+    exec /usr/local/bin/clang++ \
+        --target=riscv64-unknown-linux-musl \
+        --sysroot=/sysroot \
+        --gcc-toolchain=/sysroot/usr \
+        -Qunused-arguments \
+        -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+        -stdlib=libstdc++ \
+        -isystem /sysroot/usr/include/c++/14.2.0 \
+        -isystem /sysroot/usr/include/c++/14.2.0/riscv64-alpine-linux-musl \
+        -march=rv64gc \
+        -mabi=lp64d \
+        "$@"
+fi
 exec /usr/local/bin/clang++ \
     --target=riscv64-unknown-linux-musl \
     --sysroot=/sysroot \
     --gcc-toolchain=/sysroot/usr \
+    -B/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib/gcc/riscv64-alpine-linux-musl/14.2.0 \
+    -L/sysroot/usr/lib \
+    -fuse-ld=lld \
     -stdlib=libstdc++ \
+    -isystem /sysroot/usr/include/c++/14.2.0 \
+    -isystem /sysroot/usr/include/c++/14.2.0/riscv64-alpine-linux-musl \
     -march=rv64gc \
     -mabi=lp64d \
     "$@"

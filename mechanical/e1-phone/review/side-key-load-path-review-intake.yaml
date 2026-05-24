@@ -1,0 +1,98 @@
+schema: eliza.e1_phone_side_key_load_path_review_intake.v1
+status: empty_intake_blocked_waiting_side_key_supplier_geometry_force_travel_and_enclosure_load_path_evidence
+date: 2026-05-22
+claim_boundary: >
+  Empty intake template for power and volume side-key load-path review. This is
+  not evidence that the keys actuate, survive side loads, or bypass solder
+  joints.
+
+mapped_source_artifacts:
+  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+  - packages/chip/board/kicad/e1-phone/usb-sidekey-mechanical-decision.yaml
+
+intake_metadata:
+  review_id: null
+  board_revision: EVT1-routed-first-article
+  switch_family: Panasonic EVQ-P7/EVQ-P3/EVQ-9P7
+  enclosure_cad_revision: null
+  reviewer: null
+  review_date: null
+  sample_or_fixture_serials: []
+
+required_inputs:
+  side_key_signed_drawing: null
+  side_key_step_or_brep: null
+  cap_rib_elastomer_or_stiffener_geometry: null
+  routed_board_step: packages/chip/board/kicad/e1-phone/production/step/routed-board-with-components.step
+  force_travel_csv: null
+  side_load_test_log: null
+  wake_and_recovery_combo_logs: []
+  lifecycle_cycle_data: null
+
+button_reviews:
+  - button: power
+    net: PWR_KEY_N
+    actuator_geometry_present: false
+    load_path_bypasses_switch_solder_joints: false
+    measured_actuation_force_n: null
+    measured_travel_mm: null
+    return_force_n: null
+    cap_rattle_result: not_reviewed
+    wake_function_log: null
+    pass: false
+  - button: volume_up
+    net: VOL_UP_N
+    actuator_geometry_present: false
+    load_path_bypasses_switch_solder_joints: false
+    measured_actuation_force_n: null
+    measured_travel_mm: null
+    return_force_n: null
+    cap_rattle_result: not_reviewed
+    recovery_combo_log: null
+    pass: false
+  - button: volume_down
+    net: VOL_DOWN_N
+    actuator_geometry_present: false
+    load_path_bypasses_switch_solder_joints: false
+    measured_actuation_force_n: null
+    measured_travel_mm: null
+    return_force_n: null
+    cap_rattle_result: not_reviewed
+    recovery_combo_log: null
+    pass: false
+
+mechanical_risk_checks:
+  pcb_edge_copper_protected_from_side_load:
+    evidence_path: null
+    pass: false
+  side_wall_rib_or_subassembly_takes_actuation_load:
+    evidence_path: null
+    pass: false
+  force_travel_within_supplier_and_user_targets:
+    evidence_path: null
+    pass: false
+  recovery_combo_accessible_in_closed_enclosure:
+    evidence_path: null
+    pass: false
+
+release_flags:
+  supplier_side_key_geometry_present: false
+  routed_board_step_present: false
+  force_travel_data_present: false
+  load_path_bypass_verified: false
+  wake_and_recovery_logs_attached: false
+  reviewer_signed: false
+  release_allowed: false
+
+open_items:
+  - signed side-key drawing and supplier model are missing
+  - enclosure rib, cap, and stiffener geometry are missing
+  - force-travel, cycle, wake, and recovery-combo evidence is missing
+
+forbidden_claims:
+  - side_key_load_path_verified
+  - side_key_force_travel_passed
+  - enclosure_ready
+  - fabrication_ready
+  - end_to_end_phone_ready

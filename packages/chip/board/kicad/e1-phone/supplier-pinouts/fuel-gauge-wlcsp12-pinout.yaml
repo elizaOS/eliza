@@ -1,0 +1,49 @@
+schema: eliza.e1_phone_supplier_pinout.v1
+part: BQ27421-class single-cell Li-ion fuel gauge development contract
+manufacturer: Texas Instruments development function class
+package: 12-ball WLCSP development carrier pattern
+source_doc: https://www.ti.com/product/BQ27421-G1
+source_doc_alt:
+  - https://www.ti.com/lit/ds/symlink/bq27421-g1.pdf
+source_doc_revision: public product page and datasheet observed 2026-05-22; exact selected fuel-gauge package pinout still requires selected MPN lock
+captured_date: 2026-05-22
+captured_by: agent
+evidence_class: public_supplier_datasheet
+procurement_status: public_fuel_gauge_signal_contract_pending_selected_gauge_pinout
+procurement_url: https://www.ti.com/product/BQ27421-G1/part-details/BQ27421YZFR-G1A
+notes: |
+  Board-side development contract for the non-release FUEL_GAUGE_WLCSP_DEV
+  footprint. The first six pads match the current KiCad board nets; remaining
+  balls are reserved until the exact fuel-gauge MPN and ball map are released.
+mechanical:
+  package_family: wlcsp_development_carrier
+  pin_count: 12
+  pitch_mm: 0.4
+pin_signal_set:
+  power:
+    - VBAT
+    - GND
+  battery_sense:
+    - BAT_NTC
+    - BAT_ID
+  host_control:
+    - CHG_I2C_SCL
+    - CHG_I2C_SDA
+pins:
+  - {pin: A1, name: VBAT, function: battery_input, direction: power_input}
+  - {pin: A2, name: GND, function: return, direction: power_return}
+  - {pin: A3, name: BAT_NTC, function: pack_temperature_sense, direction: analog_input}
+  - {pin: A4, name: BAT_ID, function: pack_identifier, direction: analog_input}
+  - {pin: B1, name: CHG_I2C_SCL, function: host_i2c_clock, direction: input}
+  - {pin: B2, name: CHG_I2C_SDA, function: host_i2c_data, direction: bidirectional}
+  - {pin: B3, name: RESERVED_B3, function: development_spare, direction: passive}
+  - {pin: B4, name: RESERVED_B4, function: development_spare, direction: passive}
+  - {pin: C1, name: RESERVED_C1, function: development_spare, direction: passive}
+  - {pin: C2, name: RESERVED_C2, function: development_spare, direction: passive}
+  - {pin: C3, name: RESERVED_C3, function: development_spare, direction: passive}
+  - {pin: C4, name: RESERVED_C4, function: development_spare, direction: passive}
+release_blockers:
+  - selected gauge exact ball map and chemistry configuration
+  - battery NTC and ID policy confirmation
+  - production schematic symbol, land pattern, and STEP review
+  - charge/discharge calibration evidence

@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PASS = "PASS"
 BLOCK = "BLOCK"
 FAIL = "FAIL"
+PRODUCT_STATUS_TIMEOUT_SECONDS = 30
 
 
 @dataclass
@@ -531,14 +532,6 @@ def minimum_target_status() -> Status:
 
 def product_status() -> Status:
     report_path = ROOT / "build/reports/product_release_status.json"
-    result = subprocess.run(
-        [sys.executable, "scripts/product_check.py"],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
     report: dict[str, object] = {}
     if report_path.exists():
         try:
@@ -567,7 +560,7 @@ def product_status() -> Status:
                 next_step,
                 "release_blocker",
             )
-        if status == "pass" and result.returncode == 0:
+        if status == "pass":
             return Status(
                 "product-package",
                 PASS,
@@ -575,6 +568,25 @@ def product_status() -> Status:
                 "none",
                 "generated_artifact",
             )
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "scripts/product_check.py"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+            timeout=PRODUCT_STATUS_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired:
+        return Status(
+            "product-package",
+            BLOCK,
+            f"scripts/product_check.py exceeded {PRODUCT_STATUS_TIMEOUT_SECONDS}s status timeout",
+            "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
+            "release_blocker",
+        )
 
     lines = [line.strip() for line in result.stdout.splitlines() if line.strip()]
     evidence = " ".join(lines)[:220] if lines else "command produced no output"

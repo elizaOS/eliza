@@ -256,6 +256,7 @@ def capture_plans_cover_release_evidence() -> bool:
             buildroot=None,
             linux=None,
             opensbi=None,
+            u_boot=None,
             aosp=None,
             target_host=None,
             opensbi_handoff_cmd=None,
@@ -421,9 +422,16 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         errors,
     )
     require(
-        isinstance(summary.get("missing_evidence_count"), int)
-        and summary.get("missing_evidence_count", 0) > 0,
-        "missing_evidence_count must show external evidence blockers",
+        (
+            isinstance(summary.get("missing_evidence_count"), int)
+            and isinstance(summary.get("invalid_evidence_count"), int)
+            and (
+                summary.get("missing_evidence_count", 0)
+                + summary.get("invalid_evidence_count", 0)
+            )
+            > 0
+        ),
+        "missing/invalid evidence counts must show external evidence blockers",
         errors,
     )
     targets = data.get("targets")

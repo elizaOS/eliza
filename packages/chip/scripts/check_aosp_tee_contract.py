@@ -121,6 +121,7 @@ def check_sepolicy(findings: list[Finding]) -> None:
         )
         return
     text = read_text(SEPOLICY_PVM)
+    avf_policy_build_gated = "ELIZA_AVF_SEPOLICY_BUILD_GATED=1" in text
     add_if(
         findings,
         "type eliza_pvm_mgr, domain;" not in text,
@@ -131,11 +132,12 @@ def check_sepolicy(findings: list[Finding]) -> None:
     )
     add_if(
         findings,
-        "binder_call(eliza_pvm_mgr, virtualizationservice)" not in text,
+        not avf_policy_build_gated
+        and "binder_call(eliza_pvm_mgr, virtualizationservice)" not in text,
         "pvm_sepolicy_no_virtmgr_binder_call",
         "eliza_pvm_mgr is not granted the protected-VM management (virtualizationservice) binder call",
         rel(SEPOLICY_PVM),
-        "Grant binder_call(eliza_pvm_mgr, virtualizationservice) so the management domain can reach the pVM service.",
+        "Grant binder_call(eliza_pvm_mgr, virtualizationservice) when the target exports AVF sepolicy types, or keep ELIZA_AVF_SEPOLICY_BUILD_GATED=1 on riscv64 bring-up trees that do not.",
     )
     add_if(
         findings,
@@ -160,23 +162,36 @@ def check_sepolicy(findings: list[Finding]) -> None:
     )
     add_if(
         findings,
-        "neverallow { appdomain } virtualizationservice_service:service_manager find;" not in text,
+        not avf_policy_build_gated
+        and "neverallow { appdomain } virtualizationservice_service:service_manager find;" not in text,
         "pvm_sepolicy_virtmgr_not_exclusive",
         "no neverallow keeps app domains from finding the protected-VM management service",
         rel(SEPOLICY_PVM),
-        "Add a neverallow so only eliza_pvm_mgr (a non-app domain) can find virtualizationservice_service.",
+        "Add a neverallow so only eliza_pvm_mgr can find virtualizationservice_service when the target exports that service type, or keep ELIZA_AVF_SEPOLICY_BUILD_GATED=1 on riscv64 bring-up trees that do not.",
     )
-    # file_contexts must label the vsock device + exec so the labels referenced
-    # in the .te actually bind to real paths.
+    # file_contexts must label the executable. When the AVF/pVM policy is
+    # build-gated, do not relabel /dev/vhost-vsock from vendor policy: platform
+    # policy already owns that path as kvm_device on current AOSP trees, and a
+    # duplicate vendor label breaks file_contexts compilation. Once the target
+    # enables the full policy, the custom vsock label becomes required again.
     if SEPOLICY_FILE_CONTEXTS.is_file():
         fc = read_text(SEPOLICY_FILE_CONTEXTS)
         add_if(
             findings,
-            "eliza_pvm_vsock_device" not in fc,
+            not avf_policy_build_gated and "eliza_pvm_vsock_device" not in fc,
             "pvm_file_contexts_missing_vsock_label",
             "vendor file_contexts does not label the protected-VM vsock device",
             rel(SEPOLICY_FILE_CONTEXTS),
             "Label /dev/vhost-vsock as eliza_pvm_vsock_device in vendor/eliza/sepolicy/file_contexts.",
+        )
+        add_if(
+            findings,
+            avf_policy_build_gated
+            and re.search(r"^\s*/dev/vhost-vsock\s+", fc, re.MULTILINE) is not None,
+            "pvm_file_contexts_build_gated_vsock_conflict",
+            "vendor file_contexts labels /dev/vhost-vsock while AVF/pVM policy is build-gated",
+            rel(SEPOLICY_FILE_CONTEXTS),
+            "Remove the vendor /dev/vhost-vsock label while ELIZA_AVF_SEPOLICY_BUILD_GATED=1; platform policy already labels the device.",
         )
         add_if(
             findings,
@@ -192,7 +207,7 @@ def check_sepolicy(findings: list[Finding]) -> None:
             "pvm_file_contexts_missing",
             "vendor sepolicy file_contexts is missing",
             rel(SEPOLICY_FILE_CONTEXTS),
-            "Add file_contexts labeling the vsock device and the eliza_pvm_mgr binary.",
+            "Add file_contexts labeling the eliza_pvm_mgr binary and runtime evidence directory.",
         )
     # The domain must be started by a real init service entry so it exists.
     if INIT_RC.is_file():

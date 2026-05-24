@@ -16,8 +16,10 @@ that spans the E1's real duty cycle and standard hard references:
 
 For each config it reports per-trace MPKI and a workload-weighted aggregate,
 then writes a leaderboard and an evidence envelope. Tuning runs on a capped
-branch prefix for turnaround; re-run the winner with ``--max-branches 0`` on
-the full traces to lock the number.
+branch prefix for turnaround by default; ``--window-mode`` can instead evaluate
+middle/late/stratified capped windows so short optimisation runs do not overfit
+the start of long traces. Re-run the winner with ``--max-branches 0`` on the
+full traces to lock the number.
 
 Config knobs map one-to-one to ``rtl/cpu/bpu/bpu_pkg.sv`` parameters, so a
 winning config is a direct RTL proposal.
@@ -54,9 +56,9 @@ CBP5_DIR = ROOT / "external/cbp5-traces"
 # the SOTA bar for the hard references (from run_mpki.CBP5_REFERENCE_PER_TRACE).
 CBP5_REFERENCE = {"sample_int_trace": 5.1327, "sample_fp_trace": 0.5736}
 
-# Real RV64 workloads to include (besides the CBP-5 references). The two agent
-# traces are the inference duty cycle; the io_stream traces are the streaming/
-# IO/parsing duty cycle, where irregular control flow leaves real headroom.
+# Real RV64 workloads to include (besides the CBP-5 references). The agent
+# traces cover the inference duty cycle; io_stream covers streaming/IO/parsing;
+# system_mix covers broader CPU and GPU-control-plane branch shapes.
 WORKLOAD_NAMES = (
     "agent_loop",
     "agent_decode",
@@ -65,6 +67,14 @@ WORKLOAD_NAMES = (
     "file_tlv",
     "video_blocks",
     "audio_frames",
+    "build_compiler_proxy",
+    "compression_proxy",
+    "crypto_packet_proxy",
+    "database_btree_proxy",
+    "gpu_control_proxy",
+    "browser_layout_proxy",
+    "kernel_syscall_proxy",
+    "gc_runtime_proxy",
 )
 
 SYNTHETIC_SWEEP_WORKLOADS = (
@@ -87,6 +97,21 @@ SYNTHETIC_SWEEP_WORKLOADS = (
     "phase_change_server",
     "alias_thrash",
     "gpu_occupancy_phase",
+    "gpu_nested_reconvergence",
+    "control_indirect_pair",
+    "command_buffer_validation",
+    "work_stealing_queues",
+    "hash_probe_inline_cache",
+    "allocator_gc_barrier",
+    "btb_confidence_churn",
+    "l2_ftb_target_pressure",
+    "gpu_wavefront_compaction",
+    "epoll_rpc_dispatch",
+    "json_parser_state_machine",
+    "android_runtime_inline_cache",
+    "signal_exception_unwind",
+    "gpu_driver_submit_phases",
+    "workload_class_phase_alias",
     "return_mismatch_exceptions",
 )
 
@@ -100,6 +125,14 @@ DEFAULT_WEIGHTS = {
     "file_tlv": 1.5,
     "video_blocks": 1.5,
     "audio_frames": 1.5,
+    "build_compiler_proxy": 1.25,
+    "compression_proxy": 1.25,
+    "crypto_packet_proxy": 1.0,
+    "database_btree_proxy": 1.25,
+    "gpu_control_proxy": 1.5,
+    "browser_layout_proxy": 1.25,
+    "kernel_syscall_proxy": 1.25,
+    "gc_runtime_proxy": 1.25,
     # Synthetic traces keep the objective honest around known hard shapes.
     # GPU-oriented traces get enough weight to steer tie-breaks without
     # overpowering the real RV64 and CBP-5 references.
@@ -122,6 +155,20 @@ DEFAULT_WEIGHTS = {
     "synthetic:phase_change_server": 0.75,
     "synthetic:alias_thrash": 0.5,
     "synthetic:gpu_occupancy_phase": 0.75,
+    "synthetic:gpu_nested_reconvergence": 0.75,
+    "synthetic:control_indirect_pair": 0.75,
+    "synthetic:command_buffer_validation": 0.85,
+    "synthetic:work_stealing_queues": 0.85,
+    "synthetic:hash_probe_inline_cache": 0.75,
+    "synthetic:allocator_gc_barrier": 0.75,
+    "synthetic:l2_ftb_target_pressure": 0.75,
+    "synthetic:gpu_wavefront_compaction": 0.85,
+    "synthetic:epoll_rpc_dispatch": 0.85,
+    "synthetic:json_parser_state_machine": 0.75,
+    "synthetic:android_runtime_inline_cache": 0.85,
+    "synthetic:signal_exception_unwind": 0.5,
+    "synthetic:gpu_driver_submit_phases": 0.85,
+    "synthetic:workload_class_phase_alias": 0.75,
     "synthetic:return_mismatch_exceptions": 0.35,
     "cbp5:sample_int_trace": 1.0,
     "cbp5:sample_fp_trace": 1.0,
@@ -177,6 +224,82 @@ CONFIGS: dict[str, dict] = {
     "sc_local_hist8": _geo(SC_LOCAL_HISTORY_BITS=8),
     "sc_local_hist12": _geo(SC_LOCAL_HISTORY_BITS=12),
     "sc_local_hist8_big": _geo(SC_LOCAL_HISTORY_BITS=8, SC_LOCAL_HISTORY_ENTRIES=2048),
+    "sc_bias_default": _geo(SC_BIAS_ENABLE=True),
+    "sc_bias_big": _geo(SC_BIAS_ENABLE=True, SC_BIAS_ENTRIES=4096, SC_BIAS_CTR_W=5),
+    "h2p_off": _geo(H2P_ENABLE=False),
+    "h2p_default": _geo(H2P_ENABLE=True),
+    "h2p_meta_t1": _geo(H2P_ENABLE=True, H2P_META_ENABLE=True, H2P_META_THRESHOLD=1),
+    "h2p_meta_t2": _geo(H2P_ENABLE=True, H2P_META_ENABLE=True, H2P_META_THRESHOLD=2),
+    "h2p_meta_2k_t1": _geo(
+        H2P_ENABLE=True,
+        H2P_META_ENABLE=True,
+        H2P_META_ENTRIES=2048,
+        H2P_META_THRESHOLD=1,
+    ),
+    "h2p_small": _geo(H2P_ENABLE=True, H2P_ENTRIES=256, H2P_HIST_LEN=24, H2P_THRESHOLD=18),
+    "h2p_long": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=36),
+    "h2p_long_t44": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=44),
+    "h2p_long_t60": _geo(H2P_ENABLE=True, H2P_ENTRIES=512, H2P_HIST_LEN=64, H2P_THRESHOLD=60),
+    "h2p_big": _geo(H2P_ENABLE=True, H2P_ENTRIES=1024, H2P_HIST_LEN=48, H2P_THRESHOLD=30),
+    "h2p_mp_target": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=512,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=0,
+        H2P_THRESHOLD=34,
+    ),
+    "h2p_mp_path": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=512,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=0,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=34,
+    ),
+    "h2p_mp_target_path": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=512,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=40,
+    ),
+    "h2p_mp_big": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=1024,
+        H2P_HIST_LEN=48,
+        H2P_TARGET_HIST_LEN=16,
+        H2P_PATH_HIST_LEN=16,
+        H2P_THRESHOLD=42,
+    ),
+    "h2p_long_local_meta": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=512,
+        H2P_HIST_LEN=64,
+        H2P_THRESHOLD=36,
+        LOCAL_DIR_ENABLE=True,
+        LOCAL_DIR_META_ENABLE=True,
+    ),
+    "h2p_long_imli": _geo(
+        H2P_ENABLE=True,
+        H2P_ENTRIES=512,
+        H2P_HIST_LEN=64,
+        H2P_THRESHOLD=36,
+        LOOP_IMLI_ENABLE=True,
+        LOOP_IMLI_HIST_W=6,
+        LOOP_IMLI_TOKEN_W=3,
+    ),
+    "local_dir_off": _geo(LOCAL_DIR_ENABLE=False),
+    "local_dir_on": _geo(LOCAL_DIR_ENABLE=True),
+    "local_dir_meta_off": _geo(LOCAL_DIR_ENABLE=True, LOCAL_DIR_META_ENABLE=False),
+    "local_dir_meta": _geo(LOCAL_DIR_ENABLE=True, LOCAL_DIR_META_ENABLE=True),
+    "local_dir_meta_big": _geo(
+        LOCAL_DIR_ENABLE=True,
+        LOCAL_DIR_META_ENABLE=True,
+        LOCAL_DIR_META_ENTRIES=2048,
+    ),
+    "local_dir_big": _geo(LOCAL_DIR_ENABLE=True, LOCAL_DIR_ENTRIES=2048),
     "sc_wide": _geo(
         SC_TABLES=6,
         SC_ENTRIES_TABLE=1024,
@@ -195,6 +318,35 @@ CONFIGS: dict[str, dict] = {
     ),
     # ---- Loop predictor ----
     "loop_big": _geo(LOOP_ENTRIES=128),
+    "loop_imli_off": _geo(LOOP_IMLI_ENABLE=False),
+    "loop_imli_on": _geo(LOOP_IMLI_ENABLE=True),
+    "loop_imli_hist4": _geo(LOOP_IMLI_ENABLE=True, LOOP_IMLI_HIST_W=4),
+    "loop_imli_hist4_token2": _geo(
+        LOOP_IMLI_ENABLE=True,
+        LOOP_IMLI_HIST_W=4,
+        LOOP_IMLI_TOKEN_W=2,
+    ),
+    "loop_imli_hist4_token3": _geo(
+        LOOP_IMLI_ENABLE=True,
+        LOOP_IMLI_HIST_W=6,
+        LOOP_IMLI_TOKEN_W=3,
+    ),
+    "loop_imli_hist8": _geo(LOOP_IMLI_ENABLE=True, LOOP_IMLI_HIST_W=8),
+    "loop_imli_hist8_token3": _geo(
+        LOOP_IMLI_ENABLE=True,
+        LOOP_IMLI_HIST_W=8,
+        LOOP_IMLI_TOKEN_W=3,
+    ),
+    "loop_imli_hist8_token5": _geo(
+        LOOP_IMLI_ENABLE=True,
+        LOOP_IMLI_HIST_W=10,
+        LOOP_IMLI_TOKEN_W=5,
+    ),
+    "loop_imli_hist24": _geo(LOOP_IMLI_ENABLE=True, LOOP_IMLI_HIST_W=24),
+    # ---- Delayed L2 FTB target tier ----
+    "l2_ftb_off": _geo(L2_FTB_ENTRIES=0),
+    "l2_ftb_small": _geo(L2_FTB_ENTRIES=4096, L2_FTB_WAYS=8),
+    "l2_ftb_big": _geo(L2_FTB_ENTRIES=16384, L2_FTB_WAYS=8),
     # ---- Fetch block front-end bandwidth ----
     "fetch_block_dual_branch": _geo(FETCH_BLOCK_BRANCH_SLOTS=2),
     # ---- TAGE allocation/aging policy (algorithmic, not just geometry) ----
@@ -205,8 +357,17 @@ CONFIGS: dict[str, dict] = {
     "tage_alloc_aging": _geo(TAGE_ALLOC_DECREMENT=True, TAGE_UBIT_RESET_PERIOD=100_000),
     "tage_alloc_rtl_aging": _geo(TAGE_ALLOC_DECREMENT=True),
     "tage_use_alt_on_na": _geo(TAGE_USE_ALT_ON_NA=1),
+    "tage_alt_on_na_disabled": _geo(TAGE_ALT_ON_NA_ENTRIES=0),
+    "tage_alt_on_na_conf": _geo(TAGE_ALT_ON_NA_ENTRIES=1024),
     # ---- ITTAGE target-history ablations ----
     "ittage_no_target_hist": _geo(ITTAGE_TARGET_HISTORY_BITS=0),
+    "ittage_tag9_no_path": _geo(
+        ITTAGE_TAG_W=9,
+        ITTAGE_PATH_HISTORY_BITS=0,
+        ITTAGE_PATH_HISTORY_TOKEN_BITS=6,
+    ),
+    "ittage_no_path_history": _geo(ITTAGE_PATH_HISTORY_BITS=0, ITTAGE_PATH_HISTORY_TOKEN_BITS=6),
+    "ittage_tag9": _geo(ITTAGE_TAG_W=9),
     "ittage_target_hist32": _geo(ITTAGE_TARGET_HISTORY_BITS=32),
     "ittage_target_hist96": _geo(ITTAGE_TARGET_HISTORY_BITS=96),
     "ittage_target_hist128": _geo(ITTAGE_TARGET_HISTORY_BITS=128),
@@ -220,7 +381,14 @@ CONFIGS: dict[str, dict] = {
     "ittage_path_token4": _geo(ITTAGE_PATH_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_TOKEN_BITS=4),
     "ittage_path_token8": _geo(ITTAGE_PATH_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_TOKEN_BITS=8),
     "ittage_target_path": _geo(ITTAGE_TARGET_HISTORY_BITS=64, ITTAGE_PATH_HISTORY_BITS=64),
-    "ittage_big": _geo(ITTAGE_ENTRIES=(1024, 1024, 2048, 2048, 2048)),
+    "ittage_tag11_path_token8": _geo(
+        ITTAGE_TAG_W=11,
+        ITTAGE_PATH_HISTORY_BITS=64,
+        ITTAGE_PATH_HISTORY_TOKEN_BITS=8,
+    ),
+    "ittage_direct_mapped": _geo(ITTAGE_WAYS=1),
+    "ittage_4way": _geo(ITTAGE_WAYS=4),
+    "ittage_pre_big": _geo(ITTAGE_ENTRIES=(512, 512, 1024, 1024, 1024)),
     "ittage_tag11": _geo(ITTAGE_TAG_W=11),
     "ittage_hist_long": _geo(ITTAGE_HIST_LEN=(4, 10, 20, 40, 80)),
     "ittage6_tables": _geo(
@@ -279,6 +447,73 @@ class LoadedTrace:
     weight: float
 
 
+def _proportional_inst(total_inst: int, selected_branches: int, total_branches: int) -> int:
+    if total_branches <= 0:
+        return 0
+    return max(1, int(total_inst * (selected_branches / total_branches)))
+
+
+def _contiguous_window(
+    events: list[BranchEvent],
+    total_inst: int,
+    max_branches: int,
+    start_frac: float,
+) -> tuple[list[BranchEvent], int]:
+    if not max_branches or len(events) <= max_branches:
+        return events, total_inst
+    count = max(1, min(max_branches, len(events)))
+    max_start = len(events) - count
+    start = int(max_start * start_frac)
+    window = events[start : start + count]
+    return window, _proportional_inst(total_inst, len(window), len(events))
+
+
+def _stratified_window(
+    events: list[BranchEvent],
+    total_inst: int,
+    max_branches: int,
+) -> tuple[list[BranchEvent], int]:
+    if not max_branches or len(events) <= max_branches:
+        return events, total_inst
+    per = max(1, max_branches // 3)
+    windows: list[BranchEvent] = []
+    used: set[int] = set()
+    for start_frac in (0.0, 0.5, 1.0):
+        count = min(per, len(events))
+        max_start = len(events) - count
+        start = int(max_start * start_frac)
+        for idx in range(start, start + count):
+            if idx not in used and len(windows) < max_branches:
+                windows.append(events[idx])
+                used.add(idx)
+    return windows, _proportional_inst(total_inst, len(windows), len(events))
+
+
+def _windowed_traces(
+    name: str,
+    events: list[BranchEvent],
+    total_inst: int,
+    max_branches: int,
+    weight: float,
+    window_mode: str,
+) -> list[LoadedTrace]:
+    if window_mode == "prefix" or not max_branches or len(events) <= max_branches:
+        ev, inst = _contiguous_window(events, total_inst, max_branches, 0.0)
+        return [LoadedTrace(name, ev, inst, weight)]
+
+    windows: list[tuple[str, list[BranchEvent], int]] = []
+    if window_mode in ("windows", "all"):
+        for suffix, frac in (("prefix", 0.0), ("middle", 0.5), ("late", 1.0)):
+            ev, inst = _contiguous_window(events, total_inst, max_branches, frac)
+            windows.append((f"{name}@{suffix}", ev, inst))
+    if window_mode in ("stratified", "all"):
+        ev, inst = _stratified_window(events, total_inst, max_branches)
+        windows.append((f"{name}@stratified", ev, inst))
+
+    split_weight = weight / max(len(windows), 1)
+    return [LoadedTrace(n, ev, inst, split_weight) for n, ev, inst in windows]
+
+
 def _cap(events: list[BranchEvent], total_inst: int, max_branches: int):
     if max_branches and len(events) > max_branches:
         frac = max_branches / len(events)
@@ -286,25 +521,46 @@ def _cap(events: list[BranchEvent], total_inst: int, max_branches: int):
     return events, total_inst
 
 
-def load_traces(max_branches: int, weights: dict[str, float]) -> list[LoadedTrace]:
+def load_traces(
+    max_branches: int,
+    weights: dict[str, float],
+    window_mode: str = "prefix",
+) -> list[LoadedTrace]:
     traces: list[LoadedTrace] = []
     for name in WORKLOAD_NAMES:
         p = WORKLOAD_DIR / f"{name}.btrace.json"
         if not p.is_file():
             continue
         events, inst = read_workload_trace(p)
-        events, inst = _cap(events, inst, max_branches)
-        traces.append(LoadedTrace(name, events, inst, weights.get(name, 1.0)))
+        traces.extend(
+            _windowed_traces(name, events, inst, max_branches, weights.get(name, 1.0), window_mode)
+        )
     for name in SYNTHETIC_SWEEP_WORKLOADS:
         events = list(SYNTHETIC_GENERATORS[name]())
-        events, inst = _cap(events, len(events) * 5, max_branches)
         key = f"synthetic:{name}"
-        traces.append(LoadedTrace(key, events, inst, weights.get(key, 0.5)))
+        traces.extend(
+            _windowed_traces(
+                key,
+                events,
+                len(events) * 5,
+                max_branches,
+                weights.get(key, 0.5),
+                window_mode,
+            )
+        )
     for p in sorted(CBP5_DIR.glob("*.gz")):
         events, stats = read_cbp5_with_count(p)
-        events, inst = _cap(events, stats.instruction_count, max_branches)
         key = f"cbp5:{p.stem}"
-        traces.append(LoadedTrace(key, events, inst, weights.get(key, 1.0)))
+        traces.extend(
+            _windowed_traces(
+                key,
+                events,
+                stats.instruction_count,
+                max_branches,
+                weights.get(key, 1.0),
+                window_mode,
+            )
+        )
     return traces
 
 
@@ -380,6 +636,9 @@ def write_leaderboard(
         "",
         f"- Branch cap per trace: {'full trace' if not max_branches else f'{max_branches:,} branches'}",
         f"- Baseline weighted MPKI: {base:.4f}",
+        "- Capped-window mode is recorded in the JSON evidence; trace names with "
+        "`@prefix`, `@middle`, `@late`, or `@stratified` are sampled windows of "
+        "the same source trace.",
         "",
         "## Ranking (by weighted MPKI)",
         "",
@@ -455,6 +714,16 @@ def main() -> int:
         default=1_200_000,
         help="cap branches per trace for turnaround (0 = full trace)",
     )
+    ap.add_argument(
+        "--window-mode",
+        choices=("prefix", "windows", "stratified", "all"),
+        default="prefix",
+        help=(
+            "how capped traces are sampled: prefix keeps legacy behavior; "
+            "windows evaluates prefix/middle/late windows; stratified combines "
+            "early/middle/late slices; all evaluates both"
+        ),
+    )
     ap.add_argument("--jobs", type=int, default=min(8, mp.cpu_count()))
     ap.add_argument(
         "--configs",
@@ -477,8 +746,11 @@ def main() -> int:
         args.configs = ["baseline", *args.configs]
     selected = {k: CONFIGS[k] for k in args.configs}
 
-    print(f"eliza-bpu-sweep: loading traces (cap={args.max_branches or 'full'})")
-    traces = load_traces(args.max_branches, DEFAULT_WEIGHTS)
+    print(
+        "eliza-bpu-sweep: loading traces "
+        f"(cap={args.max_branches or 'full'}, window_mode={args.window_mode})"
+    )
+    traces = load_traces(args.max_branches, DEFAULT_WEIGHTS, args.window_mode)
     if not traces:
         print("STATUS: BLOCKED bpu.sweep - no traces found", file=sys.stderr)
         return 2
@@ -501,6 +773,7 @@ def main() -> int:
         "generated_at_utc": datetime.now(UTC).isoformat(),
         "harness": "behavioural-bpu-model",
         "max_branches_per_trace": args.max_branches,
+        "window_mode": args.window_mode,
         "trace_set": [
             {
                 "name": t.name,

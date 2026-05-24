@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,8 @@ DEFAULT_FORBIDDEN_EVIDENCE_TERMS = [
     "/exact/external/",
     "'/exact/",
 ]
+
+UART_TX_RE = re.compile(r"^UART TX \(([0-9a-fA-F]{1,2})\):", re.MULTILINE)
 
 
 def rel(path: Path) -> str:
@@ -104,6 +107,28 @@ def sha256_path(path: Path) -> str:
     if path.is_dir():
         return sha256_tree(path)
     return sha256_file(path)
+
+
+def reconstruct_uart_tx_text(text: str) -> str:
+    """Decode Chipyard `+uart_tx_printf=1` byte lines into UART text."""
+    values = [int(match.group(1), 16) & 0xFF for match in UART_TX_RE.finditer(text)]
+    if not values:
+        return ""
+    return bytes(values).decode("utf-8", errors="replace")
+
+
+def text_with_reconstructed_uart(text: str) -> str:
+    reconstructed = reconstruct_uart_tx_text(text)
+    if not reconstructed:
+        return text
+    return "\n".join(
+        (
+            text,
+            "eliza-evidence: reconstructed_uart_tx_begin",
+            reconstructed,
+            "eliza-evidence: reconstructed_uart_tx_end",
+        )
+    )
 
 
 def load_evidence_manifest(errors: list[str]) -> dict[str, Any]:
@@ -353,12 +378,13 @@ def validate_evidence_manifest(manifest: dict[str, Any], errors: list[str]) -> N
 
 def text_problems(text: str, spec: dict[str, Any], rel_path: str, *, raw: bool) -> list[str]:
     problems: list[str] = []
+    searchable_text = text_with_reconstructed_uart(text)
     min_bytes = int(spec.get("min_bytes", 160))
-    if len(text.strip()) < min_bytes:
+    if len(searchable_text.strip()) < min_bytes:
         problems.append(f"{rel_path} is too small to be a real command transcript")
 
     forbidden = DEFAULT_FORBIDDEN_EVIDENCE_TERMS + spec.get("forbidden_strings", [])
-    lower = text.lower()
+    lower = searchable_text.lower()
     found_forbidden = [
         term for term in forbidden if isinstance(term, str) and term.lower() in lower
     ]
@@ -369,14 +395,16 @@ def text_problems(text: str, spec: dict[str, Any], rel_path: str, *, raw: bool) 
         )
 
     key = "raw_required_strings" if raw else "required_strings"
-    missing = [term for term in spec.get(key, []) if isinstance(term, str) and term not in text]
+    missing = [
+        term for term in spec.get(key, []) if isinstance(term, str) and term not in searchable_text
+    ]
     if missing:
         problems.append(f"{rel_path} missing required transcript markers: " + ", ".join(missing))
 
     for group in spec.get("at_least_one", []):
         if not isinstance(group, list) or not group:
             problems.append(f"{rel_path} has invalid at_least_one rule in manifest")
-        elif not any(isinstance(term, str) and term in text for term in group):
+        elif not any(isinstance(term, str) and term in searchable_text for term in group):
             problems.append(
                 f"{rel_path} must contain at least one marker from: " + ", ".join(group)
             )

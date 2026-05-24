@@ -51,6 +51,15 @@ RTL_EVIDENCE_PATH = EVIDENCE_DIR / "mpki_results_synthetic.json"
 CBP5_EVIDENCE_PATH = EVIDENCE_DIR / "mpki_results_cbp5.json"
 MODEL_EVIDENCE_PATH = RESULTS_DIR / "branch-prediction-mpki-model.json"
 DEFAULT_SYNTHETIC = list(SYNTHETIC_GENERATORS.keys())
+TARGET_2028_MPKI = 4.0
+
+
+def _display_path(path: Path) -> str:
+    full = path if path.is_absolute() else ROOT / path
+    try:
+        return str(full.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 # Workload-class averages for CBP2016 64KB TAGE-SC-L on the CBP2025 training
 # trace set, computed from reference_results_training_set.csv in
@@ -257,10 +266,16 @@ def _expand_trace_paths(inputs: Iterable[Path]) -> list[Path]:
 
 def _build_cbp5_envelope(external_results: dict[str, dict]) -> dict[str, object]:
     """Construct the ``eliza.bpu_mpki.v1`` envelope for CBP-5 traces."""
-    aggregate_inst = sum(r["instruction_count"] for r in external_results.values())
-    aggregate_branches = sum(r["branches"] for r in external_results.values())
-    aggregate_misp = sum(int(r["counters"].get("misp", 0)) for r in external_results.values())
+    cbp5_results = {
+        name: result
+        for name, result in external_results.items()
+        if result.get("trace_class") == "cbp5_train_traces_only"
+    }
+    aggregate_inst = sum(r["instruction_count"] for r in cbp5_results.values())
+    aggregate_branches = sum(r["branches"] for r in cbp5_results.values())
+    aggregate_misp = sum(int(r["counters"].get("misp", 0)) for r in cbp5_results.values())
     aggregate_mpki = (aggregate_misp * 1000.0 / aggregate_inst) if aggregate_inst else 0.0
+    cbp5_claim = bool(aggregate_inst and aggregate_mpki <= TARGET_2028_MPKI)
     return {
         "schema": "eliza.bpu_mpki.v1",
         "generated_at_utc": datetime.now(UTC).isoformat(),
@@ -270,18 +285,19 @@ def _build_cbp5_envelope(external_results: dict[str, dict]) -> dict[str, object]
             key: list(value) if isinstance(value, tuple) else value
             for key, value in DEFAULT_GEOMETRY.items()
         },
-        "workloads": external_results,
+        "workloads": cbp5_results,
         "aggregate": {
             "branch_count": aggregate_branches,
             "instruction_count": aggregate_inst,
             "misprediction_count": aggregate_misp,
             "mpki": round(aggregate_mpki, 6),
         },
+        "target_2028_mpki": TARGET_2028_MPKI,
         "cbp5_tage_sc_l_64kb_reference_mpki_by_class": CBP5_REFERENCE_BY_CLASS,
         "cbp5_tage_sc_l_64kb_reference_mpki_by_trace": CBP5_REFERENCE_PER_TRACE,
         "claim_policy": {
             "evidence_class": "cbp5_train_traces_only",
-            "cbp5_claim": True,
+            "cbp5_claim": cbp5_claim,
             "spec2017_claim": False,
             "android_claim": False,
             "v8_claim": False,
@@ -343,13 +359,13 @@ def run_model_backend(
     else:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
-        print(f"eliza-evidence: status=PASS path={out.relative_to(ROOT)}")
+        print(f"eliza-evidence: status=PASS path={_display_path(out)}")
 
     if cbp5_out is not None and external_results:
         cbp5_envelope = _build_cbp5_envelope(external_results)
         cbp5_out.parent.mkdir(parents=True, exist_ok=True)
         cbp5_out.write_text(json.dumps(cbp5_envelope, indent=2, sort_keys=True) + "\n")
-        print(f"eliza-evidence: status=PASS cbp5 path={cbp5_out.relative_to(ROOT)}")
+        print(f"eliza-evidence: status=PASS cbp5 path={_display_path(cbp5_out)}")
 
     return 0
 

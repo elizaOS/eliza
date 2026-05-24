@@ -29,7 +29,101 @@ def load_yaml(path: Path) -> Any:
 
 
 def has_any(path: Path) -> bool:
-    return path.exists() and any(item.is_file() for item in path.rglob("*"))
+    if not path.exists():
+        return False
+    return any(is_real_release_output(item) for item in path.rglob("*") if item.is_file())
+
+
+def blocked_candidate_reason(path: Path) -> str:
+    if path.name == "candidate-placeholder.txt":
+        return "candidate_placeholder"
+    candidates = [path]
+    candidates.extend(
+        sidecar
+        for sidecar in (
+            path.with_name(path.name + ".metadata.yaml"),
+            path.with_name(path.name + ".metadata.yml"),
+            path.with_name(path.name + ".metadata.json"),
+        )
+        if sidecar.exists()
+    )
+    for candidate in candidates:
+        if not (
+            candidate.name.startswith("release-manifest.")
+            or candidate.name.endswith(".metadata.yaml")
+            or candidate.name.endswith(".metadata.yml")
+            or candidate.name.endswith(".metadata.json")
+        ):
+            continue
+        try:
+            data = yaml.safe_load(candidate.read_text())
+        except Exception:
+            data = None
+        if not isinstance(data, dict):
+            continue
+        if data.get("release_allowed") is False:
+            return "release_allowed_false"
+        if str(data.get("status", "")).lower().startswith("blocked"):
+            return "blocked_status"
+        if str(data.get("disposition", "")).lower().startswith("blocked"):
+            return "blocked_disposition"
+    return ""
+
+
+def blocked_candidate_files(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    out = []
+    for item in sorted(path.rglob("*")):
+        if not item.is_file():
+            continue
+        reason = blocked_candidate_reason(item)
+        if reason:
+            out.append({"path": str(item.relative_to(ROOT)), "reason": reason})
+    return out
+
+
+def is_real_release_output(path: Path) -> bool:
+    if path.name == "candidate-placeholder.txt":
+        return False
+    explicit_metadata = False
+    if path.name.startswith("release-manifest.") or path.name.endswith(".metadata.yaml"):
+        explicit_metadata = True
+        try:
+            data = yaml.safe_load(path.read_text())
+        except Exception:
+            data = None
+        if isinstance(data, dict) and (
+            data.get("release_allowed") is False
+            or str(data.get("status", "")).lower().startswith("blocked")
+            or str(data.get("disposition", "")).lower().startswith("blocked")
+        ):
+            return False
+    for sidecar in (
+        path.with_name(path.name + ".metadata.yaml"),
+        path.with_name(path.name + ".metadata.yml"),
+        path.with_name(path.name + ".metadata.json"),
+    ):
+        if sidecar.exists():
+            explicit_metadata = True
+            try:
+                data = yaml.safe_load(sidecar.read_text())
+            except Exception:
+                data = None
+            if isinstance(data, dict) and (
+                data.get("release_allowed") is False
+                or str(data.get("status", "")).lower().startswith("blocked")
+                or str(data.get("disposition", "")).lower().startswith("blocked")
+            ):
+                return False
+            if isinstance(data, dict) and (
+                data.get("release_allowed") is True
+                and str(data.get("disposition", "")).lower() == "approved"
+            ):
+                return True
+    if explicit_metadata:
+        return False
+    return False
 
 
 def production_output_status() -> dict[str, dict[str, Any]]:
@@ -46,14 +140,19 @@ def production_output_status() -> dict[str, dict[str, Any]]:
         "dfm_dfa_report": "production/dfm",
         "fab_quote": "production/fab-quote",
     }
-    return {
-        name: {
+    status = {}
+    for name, rel in outputs.items():
+        output_path = ROOT / "board/kicad/e1-phone" / rel
+        blocked_candidates = blocked_candidate_files(output_path)
+        status[name] = {
             "path": f"board/kicad/e1-phone/{rel}",
-            "present": has_any(ROOT / "board/kicad/e1-phone" / rel),
+            "present": has_any(output_path),
+            "blocked_candidate_present": bool(blocked_candidates),
+            "blocked_candidate_file_count": len(blocked_candidates),
+            "blocked_candidate_examples": blocked_candidates[:5],
             "required_before_release": True,
         }
-        for name, rel in outputs.items()
-    }
+    return status
 
 
 def main() -> int:
@@ -356,7 +455,14 @@ def main() -> int:
             "has_test_point_footprints": testpoint_count > 0,
             "has_fiducials": fiducial_count > 0,
             "has_mounting_holes": mounting_hole_count > 0,
-            "has_production_outputs": has_any(PRODUCTION),
+            "has_production_outputs": any(item["present"] for item in production_outputs.values()),
+            "release_output_count": sum(1 for item in production_outputs.values() if item["present"]),
+            "has_blocked_candidate_outputs": any(
+                item["blocked_candidate_present"] for item in production_outputs.values()
+            ),
+            "blocked_candidate_output_file_count": sum(
+                item["blocked_candidate_file_count"] for item in production_outputs.values()
+            ),
             "kibot_outputs_are_skeleton_commented": "# outputs:" in kibot_text,
         },
         "non_release_pcb_implementation_scaffold": {

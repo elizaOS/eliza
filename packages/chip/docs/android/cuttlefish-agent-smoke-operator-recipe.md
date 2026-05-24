@@ -77,12 +77,12 @@ can override them when invoking it manually).
 | --- | --- | --- |
 | `AOSP_ADB_SERIAL` | empty | adb serial of the live CVD; required if multiple devices are attached. |
 | `AOSP_AGENT_APK` | (required) | Host path to the riscv64 Eliza agent APK. |
-| `AOSP_AGENT_PACKAGE` | `com.elizaos.agent` | Android package whose pid is polled to confirm the service is alive. |
-| `AOSP_AGENT_SERVICE` | `com.elizaos.agent/.AgentService` | Component name passed to `am start-foreground-service`. |
+| `AOSP_AGENT_PACKAGE` | `ai.milady.milady` | Android package whose pid is polled to confirm the service is alive. |
+| `AOSP_AGENT_SERVICE` | `ai.milady.milady/.ElizaAgentService` | Component name passed to `am start-foreground-service`. |
 | `AOSP_AGENT_HOST_PORT` | `31337` | Host loopback port for the `adb forward` HTTP probes. |
 | `AOSP_AGENT_DEVICE_PORT` | `31337` | Device-side port the agent binds. |
 | `AOSP_AGENT_SERVICE_WAIT_SECONDS` | `90` | Max wait for `pidof <package>` to return non-empty. |
-| `AOSP_AGENT_PORT_WAIT_SECONDS` | `60` | Max wait for `/api/agent/self-status` to return HTTP 200. |
+| `AOSP_AGENT_PORT_WAIT_SECONDS` | `60` | Max wait for `/api/health` to return HTTP 200. |
 | `AOSP_AGENT_LLAMA_MODEL` | (required) | Host path to a GGUF model pushed to the device. |
 | `AOSP_AGENT_LLAMA_DEVICE_DIR` | `/data/local/tmp/eliza-smoke` | Device staging directory for the model and golden fixture. |
 | `AOSP_AGENT_LLAMA_PROMPT` | `Say hello in one short sentence.` | Llama smoke prompt. |
@@ -96,7 +96,7 @@ can override them when invoking it manually).
 | `AOSP_AGENT_WAKEWORD_MODEL` | `sw/aosp-device/fixtures/wakeword.gguf` | wakeword-cpp GGUF (supply locally; not committed). |
 | `AOSP_AGENT_WAKEWORD_AUDIO` | `sw/aosp-device/fixtures/wakeword-stimulus.wav` | wakeword stimulus WAV (repo-shipped fixture). |
 | `AOSP_AGENT_VAD_AUDIO` | `sw/aosp-device/fixtures/vad-speech-silence.wav` | speech+silence WAV (repo-shipped fixture). |
-| `AOSP_AGENT_REQUIRED_PLUGINS` | `local-inference` | Comma-separated list of plugins whose `status:"ready"` is asserted in `/api/agent/self-status`. |
+| `AOSP_AGENT_REQUIRED_PLUGINS` | `local-inference` | Comma-separated list of plugins whose `status:"ready"` is asserted in the secondary agent status detail. |
 
 ## Evidence log markers
 
@@ -114,9 +114,9 @@ run it contains the standard provenance header
 | --- | --- |
 | `AGENT_SERVICE=alive` | `pidof <AOSP_AGENT_PACKAGE>` returned non-empty within `AOSP_AGENT_SERVICE_WAIT_SECONDS`. |
 | `AGENT_PID=<pid>` | The first pid returned by `pidof`. |
-| `SELF_STATUS_HTTP=200` | `GET /api/agent/self-status` returned HTTP 200. |
-| `SELF_STATUS_JSON_SHAPE=ok` | Response body decoded as JSON and contained `agentId`. |
-| `SELF_STATUS_REQUIRED_PLUGINS_READY=<csv>` | Each plugin in `AOSP_AGENT_REQUIRED_PLUGINS` returned `status:"ready"`. |
+| `AGENT_HEALTH_HTTP=200` | `GET /api/health` returned HTTP 200. |
+| `AGENT_STATUS_JSON_SHAPE=ok` | Secondary status detail decoded as JSON and contained `agentId`. |
+| `AGENT_REQUIRED_PLUGINS_READY=<csv>` | Each plugin in `AOSP_AGENT_REQUIRED_PLUGINS` returned `status:"ready"`. |
 | `LLAMA_HTTP=200`, `LLAMA_TOKENS=<n>`, `LLAMA_WALL_S=<float>` | Llama HTTP status, token count, and wall-clock seconds. |
 | `LLAMA_TOKENS_GE_32=true` | `LLAMA_TOKENS >= AOSP_AGENT_LLAMA_MIN_TOKENS`. |
 | `TTS_HTTP=200`, `TTS_FILE=...RIFF...WAVE...`, `TTS_SAMPLES=<n>`, `TTS_WAV=ok` | TTS HTTP status, `file(1)` description, decoded sample count, and validation result. |

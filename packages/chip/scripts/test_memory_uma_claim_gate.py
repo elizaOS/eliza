@@ -24,7 +24,8 @@ class MemoryUmaClaimGateTest(unittest.TestCase):
     def test_phone_target_profile_blocks_real_claims(self) -> None:
         data = yaml.safe_load(gate.GATE.read_text())
         target = data["phone_2028_target_profile"]
-        actual = data["current_actual_capability"]
+        actual = data["linux_scaffold_current_capability"]
+        local_rtl = data["separate_local_rtl_evidence"]
         bandwidth_latency = data["bandwidth_latency_evidence_contract"]
 
         self.assertEqual(target["claim_level_required"], "L6_COMPLETE_PHONE")
@@ -39,6 +40,8 @@ class MemoryUmaClaimGateTest(unittest.TestCase):
         self.assertEqual(actual["memory_qos"], "none")
         self.assertEqual(actual["clint_plic_access_map"], "incomplete")
         self.assertEqual(actual["phone_class_status"], "blocked")
+        self.assertEqual(local_rtl["dram_controller_boundary"]["gate"], "make dram-controller-check")
+        self.assertEqual(local_rtl["iommu_boundary"]["gate"], "make iommu-evidence-check")
         self.assertEqual(
             bandwidth_latency["status"],
             "blocked_until_real_target_measurements",

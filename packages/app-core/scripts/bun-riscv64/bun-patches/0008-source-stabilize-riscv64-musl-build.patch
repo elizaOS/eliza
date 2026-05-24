@@ -28,10 +28,11 @@ index 68f5313..1bce80c 100644
 -    ar: toolchain.ar,
 -    ranlib: toolchain.ranlib,
 -    ld: toolchain.ld,
+-    strip: toolchain.strip,
 +    ar: riscv64Tool("BUN_AR", toolchain.ar),
 +    ranlib: riscv64Tool("BUN_RANLIB", toolchain.ranlib ?? ""),
 +    ld: riscv64Tool("BUN_LD", toolchain.ld),
-     strip: toolchain.strip,
++    strip: riscv64Tool("BUN_STRIP", toolchain.strip),
      dsymutil: toolchain.dsymutil,
      zig: toolchain.zig,
 diff --git a/scripts/build/deps/boringssl.ts b/scripts/build/deps/boringssl.ts

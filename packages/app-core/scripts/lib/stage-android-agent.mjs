@@ -20,9 +20,10 @@
  *   arm64-v8a/ld-musl-aarch64.so.1
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
- *   riscv64/bun                     (cuttlefish riscv64; opt-in via
- *                                    ELIZA_BUN_RISCV64_FILE/URL since upstream
- *                                    Bun has no riscv64-linux-musl release)
+ *   riscv64/bun                     (cuttlefish riscv64; required unless
+ *                                    ELIZA_BUN_RISCV64_OPTIONAL=1 since
+ *                                    upstream Bun has no riscv64-linux-musl
+ *                                    release)
  *   riscv64/ld-musl-riscv64.so.1
  *   riscv64/libstdc++.so.6.0.33
  *   riscv64/libgcc_s.so.1
@@ -46,6 +47,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const APP_CORE_ROOT = path.resolve(__dirname, "..", "..");
+const ELIZA_REPO_ROOT = path.resolve(APP_CORE_ROOT, "..", "..");
 
 const BUN_VERSION = "1.3.13";
 // Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
@@ -56,6 +59,8 @@ const BUN_VERSION = "1.3.13";
 const DEFAULT_BUN_CHANNEL = "canary";
 const ALPINE_BRANCH = "v3.21";
 const RISCV64_BUN_ARTIFACT_FILENAME = "bun-linux-riscv64-musl.zip";
+export const RUNTIME_PROVENANCE_FILENAME =
+  "android-agent-runtime-provenance.json";
 
 /**
  * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
@@ -87,12 +92,11 @@ const ABI_TARGETS = [
   },
   {
     // Upstream Bun has no riscv64-linux-musl release as of this writing,
-    // so this ABI only succeeds when `ELIZA_BUN_RISCV64_URL` is set
-    // (pointing at a self-built canary zip produced by
-    // `packages/app-core/scripts/bun-riscv64/build.sh`). Without that
-    // env var, ensureBunBinary() throws with explicit guidance; the
-    // staging step still wires the rest of the matrix so libllama /
-    // shim cross-compiles can land artifacts incrementally.
+    // so this ABI only succeeds when `ELIZA_BUN_RISCV64_FILE` or
+    // `ELIZA_BUN_RISCV64_URL` points at a self-built canary zip produced
+    // by `packages/app-core/scripts/bun-riscv64/build.sh`. Objective AOSP
+    // builds fail closed by default; local native-library iteration can
+    // opt out with ELIZA_BUN_RISCV64_OPTIONAL=1.
     androidAbi: "riscv64",
     bunArch: "riscv64",
     alpineArch: "riscv64",
@@ -320,13 +324,22 @@ function normalizeSha256(value, envName) {
   return sha256;
 }
 
+function firstEnvValue(names) {
+  for (const name of names) {
+    const value = process.env[name]?.trim();
+    if (value) return { name, value };
+  }
+  return null;
+}
+
 function riscv64BunSha256() {
+  const configured = firstEnvValue([
+    "ELIZA_BUN_RISCV64_SHA256",
+    "MILADY_BUN_RISCV64_SHA256",
+  ]);
   return normalizeSha256(
-    process.env.ELIZA_BUN_RISCV64_SHA256 ??
-      process.env.ELIZA_BUN_RISCV64_SHA256,
-    process.env.ELIZA_BUN_RISCV64_SHA256
-      ? "ELIZA_BUN_RISCV64_SHA256"
-      : "ELIZA_BUN_RISCV64_SHA256",
+    configured?.value,
+    configured?.name ?? "ELIZA_BUN_RISCV64_SHA256",
   );
 }
 
@@ -341,26 +354,112 @@ function defaultRiscv64BunArtifactPath() {
 }
 
 function riscv64BunFilePath() {
-  const configured =
-    process.env.ELIZA_BUN_RISCV64_FILE?.trim() ??
-    process.env.ELIZA_BUN_RISCV64_FILE?.trim();
-  if (configured) return path.resolve(configured);
+  const configured = firstEnvValue([
+    "ELIZA_BUN_RISCV64_FILE",
+    "MILADY_BUN_RISCV64_FILE",
+  ]);
+  if (configured) return path.resolve(configured.value);
   const defaultPath = defaultRiscv64BunArtifactPath();
   return fs.existsSync(defaultPath) ? defaultPath : null;
 }
 
 function riscv64BunUrl() {
-  return (
-    process.env.ELIZA_BUN_RISCV64_URL?.trim() ??
-    process.env.ELIZA_BUN_RISCV64_URL?.trim() ??
-    null
-  );
+  return firstEnvValue([
+    "ELIZA_BUN_RISCV64_URL",
+    "MILADY_BUN_RISCV64_URL",
+  ])?.value ?? null;
+}
+
+function riscv64BunArtifactSource() {
+  const filePath = riscv64BunFilePath();
+  if (filePath) return { kind: "file", ...provenancePath(filePath) };
+  const url = riscv64BunUrl();
+  if (url) return { kind: "url", url };
+  return null;
 }
 
 function sha256File(filePath) {
   const hash = crypto.createHash("sha256");
   hash.update(fs.readFileSync(filePath));
   return hash.digest("hex");
+}
+
+function toPosixPath(value) {
+  return value.replace(/\\/g, "/");
+}
+
+function pathWithin(root, filePath) {
+  const relative = path.relative(root, filePath);
+  return relative && !relative.startsWith("..") && !path.isAbsolute(relative)
+    ? toPosixPath(relative)
+    : null;
+}
+
+function provenancePath(filePath) {
+  const absolute = path.resolve(filePath);
+  const repoRelative = pathWithin(ELIZA_REPO_ROOT, absolute);
+  if (repoRelative) {
+    return {
+      path: repoRelative,
+      path_provenance: "relative_to_git_checkout",
+    };
+  }
+  const appCoreRelative = pathWithin(APP_CORE_ROOT, absolute);
+  if (appCoreRelative) {
+    return {
+      path: appCoreRelative,
+      path_provenance: "relative_to_app_core",
+    };
+  }
+  return {
+    path: path.basename(absolute),
+    path_provenance: "external_artifact_basename",
+  };
+}
+
+function normalizeSourceForProvenance(value) {
+  if (Array.isArray(value)) return value.map(normalizeSourceForProvenance);
+  if (!value || typeof value !== "object") return value;
+  const normalized = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (
+      typeof child === "string" &&
+      path.isAbsolute(child) &&
+      (key === "path" || key.endsWith("_path"))
+    ) {
+      Object.assign(normalized, provenancePath(child));
+    } else if (
+      typeof child === "string" &&
+      path.isAbsolute(child) &&
+      (key === "cache_dir" || key.endsWith("_dir"))
+    ) {
+      normalized[key] = path.basename(child);
+      normalized[`${key}_provenance`] = "external_cache_dir_basename";
+    } else {
+      normalized[key] = normalizeSourceForProvenance(child);
+    }
+  }
+  return normalized;
+}
+
+function readJsonIfExists(filePath) {
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function fileProvenanceEntry({ filePath, relativePath, source }) {
+  const stat = fs.statSync(filePath);
+  return {
+    path: androidApkEntryPath(relativePath),
+    size_bytes: stat.size,
+    sha256: sha256File(filePath),
+    source: normalizeSourceForProvenance(source),
+  };
+}
+
+function androidApkEntryPath(relativePath) {
+  const entryPath = toPosixPath(relativePath);
+  return entryPath.replace(/^jniLibs\//, "lib/");
 }
 
 function normalizeBunChannel(value) {
@@ -425,7 +524,16 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs < 24 * 60 * 60 * 1000;
   })();
-  if (isFresh) return bunPath;
+  if (isFresh) {
+    return {
+      bunPath,
+      source: {
+        kind: "cache",
+        cache_key: path.basename(archCache),
+        artifact_sha256: expectedRiscv64Sha256,
+      },
+    };
+  }
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
   // riscv64 has no upstream Bun release. Allow operators to point at a
@@ -440,16 +548,17 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
     if (!sourceFile && !url) {
       throw new Error(
         "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
-          "Set ELIZA_BUN_RISCV64_FILE (or ELIZA_BUN_RISCV64_FILE) to a local " +
-          "self-built zip, or set ELIZA_BUN_RISCV64_URL (or ELIZA_BUN_RISCV64_URL) " +
+          "Set ELIZA_BUN_RISCV64_FILE (or MILADY_BUN_RISCV64_FILE) to a local " +
+          "self-built zip, or set ELIZA_BUN_RISCV64_URL (or MILADY_BUN_RISCV64_URL) " +
           "to a hosted zip produced by packages/app-core/scripts/bun-riscv64/build.sh, " +
-          "or skip the riscv64 ABI for this build.",
+          "or set ELIZA_BUN_RISCV64_OPTIONAL=1 for local non-objective builds.",
       );
     }
     if (!expectedRiscv64Sha256) {
       throw new Error(
         "Bun riscv64 artifact hash is required: set ELIZA_BUN_RISCV64_SHA256 " +
-          "(or ELIZA_BUN_RISCV64_SHA256) to the SHA-256 of bun-linux-riscv64-musl.zip.",
+          "(or MILADY_BUN_RISCV64_SHA256) " +
+          "to the SHA-256 of bun-linux-riscv64-musl.zip.",
       );
     }
   } else {
@@ -493,7 +602,19 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   if (expectedRiscv64Sha256) {
     fs.writeFileSync(sourceSha256Path, `${expectedRiscv64Sha256}\n`, "utf8");
   }
-  return bunPath;
+  return {
+    bunPath,
+    source: {
+      kind: sourceFile ? "file" : "url",
+      ...(sourceFile ? provenancePath(sourceFile) : {}),
+      url: sourceFile ? null : url,
+      artifact_filename:
+        bunArch === "riscv64"
+          ? RISCV64_BUN_ARTIFACT_FILENAME
+          : path.basename(url),
+      artifact_sha256: expectedRiscv64Sha256,
+    },
+  };
 }
 
 /**
@@ -831,29 +952,31 @@ export async function stageAndroidAgentRuntime({
   fs.mkdirSync(jniLibsDir, { recursive: true });
 
   let stagedCount = 0;
+  const stagedFiles = [];
+  const riscv64Artifact = {
+    required: true,
+    filename: RISCV64_BUN_ARTIFACT_FILENAME,
+    sha256: riscv64BunSha256(),
+    source: riscv64BunArtifactSource(),
+  };
 
   for (const target of ABI_TARGETS) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
-    // Soft-skip the riscv64 lane when no local file/URL is set and
-    // ELIZA_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
-    // riscv64-linux-musl release, so by default riscv64 is opt-in (provide
-    // ELIZA_BUN_RISCV64_FILE or ELIZA_BUN_RISCV64_URL from
-    // packages/app-core/scripts/bun-riscv64/build.sh). The libllama /
-    // shim cross-compiles still land their per-ABI artifacts independently
-    // — operators iterating on the native side don't have to build Bun
-    // first. Set ELIZA_BUN_RISCV64_REQUIRED=1 to convert the soft-skip
-    // into a hard error (the AOSP cuttlefish smoke gates use this).
+    // Objective builds fail closed on riscv64. Upstream Bun has no
+    // riscv64-linux-musl release, so provide ELIZA_BUN_RISCV64_FILE or
+    // ELIZA_BUN_RISCV64_URL from packages/app-core/scripts/bun-riscv64/build.sh.
+    // Local native-library iteration may opt out with
+    // ELIZA_BUN_RISCV64_OPTIONAL=1, but that build is not valid AOSP/chip
+    // objective evidence.
     if (bunArch === "riscv64") {
       const riscvFile = riscv64BunFilePath();
       const riscvUrl = riscv64BunUrl();
-      const required = process.env.ELIZA_BUN_RISCV64_REQUIRED === "1";
-      if (!riscvFile && !riscvUrl && !required) {
+      const optional = process.env.ELIZA_BUN_RISCV64_OPTIONAL === "1";
+      if (!riscvFile && !riscvUrl && optional) {
         tlog(
-          `Skipping ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE/URL is set ` +
+          `Skipping optional ABI ${androidAbi}: no ELIZA_BUN_RISCV64_FILE or URL is set ` +
             `(upstream Bun has no riscv64-linux-musl release). Build with ` +
-            `packages/app-core/scripts/bun-riscv64/build.sh and re-run, or set ` +
-            `ELIZA_BUN_RISCV64_REQUIRED=1 to ` +
-            `make this a hard error.`,
+            `packages/app-core/scripts/bun-riscv64/build.sh and re-run for AOSP/chip evidence.`,
         );
         continue;
       }
@@ -863,12 +986,13 @@ export async function stageAndroidAgentRuntime({
     fs.mkdirSync(abiAssetsDir, { recursive: true });
     fs.mkdirSync(abiJniDir, { recursive: true });
 
-    const bunPath = await ensureBunBinary({
+    const bun = await ensureBunBinary({
       cacheDir: resolvedCacheDir,
       bunArch,
       bunChannel,
       log: tlog,
     });
+    const bunPath = bun.bunPath;
     const extractDir = await ensureAlpineApkExtracted({
       cacheDir: resolvedCacheDir,
       alpineArch,
@@ -988,6 +1112,27 @@ export async function stageAndroidAgentRuntime({
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
 
+    const stagedSource = {
+      bun: bun.source,
+      alpine: {
+        branch: ALPINE_BRANCH,
+        arch: alpineArch,
+        packages: APK_PACKAGES.map(({ pkg }) => pkg),
+      },
+    };
+    for (const [, dst] of [...sources, ...jniSources]) {
+      stagedFiles.push(
+        fileProvenanceEntry({
+          filePath: dst,
+          relativePath: path.relative(
+            path.join(androidDir, "app", "src", "main"),
+            dst,
+          ),
+          source: stagedSource,
+        }),
+      );
+    }
+
     stagedCount += abiChanges;
     tlog(
       `Staged ${sources.length} runtime file(s) for ABI ${androidAbi}` +
@@ -1061,6 +1206,19 @@ export async function stageAndroidAgentRuntime({
   );
   const bundleTarget = path.join(assetsAgentDir, "agent-bundle.js");
   if (copyIfDifferent(bundleSrc, bundleTarget)) stagedCount += 1;
+  stagedFiles.push(
+    fileProvenanceEntry({
+      filePath: bundleTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        bundleTarget,
+      ),
+      source: {
+        kind: "mobile-agent-bundle",
+        path: bundleSrc,
+      },
+    }),
+  );
 
   // PGlite runtime artifacts. They are optional because minimal mobile bundles
   // can run without embedded database extensions.
@@ -1077,15 +1235,87 @@ export async function stageAndroidAgentRuntime({
     if (!fs.existsSync(src)) continue;
     const dst = path.join(assetsAgentDir, name);
     if (copyIfDifferent(src, dst)) stagedCount += 1;
+    stagedFiles.push(
+      fileProvenanceEntry({
+        filePath: dst,
+        relativePath: path.relative(
+          path.join(androidDir, "app", "src", "main"),
+          dst,
+        ),
+        source: {
+          kind: "mobile-agent-bundle",
+          path: src,
+        },
+      }),
+    );
   }
 
   const launchTarget = path.join(assetsAgentDir, "launch.sh");
   if (writeIfChanged(launchTarget, LAUNCH_SCRIPT)) stagedCount += 1;
+  stagedFiles.push(
+    fileProvenanceEntry({
+      filePath: launchTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        launchTarget,
+      ),
+      source: { kind: "stage-android-agent", constant: "LAUNCH_SCRIPT" },
+    }),
+  );
   const llamaDiagnosticTarget = path.join(
     assetsAgentDir,
     "llama-kernel-diagnostic.mjs",
   );
   if (writeIfChanged(llamaDiagnosticTarget, LLAMA_KERNEL_DIAGNOSTIC_SCRIPT)) {
+    stagedCount += 1;
+  }
+  stagedFiles.push(
+    fileProvenanceEntry({
+      filePath: llamaDiagnosticTarget,
+      relativePath: path.relative(
+        path.join(androidDir, "app", "src", "main"),
+        llamaDiagnosticTarget,
+      ),
+      source: {
+        kind: "stage-android-agent",
+        constant: "LLAMA_KERNEL_DIAGNOSTIC_SCRIPT",
+      },
+    }),
+  );
+
+  const bunRiscv64VersionPath = path.resolve(
+    __dirname,
+    "..",
+    "bun-riscv64",
+    "bun-version.json",
+  );
+  const runtimeProvenanceTarget = path.join(
+    assetsAgentDir,
+    RUNTIME_PROVENANCE_FILENAME,
+  );
+  const runtimeProvenance = {
+    schema: "eliza.android_agent_runtime_provenance.v1",
+    generated_by: "packages/app-core/scripts/lib/stage-android-agent.mjs",
+    claim_boundary:
+      "apk_staged_runtime_file_hashes_only_not_android_boot_or_runtime_execution_evidence",
+    bun: {
+      version: BUN_VERSION,
+      channel: bunChannel,
+      cache_key: bunCacheKey(bunChannel),
+    },
+    alpine: {
+      branch: ALPINE_BRANCH,
+    },
+    riscv64_bun_artifact: riscv64Artifact,
+    riscv64_bun_build_contract: readJsonIfExists(bunRiscv64VersionPath),
+    files: stagedFiles.sort((a, b) => a.path.localeCompare(b.path)),
+  };
+  if (
+    writeIfChanged(
+      runtimeProvenanceTarget,
+      `${JSON.stringify(runtimeProvenance, null, 2)}\n`,
+    )
+  ) {
     stagedCount += 1;
   }
 
@@ -1094,7 +1324,11 @@ export async function stageAndroidAgentRuntime({
       `(${stagedCount} file change${stagedCount === 1 ? "" : "s"} this run).`,
   );
 
-  return { assetsAgentDir, stagedCount };
+  return {
+    assetsAgentDir,
+    stagedCount,
+    runtimeProvenancePath: runtimeProvenanceTarget,
+  };
 }
 
 export const __testables = {
@@ -1105,6 +1339,10 @@ export const __testables = {
   LAUNCH_SCRIPT,
   LLAMA_KERNEL_DIAGNOSTIC_SCRIPT,
   RISCV64_BUN_ARTIFACT_FILENAME,
+  RUNTIME_PROVENANCE_FILENAME,
   defaultRiscv64BunArtifactPath,
   riscv64BunFilePath,
+  riscv64BunArtifactSource,
+  riscv64BunSha256,
+  provenancePath,
 };

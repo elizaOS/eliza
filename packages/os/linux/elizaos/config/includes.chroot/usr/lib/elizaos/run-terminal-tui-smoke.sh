@@ -12,6 +12,14 @@ if [ -x /opt/elizaos/bin/elizaos ]; then
     exit 0
 fi
 
+if [ "$(dpkg --print-architecture 2>/dev/null || true)" = "riscv64" ] \
+    && command -v node >/dev/null 2>&1 \
+    && [ -f /opt/elizaos/app/agent-bundle.js ]; then
+    node /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"
+    echo "elizaos-tui-ready url=${URL}"
+    exit 0
+fi
+
 if [ -x /opt/elizaos/bin/bun ] && [ -f /opt/elizaos/app/agent-bundle.js ]; then
     /opt/elizaos/bin/bun /opt/elizaos/app/agent-bundle.js tui-smoke --api "${URL}"
     echo "elizaos-tui-ready url=${URL}"

@@ -1,6 +1,6 @@
 schema: eliza.pd_soc_hard_macro_signoff_gate.v1
 status: draft_local_evidence
-status_detail: second_rtl_frontend_blocker_found_in_bootrom_fix_proven_signoff_run_pending
+status_detail: bootrom_frontend_fix_present_in_source_signoff_replay_pending
 release_use: prohibited_until_external_review
 release_use_detail: prohibited_until_signoff_replay
 
@@ -16,14 +16,12 @@ release_blockers:
     e1_soc_top full LibreLane signoff has not reached final/. The original
     SystemVerilog module-header package-import frontend blocker is RESOLVED and
     was confirmed parsing clean in the actual flow (run RUN_2026-05-22_19-39-13),
-    but synthesis now stalls at the SAME step (05-yosys-jsonheader) on a NEW,
-    distinct frontend incompatibility: rtl/bootrom/e1_bootrom.sv uses the
-    SystemVerilog `string` data type (parameter type at line 24, initial-block
-    local at line 40) which the openlane2 image Yosys Verilog-2005 frontend
-    rejects. RTL is read-only for ws2; the exact two-line fix is identified and
-    PROVEN to let the full 20-file VERILOG_FILES list parse clean. See
-    second_rtl_frontend_blocker. The run is otherwise unblocked and the box is
-    busy with sibling-agent heavy-EDA jobs holding /tmp/eliza_heavy_eda.lock.
+    and the subsequent bootrom `string` frontend blocker is now fixed in the
+    current rtl/bootrom/e1_bootrom.sv source. The blocker is therefore no
+    longer "edit RTL"; it is "replay the CURRENT 20-file OpenLane release flow
+    to final/ and archive clean signoff artifacts." Until a fresh run reaches
+    final/ with DRC/LVS/STA/antenna evidence and external review, this manifest
+    remains prohibited for release use and grants no fabrication/tapeout credit.
   - downstream PPA labels must be treated as smoke provenance (macro_count=0,
     e1_pd_smoke_top) until a SoC-with-hard-macro run reaches final/, per
     label_provenance_warning below.
@@ -93,7 +91,7 @@ existing_routed_def_with_hard_macro:
     This older-RTL run cannot simply be resumed to final/ because OpenLane runs
     are not trivially resumable across a stopped flow without the original
     process. The correct path is the full replay below (resume_command) on the
-    CURRENT 20-file config once the bootrom string blocker is fixed in-tree;
+    CURRENT 20-file config now that the bootrom string blocker is fixed in-tree;
     that produces a final/ for the current SoC RTL AND a fresh routed DEF that
     matches the current netlist.
 
@@ -102,17 +100,13 @@ owner_workstream: ws2_full_soc_flow
 description: |
   The full e1_chip_top / e1_soc_top OpenLane flow that carries the prebuilt
   sky130 hard SRAM macro (sky130_sram_2kbyte_1rw1r_32x512_8, instantiated as
-  e1_weight_buffer_sram) cannot yet reach `final/` signoff on the CURRENT
-  20-file config because synthesis stalls at the Yosys jsonheader step. The
-  original package-import frontend blocker is RESOLVED and now parses clean; a
-  second, distinct RTL-frontend incompatibility surfaced in
-  rtl/bootrom/e1_bootrom.sv (SystemVerilog `string` data type — see
-  second_rtl_frontend_blocker). Both are RTL-frontend issues (read-only for
-  ws2), not PD-config blockers: the OpenLane config file list and hard-macro
-  wiring are correct and proven (lint clean; the full 20-file list parses clean
-  once the two bootrom edits are applied). A prior e1_chip_top run on the older
-  16-file RTL already routed the design WITH the hard macro to a 144 MB DEF at
-  0 detailed-route DRC violations — see existing_routed_def_with_hard_macro.
+  e1_weight_buffer_sram) still has no `final/` signoff on the CURRENT 20-file
+  config. The previously documented package-import and bootrom `string`
+  frontend blockers are resolved in source; this manifest now blocks on a fresh
+  release replay reaching final/ and producing reviewed DRC/LVS/STA/antenna
+  evidence. A prior e1_chip_top run on the older 16-file RTL already routed the
+  design WITH the hard macro to a 144 MB DEF at 0 detailed-route DRC violations,
+  but it is not current release evidence. See existing_routed_def_with_hard_macro.
 
 config_under_test: pd/openlane/config.sky130.json
 design_name: e1_chip_top
@@ -128,7 +122,7 @@ flow_progress:
   lint_verilator: pass
   checker_lint_errors: pass
   checker_lint_warnings: pass
-  yosys_jsonheader: fail_read_verilog_bootrom_sv_string_type
+  yosys_jsonheader: stale_run_failed_before_current_bootrom_fix
   furthest_run_dir: pd/openlane/runs/RUN_2026-05-22_19-39-13
   furthest_step: 05-yosys-jsonheader
   final_metrics_produced: false
@@ -138,10 +132,11 @@ flow_progress:
     flow: in run RUN_2026-05-22_19-39-13 the Yosys jsonheader step parsed
     e1_soc_pkg.sv, e1_chip_top.sv, e1_reset_sync.sv, e1_dbg_mmio_bridge.sv, and
     e1_soc_top.sv all clean ("Successfully finished Verilog frontend.") and only
-    then hit a NEW, distinct SystemVerilog-frontend incompatibility in
-    rtl/bootrom/e1_bootrom.sv. See second_rtl_frontend_blocker below. This new
-    blocker is also RTL-read-only for ws2; the exact two-line fix is given and
-    proven to let the entire 20-file config VERILOG_FILES list parse clean.
+    then hit a second SystemVerilog-frontend incompatibility in
+    rtl/bootrom/e1_bootrom.sv. That bootrom issue is now fixed in the current
+    source tree. This recorded run is stale for frontend status and cannot be
+    promoted; the remaining release action is a fresh current-config replay to
+    final/ plus clean signoff evidence capture.
 
 config_fixes_applied_this_workstream:
   description: |

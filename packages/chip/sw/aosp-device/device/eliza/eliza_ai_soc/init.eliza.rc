@@ -1,4 +1,4 @@
-# Init v0 scaffold for eliza_ai_soc (Android).
+# Init v0 package for eliza_ai_soc (Android).
 #
 # Backing contract: sw/platform/e1_platform_contract.json
 # Backing kernel node: /dev/e1-npu.

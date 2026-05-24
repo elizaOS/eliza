@@ -8,7 +8,7 @@
 
 case "$1" in
   start)
-    mode=$(cat /proc/cmdline | tr ' ' '\n' | sed -n 's/^e1smoke=//p')
+    mode=$(tr ' ' '\n' < /proc/cmdline | sed -n 's/^e1smoke=//p')
     [ -z "$mode" ] && mode=ml
     echo "E1_SMOKE_BEGIN mode=$mode"
     case "$mode" in
@@ -16,7 +16,12 @@ case "$1" in
         # Show the platform devices the smoke validates so the transcript
         # records that /dev/e1-npu and the eliza-e1-dma driver were present.
         ls -l /dev/e1-npu
-        ls /sys/bus/platform/drivers/ | grep -i eliza
+        for driver in /sys/bus/platform/drivers/*; do
+          name=${driver##*/}
+          case "$name" in
+            *[Ee][Ll][Ii][Zz][Aa]*) printf '%s\n' "$name" ;;
+          esac
+        done
         /usr/bin/e1-mmio-smoke
         rc=$?
         ;;

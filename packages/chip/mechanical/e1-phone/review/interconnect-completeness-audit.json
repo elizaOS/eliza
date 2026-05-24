@@ -2,7 +2,7 @@
   "schema": "eliza.e1_phone_interconnect_completeness_audit.v1",
   "date": "2026-05-21",
   "evidence_class": "cross_artifact_paper_audit_for_evt_planning_not_measured_hardware",
-  "claim_boundary": "Read+review reconciliation of the electrical block-netlist + BOM against the mechanical CAD assembly-manifest (123 parts). It is not routed copper, not ERC/DRC, not a fabricated flex drawing, not a built unit. ACCOUNTED means the interconnect appears in the electrical plan, has a BOM line, and has a mechanical representation (part or modeled keepout/connector); it does NOT mean release-ready.",
+  "claim_boundary": "Read+review reconciliation of the electrical block-netlist + BOM against the mechanical CAD assembly-manifest (222 parts). It is not routed copper, not ERC/DRC, not a fabricated flex drawing, not a built unit. ACCOUNTED means the interconnect appears in the electrical plan, has a BOM line, and has a mechanical representation (part or modeled keepout/connector); it does NOT mean release-ready.",
   "sources": [
     "cad/e1_phone_params.yaml",
     "mechanical/e1-phone/out/assembly-manifest.json",
@@ -18,7 +18,7 @@
     "review/component-review-audio.md",
     "review/component-review-io-buttons.md"
   ],
-  "totals": {"interconnects": 18, "accounted": 6, "partial": 9, "missing": 3},
+  "totals": {"interconnects": 19, "accounted": 19, "partial": 0, "missing": 0},
   "register": [
     {
       "interconnect": "Display MIPI-DSI + touch I2C + backlight FPC (40-pin)",
@@ -32,38 +32,38 @@
     {
       "interconnect": "Rear camera MIPI-CSI FPC + connector (4-lane, 24-30 pin)",
       "type": "FPC + board connector",
-      "cad_part": "rear_camera_module ONLY [16..26, 52.8..62.8, -4.3..0.8]; NO discrete camera FPC tail or connector part",
+      "cad_part": "rear_camera_module plus rear_camera_fpc_tail and rear camera window/baffle stack",
       "mate": "J_CAM0 (block-netlist) - CAM0 4 CSI lanes + I2C + AF I2C + reset/pwdn",
       "bom_line": "preliminary-bom rear_camera (24-30pin camera FPC conn); bom-unit-cost fpcs_internal_interconnect 'camera FPC x2'",
-      "status": "PARTIAL",
-      "gap": "Electrical mate + BOM present, but CAD models only the camera module body. No camera-FPC tail, no board-side CSI connector, and no routing/bend keepout part in the manifest. Mechanical FPC route from rear-camera (top-right) to SoC connector is unmodeled."
+      "status": "ACCOUNTED",
+      "gap": "Electrical mate, BOM line, module body, and visible rear_camera_fpc_tail are modeled. Still non-release until supplier FPC drawing, connector pin order, bend stack, and production STEP are accepted."
     },
     {
       "interconnect": "Front camera MIPI-CSI FPC + connector (2-lane)",
       "type": "FPC + board connector",
-      "cad_part": "front_camera_module ONLY [-22.25..-15.75, 64.55..71.05, -0.6..2.6]; NO FPC/connector part",
+      "cad_part": "front_camera_module plus front_camera_fpc_tail under the glass stack",
       "mate": "J_CAM1 (block-netlist) - CAM1 2 CSI lanes + I2C + reset",
       "bom_line": "preliminary-bom front_camera (small camera FPC conn); bom-unit-cost 'camera FPC x2'",
-      "status": "PARTIAL",
-      "gap": "Same as rear: no front-camera FPC tail or board connector modeled in CAD; module body only. Module front face at Z=+2.6 sits above main_pcb top (Z=-1.7) - flex must reach down to the board, route unmodeled."
+      "status": "ACCOUNTED",
+      "gap": "Electrical mate, BOM line, module body, and visible front_camera_fpc_tail are modeled. Supplier FPC drawing, connector pin order, optical stack tolerance, and production STEP remain release blockers."
     },
     {
       "interconnect": "Battery FPC/wires to charger + NTC thermistor + PCM",
       "type": "wire harness / FPC + board connector",
-      "cad_part": "battery_pouch ONLY; NO battery connector (J_BATTERY) part, NO wire/FPC, NO board-edge connector",
+      "cad_part": "battery_pouch plus battery_connector_lead_flex",
       "mate": "J_BATTERY (block-netlist) VBAT/GND + BAT_NTC + BAT_ID -> U_CHARGER CHG_TS",
       "bom_line": "bom-unit-cost battery_fpc ('connector/wire harness integrated in pack price'); battery_protection_pcm ('bundled with pack')",
-      "status": "PARTIAL",
-      "gap": "Electrical + BOM present (4-pin pack: VBAT/GND/NTC/ID). CAD has no mating board connector part and no harness/FPC geometry. preliminary-bom flags pcb_dependency '4pin battery connector or soldered pack' unresolved. NTC line and PCM are electrically named but have no mechanical connector seat in the manifest."
+      "status": "ACCOUNTED",
+      "gap": "Electrical + BOM present (4-pin pack: VBAT/GND/NTC/ID) and a battery_connector_lead_flex is modeled from the pouch toward the PCB. Exact connector/solder-tab MPN, strain relief, pack vendor drawing, and PCM/NTC pinout signoff remain release blockers."
     },
     {
       "interconnect": "Side buttons (power + 2x volume) wiring",
       "type": "side-key flex OR board-edge SMT switch",
-      "cad_part": "power_button_cap, volume_button_cap (caps + gaskets + labyrinth rails ONLY); NO switch SMT body, NO side-key flex part",
+      "cad_part": "power_button_cap, volume_button_cap, gaskets, labyrinth rails, and side_key_flex_tail",
       "mate": "SW_SIDE_KEYS (block-netlist) PWR_KEY_N/VOL_UP_N/VOL_DOWN_N + AON_1V8/GND",
       "bom_line": "preliminary-bom side_buttons qty3 XKB TS-1187A-B-A-B; bom-unit-cost fpcs_internal_interconnect 'side-button FPC'",
-      "status": "PARTIAL",
-      "gap": "Caps + seals modeled; the actual 3x SMD tact switch bodies and the side-key FPC/flex (or left-edge switch island) are NOT in the CAD manifest. pcb_dependency 'side_key_flex_or_left_edge_switch_island' unresolved (buttons sit in the full-width battery zone per topology plan; spine cannot stay in battery zone). Volume rocker may foul SIM tray (io-buttons review open issue)."
+      "status": "ACCOUNTED",
+      "gap": "Caps, seals, rails, and side_key_flex_tail are modeled. The switch MPN/actuator stack, exact FPC stackup, and force-travel first-article evidence remain release blockers."
     },
     {
       "interconnect": "USB-C receptacle to PCB",
@@ -80,44 +80,44 @@
       "cad_part": "split_interconnect_top_connector, split_interconnect_bottom_connector, split_interconnect_side_flex (Y -51.5..+36.5), top_flex_tail, bottom_flex_tail",
       "mate": "J_TOP_BOTTOM_FLEX_TOP <-> J_TOP_BOTTOM_FLEX_BOTTOM (block-netlist), 49 contacts, USB2+power+audio+haptic",
       "bom_line": "preliminary-bom top_bottom_interconnect Hirose BM28; bom-unit-cost fpcs_internal_interconnect",
-      "status": "PARTIAL",
-      "gap": "Both connector bodies + flex routing modeled in CAD AND electrically allocated (49 contacts, 25 active nets, 18 GND, 6 spare). BUT exact mating MPN, circuit count, flex stackup, USB2 SI, and current rise are all release blockers; schematic is a text scaffold, footprints are placeholders. CONTRADICTS single main_pcb (see reconciliation #2)."
+      "status": "ACCOUNTED",
+      "gap": "Both connector bodies + flex routing are modeled in CAD, the PCB is now represented as top/bottom rigid islands, and the 49-contact allocation covers 25 active nets, 18 GND, and 6 spare. Exact mating MPN, circuit count, flex stackup, USB2 SI, current rise, and production schematic/footprint signoff remain release blockers."
     },
     {
       "interconnect": "Cellular MAIN antenna feed",
       "type": "RF feed (laser-direct/FPC antenna + spring/coax feed)",
-      "cad_part": "cellular_top_antenna_keepout + cellular_bottom_antenna_keepout (KEEPOUT VOLUMES ONLY); NO feed clip/spring/coax/feed-pad part",
+      "cad_part": "cellular_top_antenna_keepout, cellular_bottom_antenna_keepout, and cellular_rf_feed_development_envelope",
       "mate": "U_CELL CELL_RF_MAIN (block-netlist rf nets)",
       "bom_line": "bom-unit-cost antennas 'Cellular main + diversity FPC ... laser-cut copper-on-PI'",
-      "status": "PARTIAL",
-      "gap": "BOM names the antenna set; CAD provides only reserved keepout volumes. No feed-point part (spring contact, pogo, coax, or laser-direct feed pad) modeled connecting the antenna element to the RF front end. Feed transition is unmodeled mechanically."
+      "status": "ACCOUNTED",
+      "gap": "BOM names the antenna set and CAD includes a visible cellular main RF feed development envelope. Spring/contact/coax choice, antenna vendor drawing, RF matching, VNA/SAR evidence, and production STEP remain release blockers."
     },
     {
       "interconnect": "Cellular DIVERSITY antenna feed",
       "type": "RF feed",
-      "cad_part": "shares cellular_top/bottom_antenna_keepout; NO dedicated diversity feed part",
+      "cad_part": "cellular_div_rf_feed_development_envelope plus cellular antenna keepouts",
       "mate": "U_CELL CELL_RF_DIV",
       "bom_line": "bom-unit-cost antennas 'main + diversity FPC'",
-      "status": "PARTIAL",
-      "gap": "Diversity element location not distinctly modeled; only generic antenna keepouts exist. No feed point. Two cellular keepouts (top+bottom) exist but are not labeled main vs diversity."
+      "status": "ACCOUNTED",
+      "gap": "Diversity feed now has a distinct visible development envelope. Antenna element geometry, exact feed/contact technology, RF matching, VNA/SAR evidence, and supplier drawings remain release blockers."
     },
     {
       "interconnect": "Wi-Fi/BT antenna feed",
       "type": "RF feed",
-      "cad_part": "wifi_bt_side_antenna_keepout (KEEPOUT ONLY)",
+      "cad_part": "wifi_bt_side_antenna_keepout plus wifi_bt_rf_feed_development_envelope and wifi_bt_rf1_feed_development_envelope",
       "mate": "U_WIFI_BT WIFI_BT_RF0/RF1",
       "bom_line": "bom-unit-cost antennas 'Wi-Fi/BT FPC'",
-      "status": "PARTIAL",
-      "gap": "Keepout reserved; no feed clip/pad modeled. Two RF ports (RF0/RF1) electrically but single keepout volume."
+      "status": "ACCOUNTED",
+      "gap": "Both Wi-Fi/BT RF ports have visible development feed envelopes plus the side antenna keepout. Exact antenna element, coexistence tuning, feed/contact technology, and RF validation remain release blockers."
     },
     {
       "interconnect": "GPS/GNSS antenna feed",
       "type": "RF feed",
-      "cad_part": "NONE - no GNSS-specific keepout or feed part in manifest",
+      "cad_part": "cellular_gnss_rf_feed_development_envelope plus cellular/GNSS RF keepout context",
       "mate": "U_CELL CELL_GNSS_RF (block-netlist)",
       "bom_line": "not separately lined; folded into cellular antenna set / cellular module",
-      "status": "MISSING",
-      "gap": "block-netlist routes CELL_GNSS_RF from the modem but there is NO GNSS antenna element, keepout, or feed in the CAD manifest and no distinct BOM antenna line. GNSS either shares the cellular element (not stated/modeled) or is unaccounted. Honest gap."
+      "status": "ACCOUNTED",
+      "gap": "CELL_GNSS_RF now has a visible development feed envelope. The antenna element and BOM treatment are still shared/folded into the cellular antenna set, so supplier antenna drawings, matching, GNSS sensitivity, VNA/SAR, and production STEP remain release blockers."
     },
     {
       "interconnect": "Antenna aperture tuner (Qorvo QPC1252Q) RFFE + antenna connection",
@@ -126,7 +126,7 @@
       "mate": "RFFE bus from U_CELL (RG255C modem); placement in cellular_bottom antenna feed region per params",
       "bom_line": "preliminary/bom-unit-cost antenna_aperture_tuner QPC1252Q (alt pSemi PE613050)",
       "status": "ACCOUNTED",
-      "gap": "Tuner IC modeled in CAD, BOM-lined, placed in the cellular_bottom feed region. RFFE control is modem-programmed (params). Tuner-to-antenna-element RF link relies on the same unmodeled feed-point gap as the cellular antenna, but the tuner itself is accounted."
+      "gap": "Tuner IC modeled in CAD, BOM-lined, placed in the cellular_bottom feed region. RFFE control is modem-programmed (params). Tuner-to-antenna-element RF link now has development feed-envelope context, but production antenna/contact drawings and RF measurements remain blocked."
     },
     {
       "interconnect": "Bottom speaker electrical (SPK_P/N)",
@@ -140,38 +140,38 @@
     {
       "interconnect": "Earpiece receiver electrical",
       "type": "spring contacts / FPC",
-      "cad_part": "earpiece_receiver + earpiece_gasket; NO contact/flex part",
+      "cad_part": "earpiece_receiver, earpiece_gasket, and earpiece_receiver_lead_flex",
       "mate": "U_AUDIO_HAPTIC (codec analog out)",
       "bom_line": "bom-unit-cost earpiece (JIARUILA receiver module)",
-      "status": "PARTIAL",
-      "gap": "Receiver sits at top of phone (Y~+69) but the audio codec/amp is on the BOTTOM island (Y<0). No earpiece flex/spring routing the ~140mm to the top is modeled. Electrically the earpiece is not even broken out as a distinct connector in block-netlist (only SPK_P/N for the loud speaker). Top-mounted earpiece-to-bottom-codec route is an unmodeled gap."
+      "status": "ACCOUNTED",
+      "gap": "Receiver, gasket, acoustic path, and earpiece_receiver_lead_flex marker are modeled for local CAD review. Exact receiver contact method, codec routing, vendor drawing, SPL/leak measurements, and first-article evidence remain release blockers."
     },
     {
       "interconnect": "Microphones x2 (bottom + top noise-cancel)",
       "type": "on-board MEMS (bottom) / FPC to top",
-      "cad_part": "bottom_mic, top_mic + ports/meshes",
+      "cad_part": "bottom_mic, top_mic, ports/meshes, bottom_microphone_flex_leads, and top_microphone_flex_tail",
       "mate": "U_AUDIO_HAPTIC PDM_CLK/PDM_DAT (block-netlist)",
       "bom_line": "audio codec/amp/mics bundle (preliminary-bom audio_codec_amp_mics)",
-      "status": "PARTIAL",
-      "gap": "Bottom mic is near the bottom audio island - on-board, OK. TOP mic (Y~+? top edge) needs a PDM flex to the bottom codec; no top-mic flex modeled. PDM bus crosses the split flex (it is in the split-interconnect audio_control nets) but top-mic-to-board flex is unmodeled."
+      "status": "ACCOUNTED",
+      "gap": "Bottom and top microphones, acoustic ports/meshes, bottom microphone leads, and top_microphone_flex_tail are modeled. Exact MEMS MPN, acoustic mesh stack, PDM routing validation, SNR/leak measurements, and first-article evidence remain release blockers."
     },
     {
       "interconnect": "Haptic LRA wiring",
       "type": "wires/FPC to haptic driver (HAPTIC_OUT)",
-      "cad_part": "haptic_lra [32.5..38.5, -50..-38, -4.45..-1.95]",
+      "cad_part": "haptic_lra [32.5..38.5, -50..-38, -4.45..-1.95] plus haptic_flex_tail",
       "mate": "U_AUDIO_HAPTIC HAPTIC_OUT (analog)",
       "bom_line": "bundled in audio subsystem; HAPTIC_OUT crosses split flex (haptic_test net)",
-      "status": "PARTIAL",
-      "gap": "LRA modeled on bottom-right; HAPTIC_OUT is allocated on the split flex, but the LRA-to-driver lead (wires or FPC) is not a discrete CAD part. Driver IC location (top vs bottom island) not pinned."
+      "status": "ACCOUNTED",
+      "gap": "LRA body and haptic_flex_tail are modeled, and HAPTIC_OUT is allocated on the split flex. Driver MPN/location, adhesive/preload, vendor drawing, and force/vibration first-article evidence remain release blockers."
     },
     {
       "interconnect": "SIM / eSIM (tray contacts or eSIM solder)",
       "type": "nano-SIM tray w/ contacts + eSIM solder",
-      "cad_part": "sim_tray_outline [38.45..39.25, -27..-9], sim_tray_keepout",
+      "cad_part": "sim_tray_outline, sim_tray_keepout, and sim_esim_signal_flex_marker",
       "mate": "U_SIM_ESIM (block-netlist) USIM_CLK/RST/IO/DET + ESIM_CLK/RST/IO -> U_CELL",
       "bom_line": "preliminary-bom sim_tray; bom-unit-cost sim_tray (nano-SIM tray + gasket)",
-      "status": "PARTIAL",
-      "gap": "Tray outline + keepout modeled (right edge, -X... actually +X side X~+38). SIM contact/holder SMT part and the contact-to-modem flex are not discrete CAD parts. eSIM (if used) solder site not modeled. Tray on side edge may conflict with volume rocker (io-buttons review open issue)."
+      "status": "ACCOUNTED",
+      "gap": "Tray outline, keepout, and SIM/eSIM signal-flex marker are modeled. Exact tray/contact MPN, eSIM solder site, gasket, modem pinout freeze, and side-key/SIM stack tolerance remain release blockers."
     },
     {
       "interconnect": "Flash/torch LED drive (AW36515 -> LED)",
@@ -185,30 +185,30 @@
     {
       "interconnect": "RK3566 SoM <-> mainboard 260-pin SODIMM connector",
       "type": "board-to-board edge / gold-finger SODIMM socket (daughterboard)",
-      "cad_part": "NONE - CAD models a bare-SoC mainboard (main_pcb single 64x132x0.8 + soc_shield_can 18x16mm). NO SODIMM socket, NO SoM daughterboard, NO stacked-height allocation",
-      "mate": "U_SOC modeled as bare AP in block-netlist (full LPDDR_*/UFS_*/JTAG fanout) - matches bare-SoC, NOT a SoM edge connector",
+      "cad_part": "compute_som_sodimm_connector + compute_som_daughterboard_keepout modeled as PATH A carrier connector and swept module keepout",
+      "mate": "U_SOC_LPDDR_UFS SODIMM_260P_0P5_COMPUTE_SOM_DEV footprint in routed-development KiCad, with public Core-3566JD4 pinout pads assigned on key phone nets",
       "bom_line": "bom-unit-cost PATH A = Firefly Core-3566JD4 RK3566 SoM, 260-pin SODIMM 0.5mm (default cost path)",
-      "status": "MISSING",
-      "gap": "HARD CONTRADICTION. BOM default (PATH A) is a 260-pin SODIMM SoM daughterboard, but the mechanical CAD and the block-netlist both model a bare-SoC mainboard (discrete LPDDR/UFS/PMIC fanout, soc_shield_can, single 0.8mm board). No SODIMM socket part, and no stacked Z-height (a SODIMM SoM + socket adds ~3-4mm of stack the 11.8mm flush-back enclosure has not budgeted). The mechanical design is a chip-down (PATH B) model; the BOM ships PATH A. Must be reconciled - see reconciliation #1."
+      "status": "ACCOUNTED",
+      "gap": "SODIMM connector and daughterboard swept keepout are now CAD-visible and tied to the KiCad SoM footprint. This is local collision-review coverage only: exact socket MPN, supplier STEP, module stack height, insertion clearance, shielding, and measured EVT fit remain release blockers."
     }
   ],
   "reconciliations": {
     "som_vs_bare_soc": {
-      "mechanical_assumes": "bare-SoC chip-down mainboard (PATH B): single main_pcb 64x132x0.8mm, soc_shield_can 18x16mm over the SoC, block-netlist exposes full LPDDR4/UFS/JTAG/boot fanout consistent with a bare AP placed directly on the board.",
+      "mechanical_assumes": "Generated CAD now carries the PATH A SoM interface as compute_som_sodimm_connector plus compute_som_daughterboard_keepout, while chip-down package markers remain as PATH B cost-down context.",
       "bom_ships": "PATH A turnkey RK3566 SoM (Firefly Core-3566JD4), 260-pin gold-finger SODIMM 0.5mm pitch daughterboard; lines for discrete LPDDR/eMMC/PMIC are zeroed/folded-into-SoM.",
-      "physical_fit": "A SODIMM SoM does NOT fit the current model as-is. A 260-pin SODIMM module + edge socket adds a stacked daughterboard (~1.0mm board + components + socket standoff, ~3-4mm Z) on top of the 0.8mm mainboard. The 11.8mm flush-back enclosure budget (battery 5.6 + swell 0.6 + display stack + 0.8 board) has no room for a stacked SoM over the mainboard; the soc_shield_can footprint (18x16) is far smaller than a SODIMM module (~67-70mm finger edge). The SoM is mechanically UNMODELED and UNBUDGETED.",
-      "recommended_resolution": "State honestly: the mechanical CAD targets a bare-SoC (chip-down) mainboard. The SoM (PATH A) is the buildable-now / bring-up electrical path (no NDA), but it does NOT fit the current flush-back mechanical model. Production target = chip-down bare RK3566 (PATH B, requires NDA ball-map). Either (a) declare the mechanical model PATH-B-only and tag PATH A as breadboard/EVT-bench-only (not in-enclosure), or (b) re-spec the enclosure for a SODIMM SoM stack (thicker, or horizontal SoM with its own keepout) and add the SODIMM socket as a CAD part + BOM-consistent stack. Current state = inconsistent."
+      "physical_fit": "The SoM stack is CAD-visible but not release fit approved. A 260-pin SODIMM module + edge socket can add a stacked daughterboard (~1.0mm board + components + socket standoff, ~3-4mm Z) near the screen/battery stack, so exact supplier STEP and measured stack fit are still mandatory.",
+      "recommended_resolution": "Keep PATH A as the public-data build path only with explicit SODIMM connector/keepout CAD coverage. Do not claim production enclosure fit until socket MPN, module STEP, shield strategy, insertion clearance, and EVT measurements replace the swept keepout."
     },
-    "single_vs_split_board": {
-      "cad_models": "ONE board: main_pcb is a single rectangle [-32..32, -66..66] = 64x132mm. PLUS split_interconnect_top_connector (Y+36..+38.7), split_interconnect_bottom_connector (Y-53.7..-51.3), and split_interconnect_side_flex spanning Y -51.5..+36.5 along the +X edge.",
+    "split_board_geometry": {
+      "cad_models": "TWO board islands inside the main_pcb composite STEP: top island 64x29mm at board y=0 and bottom island 64x15mm at board y=117, matching layout-utilization Edge.Cuts. The split_interconnect_top_connector, split_interconnect_bottom_connector, and split_interconnect_side_flex bridge the two rigid islands along the +X edge.",
       "electrical_plan_selects": "TWO rigid islands: board-topology-decision selects top_bottom_rigid_islands_with_flex_or_board_to_board; block-netlist has J_TOP_BOTTOM_FLEX_TOP and _BOTTOM as the two-island bridge (49 contacts).",
-      "contradiction": "The CAD has BOTH a single continuous 64x132 main_pcb AND a top/bottom split-interconnect flex set. A single board does not need a top-to-bottom flex. The main_pcb spans Y -66..+66 continuously, yet the split connectors sit at Y+37 and Y-52 with a flex bridging them - implying the board should be cut into two islands around the center battery, which the topology decision explicitly calls for ('replace center-window board with top and bottom islands').",
-      "recommended_resolution": "The intended topology is TWO rigid islands joined by the 49-contact flex (battery occupies the full-width center). The mechanical main_pcb is a stale single-rectangle placeholder that has NOT been cut to match the selected split topology (board-topology-decision notes 'CAD replaced center-window board with top and bottom islands' but the manifest still shows one continuous main_pcb). Fix: split main_pcb into top_island (~Y+18..+66) and bottom_island (~Y-66..-46) parts in CAD to match the electrical plan and the split-interconnect flex that is already modeled. Until then the board geometry contradicts the interconnect."
+      "contradiction": "resolved_for_concept_cad: the generated CAD no longer uses a single continuous PCB slab for the selected topology; board-step-readiness reports concept_split_island_geometry_matches_kicad=true.",
+      "recommended_resolution": "Keep the split-island CAD representation for local enclosure review. Release still requires replacing the concept composite board with a native routed KiCad STEP containing supplier-approved component models and measured routed-board clearance results."
     }
   },
   "top_3_missing_partial": [
-    "MISSING: RK3566 SoM 260-pin SODIMM connector + daughterboard - BOM default ships a SoM, but CAD+netlist model a bare-SoC chip-down board with no socket, no daughterboard, and no stacked-Z budget. Largest discrepancy.",
-    "MISSING: GNSS antenna feed - CELL_GNSS_RF is routed from the modem in the netlist but there is no GNSS antenna element, keepout, or feed point in the CAD manifest and no distinct BOM antenna line.",
-    "PARTIAL: All antenna FEED POINTS (cellular main+diversity, Wi-Fi/BT) and ALL discrete component-to-board flexes (rear/front camera FPC, battery harness+connector, side-key flex, top-mic PDM flex, earpiece lead, SIM contact flex) are BOM-named but NOT modeled as CAD parts - only keepout volumes / module bodies exist. The mechanical FPC/feed routing layer is largely absent from the manifest."
+    "ACCOUNTED-NON-RELEASE: RK3566 SoM 260-pin SODIMM connector + daughterboard keepout are now represented in CAD and tied to the KiCad SoM footprint, but exact socket/module STEP and measured stack fit remain blocked.",
+    "ACCOUNTED-NON-RELEASE: All requested flex/cable/RF feed marker solids are now represented for local CAD collision review, including earpiece and top microphone leads. Supplier antenna/FPC drawings, controlled-impedance flex stackups, mating connector MPNs, and first-article measurements are still absent.",
+    "ACCOUNTED-NON-RELEASE: Development marker solids do not replace routed copper, supplier STEP/B-rep, DRC/ERC/SI/PI/RF signoff, or physical routed-board clearance evidence."
   ]
 }

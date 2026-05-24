@@ -1,5 +1,5 @@
-# Cocotb Makefile — OpenSBI hands off to a real riscv64 Linux kernel on the
-# REAL CVA6 from REAL DRAM.
+# Cocotb Makefile — OpenSBI hands off to a riscv64 Linux kernel on the
+# CVA6 RTL through the DRAM-controller RTL model.
 #
 # Same DUT as Makefile.opensbi-cva6-boot (rtl/top/e1_cva6_dram_boot_top.sv) with
 # the vendored axi_riscv_atomics filter, but the preload image is the Linux boot

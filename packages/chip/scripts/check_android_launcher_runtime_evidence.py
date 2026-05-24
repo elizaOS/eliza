@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -21,8 +22,18 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "build/reports/android_launcher_runtime_evidence.json"
 DEFAULT_EVIDENCE = ROOT / "docs/evidence/android/eliza_launcher_runtime_evidence.json"
+ANDROID_APK_PAYLOAD_REPORT = ROOT / "build/reports/android_system_apk_payload.json"
 SCHEMA = "eliza.android_launcher_runtime_evidence.v1"
 CLAIM_BOUNDARY = "booted_android_launcher_agent_runtime_evidence_only"
+ANDROID_TARGET_PREFIXES = (
+    "/system/",
+    "/vendor/",
+    "/product/",
+    "/system_ext/",
+    "/odm/",
+    "/apex/",
+    "/data/",
+)
 
 
 @dataclass(frozen=True)
@@ -32,6 +43,7 @@ class Finding:
     message: str
     evidence: str
     next_step: str
+    blocker_dependency: str = "live_device_validation"
 
 
 def rel(path: Path) -> str:
@@ -45,6 +57,26 @@ def load_json(path: Path) -> dict[str, object]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def load_json_or_empty(path: Path) -> dict[str, Any]:
+    try:
+        value = load_json(path)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def expected_android_payload_package() -> str:
+    report = load_json_or_empty(ANDROID_APK_PAYLOAD_REPORT)
+    evidence = report.get("evidence")
+    if not isinstance(evidence, dict):
+        return "ai.elizaos.app"
+    for key in ("provenance_android_package", "vendor_ro_elizaos_home", "expected_package"):
+        value = evidence.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return "ai.elizaos.app"
+
+
 def nested(data: dict[str, object], *keys: str) -> object:
     current: object = data
     for key in keys:
@@ -56,6 +88,14 @@ def nested(data: dict[str, object], *keys: str) -> object:
 
 def text_contains(value: object, needle: str) -> bool:
     return isinstance(value, str) and needle in value
+
+
+def contains_host_local_symlink(value: object) -> bool:
+    text = json.dumps(value, sort_keys=True) if isinstance(value, (dict, list)) else str(value)
+    for target in re.findall(r"->\s+(/[^\s\"']+)", text):
+        if not target.startswith(ANDROID_TARGET_PREFIXES):
+            return True
+    return any(marker in text for marker in (" -> /home/", " -> /tmp/", " -> /Users/"))
 
 
 def add_if(
@@ -79,9 +119,26 @@ def existing_artifact(path_value: object) -> bool:
     return candidate.is_file()
 
 
+def is_host_local_absolute_artifact(path_value: object) -> bool:
+    if not isinstance(path_value, str) or not path_value:
+        return False
+    candidate = Path(path_value)
+    if not candidate.is_absolute():
+        return False
+    try:
+        candidate.relative_to(ROOT)
+        return False
+    except ValueError:
+        return True
+
+
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     evidence_path = Path(args.evidence) if args.evidence else DEFAULT_EVIDENCE
     findings: list[Finding] = []
+    expected_cpu_abi = getattr(args, "expected_cpu_abi", "riscv64")
+    expected_artifact_id = getattr(args, "expected_artifact_id", None)
+    expected_target_label = getattr(args, "expected_target_label", None)
+    expected_package = expected_android_payload_package()
     if not evidence_path.is_file():
         findings.append(
             Finding(
@@ -112,12 +169,23 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     service_component = nested(data, "app", "service_component")
     home_resolve = nested(data, "app", "home_resolve_activity")
     foreground = nested(data, "app", "foreground_activity")
+    system_apk_path = nested(data, "app", "system_apk_path")
+    system_apk_present = nested(data, "app", "system_apk_present")
+    system_apk_probe = nested(data, "app", "system_apk_probe")
+    permission_file_probes = nested(data, "app", "permission_file_probes")
+    permission_file_symlink_targets = nested(data, "app", "permission_file_symlink_targets")
     pm_path = nested(data, "app", "pm_path")
     service_pid = nested(data, "app", "service_pid")
     role_holders = nested(data, "app", "role_holders")
     health_url = nested(data, "agent", "health_url")
     logcat_path = nested(data, "logs", "logcat_path")
     transcript_path = nested(data, "artifacts", "transcript_path")
+    host_runtime = nested(data, "observations", "host_runtime")
+    aosp_artifact_inventory = (
+        nested(data, "observations", "host_runtime", "aosp_build_only", "artifact_inventory")
+        if isinstance(host_runtime, dict)
+        else None
+    )
 
     add_if(
         findings,
@@ -137,6 +205,22 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        data.get("status") != "PASS",
+        "launcher_evidence_status_not_pass",
+        "launcher runtime evidence top-level status is not PASS",
+        f"status={data.get('status')!r}",
+        "Regenerate launcher runtime evidence after every capture command succeeds.",
+    )
+    add_if(
+        findings,
+        data.get("result") != 0,
+        "launcher_evidence_result_nonzero",
+        "launcher runtime evidence command result is nonzero or missing",
+        f"result={data.get('result')!r}",
+        "Regenerate launcher runtime evidence and require the capture script to exit 0.",
+    )
+    add_if(
+        findings,
         nested(data, "device", "sys_boot_completed") != "1",
         "android_boot_not_completed",
         "evidence does not prove sys.boot_completed=1",
@@ -145,11 +229,31 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        nested(data, "device", "cpu_abi") != "riscv64",
-        "android_device_not_riscv64",
-        "evidence is not from a riscv64 Android target",
-        f"cpu_abi={nested(data, 'device', 'cpu_abi')!r}",
-        "Capture runtime evidence from the riscv64 Cuttlefish/chip-emulator target.",
+        nested(data, "device", "cpu_abi") != expected_cpu_abi,
+        "android_device_cpu_abi_mismatch",
+        "evidence is not from the expected Android CPU ABI target",
+        f"cpu_abi={nested(data, 'device', 'cpu_abi')!r} expected_cpu_abi={expected_cpu_abi!r}",
+        "Capture runtime evidence from the selected Android release target.",
+    )
+    add_if(
+        findings,
+        isinstance(expected_artifact_id, str)
+        and bool(expected_artifact_id)
+        and data.get("artifact_id") != expected_artifact_id,
+        "launcher_evidence_artifact_id_mismatch",
+        "launcher runtime evidence was not captured for the expected release artifact",
+        f"artifact_id={data.get('artifact_id')!r} expected_artifact_id={expected_artifact_id!r}",
+        "Regenerate target-specific runtime evidence with --artifact-id set to the matching release manifest artifact id.",
+    )
+    add_if(
+        findings,
+        isinstance(expected_target_label, str)
+        and bool(expected_target_label)
+        and data.get("target_label") != expected_target_label,
+        "launcher_evidence_target_label_mismatch",
+        "launcher runtime evidence was not captured for the expected Android target label",
+        f"target_label={data.get('target_label')!r} expected_target_label={expected_target_label!r}",
+        "Regenerate target-specific runtime evidence with --target-label set to the matching release target label.",
     )
     add_if(
         findings,
@@ -161,11 +265,40 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        isinstance(package_name, str) and bool(package_name) and package_name != expected_package,
+        "launcher_package_mismatch_with_staged_apk",
+        "launcher runtime evidence package does not match the staged Android system APK payload",
+        f"package_name={package_name!r} expected_package={expected_package!r} payload_report={rel(ANDROID_APK_PAYLOAD_REPORT)}",
+        "Regenerate launcher runtime evidence from the AOSP image built with the current staged APK payload.",
+    )
+    add_if(
+        findings,
+        system_apk_present != "present",
+        "launcher_system_privapp_apk_missing",
+        "Eliza launcher APK presence is not proven at the expected system priv-app path",
+        f"system_apk_path={system_apk_path!r} system_apk_probe={system_apk_probe!r}",
+        "Rebuild the AOSP product image so /system/priv-app/Eliza/Eliza.apk is present before PackageManager scan.",
+    )
+    permission_evidence = {
+        "permission_file_probes": permission_file_probes,
+        "permission_file_symlink_targets": permission_file_symlink_targets,
+    }
+    permission_probe_text = json.dumps(permission_evidence, sort_keys=True)
+    add_if(
+        findings,
+        contains_host_local_symlink(permission_evidence),
+        "launcher_permission_xml_host_symlink",
+        "Eliza permission XMLs in the Android image resolve to host-local symlinks",
+        permission_probe_text,
+        "Rebuild the AOSP product image after materializing vendor/eliza overlay files as regular files, not symlinks.",
+    )
+    add_if(
+        findings,
         not isinstance(pm_path, str) or not pm_path.startswith("package:"),
         "launcher_package_not_installed",
         "PackageManager path for the Eliza app is missing",
-        f"pm_path={pm_path!r}",
-        "Capture `adb shell pm path <package>` and require a package path.",
+        f"pm_path={pm_path!r} system_apk_present={system_apk_present!r}",
+        "If the APK is present on disk, inspect PackageManager parse/scan logs and APK manifest/signature; otherwise rebuild the system image with the launcher priv-app.",
     )
     if isinstance(package_name, str) and package_name:
         add_if(
@@ -251,11 +384,27 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
+        is_host_local_absolute_artifact(logcat_path),
+        "logcat_artifact_host_local_absolute_path",
+        "referenced logcat artifact uses a host-local absolute path outside this repository",
+        f"logcat_path={logcat_path!r}",
+        "Archive logcat under docs/evidence/android and reference it with a repo-relative path.",
+    )
+    add_if(
+        findings,
         not existing_artifact(logcat_path),
         "logcat_artifact_missing",
         "referenced logcat artifact is missing",
         f"logcat_path={logcat_path!r}",
         "Archive `adb logcat -d -b all` with the launcher runtime evidence.",
+    )
+    add_if(
+        findings,
+        is_host_local_absolute_artifact(transcript_path),
+        "launcher_transcript_host_local_absolute_path",
+        "referenced launcher runtime transcript uses a host-local absolute path outside this repository",
+        f"transcript_path={transcript_path!r}",
+        "Archive the capture transcript under docs/evidence/android and reference it with a repo-relative path.",
     )
     add_if(
         findings,
@@ -268,11 +417,25 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
 
     evidence = {
         "evidence_json": rel(evidence_path),
+        "artifact_id": data.get("artifact_id"),
+        "expected_artifact_id": expected_artifact_id,
+        "target_label": data.get("target_label"),
+        "expected_target_label": expected_target_label,
         "package_name": package_name,
+        "expected_package": expected_package,
+        "android_apk_payload_report": rel(ANDROID_APK_PAYLOAD_REPORT),
+        "system_apk_path": system_apk_path,
+        "system_apk_present": system_apk_present,
+        "permission_file_probes": permission_file_probes,
+        "permission_file_symlink_targets": permission_file_symlink_targets,
         "service_component": service_component,
         "health_url": health_url,
         "logcat_path": logcat_path,
         "transcript_path": transcript_path,
+        "runtime_adb_blocker": (
+            host_runtime.get("adb_blocker") if isinstance(host_runtime, dict) else None
+        ),
+        "aosp_build_artifact_inventory": aosp_artifact_inventory,
     }
     return payload(findings, evidence)
 
@@ -304,6 +467,19 @@ def print_summary(report: dict[str, Any]) -> None:
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence", help="launcher runtime evidence JSON")
+    parser.add_argument(
+        "--expected-cpu-abi",
+        default="riscv64",
+        help="expected ro.product.cpu.abi for the evidence target",
+    )
+    parser.add_argument(
+        "--expected-artifact-id",
+        help="expected release manifest artifact id for target-specific runtime evidence",
+    )
+    parser.add_argument(
+        "--expected-target-label",
+        help="expected target label recorded by the capture script, e.g. cuttlefish-x86_64, pixel-arm64, or chip-riscv64",
+    )
     parser.add_argument(
         "--report",
         default=str(REPORT),

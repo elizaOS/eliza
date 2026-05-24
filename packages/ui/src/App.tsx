@@ -51,6 +51,7 @@ import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanne
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { Header } from "./components/shell/Header";
 import { HomePill } from "./components/shell/HomePill";
+import { KioskViewCanvas } from "./components/shell/KioskViewCanvas";
 import {
   ShellControllerProvider,
   useShellControllerContext,
@@ -59,6 +60,7 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { useKioskViewSurfaces } from "./components/shell/useKioskViewSurfaces";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import { VoiceWaveform } from "./components/voice/VoiceWaveform";
 import { AppWorkspaceChrome } from "./components/workspace/AppWorkspaceChrome";
@@ -239,11 +241,13 @@ function useIsPopout(): boolean {
 /**
  * Shell mode for the Linux OS overlay windows. The OS launches the same app
  * bundle with `--shell-mode=chat-overlay` (a floating, transparent assistant
- * pill window) or `--shell-mode=launcher` (full home view). The mode is read
- * from the URL (`?shellMode=` / `?shell-mode=`) or the
+ * pill window), `--shell-mode=launcher` (full home view), or
+ * `--shell-mode=kiosk` (the locked appliance shell: a single fullscreen
+ * view-manager surface with an always-visible bottom chat pill). The mode is
+ * read from the URL (`?shellMode=` / `?shell-mode=`) or the
  * `ELIZAOS_SHELL_MODE` global the native shell may inject. Unset = full app.
  */
-type ShellMode = "chat-overlay" | "launcher" | "full";
+type ShellMode = "chat-overlay" | "launcher" | "kiosk" | "full";
 
 function readShellMode(): ShellMode {
   if (typeof window === "undefined") return "full";
@@ -257,6 +261,7 @@ function readShellMode(): ShellMode {
     "";
   if (raw === "chat-overlay") return "chat-overlay";
   if (raw === "launcher") return "launcher";
+  if (raw === "kiosk") return "kiosk";
   return "full";
 }
 
@@ -280,6 +285,29 @@ function ChatOverlayShell() {
       <div className="pointer-events-none mb-20 flex items-center justify-center">
         <VoiceWaveform mode={controller?.waveformMode ?? "idle"} size={160} />
       </div>
+      <ShellFoundationMount />
+    </div>
+  );
+}
+
+/**
+ * Locked appliance shell for the Linux OS kiosk window. The Electrobun bundle
+ * runs as the entire GUI: a single fullscreen, frameless, non-closable
+ * toplevel. This surface IS the view manager — agent-spawned dynamic views
+ * mount in-canvas (see `KioskViewCanvas`) and an always-visible bottom chat
+ * pill talks to the local OS agent. No header / tabs / desktop chrome.
+ */
+function KioskShell() {
+  const surfaces = useKioskViewSurfaces();
+  return (
+    <div
+      data-testid="kiosk-shell"
+      className="fixed inset-0 flex flex-col overflow-hidden bg-bg"
+    >
+      <div className="min-h-0 flex-1">
+        <KioskViewCanvas surfaces={surfaces} />
+      </div>
+      {/* Always-visible bottom chat pill + assistant overlay. */}
       <ShellFoundationMount />
     </div>
   );
@@ -917,18 +945,6 @@ function HeartbeatsShellContent(): ReactNode {
   );
 }
 
-function HomeShellContent(): ReactNode {
-  return (
-    <div key="home-shell" className={APP_SHELL_CLASS}>
-      <main className="flex flex-1 min-h-0 min-w-0 overflow-hidden">
-        <LazyViewBoundary>
-          <HomeView />
-        </LazyViewBoundary>
-      </main>
-    </div>
-  );
-}
-
 function SettingsShellContent(props: ShellContentProps): ReactNode {
   return (
     <div key={`settings-shell-${props.tab}`} className={APP_SHELL_CLASS}>
@@ -1048,7 +1064,16 @@ function DesktopWorkspaceShellContent(props: ShellContentProps): ReactNode {
   );
 }
 
+function HomeShellContent(): ReactNode {
+  return (
+    <div key="home-shell" className={`${APP_SHELL_CLASS} overflow-hidden`}>
+      <HomeView />
+    </div>
+  );
+}
+
 function ShellContent(props: ShellContentProps): ReactNode {
+  if (props.tab === "home") return <HomeShellContent />;
   const companionContent = CompanionShellContent(props);
   if (companionContent) return companionContent;
   if (props.tab === "home") return <HomeShellContent />;
@@ -1637,6 +1662,20 @@ export function App() {
       <BugReportProvider value={bugReport}>
         <ShellControllerProvider>
           <ChatOverlayShell />
+        </ShellControllerProvider>
+        <BugReportModal />
+      </BugReportProvider>
+    );
+  }
+
+  // OS kiosk window — the locked appliance shell: a fullscreen in-window
+  // view-manager canvas plus an always-visible bottom chat pill. No app
+  // chrome, no tabs. The pill is enabled here regardless of web/native gating.
+  if (shellMode === "kiosk") {
+    return (
+      <BugReportProvider value={bugReport}>
+        <ShellControllerProvider>
+          <KioskShell />
         </ShellControllerProvider>
         <BugReportModal />
       </BugReportProvider>

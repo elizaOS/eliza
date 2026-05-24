@@ -23,7 +23,7 @@ The lanes' "honest starting point" still holds; re-verified against the tree:
 | Surface | Claim in `00-overview` §1 | Verified | Evidence |
 |---|---|---|---|
 | CPU memory isolation | PMP/ePMP/Smmtt/H-ext all **disabled/absent** | **TRUE** | `grep -rin pmp rtl/` returns exactly one hit: a PMA comment at `rtl/top/e1_soc_integrated.sv:796`. CVA6 is `cv64a6_imafdc_sv39`, optional PMP not built. No `smmtt`/`hgatp`/`mtt`. |
-| IOMMU | identity passthrough in BARE, 6-entry allowlist, no PTW | **TRUE** | `rtl/iommu/e1_riscv_iommu.sv:359` `d_awaddr = u_awaddr` "BARE = identity; G-stage IOVA→PA is a follow-on walker"; allowlist at `allowed_dev[]` line 286. |
+| IOMMU | identity passthrough in BARE, 6-entry allowlist fallback, partial Sv39 first-stage KAT under identity G-stage; no full two-stage PTW | **TRUE** | `rtl/iommu/e1_riscv_iommu.sv` keeps BARE identity forwarding, adds a minimal DDT + Sv39 first-stage read walk for local KAT coverage, and still leaves non-identity G-stage/PDT/full Linux evidence blocked. |
 | Root of trust | XOR debug-auth, accept-all secure boot, unconditional ROM jump | **TRUE** | `e1_lifecycle.sv:68` `DEVICE_KEY_PLACEHOLDER = 32'hA5A5_5A5A`; `fw/pmc/src/secure_boot.c` `pmc_secure_boot_verify(){ return 0; }`; `fw/boot-rom/reset.S` `jr t1` to handoff word `0x0000_0000_8000_0000`. |
 | NPU | AXI-Lite single-master MMIO, no source-ID, bypasses IOMMU | **TRUE** | `rtl/npu/e1_npu.sv` exposes only `m_axil_*` (AXI-Lite), no DID/PASID side-channel. |
 | Consumer contract | `TeeEvidence` real, policy verifier real, checkers exist | **TRUE, with one correction (below)** | `packages/agent/src/services/tee-evidence.ts` + `tee-policy.ts`; `scripts/check_tee_attestation_evidence.py` present. |
@@ -262,9 +262,10 @@ no deterministic collision).
 
 ## 4. Secure I/O — the biggest rebuild, the headline confidential-AI feature
 
-The IOMMU is a verification front-stub (identity passthrough in BARE, 6-entry
-allowlist, no PTW, no IOPMP, no MSI translation; NPU + DMA bypass it entirely).
-Whole-OS confidential I/O is essentially greenfield here.
+The IOMMU is a partial verification scaffold (identity passthrough in BARE,
+6-entry allowlist fallback, local DDT + Sv39 first-stage KAT under identity
+G-stage; no full two-stage PTW, no IOPMP, no MSI translation; NPU + DMA bypass
+it entirely). Whole-OS confidential I/O is still largely greenfield here.
 
 ### 4.1 Work items (phased; all NEW RTL)
 
@@ -272,10 +273,10 @@ Whole-OS confidential I/O is essentially greenfield here.
 
 | ID | NEW file | Work | PM | Risk | Gate |
 |---|---|---|---|---|---|
-| IO1 | `rtl/iommu/e1_iommu_ptw.sv` | Two-stage PTW (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) over the downstream AXI4 master + small TLB; replaces identity passthrough; **BARE forbidden for any domain holding `private` pages** | 3.0 | high | `cocotb-iommu` (`two_stage_translation_via_3lvl_ddt`), `iommu-evidence-check` |
+| IO1 | `rtl/iommu/e1_iommu_ptw.sv` | Complete two-stage PTW (S1 Sv39/Sv48 + G-stage Sv39x4/Sv48x4) over the downstream AXI4 master + small TLB; extends the current local S1 Sv39 KAT path, replaces identity passthrough for protected domains, and forbids BARE for any domain holding `private` pages | 3.0 | high | `cocotb-iommu` (`two_stage_translation_via_3lvl_ddt`), `iommu-evidence-check` |
 | IO2 | `rtl/iommu/e1_iommu_ddt_pdt_walker.sv` | Memory-resident DDT (1/2/3-level) + PDT walk replacing the on-chip allowlist; **monitor-only DDTP programming** | 2.0 | high | `cocotb-iommu`, `iommu-evidence-check` |
 | IO3 | `rtl/iommu/e1_iopmp.sv` + `_pkg.sv` | RISC-V IOPMP: per-source-ID region table, R/W/X, lockable entries, default-deny; downstream of the IOMMU as redundant region enforcement | 2.5 | high | `cocotb-iopmp` + `iopmp-evidence-check` |
-| IO4 | `rtl/iommu/e1_iommu_cmd_engine.sv` | Command-queue execution: `IOTINVAL.VMA/GVMA`, `IODIR.INVAL_DDT/PDT`; drive `cmd_complete_irq` (today tied 0) | 1.0 | med | `cocotb-iommu` |
+| IO4 | `rtl/iommu/e1_iommu_cmd_engine.sv` | Command-queue execution beyond the local IOFENCE.C fetch/decode/completion path: `IOTINVAL.VMA/GVMA`, `IODIR.INVAL_DDT/PDT` side effects | 1.0 | med | `cocotb-iommu` |
 | IO5 | `rtl/iommu/e1_iommu_fq_dma.sv` | DMA fault records to the FQB ring over the downstream master (today FQ never reaches DRAM) | 0.5 | med | `cocotb-iommu` |
 
 **Phase B — source-ID coverage + revoke/scrub:**

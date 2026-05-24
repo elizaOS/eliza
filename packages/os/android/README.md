@@ -75,14 +75,15 @@ elizaOS boot splash:
   Eliza (`ai.elizaos.app`) is the only HOME app. The overlay sets
   `config_defaultHome` (alongside dialer/sms/assistant/browser) and
   `ro.elizaos.home`, and SetupWizard is disabled — no Google "Welcome" flow.
-- **Splash** — `scripts/generate-eliza-bootanimation.sh` renders the white
-  elizaOS logo on the elizaOS blue field into `vendor/eliza/bootanimation/`
-  from the canonical brand SVG (the same way the Linux fork renders its
-  branding), and `build-bootanimation.mjs` packs it into
-  `bootanimation.zip`. The rendered frames + zip are gitignored; run
-  `make bootanimation` (on a host with ImageMagick) before `make build` to
-  bake the splash in. If the zip is absent, `eliza_common.mk` guards the
-  copy and the image falls through to the stock AOSP animation.
+- **Splash** — `scripts/generate-eliza-bootanimation.mjs` renders the white
+  elizaOS logo on the elizaOS blue field (#0B35F1) into
+  `vendor/eliza/bootanimation/` from the canonical brand SVG using `sharp`
+  (the repo's image toolchain — no external ImageMagick needed), and
+  `build-bootanimation.mjs` packs it into the uncompressed `bootanimation.zip`
+  AOSP's bootanimation daemon requires. The rendered frames + zip are
+  gitignored; run `make bootanimation` before `make build` to bake the
+  splash in. If the zip is absent, `eliza_common.mk` guards the copy and
+  the image falls through to the stock AOSP animation.
 
 ## AOSP assistant/full-control contract
 

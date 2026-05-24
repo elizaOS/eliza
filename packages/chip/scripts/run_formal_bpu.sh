@@ -39,18 +39,17 @@ for cfg in verify/formal/bpu/*.sby; do
     if sby -d "$out_dir" "$cfg" >"$out_dir.log" 2>&1; then
         status="$(cat "$out_dir/status" 2>/dev/null || echo PASS)"
     else
-        # yosys 0.64 in oss-cad-suite has two known limitations that the BPU
-        # RTL hits:
-        #   1. struct typedefs in module port lists are not accepted
-        #   2. async-reset flops can be initialised by the BMC to arbitrary
-        #      values, so reset-driven invariants need additional initial-state
-        #      constraints in the property harness
-        # Both are detected explicitly so the evidence is traceable.
+        # Keep parser/tool blockers distinct from real property failures so
+        # the generated evidence does not blur missing infrastructure with
+        # RTL counterexamples.
         log="$out_dir.log"
         if grep -q "syntax error, unexpected TOK_ID" "$log" 2>/dev/null; then
             status="BLOCKED yosys-struct-typedef-port"
             overall=BLOCKED
         elif grep -q "BMC failed\|returned FAIL" "$log" 2>/dev/null; then
+            status="FAIL"
+            overall=FAIL
+        elif grep -q "async-reset" "$log" 2>/dev/null; then
             status="BLOCKED yosys-async-reset-initial-state"
             overall=BLOCKED
         else
@@ -67,10 +66,10 @@ cat >build/reports/bpu/formal-status.yaml <<EOF
 schema: eliza.bpu_formal_status.v1
 status: ${overall}
 reason: "SymbiYosys BMC properties"
-yosys_limitations:
-  - "yosys 0.64 (oss-cad-suite) does not accept struct typedefs in module port lists; ftq formal is blocked until a yosys release with Slang/SystemVerilog frontend support, or until the struct ports are flattened in production RTL"
-  - "yosys 0.64 async-reset domain handling allows the BMC initial state to choose arbitrary values for reset-driven flops; ras formal property harness needs additional initial-state constraints to model the asynchronous reset edge before deassertion"
-mitigation: "Functional correctness for the BPU tree is covered by verify/cocotb/bpu/ regression at 33/33 tests across 9 modules (bpu_top, ras, ftq, ftb, uftb, loop_predictor, tage, ittage, sc)."
+formal_notes:
+  - "FTQ formal uses the yosys-slang SystemVerilog frontend so struct typedef ports elaborate under the local oss-cad-suite checkout."
+  - "RAS formal elaborates with FORMAL monitor ports and proves the speculative pointer range invariant; cocotb covers the PMU underflow pulse and restore behavior."
+mitigation: "Functional correctness for the BPU tree is covered by make cocotb-bpu at 103/103 target-module tests across 10 modules (bpu_top, ras, ftq, ftb, uftb, loop_predictor, tage, ittage, sc, l1i_frontend)."
 properties:
 ${properties_yaml}
 EOF

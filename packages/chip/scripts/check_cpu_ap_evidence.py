@@ -311,6 +311,23 @@ def stale_manifest_bindings(evidence_manifest: dict) -> list[dict[str, object]]:
 
 
 def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str]) -> None:
+    findings = [
+        {
+            "code": "cpu_ap_stale_transcript",
+            "severity": "blocker",
+            "message": f"{item.get('transcript')}: manifest hash is stale",
+            "evidence": item.get("transcript"),
+        }
+        for item in stale
+    ] + [
+        {
+            "code": "cpu_ap_missing_transcript",
+            "severity": "blocker",
+            "message": f"{path}: required CPU/AP transcript is missing",
+            "evidence": path,
+        }
+        for path in absent
+    ]
     report = {
         "schema": "eliza.cpu_ap_stale_evidence.v1",
         "status": "blocked",
@@ -319,6 +336,12 @@ def write_stale_evidence_report(stale: list[dict[str, object]], absent: list[str
         ),
         "generated_utc": utc_now(),
         "generated_manifest": rel(GENERATED_MANIFEST),
+        "summary": {
+            "release_ready": False,
+            "stale_transcript_count": len(stale),
+            "missing_transcript_count": len(absent),
+        },
+        "findings": findings,
         "stale_transcripts": stale,
         "missing_transcripts": absent,
         "next_smallest_step": (

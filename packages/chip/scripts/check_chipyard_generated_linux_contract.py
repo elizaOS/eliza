@@ -110,6 +110,7 @@ def check_dts(failures: list[str], blockers: list[str]) -> None:
         "stdout-path",
         'stdout-path = "/soc/serial@10001000"',
         'bootargs = "earlycon=sbi console=ttySIF0,3686400n8"',
+        "current-speed = <3686400>",
         "rom@10000",
         "boot-address-reg@1000",
     ]
@@ -214,6 +215,7 @@ def check_embedded_bootrom_dtb(failures: list[str], blockers: list[str]) -> None
         b"stdout-path",
         b"/soc/serial@10001000",
         b"earlycon=sbi console=ttySIF0,3686400n8",
+        b"current-speed",
         b"sifive,uart0",
         b"eliza,e1-dma",
         b"eliza,e1-npu",

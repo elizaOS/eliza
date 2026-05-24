@@ -1,5 +1,12 @@
 // Privileged system import of the Eliza APK (built by `bun run build:android:system`).
 //
+// The imported APK is expected to carry the complete local-agent payload for
+// chip/AOSP bring-up, including `assets/agent/riscv64/*`, `lib/riscv64/*`,
+// `assets/agent/android-agent-runtime-provenance.json`, and
+// `META-INF/eliza/aosp-build-provenance.json`. The app-core staging path
+// fails closed unless the riscv64 Bun zip is supplied with a pinned SHA-256;
+// do not replace this APK with a thin/cloud build in product images.
+//
 // dex_preopt is disabled because:
 //   1. The APK is mostly a Capacitor WebView shell — dexpreopt buys
 //      basically nothing for its small Java surface.

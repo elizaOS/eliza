@@ -11,7 +11,7 @@ current_repo_status:
     - AXI-Lite SRAM-backed DRAM model response, alignment, and byte-strobe behavior.
     - CPU/DMA arbitration smoke behavior in the contract wrapper.
   unsupported_claims:
-    - Real DRAM controller or LPDDR/DDR PHY behavior.
+    - Phone-class DRAM controller integration or LPDDR/DDR PHY behavior; controller RTL simulation alone is not UMA/LPDDR release evidence.
     - Hardware cache coherency or coherent accelerator ports.
     - IOMMU/SMMU translation, page faults, or DMA address isolation.
     - Memory QoS, sustained bandwidth, latency, or display underflow guarantees.

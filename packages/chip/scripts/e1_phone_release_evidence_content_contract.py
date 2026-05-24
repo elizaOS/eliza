@@ -31,6 +31,15 @@ DEFAULT_PRODUCTION_PRESENCE = (
 DEFAULT_MECHANICAL_CAD = (
     ROOT / "mechanical/e1-phone/review/mechanical-cad-evidence-inventory-2026-05-22.yaml"
 )
+DEFAULT_KICAD_CAD_TRACEABILITY = (
+    BOARD_ROOT / "kicad-cad-traceability-matrix-2026-05-22.yaml"
+)
+DEFAULT_CANDIDATE_MANIFEST = (
+    BOARD_ROOT / "production/routed-output-candidate-manifest-2026-05-22.yaml"
+)
+DEFAULT_FACTORY_CANDIDATE_MANIFEST = (
+    BOARD_ROOT / "production/factory-output-candidate-manifest-2026-05-22.yaml"
+)
 DEFAULT_REPORT = (
     BOARD_ROOT / "production/readiness/release-evidence-content-contract-2026-05-22.yaml"
 )
@@ -49,7 +58,8 @@ def load_yaml(path: Path) -> dict[str, Any]:
 
 
 def rel(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+    candidate = path if path.is_absolute() else ROOT / path
+    return candidate.resolve().relative_to(ROOT).as_posix()
 
 
 def resolve_repo_path(path_text: str | None) -> Path | None:
@@ -75,6 +85,71 @@ def artifact_kind(path: Path | None) -> str:
 
 def sorted_unique(items: list[str]) -> list[str]:
     return sorted(dict.fromkeys(items))
+
+
+def candidate_paths(candidate_manifest: dict[str, Any]) -> set[str]:
+    paths: set[str] = set()
+    for artifact in candidate_manifest.get("artifacts", []):
+        if not isinstance(artifact, dict):
+            continue
+        path = artifact.get("path")
+        if isinstance(path, str) and path:
+            paths.add(path)
+        metadata = artifact.get("metadata")
+        if isinstance(metadata, str) and metadata:
+            paths.add(metadata)
+    return paths
+
+
+def candidate_artifact_paths(candidate_manifest: dict[str, Any]) -> set[str]:
+    paths: set[str] = set()
+    for artifact in candidate_manifest.get("artifacts", []):
+        if not isinstance(artifact, dict):
+            continue
+        path = artifact.get("path")
+        if isinstance(path, str) and path:
+            paths.add(path)
+    return paths
+
+
+def combined_candidate_manifest(paths: list[Path]) -> dict[str, Any]:
+    artifacts: list[dict[str, Any]] = []
+    manifests: list[str] = []
+    for path in paths:
+        if not path.is_file():
+            continue
+        manifest = load_yaml(path)
+        manifests.append(rel(path))
+        for artifact in manifest.get("artifacts", []):
+            if isinstance(artifact, dict):
+                artifacts.append(artifact)
+    return {
+        "schema": "eliza.e1_phone_combined_local_candidate_manifest.v1",
+        "manifests": manifests,
+        "artifacts": artifacts,
+    }
+
+
+def cad_connection_assembly_summary(candidate_manifest: dict[str, Any]) -> dict[str, Any]:
+    coverage = candidate_manifest.get("cad_connection_coverage", {})
+    if not isinstance(coverage, dict):
+        coverage = {}
+    return {
+        "assembly_manifest": coverage.get("assembly_manifest"),
+        "assembly_manifest_part_count": coverage.get("assembly_manifest_part_count"),
+        "assembly_manifest_connection_terminal_marker_count": coverage.get(
+            "assembly_manifest_connection_terminal_marker_count"
+        ),
+        "assembly_manifest_connection_solid_step_part_count": coverage.get(
+            "assembly_manifest_connection_solid_step_part_count"
+        ),
+        "assembly_manifest_missing_connection_solid_step_part_count": coverage.get(
+            "assembly_manifest_missing_connection_solid_step_part_count"
+        ),
+        "assembly_manifest_missing_connection_solid_step_part_names": coverage.get(
+            "assembly_manifest_missing_connection_solid_step_part_names"
+        ),
+    }
 
 
 def supplier_evidence_classes(matrix: dict[str, Any]) -> list[str]:
@@ -161,6 +236,7 @@ def artifact_content_requirements(
     first_article: dict[str, Any],
     production_presence: dict[str, Any],
     mechanical_cad: dict[str, Any],
+    candidate_manifest: dict[str, Any],
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     supplier_source = rel(DEFAULT_SUPPLIER_MATRIX)
@@ -257,7 +333,53 @@ def artifact_content_requirements(
                 source_status=str(evidence.get("status", "blocked_or_missing")),
             )
         )
-    return sorted(rows, key=lambda item: (item["category"], item["evidence_id"], str(item["path"])))
+    blocked_candidate_paths = candidate_paths(candidate_manifest)
+    release_rows = [
+        row for row in rows if not row.get("path") or row["path"] not in blocked_candidate_paths
+    ]
+    return sorted(
+        release_rows,
+        key=lambda item: (item["category"], item["evidence_id"], str(item["path"])),
+    )
+
+
+def candidate_content_requirements(
+    rows: list[dict[str, Any]],
+    candidate_manifest: dict[str, Any],
+) -> list[dict[str, Any]]:
+    blocked_candidate_paths = candidate_paths(candidate_manifest)
+    candidate_rows = [
+        {
+            **row,
+            "artifact_origin": "local_generated_candidate",
+            "approval_eligible": False,
+            "release_credit": False,
+            "status": "blocked_local_candidate_not_release_evidence",
+        }
+        for row in rows
+        if row.get("path") in blocked_candidate_paths
+    ]
+    return sorted(
+        candidate_rows,
+        key=lambda item: (item["category"], item["evidence_id"], str(item["path"])),
+    )
+
+
+def all_content_requirement_rows(
+    supplier: dict[str, Any],
+    routed: dict[str, Any],
+    first_article: dict[str, Any],
+    production_presence: dict[str, Any],
+    mechanical_cad: dict[str, Any],
+) -> list[dict[str, Any]]:
+    return artifact_content_requirements(
+        supplier,
+        routed,
+        first_article,
+        production_presence,
+        mechanical_cad,
+        {"artifacts": []},
+    )
 
 
 def build_contract_rows(
@@ -266,7 +388,17 @@ def build_contract_rows(
     first_article: dict[str, Any],
     production_presence: dict[str, Any],
     mechanical_cad: dict[str, Any],
+    kicad_cad_traceability: dict[str, Any],
+    routed_candidate_manifest: dict[str, Any],
+    factory_candidate_manifest: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    traceability_summary = kicad_cad_traceability["summary"]
+    routed_cad_connection_assembly = cad_connection_assembly_summary(
+        routed_candidate_manifest
+    )
+    factory_cad_connection_assembly = cad_connection_assembly_summary(
+        factory_candidate_manifest
+    )
     common_traceability = [
         "artifact_id",
         "source_requirement_id",
@@ -302,7 +434,7 @@ def build_contract_rows(
             ],
             "placeholder_rejection_signals": [
                 "template_empty_not_executed",
-                "TBD",
+                "unresolved_to_be_defined_field",
                 "unsigned",
                 "missing supplier revision",
                 "presence-only",
@@ -348,6 +480,27 @@ def build_contract_rows(
             "covered_required_output_path_count": production_presence["summary"][
                 "required_output_path_count"
             ],
+            "factory_candidate_cad_connection_assembly_manifest": (
+                factory_cad_connection_assembly["assembly_manifest"]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_part_count": (
+                factory_cad_connection_assembly["assembly_manifest_part_count"]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_terminal_marker_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_connection_terminal_marker_count"
+                ]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_solid_step_part_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_connection_solid_step_part_count"
+                ]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_missing_solid_step_part_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_missing_connection_solid_step_part_count"
+                ]
+            ),
             "required_content_fields": common_traceability
             + [
                 "release_package_revision",
@@ -368,6 +521,100 @@ def build_contract_rows(
                 "template",
                 "presence-only",
                 "unvalidated",
+            ],
+            "release_allowed_by_presence_only": False,
+        },
+        {
+            "id": "local_kicad_cad_traceability",
+            "source_report": rel(DEFAULT_KICAD_CAD_TRACEABILITY),
+            "status": kicad_cad_traceability["status"],
+            "claim_boundary": kicad_cad_traceability["claim_boundary"],
+            "footprint_library_count": traceability_summary["footprint_library_count"],
+            "pad_audit_record_count": traceability_summary["pad_audit_record_count"],
+            "board_bound_instance_count": traceability_summary["board_bound_instance_count"],
+            "step_footprint_instance_count": traceability_summary[
+                "step_footprint_instance_count"
+            ],
+            "captured_pinout_file_count": traceability_summary[
+                "captured_pinout_file_count"
+            ],
+            "captured_pinout_declared_pin_count_total": traceability_summary[
+                "captured_pinout_declared_pin_count_total"
+            ],
+            "captured_pinout_public_source_count": traceability_summary[
+                "captured_pinout_public_source_count"
+            ],
+            "cad_connection_count": traceability_summary["cad_connection_count"],
+            "cad_connection_terminal_marker_count": traceability_summary[
+                "cad_connection_terminal_marker_count"
+            ],
+            "cad_connection_solid_step_part_count": traceability_summary[
+                "cad_connection_solid_step_part_count"
+            ],
+            "cad_connection_solid_step_part_set_count": traceability_summary[
+                "cad_connection_solid_step_part_set_count"
+            ],
+            "cad_connection_assembly_manifest": (
+                routed_cad_connection_assembly["assembly_manifest"]
+            ),
+            "cad_connection_assembly_manifest_part_count": (
+                routed_cad_connection_assembly["assembly_manifest_part_count"]
+            ),
+            "cad_connection_assembly_manifest_terminal_marker_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_connection_terminal_marker_count"
+                ]
+            ),
+            "cad_connection_assembly_manifest_solid_step_part_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_connection_solid_step_part_count"
+                ]
+            ),
+            "cad_connection_assembly_manifest_missing_solid_step_part_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_missing_connection_solid_step_part_count"
+                ]
+            ),
+            "cad_connection_assembly_manifest_missing_solid_step_part_names": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_missing_connection_solid_step_part_names"
+                ]
+            ),
+            "incomplete_footprint_count": traceability_summary[
+                "incomplete_footprint_count"
+            ],
+            "incomplete_cad_connection_count": traceability_summary[
+                "incomplete_cad_connection_count"
+            ],
+            "missing_captured_pinout_file_count": traceability_summary[
+                "missing_captured_pinout_file_count"
+            ],
+            "incomplete_captured_pinout_detail_count": traceability_summary[
+                "incomplete_captured_pinout_detail_count"
+            ],
+            "release_credit": False,
+            "required_content_fields": common_traceability
+            + [
+                "captured_supplier_pinout_file",
+                "footprint_pad_count",
+                "board_instance_reference",
+                "assigned_pad_net_count",
+                "step_envelope_reference",
+                "cad_connection_marker_reference",
+                "cad_connection_assembly_manifest",
+                "release_blocker_preserved",
+            ],
+            "acceptance_checks": [
+                "all development footprint patterns trace through pad/pin audit records, board-bound instances, and STEP visual envelopes",
+                "all captured pinout files referenced by the local matrix are present",
+                "all CAD connection markers pass the local connection coverage audit",
+                "the matrix preserves release_credit=false for local development patterns and generated CAD markers",
+            ],
+            "placeholder_rejection_signals": [
+                "incomplete_footprints",
+                "incomplete_cad_connections",
+                "missing_captured_pinout_file",
+                "release_credit_true_on_local_development_artifact",
             ],
             "release_allowed_by_presence_only": False,
         },
@@ -449,6 +696,9 @@ def build_report(
     first_article_path: Path,
     production_presence_path: Path,
     mechanical_cad_path: Path,
+    kicad_cad_traceability_path: Path,
+    candidate_manifest_path: Path,
+    factory_candidate_manifest_path: Path,
     report_path: Path,
 ) -> dict[str, Any]:
     supplier = load_yaml(supplier_path)
@@ -456,13 +706,40 @@ def build_report(
     first_article = load_yaml(first_article_path)
     production_presence = load_yaml(production_presence_path)
     mechanical_cad = load_yaml(mechanical_cad_path)
+    kicad_cad_traceability = load_yaml(kicad_cad_traceability_path)
+    routed_candidate_manifest = load_yaml(candidate_manifest_path)
+    factory_candidate_manifest = load_yaml(factory_candidate_manifest_path)
+    candidate_manifest = combined_candidate_manifest(
+        [candidate_manifest_path, factory_candidate_manifest_path]
+    )
     contracts = build_contract_rows(
+        supplier,
+        routed,
+        first_article,
+        production_presence,
+        mechanical_cad,
+        kicad_cad_traceability,
+        routed_candidate_manifest,
+        factory_candidate_manifest,
+    )
+    all_rows = all_content_requirement_rows(
         supplier, routed, first_article, production_presence, mechanical_cad
     )
-    artifact_rows = artifact_content_requirements(
-        supplier, routed, first_article, production_presence, mechanical_cad
-    )
+    artifact_rows = [
+        row for row in all_rows if row.get("path") not in candidate_paths(candidate_manifest)
+    ]
+    candidate_rows = candidate_content_requirements(all_rows, candidate_manifest)
+    candidate_manifest_paths = candidate_artifact_paths(candidate_manifest)
+    all_requirement_paths = {str(row["path"]) for row in all_rows if row.get("path")}
+    matched_candidate_manifest_paths = sorted(candidate_manifest_paths & all_requirement_paths)
+    unmatched_candidate_manifest_paths = sorted(candidate_manifest_paths - all_requirement_paths)
     template_rows = [row for row in artifact_rows if row["template_only"]]
+    routed_cad_connection_assembly = cad_connection_assembly_summary(
+        routed_candidate_manifest
+    )
+    factory_cad_connection_assembly = cad_connection_assembly_summary(
+        factory_candidate_manifest
+    )
     return {
         "schema": "eliza.e1_phone_release_evidence_content_contract.v1",
         "status": "blocked_fail_closed_content_contract_only",
@@ -480,6 +757,10 @@ def build_report(
             "first_article_bench_acceptance_matrix": rel(first_article_path),
             "production_factory_required_output_presence_inventory": rel(production_presence_path),
             "mechanical_cad_evidence_inventory": rel(mechanical_cad_path),
+            "kicad_cad_traceability_matrix": rel(kicad_cad_traceability_path),
+            "local_candidate_manifests": candidate_manifest["manifests"],
+            "local_candidate_manifest": rel(candidate_manifest_path),
+            "factory_candidate_manifest": rel(factory_candidate_manifest_path),
             "report_path": rel(report_path),
         },
         "summary": {
@@ -494,10 +775,93 @@ def build_report(
             "first_article_required_non_template_row_count": first_article["summary"][
                 "required_non_template_row_count"
             ],
+            "mechanical_missing_release_ready_evidence_count": mechanical_cad[
+                "release_readiness"
+            ]["missing_required_evidence_count"],
+            "local_kicad_cad_traceability_status": kicad_cad_traceability["status"],
+            "local_kicad_cad_footprint_library_count": kicad_cad_traceability[
+                "summary"
+            ]["footprint_library_count"],
+            "local_kicad_cad_board_bound_instance_count": kicad_cad_traceability[
+                "summary"
+            ]["board_bound_instance_count"],
+            "local_kicad_cad_step_footprint_instance_count": kicad_cad_traceability[
+                "summary"
+            ]["step_footprint_instance_count"],
+            "local_kicad_cad_connection_count": kicad_cad_traceability["summary"][
+                "cad_connection_count"
+            ],
+            "local_kicad_cad_connection_terminal_marker_count": kicad_cad_traceability[
+                "summary"
+            ]["cad_connection_terminal_marker_count"],
+            "local_kicad_cad_connection_solid_step_part_count": kicad_cad_traceability[
+                "summary"
+            ]["cad_connection_solid_step_part_count"],
+            "local_kicad_cad_connection_solid_step_part_set_count": (
+                kicad_cad_traceability["summary"]["cad_connection_solid_step_part_set_count"]
+            ),
+            "local_kicad_cad_connection_assembly_manifest_part_count": (
+                routed_cad_connection_assembly["assembly_manifest_part_count"]
+            ),
+            "local_kicad_cad_connection_assembly_manifest_terminal_marker_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_connection_terminal_marker_count"
+                ]
+            ),
+            "local_kicad_cad_connection_assembly_manifest_solid_step_part_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_connection_solid_step_part_count"
+                ]
+            ),
+            "local_kicad_cad_connection_assembly_manifest_missing_solid_step_part_count": (
+                routed_cad_connection_assembly[
+                    "assembly_manifest_missing_connection_solid_step_part_count"
+                ]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_part_count": (
+                factory_cad_connection_assembly["assembly_manifest_part_count"]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_terminal_marker_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_connection_terminal_marker_count"
+                ]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_solid_step_part_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_connection_solid_step_part_count"
+                ]
+            ),
+            "factory_candidate_cad_connection_assembly_manifest_missing_solid_step_part_count": (
+                factory_cad_connection_assembly[
+                    "assembly_manifest_missing_connection_solid_step_part_count"
+                ]
+            ),
+            "local_kicad_cad_declared_pin_count_total": kicad_cad_traceability[
+                "summary"
+            ]["captured_pinout_declared_pin_count_total"],
+            "local_kicad_cad_pinout_public_source_count": kicad_cad_traceability[
+                "summary"
+            ]["captured_pinout_public_source_count"],
+            "local_kicad_cad_incomplete_footprint_count": kicad_cad_traceability[
+                "summary"
+            ]["incomplete_footprint_count"],
+            "local_kicad_cad_incomplete_connection_count": kicad_cad_traceability[
+                "summary"
+            ]["incomplete_cad_connection_count"],
+            "local_kicad_cad_incomplete_pinout_detail_count": kicad_cad_traceability[
+                "summary"
+            ]["incomplete_captured_pinout_detail_count"],
+            "local_kicad_cad_release_credit": bool(
+                kicad_cad_traceability["summary"].get("release_credit")
+            ),
             "mechanical_missing_release_ready_evidence_count": mechanical_cad["release_readiness"][
                 "missing_required_evidence_count"
             ],
             "artifact_content_requirement_count": len(artifact_rows),
+            "local_candidate_content_requirement_count": len(candidate_rows),
+            "local_candidate_manifest_artifact_path_count": len(candidate_manifest_paths),
+            "local_candidate_matched_artifact_path_count": len(matched_candidate_manifest_paths),
+            "local_candidate_unmatched_artifact_path_count": len(unmatched_candidate_manifest_paths),
             "template_content_requirement_count": len(template_rows),
             "validated_artifact_content_requirement_count": 0,
             "content_contract_only": True,
@@ -517,13 +881,22 @@ def build_report(
             "fabrication_release_allowed": False,
             "enclosure_release_allowed": False,
             "end_to_end_phone_release_allowed": False,
+            "local_generated_candidates_are_approval_eligible": False,
+            "local_kicad_cad_traceability_is_release_evidence": False,
         },
         "content_contracts": contracts,
         "artifact_content_requirements": artifact_rows,
+        "local_candidate_content_requirements": candidate_rows,
+        "local_candidate_manifest_coverage": {
+            "artifact_paths": sorted(candidate_manifest_paths),
+            "matched_artifact_paths": matched_candidate_manifest_paths,
+            "unmatched_artifact_paths": unmatched_candidate_manifest_paths,
+        },
         "next_unblock_actions": [
             "Collect the missing supplier return packs and bind every returned file to supplier revision and owner disposition.",
             "Route the KiCad board, close ERC/DRC/SI/PI/RF/fab outputs, and bind all reports to the routed PCB hash.",
             "Generate production/factory outputs from the routed board revision, including fixture, limits, calibration, and traceability records.",
+            "Replace local KiCad/CAD traceability with supplier-approved land patterns, package STEP, pinout signoff, and production-routed board STEP evidence.",
             "Execute first-article bench logs and traveler on serialized hardware with signed pass/fail disposition.",
             "Replace concept/demo mechanical CAD evidence with routed-board STEP, measured clearance, supplier geometry, and physical process validation.",
         ],
@@ -549,6 +922,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--first-article-matrix", type=Path, default=DEFAULT_FIRST_ARTICLE_MATRIX)
     parser.add_argument("--production-presence", type=Path, default=DEFAULT_PRODUCTION_PRESENCE)
     parser.add_argument("--mechanical-cad", type=Path, default=DEFAULT_MECHANICAL_CAD)
+    parser.add_argument(
+        "--kicad-cad-traceability",
+        type=Path,
+        default=DEFAULT_KICAD_CAD_TRACEABILITY,
+    )
+    parser.add_argument("--candidate-manifest", type=Path, default=DEFAULT_CANDIDATE_MANIFEST)
+    parser.add_argument(
+        "--factory-candidate-manifest",
+        type=Path,
+        default=DEFAULT_FACTORY_CANDIDATE_MANIFEST,
+    )
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     parser.add_argument("--write-report", action="store_true")
     return parser.parse_args()
@@ -562,6 +946,9 @@ def main() -> int:
         args.first_article_matrix,
         args.production_presence,
         args.mechanical_cad,
+        args.kicad_cad_traceability,
+        args.candidate_manifest,
+        args.factory_candidate_manifest,
         args.report,
     )
     output = yaml.dump(report, Dumper=NoAliasDumper, sort_keys=False, width=100)

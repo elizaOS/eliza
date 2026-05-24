@@ -156,8 +156,11 @@ for entry in ${TESTS}; do
     ( cd "${RUNDIR}" && timeout 120 "${VMODEL_ABS}" \
         "${elf}" "+elf_file=${elf}" "+tohost_addr=${tohost}" "+time_out=500000" ) \
         > "${ISA_DIR}/${name}.rtl.log" 2>&1 || true
-    [ -s "${RUNDIR}/trace_rvfi_hart_00.dasm" ] \
-        && cp "${RUNDIR}/trace_rvfi_hart_00.dasm" "${rtl_dasm}" || : > "${rtl_dasm}"
+    if [ -s "${RUNDIR}/trace_rvfi_hart_00.dasm" ]; then
+        cp "${RUNDIR}/trace_rvfi_hart_00.dasm" "${rtl_dasm}"
+    else
+        : > "${rtl_dasm}"
+    fi
 
     # Spike golden run → per-test commitlog (mirrors verif/sim/Makefile spike:)
     spike_iss="${ISA_DIR}/${name}.spike.iss"
@@ -165,7 +168,11 @@ for entry in ${TESTS}; do
     timeout 60 "${SPIKE}" --steps="${SPIKE_STEPS}" --log-commits \
         --isa="${ISA}" --priv="${PRIV}" -l --log="${spike_iss}" "${elf}" \
         > "${ISA_DIR}/${name}.spike.stdout.log" 2>&1 || true
-    [ -s "${spike_iss}" ] && grep -v '^\([[]\|/top/\)' "${spike_iss}" > "${spike_log}" || : > "${spike_log}"
+    if [ -s "${spike_iss}" ]; then
+        grep -v '^\([[]\|/top/\)' "${spike_iss}" > "${spike_log}"
+    else
+        : > "${spike_log}"
+    fi
 
     printf '%s\t%s\t%s\n' "${name}" "${rtl_dasm}" "${spike_log}" >> "${TRACE_MANIFEST}"
     echo "[step-compare] ran ${name}"

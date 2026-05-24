@@ -36,12 +36,12 @@ class TaskVerbs(BaseModel):
     def all_variants(self) -> list[str]:
         """Flatten every language's variants into one ordered list."""
         out: list[str] = []
-        for field_name in self.model_fields:
+        for field_name in type(self).model_fields:
             values = getattr(self, field_name, None)
             if isinstance(values, list):
                 out.extend(values)
         # Extra fields (other languages added later via `extra="allow"`).
-        for k, v in (self.__pydantic_extra__ or {}).items():
+        for v in (self.__pydantic_extra__ or {}).values():
             if isinstance(v, list):
                 out.extend(v)
         return out

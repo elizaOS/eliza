@@ -111,6 +111,7 @@ export function parseSubArgs(argv) {
     timeoutMs: 180_000,
     json: false,
     skipLogcat: false,
+    expectedAbi: null,
   };
 
   const readFlagValue = (flag, index) => {
@@ -136,9 +137,12 @@ export function parseSubArgs(argv) {
       args.json = true;
     } else if (arg === "--skip-logcat") {
       args.skipLogcat = true;
+    } else if (arg === "--expected-abi") {
+      args.expectedAbi = readFlagValue(arg, i);
+      i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node packages/scripts/distro-android/boot-validate.mjs [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat]",
+        "Usage: node packages/scripts/distro-android/boot-validate.mjs [--brand-config <PATH>] [--adb <ADB>] [--serial <SERIAL>] [--timeout-ms <MS>] [--json] [--skip-logcat] [--expected-abi <ABI>]",
       );
       process.exit(0);
     } else {
@@ -243,6 +247,36 @@ function assertMatches(value, pattern, label) {
   if (!pattern.test(value)) {
     throw new Error(`${label} did not match ${pattern}`);
   }
+}
+
+/**
+ * When `--expected-abi` is set, assert the device's CPU architecture
+ * matches. Mirrors the riscv64 cuttlefish-boot-gate's abi/abilist/uname
+ * triad so a wrong-arch image fails closed instead of passing the
+ * brand-level checks on the wrong CPU. Omitted by default, so the
+ * x86_64/arm64 callers are unaffected. This is the canonical home of the
+ * arch-triad assertion (chip/sw/aosp-device/cuttlefish-boot-gate.sh).
+ */
+function validateExpectedAbi(adb, serial, expectedAbi) {
+  const abi = shell(adb, serial, "getprop ro.product.cpu.abi").trim();
+  if (abi !== expectedAbi) {
+    throw new Error(
+      `ro.product.cpu.abi must be ${expectedAbi}; found ${abi || "<empty>"}`,
+    );
+  }
+  const abilist = shell(adb, serial, "getprop ro.product.cpu.abilist").trim();
+  if (!abilist.split(",").includes(expectedAbi)) {
+    throw new Error(
+      `ro.product.cpu.abilist must contain ${expectedAbi}; found ${abilist || "<empty>"}`,
+    );
+  }
+  const unameM = shell(adb, serial, "uname -m").trim();
+  if (unameM !== expectedAbi) {
+    throw new Error(
+      `uname -m must be ${expectedAbi}; found ${unameM || "<empty>"}`,
+    );
+  }
+  return { abi, abilist, unameM };
 }
 
 function validateProductProperty(adb, serial, brand) {
@@ -452,6 +486,9 @@ export async function validateBootedDevice(options, brand) {
     appOps: validateAppOps(adb, serial, brand),
     forbiddenPackages: validateForbiddenPackages(adb, serial),
     logcat: options.skipLogcat ? "skipped" : validateLogcat(adb, serial, brand),
+    ...(options.expectedAbi
+      ? { abi: validateExpectedAbi(adb, serial, options.expectedAbi) }
+      : {}),
   };
 
   validatePackageFlagsAndPermissions(adb, serial, brand);

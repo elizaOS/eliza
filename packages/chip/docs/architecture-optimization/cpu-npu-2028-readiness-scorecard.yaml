@@ -19,6 +19,8 @@ source_artifacts:
   process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
   competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
   tapeout_readiness_audit: benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json
+  phone_cpu_benchmark_gate: build/reports/cpu_phone_benchmark_claim_gate.json
+  phone_cpu_l5_l6_report: build/reports/cpu_phone_l5_l6_benchmark_report.json
   optimizer_command: make soc-optimization
   design_space_frontier_command: make cpu-npu-design-space-frontier
   modeled_benchmark_command: make benchmark-modeled-cpu-npu
@@ -31,6 +33,7 @@ source_artifacts:
   process_14a_eval_command: make cpu-npu-14a-process-eval
   competitive_envelope_command: make cpu-npu-competitive-envelope
   tapeout_readiness_audit_command: make cpu-npu-tapeout-readiness-audit
+  phone_cpu_l5_l6_command: make cpu-phone-l5-l6-benchmark-report
   work_order_check_command: make soc-optimization-work-order
   scorecard_check_command: make cpu-npu-2028-readiness-scorecard
 modeled_operating_point:
@@ -40,7 +43,7 @@ modeled_operating_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 120.0
+  memory_sustained_gbps: 240.0
 modeled_constraints:
   max_die_c: 95.0
   min_bandwidth_margin_gbps: 0.0
@@ -73,6 +76,21 @@ proof_domains:
       - build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
       - build/evidence/cpu_ap/eliza_e1_linux_boot.log
       - build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log
+  - id: branch_prediction
+    current_state: blocked_until_full_trace_phone_workload_mpki_evidence
+    gate_command: make branch-prediction-check
+    evidence_artifacts:
+      - docs/arch/branch-prediction.md
+      - docs/evidence/cpu_ap/branch-prediction-params.json
+      - docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json
+      - docs/evidence/cpu_ap/mpki_results_workload_rtl.json
+  - id: npu_nnapi
+    current_state: blocked_until_real_e1_npu_accelerator_selection
+    gate_command: make e1-npu-nnapi-proof-check
+    evidence_artifacts:
+      - docs/spec-db/e1-npu-runtime-contract.json
+      - docs/npu/2028-targets.md
+      - benchmarks/results/npu-context-queue-sim.json
   - id: aosp_simulator
     current_state: blocked_until_local_aosp_virtual_device_evidence
     gate_command: make aosp-simulator-completion-check
@@ -122,8 +140,16 @@ required_benchmark_plan_entries:
   - npu_arch_sim_sota_2028
   - simulator_arch_metrics
   - cpu_arch_sim_sota_2028
+required_phone_cpu_l5_l6_entries:
+  - spec_cpu2017
+  - coremark
+  - dhrystone
+  - jetstream2
+  - lmbench_bw_mem
+  - lmbench_lat_mem_rd
 release_claim_forbidden_until:
   - cpu_ap has real generated AP boot and benchmark transcripts.
+  - branch_prediction has full CBP-5, SPEC, AOSP cold-launch, and JS/V8/ART MPKI traces with phone/prototype metadata.
   - npu_nnapi has real e1-npu accelerator selection with zero CPU fallback.
   - aosp_simulator has local AOSP virtual-device boot and smoke logs.
   - benchmarks has target binaries plus calibrated power, thermal, clock, memory, process metadata.

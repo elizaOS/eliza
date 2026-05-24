@@ -67,12 +67,15 @@ AsmDB (ISCA '19) shows datacenter and large mobile workloads spend a substantial
    SC local-history folding, ITTAGE target-history tuning, ITTAGE useful-bit
    replacement/aging, FTB/uFTB age-based replacement, and confident uFTB-only
    call/return RAS parity, RAS top-entry restore after wrong-path returns, and
-   loop-predictor weak/old-first replacement.
-3. **Still below the target hierarchy**: the fetch contract emits one next-PC
-   per cycle rather than a true non-contiguous two-taken stream, predictor
-   commit/recovery still depends on resolver-supplied metadata instead of
-   FTQ replay, and there is no larger delayed L2 BTB/FTB tier for cold Android
-   or server footprints.
+   loop-predictor weak/old-first replacement, adaptive TAGE use-alt-on-NA
+   chooser training through FTQ replay metadata, and bounded same-block
+   fall-through plus later-taken FTQ fetch segments.
+3. **Still below the target hierarchy**: the fetch contract can describe the
+   bounded same-block two-segment case but still emits one next-PC per cycle
+   rather than a true non-contiguous two-taken stream,
+   commit/recovery now replays resolved FTQ prediction metadata without legacy
+   resolver provider mirrors, and the delayed L2 FTB tier is present but still
+   shares the one-next-PC frontend steering contract.
 4. **Modeled MPKI** is now backed by the local branch-model and RTL cocotb
    harnesses under `benchmarks/cpu/branch/` and `verify/cocotb/bpu/`; closed
    SPEC/AOSP/JS traces remain evidence blockers.
@@ -175,26 +178,29 @@ Gauntlet (gate before any 2028 BPU claim):
 ## E. Optimizations: has / should / needs
 
 ### Has
-- Tiny RV stub with no BPU.
-- CVA6 wrapper → toy 32-BTB / 128-BHT / 2-RAS predictor.
-- Roadmap pointing at Chipyard Rocket (similarly toy).
-- Static MPKI model in `simulator-arch-metrics{,-sota}.json`.
+- Synthesizable E1 BPU RTL with TAGE-SC-L, ITTAGE, FTB, RAS, loop, and SC
+  components; see `docs/arch/branch-prediction.md`.
+- Cocotb and MPKI evidence for synthetic and CBP-5 trace paths, including
+  `docs/evidence/cpu_ap/bpu-vs-cva6-mpki-rtl.json` marked `RTL_CORROBORATED`.
+- CVA6 comparison baseline remains model-only (`32` BTB / `128` BHT / `2` RAS),
+  which is why cross-core claims stay at L2.
+- Static MPKI model artifacts in `simulator-arch-metrics{,-sota}.json` remain as
+  historical comparison evidence, not the current BPU implementation boundary.
 
 ### Should (2026-2027)
-- `docs/arch/branch-prediction.md` contract mirroring `cpu-subsystem.md` style.
-- `eliza-kunminghu-manifest.json` pinning open BPU IP commit hash.
-- `make branch-prediction-check` gate emitting BTB/FTB/TAGE/ITTAGE/RAS sizes to `docs/evidence/cpu_ap/branch-prediction-params.json`.
 - gem5-XiangShan integration under `benchmarks/cpu/branch/`.
 - Branch event counters via RV PMU (`Zihpm`).
 - BPU power model in `compute-silicon.md` for the operating-point optimizer.
 
 ### Needs (2028 gating)
-- Real TAGE-SC-L + ITTAGE + FTB + RAS + SC + loop in synthesizable RTL (XiangShan- or BOOM-derived).
-- Decoupled front-end with 64+ FTQ and FDIP-style L1I prefetch.
 - Two-taken-branches-per-cycle by 2028.
+- Full CBP-5, SPEC, AOSP cold-launch, and JetStream/V8/ART trace coverage with
+  phone/prototype metadata.
+- Decoupled front-end with 64+ FTQ and FDIP-style L1I prefetch.
 - L1I ≥ 64 KB (preferably 128-192 KB to match Oryon cold-launch).
 - Misprediction penalty ≤ 14 cycles.
-- PMU events for branch_taken, branch_misp, indirect_misp, ras_misp, fetch_bubble, btb_miss, ftq_full in Zihpm.
+- Continued PMU/Zihpm alignment coverage for branch_taken, branch_misp,
+  indirect_misp, ras_misp, fetch_bubble, btb_miss, ftq_full, and future events.
 - Dedicated benchmark workstream wired into the readiness scorecard fail-closed.
 - Management hart can stay CVA6/Rocket-class with toy predictor. Only big core needs the SOTA stack.
 
@@ -209,7 +215,10 @@ Gauntlet (gate before any 2028 BPU claim):
 7. **Indirect-branch coverage on Android** — ART/Hermes/V8 traces dominated by dynamic dispatch through inline caches; ITTAGE accuracy on those is poorly published.
 8. **Branch-resolution latency vs OoO depth** — pipeline depth and BPU choice are not independent.
 9. **PD/area budget** — 96-160 KB SRAM + tag arrays + logic, comparable to 32 KB L1I. Price into `pd/openlane` floorplan from day one.
-10. **Repo discipline** — no branch-prediction workstream, scorecard entry, evidence manifest, or claim gate today.
+10. **Repo discipline** — branch-prediction architecture, evidence manifest, and
+    claim gate now exist; the remaining repo-discipline gap is wiring a
+    dedicated scorecard entry and keeping full-trace/phone workload evidence
+    fail-closed until target artifacts arrive.
 
 ## Sources
 

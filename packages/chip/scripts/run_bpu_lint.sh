@@ -38,11 +38,14 @@ set -- \
     rtl/cpu/bpu/tage.sv \
     rtl/cpu/bpu/ittage.sv \
     rtl/cpu/bpu/sc.sv \
+    rtl/cpu/bpu/h2p_corrector.sv \
     rtl/cpu/bpu/loop_predictor.sv \
     rtl/cpu/bpu/ftb.sv \
     rtl/cpu/bpu/uftb.sv \
     rtl/cpu/bpu/ras.sv \
     rtl/cpu/bpu/ftq.sv \
+    rtl/cpu/bpu/ftq_to_fetch_stream.sv \
+    rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv \
     rtl/cpu/bpu/bpu_csr.sv \
     rtl/cpu/bpu/bpu_top.sv
 
@@ -65,11 +68,14 @@ modules:
   - rtl/cpu/bpu/tage.sv
   - rtl/cpu/bpu/ittage.sv
   - rtl/cpu/bpu/sc.sv
+  - rtl/cpu/bpu/h2p_corrector.sv
   - rtl/cpu/bpu/loop_predictor.sv
   - rtl/cpu/bpu/ftb.sv
   - rtl/cpu/bpu/uftb.sv
   - rtl/cpu/bpu/ras.sv
   - rtl/cpu/bpu/ftq.sv
+  - rtl/cpu/bpu/ftq_to_fetch_stream.sv
+  - rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv
   - rtl/cpu/bpu/bpu_csr.sv
   - rtl/cpu/bpu/bpu_top.sv
 EOF
@@ -78,4 +84,4 @@ if [ "${status}" = "FAIL" ]; then
     cat "$LOG"
     exit 1
 fi
-echo "STATUS: PASS bpu.lint - $(verilator --version | head -1) strict-lint clean across 13 modules"
+echo "STATUS: PASS bpu.lint - $(verilator --version | head -1) strict-lint clean across 16 modules"

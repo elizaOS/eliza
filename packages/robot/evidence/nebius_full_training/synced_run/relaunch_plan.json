@@ -1,0 +1,69 @@
+{
+  "schema": "robot-nebius-training-relaunch-plan-v1",
+  "ok": true,
+  "relaunch_ready": true,
+  "generated_at": "2026-05-23T17:03:00.000823Z",
+  "run_root": "/home/shaw/milady/eliza/packages/robot/evidence/nebius_full_training/synced_run",
+  "bundle_dir": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight",
+  "current_run_id": "robot-full-1779504720",
+  "current_instance_id": "computeinstance-e00x4sqmx07qwehxrc",
+  "allow_parallel": false,
+  "allow_before_hard_cap": false,
+  "recommendation": "ready_to_launch_clean_run",
+  "blockers": [],
+  "active_run": {
+    "closeout_state": "running",
+    "closeout_ok": false,
+    "stale": true,
+    "hard_cap_exceeded": true,
+    "elapsed_hours": 14.0822,
+    "hours_until_hard_cap": -2.0822,
+    "cleanup_allowed": false
+  },
+  "preflight": {
+    "ok": true,
+    "checks": {
+      "report_exists": true,
+      "schema": true,
+      "report_ok": true,
+      "default_profiles": true,
+      "launch_order": true,
+      "required_scripts_declared": true,
+      "scripts_exist": true,
+      "scripts_executable": true,
+      "local_preflight_script": true,
+      "local_preflight_profiles": true,
+      "alberta_training_script": true,
+      "backend_compare_script": true,
+      "continual_benchmark_script": true,
+      "brax_baseline_script": true,
+      "post_training_script": true,
+      "run_all_stages_script": true,
+      "launch_template_exists": true,
+      "launch_template_hygiene": true,
+      "brax_job_dir_exists": true,
+      "brax_job_valid": true
+    },
+    "launch_template": "/home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/nebius_instance_launch_template.json",
+    "launch_hygiene": {
+      "ok": true,
+      "checks": {
+        "instance_loaded": true,
+        "cloud_init_present": true,
+        "no_inline_object_storage_credentials": true,
+        "uses_repo_owned_stage_runner": true,
+        "uses_nebius_s3_endpoint": true,
+        "uses_training_s3_uri": true,
+        "has_status_heartbeat_upload_contract": true,
+        "has_hard_cap_shutdown": true
+      },
+      "secret_fields_embedded": []
+    }
+  },
+  "next_actions": [
+    "Stop or replace hard-cap-exceeded active instance computeinstance-e00x4sqmx07qwehxrc before creating the clean run.",
+    "Package and upload repo payload with /home/shaw/milady/eliza/packages/robot/evidence/full_training_preflight/nebius_instance_launch_template.json.",
+    "Inject object-storage credentials outside VM metadata on the host.",
+    "Create a new Nebius H200 instance from the validated template."
+  ]
+}

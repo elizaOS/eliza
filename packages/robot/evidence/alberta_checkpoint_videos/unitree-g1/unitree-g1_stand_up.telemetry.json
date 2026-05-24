@@ -1,0 +1,37 @@
+{
+  "profile": "unitree-g1",
+  "label": "stand up",
+  "task_id": "stand_up",
+  "policy_source": "checkpoint:evidence/alberta_all_profiles/unitree-g1/alberta",
+  "steps_requested": 30,
+  "steps_executed": 30,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 30,
+  "done_reason": "truncated",
+  "fall_threshold": 0.474,
+  "torso_z": {
+    "min": 0.7905461340431471,
+    "max": 0.7915913842695833,
+    "final": 0.7914656163005802,
+    "mean": 0.791481936712575
+  },
+  "upright_proj": {
+    "min": 0.9994732204816377,
+    "max": 0.9999994034551831,
+    "final": 0.9994732204816377,
+    "mean": 0.9997726998928702
+  },
+  "reward": {
+    "min": 3.429332196145331,
+    "max": 3.4996864709107345,
+    "final": 3.4996864709107345,
+    "mean": 3.4958723079136527
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

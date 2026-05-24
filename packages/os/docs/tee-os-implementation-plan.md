@@ -216,6 +216,15 @@ cannot release our keys without a matching golden measurement.
 | Decompression-bomb | **Harden** image/layer fetch with size/ratio limits in the build and in any in-CVM artifact pull. | Build-time only; confidential profile pulls no untrusted archives at runtime. |
 | Cert / constant-time concerns | **Track upstream**; do not depend on dstack-gateway for our crypto identity — derive the agent's signing identity from the OS key-ladder, not solely from dstack-KMS. | `RemoteSigningService` keys bound to the unsealed OS key, attested by our golden measurements. |
 
+**Version policy (DECIDED, §8.3):** the "Pin to a release …" actions above are
+satisfied by **tracking the latest dstack release** (>= the Feb-2026
+Secure-by-Default baseline), not by freezing a tag, so upstream hardening fixes
+land automatically. This does not weaken anything: trust is not rooted in the
+dstack version, and the OS-4 `dstack-pins-check` gate re-verifies the
+forbid/require/claims invariants on the live data, with every boot independently
+re-checking QE-identity, TCB-status and the golden measurements — so a malicious
+or downgraded release still cannot release keys.
+
 **Principle:** dstack is the *packaging + transport + a* KMS option. The
 **root of trust is the platform RoT** (TDX module / E1 RoT) plus our signed
 golden measurements. The default verifier is **on-device**
@@ -277,6 +286,53 @@ decrypted secrets *back out* of that boundary or leave them recoverable.
   material and DEK arena before halt; never `kdump` to a host-visible target
   (kdump would write decrypted memory out). Disable kdump in the confidential
   profile.
+
+### 3.5a Attestation-bound sealed state-volume mount hook (agent ↔ OS contract)
+
+The dm-crypt/LUKS2 state volume in §3.4 (MILADY_STATE_DIR / ~/.milady — the
+agent-session secret scope) must **not** be unlocked with a host-readable key
+(dstack LUKS2 advisory GHSA-jxq2-hpw3-m5wf; agent plan §5.5). Its key is
+released **only after a passing attestation** and is **bound to the measured
+agent/policy/device identity**, so a tampered OS/agent derives a *different* key
+and the volume simply will not decrypt — the negative path is enforced by *data
+unavailability*, not a flag (agent plan §2.3 / Phase C item C3).
+
+The attestation→key binding is owned by the **agent side**
+(`packages/agent/src/services/tee-sealed-volume.ts`,
+`unsealStateVolumeKey` / `sealVolumeMetadata` / `openSealedVolumeMetadata`); it
+is host-agnostic and fully unit-tested in memory. The OS side owns only the
+**mount hook** that calls it before mounting and refuses to mount when it
+throws. Contract:
+
+1. **Before** mounting the dm-crypt state volume (and before any agent unit that
+   touches the agent-session scope starts), an early boot hook in the
+   confidential guest collects in-domain `TeeEvidence` and the resolved
+   production `TeeEvidencePolicy`, then calls `unsealStateVolumeKey({
+   keyReleaseClient, policy, context })` for `keyId: "state-volume"`.
+2. The hook **fails closed**: if `unsealStateVolumeKey` throws — because the
+   boot gate already blocked secrets (`teeBootGateBlocksSecrets()`), the policy
+   does not gate the required measurements (`agent`, `policy`, `device`), or the
+   release decision is `trusted: false` — the hook does **not** mount the
+   volume. The system boots degraded/secret-less or halts per the
+   confidential-profile policy; it never falls back to a host-readable key.
+3. On success the hook receives 32 bytes of released key material. Either feed
+   it directly to `cryptsetup luksOpen` (as the keyslot key), or, when the LUKS
+   keyslot is re-keyable independently of the attested identity, use it to
+   `openSealedVolumeMetadata(sealed, keyMaterialHex)` and recover the actual
+   LUKS2 passphrase from the attestation-bound envelope. Either way the **only**
+   path to the passphrase is gated on a passing attestation.
+4. The key/passphrase buffers stay in guest RAM only: hand them to the kernel
+   keyring / `cryptsetup` and zeroize immediately (§3.2 mlock, §3.5
+   zeroization). Never write them to disk, env, the host-shared window, or any
+   off-domain logger.
+5. The released key material is **not** persisted. On every boot the volume key
+   is re-derived from a fresh attestation; rotating the measured identity (a new
+   signed agent/policy/OS build) rotates the key and requires re-sealing the
+   metadata envelope under the new key during a measured provisioning step.
+
+This replaces the host-readable LUKS2 key with an attestation-released key while
+keeping the security-critical binding logic in one tested place on the agent
+side and the host-specific `cryptsetup` plumbing on the OS side.
 
 ### 3.6 kexec / hibernation policy
 - **Hibernation disabled** (`nohibernate`, mask `hibernate.target`,
@@ -527,8 +583,11 @@ hardware**, by design — each gate above names the missing dependency.
 2. **KMS trust anchor:** dstack-KMS (on-chain `KmsAuth`/`AppAuth`) vs Eliza Cloud
    KMS vs on-device-only sealing. Recommend **on-device-first** with Eliza Cloud
    KMS optional; never make dstack-KMS the sole anchor (§2.3 principle).
-3. **dstack version pin + DevMode ban:** confirm the exact post-Feb-2026 release
-   to pin and that DevMode is forbidden in all production policies.
+3. **dstack version pin + DevMode ban:** DECIDED — we **track the latest dstack
+   release** (>= the Feb-2026 Secure-by-Default baseline) rather than freezing a
+   tag, so upstream hardening lands automatically; trust stays rooted in the
+   platform RoT + golden measurements and every boot re-verifies the invariants.
+   DevMode remains forbidden in all production policies.
 4. **Confirm Linux-first / AOSP-later sequencing** (overview §5 decision 4).
 </content>
 </invoke>

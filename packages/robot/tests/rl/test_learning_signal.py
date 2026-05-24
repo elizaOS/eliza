@@ -17,7 +17,7 @@ from eliza_robot.rl.text_conditioned.profile_env import (
     make_text_conditioned_env,
 )
 
-SUPPORTED = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1")
+SUPPORTED = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1", "unitree-r1")
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED)

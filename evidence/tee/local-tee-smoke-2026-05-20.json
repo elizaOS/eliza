@@ -116,7 +116,7 @@
           "container": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
         },
         "freshness": {
-          "nonce": "03a7c9d9daa4e8f23a6a77c9ec7e159d12b1e08ed89167b2ecbc37bbc325aae0",
+          "nonce": "71a63bd9c6f148c1b8d491ecc8778d11820e6f91639ffbde994838f4c9bf4a1a",
           "timestamp": "2026-05-20T00:00:00.000Z",
           "verifier": "local-smoke"
         },

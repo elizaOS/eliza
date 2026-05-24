@@ -42,12 +42,23 @@ REQUIRED_LOG_PROVENANCE = (
     "eliza-evidence: target=android_simulated_peripheral component=",
     "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
     "eliza-evidence: command_env=",
+    "eliza-evidence: command_source=default",
     "eliza-evidence: command=",
     "eliza-evidence: started_utc=",
     "COMMAND_OUTPUT_BEGIN",
+    "ADB_PREP_BEGIN",
     "COMMAND_OUTPUT_END",
     "eliza-evidence: ended_utc=",
 )
+CANONICAL_PROBES = {
+    "rear_camera": "sw/aosp-device/peripherals/probe-rear-camera.sh",
+    "front_camera": "sw/aosp-device/peripherals/probe-front-camera.sh",
+    "microphone": "sw/aosp-device/peripherals/probe-microphone.sh",
+    "speakers": "sw/aosp-device/peripherals/probe-speakers.sh",
+    "wifi": "sw/aosp-device/peripherals/probe-wifi.sh",
+    "bluetooth": "sw/aosp-device/peripherals/probe-bluetooth.sh",
+    "cellular_5g_lte": "sw/aosp-device/peripherals/probe-cellular-5g.sh",
+}
 
 
 @dataclass(frozen=True)
@@ -264,6 +275,37 @@ def check_log(component: str, path: Path, markers: list[str], findings: list[Fin
                     "Regenerate this log with scripts/android/capture_simulated_peripheral_evidence.py against a booted adb device.",
                 )
             )
+    canonical_probe = CANONICAL_PROBES.get(component)
+    if canonical_probe and canonical_probe not in text:
+        findings.append(
+            Finding(
+                f"peripheral_log_not_canonical_probe:{component}",
+                "blocker",
+                "simulated peripheral probe log was not captured with the canonical adb probe",
+                f"{rel(path)} missing {canonical_probe}",
+                "Regenerate this log with the default capture path rather than an ELIZA_*_SIM_COMMAND override.",
+            )
+        )
+    if "SELECTED_ADB_SERIAL=<none>" in text:
+        findings.append(
+            Finding(
+                f"peripheral_log_no_adb_target:{component}",
+                "blocker",
+                "simulated peripheral probe log did not select a ready adb target",
+                rel(path),
+                "Boot Cuttlefish/Android until `adb devices` reports exactly one device, or pass --adb-serial explicitly.",
+            )
+        )
+    if "ADB_SERIAL=" not in text and "SELECTED_ADB_SERIAL=" not in text:
+        findings.append(
+            Finding(
+                f"peripheral_log_adb_target_missing:{component}",
+                "blocker",
+                "simulated peripheral probe log does not record the adb target identity",
+                rel(path),
+                "Regenerate this log with scripts/android/capture_simulated_peripheral_evidence.py so ADB target provenance is archived.",
+            )
+        )
     if "eliza-evidence: status=FAIL" in text or "RESULT=1" in text:
         findings.append(
             Finding(

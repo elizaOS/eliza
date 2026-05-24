@@ -40,8 +40,43 @@ AP_BENCHMARK_PAYLOAD = Path(
     "external/chipyard/software/firemarshal/images/firechip/"
     "eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks-bin-nodisk"
 )
+AP_BENCHMARK_DISK_PAYLOAD = Path(
+    "external/chipyard/software/firemarshal/images/firechip/"
+    "eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks-bin"
+)
+AP_BENCHMARK_LINUX_BOOT_EVIDENCE = Path("build/evidence/cpu_ap/eliza_e1_linux_boot.log")
 LINUX_SMOKE_WORKLOAD = Path("sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke.sh")
 AP_BENCHMARK_TOOLS = ("coremark", "stream_c.exe", "lat_mem_rd", "fio")
+AP_EXTRA_TOOL_CANDIDATES = {
+    "coremark": (
+        Path("sw/firemarshal/eliza-e1-ap-benchmarks/bin/coremark"),
+        Path("build/cva6-verilator/coremark-qemu/coremark.rv64gc.elf"),
+        Path("build/cva6-verilator/coremark.cva6.rv64gc.elf"),
+        Path("external/chipyard/software/coremark"),
+    ),
+    "stream_c.exe": (
+        Path("sw/firemarshal/eliza-e1-ap-benchmarks/bin/stream_c.exe"),
+        Path("benchmarks/memory/stream/stream"),
+        Path("benchmarks/memory/stream/stream.c"),
+    ),
+    "lat_mem_rd": (
+        Path("sw/firemarshal/eliza-e1-ap-benchmarks/bin/lat_mem_rd"),
+        Path("benchmarks/memory/lmbench/lat_mem_rd"),
+        Path("external/lmbench/src/lat_mem_rd.c"),
+    ),
+    "fio": (
+        Path("sw/firemarshal/eliza-e1-ap-benchmarks/bin/fio"),
+        Path("external/fio-build/bin/fio"),
+        Path("external/fio-src/fio"),
+        Path("benchmarks/memory/fio/ufs-dram-contention.fio"),
+    ),
+}
+AP_REFERENCE_BINARY_PREFIXES = (
+    Path("build/cva6-verilator"),
+    Path("build/kunminghu-gem5"),
+    Path("build/kunminghu-gem5-2"),
+    Path("build/kunminghu-gem5-50"),
+)
 AP_REFERENCE_INPUTS = (
     Path("docs/evidence/cpu_ap/cva6-coremark-qemu.json"),
     Path("docs/evidence/cpu_ap/cva6-coremark-verilator.json"),
@@ -50,7 +85,7 @@ AP_REFERENCE_INPUTS = (
 )
 AP_REQUIRED_COMMANDS = (
     "ELIZA_AP_BENCHMARKS_CMD",
-    "marshal -v build sw/firemarshal/eliza-e1-ap-benchmarks.json",
+    "marshal -v -d build sw/firemarshal/eliza-e1-ap-benchmarks.json",
     "CHIPYARD_LINUX_BINARY=external/chipyard/software/firemarshal/images/firechip/"
     "eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks-bin-nodisk "
     "scripts/run_chipyard_eliza_linux_smoke.sh",
@@ -60,7 +95,7 @@ AP_REQUIRED_COMMANDS = (
     "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",
 )
 DERIVED_SMOKE_MODES = ("opensbi-boot", "linux-boot")
-UNWIRED_MODES = ("ap-benchmarks",)
+AP_BENCHMARK_DERIVED_MODES = ("ap-benchmarks",)
 
 
 def quote(value: str) -> str:
@@ -122,6 +157,7 @@ def tool_candidates(name: str) -> list[Path]:
         ROOT / "tools/bin" / name,
         ROOT / ".venv/bin" / name,
     ]
+    candidates.extend(ROOT / path for path in AP_EXTRA_TOOL_CANDIDATES.get(name, ()))
     found = shutil.which(name)
     if found:
         candidates.append(Path(found))
@@ -136,9 +172,25 @@ def tool_candidates(name: str) -> list[Path]:
     return deduped
 
 
+def is_reference_binary(path: Path) -> bool:
+    try:
+        resolved = path.resolve()
+    except OSError:
+        resolved = path
+    for prefix in AP_REFERENCE_BINARY_PREFIXES:
+        try:
+            if resolved.is_relative_to((ROOT / prefix).resolve()):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def classify_tool(path: Path) -> str:
     if not path.exists():
         return "missing"
+    if is_reference_binary(path):
+        return "reference_riscv_or_model_artifact_not_generated_ap_workload"
     try:
         prefix = path.read_bytes()[: 256 * 1024]
     except OSError:
@@ -168,8 +220,26 @@ def ap_required_markers() -> tuple[list[str], list[str]]:
     return ([str(marker) for marker in markers if isinstance(marker, str)], errors)
 
 
+def workload_marker_status(markers: list[str]) -> dict[str, object]:
+    workload_script = ROOT / "sw/firemarshal/eliza-e1-ap-benchmarks/eliza-e1-ap-benchmarks.sh"
+    if not workload_script.is_file():
+        return {
+            "status": "missing",
+            "script": rel(workload_script),
+            "missing_markers": markers,
+        }
+    text = workload_script.read_text(encoding="utf-8", errors="ignore")
+    missing = [marker for marker in markers if marker not in text]
+    return {
+        "status": "ready" if not missing else "partial",
+        "script": rel(workload_script),
+        "missing_markers": missing,
+    }
+
+
 def ap_benchmark_runner_report() -> dict[str, object]:
     markers, marker_errors = ap_required_markers()
+    marker_status = workload_marker_status(markers)
     smoke_script = ROOT / LINUX_SMOKE_WORKLOAD
     smoke_text = (
         smoke_script.read_text(encoding="utf-8", errors="ignore") if smoke_script.is_file() else ""
@@ -201,11 +271,24 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         )
 
     missing_tools = sorted(set(AP_BENCHMARK_TOOLS) - set(target_ready_tools))
+    ready_tools = sorted(set(target_ready_tools))
     workload_path = rooted(AP_BENCHMARK_WORKLOAD)
     payload_path = rooted(AP_BENCHMARK_PAYLOAD)
+    disk_payload_path = rooted(AP_BENCHMARK_DISK_PAYLOAD)
+    linux_boot_evidence_path = rooted(AP_BENCHMARK_LINUX_BOOT_EVIDENCE)
     simulator_path = rooted(GENERATED_SIMULATOR)
     smoke_runner_path = rooted(SMOKE_RUNNER)
     evidence_path = ROOT / "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
+    command_derivable = (
+        GENERATED_MANIFEST.is_file()
+        and simulator_path.is_file()
+        and smoke_runner_path.is_file()
+        and os.access(smoke_runner_path, os.X_OK)
+        and workload_path.is_file()
+        and payload_path.is_file()
+        and not missing_tools
+        and marker_status["status"] == "ready"
+    )
 
     blockers: list[str] = []
     if os.environ.get(MODE_ENV["ap-benchmarks"], ""):
@@ -213,33 +296,56 @@ def ap_benchmark_runner_report() -> dict[str, object]:
             f"{MODE_ENV['ap-benchmarks']} is set by the environment, but wiring cannot "
             "verify it as a checked-in generated-AP benchmark runner"
         )
-    else:
+    elif not command_derivable:
         blockers.append(f"{MODE_ENV['ap-benchmarks']} is unset")
     if not simulator_path.is_file():
         blockers.append(f"missing generated-AP simulator: {GENERATED_SIMULATOR}")
     if not smoke_runner_path.is_file() or not os.access(smoke_runner_path, os.X_OK):
         blockers.append(f"missing executable generated-AP simulator wrapper: {SMOKE_RUNNER}")
+    if not linux_boot_evidence_path.is_file():
+        blockers.append(
+            "generated-AP Linux/userland boot transcript is still missing; AP benchmarks "
+            f"cannot run until {AP_BENCHMARK_LINUX_BOOT_EVIDENCE} exists"
+        )
     if not workload_path.is_file():
         blockers.append(
             f"missing generated-AP benchmark FireMarshal workload: {AP_BENCHMARK_WORKLOAD}"
         )
     if not payload_path.is_file():
-        blockers.append(f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}")
+        if disk_payload_path.is_file():
+            blockers.append(
+                "disk-backed generated-AP benchmark payload exists, but loadmem needs the "
+                f"no-disk payload; missing {AP_BENCHMARK_PAYLOAD}"
+            )
+        else:
+            blockers.append(f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}")
     if missing_tools:
         blockers.append(
             "missing target-runnable RISC-V benchmark binaries for generated AP: "
             + ", ".join(missing_tools)
         )
-    if smoke_text and not all(token in smoke_text for token in AP_BENCHMARK_TOOLS):
+    if workload_path.is_file():
+        workload_text = workload_path.read_text(encoding="utf-8", errors="ignore")
+        for token in ("eliza-e1-ap-benchmarks", "stream_c.exe", "ufs-dram-contention.fio"):
+            if token not in workload_text:
+                blockers.append(
+                    f"generated-AP benchmark FireMarshal workload is missing packaging token: {token}"
+                )
+    else:
         blockers.append(
             "existing generated-AP Linux smoke payload runs MMIO smoke only; it does not run "
             "CoreMark, STREAM, lat_mem_rd, or fio"
         )
-    blockers.append(
-        "no generated-AP command currently emits the L3 benchmark raw markers: "
-        "claim_level=L3, report hash, CPU frequency, run count, thermal state, "
-        "power method, and process-corner/pdk boundary"
-    )
+    if marker_status["status"] == "ready":
+        blockers.append(
+            "L3 benchmark raw marker emitter is packaged, but no generated-AP Linux "
+            "boot transcript has captured it yet: claim_level=L3"
+        )
+    else:
+        blockers.append(
+            "packaged generated-AP benchmark workload is missing L3 raw markers: "
+            + ", ".join(cast(list[str], marker_status.get("missing_markers", [])))
+        )
     blockers.extend(f"manifest marker load error: {error}" for error in marker_errors)
 
     report: dict[str, object] = {
@@ -247,6 +353,7 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         "status": "blocked",
         "command_env": MODE_ENV["ap-benchmarks"],
         "command_env_set": bool(os.environ.get(MODE_ENV["ap-benchmarks"], "")),
+        "derived_command_available": command_derivable,
         "required_commands": list(AP_REQUIRED_COMMANDS),
         "claim_boundary": "blocked_report_only_no_benchmark_evidence_created",
         "evidence_log": "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log",
@@ -254,19 +361,106 @@ def ap_benchmark_runner_report() -> dict[str, object]:
         "generated_manifest": rel(GENERATED_MANIFEST),
         "generated_manifest_exists": GENERATED_MANIFEST.is_file(),
         "required_raw_markers": markers,
+        "workload_raw_marker_emitter": marker_status,
         "candidate_generated_ap_inputs": {
             "simulator": "build/chipyard/eliza_rocket/simulator/simulator-chipyard.harness-ElizaRocketConfig",
             "simulator_exists": simulator_path.is_file(),
             "smoke_runner": str(SMOKE_RUNNER),
             "smoke_runner_executable": smoke_runner_path.is_file()
             and os.access(smoke_runner_path, os.X_OK),
+            "linux_boot_evidence": str(AP_BENCHMARK_LINUX_BOOT_EVIDENCE),
+            "linux_boot_evidence_exists": linux_boot_evidence_path.is_file(),
             "linux_smoke_workload": str(LINUX_SMOKE_WORKLOAD),
             "benchmark_workload": str(AP_BENCHMARK_WORKLOAD),
             "benchmark_workload_exists": workload_path.is_file(),
             "benchmark_payload": str(AP_BENCHMARK_PAYLOAD),
             "benchmark_payload_exists": payload_path.is_file(),
+            "disk_backed_benchmark_payload": str(AP_BENCHMARK_DISK_PAYLOAD),
+            "disk_backed_benchmark_payload_exists": disk_payload_path.is_file(),
         },
         "benchmark_tools": tools,
+        "packaged_generated_ap_workload": {
+            "status": (
+                "ready"
+                if workload_path.is_file() and payload_path.is_file() and not missing_tools
+                else "partial"
+                if workload_path.is_file()
+                else "missing"
+            ),
+            "packages_stream": workload_path.is_file()
+            and "stream_c.exe" in workload_path.read_text(encoding="utf-8", errors="ignore"),
+            "packages_fio_job": workload_path.is_file()
+            and "ufs-dram-contention.fio"
+            in workload_path.read_text(encoding="utf-8", errors="ignore"),
+            "does_not_claim_pass_without_tools": True,
+        },
+        "target_ready_tools": ready_tools,
+        "missing_target_tools": missing_tools,
+        "source_build_prerequisites": [
+            {
+                "name": "FireMarshal workload",
+                "required_artifact": "generated-AP Linux workload that only passes after real target tools run",
+                "current_state": (
+                    "sw/firemarshal/eliza-e1-ap-benchmarks.json exists and packages "
+                    f"{', '.join(ready_tools) if ready_tools else 'no'} target-ready "
+                    "RV64 benchmark binary artifacts; no-disk payload exists"
+                    if payload_path.is_file()
+                    else "sw/firemarshal/eliza-e1-ap-benchmarks.json exists and packages "
+                    f"{', '.join(ready_tools) if ready_tools else 'no'} target-ready "
+                    "RV64 benchmark binary artifacts; final no-disk payload is still missing"
+                    if workload_path.is_file()
+                    else "missing generated-AP benchmark workload"
+                ),
+                "blocked_until": (
+                    "ready; wire_cpu_ap_capture_commands.py can export a real generated-AP "
+                    "benchmark command, but accepted evidence still requires Linux userspace "
+                    "to boot and capture it"
+                    if command_derivable
+                    else "marshal -d builds eliza-e1-ap-benchmarks-bin-nodisk after "
+                    "target tools are available"
+                ),
+            },
+            {
+                "name": "CoreMark",
+                "required_artifact": "target Linux RV64 executable packaged into the FireMarshal workload",
+                "current_state": (
+                    "target-ready RV64 CoreMark binary is packaged in the generated-AP workload"
+                    if "coremark" in ready_tools
+                    else "target-ready RV64 CoreMark binary is absent"
+                ),
+                "blocked_until": "ready" if "coremark" in ready_tools else "build a target RV64 CoreMark binary for the generated-AP Linux payload",
+            },
+            {
+                "name": "STREAM",
+                "required_artifact": "target Linux RV64 STREAM executable packaged into the FireMarshal workload",
+                "current_state": (
+                    "target-ready RV64 STREAM binary is packaged as /usr/bin/stream_c.exe"
+                    if "stream_c.exe" in ready_tools
+                    else "target-ready RV64 STREAM binary is absent"
+                ),
+                "blocked_until": "ready" if "stream_c.exe" in ready_tools else "build a target RV64 STREAM binary for the generated-AP Linux payload",
+            },
+            {
+                "name": "lmbench lat_mem_rd",
+                "required_artifact": "target Linux RV64 lat_mem_rd executable packaged into the FireMarshal workload",
+                "current_state": (
+                    "target-ready RV64 lat_mem_rd-compatible binary is packaged in the generated-AP workload"
+                    if "lat_mem_rd" in ready_tools
+                    else "target-ready RV64 lat_mem_rd binary is absent"
+                ),
+                "blocked_until": "ready" if "lat_mem_rd" in ready_tools else "build a target RV64 lat_mem_rd binary for the generated-AP Linux payload",
+            },
+            {
+                "name": "fio",
+                "required_artifact": "target Linux RV64 fio executable and job file packaged into the FireMarshal workload",
+                "current_state": (
+                    "target-ready RV64 fio binary and fio job are packaged in the generated-AP workload"
+                    if "fio" in ready_tools
+                    else "target-ready RV64 fio binary is absent"
+                ),
+                "blocked_until": "ready" if "fio" in ready_tools else "build target RV64 fio for the generated-AP Linux userspace",
+            },
+        ],
         "excluded_reference_inputs": [
             {
                 "path": rel(rooted(path)),
@@ -276,11 +470,23 @@ def ap_benchmark_runner_report() -> dict[str, object]:
             for path in AP_REFERENCE_INPUTS
         ],
         "blockers": blockers,
+        "next_commands_after_prerequisites_exist": [
+            "marshal -v -d build sw/firemarshal/eliza-e1-ap-benchmarks.json",
+            (
+                "eval \"$(python3 scripts/wire_cpu_ap_capture_commands.py --format shell)\" "
+                "&& scripts/capture_chipyard_linux_evidence.sh ap-benchmarks"
+            ),
+            (
+                "scripts/capture_cpu_ap_evidence.py intake ap-benchmarks --source "
+                "build/chipyard/eliza_rocket/verilator-linux-smoke.log --command "
+                "\"$ELIZA_AP_BENCHMARKS_CMD\" --generated-manifest "
+                "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json"
+            ),
+        ],
         "next_required_prerequisite": (
-            "Add a generated-AP FireMarshal/Linux benchmark workload with target-built "
-            "CoreMark, STREAM, lmbench lat_mem_rd, and fio binaries plus calibrated "
-            "frequency, run-count, thermal, power, and process-corner metadata; then "
-            "wire ELIZA_AP_BENCHMARKS_CMD to that real simulator command and intake it."
+            "First unblock generated-AP Linux/userland boot, then run the generated-AP "
+            "benchmark payload and capture calibrated frequency, run-count, thermal, "
+            "power, and process-corner metadata from that transcript."
         ),
     }
     AP_BENCHMARK_REPORT.parent.mkdir(parents=True, exist_ok=True)
@@ -358,6 +564,32 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
             if not probe.is_file() or not os.access(probe, os.X_OK):
                 problems.append(f"missing executable ISA/cache/MMU probe: {ISA_CACHE_MMU_PROBE}")
             else:
+                if ISA_CACHE_MMU_REPORT.is_file():
+                    try:
+                        report = json.loads(ISA_CACHE_MMU_REPORT.read_text(encoding="utf-8"))
+                    except json.JSONDecodeError:
+                        report = {}
+                    baremetal = report.get("baremetal_probe")
+                    hwprobe = report.get("linux_userspace_hwprobe")
+                    if isinstance(baremetal, dict) and baremetal.get("status") == "pass":
+                        problems.append(
+                            "generated-AP bare-metal diagnostic passed ISA/cache/MMU markers"
+                        )
+                    if isinstance(hwprobe, dict) and not hwprobe.get(
+                        "contains_riscv_hwprobe_success"
+                    ):
+                        hook = hwprobe.get("userspace_hook")
+                        if isinstance(hook, dict) and hook.get("workload_invokes_helper"):
+                            problems.append(
+                                "generated-AP Linux smoke packages /usr/bin/eliza-riscv-hwprobe, "
+                                "but the latest generated-AP Linux transcript has not reached "
+                                "userspace and emitted successful riscv_hwprobe syscall output"
+                            )
+                        else:
+                            problems.append(
+                                "latest generated-AP Linux smoke source lacks Linux userspace "
+                                "successful riscv_hwprobe syscall output"
+                            )
                 problems.append(
                     "checked-in generated-AP bare-metal diagnostic emits ISA/cache/MMU "
                     "markers, but final evidence still needs generated-AP Linux userspace "
@@ -369,11 +601,29 @@ def build_entries(args: argparse.Namespace) -> list[dict[str, object]]:
             problems.extend(trap_timer_irq_problems())
             if not problems:
                 entry["status"] = "ready"
-        elif mode in UNWIRED_MODES:
+        elif mode in AP_BENCHMARK_DERIVED_MODES:
             if mode == "ap-benchmarks":
-                entry["source"] = "blocked_generated_ap_benchmark_runner_report"
+                entry["source"] = "generated_ap_benchmark_runner"
                 entry["blocked_report"] = rel(AP_BENCHMARK_REPORT)
-                problems.extend(cast(list[str], ap_report.get("blockers", [])))
+                if not manifest_ok:
+                    problems.append(f"missing generated manifest: {rel(GENERATED_MANIFEST)}")
+                ap_payload = rooted(AP_BENCHMARK_PAYLOAD)
+                if not ap_payload.is_file():
+                    problems.append(f"missing generated-AP benchmark payload: {AP_BENCHMARK_PAYLOAD}")
+                if not runner_ok:
+                    problems.append(f"missing executable smoke runner: {SMOKE_RUNNER}")
+                report_blockers = [
+                    blocker
+                    for blocker in cast(list[str], ap_report.get("blockers", []))
+                    if "Linux/userland boot transcript" not in blocker
+                    and "boot transcript has captured" not in blocker
+                ]
+                problems.extend(report_blockers)
+                if not problems and ap_report.get("derived_command_available"):
+                    entry["status"] = "ready"
+                    entry["command"] = smoke_command(
+                        str(ap_payload), use_docker=args.use_docker
+                    )
             else:
                 problems.append(
                     "no checked-in generated-AP test runner is available for this lane; "

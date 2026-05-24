@@ -1,6 +1,0 @@
-# riscv64 kernel and bootloader. Keep the emulator image lean: the agent is
-# validated through systemd, curl, and the terminal TUI rather than a GUI stack.
-# No CPU microcode/shim-signed (those are amd64/arm64 firmware-specific).
-linux-image-riscv64
-grub-efi-riscv64-bin
-u-boot-menu

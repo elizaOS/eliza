@@ -251,17 +251,31 @@ function detectSimulatedEvidence(evidence: TeeEvidence): string | undefined {
   }
 
   const verifier = evidence.freshness?.verifier?.toLowerCase();
-  if (
-    verifier !== undefined &&
-    (verifier.includes("mock") ||
-      verifier.includes("sim") ||
-      verifier.includes("local-smoke") ||
-      verifier.includes("local"))
-  ) {
+  if (verifier !== undefined && isSimulatedVerifier(verifier)) {
     return `TEE verifier "${evidence.freshness?.verifier}" indicates a non-production attestation.`;
   }
 
   return undefined;
+}
+
+/**
+ * Match genuinely-simulated verifier markers WITHOUT rejecting the legitimate
+ * on-device `eliza-local-verifier`. The real CoVE on-device verifier is "local"
+ * by design (self-rooted in the device RoT, no cloud QE), so a blanket
+ * `includes("local")` would block the real product path. We instead reject the
+ * specific dev/mock/smoke markers a simulated verifier carries.
+ */
+function isSimulatedVerifier(verifier: string): boolean {
+  if (verifier === "eliza-local-verifier") return false;
+  return (
+    verifier.includes("local-smoke") ||
+    verifier.includes("localsim") ||
+    verifier.includes("mock") ||
+    verifier.includes("sim") ||
+    verifier.includes("fake") ||
+    verifier.includes("devmode") ||
+    verifier.includes("debug")
+  );
 }
 
 function evaluateNonce(

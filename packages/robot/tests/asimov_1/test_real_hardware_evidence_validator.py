@@ -32,6 +32,7 @@ def _telemetry(sequence: int) -> dict:
 
 def _valid_report() -> dict:
     return {
+        "schema": "asimov-1-real-hardware-evidence-v1",
         "ok": True,
         "profile_id": "asimov-1",
         "evidence": "real_hardware_livekit_control",
@@ -62,6 +63,7 @@ def _valid_report() -> dict:
                     "profile_id": "asimov-1",
                     "probe": "telemetry_only",
                     "command_messages_published": 0,
+                    "checks": {"connected": True, "telemetry_received": True},
                     "telemetry": _telemetry(1),
                 },
             },
@@ -72,7 +74,19 @@ def _valid_report() -> dict:
                     "ok": True,
                     "profile_id": "asimov-1",
                     "probe": "staged_real_command",
+                    "non_default_motion_stages_enabled": {
+                        "stand": False,
+                        "zero_velocity": False,
+                    },
                     "commands_sent": ["mode:DAMP"],
+                    "checks": {
+                        "connected": True,
+                        "telemetry_before_commands": True,
+                        "telemetry_after_commands": True,
+                        "damp_command_sent": True,
+                        "stand_requires_flag": True,
+                        "zero_velocity_requires_flag": True,
+                    },
                     "telemetry_before": _telemetry(2),
                     "telemetry_after": _telemetry(3),
                 },
@@ -97,6 +111,72 @@ def test_real_hardware_evidence_validator_rejects_missing_command_probe() -> Non
     assert validation["ok"] is False
     assert validation["checks"]["required_stages_present"] is False
     assert validation["checks"]["command_probe_ok"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_unversioned_report() -> None:
+    report = _valid_report()
+    del report["schema"]
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["schema"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_non_advancing_command_telemetry() -> None:
+    report = _valid_report()
+    command = report["stages"][2]["report"]
+    command["telemetry_after"] = dict(command["telemetry_before"])
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["command_probe_telemetry_advanced"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_unsafe_telemetry_status() -> None:
+    report = _valid_report()
+    report["stages"][1]["report"]["telemetry"]["error_flags"] = 4
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["telemetry_status"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_stale_command_telemetry() -> None:
+    report = _valid_report()
+    report["stages"][2]["report"]["telemetry_after"]["fw_age_ms"] = 5000
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["command_probe_telemetry_status"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_forged_nested_probe_checks() -> None:
+    report = _valid_report()
+    report["stages"][2]["report"]["checks"]["zero_velocity_requires_flag"] = False
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["command_probe_checks"] is False
+
+
+def test_real_hardware_evidence_validator_rejects_velocity_without_stand_flag() -> None:
+    report = _valid_report()
+    command = report["stages"][2]["report"]
+    command["commands_sent"] = ["mode:DAMP", "velocity:zero"]
+    command["non_default_motion_stages_enabled"] = {
+        "stand": False,
+        "zero_velocity": True,
+    }
+
+    validation = validate_asimov1_real_hardware_evidence(report)
+
+    assert validation["ok"] is False
+    assert validation["checks"]["command_probe_safety_flags"] is False
 
 
 def test_real_hardware_evidence_validator_cli(tmp_path: Path) -> None:

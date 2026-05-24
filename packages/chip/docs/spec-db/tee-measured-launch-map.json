@@ -1,0 +1,102 @@
+{
+  "schema": "eliza.tee_measured_launch_map.v1",
+  "summary": "The 06 §2.1 measurement-source map: which boot stage / software component feeds each TeeEvidence measurement, and the order the extend-only chain folds them. Bound field-by-field to the canonical agent type at packages/agent/src/services/tee-evidence.ts (NOT packages/core/src/types/tee.ts; see tee-plan/07 §0 drift correction) and to the folding implemented by scripts/tee/teeevidence_quote.py. This is a contract, not silicon evidence: every entry is a planned source whose real digest is BLOCKED on the named hardware/firmware lane.",
+  "claim_boundary": "Measurement-source map only; not a measured launch, not secure boot, not a signed quote, not silicon. Each measurement's real digest is BLOCKED on the named lane until that lane produces a transcript.",
+  "digest_convention": "sha256:<64 lowercase hex>",
+  "report_data_binding": "sha256:H(nonce || ephemeral_pubkey) binds the quote to the live RA-TLS channel (06 §3.1, 07 §7.1).",
+  "fold_order": ["boot", "monitor", "os", "policy", "device", "agent", "npuFirmware", "modelWeights"],
+  "measurements": [
+    {
+      "field": "boot",
+      "required": true,
+      "stage": "pre-tsm-m-mode",
+      "produced_by": "RoT/ROM + BL1/BL2 + OpenSBI/TSM-driver digests, DICE-folded",
+      "when_measured": "pre-TSM, M-mode",
+      "fold": "extend-only over rom, lifecycle, BL1, BL2 (teeevidence_quote.fold_boot_measurement)",
+      "lane": "02-root-of-trust",
+      "blocked_on": "fw/boot-rom/secure constant-time Ed25519 + measurement extend (R2/R3); RoT silicon"
+    },
+    {
+      "field": "monitor",
+      "required": false,
+      "required_when": "claims.npuProtected || claims.monitorMeasured",
+      "stage": "m-mode-before-tvm-create",
+      "produced_by": "TSM-driver measures the TSM (security-manager) image at load",
+      "when_measured": "M-mode, before TVM create",
+      "fold": "sha256(tsm_image)",
+      "lane": "01-tee-core-architecture",
+      "blocked_on": "M-mode CoVE TSM bring-up (06 WI-6); rtl/security/e1_tsm_epmp_wall.sv (C4)"
+    },
+    {
+      "field": "os",
+      "required": true,
+      "stage": "tvm-finalize",
+      "produced_by": "TSM measures guest kernel + initramfs + dtb (+ rootfs) into the TVM measurement register",
+      "when_measured": "TVM finalize",
+      "fold": "extend-only over kernel, initramfs, dtb (teeevidence_quote.fold_os_measurement)",
+      "lane": "06-os-on-tee-software",
+      "blocked_on": "reproducible guest image build (06 WI-3); confidential-boot smoke (06 WI-6)"
+    },
+    {
+      "field": "policy",
+      "required": true,
+      "stage": "tvm-finalize",
+      "produced_by": "TSM measures the in-domain policy blob (page/IO/debug policy)",
+      "when_measured": "TVM finalize",
+      "fold": "sha256(policy_blob)",
+      "lane": "06-os-on-tee-software",
+      "blocked_on": "in-domain policy blob materialization at finalize"
+    },
+    {
+      "field": "device",
+      "required": true,
+      "stage": "tvm-finalize",
+      "produced_by": "TSM/IOPMP source-ID policy digest (docs/spec-db/tee-iopmp-source-id-map.json)",
+      "when_measured": "TVM finalize",
+      "fold": "sha256(iopmp_source_id_policy)",
+      "lane": "03-secure-io-iommu-npu",
+      "blocked_on": "rtl/iommu IOPMP source-ID enforcement (IO3/IO6)"
+    },
+    {
+      "field": "agent",
+      "required": true,
+      "stage": "post-launch-in-domain",
+      "produced_by": "in-domain attestation agent hashes the elizaOS agent image at first run; extends a runtime measurement log",
+      "when_measured": "post-launch, in-domain",
+      "fold": "sha256(agent_image)",
+      "lane": "06-os-on-tee-software",
+      "blocked_on": "in-domain attestation agent (06a-attestation-agent-spec.md), runtime measurement log"
+    },
+    {
+      "field": "npuFirmware",
+      "required": false,
+      "required_when": "claims.npuProtected",
+      "stage": "post-launch-before-private-inference",
+      "produced_by": "NPU runtime hashes loaded NPU firmware + queue-policy blob before private-queue ownership",
+      "when_measured": "post-launch, before private inference",
+      "fold": "sha256(npu_firmware || npu_queue_policy)",
+      "lane": "03-secure-io-iommu-npu",
+      "blocked_on": "rtl/npu private-queue ownership FSM (IO12); 06b-npu-attestation-contract.md"
+    },
+    {
+      "field": "modelWeights",
+      "required": false,
+      "required_when": "private-inference unseal binds the weights digest",
+      "stage": "post-launch-in-domain",
+      "produced_by": "in-domain runtime hashes the at-rest sealed-weights plaintext; bound as the modelWeights policy measurement at key release",
+      "when_measured": "post-launch, in-domain (before unseal)",
+      "fold": "sha256(model_weights_plaintext)",
+      "lane": "06-os-on-tee-software",
+      "blocked_on": "confidential-inference unseal path on real silicon"
+    }
+  ],
+  "claims": [
+    {"name": "secureBoot", "set_by": "TSM + RoT: true only when the boot chain verified end-to-end", "lane": "02-root-of-trust"},
+    {"name": "debugDisabled", "set_by": "lifecycle: true only when lifecycle==LOCKED and debug ports gated", "lane": "02-root-of-trust"},
+    {"name": "productionLifecycle", "set_by": "lifecycle: true only when lifecycle==LOCKED", "lane": "02-root-of-trust"},
+    {"name": "memoryEncrypted", "set_by": "MCIE: true only when AES-CTR + integrity tree active on the domain's private pages", "lane": "01-tee-core-architecture"},
+    {"name": "ioProtected", "set_by": "IOMMU/IOPMP: true only when source-ID policy programmed and IOMMU not in BARE for the domain", "lane": "03-secure-io-iommu-npu"},
+    {"name": "npuProtected", "set_by": "NPU runtime: true only when NPU fw measured + private-queue ownership held + counter guard active", "lane": "03-secure-io-iommu-npu"},
+    {"name": "monitorMeasured", "set_by": "TSM-driver: true only when the M-mode TSM image was measured into the monitor register and DICE chain", "lane": "01-tee-core-architecture"}
+  ]
+}

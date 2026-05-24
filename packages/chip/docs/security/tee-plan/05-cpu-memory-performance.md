@@ -40,12 +40,12 @@ that recovers performance **without weakening the security claim**.
 | Little-core integration | `rtl/cpu/e1_cva6_wrapper.sv` | Real OpenHW CVA6 v5.3.0 (`cv64a6_imafdc_sv39`) behind `+define+E1_HAVE_CVA6`; flat-AXI4 adapter `rtl/top/adapters/e1_cva6_to_e1axi4.sv`; safe-idle when undefined. | **Real RTL boundary.** In-order, single-issue, RV64GC+S/Sv39. SPECint IPC ~1.5–1.8 (per `sota-2028/ooo-execution.md` §B). |
 | Smoke core | `rtl/cpu/e1_cpu_subsystem_stub.sv` | 8-state FSM, ~12 opcodes, no CSR/MMU/traps. | **Smoke only.** Not a performance vehicle; do not grow it. |
 | Cluster top | `rtl/cpu/cluster/e1_cluster_top.sv` | Parameterized 1+3+4 tie-off skeleton, `E1_HAVE_*` gated. | **Contract skeleton.** Big/mid cores `BLOCKED` on the open Kunminghu external checkout / scale-up fork. |
-| Branch prediction | `rtl/cpu/bpu/` (TAGE×5, SC×4, ITTAGE×5, loop, RAS, FTB 2048×4, uFTB 512, FTQ 64) | Substantial synthesizable BPU; 33/33 cocotb, MPKI harness on CBP-5. | **Real RTL.** Scaled XiangShan-Kunminghu derivative; the most mature OoO-relevant block in-tree. |
+| Branch prediction | `rtl/cpu/bpu/` (TAGE×5, SC×6, H2P neural sidecar, learned local-dir meta, optional bias/IMLI correctors default-off, 2-way ITTAGE×5, loop, RAS, FTB 2048×4, uFTB 512, FTQ 64) | Substantial synthesizable BPU; target-module cocotb aggregate is 103/103 across 10 counted modules, excluding auxiliary debug/MPKI runs, with L1I frontend integration and MPKI harness evidence on CBP-5. | **Substantial RTL, pre-silicon evidence.** Scaled XiangShan-Kunminghu derivative; the most mature OoO-relevant block in-tree. |
 | Macro-op fusion | `rtl/cpu/fusion/fusion_pkg.sv` (19 pairs) | Contract package only; `fusion_detect.sv` not yet written. | **Contract, no datapath.** Detection lands with rename/dispatch. |
 | RVV | `rtl/cpu/rvv/rvv_csr.sv` (7 CSRs real), `rvv_unit_stub.sv` | CSR/`vsetvl` real; arithmetic is a **behavioral pass-through stub**. | **CSR real, datapath BLOCKED.** No vector ALU. |
 | Cache hierarchy | `rtl/cache/{l1i,l1d,l2,l3,slc}` + 7 prefetchers + DRRIP/Hawkeye/Mockingjay + BDI | Four-level + SLC, all synthesizable/Verilator-runnable. SLC has way-partition + way-shutoff + per-client QoS. | **Real RTL, sim-only evidence.** ChampSim DPC-3 traces only; phone-class `BLOCKED`. |
 | DRAM | `rtl/memory/dram_ctrl/e1_dram_ctrl.sv`, `e1_axi4_dram_model.sv`, root `dramsim3.json/.txt`, `compiler/runtime/dramsim_wrap/` | DRAM controller RTL + DRAMsim3 LPDDR model + Python wrap/sweep. Boot path still SRAM-backed AXI-Lite. | **Model real, capacity/timing BLOCKED.** No LPDDR PHY/training. |
-| IOMMU | `rtl/iommu/e1_riscv_iommu.sv` | RISC-V IOMMU v1.0.1, two-stage, PASID PD20, ATS/PRI, MSI. | **Real RTL.** Directly reusable for TEE source-ID isolation. |
+| IOMMU | `rtl/iommu/e1_riscv_iommu.sv` | RISC-V IOMMU v1.0.1 register/fault surface, allowlist/PASID behavior, IOFENCE.C fetch/decode/completion, and a local DDT + Sv39 first-stage KAT under identity G-stage. Non-identity G-stage/PDT/full Linux evidence, ATS/PRI/MSI behavior, invalidation side effects, and protected-domain policy remain blocked. | **Partial RTL evidence.** Useful scaffold, not complete TEE isolation evidence. |
 | NPU | `rtl/npu/e1_npu.sv` (1083 lines) + planned Gemmini wrapper | MMIO descriptor-ring datapath real; Gemmini 16×16 INT8 is the v0 selection; CPU fallback contract. | **Real MMIO NPU.** Systolic array is a generator pin, `BLOCKED`. |
 
 **Bottom line:** the front-end (BPU) and the cache/SLC hierarchy are the most
@@ -173,10 +173,12 @@ the open Kunminghu V3 8-wide scale-up. Do not build a bespoke OoO back-end.
 
 ## 3. Cache + memory hierarchy
 
-The four-level hierarchy + SLC is real RTL with a rich evidence harness
+The four-level hierarchy + SLC is real RTL with a focused pre-silicon evidence harness
 (`make champsim-prefetch-sweep`, `make mockingjay-vs-lru-sweep`,
-`make lmbench-cache-curve`, `make dramsim-sweep`). Leverage here is **high and
-measurable today** in ChampSim/DRAMsim3, even before the OoO back-end.
+`make dramsim-sweep`, targeted cocotb cache tests). `make lmbench-cache-curve`
+and phone-class memory evidence remain blocked until the RV64 lmbench source,
+toolchain, and target metadata land. Leverage here is **high and measurable
+today** in ChampSim/DRAMsim3/cocotb, even before the OoO back-end.
 
 - **E3.1 — Prefetcher bake-off → ship-list.** Sweep the seven in-tree
   prefetchers (Berti, BOP, SPP, IPCP, stride, FDIP-L1I, Pythia-stub) on DPC-3.
@@ -185,10 +187,11 @@ measurable today** in ChampSim/DRAMsim3, even before the OoO back-end.
   config. **Gate:** `make champsim-prefetch-sweep`,
   `docs/evidence/cache/champsim_prefetch_sweep_report.json`. Pythia is a
   `BLOCKED` stub (`e1_pythia_stub.sv`) — keep it fail-closed.
-- **E3.2 — Replacement policy.** DRRIP default; finish the Mockingjay-prod port
-  (`e1_mockingjay_prod.sv` currently below the +10% threshold per
-  `mockingjay_cocotb_synthetic_report.json`). Hypothesis: Mockingjay closes
-  most of the LRU→Belady gap at L3/SLC. **Gate:**
+- **E3.2 — Replacement policy.** DRRIP default; Mockingjay-prod now passes the
+  synthetic cocotb +10% relative threshold per
+  `mockingjay_cocotb_synthetic_report.json`. DPC-3, full-system, and
+  phone-class evidence remain blocked. Hypothesis: Mockingjay closes most of
+  the LRU→Belady gap at L3/SLC. **Gate:**
   `make cocotb-cache-mockingjay-accuracy`, `make mockingjay-vs-lru-sweep`.
 - **E3.3 — SLC as LPDDR-traffic filter.** The 16 MB SLC with BDI compression
   is the primary lever for cutting external-memory energy/traffic — the
@@ -346,13 +349,16 @@ until `04` signs off.
 
 - **Tax.** Per-master IOMMU translation (`confidential-domain.md` I/O rule;
   `03-secure-io-iommu-npu.md`) adds a page-walk to the NPU/display/DMA path.
-- **Mitigation — ATS/PRI + per-PASID IOTLB + walk caching.** The RISC-V IOMMU
-  RTL already implements **ATS** (devices cache translations), **PASID PD20**
-  (per-NPU-queue contexts), and multi-level DDT walks
-  (`rtl/iommu/e1_riscv_iommu.sv`). Give the NPU command queue its own PASID and
-  let ATS pre-translate descriptor addresses so steady-state DMA pays no walk.
-  Size the IOTLB and page-walk-cache for the NPU's large contiguous tensor
-  strides (the access pattern is highly regular — easy to cover). **Experiment:**
+- **Mitigation target — ATS/PRI + per-PASID IOTLB + walk caching.** The current
+  RISC-V IOMMU RTL has local evidence for the register/fault surface, BARE
+  behavior, IOFENCE.C fetch/decode, a minimal DDT + Sv39 first-stage read walk
+  under identity G-stage, and allowlist isolation. ATS/PRI transaction behavior,
+  full PDT/PASID handling, and non-identity G-stage translation remain blocked
+  by `docs/evidence/memory/iommu-evidence-gate.yaml`. Give the NPU command queue
+  its own PASID and let ATS pre-translate descriptor addresses only after those
+  blocked items have evidence. Size the IOTLB and page-walk-cache for the NPU's
+  large contiguous tensor strides (the access pattern is highly regular — easy
+  to cover). **Experiment:**
   IOMMU+QoS sim sweep of IOTLB size and ATS-on/off under NPU+display traffic.
   **Gate:** `make memory-iommu-qos-sim-check`, `make cocotb-iommu`. **must-prove:**
   ATS translations are revoked on teardown/reset and cannot outlive a domain

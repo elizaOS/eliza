@@ -22,6 +22,7 @@ import {
   resolveIosBuildTarget,
   resolveIosCustomPods,
   resolveMobileBuildPolicy,
+  shouldRemoveAndroidJavaSourceRoot,
 } from "./run-mobile-build.mjs";
 
 test("resolveMobileBuildPolicy marks Google Play Android as a store-managed cloud client", () => {
@@ -124,6 +125,61 @@ test("Google Play Android strips AOSP assistant/full-control components and perm
     ),
     "android-cloud should strip the accessibility-service resource",
   );
+});
+
+test("Android overlay never removes the Java source root it is copying from", () => {
+  const sourceRoot = path.join(
+    "platforms",
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "ai",
+    "elizaos",
+    "app",
+  );
+  const targetRoot = path.join(
+    "platforms",
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "app",
+    "eliza",
+  );
+
+  assert.equal(
+    shouldRemoveAndroidJavaSourceRoot(sourceRoot, targetRoot, [sourceRoot]),
+    false,
+  );
+  assert.equal(
+    shouldRemoveAndroidJavaSourceRoot(targetRoot, targetRoot, [sourceRoot]),
+    false,
+  );
+  assert.equal(
+    shouldRemoveAndroidJavaSourceRoot(
+      path.join("platforms", "android", "app", "src", "main", "java", "old", "pkg"),
+      targetRoot,
+      [sourceRoot],
+    ),
+    true,
+  );
+});
+
+test("Android overlay carries all native app bridge entrypoints", () => {
+  const script = fs.readFileSync(
+    new URL("./run-mobile-build.mjs", import.meta.url),
+    "utf8",
+  );
+  for (const javaFile of [
+    "ElizaAndroidSystemBridge.java",
+    "ElizaNativeBridge.java",
+    "VoiceCapturePlugin.java",
+  ]) {
+    assert.match(script, new RegExp(`"${javaFile}"`));
+  }
 });
 
 test("Android manifest cleartext policy can be stamped per target", () => {

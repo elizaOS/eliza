@@ -1,4 +1,4 @@
-# ElizaOS lunch targets.
+# elizaOS lunch targets.
 #
 # Cuttlefish: virtual phones. arm64, x86_64, and riscv64 are all declared so
 #   the elizaOS AOSP fork has explicit emulator lanes for each supported ABI.

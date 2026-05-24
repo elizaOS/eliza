@@ -1,0 +1,200 @@
+{
+  "schema": "robot-nebius-full-training-closeout-v1",
+  "ok": false,
+  "state": "running",
+  "run_id": "robot-full-1779504720",
+  "bucket": "robot-rl-results-1779358330",
+  "dest": "evidence/nebius_full_training/synced_run",
+  "observed_at": "2026-05-23T17:02:58.019424Z",
+  "monitor": {
+    "ok": false,
+    "state": "running",
+    "summary": {
+      "completed_stage_count": 1,
+      "total_stage_count": 6,
+      "completed_stages": [
+        "00_local_preflight"
+      ],
+      "pending_stages": [
+        "10_nebius_train_alberta",
+        "20_nebius_compare_backends",
+        "30_nebius_continual_benchmarks",
+        "40_nebius_brax_baseline",
+        "50_post_train_validation"
+      ],
+      "passed_gates": [
+        "run_root",
+        "failure_marker_absent",
+        "video_review"
+      ],
+      "missing_gates": [
+        "success_marker",
+        "stage_logs",
+        "stage_status",
+        "instance_launch_hygiene",
+        "training_inputs",
+        "multi_robot_readiness",
+        "alberta_checkpoint",
+        "asimov1_alberta_production",
+        "backend_comparison",
+        "joint_reach_benchmark",
+        "obstacle_course_benchmark",
+        "brax_full_training_run",
+        "brax_production_checkpoint",
+        "production_policy_videos"
+      ],
+      "next_action": "continue_polling"
+    }
+  },
+  "finalization": {
+    "ok": false,
+    "missing_gates": [
+      "success_marker",
+      "stage_logs",
+      "stage_status",
+      "instance_launch_hygiene",
+      "training_inputs",
+      "multi_robot_readiness",
+      "alberta_checkpoint",
+      "asimov1_alberta_production",
+      "backend_comparison",
+      "joint_reach_benchmark",
+      "obstacle_course_benchmark",
+      "brax_full_training_run",
+      "brax_production_checkpoint",
+      "production_policy_videos",
+      "artifact_inventory"
+    ]
+  },
+  "training_report": {
+    "ok": false,
+    "missing_gates": [
+      "success_marker",
+      "stage_logs",
+      "stage_status",
+      "instance_launch_hygiene",
+      "training_inputs",
+      "multi_robot_readiness",
+      "alberta_checkpoint",
+      "asimov1_alberta_production",
+      "backend_comparison",
+      "joint_reach_benchmark",
+      "obstacle_course_benchmark",
+      "brax_full_training_run",
+      "brax_production_checkpoint",
+      "production_policy_videos",
+      "artifact_inventory"
+    ],
+    "backend_comparison": {
+      "present": false,
+      "profile_id": null,
+      "tasks": [],
+      "steps": null,
+      "winner_by_mean_reward": null,
+      "alberta_mean_reward": null,
+      "ppo_mean_reward": null,
+      "untrained_mean_reward": null,
+      "alberta_delta_vs_ppo": null,
+      "alberta_delta_vs_untrained": null,
+      "ppo_delta_vs_untrained": null
+    },
+    "video_review": {
+      "present": true,
+      "ok": true,
+      "video_count": 20,
+      "action_progress": {
+        "reviewed_video_count": 20,
+        "ok_video_count": 20,
+        "profiles": [
+          "asimov-1",
+          "hiwonder-ainex",
+          "unitree-g1",
+          "unitree-h1"
+        ],
+        "min_visual_progress": 0.00020163143418875396,
+        "mean_visual_progress": 0.003894932710419537,
+        "mean_frame_delta": 0.9932078411569819
+      }
+    }
+  },
+  "artifact_inventory": {
+    "ok": false,
+    "present_count": 53,
+    "required_count": 88,
+    "missing": [
+      "status_success",
+      "runner_status",
+      "status_00_local_preflight",
+      "status_10_nebius_train_alberta",
+      "status_20_nebius_compare_backends",
+      "status_30_nebius_continual_benchmarks",
+      "status_40_nebius_brax_baseline",
+      "status_50_post_train_validation",
+      "log_train_alberta",
+      "log_compare_backends",
+      "log_continual_benchmarks",
+      "log_brax_baseline",
+      "log_post_train_validation",
+      "alberta_manifest",
+      "alberta_policy",
+      "backend_comparison_json",
+      "backend_comparison_md",
+      "joint_reach_benchmark_json",
+      "joint_reach_benchmark_md",
+      "joint_reach_benchmark_plot",
+      "obstacle_course_benchmark_json",
+      "obstacle_course_benchmark_md",
+      "obstacle_course_benchmark_plot",
+      "brax_manifest",
+      "brax_policy",
+      "multi_robot_video_unitree_r1_stand_up",
+      "multi_robot_video_unitree_r1_walk_forward",
+      "multi_robot_video_unitree_r1_turn_left",
+      "multi_robot_video_unitree_r1_turn_right",
+      "multi_robot_video_unitree_r1_combined",
+      "multi_robot_contact_unitree_r1_stand_up",
+      "multi_robot_contact_unitree_r1_walk_forward",
+      "multi_robot_contact_unitree_r1_turn_left",
+      "multi_robot_contact_unitree_r1_turn_right",
+      "multi_robot_contact_unitree_r1_combined"
+    ]
+  },
+  "objective_audit": {
+    "ok": false,
+    "passed": [
+      "alberta_framework_integrated",
+      "clean_relaunch_path_ready"
+    ],
+    "failed": [
+      "unified_robot_interface_all_profiles",
+      "traditional_and_sota_baselines_available",
+      "alberta_vs_ppo_side_by_side_comparison",
+      "continual_learning_obstacle_demo_no_forgetting",
+      "production_robot_policy_videos_reviewed",
+      "nebius_production_training_complete"
+    ]
+  },
+  "missing_gates": [
+    "success_marker",
+    "stage_logs",
+    "stage_status",
+    "instance_launch_hygiene",
+    "training_inputs",
+    "multi_robot_readiness",
+    "alberta_checkpoint",
+    "asimov1_alberta_production",
+    "backend_comparison",
+    "joint_reach_benchmark",
+    "obstacle_course_benchmark",
+    "brax_full_training_run",
+    "brax_production_checkpoint",
+    "production_policy_videos",
+    "artifact_inventory"
+  ],
+  "monitor_status": "evidence/nebius_full_training/synced_run/monitor_status.json",
+  "validation_report": "evidence/nebius_full_training/synced_run/validation_report.json",
+  "finalization_report": "evidence/nebius_full_training/synced_run/finalization_report.json",
+  "training_comparison_report": "evidence/nebius_full_training/synced_run/training_comparison_report.json",
+  "artifact_inventory_report": "evidence/nebius_full_training/synced_run/artifact_inventory.json",
+  "objective_completion_audit": "evidence/nebius_full_training/synced_run/objective_completion_audit.json"
+}

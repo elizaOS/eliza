@@ -133,6 +133,30 @@ export async function sha256File(filePath) {
   return hash.digest("hex");
 }
 
+// Deterministic canonicalization: recursively sort object keys, preserve array
+// order. The result serializes to identical bytes regardless of the source file's
+// key ordering or whitespace, so the policy digest depends only on the policy's
+// semantic content. Arrays are NOT reordered (order is meaningful for the policy).
+export function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) {
+      out[key] = canonicalize(value[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+// sha256 of the canonical JSON serialization of `value`, prefixed `sha256:`.
+// This is the digest folded into measurements.policy: the confidential-policy.json
+// bytes (canonicalized) ARE the policy measurement.
+export function sha256CanonicalJson(value) {
+  const bytes = JSON.stringify(canonicalize(value));
+  return `sha256:${createHash("sha256").update(bytes, "utf8").digest("hex")}`;
+}
+
 export function artifactPath(artifactRoot, artifact) {
   return path.join(artifactRoot, artifact.filename);
 }

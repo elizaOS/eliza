@@ -60,7 +60,7 @@ decision_branches:
     production_release_allowed: false
     status: blocked_missing_replacement_schematic_firmware_and_sequence_review
   - id: replace_with_non_ti_alt_mode_capable_controller
-    selected_controller_after_branch: TBD_alt_mode_capable_controller
+    selected_controller_after_branch: pending_alt_mode_capable_controller
     allowed_use: candidate_only_if_USB3_or_DisplayPort_alt_mode_becomes_required
     required_evidence:
       - alternate controller shortlist with lifecycle, stock, package, Linux/Android support, and firmware-tool availability

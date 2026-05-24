@@ -1,4 +1,4 @@
-// hwcomposer.eliza_ai_soc - v0 framebuffer-only stub.
+// hwcomposer.eliza_ai_soc - v0 framebuffer-only legacy module.
 //
 // Backing node: /dev/graphics/fb0 (Linux fbdev) or simple-framebuffer
 // produced by CONFIG_FB_SIMPLE. No DRM/KMS, no GLES, no Vulkan, no HW
@@ -42,7 +42,7 @@ int eliza_hwc_close(hw_device_t* dev) {
 int eliza_hwc_open(const hw_module_t* module, const char* name,
                        hw_device_t** device) {
     if (std::strcmp(name, HWC_HARDWARE_COMPOSER) != 0) {
-        LOG(ERROR) << "eliza_hwc: unsupported sub-device: " << name;
+        LOG(ERROR) << "eliza_hwc: unknown sub-device: " << name;
         return -EINVAL;
     }
 
@@ -91,7 +91,7 @@ extern "C" hw_module_t HAL_MODULE_INFO_SYM = {
     .module_api_version = HWC_MODULE_API_VERSION_0_1,
     .hal_api_version = HARDWARE_HAL_API_VERSION,
     .id = HWC_HARDWARE_MODULE_ID,
-    .name = "Eliza e1 hwcomposer (v0 stub, framebuffer-only)",
+    .name = "Eliza e1 hwcomposer (v0 framebuffer-only)",
     .author = "Eliza",
     .methods = &eliza_hwc_module_methods,
     .dso = nullptr,

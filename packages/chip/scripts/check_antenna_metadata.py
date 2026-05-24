@@ -16,6 +16,9 @@ PADFRAME = ROOT / "pd/padframe/e1_demo_padframe.yaml"
 REPORT = ROOT / "build/reports/antenna_metadata.json"
 SCHEMA = "eliza.antenna_metadata.v1"
 CLAIM_BOUNDARY = "antenna_metadata_validation_only_not_padframe_or_release_evidence"
+FAIL_EXIT = 1
+BLOCKED_EXIT = 2
+ANTENNA_REPORT_GLOB = "*/61-odb-checkdesignantennaproperties/report.yaml"
 RELEASE_PADFRAME_STEPS = (
     "select a foundry IO library with input, output, bidirectional, power, ground, ESD, corner, and filler cells",
     "instantiate those pad cells around e1_chip_top instead of using the padless core wrapper as the release top",
@@ -29,6 +32,10 @@ def write_report(
     report_path: Path | None,
     findings: list[str],
     release: bool,
+    *,
+    missing: dict[str, list[str]] | None = None,
+    blocker_categories: dict[str, int] | None = None,
+    release_blocked: bool | None = None,
 ) -> None:
     evidence = ""
     if report_path is not None:
@@ -36,17 +43,39 @@ def write_report(
             evidence = report_path.relative_to(ROOT).as_posix()
         except ValueError:
             evidence = str(report_path)
+    try:
+        search_root = RUNS.relative_to(ROOT).as_posix()
+    except ValueError:
+        search_root = str(RUNS)
+    missing = missing or {}
+    blocker_categories = blocker_categories or {}
     payload = {
         "schema": SCHEMA,
         "status": status,
         "claim_boundary": CLAIM_BOUNDARY,
         "mode": "release" if release else "preflight",
         "source_report": evidence,
+        "release_credit": False,
         "summary": {
             "release_ready": status == "pass" and release,
+            "release_credit": False,
             "blockers": len(findings) if status == "blocked" else 0,
             "failures": len(findings) if status == "fail" else 0,
+            "source_report_present": report_path is not None and report_path.is_file(),
+            "missing_pin_count": sum(len(pins) for pins in missing.values()),
+            "missing_input_gate_metadata_count": len(missing.get("input", [])),
+            "missing_output_diffusion_metadata_count": len(missing.get("output", [])),
+            "missing_inout_diffusion_metadata_count": len(missing.get("inout", [])),
+            "padframe_release_blocked": bool(release_blocked),
+            "release_step_count": len(RELEASE_PADFRAME_STEPS),
         },
+        "blocker_categories": blocker_categories,
+        "report_search": {
+            "root": search_root,
+            "glob": ANTENNA_REPORT_GLOB,
+        },
+        "missing_metadata": missing,
+        "release_padframe_steps": list(RELEASE_PADFRAME_STEPS),
         "findings": [
             {
                 "code": f"antenna_metadata_{status}_{index}",
@@ -64,10 +93,17 @@ def write_report(
 
 def latest_report() -> Path | None:
     reports = sorted(
-        RUNS.glob("*/61-odb-checkdesignantennaproperties/report.yaml"),
+        RUNS.glob(ANTENNA_REPORT_GLOB),
         key=lambda path: path.stat().st_mtime,
     )
     return reports[-1] if reports else None
+
+
+def display_path(path: Path) -> str:
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def padframe_release_blocked() -> bool:
@@ -83,9 +119,11 @@ def missing_metadata(report_path: Path) -> dict[str, list[str]]:
     payload = yaml.safe_load(report_path.read_text()) or []
     missing: dict[str, list[str]] = {"input": [], "output": [], "inout": []}
     if not isinstance(payload, list):
-        return missing
+        raise ValueError("OpenLane antenna report schema error: top-level payload is not a list")
     for cell in payload:
-        if not isinstance(cell, dict) or cell.get("cell") != "e1_chip_top":
+        if not isinstance(cell, dict):
+            raise ValueError("OpenLane antenna report schema error: cell entry is not a mapping")
+        if cell.get("cell") != "e1_chip_top":
             continue
         for direction in missing:
             pins = cell.get(direction, [])
@@ -116,21 +154,39 @@ def main() -> int:
     if report_path is None or not report_path.is_file():
         finding = "antenna metadata blocker: no OpenLane design antenna report found"
         write_report(
-            "blocked" if args.release else "pass",
+            "blocked",
             report_path,
-            [finding] if args.release else [],
+            [finding],
             args.release,
+            blocker_categories={"missing_openlane_antenna_metadata_report": 1},
+            release_blocked=padframe_release_blocked(),
         )
-        if args.release:
-            print(f"STATUS: BLOCKED {finding}")
-        else:
-            print(finding)
-        return 1 if args.release else 0
+        print(f"STATUS: BLOCKED {finding}")
+        return BLOCKED_EXIT
 
-    missing = missing_metadata(report_path)
-    rel_report = report_path.relative_to(ROOT)
+    try:
+        missing = missing_metadata(report_path)
+    except (OSError, ValueError, yaml.YAMLError) as exc:
+        finding = f"antenna metadata schema error: {exc}"
+        write_report(
+            "fail",
+            report_path,
+            [finding],
+            args.release,
+            blocker_categories={"malformed_openlane_antenna_metadata_report": 1},
+            release_blocked=padframe_release_blocked(),
+        )
+        print(f"STATUS: FAIL {finding}")
+        return FAIL_EXIT
+    rel_report = display_path(report_path)
     if not missing:
-        write_report("pass", report_path, [], args.release)
+        write_report(
+            "pass",
+            report_path,
+            [],
+            args.release,
+            release_blocked=padframe_release_blocked(),
+        )
         print(f"antenna metadata check ok: {rel_report}")
         return 0
 
@@ -139,8 +195,22 @@ def main() -> int:
         for direction, pins in missing.items()
     ]
     release_blocked = padframe_release_blocked()
-    status = "blocked" if args.release or not release_blocked else "pass"
-    write_report(status, report_path, findings if status == "blocked" else [], args.release)
+    status = "blocked"
+    blocker_categories = {
+        f"missing_{direction}_{'gate' if direction == 'input' else 'diffusion'}_metadata": len(pins)
+        for direction, pins in missing.items()
+    }
+    if release_blocked:
+        blocker_categories["padframe_release_blocked"] = 1
+    write_report(
+        status,
+        report_path,
+        findings,
+        args.release,
+        missing=missing,
+        blocker_categories=blocker_categories,
+        release_blocked=release_blocked,
+    )
     if status == "blocked":
         print(f"STATUS: BLOCKED antenna metadata check: {rel_report}")
     print(f"antenna metadata blockers in {rel_report}:")
@@ -157,7 +227,7 @@ def main() -> int:
         for step in RELEASE_PADFRAME_STEPS:
             print(f"    * {step}")
 
-    return 1 if args.release or not release_blocked else 0
+    return BLOCKED_EXIT
 
 
 if __name__ == "__main__":

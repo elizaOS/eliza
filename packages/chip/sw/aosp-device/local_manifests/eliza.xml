@@ -13,9 +13,9 @@
     1. drops symlinks directly under device/eliza/eliza_ai_soc/ pointing at the
        repo-local overlay (default; no network round-trip), or
     2. writes this local manifest into .repo/local_manifests/ after rewriting
-       the placeholder remote to point at the elizaOS checkout (file:// URL).
+       the repo-local remote to point at the elizaOS checkout (file:// URL).
 
-  The `remote` URL is intentionally a placeholder; build-aosp-riscv64.sh
+  The `remote` URL is intentionally repo-local; build-aosp-riscv64.sh
   rewrites it to the actual elizaOS repo path at sync time when run in
   local-manifest mode (device-overlay-mode set to "local-manifest").
 
@@ -68,6 +68,8 @@
               dest="device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.cpp" />
     <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h"
               dest="device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1NpuUapi.h"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/E1NpuUapi.h" />
     <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/IE1Npu.hal"
               dest="device/eliza/eliza_ai_soc/hal/e1_npu/IE1Npu.hal" />
     <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/service.cpp"
@@ -114,13 +116,15 @@
               dest="vendor/eliza/products/eliza_openagent_ai_soc_phone.mk" />
     <linkfile src="packages/os/android/vendor/eliza/apps/Eliza/Android.bp"
               dest="vendor/eliza/apps/Eliza/Android.bp" />
+    <copyfile src="packages/os/android/vendor/eliza/apps/Eliza/Eliza.apk"
+              dest="vendor/eliza/apps/Eliza/Eliza.apk" />
     <linkfile src="packages/os/android/vendor/eliza/permissions/Android.bp"
               dest="vendor/eliza/permissions/Android.bp" />
-    <linkfile src="packages/os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml"
+    <copyfile src="packages/os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml"
               dest="vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml" />
-    <linkfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml"
+    <copyfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml"
               dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.app.xml" />
-    <linkfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml"
+    <copyfile src="packages/os/android/vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml"
               dest="vendor/eliza/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />
     <linkfile src="packages/os/android/system-ui/native/Android.bp"
               dest="vendor/eliza/system-ui/native/Android.bp" />
@@ -128,10 +132,58 @@
               dest="vendor/eliza/system-ui/native/src/main/AndroidManifest.xml" />
     <linkfile src="packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
               dest="vendor/eliza/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt" />
-    <linkfile src="packages/os/android/vendor/eliza/init/init.eliza.rc"
+    <linkfile src="packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
+              dest="vendor/eliza/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />
+    <copyfile src="packages/os/android/vendor/eliza/init/init.eliza.rc"
               dest="vendor/eliza/init/init.eliza.rc" />
-    <linkfile src="packages/os/android/vendor/eliza/manifests/aosp-assistant-full-control.json"
+    <copyfile src="packages/os/android/vendor/eliza/manifests/aosp-assistant-full-control.json"
               dest="vendor/eliza/manifests/aosp-assistant-full-control.json" />
+    <copyfile src="packages/os/android/vendor/eliza/tee/tee-policy.json"
+              dest="vendor/eliza/tee/tee-policy.json" />
+    <copyfile src="packages/os/android/vendor/eliza/tee/tee-measurements.json"
+              dest="vendor/eliza/tee/tee-measurements.json" />
+    <copyfile src="packages/os/android/vendor/eliza/bootanimation/bootanimation.zip"
+              dest="vendor/eliza/bootanimation/bootanimation.zip" />
+    <linkfile src="../os/android/vendor/milady/AndroidProducts.mk"
+              dest="vendor/milady/AndroidProducts.mk" />
+    <linkfile src="../os/android/vendor/milady/milady_common.mk"
+              dest="vendor/milady/milady_common.mk" />
+    <copyfile src="../os/android/vendor/milady/apps/Milady/Milady.apk"
+              dest="vendor/milady/apps/Milady/Milady.apk" />
+    <linkfile src="../os/android/vendor/milady/permissions/Android.bp"
+              dest="vendor/milady/permissions/Android.bp" />
+    <copyfile src="../os/android/vendor/milady/permissions/default-permissions-ai.milady.milady.xml"
+              dest="vendor/milady/permissions/default-permissions-ai.milady.milady.xml" />
+    <copyfile src="../os/android/vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml"
+              dest="vendor/milady/permissions/privapp-permissions-ai.milady.milady.xml" />
+    <copyfile src="../os/android/vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml"
+              dest="vendor/milady/permissions/privapp-permissions-ai.elizaos.system.bridge.xml" />
+    <linkfile src="packages/os/android/system-ui/native/Android.bp"
+              dest="vendor/milady/system-ui/native/Android.bp" />
+    <linkfile src="packages/os/android/system-ui/native/src/main/AndroidManifest.xml"
+              dest="vendor/milady/system-ui/native/src/main/AndroidManifest.xml" />
+    <linkfile src="packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt"
+              dest="vendor/milady/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridge.kt" />
+    <linkfile src="packages/os/android/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt"
+              dest="vendor/milady/system-ui/native/src/main/java/ai/elizaos/system/bridge/SystemBridgeService.kt" />
+    <copyfile src="../os/android/vendor/milady/init/init.milady.rc"
+              dest="vendor/milady/init/init.milady.rc" />
+    <copyfile src="../os/android/vendor/milady/manifests/aosp-assistant-full-control.json"
+              dest="vendor/milady/manifests/aosp-assistant-full-control.json" />
+    <copyfile src="../os/android/vendor/milady/tee/tee-policy.json"
+              dest="vendor/milady/tee/tee-policy.json" />
+    <copyfile src="../os/android/vendor/milady/tee/tee-measurements.json"
+              dest="vendor/milady/tee/tee-measurements.json" />
+    <copyfile src="../os/android/vendor/milady/bootanimation/bootanimation.zip"
+              dest="vendor/milady/bootanimation/bootanimation.zip" />
+    <linkfile src="packages/os/android/vendor/eliza/pvm_mgr/Android.bp"
+              dest="vendor/eliza/pvm_mgr/Android.bp" />
+    <linkfile src="packages/os/android/vendor/eliza/pvm_mgr/eliza_pvm_evidence.cc"
+              dest="vendor/eliza/pvm_mgr/eliza_pvm_evidence.cc" />
+    <linkfile src="packages/os/android/vendor/eliza/pvm_mgr/eliza_pvm_evidence.h"
+              dest="vendor/eliza/pvm_mgr/eliza_pvm_evidence.h" />
+    <linkfile src="packages/os/android/vendor/eliza/pvm_mgr/eliza_pvm_mgr_main.cc"
+              dest="vendor/eliza/pvm_mgr/eliza_pvm_mgr_main.cc" />
     <linkfile src="packages/os/android/vendor/eliza/sepolicy/README.md"
               dest="vendor/eliza/sepolicy/README.md" />
     <linkfile src="packages/os/android/vendor/eliza/sepolicy/eliza_agent.te"

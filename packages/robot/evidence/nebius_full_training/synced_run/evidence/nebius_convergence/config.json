@@ -1,0 +1,62 @@
+{
+  "env": "AiNexTextConditioned",
+  "ppo": {
+    "num_timesteps": 250000000,
+    "num_evals": 40,
+    "reward_scaling": 1.0,
+    "normalize_observations": true,
+    "action_repeat": 1,
+    "unroll_length": 20,
+    "num_minibatches": 32,
+    "num_updates_per_batch": 4,
+    "discounting": 0.97,
+    "learning_rate": 0.0003,
+    "entropy_cost": 0.01,
+    "num_envs": 8192,
+    "batch_size": 256,
+    "max_grad_norm": 1.0,
+    "policy_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ],
+    "value_hidden_layer_sizes": [
+      512,
+      256,
+      128
+    ]
+  },
+  "env_config": {
+    "Kd": "5.0",
+    "Kp": "200.0",
+    "action_repeat": "1",
+    "action_scale": "0.6",
+    "action_scale_arms": "0.5",
+    "action_scale_head": "0.3",
+    "action_scale_legs": "0.6",
+    "amp": "enable: false\nhidden_sizes: !!python/tuple\n- 256\n- 256\nreward_weight: 1.0\n",
+    "ang_vel_yaw": "[-0.5, 0.5]",
+    "ctrl_dt": "0.02",
+    "early_termination": "True",
+    "enable_entity_slots": "False",
+    "episode_length": "500",
+    "gait_freq_range": "[1.25, 1.75]",
+    "kick_durations": "[0.05, 0.2]",
+    "kick_wait_times": "[1.0, 3.0]",
+    "lin_vel_x": "[-0.3, 0.8]",
+    "lin_vel_y": "[-0.3, 0.3]",
+    "max_foot_height": "0.07",
+    "obs_history_size": "3",
+    "obs_noise": "0.05",
+    "reward_config": "scales:\n  action_rate: -0.005\n  amp_style: 0.0\n  ang_vel_xy: -0.05\n  arm_action_rate: -0.002\n  arm_default_pose_track: -0.5\n  energy: -5.0e-05\n  feet_phase: 0.5\n  feet_slip: -0.1\n  head_action_rate: -0.01\n  head_default_pose_track: -0.1\n  head_tilt_target: 6.0\n  lin_vel_z: -2.0\n  orientation: -1.5\n  sit_torso_height: 4.0\n  stand_torso_height: 4.0\n  termination: -1.0\n  torques: -0.0001\n  tracking_ang_vel: 12.0\n  tracking_lin_vel: 20.0\n  wave_arm_oscillation: 3.0\n  zero_cmd: 0.0\ntracking_sigma: 0.25\n",
+    "sim_dt": "0.004",
+    "text_conditioned": "active_tasks: !!python/tuple\n- stand_up\n- sit_down\n- walk_forward\n- walk_backward\n- sidestep_left\n- sidestep_right\n- turn_left\n- turn_right\n- turn_around\n- look_up\n- look_down\nhead_tilt_tolerance_rad: 0.15\nlook_down_tilt_target_rad: -0.5\nlook_up_tilt_target_rad: 0.6\npca_dim: 32\nsit_torso_height_target: 0.16\nsit_torso_height_tolerance: 0.03\nstand_torso_height_target: 0.27\nstand_torso_height_tolerance: 0.03\nwave_pitch_amplitude_target: 0.5\nwave_pitch_velocity_scale: 2.0\n",
+    "velocity_kick": "[1.0, 5.0]"
+  },
+  "domain_rand": true,
+  "enable_entity_slots": false,
+  "obs_size": 277,
+  "action_size": 24,
+  "seed": 0,
+  "timestamp": "2026-05-20T11:43:17.150274"
+}

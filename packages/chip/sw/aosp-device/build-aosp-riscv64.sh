@@ -41,8 +41,10 @@ build options:
   --jobs N                Parallelism for repo sync and `m`
                           (default: $(nproc)).
   --device-overlay-mode MODE
-                          symlink (default) - drop symlinks under
-                                              device/eliza/eliza_ai_soc/.
+                          symlink (default) - mirror overlay files under
+                                              device/eliza/eliza_ai_soc/ and
+                                              vendor/eliza/, then materialize
+                                              them as regular files.
                           local-manifest    - install local_manifests/eliza.xml
                                               with the remote rewritten to the
                                               elizaOS checkout, then `repo sync`
@@ -248,25 +250,16 @@ run_repo_sync() {
 }
 
 install_overlay_symlinks() {
-  log "overlay: dropping symlinks into device/eliza/eliza_ai_soc/ and vendor/eliza/"
+  log "overlay: mirroring overlay files into device/eliza/eliza_ai_soc/ and vendor/eliza/"
   local dst="$WORKSPACE/device/eliza/eliza_ai_soc"
   local vendor_dst="$WORKSPACE/vendor/eliza"
   mkdir -p "$dst"
-  # Mirror the layout exactly. We symlink files (not the whole dir) so any
-  # additions to the overlay are picked up on the next run.
-  cd "$DEVICE_OVERLAY_SRC"
-  find . -type f -print0 | while IFS= read -r -d '' rel; do
-    rel=${rel#./}
-    mkdir -p "$dst/$(dirname "$rel")"
-    ln -sfn "$DEVICE_OVERLAY_SRC/$rel" "$dst/$rel"
-  done
   mkdir -p "$vendor_dst"
-  cd "$ELIZA_VENDOR_SRC"
-  find . -type f -print0 | while IFS= read -r -d '' rel; do
-    rel=${rel#./}
-    mkdir -p "$vendor_dst/$(dirname "$rel")"
-    ln -sfn "$ELIZA_VENDOR_SRC/$rel" "$vendor_dst/$rel"
-  done
+  # Use regular files, not symlinks. Soong follows source symlinks into
+  # installed prebuilt_etc outputs; host-local symlink targets then land inside
+  # the guest image and Android cannot read them at boot.
+  rsync -aL --delete "$DEVICE_OVERLAY_SRC/" "$dst/"
+  rsync -aL --delete "$ELIZA_VENDOR_SRC/" "$vendor_dst/"
 }
 
 install_overlay_local_manifest() {
@@ -281,11 +274,35 @@ install_overlay_local_manifest() {
   repo sync -c -j"$JOBS" --fail-fast --no-clone-bundle --no-tags vendor/eliza/src
 }
 
+materialize_overlay_symlinks() {
+  local dir link target tmp
+  for dir in "$WORKSPACE/device/eliza/eliza_ai_soc" "$WORKSPACE/vendor/eliza"; do
+    [ -d "$dir" ] || continue
+    find "$dir" -type l -print0 | while IFS= read -r -d '' link; do
+      target=$(readlink -f "$link" || true)
+      [ -n "$target" ] && [ -f "$target" ] \
+        || die "overlay install: unresolved symlink $link -> $(readlink "$link" 2>/dev/null || true)"
+      tmp="${link}.materialized.$$"
+      cp -pL "$target" "$tmp"
+      mv -f "$tmp" "$link"
+    done
+  done
+}
+
+assert_no_overlay_symlinks() {
+  local links
+  links=$(find "$WORKSPACE/device/eliza/eliza_ai_soc" "$WORKSPACE/vendor/eliza" -type l -print 2>/dev/null | sort || true)
+  [ -z "$links" ] || die "overlay install: host-local symlinks remain in AOSP overlay:
+$links"
+}
+
 install_overlay() {
   case "$OVERLAY_MODE" in
     symlink)        install_overlay_symlinks ;;
     local-manifest) install_overlay_local_manifest ;;
   esac
+  materialize_overlay_symlinks
+  assert_no_overlay_symlinks
   # Sanity: every linkfile dest should resolve to a real file.
   for rel in \
     AndroidProducts.mk \

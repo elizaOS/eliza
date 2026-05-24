@@ -112,10 +112,87 @@ def run_shell(command: str, timeout_seconds: int) -> tuple[int, str]:
     return result.returncode, result.stdout
 
 
+def run_command(args: list[str], timeout_seconds: int) -> tuple[int, str]:
+    result = subprocess.run(
+        args,
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+        timeout=timeout_seconds,
+    )
+    return result.returncode, result.stdout
+
+
+def parse_adb_targets(adb_devices_output: str) -> list[dict[str, str]]:
+    targets: list[dict[str, str]] = []
+    for raw in adb_devices_output.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("List of devices attached"):
+            continue
+        fields = line.split()
+        if len(fields) < 2:
+            continue
+        targets.append(
+            {
+                "serial": fields[0],
+                "state": fields[1],
+                "details": " ".join(fields[2:]),
+            }
+        )
+    return targets
+
+
+def choose_ready_serial(adb_devices_output: str) -> str | None:
+    ready = [target["serial"] for target in parse_adb_targets(adb_devices_output) if target["state"] == "device"]
+    return ready[0] if len(ready) == 1 else None
+
+
+def prepare_adb(args: argparse.Namespace) -> str | None:
+    transcript: list[str] = []
+    if args.adb_serial:
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = f"ADB_SERIAL={args.adb_serial}"
+        return args.adb_serial
+    try:
+        rc, devices = run_command(["adb", "devices", "-l"], args.timeout_seconds)
+        transcript.append(f"$ adb devices -l\n{devices.rstrip()}\n[rc={rc}]")
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = f"adb devices failed: {exc}"
+        return None
+    serial = choose_ready_serial(devices)
+    if serial:
+        transcript.append(f"SELECTED_ADB_SERIAL={serial}")
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+        return serial
+    for address in args.adb_connect:
+        try:
+            rc, output = run_command(["adb", "connect", address], args.timeout_seconds)
+            transcript.append(f"$ adb connect {address}\n{output.rstrip()}\n[rc={rc}]")
+        except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+            transcript.append(f"$ adb connect {address}\n{exc}\n[rc=blocked]")
+            continue
+    if not args.adb_connect:
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+        return None
+    try:
+        rc, devices = run_command(["adb", "devices", "-l"], args.timeout_seconds)
+        transcript.append(f"$ adb devices -l\n{devices.rstrip()}\n[rc={rc}]")
+    except (FileNotFoundError, subprocess.TimeoutExpired) as exc:
+        transcript.append(f"adb devices after connect failed: {exc}")
+        os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+        return None
+    serial = choose_ready_serial(devices)
+    transcript.append(f"SELECTED_ADB_SERIAL={serial or '<none>'}")
+    os.environ["ELIZA_ANDROID_PERIPHERAL_ADB_PREP"] = "\n".join(transcript)
+    return serial
+
+
 def write_log(
     spec: PeripheralSpec,
     *,
     command: str,
+    command_source: str,
     status: str,
     result: int,
     body: str,
@@ -128,6 +205,7 @@ def write_log(
         f"eliza-evidence: target=android_simulated_peripheral component={spec.component}",
         "eliza-evidence: claim_boundary=adb-backed Android simulator peripheral evidence only",
         f"eliza-evidence: command_env={spec.env_var}",
+        f"eliza-evidence: command_source={command_source}",
         f"eliza-evidence: command={command or '<unset>'}",
         f"eliza-evidence: started_utc={utc_now()}",
         f"COMPONENT={spec.component}",
@@ -174,6 +252,7 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         path = write_log(
             spec,
             command="",
+            command_source=source,
             status="BLOCKED",
             result=2,
             body=(
@@ -193,12 +272,16 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         path = write_log(
             spec,
             command=command,
+            command_source=source,
             status="BLOCKED",
             result=124,
             body=output,
             missing_markers=list(spec.markers),
         )
         return "blocked", path
+    prep = os.environ.get("ELIZA_ANDROID_PERIPHERAL_ADB_PREP", "").strip()
+    if prep:
+        output = f"ADB_PREP_BEGIN\n{prep}\nADB_PREP_END\n{output}"
     missing = [marker for marker in spec.markers if marker not in output]
     if result == 0 and not missing:
         status = "PASS"
@@ -209,6 +292,7 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
     path = write_log(
         spec,
         command=command,
+        command_source=source,
         status=status,
         result=result,
         body=output,
@@ -236,16 +320,27 @@ def main() -> int:
     parser.add_argument("components", nargs="*", help="Optional component ids to capture")
     parser.add_argument("--timeout-seconds", type=int, default=120)
     parser.add_argument("--dry-run", action="store_true", help="List required commands only")
+    parser.add_argument("--adb-serial", help="adb serial to pass to canonical probes via ADB_SERIAL")
+    parser.add_argument(
+        "--adb-connect",
+        action="append",
+        default=[],
+        metavar="HOST:PORT",
+        help="run `adb connect HOST:PORT` before probing when no online adb target is visible; may be repeated",
+    )
     args = parser.parse_args()
 
     specs = selected_specs(args.components)
+    selected_serial = prepare_adb(args)
+    if selected_serial:
+        os.environ["ADB_SERIAL"] = selected_serial
     if args.dry_run:
         for spec in specs:
             path = configured_out_dir() / spec.log_name
             command, source = resolve_command(spec)
             print(
                 f"{spec.component}: source={source} command={command or '<unset>'} "
-                f"env={spec.env_var} log={rel(path)}"
+                f"env={spec.env_var} adb_serial={selected_serial or '<default>'} log={rel(path)}"
             )
             for marker in spec.markers:
                 print(f"  requires: {marker}")

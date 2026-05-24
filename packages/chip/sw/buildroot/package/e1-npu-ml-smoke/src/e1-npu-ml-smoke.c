@@ -65,7 +65,7 @@ static int parse_options(int argc, char **argv, struct smoke_options *options)
 
 	if (strcmp(options->workload, E1_NPU_WORKLOAD) != 0) {
 		fprintf(stderr,
-			"unsupported workload: %s (expected %s)\n",
+			"unexpected workload: %s (expected %s)\n",
 			options->workload, E1_NPU_WORKLOAD);
 		return 2;
 	}

@@ -1,0 +1,894 @@
+{
+  "verdict": "pass",
+  "shell_parts_checked": 52,
+  "missing_oem_baseline_parts": [],
+  "parts": [
+    {
+      "part": "torso_chest_shell",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "chest_upper_bridge_armor",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "chest_lower_bridge_armor",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "chest_sensor_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "chest_panel_seam_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_chest_contour_armor",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_chest_contour_armor",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_chest_outer_armor_skin",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_chest_outer_armor_skin",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "chest_under_bust_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_chest_vent_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_chest_vent_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "rear_back_spine_plate",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "rear_spine_black_channel",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "rear_left_back_cut_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "rear_right_back_cut_black",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "torso_abdomen_black",
+      "role": "underbody",
+      "body": "torso_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "abdomen_center_armor",
+      "role": "armor",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "abdomen_panel_rib_1",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "abdomen_panel_rib_2",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "pelvis_front_shell",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "pelvis_center_plate",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "pelvis_lower_nose_plate",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "rear_seat_bridge_armor",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_rear_hip_fairing",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_rear_hip_fairing",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_rear_glute_armor_skin",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_rear_glute_armor_skin",
+      "role": "armor",
+      "body": "pelvis",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "head_mount_neck_black",
+      "role": "underbody",
+      "body": "torso_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "face_shell",
+      "role": "face",
+      "body": "torso_link",
+      "source_kind": "parametric_donor_face_grid",
+      "source_asset": "cad/source-assets/human-donor/eliza_face_donor.stl",
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric donor grid loft"
+    },
+    {
+      "part": "left_eye_insert",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_eye_insert",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "lip_insert",
+      "role": "face_detail",
+      "body": "torso_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_shoulder_cap",
+      "role": "armor",
+      "body": "left_shoulder_pitch_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_pitch_link.STL",
+        "left_shoulder_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_shoulder_fastener_front",
+      "role": "face_detail",
+      "body": "left_shoulder_pitch_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_shoulder_cap",
+      "role": "armor",
+      "body": "right_shoulder_pitch_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_pitch_link.STL",
+        "right_shoulder_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_shoulder_fastener_front",
+      "role": "face_detail",
+      "body": "right_shoulder_pitch_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_upper_arm_shell",
+      "role": "underbody",
+      "body": "left_shoulder_yaw_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_upper_arm_outer_blade",
+      "role": "armor",
+      "body": "left_shoulder_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_upper_arm_shell",
+      "role": "underbody",
+      "body": "right_shoulder_yaw_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_upper_arm_outer_blade",
+      "role": "armor",
+      "body": "right_shoulder_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_forearm_shell",
+      "role": "underbody",
+      "body": "left_elbow_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_forearm_outer_blade",
+      "role": "armor",
+      "body": "left_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_forearm_inner_detail",
+      "role": "face_detail",
+      "body": "left_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_wrist_separated_cuff",
+      "role": "underbody",
+      "body": "left_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_forearm_shell",
+      "role": "underbody",
+      "body": "right_elbow_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_forearm_outer_blade",
+      "role": "armor",
+      "body": "right_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_forearm_inner_detail",
+      "role": "face_detail",
+      "body": "right_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_oem_baseline": false,
+      "has_oem_baseline": false,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_wrist_separated_cuff",
+      "role": "underbody",
+      "body": "right_elbow_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_thigh_shell",
+      "role": "underbody",
+      "body": "left_hip_yaw_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_pitch_link.STL",
+        "left_hip_roll_link.STL",
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_thigh_front_armor",
+      "role": "armor",
+      "body": "left_hip_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_thigh_side_armor",
+      "role": "armor",
+      "body": "left_hip_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_thigh_shell",
+      "role": "underbody",
+      "body": "right_hip_yaw_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_pitch_link.STL",
+        "right_hip_roll_link.STL",
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_thigh_front_armor",
+      "role": "armor",
+      "body": "right_hip_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_thigh_side_armor",
+      "role": "armor",
+      "body": "right_hip_yaw_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_shin_shell",
+      "role": "underbody",
+      "body": "left_knee_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL",
+        "left_knee_collision.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_shin_front_armor",
+      "role": "armor",
+      "body": "left_knee_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_shin_side_armor",
+      "role": "armor",
+      "body": "left_knee_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_shin_shell",
+      "role": "underbody",
+      "body": "right_knee_link",
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL",
+        "right_knee_collision.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_shin_front_armor",
+      "role": "armor",
+      "body": "right_knee_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_shin_side_armor",
+      "role": "armor",
+      "body": "right_knee_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_foot_top_shell",
+      "role": "armor",
+      "body": "left_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_foot_toe_armor",
+      "role": "armor",
+      "body": "left_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_foot_sole_black",
+      "role": "underbody",
+      "body": "left_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "left_foot_heel_black",
+      "role": "underbody",
+      "body": "left_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_foot_top_shell",
+      "role": "armor",
+      "body": "right_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_foot_toe_armor",
+      "role": "armor",
+      "body": "right_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_foot_sole_black",
+      "role": "underbody",
+      "body": "right_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    },
+    {
+      "part": "right_foot_heel_black",
+      "role": "underbody",
+      "body": "right_ankle_roll_link",
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_oem_baseline": true,
+      "has_oem_baseline": true,
+      "current_geometry_status": "parametric EVT envelope"
+    }
+  ],
+  "note": "This audit verifies source provenance only. It does not prove that primitive EVT geometry has already been rebuilt from OEM offset envelopes."
+}

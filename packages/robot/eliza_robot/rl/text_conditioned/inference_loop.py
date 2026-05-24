@@ -29,9 +29,8 @@ import numpy as np
 
 from eliza_robot.bridge.backends.base import BridgeBackend
 from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso
-from eliza_robot.profiles.schema import load_profile
+from eliza_robot.profiles.schema import RobotProfile, load_profile
 from eliza_robot.rl.text_conditioned.policy import TextConditionedPolicy
-
 
 logger = logging.getLogger(__name__)
 
@@ -54,40 +53,69 @@ async def _send(backend: BridgeBackend, command: str, payload: dict, preempt: bo
     return await backend.handle_command(env)
 
 
-async def _read_proprio(backend: BridgeBackend) -> np.ndarray:
+def _proprio_from_telemetry(
+    latest: dict | None,
+    profile: RobotProfile,
+    *,
+    proprio_dim: int,
+) -> np.ndarray:
+    """Convert telemetry.basic into the profile-env proprio layout.
+
+    Layout matches `TextConditionedProfileEnv`:
+    gyro(3), gravity(3), velocity_command(3), leg qpos, leg qvel, last_action.
+    Only the trained action joints are included; full-body policy output is
+    handled separately by `TextConditionedPolicy.act(..., output_dim=...)`.
+    """
+
+    proprio = np.zeros(proprio_dim, dtype=np.float32)
+    if latest is None:
+        return proprio
+
+    if proprio_dim >= 1:
+        proprio[0] = float(latest.get("imu_roll", 0.0))
+    if proprio_dim >= 2:
+        proprio[1] = float(latest.get("imu_pitch", 0.0))
+    if proprio_dim >= 3:
+        proprio[2] = float(latest.get("imu_yaw_rate", 0.0))
+    if proprio_dim >= 6:
+        proprio[3:6] = np.array([0.0, 0.0, 1.0], dtype=np.float32)
+
+    action_joints = [j.name for j in profile.kinematics.joints if j.group == "LEG"]
+    joint_positions = latest.get("joint_positions") or {}
+    joint_velocities = latest.get("joint_velocities") or {}
+    if not isinstance(joint_positions, dict):
+        joint_positions = {}
+    if not isinstance(joint_velocities, dict):
+        joint_velocities = {}
+
+    qpos_start = 9
+    qvel_start = qpos_start + len(action_joints)
+    for i, name in enumerate(action_joints):
+        qpos_idx = qpos_start + i
+        qvel_idx = qvel_start + i
+        if qpos_idx < proprio_dim:
+            proprio[qpos_idx] = float(joint_positions.get(name, 0.0))
+        if qvel_idx < proprio_dim:
+            proprio[qvel_idx] = float(joint_velocities.get(name, 0.0))
+    return proprio
+
+
+async def _read_proprio(
+    backend: BridgeBackend,
+    profile: RobotProfile,
+    *,
+    proprio_dim: int,
+) -> np.ndarray:
     """Pull the latest telemetry.basic and convert to a proprio vector
-    that's roughly compatible with TextConditionedJoystickEnv. We zero-pad
-    when the real backend doesn't supply all fields.
+    that's roughly compatible with the profile-driven text-conditioned env.
+    We zero-pad when the real backend doesn't supply all fields.
     """
     events = await backend.poll_events()
     latest = None
     for e in events:
         if e.event == "telemetry.basic":
             latest = e.data
-    proprio = np.zeros(45, dtype=np.float32)
-    if latest is None:
-        return proprio
-    # rough mapping — keep shape compatible with the smoke env
-    proprio[0] = float(latest.get("imu_roll", 0.0))
-    proprio[1] = float(latest.get("imu_pitch", 0.0))
-    proprio[2] = 0.0  # gyro z unused
-    proprio[3] = 0.0
-    proprio[4] = 0.0
-    proprio[5] = 1.0  # gravity z assumed upright
-    jp = latest.get("joint_positions") or {}
-    if isinstance(jp, dict):
-        # Place known joints at canonical indices (best-effort).
-        names = [
-            "r_hip_yaw", "r_hip_roll", "r_hip_pitch", "r_knee", "r_ank_pitch", "r_ank_roll",
-            "l_hip_yaw", "l_hip_roll", "l_hip_pitch", "l_knee", "l_ank_pitch", "l_ank_roll",
-            "head_pan", "head_tilt",
-            "r_sho_pitch", "r_sho_roll", "r_el_pitch", "r_el_yaw", "r_gripper",
-            "l_sho_pitch", "l_sho_roll", "l_el_pitch", "l_el_yaw", "l_gripper",
-        ]
-        for i, n in enumerate(names):
-            if i + 6 < proprio.shape[0]:
-                proprio[i + 6] = float(jp.get(n, 0.0))
-    return proprio
+    return _proprio_from_telemetry(latest, profile, proprio_dim=proprio_dim)
 
 
 async def run_inference(
@@ -108,6 +136,18 @@ async def run_inference(
     home_rad = np.array([j.home_rad for j in profile.kinematics.joints], dtype=np.float32)
 
     policy = TextConditionedPolicy(Path(checkpoint_dir))
+    if policy.manifest.profile_id != config.profile_id:
+        raise ValueError(
+            "checkpoint profile mismatch: "
+            f"manifest profile_id={policy.manifest.profile_id!r}, "
+            f"inference profile_id={config.profile_id!r}"
+        )
+    if int(policy.manifest.output_dim) != len(joint_names):
+        raise ValueError(
+            "checkpoint output_dim mismatch: "
+            f"manifest output_dim={policy.manifest.output_dim}, "
+            f"profile {config.profile_id!r} has {len(joint_names)} joints"
+        )
     matched_task, _, similarity = policy.resolve_task(text)
     logger.info(
         "inference loop start: text=%r → task=%s (sim=%.2f), %d steps @ %.1f Hz",
@@ -119,8 +159,17 @@ async def run_inference(
     try:
         while steps < config.max_steps:
             t_start = time.time()
-            proprio = await _read_proprio(backend)
-            action, _ = policy.act(text, proprio, deterministic=True)
+            proprio = await _read_proprio(
+                backend,
+                profile,
+                proprio_dim=int(policy.manifest.proprio_dim or 45),
+            )
+            action, _ = policy.act(
+                text,
+                proprio,
+                deterministic=True,
+                output_dim=len(joint_names),
+            )
             # Joint-target = home + scaled action, clipped to safety window.
             targets = home_rad + np.clip(action, -1.0, 1.0) * config.action_scale
             targets = np.clip(

@@ -1,0 +1,127 @@
+diff --git a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
+index 4cc5e4c..e9951b8 100644
+--- a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
++++ b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.cpp
+@@ -22,8 +22,13 @@ WTF_MAKE_TZONE_ALLOCATED_IMPL(InspectorBunFrontendDevServerAgent);
+ InspectorBunFrontendDevServerAgent::InspectorBunFrontendDevServerAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("BunFrontendDevServer"_s)
+     // , m_globalobject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(BunFrontendDevServerBackendDispatcher::create(globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<BunFrontendDevServerFrontendDispatcher>(const_cast<FrontendRouter&>(globalObject.inspectorController().frontendRouter())))
++#endif
+     , m_enabled(false)
+ {
+     UNUSED_PARAM(globalObject);
+diff --git a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.h b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.h
+index 2ba0e33..a9c04bf 100644
+--- a/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.h
++++ b/src/bun.js/bindings/InspectorBunFrontendDevServerAgent.h
+@@ -46,7 +46,7 @@ public:
+ private:
+     // JSC::JSGlobalObject& m_globalobject;
+     std::unique_ptr<BunFrontendDevServerFrontendDispatcher> m_frontendDispatcher;
+-    Ref<BunFrontendDevServerBackendDispatcher> m_backendDispatcher;
++    RefPtr<BunFrontendDevServerBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 
+diff --git a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
+index e1e1278..b53fdfa 100644
+--- a/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
++++ b/src/bun.js/bindings/InspectorHTTPServerAgent.cpp
+@@ -25,10 +25,16 @@ void Bun__HTTPServerAgent__setEnabled(Inspector::InspectorHTTPServerAgent* agent
+ 
+ InspectorHTTPServerAgent::InspectorHTTPServerAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("HTTPServer"_s)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(HTTPServerBackendDispatcher::create(globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<HTTPServerFrontendDispatcher>(const_cast<FrontendRouter&>(globalObject.inspectorController().frontendRouter())))
++#endif
+     , m_enabled(false)
+ {
++    UNUSED_PARAM(globalObject);
+ }
+ 
+ InspectorHTTPServerAgent::~InspectorHTTPServerAgent()
+diff --git a/src/bun.js/bindings/InspectorHTTPServerAgent.h b/src/bun.js/bindings/InspectorHTTPServerAgent.h
+index 432a5fc..bfdd94b 100644
+--- a/src/bun.js/bindings/InspectorHTTPServerAgent.h
++++ b/src/bun.js/bindings/InspectorHTTPServerAgent.h
+@@ -52,7 +52,7 @@ public:
+ private:
+     WTF::HashMap<int, AnyServerPtr> m_serverIdToServerInstance;
+     std::unique_ptr<HTTPServerFrontendDispatcher> m_frontendDispatcher;
+-    Ref<HTTPServerBackendDispatcher> m_backendDispatcher;
++    RefPtr<HTTPServerBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 
+diff --git a/src/bun.js/bindings/InspectorLifecycleAgent.cpp b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
+index e3c24a1..e563268 100644
+--- a/src/bun.js/bindings/InspectorLifecycleAgent.cpp
++++ b/src/bun.js/bindings/InspectorLifecycleAgent.cpp
+@@ -49,8 +49,13 @@ void Bun__LifecycleAgentStopPreventingExit(Inspector::InspectorLifecycleAgent* a
+ InspectorLifecycleAgent::InspectorLifecycleAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("LifecycleReporter"_s)
+     , m_globalObject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(LifecycleReporterBackendDispatcher::create(m_globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<LifecycleReporterFrontendDispatcher>(const_cast<FrontendRouter&>(m_globalObject.inspectorController().frontendRouter())))
++#endif
+ {
+ }
+ 
+diff --git a/src/bun.js/bindings/InspectorLifecycleAgent.h b/src/bun.js/bindings/InspectorLifecycleAgent.h
+index d598e70..585a69d 100644
+--- a/src/bun.js/bindings/InspectorLifecycleAgent.h
++++ b/src/bun.js/bindings/InspectorLifecycleAgent.h
+@@ -43,7 +43,7 @@ public:
+ private:
+     JSC::JSGlobalObject& m_globalObject;
+     std::unique_ptr<LifecycleReporterFrontendDispatcher> m_frontendDispatcher;
+-    Ref<LifecycleReporterBackendDispatcher> m_backendDispatcher;
++    RefPtr<LifecycleReporterBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+     bool m_preventingExit { false };
+ };
+diff --git a/src/bun.js/bindings/InspectorTestReporterAgent.cpp b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
+index 968e5fa..30eacc2 100644
+--- a/src/bun.js/bindings/InspectorTestReporterAgent.cpp
++++ b/src/bun.js/bindings/InspectorTestReporterAgent.cpp
+@@ -118,8 +118,13 @@ void Bun__TestReporterAgentReportTestEnd(Inspector::InspectorTestReporterAgent*
+ InspectorTestReporterAgent::InspectorTestReporterAgent(JSC::JSGlobalObject& globalObject)
+     : InspectorAgentBase("TestReporter"_s)
+     , m_globalObject(globalObject)
++#if defined(__riscv) && __riscv_xlen == 64
++    , m_backendDispatcher(nullptr)
++    , m_frontendDispatcher(nullptr)
++#else
+     , m_backendDispatcher(TestReporterBackendDispatcher::create(m_globalObject.inspectorController().backendDispatcher(), this))
+     , m_frontendDispatcher(makeUnique<TestReporterFrontendDispatcher>(const_cast<FrontendRouter&>(m_globalObject.inspectorController().frontendRouter())))
++#endif
+ {
+ }
+ 
+diff --git a/src/bun.js/bindings/InspectorTestReporterAgent.h b/src/bun.js/bindings/InspectorTestReporterAgent.h
+index 9c165c1..8665928 100644
+--- a/src/bun.js/bindings/InspectorTestReporterAgent.h
++++ b/src/bun.js/bindings/InspectorTestReporterAgent.h
+@@ -41,7 +41,7 @@ public:
+ private:
+     JSC::JSGlobalObject& m_globalObject;
+     std::unique_ptr<TestReporterFrontendDispatcher> m_frontendDispatcher;
+-    Ref<TestReporterBackendDispatcher> m_backendDispatcher;
++    RefPtr<TestReporterBackendDispatcher> m_backendDispatcher;
+     bool m_enabled { false };
+ };
+ 

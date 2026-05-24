@@ -49,10 +49,14 @@
     }
   },
   "result_artifact": "benchmarks/results/cpu/jetstream/result.json",
-  "run_command": "scripts/run_jetstream.sh",
+  "run_command": "E1_JETSTREAM_RAW_OUTPUT=<target-transcript> E1_JETSTREAM_TARGET_METADATA=<metadata.json> E1_JETSTREAM_TARGET_RUNNER=<prototype|silicon|phone> make jetstream",
   "fail_closed_until": [
-    "external/v8-riscv64/ or external/hermes-riscv64/ build present",
-    "Cuttlefish AOSP riscv64 image OR qemu-system-riscv64 with V8 ready",
-    "DUT capable of running V8 with JIT (Verilator at ~100kHz too slow; need silicon or FireSim)"
+    "JetStream 2.2 target transcript from an executable V8, JavaScriptCore, or Hermes RISC-V build",
+    "JetStream 2.2 workload bundle or browserbench-compatible harness pinned for the captured run",
+    "Prototype, silicon, or phone DUT with V8 ready for L5/L6 phone evidence",
+    "Optional qemu-system-riscv64 harness is non-claim preflight only and does not unblock L5/L6 phone evidence",
+    "DUT capable of running V8 with JIT (Verilator at ~100kHz too slow; need silicon, prototype, or phone)",
+    "Raw JetStream target output archived with artifacts.raw_output_sha256",
+    "L5/L6 target metadata captures clocks, memory, power, thermal, process, software, and calibration context"
   ]
 }

@@ -1,0 +1,1320 @@
+{
+  "verdict": "prototype-fit-check-ready",
+  "print_quote_ready": true,
+  "prototype_fit_ready": true,
+  "tooling_ready": false,
+  "tooling_release_verdict": "blocked-until-final-r1-cad-and-production-dfm",
+  "step_export_status": "exported",
+  "step_exported_count": 69,
+  "panel_gap_verdict": "pass",
+  "minimum_sampled_panel_gap_mm": 1.549,
+  "design_source_audit_verdict": "pass",
+  "rules": {
+    "min_print_wall_mm": 2.4,
+    "min_mold_wall_mm": 2.0,
+    "draft_deg": 2.0,
+    "shrink_allowance_percent": 0.6
+  },
+  "part_checks": [
+    {
+      "part": "torso_chest_shell",
+      "bbox_mm": [
+        128.0,
+        156.0,
+        240.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "chest_upper_bridge_armor",
+      "bbox_mm": [
+        17.98,
+        150.0,
+        17.98
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "chest_lower_bridge_armor",
+      "bbox_mm": [
+        15.98,
+        130.0,
+        15.98
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "chest_sensor_black",
+      "bbox_mm": [
+        10.0,
+        116.0,
+        22.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "chest_panel_seam_black",
+      "bbox_mm": [
+        10.0,
+        156.0,
+        14.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_chest_contour_armor",
+      "bbox_mm": [
+        14.0,
+        44.0,
+        80.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_chest_contour_armor",
+      "bbox_mm": [
+        14.0,
+        44.0,
+        80.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_chest_outer_armor_skin",
+      "bbox_mm": [
+        5.0,
+        28.0,
+        128.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_chest_outer_armor_skin",
+      "bbox_mm": [
+        5.0,
+        28.0,
+        128.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "chest_under_bust_black",
+      "bbox_mm": [
+        6.0,
+        120.0,
+        12.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_chest_vent_black",
+      "bbox_mm": [
+        5.0,
+        8.0,
+        48.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_chest_vent_black",
+      "bbox_mm": [
+        5.0,
+        8.0,
+        48.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "rear_back_spine_plate",
+      "bbox_mm": [
+        28.0,
+        88.0,
+        224.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "torso_collision.stl",
+        "waist_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "rear_spine_black_channel",
+      "bbox_mm": [
+        8.0,
+        24.0,
+        184.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "rear_left_back_cut_black",
+      "bbox_mm": [
+        6.0,
+        8.0,
+        160.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "rear_right_back_cut_black",
+      "bbox_mm": [
+        6.0,
+        8.0,
+        160.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "torso_abdomen_black",
+      "bbox_mm": [
+        50.0,
+        44.0,
+        82.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "abdomen_center_armor",
+      "bbox_mm": [
+        6.0,
+        20.0,
+        64.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "waist_yaw_link.STL",
+        "waist_roll_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "abdomen_panel_rib_1",
+      "bbox_mm": [
+        6.0,
+        112.0,
+        10.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "abdomen_panel_rib_2",
+      "bbox_mm": [
+        6.0,
+        84.0,
+        10.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "pelvis_front_shell",
+      "bbox_mm": [
+        88.0,
+        100.0,
+        100.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "pelvis_center_plate",
+      "bbox_mm": [
+        8.0,
+        32.0,
+        60.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "pelvis_lower_nose_plate",
+      "bbox_mm": [
+        33.96,
+        33.96,
+        94.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "rear_seat_bridge_armor",
+      "bbox_mm": [
+        31.96,
+        144.0,
+        31.96
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_rear_hip_fairing",
+      "bbox_mm": [
+        52.0,
+        44.0,
+        80.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_rear_hip_fairing",
+      "bbox_mm": [
+        40.0,
+        32.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_rear_glute_armor_skin",
+      "bbox_mm": [
+        8.0,
+        40.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_rear_glute_armor_skin",
+      "bbox_mm": [
+        8.0,
+        40.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "pelvis_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "head_mount_neck_black",
+      "bbox_mm": [
+        60.0,
+        50.0,
+        112.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL",
+        "torso_collision.stl"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "face_shell",
+      "bbox_mm": [
+        15.38,
+        90.32,
+        129.7
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_donor_face_grid",
+      "source_asset": "cad/source-assets/human-donor/eliza_face_donor.stl",
+      "oem_baseline_meshes": [
+        "head_yaw_link.STL",
+        "head_pitch_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_eye_insert",
+      "bbox_mm": [
+        0.7,
+        22.77,
+        6.4
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_eye_insert",
+      "bbox_mm": [
+        0.7,
+        22.77,
+        6.4
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "lip_insert",
+      "bbox_mm": [
+        0.4,
+        27.56,
+        4.2
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_shoulder_cap",
+      "bbox_mm": [
+        68.0,
+        80.0,
+        94.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_pitch_link.STL",
+        "left_shoulder_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_shoulder_fastener_front",
+      "bbox_mm": [
+        8.0,
+        14.0,
+        14.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_shoulder_cap",
+      "bbox_mm": [
+        68.0,
+        80.0,
+        94.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_pitch_link.STL",
+        "right_shoulder_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_shoulder_fastener_front",
+      "bbox_mm": [
+        8.0,
+        14.0,
+        14.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_upper_arm_shell",
+      "bbox_mm": [
+        52.0,
+        38.0,
+        96.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_upper_arm_outer_blade",
+      "bbox_mm": [
+        20.0,
+        7.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_upper_arm_shell",
+      "bbox_mm": [
+        52.0,
+        38.0,
+        96.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_upper_arm_outer_blade",
+      "bbox_mm": [
+        20.0,
+        7.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_shoulder_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_forearm_shell",
+      "bbox_mm": [
+        54.0,
+        28.0,
+        48.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_forearm_outer_blade",
+      "bbox_mm": [
+        52.0,
+        6.0,
+        13.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_forearm_inner_detail",
+      "bbox_mm": [
+        52.0,
+        6.0,
+        10.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_wrist_separated_cuff",
+      "bbox_mm": [
+        4.6,
+        22.96,
+        22.96
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_forearm_shell",
+      "bbox_mm": [
+        54.0,
+        28.0,
+        48.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_forearm_outer_blade",
+      "bbox_mm": [
+        56.0,
+        7.0,
+        14.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_forearm_inner_detail",
+      "bbox_mm": [
+        52.0,
+        6.0,
+        10.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": false,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_wrist_separated_cuff",
+      "bbox_mm": [
+        4.05,
+        24.24,
+        24.24
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_elbow_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_thigh_shell",
+      "bbox_mm": [
+        44.0,
+        28.0,
+        58.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_pitch_link.STL",
+        "left_hip_roll_link.STL",
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_thigh_front_armor",
+      "bbox_mm": [
+        19.97,
+        39.95,
+        128.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_thigh_side_armor",
+      "bbox_mm": [
+        32.0,
+        9.0,
+        80.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_thigh_shell",
+      "bbox_mm": [
+        36.0,
+        20.0,
+        40.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_pitch_link.STL",
+        "right_hip_roll_link.STL",
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_thigh_front_armor",
+      "bbox_mm": [
+        9.99,
+        12.98,
+        84.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_thigh_side_armor",
+      "bbox_mm": [
+        28.0,
+        8.0,
+        68.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_hip_yaw_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_shin_shell",
+      "bbox_mm": [
+        38.0,
+        12.0,
+        156.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL",
+        "left_knee_collision.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_shin_front_armor",
+      "bbox_mm": [
+        15.0,
+        28.0,
+        200.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_shin_side_armor",
+      "bbox_mm": [
+        30.0,
+        12.0,
+        236.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_knee_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_shin_shell",
+      "bbox_mm": [
+        30.0,
+        8.0,
+        104.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "parametric_loft",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL",
+        "right_knee_collision.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_shin_front_armor",
+      "bbox_mm": [
+        12.0,
+        22.0,
+        180.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_shin_side_armor",
+      "bbox_mm": [
+        30.0,
+        12.0,
+        236.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_knee_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_foot_top_shell",
+      "bbox_mm": [
+        192.0,
+        60.0,
+        24.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_foot_toe_armor",
+      "bbox_mm": [
+        7.99,
+        7.99,
+        5.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_foot_sole_black",
+      "bbox_mm": [
+        224.0,
+        72.0,
+        9.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "left_foot_heel_black",
+      "bbox_mm": [
+        40.0,
+        50.0,
+        26.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "left_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_foot_top_shell",
+      "bbox_mm": [
+        200.0,
+        66.0,
+        24.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_foot_toe_armor",
+      "bbox_mm": [
+        19.97,
+        19.97,
+        10.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_foot_sole_black",
+      "bbox_mm": [
+        216.0,
+        68.0,
+        8.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    },
+    {
+      "part": "right_foot_heel_black",
+      "bbox_mm": [
+        32.0,
+        40.0,
+        20.0
+      ],
+      "service_print_bbox_ok": true,
+      "mold_candidate": true,
+      "requires_parting_line_review": true,
+      "requires_boss_rib_insert_detail": true,
+      "step_solid_exported": true,
+      "source_kind": "primitive",
+      "source_asset": null,
+      "oem_baseline_meshes": [
+        "right_ankle_roll_link.STL"
+      ],
+      "requires_production_surface_rebuild_before_tooling": true
+    }
+  ]
+}

@@ -174,9 +174,9 @@
       "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
       "external_artifacts": [
         "Cuttlefish instance adb transport",
-        "adb shell pm path ai.elizaos.app",
+        "adb shell pm path ai.milady.milady",
         "adb shell cmd role get-role-holders android.app.role.HOME",
-        "adb shell pidof for ai.elizaos.app/.ElizaAgentService",
+        "adb shell pidof for ai.milady.milady/.ElizaAgentService",
         "/api/health forwarded over adb tcp"
       ]
     }

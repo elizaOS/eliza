@@ -42,9 +42,12 @@
   "cad": {
     "ok": true,
     "main_step": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/ASIMOV_V1.STEP",
+    "main_step_sha256": "f68d0493683c86f59b949cf540cba894699e70c1074cfde39996885d8a497343",
     "source_xml": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/xmls/asimov.xml",
+    "source_xml_sha256": "fdb12df1dbead6fb4019a56297c0e917ae5f9e4686a848ca2686fd3c5725da42",
     "mesh_dir": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes",
     "fabrication_manifest": "/home/shaw/milady/eliza/packages/robot/vendor/asimov-1/mechanical/FABRICATION_MANIFEST.json",
+    "fabrication_manifest_sha256": "2a61201d42237f2d32227ce863c80555d841076813a8ec54982357aff51040bd",
     "step_count": 178,
     "stl_count": 28,
     "mesh_count": 28,

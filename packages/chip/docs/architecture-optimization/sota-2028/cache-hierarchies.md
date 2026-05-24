@@ -66,14 +66,14 @@ Mobile-vendor public prefetcher detail is thin. Apple uses multiple AMP/spatial/
 
 ## B. Current state in `packages/chip`
 
-Inspected files: `docs/arch/{cpu-subsystem,memory-subsystem,interconnect}.md`, `rtl/memory/`, `rtl/interconnect/`, `rtl/cpu/`.
+Inspected files: `docs/arch/{cache-hierarchy,cpu-subsystem,memory-subsystem,interconnect}.md`, `rtl/cache/`, `rtl/memory/`, and the cache evidence gates.
 
-- `rtl/memory/e1_axi_lite_dram.sv` is 4 KiB SRAM-backed AXI-Lite, single-beat, aligned 32-bit only.
-- `rtl/interconnect/e1_axi_lite_interconnect.sv` is single-port AXI-Lite mux with tiny decode map; CPU vs DMA arbitration is fixed CPU-wins. No bursts, IDs, atomics, cacheability attributes, TileLink / AXI4 semantics.
-- `rtl/memory/` contains exactly one file. `rtl/interconnect/` contains two.
-- Zero hits for "MESI", "MOESI", "prefetch", or "SLC" inside RTL. Every cache/coherency mention lives in docs as a future gate.
+- The local cache scaffold now includes L1I/L1D, private L2, shared L3, SLC, BDI compression, prefetcher options, replacement policies, and a MESI directory coherence gate.
+- `make cache-hierarchy-claim-gate` checks the scaffold and chains the SMP coherence report, but its claim boundary is still local RTL/scoped synthetic evidence only.
+- Phone-class IPC, latency, sustained bandwidth, silicon, Linux, Android, DRAM, LPDDR, and release claims remain blocked until measured full-system or target evidence lands.
+- The older AXI-Lite SRAM memory scaffold is still not a phone-class memory subsystem, even though separate AXI4 DRAM-controller simulation evidence now exists.
 
-Bottom line: zero implemented cache hierarchy. Memory traffic is one 32-bit beat against a 4 KiB SRAM masquerading as DRAM. CVA6 wrapper exists but is not wired into a multi-level cache.
+Bottom line: cache hierarchy RTL is present and locally gated, but it is not yet integrated as phone-class measured cache/memory evidence.
 
 ## C. Recommended 2028 cache hierarchy
 
@@ -173,19 +173,22 @@ Publish lmbench `lat_mem_rd` curves at five working-set points (1 KB, 64 KB, 1 M
 - `make cache-hierarchy-claim-gate` — RTL exists at each level.
 - `make cocotb-cache-coherence` — TL-C / CHI coherence vectors.
 - `make champsim-prefetch-sweep` — DPC-3 sweep of upstream-bundled
-  prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite); Berti /
-  IPCP / Bingo / BOP / Pythia remain BLOCKED until the CRC drop-ins are
-  ported. evidence_class=champsim_dpc3_traces_only.
+  prefetchers plus in-tree Berti, IPCP, Bingo, BOP, and Pythia-scoped ports.
+  evidence_class=champsim_dpc3_traces_only; phone-class and full-system claims
+  remain blocked.
 - `make mockingjay-vs-lru-sweep` — DPC-3 LRU baseline + bundled
-  replacement deltas (lru/drrip/ship/srrip); Hawkeye / Mockingjay-prod
-  remain BLOCKED. evidence_class=champsim_dpc3_traces_only.
+  replacement deltas (lru/drrip/ship/srrip) plus Hawkeye / Mockingjay-prod
+  scoped evidence. evidence_class=champsim_dpc3_traces_only.
 - `make cocotb-cache-mockingjay-accuracy` — Mockingjay-prod RTL vs LRU
   oracle on synthetic scan+reuse stream.
 
 ## E. Optimizations: has / should / needs
 
 ### Has
-- Nothing in the cache hierarchy. 4 KiB SRAM behind AXI-Lite; fixed-priority mux, not coherent fabric. CVA6 wrapper does not enable CVA6's own data cache in integration today.
+- L1/L2/SLC cache hierarchy RTL, TL-C / CHI bridge, BDI compression, prefetcher
+  candidates, and replacement-policy RTL exist with scoped gates. Current
+  evidence is RTL/simulation and DPC-3 scoped; phone-class latency/coherency
+  and Linux/Android workload evidence remain blocked.
 
 ### Should (high-confidence 2028 must-haves)
 1. Real L1I and L1D in every core, 64 KB / 8-way, parity (L1I) and ECC (L1D, SECDED).

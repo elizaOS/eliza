@@ -1,0 +1,50 @@
+{
+  "verdict": "pass",
+  "usage": "front/side/rear modeling-view background plate for orange-black hard-plastic armor proportions; hair and glasses are excluded from generated geometry",
+  "image": {
+    "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.png",
+    "width": 1024,
+    "height": 1536,
+    "bytes": 1960756,
+    "sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0"
+  },
+  "mesh": {
+    "path": "/home/shaw/milady/eliza/packages/robot/mechanical/unitree-r1-bodykit/cad/source-assets/concept/eliza_front_reference.glb",
+    "mesh_count": 1,
+    "vertices": 299410,
+    "faces": 493875,
+    "bounds_m": [
+      [
+        -0.44384,
+        -0.95056,
+        -0.19405
+      ],
+      [
+        0.44285,
+        0.94778,
+        0.1897
+      ]
+    ],
+    "extents_m": [
+      0.88669,
+      1.89834,
+      0.38375
+    ],
+    "height_axis": "y",
+    "height_m": 1.89834,
+    "unitree_r1_height_reference_m": 1.23,
+    "scale_to_r1_height": 0.64793,
+    "sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
+  },
+  "source_match": {
+    "source_png": "/home/shaw/Downloads/eliza_front.png",
+    "source_glb": "/home/shaw/Downloads/eliza_front.glb",
+    "source_png_exists": true,
+    "source_glb_exists": true,
+    "png_hash_match": true,
+    "glb_hash_match": true,
+    "source_png_sha256": "4519b7bd3acef1551383d3171cc68dae7e183ec76d0f444c28416a6f249064d0",
+    "source_glb_sha256": "79b4c31894c25ea964df29272d6aae7e2e7ded6d451893d40b46570d173082ab"
+  },
+  "note": "The concept GLB is a single AI-generated reference mesh for scale, silhouette, face/eye proportions, heel/boot language, and orange-black panel vocabulary. It is not used as production geometry."
+}

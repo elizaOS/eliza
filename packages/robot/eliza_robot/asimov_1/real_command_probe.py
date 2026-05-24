@@ -50,6 +50,8 @@ async def probe_real_command_sequence(
     it only sends DAMP. STAND and zero-velocity are opt-in because they may move
     hardware depending on firmware state and controller configuration.
     """
+    if allow_zero_velocity and not allow_stand:
+        raise ValueError("zero-velocity probe requires --allow-stand before velocity commands")
     start = time.time()
     await transport.connect()
     command_stages: list[str] = []

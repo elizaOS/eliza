@@ -1,0 +1,126 @@
+{
+  "config": {
+    "env_kind": "obstacle_course",
+    "n_tasks": 2,
+    "n_joints": 6,
+    "steps_per_task": 2500,
+    "eval_episodes": 3,
+    "seeds": 1,
+    "gamma": 0.5,
+    "actor_step_size": 0.01,
+    "critic_step_size": 0.02,
+    "actor_lamda": 0.7,
+    "critic_lamda": 0.7,
+    "log_sigma_init": -1.0,
+    "embed_dim": 16,
+    "n_prototypes": 192,
+    "gate_temperature": 0.1,
+    "proprio_random_dim": 64,
+    "obstacle_episode_steps": 80
+  },
+  "summary": {
+    "alberta": {
+      "acc": {
+        "mean": 4.098899901886456,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": 0.0,
+        "std": 0.0
+      }
+    },
+    "ppo": {
+      "acc": {
+        "mean": 2.5028485090980355,
+        "std": 0.0
+      },
+      "bwt": {
+        "mean": 0.7127826054889659,
+        "std": 0.0
+      },
+      "forgetting": {
+        "mean": 0.0,
+        "std": 0.0
+      },
+      "fwt": {
+        "mean": -0.3124985159142502,
+        "std": 0.0
+      }
+    }
+  },
+  "results": [
+    {
+      "name": "alberta",
+      "matrix": [
+        [
+          8.394366096337864,
+          0.2923840011396205
+        ],
+        [
+          8.394366096337864,
+          -0.19656629256495184
+        ]
+      ],
+      "baseline": [
+        0.20852331775217944,
+        0.2923840011396205
+      ],
+      "metrics": {
+        "acc": 4.098899901886456,
+        "bwt": 0.0,
+        "forgetting": 0.0,
+        "fwt": 0.0,
+        "final_per_task": [
+          8.394366096337864,
+          -0.19656629256495184
+        ],
+        "diagonal_per_task": [
+          8.394366096337864,
+          -0.19656629256495184
+        ]
+      },
+      "seed": 1000
+    },
+    {
+      "name": "ppo",
+      "matrix": [
+        [
+          3.9927272893698196,
+          0.015823482856606626
+        ],
+        [
+          4.7055098948587855,
+          0.30018712333728564
+        ]
+      ],
+      "baseline": [
+        0.21997828635860564,
+        0.3283219987708568
+      ],
+      "metrics": {
+        "acc": 2.5028485090980355,
+        "bwt": 0.7127826054889659,
+        "forgetting": 0.0,
+        "fwt": -0.3124985159142502,
+        "final_per_task": [
+          4.7055098948587855,
+          0.30018712333728564
+        ],
+        "diagonal_per_task": [
+          3.9927272893698196,
+          0.30018712333728564
+        ]
+      },
+      "seed": 1000
+    }
+  ],
+  "generated_at": "2026-05-22T19:49:38"
+}

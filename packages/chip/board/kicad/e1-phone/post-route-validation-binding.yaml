@@ -69,13 +69,14 @@ required_validation_outputs:
   rf_calibration_procedure: board/kicad/e1-phone/production/test/rf-calibration-procedure.pdf
   first_article_transcript: board/kicad/e1-phone/production/test/first-article-test-transcript.json
   first_article_traveler: board/kicad/e1-phone/production/first-article
+  supplier_component_3d_model_manifest: board/kicad/e1-phone/production/step/component-3d-model-manifest.yaml
   routed_board_step: board/kicad/e1-phone/production/step/routed-board-with-components.step
   routed_clearance_release: board/kicad/e1-phone/production/reports/routed-board-clearance-release.yaml
 
 validation_output_inventory:
-  required_output_count: 20
+  required_output_count: 21
   present_output_count: 0
-  missing_output_count: 20
+  missing_output_count: 21
   every_required_output_absent: true
 
 validation_domains:
@@ -101,7 +102,7 @@ validation_domains:
     status: blocked_missing_factory_limits_probe_coordinates_and_first_article_evidence
   - id: routed_step_enclosure
     source_acceptance_item: routed_board_step_and_enclosure_rerun
-    required_outputs: [routed_board_step, routed_clearance_release]
+    required_outputs: [supplier_component_3d_model_manifest, routed_board_step, routed_clearance_release]
     status: blocked_missing_routed_step_supplier_models_and_enclosure_clearance_release
 
 selected_supplier_response_validation_gate:
@@ -139,6 +140,7 @@ selected_hardware_validation_matrix:
     required_outputs:
       - si_pi_report_directory
       - routed_courtyard_utilization
+      - supplier_component_3d_model_manifest
       - routed_board_step
       - routed_clearance_release
     required_evidence:
@@ -153,6 +155,7 @@ selected_hardware_validation_matrix:
     required_outputs:
       - si_pi_report_directory
       - routed_courtyard_utilization
+      - supplier_component_3d_model_manifest
       - routed_board_step
       - routed_clearance_release
     required_evidence:
@@ -168,6 +171,7 @@ selected_hardware_validation_matrix:
       - usb_pd_attach_log
       - charger_cycle_log
       - power_thermal_report_directory
+      - supplier_component_3d_model_manifest
       - routed_board_step
       - routed_clearance_release
     required_evidence:
@@ -185,6 +189,7 @@ selected_hardware_validation_matrix:
       - vna_report
       - radio_coexistence_matrix
       - rf_calibration_procedure
+      - supplier_component_3d_model_manifest
       - routed_board_step
       - routed_clearance_release
     required_evidence:
@@ -202,6 +207,7 @@ selected_hardware_validation_matrix:
       - vna_report
       - radio_coexistence_matrix
       - rf_calibration_procedure
+      - supplier_component_3d_model_manifest
       - routed_board_step
       - routed_clearance_release
     required_evidence:

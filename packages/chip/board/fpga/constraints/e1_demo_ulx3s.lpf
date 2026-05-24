@@ -10,140 +10,19 @@
 #   https://github.com/emard/ulx3s/blob/master/doc/constraints/ulx3s_v20.lpf
 #
 # Pin choices below are defensible defaults: clock and reset use the
-# documented on-board sources; UART uses the FT231X bridge that comes
-# pre-wired through the ESP32 bypass path; debug GPIO uses the GP/GN
-# header pins on the GPIO connector. If a future revision changes the
-# pin map these comments are the assumption to revisit.
+# documented on-board sources; debug GPIO uses the GP/GN header pins on
+# the GPIO connector. If a future revision changes the pin map these
+# comments are the assumption to revisit.
 #
 # This file is the bring-up baseline. Pin assignments are planning defaults
 # and must be revalidated before a release bitstream is signed off.
-
-############################
-# Clock and reset
-############################
-# 25 MHz on-board oscillator. ULX3S rev F clock is on G2 (CLKIN_25).
-LOCATE COMP "CLK_IN"   SITE "G2";
-IOBUF   PORT "CLK_IN"   IO_TYPE=LVCMOS33;
-FREQUENCY PORT "CLK_IN" 25 MHz;
-
-# BTN_PWR (active low) repurposed as RST_N. Pin D6 on rev F.
-LOCATE COMP "RST_N"    SITE "D6";
-IOBUF   PORT "RST_N"    IO_TYPE=LVCMOS33 PULLMODE=UP;
-
-############################
-# UART (via FT231X bridge, ESP32 in passthrough)
-############################
-# FPGA TX -> FT231X RX  : pin L4
-# FPGA RX <- FT231X TX  : pin M1
-LOCATE COMP "UART_TX"  SITE "L4";
-IOBUF   PORT "UART_TX"  IO_TYPE=LVCMOS33 DRIVE=4;
-LOCATE COMP "UART_RX"  SITE "M1";
-IOBUF   PORT "UART_RX"  IO_TYPE=LVCMOS33 PULLMODE=UP;
-
-############################
-# Debug MMIO bridge (GP/GN header)
-# Mapped onto the GPIO 0..15 bank on the right-edge connector.
-# GP0..GP15 SITEs on rev F: B11 C11 A10 A9 B10 C10 A8 B8
-#                           C8 B9 D7 C7 E8 D8 E9 D9
-############################
-LOCATE COMP "DBG_VALID"   SITE "B11";
-LOCATE COMP "DBG_LAUNCH"  SITE "C11";
-LOCATE COMP "DBG_WRITE"   SITE "A10";
-LOCATE COMP "DBG_READY"   SITE "A9";
-
-LOCATE COMP "DBG_ADDR[0]" SITE "B10";
-LOCATE COMP "DBG_ADDR[1]" SITE "C10";
-LOCATE COMP "DBG_ADDR[2]" SITE "A8";
-LOCATE COMP "DBG_ADDR[3]" SITE "B8";
-
-LOCATE COMP "DBG_WDATA[0]" SITE "C8";
-LOCATE COMP "DBG_WDATA[1]" SITE "B9";
-LOCATE COMP "DBG_WDATA[2]" SITE "D7";
-LOCATE COMP "DBG_WDATA[3]" SITE "C7";
-
-LOCATE COMP "DBG_RDATA[0]" SITE "E8";
-LOCATE COMP "DBG_RDATA[1]" SITE "D8";
-LOCATE COMP "DBG_RDATA[2]" SITE "E9";
-LOCATE COMP "DBG_RDATA[3]" SITE "D9";
-
-IOBUF PORT "DBG_VALID"    IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_LAUNCH"   IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_WRITE"    IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_READY"    IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_ADDR[0]"  IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_ADDR[1]"  IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_ADDR[2]"  IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_ADDR[3]"  IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_WDATA[0]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_WDATA[1]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_WDATA[2]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_WDATA[3]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_RDATA[0]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_RDATA[1]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_RDATA[2]" IO_TYPE=LVCMOS33;
-IOBUF PORT "DBG_RDATA[3]" IO_TYPE=LVCMOS33;
-
-############################
-# GPIO -> 8 on-board LEDs (LED0..LED7)
-# ULX3S rev F LED sites: B2 C2 C1 D2 D1 E2 E1 H3
-############################
-LOCATE COMP "GPIO[0]" SITE "B2";
-LOCATE COMP "GPIO[1]" SITE "C2";
-LOCATE COMP "GPIO[2]" SITE "C1";
-LOCATE COMP "GPIO[3]" SITE "D2";
-LOCATE COMP "GPIO[4]" SITE "D1";
-LOCATE COMP "GPIO[5]" SITE "E2";
-LOCATE COMP "GPIO[6]" SITE "E1";
-LOCATE COMP "GPIO[7]" SITE "H3";
-IOBUF PORT "GPIO[0]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[1]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[2]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[3]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[4]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[5]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[6]" IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "GPIO[7]" IO_TYPE=LVCMOS33 DRIVE=4;
-
-############################
-# Interrupt observation pins (GP header, second bank)
-# Routed for logic-analyzer probing.
-############################
-LOCATE COMP "IRQ_TIMER" SITE "F5";
-LOCATE COMP "IRQ_DMA"   SITE "F4";
-LOCATE COMP "IRQ_NPU"   SITE "E5";
-LOCATE COMP "IRQ_VSYNC" SITE "E4";
-IOBUF PORT "IRQ_TIMER"  IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "IRQ_DMA"    IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "IRQ_NPU"    IO_TYPE=LVCMOS33 DRIVE=4;
-IOBUF PORT "IRQ_VSYNC"  IO_TYPE=LVCMOS33 DRIVE=4;
-
-############################
-# Strap / test (BTN_F1 used as TEST_MODE strap, sampled at reset only)
-############################
-LOCATE COMP "TEST_MODE" SITE "R1";
-IOBUF   PORT "TEST_MODE" IO_TYPE=LVCMOS33 PULLMODE=DOWN;
-
-############################
-# JTAG -- ECP5 dedicated JTAG is on hard pins. Do NOT re-locate.
-# Listed here as documentation only; the toolchain wires these via the
-# JTAGG primitive, not LPF LOCATE statements.
-############################
-# JTAG_TCK : dedicated
-# JTAG_TMS : dedicated
-# JTAG_TDI : dedicated
-# JTAG_TDO : dedicated
-
-############################
-# Reserved: external WiFi/BT module integration stub (no pins assigned).
-# Final constraints must place these on a 1.8 V capable bank or use level
-# translation. Do not assign RF, antenna, or module analog pins here.
-# Reserved digital host signals, not assigned to package sites in this
-# e1-demo LPF: WIFI_SDIO_CLK, WIFI_SDIO_CMD, WIFI_SDIO_D0, WIFI_SDIO_D1,
-# WIFI_SDIO_D2, WIFI_SDIO_D3, WIFI_EN, WIFI_RST_N, WIFI_HOST_WAKE, WIFI_IRQ,
-# BT_UART_TX, BT_UART_RX, BT_UART_CTS_N, BT_UART_RTS_N. These are a 1.8 V
-# external-module contract only until the board revision, bank voltage,
-# level-shifting, and regulatory evidence are selected.
 #
+# WiFi/Bluetooth external-module reservation: WIFI_SDIO_CLK and the rest of the
+# SDIO bus, BT_UART_TX and the rest of the Bluetooth UART, and all WiFi control
+# pins require 1.8 V IO planning through the package contract. Do not assign RF
+# antenna/feed/module RF pins in this FPGA LPF; RF remains a board/module DFM
+# responsibility until the final phone pinout is approved.
+
 # ULX3S configuration defaults for open-source ECP5 flow.
 BLOCK RESETPATHS;
 BLOCK ASYNCPATHS;

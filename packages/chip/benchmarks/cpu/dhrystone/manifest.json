@@ -25,7 +25,11 @@
   "metric": {
     "primary": "dmips_per_mhz",
     "formula_from_cycles": "DMIPS/MHz = (1e6 / cycles_per_dhrystone) / 1757",
-    "secondary": ["cpi", "total_cycles", "retired_instructions"]
+    "secondary": [
+      "cpi",
+      "total_cycles",
+      "retired_instructions"
+    ]
   },
   "expected_results": {
     "cva6_rv64gc": {
@@ -35,12 +39,15 @@
     }
   },
   "result_artifact": "benchmarks/results/cpu/dhrystone/result.json",
+  "phone_result_artifact": "benchmarks/results/cpu/dhrystone/l5_l6_result.json",
   "result_schema": "eliza.cpu_benchmark_result.v1",
   "run_command": "scripts/run_dhrystone.sh",
+  "phone_run_command": "E1_DHRYSTONE_RAW_OUTPUT=<target-transcript> E1_DHRYSTONE_TARGET_METADATA=<metadata.json> E1_DHRYSTONE_TARGET_RUNNER=<prototype|silicon|phone> make dhrystone-l5-l6",
   "fail_closed_for_phone_claim_until": [
-    "CVA6 corev_apu Verilator testharness submodules initialized (register_interface, riscv-dbg, axi_mem_if, apb_uart)",
-    "Variane_testharness model built",
     "L5/L6 phone or prototype silicon DUT",
-    "benchmarks/results/cpu/dhrystone/result.json exists and matches schema"
+    "Target-side Dhrystone runner/transcript captured on the phone or prototype",
+    "Calibrated CPU clock source and thermal/power metadata captured for the run",
+    "Raw target output archived with artifacts.raw_output_sha256",
+    "benchmarks/results/cpu/dhrystone/l5_l6_result.json exists and matches schema with L5/L6 claim metadata"
   ]
 }

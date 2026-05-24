@@ -124,11 +124,11 @@ class DramSimResult:
     workload: str = ""
     requested_address_range_bytes: int = 0
     transactions_emitted: int = 0
-    measured_read_bandwidth_gbps: float = 0.0
-    measured_write_bandwidth_gbps: float = 0.0
-    measured_total_bandwidth_gbps: float = 0.0
-    measured_p95_latency_ns: float = 0.0
-    measured_average_latency_ns: float = 0.0
+    simulated_read_bandwidth_gbps: float = 0.0
+    simulated_write_bandwidth_gbps: float = 0.0
+    simulated_total_bandwidth_gbps: float = 0.0
+    simulated_p95_latency_ns: float = 0.0
+    simulated_average_latency_ns: float = 0.0
     captured_utc: str = field(
         default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     )
@@ -153,16 +153,23 @@ class DramSimResult:
             "workload": self.workload,
             "requested_address_range_bytes": self.requested_address_range_bytes,
             "transactions_emitted": self.transactions_emitted,
-            "measured_read_bandwidth_gbps": self.measured_read_bandwidth_gbps,
-            "measured_write_bandwidth_gbps": self.measured_write_bandwidth_gbps,
-            "measured_total_bandwidth_gbps": self.measured_total_bandwidth_gbps,
-            "measured_average_latency_ns": self.measured_average_latency_ns,
-            "measured_p95_latency_ns": self.measured_p95_latency_ns,
+            "simulated_read_bandwidth_gbps": self.simulated_read_bandwidth_gbps,
+            "simulated_write_bandwidth_gbps": self.simulated_write_bandwidth_gbps,
+            "simulated_total_bandwidth_gbps": self.simulated_total_bandwidth_gbps,
+            "simulated_average_latency_ns": self.simulated_average_latency_ns,
+            "simulated_p95_latency_ns": self.simulated_p95_latency_ns,
             "simulator_only_note": (
                 "DRAMSim3 behavioural-model result. Cannot satisfy the "
                 "phone-class real-target bandwidth gate in "
                 "docs/evidence/memory/uma-dram-evidence-gate.yaml."
             ),
+            "claim_boundary": (
+                "DRAMSim3 behavioural simulation only; not physical LPDDR, "
+                "PHY/training, SoC-top, Linux/Android, silicon, phone, or "
+                "release bandwidth/latency evidence."
+            ),
+            "phone_claim_allowed": False,
+            "release_claim_allowed": False,
             "raw_log_path": self.raw_log_path,
             "raw_stats_path": self.raw_stats_path,
         }
@@ -233,7 +240,7 @@ def run_dram_sweep(
             raw_log_path=str(output_dir / f"dram_sim_{backend}_{workload}.log"),
         )
         try:
-            measured = runner_fn(config, workload, output_dir)
+            simulated = runner_fn(config, workload, output_dir)
         except RuntimeError as exc:
             blocked = {
                 "schema": "eliza.memory.dram_sim_blocked.v1",
@@ -247,13 +254,13 @@ def run_dram_sweep(
                 json.dumps(blocked, indent=2)
             )
             continue
-        result.measured_read_bandwidth_gbps = measured["read_gbps"]
-        result.measured_write_bandwidth_gbps = measured["write_gbps"]
-        result.measured_total_bandwidth_gbps = measured["total_gbps"]
-        result.measured_p95_latency_ns = measured["p95_latency_ns"]
-        result.measured_average_latency_ns = measured["avg_latency_ns"]
-        result.transactions_emitted = measured["transactions_emitted"]
-        result.raw_stats_path = measured["raw_stats_path"]
+        result.simulated_read_bandwidth_gbps = simulated["read_gbps"]
+        result.simulated_write_bandwidth_gbps = simulated["write_gbps"]
+        result.simulated_total_bandwidth_gbps = simulated["total_gbps"]
+        result.simulated_p95_latency_ns = simulated["p95_latency_ns"]
+        result.simulated_average_latency_ns = simulated["avg_latency_ns"]
+        result.transactions_emitted = simulated["transactions_emitted"]
+        result.raw_stats_path = simulated["raw_stats_path"]
         out_path = output_dir / f"dram_sim_{backend}_{workload}.json"
         out_path.write_text(json.dumps(result.to_dict(), indent=2))
         results.append(result)
@@ -295,7 +302,7 @@ def _write_blocked_no_backend(output_dir: Path) -> None:
 
 def _dramsim3_run(config: DramConfig, workload: str, output_dir: Path) -> dict:
     """Invoke DRAMSim3 against the SKU config with the requested workload
-    trace, parse the resulting ``dramsim3.json``, and return measured
+    trace, parse the resulting ``dramsim3.json``, and return simulated
     bandwidth and latency in physical units. Fails closed via
     ``RuntimeError`` so the caller can record a per-workload blocked JSON
     instead of fabricating numbers."""
@@ -353,10 +360,10 @@ def _dramsim3_run(config: DramConfig, workload: str, output_dir: Path) -> dict:
     if not stats_path.is_file():
         raise RuntimeError(f"dramsim3main produced no stats at {stats_path}; see {log_path}")
 
-    measured = _parse_dramsim3_stats(stats_path, config)
-    measured["transactions_emitted"] = transactions
-    measured["raw_stats_path"] = str(stats_path)
-    return measured
+    simulated = _parse_dramsim3_stats(stats_path, config)
+    simulated["transactions_emitted"] = transactions
+    simulated["raw_stats_path"] = str(stats_path)
+    return simulated
 
 
 def _modeled_aperture_bytes(config: DramConfig) -> int:
@@ -504,7 +511,7 @@ if __name__ == "__main__":
             continue
         print(
             f"{r.config.standard:>14} {r.workload:>14} "
-            f"read={r.measured_read_bandwidth_gbps:7.2f} GB/s "
-            f"write={r.measured_write_bandwidth_gbps:7.2f} GB/s "
-            f"p95={r.measured_p95_latency_ns:7.2f} ns"
+            f"read={r.simulated_read_bandwidth_gbps:7.2f} GB/s "
+            f"write={r.simulated_write_bandwidth_gbps:7.2f} GB/s "
+            f"p95={r.simulated_p95_latency_ns:7.2f} ns"
         )

@@ -1,0 +1,26 @@
+<!--
+    Input:
+        device/google/cuttlefish/shared/config/manifest.xml
+        device/eliza/eliza_ai_soc/manifest.xml
+        device/eliza/eliza_ai_soc/eliza_e1.xml
+-->
+<manifest version="9.0" type="device" target-level="202604">
+    <hal format="hidl">
+        <name>android.hardware.graphics.composer</name>
+        <transport>hwbinder</transport>
+        <fqname>@2.4::IComposer/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>vendor.eliza.e1_npu</name>
+        <transport>hwbinder</transport>
+        <fqname>@1.0::IE1Npu/default</fqname>
+    </hal>
+    <hal format="hidl">
+        <name>vendor.eliza.e1_npu</name>
+        <transport>hwbinder</transport>
+        <fqname>@1.0::IE1Npu/default</fqname>
+    </hal>
+    <sepolicy>
+        <version>202604</version>
+    </sepolicy>
+</manifest>

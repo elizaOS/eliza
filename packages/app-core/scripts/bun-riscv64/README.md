@@ -86,6 +86,18 @@ dist/bun-linux-riscv64-musl.zip.sha256
 dist/build-log.txt
 ```
 
+Before staging the artifact into Debian or Android, run:
+
+```bash
+packages/app-core/scripts/bun-riscv64/validate.sh
+```
+
+The validator now fails before any network clone if an existing
+`dist/bun-linux-riscv64-musl.zip` predates `bun-version.json` or any
+checked patch/recipe. Rebuild the zip after every riscv64 patch-series
+change; stale zips are intentionally rejected by both this validator and the
+Linux staging path.
+
 ## C_LOOP artifact contract
 
 The publishable riscv64 artifact is C_LOOP-only until the WebKit recipe
@@ -106,6 +118,47 @@ docker run --rm \
 The resulting binary is slower (no JIT at all) but is the reproducible
 contract both Android and Debian consume. `build-log.txt` records that
 C_LOOP was used.
+
+### Current Debian riscv64 blocker
+
+The builder now requires `qemu-riscv64-static` smoke coverage for
+`bun --version`, `bun -e`, and a real JS file entrypoint before it writes
+`bun-linux-riscv64-musl.zip`. The rebuilt C_LOOP artifact with
+`0021-fix-riscv64-linux-open-flags.patch` passes those probes, including a
+real script-file entrypoint.
+
+The remaining full-agent failure is ICU data packaging, not script
+resolution. A minimal qemu-user repro crashes this artifact:
+
+```bash
+printf 'console.log("x", "líder".normalize("NFKC"), process.arch)\n' >/tmp/nfkc.js
+qemu-riscv64-static \
+  packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime/ld-musl-riscv64.so.1.real \
+  --library-path packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime \
+  packages/os/linux/elizaos/artifacts/riscv64/elizaos-app/musl-runtime/bun \
+  /tmp/nfkc.js
+```
+
+`normalize()`/`NFC`/`NFD` pass; `NFKC` and `NFKD` on non-ASCII text trap with
+`panic(main thread): Segmentation fault at address 0x0`, then SIGILL. The
+staged runtime only has Alpine `icu-libs`; `libicudata.so.74.2` is the small
+stub and `usr/share/icu/74.2/icudt74l.dat` from `icu-data-full` is absent.
+The agent reaches the same path via
+`getValidationKeywordTerms("action.updateRole.intent", { includeAllLocales:
+true })`, which normalizes localized role keywords with `NFKC`.
+
+Concrete workaround: stage Alpine `icu-data-full` for riscv64 and set
+`ICU_DATA` to its `usr/share/icu/74.2` directory, or place
+`icudt74l.dat` at ICU's default `/usr/share/icu/74.2` path in the image.
+With `ICU_DATA=/tmp/.../usr/share/icu/74.2`, the reduced `NFKC` repro and
+the direct qemu-user agent `tui-smoke` both pass. The staged loader wrapper
+still takes about 50s under qemu-user, so
+`riscv64-agent-runtime-smoke` also needs an agent-entrypoint timeout above
+20s when testing the wrapped loader.
+
+Do not promote a riscv64 Debian image until the full agent path reaches the
+`elizaos-curl-health-ready`, `elizaos-agent-ready`, and `elizaos-tui-ready`
+markers under `make -C packages/os/linux/elizaos qemu-virt-smoke ARCH=riscv64`.
 
 ## Hosting the artifact + wiring into Android staging
 

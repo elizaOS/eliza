@@ -31,8 +31,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         mtools \
         dosfstools \
         qemu-user-static \
+        qemu-system-arm \
         qemu-system-misc \
+        qemu-efi-aarch64 \
         qemu-efi-riscv64 \
+        ovmf \
         binfmt-support \
         python3 \
         python3-yaml \
@@ -42,6 +45,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         ca-certificates \
         sudo \
+    && if apt-cache show grub-efi-arm64-bin >/dev/null 2>&1; then \
+        apt-get install -y --no-install-recommends grub-efi-arm64-bin; \
+    else \
+        echo "grub-efi-arm64-bin unavailable for this builder architecture; skipping"; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 # Enable foreign-arch execution inside the container.

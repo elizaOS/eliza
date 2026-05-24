@@ -153,7 +153,7 @@ workloads:
         sha256: ee8980e961e4efd58a88d82de918d5d402563efd526f3fb0dc92b887e99808f4
         role: lowering
       - path: compiler/runtime/e1_npu_runtime.py
-        sha256: 7db6e90a4f8e97bc8661fc22a8a2d9993d98912e5dcec5eea646bb143af1b301
+        sha256: 6ae121292252e26217ccaecee615a1ab53140c6a65925fa120d4022153e14562
         role: runtime
     input_shape:
       input: tiny_mlp_test_fixture

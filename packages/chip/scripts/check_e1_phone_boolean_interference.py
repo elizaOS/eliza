@@ -1158,7 +1158,17 @@ def main() -> int:
             "back_inner_wall_z_mm": round(back_inner_z, 4),
             "targets": burial,
         },
-        "overall_status": "pass" if overall_pass else "fail",
+        "overall_status": "pass" if overall_pass else "blocked_boolean_interference_incomplete",
+        "release_credit": False,
+        "release_blocked": not overall_pass,
+        "release_blocker_category": (
+            "none" if overall_pass else "local_concept_boolean_interference_clashes"
+        ),
+        "release_blocker_count": 0 if overall_pass else len(interferences),
+        "next_action": (
+            "Release-ready boolean evidence requires zero unintentional clashes "
+            "against routed board STEP and supplier B-rep models."
+        ),
         "wall_seconds": round(time.time() - t0, 2),
     }
     out_json_path = REVIEW_DIR / "full-cad-boolean-interference.json"
@@ -1169,7 +1179,7 @@ def main() -> int:
     md_lines = [
         "# E1 Phone Full CAD Boolean Interference Acceptance",
         "",
-        f"Status: {'PASS' if overall_pass else 'FAIL'}.",
+        f"Status: {'PASS' if overall_pass else 'BLOCKED'}.",
         "",
         f"Engine: `{ENGINE_NAME}`.",
         f"Date: {DATE}. Reviewer: `{REVIEWER}`.",
@@ -1324,7 +1334,7 @@ def main() -> int:
     # --- write results template CSV (populated) ---
     csv_path = REVIEW_DIR / "full-cad-boolean-interference-results-template.csv"
     with open(csv_path, "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow(
             [
                 "scope_id",
@@ -1357,7 +1367,7 @@ def main() -> int:
     # --- write N x N min-gap matrix CSV ---
     mat_path = REVIEW_DIR / "full-cad-min-gap-matrix.csv"
     with open(mat_path, "w", newline="") as f:
-        w = csv.writer(f)
+        w = csv.writer(f, lineterminator="\n")
         w.writerow([""] + names)
         for i, ni in enumerate(names):
             w.writerow([ni] + [matrix[i][j] for j in range(N)])
@@ -1367,7 +1377,7 @@ def main() -> int:
     ac_json_path = REVIEW_DIR / "assembly-clearance.json"
     if ac_json_path.exists():
         ac = json.loads(ac_json_path.read_text())
-        ac["status"] = "pass"
+        ac["status"] = "pass" if overall_pass else "blocked_boolean_interference_incomplete"
         ac["claim_boundary"] = (
             "Targeted clearance cases plus full-assembly B-rep boolean check. "
             "Min target gap 0.15 mm honored; intentional gasket/adhesive contact "
@@ -1389,7 +1399,7 @@ def main() -> int:
                 "## Full-Assembly Boolean Check",
                 "",
                 f"Engine: `{ENGINE_NAME}`. Date: {DATE}. Reviewer: `{REVIEWER}`.",
-                f"Overall: {'PASS' if overall_pass else 'FAIL'}. "
+                f"Overall: {'PASS' if overall_pass else 'BLOCKED'}. "
                 f"Scopes: {sum(1 for s in scope_results if s['status'] == 'pass')}/{len(scope_results)} pass. "
                 f"Unintentional clash pairs: {len(interferences)}.",
                 "",
@@ -1399,7 +1409,7 @@ def main() -> int:
 
     print(
         f"\n=== SUMMARY ===\n"
-        f"overall_status: {'PASS' if overall_pass else 'FAIL'}\n"
+        f"overall_status: {'PASS' if overall_pass else 'BLOCKED'}\n"
         f"scopes pass: {sum(1 for s in scope_results if s['status'] == 'pass')}/{len(scope_results)}\n"
         f"unintentional clashes: {len(interferences)}\n"
         f"min/max gap observed: "
@@ -1408,7 +1418,15 @@ def main() -> int:
         f"wall: {time.time() - t0:.1f}s",
         file=sys.stderr,
     )
-    return 0 if overall_pass else 1
+    if overall_pass:
+        print("STATUS: PASS E1 phone full-CAD boolean interference")
+        return 0
+    print(
+        "STATUS: BLOCKED E1 phone full-CAD boolean interference "
+        f"unintentional_clashes={len(interferences)} "
+        f"parts_loaded={len(parts)} pair_count_brep={pair_count_brep}"
+    )
+    return 2
 
 
 if __name__ == "__main__":

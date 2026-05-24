@@ -140,6 +140,13 @@ class TextConditionedProfileEnv(gym.Env):
         self._joint_qpos_idx: list[int] = []
         self._joint_qvel_idx: list[int] = []
         self._joint_actuator_idx: list[int] = []
+        self._profile_joint_qpos_idx: list[int] = []
+        self._profile_joint_qvel_idx: list[int] = []
+        self._profile_joint_actuator_idx: list[int] = []
+        self._profile_joint_home: np.ndarray = np.zeros(0, dtype=np.float32)
+        self._profile_joint_torque: np.ndarray = np.zeros(0, dtype=np.float32)
+        self._root_qpos_idx = 0
+        self._root_qvel_idx = 0
         self._current_task: TaskSpec | None = None
         self._current_embed = np.zeros(self.config.pca_dim, dtype=np.float32)
         self._previous_action = np.zeros(self._action_dim, dtype=np.float32)
@@ -163,29 +170,57 @@ class TextConditionedProfileEnv(gym.Env):
 
         self._model = mujoco.MjModel.from_xml_path(str(self._mjcf_path))
         self._data = mujoco.MjData(self._model)
-        for j in self._action_joints:
+        root_jid = mujoco.mj_name2id(
+            self._model, mujoco.mjtObj.mjOBJ_JOINT, "root"
+        )
+        if root_jid < 0 or self._model.jnt_type[root_jid] != mujoco.mjtJoint.mjJNT_FREE:
+            root_jid = next(
+                (
+                    jid
+                    for jid in range(self._model.njnt)
+                    if self._model.jnt_type[jid] == mujoco.mjtJoint.mjJNT_FREE
+                ),
+                -1,
+            )
+        if root_jid >= 0:
+            self._root_qpos_idx = int(self._model.jnt_qposadr[root_jid])
+            self._root_qvel_idx = int(self._model.jnt_dofadr[root_jid])
+        for j in self.profile.kinematics.joints:
             jid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_JOINT, j.name)
             if jid < 0:
                 raise ValueError(
                     f"profile {self.profile.id!r}: joint {j.name!r} not in MJCF "
                     f"({self._mjcf_path}); regenerate the profile from the MJCF"
                 )
-            self._joint_qpos_idx.append(int(self._model.jnt_qposadr[jid]))
-            self._joint_qvel_idx.append(int(self._model.jnt_dofadr[jid]))
-            aid = mujoco.mj_name2id(self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, j.name)
-            self._joint_actuator_idx.append(int(aid) if aid >= 0 else -1)
-        # Build a per-actuator default ctrl vector at home pose so the
-        # joints we DON'T train (arms, head, torso) stay clamped to home
-        # instead of dropping to zero when the policy only emits leg
-        # targets. Without this the robot's arms/torso flop on every
-        # step and the leg policy has no chance to learn balance.
-        self._default_ctrl = np.zeros(self._model.nu, dtype=np.float32)
-        for j in self.profile.kinematics.joints:
-            aid = mujoco.mj_name2id(
-                self._model, mujoco.mjtObj.mjOBJ_ACTUATOR, j.name
+            self._profile_joint_qpos_idx.append(int(self._model.jnt_qposadr[jid]))
+            self._profile_joint_qvel_idx.append(int(self._model.jnt_dofadr[jid]))
+            self._profile_joint_actuator_idx.append(
+                _actuator_id_for_joint(self._model, jid, j.name)
             )
-            if aid >= 0:
-                self._default_ctrl[aid] = float(j.home_rad)
+        self._profile_joint_home = np.array(
+            [j.home_rad for j in self.profile.kinematics.joints], dtype=np.float32
+        )
+        self._profile_joint_torque = np.array(
+            [max(1.0, float(j.actuator_torque_nm)) for j in self.profile.kinematics.joints],
+            dtype=np.float32,
+        )
+        action_names = {j.name for j in self._action_joints}
+        for j, qpos_idx, qvel_idx, aid in zip(
+            self.profile.kinematics.joints,
+            self._profile_joint_qpos_idx,
+            self._profile_joint_qvel_idx,
+            self._profile_joint_actuator_idx,
+            strict=True,
+        ):
+            if j.name in action_names:
+                self._joint_qpos_idx.append(qpos_idx)
+                self._joint_qvel_idx.append(qvel_idx)
+                self._joint_actuator_idx.append(aid)
+        # Build a per-actuator scratch vector. Position actuators consume
+        # desired joint positions directly; torque motors consume PD torque
+        # around the same target. Resolving actuators through joint bindings
+        # matters for Unitree R1, whose actuators omit the joint-name suffix.
+        self._default_ctrl = np.zeros(self._model.nu, dtype=np.float32)
         # Snapshot canonical dynamics params so domain randomization can
         # resample around the nominal value each reset.
         self._dr_canonical_body_mass = self._model.body_mass.copy()
@@ -263,27 +298,13 @@ class TextConditionedProfileEnv(gym.Env):
         self._previous_action = clipped.copy()
         target = self._home_pose + clipped * self.config.action_scale
         target = np.clip(target, self._lower, self._upper)
-        # Reset every actuator to its home-pose default first so non-action
-        # joints (arms, torso, head) stay clamped, then overwrite the
-        # action joints with the policy targets.
-        self._data.ctrl[:] = self._default_ctrl
-        for ai, t in zip(self._joint_actuator_idx, target, strict=False):
-            if ai >= 0:
-                self._data.ctrl[ai] = float(t)
+        self._write_joint_targets(target)
         n_substeps = max(1, int(round(self.config.control_dt_s / self._model.opt.timestep)))
         for _ in range(n_substeps):
             mujoco.mj_step(self._model, self._data)
         self._step_count += 1
         obs = self._build_obs()
-        torso_z = float(self._data.qpos[2]) if self._data.qpos.size > 2 else 0.0
-        # Body tilt: project gravity into the torso frame. xyaxes derived
-        # from the free joint orientation; if quat is [w,x,y,z] then
-        # gravity_local_z = 1 - 2*(x^2 + y^2). >0.7 means mostly upright.
-        if self._data.qpos.size >= 7:
-            qw, qx, qy, qz = (float(self._data.qpos[i]) for i in (3, 4, 5, 6))
-            upright_proj = 1.0 - 2.0 * (qx * qx + qy * qy)
-        else:
-            upright_proj = 1.0
+        torso_z, upright_proj = self._root_pose_summary()
         terminated = bool(torso_z < self._fall_z_threshold or upright_proj < 0.0)
         truncated = self._step_count >= self.config.episode_steps
         reward = self._reward(clipped, torso_z=torso_z, upright_proj=upright_proj, fell=terminated)
@@ -298,6 +319,57 @@ class TextConditionedProfileEnv(gym.Env):
                 "upright_proj": upright_proj,
             },
         )
+
+    def _write_joint_targets(self, action_targets: np.ndarray) -> None:
+        """Write controls for all profiled joints.
+
+        Some MJCFs use MuJoCo position actuators, where ``ctrl`` is a target
+        angle. Unitree H1/R1 expose torque motors instead, where writing an
+        angle into ``ctrl`` is just a tiny torque and the robot collapses.
+        This method keeps the profile interface position-based while adapting
+        each simulator actuator to the control mode it actually implements.
+        """
+        self._data.ctrl[:] = self._default_ctrl
+        action_by_qpos = {
+            qpos_idx: float(target)
+            for qpos_idx, target in zip(self._joint_qpos_idx, action_targets, strict=True)
+        }
+        for qpos_idx, qvel_idx, aid, home, torque_limit in zip(
+            self._profile_joint_qpos_idx,
+            self._profile_joint_qvel_idx,
+            self._profile_joint_actuator_idx,
+            self._profile_joint_home,
+            self._profile_joint_torque,
+            strict=True,
+        ):
+            if aid < 0:
+                continue
+            target = action_by_qpos.get(qpos_idx, float(home))
+            if int(self._model.actuator_biastype[aid]) != 0:
+                self._data.ctrl[aid] = target
+                continue
+            q = float(self._data.qpos[qpos_idx])
+            qv = float(self._data.qvel[qvel_idx])
+            kp = min(220.0, max(35.0, 3.0 * float(torque_limit)))
+            kd = min(12.0, max(1.5, 0.08 * kp))
+            ctrl = kp * (target - q) - kd * qv
+            lo, hi = (float(x) for x in self._model.actuator_ctrlrange[aid])
+            if lo < hi:
+                ctrl = float(np.clip(ctrl, lo, hi))
+            self._data.ctrl[aid] = ctrl
+
+    def _root_pose_summary(self) -> tuple[float, float]:
+        root = self._root_qpos_idx
+        torso_z = float(self._data.qpos[root + 2]) if self._data.qpos.size > root + 2 else 0.0
+        # Body tilt: project gravity into the torso frame. xyaxes derived
+        # from the free joint orientation; if quat is [w,x,y,z] then
+        # gravity_local_z = 1 - 2*(x^2 + y^2). >0.7 means mostly upright.
+        if self._data.qpos.size >= root + 7:
+            qw, qx, qy, qz = (float(self._data.qpos[root + i]) for i in (3, 4, 5, 6))
+            upright_proj = 1.0 - 2.0 * (qx * qx + qy * qy)
+        else:
+            upright_proj = 1.0
+        return torso_z, upright_proj
 
     def render(self):
         return None
@@ -361,9 +433,10 @@ class TextConditionedProfileEnv(gym.Env):
         # this CPU smoke env we treat them as approximately torso-frame
         # while the robot stays mostly upright. Production MJX env should
         # project through the torso quat — see eliza_robot/sim/mujoco/joystick.py.
-        vx_actual = float(self._data.qvel[0]) if self._data.qvel.size > 0 else 0.0
-        vy_actual = float(self._data.qvel[1]) if self._data.qvel.size > 1 else 0.0
-        yaw_actual = float(self._data.qvel[5]) if self._data.qvel.size > 5 else 0.0
+        root_v = self._root_qvel_idx
+        vx_actual = float(self._data.qvel[root_v]) if self._data.qvel.size > root_v else 0.0
+        vy_actual = float(self._data.qvel[root_v + 1]) if self._data.qvel.size > root_v + 1 else 0.0
+        yaw_actual = float(self._data.qvel[root_v + 5]) if self._data.qvel.size > root_v + 5 else 0.0
         velocity_track = (
             np.exp(-2.0 * (vx_actual - vx_target) ** 2)
             + np.exp(-2.0 * (vy_actual - vy_target) ** 2)
@@ -395,6 +468,27 @@ def _pad_or_trim(arr: np.ndarray, dim: int) -> np.ndarray:
     if arr.shape[0] > dim:
         return arr[:dim]
     return np.concatenate([arr, np.zeros(dim - arr.shape[0], dtype=arr.dtype)])
+
+
+def _actuator_id_for_joint(model, joint_id: int, joint_name: str) -> int:
+    import mujoco
+
+    aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, joint_name)
+    if aid >= 0:
+        return int(aid)
+    stripped = joint_name.removesuffix("_joint")
+    if stripped != joint_name:
+        aid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, stripped)
+        if aid >= 0:
+            return int(aid)
+    for candidate in range(model.nu):
+        if (
+            int(model.actuator_trntype[candidate])
+            == int(mujoco.mjtTrn.mjTRN_JOINT)
+            and int(model.actuator_trnid[candidate, 0]) == int(joint_id)
+        ):
+            return int(candidate)
+    return -1
 
 
 def make_text_conditioned_env(

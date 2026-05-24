@@ -18,7 +18,8 @@
     "requiredEvidence": [
       "qemu-virt-boot",
       "grub-efi-riscv64-boot",
-      "elizaos-agent-live"
+      "elizaos-agent-live",
+      "riscv64-agent-runtime"
     ],
     "evidence": [
       {

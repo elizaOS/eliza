@@ -225,6 +225,29 @@ board_state:
   has_filled_zones: false
   has_keepout_zones: true
   has_real_production_outputs: false
+development_local_review_board_state:
+  board: board/kicad/e1-phone/pcb/e1-phone-mainboard-real-footprint-development.kicad_pcb
+  source_binding: board/kicad/e1-phone/real-footprint-development-board-binding-2026-05-22.yaml
+  routed_intake: board/kicad/e1-phone/routed-development-board-intake-2026-05-22.yaml
+  status: development_routed_real_footprint_board_available_not_release
+  release_credit: false
+  footprint_count: 89
+  bound_footprint_count: 89
+  unbound_footprint_count: 0
+  remaining_placeholder_marker_count: 0
+  e1phone_footprint_refs: 0
+  development_footprint_refs: 89
+  embedded_library_body_count: 89
+  assigned_pad_net_count: 847
+  routed_development_route_count: 153
+  segment_count: 306
+  missing_required_shared_net_count: 0
+  missing_route_domain_net_count: 0
+  reason_not_release: >
+    Development footprints, local route visualization, and generated STEP are
+    usable for local continuity and CAD envelope review only. Production release
+    still requires supplier-approved land patterns, native routed-board release
+    files, DRC/ERC/SI/PI/RF signoff, and measured enclosure clearance.
 cross_checks:
   all_block_netlist_nets_declared_in_kicad_pcb: true
   no_extra_named_pcb_nets_outside_block_netlist: true

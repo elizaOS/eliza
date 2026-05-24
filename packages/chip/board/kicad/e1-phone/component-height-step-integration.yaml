@@ -19,8 +19,10 @@ source_artifacts:
   - mechanical/e1-phone/review/supplier-evidence-acceptance.json
   - mechanical/e1-phone/review/step-validation.json
   - mechanical/e1-phone/review/compactness-optimization.json
+  - mechanical/e1-phone/review/full-cad-boolean-interference.json
+  - board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
 compactness_context:
-  status: cad_compactness_optimized
+  status: blocked
   current_envelope_mm:
     - 78.0
     - 153.6
@@ -31,14 +33,11 @@ compactness_context:
   decision: 'Keep 78.0 x 153.6 x 11.8 mm molded orange body: width/height stay display-driven; depth was deliberately raised to fully bury the rear camera and torch under a flat flush back wall (no camera bump, no proud lens ring).'
 concept_step_context:
   enclosure_placement_status: enclosure_placement_cross_checked_not_release_ready
-  step_validation_status: pass
-  validated_step_count: 142
-  assembly_step: mechanical/e1-phone/out/e1-phone-solid-assembly.step
-  assembly_step_imported: true
-  assembly_step_bbox_span_mm:
-    - 81.1
-    - 154.24
-    - 12.21
+  step_validation_status: blocked
+  validated_step_count: 0
+  assembly_step: null
+  assembly_step_imported: null
+  assembly_step_bbox_span_mm: null
   concept_step_artifact_count: 25
   missing_concept_step_artifacts: []
   concept_is_release_evidence: false
@@ -46,11 +45,36 @@ routed_board_step_context:
   board_step_readiness_status: blocked_concept_pcb_no_routed_step
   routed_board_clearance_status: blocked_waiting_for_routed_board_step
   production_step_files: []
-  has_tracks: false
-  has_filled_zones: true
+  candidate_production_step_files_present_but_blocked:
+    - board/kicad/e1-phone/production/step/routed-board-with-components.step
+  development_step_files:
+    - board/kicad/e1-phone/pcb/fab-demo/e1-phone-mainboard-real-footprint-development.step
+  development_step_intake: board/kicad/e1-phone/real-footprint-development-step-intake-2026-05-22.yaml
+  development_step_envelope_count: 89
+  development_step_pad_contact_visual_count: 1452
+  development_step_route_segment_visual_count: 306
+  development_step_via_visual_count: 24
+  development_step_is_release_evidence: false
+  production_concept_has_tracks: false
+  production_concept_has_filled_zones: true
   has_production_step: false
-  placeholder_marker_count: 116
-  concept_split_island_geometry_matches_kicad: false
+  production_concept_placeholder_marker_count: 116
+  development_real_footprint_has_tracks: true
+  development_real_footprint_remaining_placeholder_marker_count: 0
+  concept_split_island_geometry_matches_kicad: true
+full_cad_boolean_context:
+  status: pass
+  evidence_class: concept_envelope_brep_boolean_interference_result
+  local_concept_passed: true
+  release_ready: false
+  release_blocked: true
+  release_blocker_category: blocked_pending_routed_board_supplier_geometry_and_physical_review
+  parts_loaded: 222
+  pair_count_brep_evaluated: 763
+  unintentional_clash_count: 0
+  scope_result_count: 11
+  passing_scope_result_count: 11
+  routed_supplier_boolean_required: true
 supplier_geometry_context:
   supplier_evidence_status: blocked_no_supplier_evidence
   expected_family_count: 6
@@ -308,11 +332,11 @@ height_critical_models:
 routed_clearance_rerun_matrix:
   - case_id: battery_to_pcb_islands
     concept_clearance_pass: true
-    concept_actual_mm: 1.0
+    concept_actual_mm: 0.5
     concept_required_mm: 0.5
-    concept_margin_mm: 0.5
-    rerun_priority: 2
-    risk_level: medium
+    concept_margin_mm: 0.0
+    rerun_priority: 1
+    risk_level: high
     measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
     requires_routed_step_rerun: true
   - case_id: haptic_to_battery
@@ -407,9 +431,9 @@ routed_clearance_rerun_matrix:
     requires_routed_step_rerun: true
   - case_id: haptic_to_pcb_islands
     concept_clearance_pass: true
-    concept_actual_mm: 1.581
+    concept_actual_mm: 1.118
     concept_required_mm: 0.5
-    concept_margin_mm: 1.081
+    concept_margin_mm: 0.618
     rerun_priority: 3
     risk_level: normal
     measurement_instruction: Rerun against routed KiCad STEP with production component 3D models.
@@ -464,10 +488,12 @@ release_blockers:
   - parseable 055WU01 and E549/RM67191 display alternates cannot enter height or STEP release until supplier STEP/B-rep, connector, touch/power, sample, promotion review, and routed-clearance evidence exist
   - supplier STEP/B-rep models for display, USB-C, cameras, buttons, radios, audio, haptics, and enclosure tooling
     are missing
-  - routed KiCad board STEP with component 3D models is missing
+  - local real-footprint routed STEP exists for visual review only; supplier-approved production STEP with component 3D models is missing
   - routed-board clearance rerun has not passed
   - concept STEP envelopes are not supplier-approved geometry
   - full CAD boolean interference report using routed board and supplier models is missing
+  - local concept-envelope full CAD boolean interference passes with zero unintentional
+    clashes, but routed-board/supplier-geometry boolean rerun is still missing
   - component height and courtyard data are not bound to production KiCad footprints
 forbidden_claims:
   - component_heights_closed

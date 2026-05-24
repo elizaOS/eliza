@@ -2,7 +2,7 @@
   "claim_boundary": "Fail-closed supplier evidence acceptance. Public shortlist entries and generated RFQs do not count; each functional family needs supplier-returned quote, 2D drawing, STEP, sample evidence, and reviewer identity before CAD lock.",
   "status": "blocked_no_supplier_evidence",
   "source_status": {
-    "supplier_rfq_status": "rfq_ready",
+    "supplier_rfq_status": "blocked",
     "supplier_response_status": "blocked_no_supplier_responses",
     "supplier_response_complete_count": 0
   },

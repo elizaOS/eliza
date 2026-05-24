@@ -13,10 +13,9 @@ Classification policy (exact prefix-based rule):
 * non-zero exit code                                       -> ``FAIL``
 * zero exit code                                           -> ``PASS``
 
-``BLOCKED`` is never a release blocker on its own: it is an external dependency
-record (foundry PDK, AOSP transcript, MLPerf silicon, OpenLane Docker). Only
-``FAIL`` flips ``release_blocker`` to true and causes a non-zero exit from this
-aggregator.
+``BLOCKED`` is tracked separately from ``FAIL`` so the report can distinguish
+external/evidence blockers from regressions. ``FAIL`` flips ``release_blocker``;
+either ``FAIL`` or ``BLOCKED`` flips ``effective_release_blocker``.
 
 The ``--strict`` flag escalates ``BLOCKED`` to a release blocker as well, which
 is what ``make tapeout-readiness-strict`` uses to assert silicon-class
@@ -27,6 +26,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import signal
 import subprocess
 import sys
 from dataclasses import asdict, dataclass
@@ -36,10 +37,18 @@ from typing import Literal
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "build/reports/tapeout-readiness.json"
+PRODUCT_RELEASE_STATUS_PATH = ROOT / "build/reports/product_release_status.json"
 SCHEMA = "eliza.tapeout_readiness.v1"
 CLAIM_BOUNDARY = "tapeout_readiness_aggregator_view_only_no_silicon_or_release_claim"
+GATE_TIMEOUT_SECONDS = int(os.environ.get("ELIZA_TAPEOUT_GATE_TIMEOUT_SECONDS", "180"))
 
 Status = Literal["PASS", "FAIL", "BLOCKED"]
+BlockerDependency = Literal[
+    "not_blocked",
+    "repo_artifact_generation",
+    "live_device_validation",
+    "actionable_external_dependency",
+]
 Subsystem = Literal[
     "cpu",
     "memory",
@@ -54,6 +63,7 @@ Subsystem = Literal[
     "os_rv64",
 ]
 Tier = Literal["spec", "rtl", "pd", "silicon"]
+Scope = Literal["chip", "phone"]
 
 
 @dataclass(frozen=True)
@@ -74,6 +84,7 @@ class GateSpec:
     tier: Tier
     args: tuple[str, ...] = ()
     module: str | None = None
+    scope: Scope = "chip"
 
 
 # Curated set of fail-closed gates that already exist in scripts/check_*.py
@@ -229,7 +240,7 @@ GATES: tuple[GateSpec, ...] = (
     ),
     GateSpec(
         name="pdk-access-gate",
-        script="scripts/check_pdk_portability.py",
+        script="scripts/check_pdk_access_gate.py",
         subsystem="process",
         tier="pd",
     ),
@@ -263,6 +274,12 @@ GATES: tuple[GateSpec, ...] = (
     GateSpec(
         name="pd-signoff-check",
         script="scripts/check_pd_signoff.py",
+        subsystem="pd",
+        tier="pd",
+    ),
+    GateSpec(
+        name="pd-release-evidence-check",
+        script="scripts/check_pd_release_evidence.py",
         subsystem="pd",
         tier="pd",
     ),
@@ -315,6 +332,13 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_openlane_run_preflight.py",
         subsystem="pd",
         tier="pd",
+    ),
+    GateSpec(
+        name="openlane-run-release-preflight-check",
+        script="scripts/check_openlane_run_preflight.py",
+        subsystem="pd",
+        tier="pd",
+        args=("--release",),
     ),
     GateSpec(
         name="physical-closure-work-order-check",
@@ -377,54 +401,92 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_e1_phone_board_package.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-fabrication-release-check",
         script="scripts/check_e1_phone_fabrication_release.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-release-evidence-regeneration-check",
         script="scripts/check_e1_phone_release_evidence_regeneration.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-release-approval-signature-check",
         script="scripts/check_e1_phone_release_approval_signatures.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-supplier-return-content-check",
         script="scripts/check_e1_phone_supplier_return_content.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-routed-output-content-check",
         script="scripts/check_e1_phone_routed_output_content.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-factory-output-content-check",
         script="scripts/check_e1_phone_factory_output_content.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-first-article-content-check",
         script="scripts/check_e1_phone_first_article_content.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-enclosure-mechanical-content-check",
         script="scripts/check_e1_phone_enclosure_mechanical_content.py",
         subsystem="platform",
         tier="pd",
+        scope="phone",
+    ),
+    GateSpec(
+        name="e1-phone-assemblability-check",
+        script="scripts/check_e1_phone_assemblability.py",
+        subsystem="platform",
+        tier="pd",
+        scope="phone",
+    ),
+    GateSpec(
+        name="e1-phone-button-orientation-check",
+        script="scripts/check_e1_phone_button_orientation.py",
+        subsystem="platform",
+        tier="pd",
+        scope="phone",
+    ),
+    GateSpec(
+        name="e1-phone-boolean-interference-check",
+        script="scripts/check_e1_phone_boolean_interference.py",
+        subsystem="platform",
+        tier="pd",
+        scope="phone",
+    ),
+    GateSpec(
+        name="product-release-status-check",
+        script="scripts/product_check.py",
+        subsystem="platform",
+        tier="pd",
+        args=("--release",),
+        scope="phone",
     ),
     GateSpec(
         name="e1-phone-manufacturing-artifacts-check",
@@ -440,10 +502,24 @@ GATES: tuple[GateSpec, ...] = (
         tier="spec",
     ),
     GateSpec(
+        name="package-cross-probe-release-check",
+        script="scripts/check_package_cross_probe.py",
+        subsystem="platform",
+        tier="pd",
+        args=("--release",),
+    ),
+    GateSpec(
         name="kicad-artifact-check",
         script="scripts/check_kicad_artifacts.py",
         subsystem="platform",
         tier="spec",
+    ),
+    GateSpec(
+        name="kicad-artifacts-release-check",
+        script="scripts/check_kicad_artifacts.py",
+        subsystem="platform",
+        tier="pd",
+        args=("--release",),
     ),
     GateSpec(
         name="manufacturing-artifacts-check",
@@ -488,18 +564,21 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_phone_soc_claims.py",
         subsystem="platform",
         tier="spec",
+        scope="phone",
     ),
     GateSpec(
         name="product-feature-gates-check",
         script="scripts/check_product_feature_gates.py",
         subsystem="platform",
         tier="spec",
+        scope="phone",
     ),
     GateSpec(
         name="phone-runtime-readiness-contract-check",
         script="scripts/check_phone_runtime_readiness_contract.py",
         subsystem="platform",
         tier="silicon",
+        scope="phone",
     ),
     GateSpec(
         name="no-hardware-action-check",
@@ -715,6 +794,23 @@ GATES: tuple[GateSpec, ...] = (
     ),
 )
 
+CHIP_TAPEOUT_GATES: tuple[GateSpec, ...] = tuple(
+    spec for spec in GATES if spec.scope == "chip"
+)
+PHONE_PRODUCT_GATES: tuple[GateSpec, ...] = tuple(
+    spec for spec in GATES if spec.scope == "phone"
+)
+
+
+def select_gates(scope: str) -> tuple[GateSpec, ...]:
+    if scope == "all":
+        return GATES
+    if scope == "chip":
+        return CHIP_TAPEOUT_GATES
+    if scope == "phone":
+        return PHONE_PRODUCT_GATES
+    raise ValueError(f"unknown aggregate scope: {scope}")
+
 
 @dataclass(frozen=True)
 class GateResult:
@@ -723,6 +819,10 @@ class GateResult:
     evidence: str
     subsystem: Subsystem
     tier: Tier
+    script: str = ""
+    args: tuple[str, ...] = ()
+    module: str | None = None
+    blocker_dependency: BlockerDependency = "not_blocked"
 
 
 def _classify(returncode: int, combined_output: str) -> Status:
@@ -733,6 +833,7 @@ def _classify(returncode: int, combined_output: str) -> Status:
         "STATUS: BLOCKED",
         "BLOCKED:",
         "gate BLOCKED",
+        "release blocked",
         "blocked_until_evidence",
         "release gate remains blocked",
         "release remains blocked",
@@ -760,9 +861,14 @@ def _first_evidence_line(name: str, combined_output: str, returncode: int) -> st
     lines = [line.strip() for line in combined_output.splitlines() if line.strip()]
     preferred: str | None = None
     for line in lines:
-        if "STATUS: BLOCKED" in line or "BLOCKED:" in line:
+        if "STATUS: BLOCKED" in line:
             preferred = line
             break
+    if preferred is None:
+        for line in lines:
+            if "BLOCKED:" in line or "release blocked" in line:
+                preferred = line
+                break
     if preferred is None:
         for line in lines:
             if line.startswith("FAIL:") or "failed" in line:
@@ -778,6 +884,269 @@ def _first_evidence_line(name: str, combined_output: str, returncode: int) -> st
     if preferred is None:
         preferred = f"{name}: no output (exit={returncode})"
     return preferred[:200]
+
+
+def classify_blocker_dependency(result: GateResult) -> BlockerDependency:
+    if result.status != "BLOCKED":
+        return "not_blocked"
+
+    blob = " ".join(
+        (
+            result.name,
+            result.evidence,
+            result.script,
+            " ".join(result.args),
+        )
+    ).lower()
+    if any(
+        token in blob
+        for token in (
+            "phone-runtime",
+            "runtime",
+            "adb",
+            "booted",
+            "launcher",
+            "system bridge",
+            "live marker",
+            "device/emulator",
+        )
+    ):
+        return "live_device_validation"
+    if any(
+        token in blob
+        for token in (
+            "supplier",
+            "approval",
+            "approvals",
+            "first-article",
+            "first article",
+            "enclosure",
+            "mechanical",
+            "fabrication",
+            "factory",
+            "procurement",
+            "calibration",
+            "external",
+        )
+    ):
+        return "actionable_external_dependency"
+    return "repo_artifact_generation"
+
+
+def blocker_action(result: GateResult) -> dict[str, str]:
+    """Return an operator-facing next action for a blocked aggregate gate."""
+    product_repo_groups = product_repo_artifact_group_summary()
+    action_by_gate = {
+        "e1-phone-board-package-check": (
+            "Keep structural board package checks green while replacing fail-closed "
+            "planning/candidate artifacts with release evidence from the underlying "
+            "fabrication, enclosure, routed-output, supplier, and first-article gates."
+        ),
+        "e1-phone-fabrication-release-check": (
+            "Close the fabrication/enclosure/e2e release gate by satisfying each "
+            "blocked child gate and rerunning the fabrication release checker."
+        ),
+        "e1-phone-release-approval-signature-check": (
+            "Collect owner/reviewer/captured_at/revision-or-lot/SHA256-backed "
+            "approval rows; placeholder, template, and presence-only rows do not count."
+        ),
+        "e1-phone-supplier-return-content-check": (
+            "Collect supplier-returned quotes, drawings, STEP/B-rep models, samples, "
+            "pinouts, and acceptance evidence for every blocked supplier matrix row."
+        ),
+        "e1-phone-routed-output-content-check": (
+            "Generate or replace missing routed release outputs, then validate DRC/ERC, "
+            "SI/PI/RF, IPC/fabrication, and exact-net evidence for every routed domain."
+        ),
+        "e1-phone-factory-output-content-check": (
+            "Generate the missing BOM, Gerber/drill, IPC-2581, POS, panel, assembly, "
+            "probe, and factory-test outputs with content-valid manifests."
+        ),
+        "e1-phone-first-article-content-check": (
+            "Execute first-article traveler/test logs on real units and replace template "
+            "or presence-only rows with signed, hashed measurement evidence."
+        ),
+        "e1-phone-enclosure-mechanical-content-check": (
+            "Collect routed-board STEP clearance, production enclosure handoff packets, "
+            "CMM/FAI, process limits, validation results, and first-article fit evidence."
+        ),
+        "product-release-status-check": (
+            "Resolve product release detail checks by generating repo artifacts where "
+            "possible and attaching external/live evidence where required."
+            + (
+                f" Current top repo-artifact groups: {product_repo_groups}."
+                if product_repo_groups
+                else ""
+            )
+        ),
+        "phone-runtime-readiness-contract-check": (
+            "Boot a target phone/emulator and capture live Android/system bridge, media, "
+            "security lifecycle, radio/sensor/PMIC, and launcher runtime evidence."
+        ),
+    }
+    validation = result.script
+    if result.args:
+        validation = " ".join((validation, *result.args))
+    if result.name == "phone-runtime-readiness-contract-check":
+        validation = "packages/chip/scripts/check_phone_runtime_readiness_contract.py"
+    return {
+        "name": result.name,
+        "dependency": result.blocker_dependency,
+        "script": result.script,
+        "validation_command": f"python3 {validation}".strip(),
+        "evidence": result.evidence,
+        "next_action": action_by_gate.get(
+            result.name,
+            "Inspect the checker report, replace placeholders with real evidence, and rerun the gate.",
+        ),
+    }
+
+
+def product_repo_artifact_group_summary(limit: int = 5) -> str:
+    """Summarize product-level repo artifact groups for the aggregate action plan."""
+    try:
+        report = json.loads(PRODUCT_RELEASE_STATUS_PATH.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return ""
+    groups = report.get("repo_artifact_generation_groups")
+    if not isinstance(groups, list):
+        return ""
+    rows: list[str] = []
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        family = group.get("family")
+        count = group.get("count")
+        command = group.get("next_command")
+        if not isinstance(family, str) or not isinstance(count, int):
+            continue
+        if isinstance(command, str) and command:
+            rows.append(f"{family}={count} via {command}")
+        else:
+            rows.append(f"{family}={count}")
+        if len(rows) >= limit:
+            break
+    return "; ".join(rows)
+
+
+AGGREGATE_RELEASE_PHASES: tuple[dict[str, object], ...] = (
+    {
+        "phase": "phone_fabrication_enclosure_release",
+        "goal": "Close board package, fabrication, approvals, supplier, routed, factory, first-article, and enclosure gates.",
+        "gates": {
+            "e1-phone-board-package-check",
+            "e1-phone-fabrication-release-check",
+            "e1-phone-release-approval-signature-check",
+            "e1-phone-supplier-return-content-check",
+            "e1-phone-routed-output-content-check",
+            "e1-phone-factory-output-content-check",
+            "e1-phone-first-article-content-check",
+            "e1-phone-enclosure-mechanical-content-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+            "python3 scripts/product_check.py --release",
+        ],
+    },
+    {
+        "phase": "phone_release_evidence_regeneration",
+        "goal": "Keep generated phone release-readiness reports reproducible from committed sources.",
+        "gates": {
+            "e1-phone-release-evidence-regeneration-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/check_e1_phone_release_evidence_regeneration.py",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone",
+        ],
+    },
+    {
+        "phase": "phone_end_to_end_runtime_release",
+        "goal": "Collect live booted-target phone runtime evidence.",
+        "gates": {
+            "phone-runtime-readiness-contract-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/check_phone_runtime_readiness_contract.py",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+            "python3 scripts/product_check.py --release",
+        ],
+    },
+    {
+        "phase": "product_release_rollup",
+        "goal": "Close chip, board, package, phone, and runtime release checks visible through product status.",
+        "gates": {
+            "product-release-status-check",
+        },
+        "acceptance_commands": [
+            "python3 scripts/product_check.py --release",
+            "python3 scripts/aggregate_tapeout_readiness.py --scope phone --strict",
+        ],
+    },
+)
+
+
+def blocker_phase_plan(results: list[GateResult]) -> list[dict[str, object]]:
+    """Group blocked aggregate gates into release phases for operators."""
+    blocked_by_name = {
+        result.name: result
+        for result in results
+        if result.status == "BLOCKED" and result.blocker_dependency != "not_blocked"
+    }
+    rows: list[dict[str, object]] = []
+    for phase in AGGREGATE_RELEASE_PHASES:
+        gate_names = {
+            str(name)
+            for name in phase.get("gates", set())
+            if isinstance(name, str)
+        }
+        matched = [
+            blocked_by_name[name]
+            for name in sorted(gate_names)
+            if name in blocked_by_name
+        ]
+        if not matched:
+            continue
+        rows.append(
+            {
+                "phase": phase["phase"],
+                "goal": phase["goal"],
+                "release_credit": False,
+                "blocked_gate_count": len(matched),
+                "blocker_dependency_counts": {
+                    "repo_artifact_generation": sum(
+                        1
+                        for result in matched
+                        if result.blocker_dependency == "repo_artifact_generation"
+                    ),
+                    "live_device_validation": sum(
+                        1
+                        for result in matched
+                        if result.blocker_dependency == "live_device_validation"
+                    ),
+                    "actionable_external_dependency": sum(
+                        1
+                        for result in matched
+                        if result.blocker_dependency == "actionable_external_dependency"
+                    ),
+                },
+                "blocked_gates": [result.name for result in matched],
+                "blocked_gate_details": [
+                    {
+                        "name": result.name,
+                        "blocker_dependency": result.blocker_dependency,
+                        "validation_command": blocker_action(result)["validation_command"],
+                        "evidence": result.evidence,
+                    }
+                    for result in matched
+                ],
+                "validation_commands": [
+                    blocker_action(result)["validation_command"] for result in matched
+                ],
+                "acceptance_commands": phase["acceptance_commands"],
+                "sample_evidence": [result.evidence for result in matched[:5]],
+            }
+        )
+    return rows
 
 
 def run_gate(spec: GateSpec) -> GateResult:
@@ -799,28 +1168,63 @@ def run_gate(spec: GateSpec) -> GateResult:
             evidence=f"script missing: {spec.script}",
             subsystem=spec.subsystem,
             tier=spec.tier,
+            script=spec.script,
+            args=spec.args,
+            module=spec.module,
         )
     if spec.module:
         cmd = [sys.executable, "-m", "unittest", spec.module, *spec.args]
     else:
         cmd = [sys.executable, str(script_path), *spec.args]
-    completed = subprocess.run(
+    proc = subprocess.Popen(
         cmd,
         cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        check=False,
+        start_new_session=True,
     )
-    combined = completed.stdout or ""
-    status = _classify(completed.returncode, combined)
-    evidence = _first_evidence_line(spec.name, combined, completed.returncode)
+    try:
+        stdout, _ = proc.communicate(timeout=GATE_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGTERM)
+            stdout, _ = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            os.killpg(proc.pid, signal.SIGKILL)
+            stdout, _ = proc.communicate()
+        combined_timeout = stdout or ""
+        evidence = (
+            f"STATUS: BLOCKED {spec.name} exceeded "
+            f"{GATE_TIMEOUT_SECONDS}s aggregate gate timeout"
+        )
+        if combined_timeout.strip():
+            evidence = evidence + "; partial output: " + _first_evidence_line(
+                spec.name, combined_timeout, 124
+            )
+        return GateResult(
+            name=spec.name,
+            status="BLOCKED",
+            evidence=evidence,
+            subsystem=spec.subsystem,
+            tier=spec.tier,
+            script=spec.script,
+            args=spec.args,
+            module=spec.module,
+        )
+    completed_returncode = proc.returncode if proc.returncode is not None else 1
+    combined = stdout or ""
+    status = _classify(completed_returncode, combined)
+    evidence = _first_evidence_line(spec.name, combined, completed_returncode)
     return GateResult(
         name=spec.name,
         status=status,
         evidence=evidence,
         subsystem=spec.subsystem,
         tier=spec.tier,
+        script=spec.script,
+        args=spec.args,
+        module=spec.module,
     )
 
 
@@ -828,13 +1232,68 @@ def build_report(results: list[GateResult]) -> dict[str, object]:
     summary = {"pass": 0, "fail": 0, "blocked": 0}
     for result in results:
         summary[result.status.lower()] += 1
+    status = "fail" if summary["fail"] > 0 else "blocked" if summary["blocked"] > 0 else "pass"
+    categorized_results = [
+        result
+        if result.blocker_dependency != "not_blocked"
+        else GateResult(
+            name=result.name,
+            status=result.status,
+            evidence=result.evidence,
+            subsystem=result.subsystem,
+            tier=result.tier,
+            script=result.script,
+            args=result.args,
+            module=result.module,
+            blocker_dependency=classify_blocker_dependency(result),
+        )
+        for result in results
+    ]
+    blocker_dependency_counts: dict[BlockerDependency, int] = {
+        "repo_artifact_generation": 0,
+        "live_device_validation": 0,
+        "actionable_external_dependency": 0,
+    }
+    blocker_groups: dict[BlockerDependency, list[dict[str, str]]] = {
+        "repo_artifact_generation": [],
+        "live_device_validation": [],
+        "actionable_external_dependency": [],
+    }
+    blocker_action_plan: dict[BlockerDependency, list[dict[str, str]]] = {
+        "repo_artifact_generation": [],
+        "live_device_validation": [],
+        "actionable_external_dependency": [],
+    }
+    for result in categorized_results:
+        dependency = result.blocker_dependency
+        if result.status != "BLOCKED" or dependency == "not_blocked":
+            continue
+        blocker_dependency_counts[dependency] += 1
+        blocker_groups[dependency].append(
+            {
+                "name": result.name,
+                "subsystem": result.subsystem,
+                "tier": result.tier,
+                "evidence": result.evidence,
+                "script": result.script,
+            }
+        )
+        blocker_action_plan[dependency].append(blocker_action(result))
     release_blocker = summary["fail"] > 0
+    effective_release_blocker = release_blocker or summary["blocked"] > 0
     return {
         "schema": SCHEMA,
         "as_of": date.today().isoformat(),
-        "gates": [asdict(result) for result in results],
+        "status": status,
+        "gates": [asdict(result) for result in categorized_results],
+        "results": [asdict(result) for result in categorized_results],
         "summary": summary,
+        "blocker_dependency_counts": blocker_dependency_counts,
+        "blocker_groups": blocker_groups,
+        "blocker_action_plan": blocker_action_plan,
+        "blocker_phase_plan": blocker_phase_plan(categorized_results),
         "release_blocker": release_blocker,
+        "effective_release_blocker": effective_release_blocker,
         "claim_boundary": CLAIM_BOUNDARY,
     }
 
@@ -869,13 +1328,10 @@ def print_summary(report: dict[str, object], strict: bool, report_path: Path | N
             f"{gate['evidence']}"
         )
     print("-" * len(header))
-    effective_release_blocker = bool(report["release_blocker"]) or (
-        strict and int(summary["blocked"]) > 0
-    )
     print(
         f"summary: PASS={summary['pass']} FAIL={summary['fail']} "
         f"BLOCKED={summary['blocked']}  release_blocker={report['release_blocker']}  "
-        f"effective_release_blocker={effective_release_blocker}  "
+        f"effective_release_blocker={report['effective_release_blocker']}  "
         f"strict={strict}"
     )
     try:
@@ -910,16 +1366,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=str(REPORT_PATH),
         help=f"Write aggregate report to this path (default: {REPORT_PATH.relative_to(ROOT)})",
     )
+    parser.add_argument(
+        "--scope",
+        choices=("all", "chip", "phone"),
+        default="all",
+        help="Gate scope to aggregate. Default all keeps the combined chip + phone objective visible.",
+    )
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     report_path = Path(args.report)
-    results = [run_gate(spec) for spec in GATES]
+    gates = select_gates(args.scope)
+    results = [run_gate(spec) for spec in gates]
     report = build_report(results)
+    report["scope"] = args.scope
     write_report(report, report_path)
-    if not args.json_only:
+    if args.json_only:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
         print_summary(report, strict=args.strict, report_path=report_path)
     if args.strict:
         if report["summary"]["fail"] > 0 or report["summary"]["blocked"] > 0:  # type: ignore[index]

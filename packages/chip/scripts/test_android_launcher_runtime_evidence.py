@@ -31,7 +31,10 @@ def write_json(path: Path, payload: dict) -> Path:
 def passing_payload(package: str = "ai.elizaos.app") -> dict:
     return {
         "schema": gate.SCHEMA,
+        "status": "PASS",
+        "result": 0,
         "claim_boundary": gate.CLAIM_BOUNDARY,
+        "target_label": "chip-riscv64",
         "device": {
             "sys_boot_completed": "1",
             "cpu_abi": "riscv64",
@@ -39,6 +42,13 @@ def passing_payload(package: str = "ai.elizaos.app") -> dict:
         },
         "app": {
             "package_name": package,
+            "system_apk_path": "/system/priv-app/Eliza/Eliza.apk",
+            "system_apk_present": "present",
+            "system_apk_probe": "/system/priv-app/Eliza/Eliza.apk",
+            "permission_file_probes": {
+                "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": "-rw-r--r-- root root default-permissions-ai.elizaos.app.xml",
+                "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml": "-rw-r--r-- root root privapp-permissions-ai.elizaos.app.xml",
+            },
             "pm_path": "package:/system/priv-app/Eliza/Eliza.apk",
             "role_holders": {
                 "android.app.role.ASSISTANT": [package],
@@ -84,10 +94,18 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
                 tmp / "evidence.json",
                 {
                     "schema": gate.SCHEMA,
+                    "status": "FAIL",
+                    "result": 1,
                     "claim_boundary": gate.CLAIM_BOUNDARY,
                     "device": {"sys_boot_completed": "0", "cpu_abi": "x86_64"},
                     "app": {
                         "package_name": "ai.elizaos.app",
+                        "system_apk_path": "/system/priv-app/Eliza/Eliza.apk",
+                        "system_apk_present": "missing",
+                        "system_apk_probe": "ls: /system/priv-app/Eliza/Eliza.apk: No such file or directory",
+                        "permission_file_probes": {
+                            "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml": "lrw-r--r-- /system/etc/default-permissions/default-permissions-ai.elizaos.app.xml -> /home/ubuntu/eliza-aosp/src/packages/os/android/vendor/eliza/permissions/default-permissions-ai.elizaos.app.xml"
+                        },
                         "pm_path": "",
                         "role_holders": {},
                         "home_resolve_activity": "com.android.launcher/.Launcher",
@@ -115,8 +133,12 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(report["status"], "blocked")
         codes = {finding["code"] for finding in report["findings"]}
         self.assertIn("android_boot_not_completed", codes)
-        self.assertIn("android_device_not_riscv64", codes)
+        self.assertIn("launcher_evidence_status_not_pass", codes)
+        self.assertIn("launcher_evidence_result_nonzero", codes)
+        self.assertIn("android_device_cpu_abi_mismatch", codes)
         self.assertIn("launcher_package_not_installed", codes)
+        self.assertIn("launcher_system_privapp_apk_missing", codes)
+        self.assertIn("launcher_permission_xml_host_symlink", codes)
         self.assertIn("home_resolve_not_eliza", codes)
         self.assertIn("foreground_activity_not_eliza", codes)
         self.assertIn("role_holders_do_not_include_eliza", codes)
@@ -135,11 +157,175 @@ class AndroidLauncherRuntimeEvidenceTests(unittest.TestCase):
             write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
             write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
             evidence = write_json(tmp / "evidence.json", passing_payload())
-            with mock.patch.object(gate, "ROOT", tmp):
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", tmp / "missing.json"),
+            ):
                 report = gate.run_check(Namespace(evidence=str(evidence)))
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["findings"], [])
         self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+    def test_expected_artifact_id_mismatch_blocks_cross_target_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload = passing_payload()
+            payload["artifact_id"] = "android-chip-riscv64-zip"
+            evidence = write_json(tmp / "evidence.json", payload)
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", tmp / "missing.json"),
+            ):
+                report = gate.run_check(
+                    Namespace(
+                        evidence=str(evidence),
+                        expected_cpu_abi="riscv64",
+                        expected_artifact_id="android-pixel-arm64-zip",
+                    )
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("launcher_evidence_artifact_id_mismatch", codes)
+        self.assertEqual(report["evidence"]["artifact_id"], "android-chip-riscv64-zip")
+        self.assertEqual(
+            report["evidence"]["expected_artifact_id"],
+            "android-pixel-arm64-zip",
+        )
+
+    def test_expected_target_label_mismatch_blocks_cross_target_reuse(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload = passing_payload()
+            payload["artifact_id"] = "android-chip-riscv64-zip"
+            payload["target_label"] = "chip-riscv64"
+            evidence = write_json(tmp / "evidence.json", payload)
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", tmp / "missing.json"),
+            ):
+                report = gate.run_check(
+                    Namespace(
+                        evidence=str(evidence),
+                        expected_cpu_abi="riscv64",
+                        expected_artifact_id="android-chip-riscv64-zip",
+                        expected_target_label="cuttlefish-riscv64",
+                    )
+                )
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("launcher_evidence_target_label_mismatch", codes)
+        self.assertEqual(report["evidence"]["target_label"], "chip-riscv64")
+        self.assertEqual(
+            report["evidence"]["expected_target_label"],
+            "cuttlefish-riscv64",
+        )
+
+    def test_permission_xml_symlink_detection_blocks_non_android_targets(self) -> None:
+        self.assertTrue(
+            gate.contains_host_local_symlink(
+                {
+                    "/system/etc/permissions/foo.xml": (
+                        "lrwxrwxrwx root root foo.xml -> "
+                        "/Users/build/src/packages/os/android/vendor/eliza/permissions/foo.xml"
+                    )
+                }
+            )
+        )
+        self.assertFalse(
+            gate.contains_host_local_symlink(
+                {"/system/etc/permissions/foo.xml": "foo.xml -> /system/etc/permissions/foo.xml"}
+            )
+        )
+    def test_stale_nonpass_top_level_status_blocks_even_if_fields_pass(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload = passing_payload()
+            payload["status"] = "BLOCKED"
+            payload["result"] = 2
+            evidence = write_json(tmp / "evidence.json", payload)
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", tmp / "missing.json"),
+            ):
+                report = gate.run_check(Namespace(evidence=str(evidence)))
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertEqual(
+            codes,
+            {
+                "launcher_evidence_status_not_pass",
+                "launcher_evidence_result_nonzero",
+            },
+        )
+
+    def test_missing_system_apk_presence_state_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload = passing_payload()
+            payload["app"].pop("system_apk_present")
+            evidence = write_json(tmp / "evidence.json", payload)
+            with mock.patch.object(gate, "ROOT", tmp):
+                report = gate.run_check(Namespace(evidence=str(evidence)))
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("launcher_system_privapp_apk_missing", codes)
+
+    def test_host_local_absolute_artifact_paths_block(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            payload = passing_payload()
+            payload["logs"]["logcat_path"] = "/home/shaw/eliza_launcher_runtime_logcat.txt"
+            payload["artifacts"]["transcript_path"] = "/tmp/eliza_launcher_runtime_transcript.log"
+            evidence = write_json(tmp / "evidence.json", payload)
+            with mock.patch.object(gate, "ROOT", tmp):
+                report = gate.run_check(Namespace(evidence=str(evidence)))
+
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("logcat_artifact_host_local_absolute_path", codes)
+        self.assertIn("launcher_transcript_host_local_absolute_path", codes)
+
+    def test_launcher_package_must_match_staged_apk_payload(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_logcat.txt", "clean\n")
+            write(tmp / "docs/evidence/android/eliza_launcher_runtime_transcript.log", "clean\n")
+            payload_report = write_json(
+                tmp / "build/reports/android_system_apk_payload.json",
+                {
+                    "schema": "eliza.android_system_apk_payload.v1",
+                    "status": "pass",
+                    "evidence": {
+                        "provenance_android_package": "ai.milady.milady",
+                        "vendor_ro_elizaos_home": "ai.milady.milady",
+                    },
+                },
+            )
+            evidence = write_json(tmp / "evidence.json", passing_payload("ai.elizaos.app"))
+            with (
+                mock.patch.object(gate, "ROOT", tmp),
+                mock.patch.object(gate, "ANDROID_APK_PAYLOAD_REPORT", payload_report),
+            ):
+                report = gate.run_check(Namespace(evidence=str(evidence)))
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn(
+            "launcher_package_mismatch_with_staged_apk",
+            {finding["code"] for finding in report["findings"]},
+        )
+        self.assertEqual(report["evidence"]["expected_package"], "ai.milady.milady")
 
 
 if __name__ == "__main__":

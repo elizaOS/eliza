@@ -2,7 +2,7 @@
 
 Owner: E1 manufacturing engineering | EMS partner: Shenzhen Bao'an contract assembly | Date: 2026-04-28
 
-Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 9.6 mm, 185 g target, dual-injection orange back shell + side frame). 8 manned stations + 1 unmanned cure tunnel.
+Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 11.8 mm, 185 g target, dual-injection orange back shell + side frame). 8 manned stations + 1 unmanned cure tunnel.
 
 ## Line Topology
 
@@ -28,7 +28,7 @@ Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 9.6 m
 
 ### Station 2 — PCB Load
 
-- **Operations:** Operator picks routed `main_pcb` (single board, split-flex variant), seats into back-shell PCB pocket aligning against screw bosses 1 and 4 as datum. Verify SOC, PMIC, and radio shield cans seated. Insert SIM tray placeholder. Screw 4 of 6 M1.4 fasteners to 18 N-cm.
+- **Operations:** Operator picks routed `main_pcb` (single board, split-flex variant), seats into back-shell PCB pocket aligning against screw bosses 1 and 4 as datum. Verify SOC, PMIC, and radio shield cans seated. Insert SIM tray placeholder. Drive the pre-battery M1.4 fasteners on the torque map, including the cell-adjacent bosses before the pouch is placed.
 - **Fixture:** PCB datum nest S2-FIX-002 (alignment to bosses 1/4)
 - **Gauges:** torque driver Wera 7440 calibrated 2025-12, AOI for shield seating
 - **Cycle:** 36 s
@@ -39,7 +39,7 @@ Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 9.6 m
 
 ### Station 3 — Battery
 
-- **Operations:** Peel battery pouch adhesive backer. Place LP446487 pouch into battery window between orange_battery_left_rib and orange_battery_right_rib. Press 8 N for 3 s to set bond. Route battery FPC to PMIC connector through cable channel (no pinch path). Connect battery FPC.
+- **Operations:** Bond `battery_back_void_foam_pad` to the inner back wall first. Peel battery pouch adhesive backer. Place the 5.6 mm / 5727 mAh-class pouch into the battery window between `orange_battery_left_rib` and `orange_battery_right_rib`. Press 8 N for 3 s to set bond. Tack the battery service loop in the routing comb; final battery/PMIC FPC mating happens at Station 4 after `main_pcb` is present.
 - **Fixture:** battery placement jig S3-FIX-003 (pneumatic 8 N press)
 - **Gauges:** placement camera, cable pinch visual aid
 - **Cycle:** 28 s
@@ -61,7 +61,7 @@ Production assembly flow for the E1 orange PC+ABS slab phone (78 x 153.6 x 9.6 m
 
 ### Station 5 — Side Frame Snap
 
-- **Operations:** Place orange_side_frame onto back-shell perimeter, align 8 snap hooks (orange_snap_hook_1..8) to side-frame catches. Press via hydraulic platen at 25 N for 2 s to seat all 8 snaps simultaneously. Drive remaining 2 screws (positions 5 and 6) to 22 N-cm. Verify gap/flush around perimeter.
+- **Operations:** Place orange_side_frame onto back-shell perimeter, align 8 snap hooks (`orange_snap_hook_1..8`) to side-frame catches. Press via hydraulic platen at 25 N for 2 s to seat all 8 snaps simultaneously. Verify all 10 M1.4 screw bosses (`orange_screw_boss_1..10`) have torque-map coverage and drive any post-battery perimeter fasteners to 22 N-cm. Verify gap/flush around perimeter.
 - **Fixture:** side-frame snap platen S5-FIX-005 (25 N hydraulic, 8-point load distribution)
 - **Gauges:** snap retention pull-test rig (1 of 20 sample), feeler gauge 0.05-0.50 mm, torque Wera 7440
 - **Cycle:** 30 s

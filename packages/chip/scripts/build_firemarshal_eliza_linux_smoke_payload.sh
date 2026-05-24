@@ -3,7 +3,11 @@ set -eu
 
 repo_dir="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 firemarshal="$repo_dir/external/chipyard/software/firemarshal"
-workload="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke.json"
+workload="${FIREMARSHAL_WORKLOAD:-$repo_dir/sw/firemarshal/eliza-e1-linux-smoke.json}"
+workload_dir="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke"
+image_dir="$firemarshal/images/firechip/eliza-e1-linux-smoke"
+payload="$image_dir/eliza-e1-linux-smoke-bin-nodisk"
+freshness_manifest="$image_dir/payload_freshness_manifest.json"
 wrapper_bin="$repo_dir/build/firemarshal-toolchain-bin"
 deb_tool_bin="$repo_dir/external/riscv64-linux-gnu/usr/bin"
 deb_tool_lib="$repo_dir/external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu"
@@ -141,3 +145,80 @@ export PATH
 
 cd "$firemarshal"
 ./marshal --workdir example-workloads -v -d build "$workload"
+
+export ELIZA_REPO_DIR="$repo_dir"
+export ELIZA_FIREMARSHAL_PAYLOAD="$payload"
+export ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST="$freshness_manifest"
+export ELIZA_FIREMARSHAL_WORKLOAD="$workload"
+export ELIZA_FIREMARSHAL_WORKLOAD_DIR="$workload_dir"
+python3 - <<'PY'
+import hashlib
+import json
+import os
+from datetime import datetime, timezone
+from pathlib import Path
+
+repo = Path(os.environ["ELIZA_REPO_DIR"]).resolve()
+payload = Path(os.environ["ELIZA_FIREMARSHAL_PAYLOAD"]).resolve()
+manifest = Path(os.environ["ELIZA_FIREMARSHAL_FRESHNESS_MANIFEST"]).resolve()
+workload = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD"]).resolve()
+workload_dir = Path(os.environ["ELIZA_FIREMARSHAL_WORKLOAD_DIR"]).resolve()
+
+inputs = [
+    workload,
+    workload_dir / "eliza-e1-linux-smoke-kfrag",
+    workload_dir / "eliza-e1-linux-smoke.sh",
+    workload_dir / "build-hwprobe.sh",
+    workload_dir / "eliza-riscv-hwprobe.c",
+    workload_dir / "eliza-riscv-hwprobe",
+    workload_dir / "e1-npu-ml-smoke",
+]
+
+
+def rel(path: Path) -> str:
+    try:
+        return str(path.relative_to(repo))
+    except ValueError:
+        return str(path)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+missing = [rel(path) for path in [payload, *inputs] if not path.is_file()]
+if missing:
+    raise SystemExit(
+        "cannot write FireMarshal payload freshness manifest; missing: "
+        + ", ".join(missing)
+    )
+
+doc = {
+    "schema": "eliza.firemarshal_linux_smoke_payload_freshness.v1",
+    "generated_utc": datetime.now(timezone.utc).isoformat(),
+    "claim_boundary": (
+        "content-addressed build manifest for the FireMarshal eliza-e1-linux-smoke "
+        "payload inputs; not generated-AP boot evidence"
+    ),
+    "producer": "scripts/build_firemarshal_eliza_linux_smoke_payload.sh",
+    "payload": {
+        "path": rel(payload),
+        "sha256": sha256(payload),
+        "bytes": payload.stat().st_size,
+    },
+    "inputs": {
+        rel(path): {
+            "sha256": sha256(path),
+            "bytes": path.stat().st_size,
+        }
+        for path in inputs
+    },
+}
+manifest.parent.mkdir(parents=True, exist_ok=True)
+manifest.write_text(json.dumps(doc, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+print(f"STATUS: PASS firemarshal.eliza_e1_linux_smoke_payload_freshness {rel(manifest)}")
+PY

@@ -224,6 +224,7 @@ export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
 export * from "./runtime/version.ts";
 export * from "./security/index.ts";
+export * from "./services/cove-quote.ts";
 export * from "./services/dstack-tee-provider.ts";
 export {
   isStewardEvmBridgeActive,
@@ -294,14 +295,17 @@ export {
   type ShellSandboxBackend,
 } from "./services/shell-execution-router.ts";
 export * from "./services/tee-boot-gate.ts";
+export * from "./services/tee-boot-gate-state.ts";
 export * from "./services/tee-confidential-inference.ts";
 export * from "./services/tee-evidence.ts";
 export * from "./services/tee-key-release.ts";
+export * from "./services/tee-model-key-boot.ts";
 export * from "./services/tee-policy.ts";
 export * from "./services/tee-production-profile.ts";
 export * from "./services/tee-release-policy.ts";
 export * from "./services/tee-revocation.ts";
 export * from "./services/tee-runtime-config.ts";
+export * from "./services/tee-sealed-volume.ts";
 export * from "./services/tee-signer-backend.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
 export * from "./test-support/index.ts";

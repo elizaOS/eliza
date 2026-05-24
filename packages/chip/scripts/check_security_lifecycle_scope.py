@@ -167,6 +167,26 @@ def build_report() -> dict[str, Any]:
             "evidence": "docs/manufacturing/product-feature-evidence-manifest.yaml#secure_boot_tee_debug",
         },
     ]
+    findings = [
+        {
+            "code": f"security_lifecycle_missing_real_evidence_{index}",
+            "severity": "blocker",
+            "message": item,
+            "evidence": rel(SECURITY_SPEC),
+            "next_step": "Replace scaffold-only security scope with runtime or silicon-backed security evidence for this item.",
+        }
+        for index, item in enumerate(
+            [
+                "OpenTitan-class rom_ctrl/lc_ctrl/otp_ctrl/otbn integration and DV",
+                "signed boot acceptance and unsigned image rejection transcript",
+                "AVB/libavb verified boot and dm-verity transcript",
+                "rollback index write/read and rollback rejection transcript",
+                "debug authorization denial in PROD and RMA key-erasure transcript",
+                "threat model, key ceremony, signer/HSM, fuse/OTP, and provisioning evidence",
+            ],
+            start=1,
+        )
+    ]
     return {
         "schema": "eliza.security_lifecycle_scope.v1",
         "status": "security_lifecycle_scope_release_blocked",
@@ -186,21 +206,21 @@ def build_report() -> dict[str, Any]:
             # end against real entropy and a real signer.
             "debug_auth": "signed_challenge_response_rot_boundary_unintegrated",
             "synthetic_otp": "placeholder_non_secret_non_production_only",
+            "placeholder_non_secret": True,
+            "placeholder_non_secret_fuses": [
+                "life_cycle_state",
+                "rollback_counter",
+                "debug_policy",
+            ],
         },
-        "blocked_until_real_evidence": [
-            "OpenTitan-class rom_ctrl/lc_ctrl/otp_ctrl/otbn integration and DV",
-            "signed boot acceptance and unsigned image rejection transcript",
-            "AVB/libavb verified boot and dm-verity transcript",
-            "rollback index write/read and rollback rejection transcript",
-            "debug authorization denial in PROD and RMA key-erasure transcript",
-            "threat model, key ceremony, signer/HSM, fuse/OTP, and provisioning evidence",
-        ],
+        "blocked_until_real_evidence": [finding["message"] for finding in findings],
         "checks": checks,
         "summary": {
             "check_count": len(checks),
             "passing_check_count": len([check for check in checks if check["status"] == "pass"]),
             "release_claim_allowed": False,
         },
+        "findings": findings,
     }
 
 
@@ -249,6 +269,9 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     blocked = data.get("blocked_until_real_evidence")
     if not isinstance(blocked, list) or len(blocked) < 6:
         errors.append("security scope must enumerate blocked real-evidence items")
+    findings = data.get("findings")
+    if not isinstance(findings, list) or len(findings) < 6:
+        errors.append("security scope must include structured findings for blocked real-evidence items")
     scaffold = data.get("current_scaffold")
     if not isinstance(scaffold, dict):
         errors.append("current_scaffold must be a mapping")
@@ -261,6 +284,17 @@ def validate_report(data: dict[str, Any]) -> list[str]:
         require(
             scaffold.get("synthetic_otp") == "placeholder_non_secret_non_production_only",
             "current scaffold must preserve non-secret synthetic OTP placeholder status",
+            errors,
+        )
+        require(
+            scaffold.get("placeholder_non_secret") is True,
+            "current scaffold must preserve placeholder_non_secret label",
+            errors,
+        )
+        fuses = scaffold.get("placeholder_non_secret_fuses")
+        require(
+            isinstance(fuses, list) and len(fuses) >= 3,
+            "current scaffold must enumerate placeholder_non_secret fuse fields",
             errors,
         )
         require(

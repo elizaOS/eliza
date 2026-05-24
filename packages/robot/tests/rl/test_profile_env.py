@@ -15,7 +15,7 @@ from eliza_robot.rl.text_conditioned.profile_env import (
     make_text_conditioned_env,
 )
 
-SUPPORTED = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1")
+SUPPORTED = ("hiwonder-ainex", "asimov-1", "unitree-g1", "unitree-h1", "unitree-r1")
 
 
 def _smoke_config(**overrides) -> ProfileEnvConfig:
@@ -57,6 +57,9 @@ def test_profile_env_step_runs(profile_id: str) -> None:
     assert isinstance(terminated, bool)
     assert isinstance(truncated, bool)
     assert info["task_id"] in {"walk_forward", "turn_left"}
+    assert info["torso_z"] > env._fall_z_threshold  # noqa: SLF001
+    assert info["upright_proj"] > 0.0
+    assert not terminated
 
 
 @pytest.mark.parametrize("profile_id", SUPPORTED)
@@ -68,6 +71,23 @@ def test_profile_env_action_dim_matches_leg_joints(profile_id: str) -> None:
     profile = load_profile(profile_id)
     leg_count = sum(1 for j in profile.kinematics.joints if j.group == "LEG")
     assert env.action_space.shape[0] == leg_count
+
+
+@pytest.mark.parametrize("profile_id", SUPPORTED)
+def test_profile_env_resolves_action_actuators(profile_id: str) -> None:
+    pytest.importorskip("mujoco")
+    env = make_text_conditioned_env(profile_id, config=_smoke_config())
+    env.reset(seed=0)
+    missing = [
+        joint.name
+        for joint, actuator_id in zip(
+            env._action_joints,  # noqa: SLF001
+            env._joint_actuator_idx,  # noqa: SLF001
+            strict=True,
+        )
+        if actuator_id < 0
+    ]
+    assert missing == []
 
 
 def test_profile_env_unknown_profile_raises() -> None:

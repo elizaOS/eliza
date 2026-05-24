@@ -2,7 +2,7 @@
 
 ## Scope and honest framing
 
-This table reports the **Eliza E1 BPU MPKI on eight deterministic synthetic
+This table reports the **Eliza E1 BPU MPKI on 35 deterministic synthetic
 branch traces**, captured end-to-end by running each trace through the
 `bpu_top.sv` RTL via cocotb (`verify/cocotb/bpu/test_bpu_mpki.py`). The
 machine-readable evidence is at
@@ -12,23 +12,26 @@ schema `eliza.bpu_mpki.v1`.
 **These workloads are synthetic and do not represent SPEC2017, AOSP, or
 JavaScript-engine traces.** They are useful as:
 
-- A wiring sanity check that the RTL BPU (uFTB + FTB + TAGE-SC-L + ITTAGE +
-  RAS + Loop) responds correctly to each branch class.
+- A wiring sanity check that the RTL BPU (uFTB + FTB + TAGE-SC-L + H2P +
+  ITTAGE + RAS + Loop) responds correctly to each branch class.
 - A first-order calibration that the PMU counters in `bpu_csr.sv` increment
   in the right direction.
 
 They do **not**:
 
 - Establish a SPECint MPKI for the Eliza E1 BPU.
-- Establish a CBP-5 MPKI for the Eliza E1 BPU.
+- Establish a CBP-5 MPKI for the Eliza E1 BPU; CBP-5 train-trace RTL evidence
+  lives in [`mpki_results_cbp5_rtl.json`](mpki_results_cbp5_rtl.json) and
+  [`mpki_cbp5_vs_tagesc_l_64kb.md`](mpki_cbp5_vs_tagesc_l_64kb.md), not in this
+  synthetic table.
 - Establish an Android / V8 MPKI.
 
 The CBP-5 TAGE-SC-L 64 KB reference (3.986 MPKI, published Seznec/SiFive) is
 shown in every row only as a side-by-side table value so the gap-to-target
-column is interpretable. **None of the CBP-5 numbers here were measured on
-the Eliza RTL.** Real CBP-5 / SPEC / Android MPKI remains **BLOCKED** until
-the trace ingestion path in `benchmarks/cpu/branch/` reads those workloads
-into the cocotb harness.
+column is interpretable. The CBP-5 values in this table are reference anchors,
+not measurements from these synthetic RTL runs. CBP-5 train-trace RTL evidence
+is tracked separately; SPEC, Android, and JS-engine MPKI remain **BLOCKED** until
+those workload traces are ingested into the BPU harness.
 
 ## How to reproduce
 
@@ -124,10 +127,10 @@ harness-observed values in the JSON envelope match the PMU counts.
    be evaluated without SPEC traces; see
    [`branch-prediction-params.json`](branch-prediction-params.json)
    `claim_policy.spec2017_mpki_claim=false`.
-2. **CBP-5 MPKI.** The TAGE-SC-L 64 KB reference (3.986 MPKI) is the
-   published Seznec/SiFive number. To produce a CBP-5 MPKI for the
-   Eliza E1 BPU, the cocotb harness must ingest the CBP-5 binary trace
-   format that `benchmarks.cpu.branch.traces.read_cbp5` already parses.
+2. **CBP-5 MPKI from this synthetic table.** The TAGE-SC-L 64 KB reference
+   (3.986 MPKI) is the published Seznec/SiFive number. Eliza's CBP-5
+   train-trace model/RTL artifacts are separate from this synthetic table and
+   remain scoped to `evidence_class: cbp5_train_traces_only`.
 3. **Android UI / TFLite / V8 MPKI.** Same constraint: needs the
    corresponding traces.
 4. **Two-taken-per-cycle behaviour.** The dual-port FTB read path is
@@ -136,10 +139,9 @@ harness-observed values in the JSON envelope match the PMU counts.
 
 ## BLOCKED follow-ups
 
-- `benchmarks/cpu/branch/` lacks an ingestion path that feeds `.bin`
-  CBP-5 or `.jsonl` traces into the cocotb harness. The behavioural
-  model can already replay both, gated behind
-  `run_mpki.py --backend model --trace <path>`.
+- Extend the cocotb harness beyond the staged CBP-5 train traces to any
+  additional `.jsonl`, SPEC2017, AOSP UI, or JS-engine trace bundles needed for
+  broader workload claims.
 - Acquire and check in (or arrange license-gated download of) the CBP-5
   2025 reference trace set and a SPEC2017 / AOSP UI / V8 trace bundle.
   Until then the corresponding `claim_policy` flags must remain

@@ -1,0 +1,7 @@
+E1 phone supplier-return placeholder
+lane: charger_pd
+function: charger_power_path
+evidence_class: step_or_brep_model
+expected_intake_path: board/kicad/e1-phone/production/sourcing/charger_power_path/supplier-model.step
+release_credit: false
+This is not supplier evidence. Replace with signed supplier artifact.

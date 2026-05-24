@@ -4,10 +4,10 @@ This directory contains the toolchain for building a brand-customised
 Android AOSP image — Cuttlefish (virtual phone) for CI validation, and
 real device targets (Pixel codenames) for installs.
 
-The toolchain was originally written for **ElizaOS** (a single
-hardcoded brand) and lifted upstream to **elizaOS** so any brand can
-build a privileged-system-app distribution by supplying a JSON brand
-config and a vendor tree.
+The toolchain was originally written for **elizaOS** as a single
+hardcoded brand and generalized so any brand can build a
+privileged-system-app distribution by supplying a JSON brand config
+and a vendor tree.
 
 ## Whitelabel contract
 
@@ -21,7 +21,7 @@ and a corresponding **vendor tree** under `packages/os/android/vendor/<brand>/`.
   // Required
   "brand":         "eliza",                  // lowercase token; vendor/<X>, init.<X>.rc, file paths
   "appName":       "Eliza",                  // PascalCase; APK module + apk filename
-  "distroName":    "ElizaOS",                // brand display name in log messages
+  "distroName":    "elizaOS",                // brand display name in log messages
   "packageName":   "com.elizaai.eliza",     // APK Java package id
   "classPrefix":   "Eliza",                  // Java class prefix (ElizaDialActivity, ElizaSmsReceiver, …)
   "productName":   "eliza_cf_x86_64_phone",  // Cuttlefish product name + makefile filename stem

@@ -55,7 +55,7 @@ from collections import defaultdict
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 
-from .bpu_model import BR_CALL, BR_COND, BR_IND, BR_RET, BranchEvent
+from .bpu_model import BR_CALL, BR_COND, BR_DIRECT, BR_IND, BR_RET, BranchEvent
 
 # CVA6 64-bit default predictor sizing (cv64a6_imafdc_sv39_config_pkg.sv).
 CVA6_BHT_ENTRIES = 128
@@ -228,6 +228,8 @@ class Cva6BaselinePredictor:
             target = btb_target if btb_target is not None else event.target
             self.ras.push(self._fall_through(event))
             return True, target
+        if event.kind == BR_DIRECT:
+            return True, event.target
         if event.kind == BR_IND:
             btb_target = self.btb.lookup(event.pc)
             # JumpR with no valid BTB entry: frontend.sv leaves cf_type NoCF, so
@@ -258,6 +260,8 @@ class Cva6BaselinePredictor:
             self.counters["ret"] += 1
             if misp:
                 self.counters["ret_misp"] += 1
+        elif event.kind == BR_DIRECT:
+            self.counters["direct"] += 1
         if misp:
             self.counters["misp"] += 1
 
@@ -265,7 +269,7 @@ class Cva6BaselinePredictor:
         # mispredicted target, and the RAS structurally on call/return.
         if event.kind == BR_COND:
             self.bht.update(event.pc, event.taken)
-        elif event.kind in (BR_CALL, BR_IND):
+        elif event.kind in (BR_CALL, BR_IND, BR_DIRECT):
             self.btb.update(event.pc, event.target)
 
     def feed(self, events: Iterable[BranchEvent]) -> None:

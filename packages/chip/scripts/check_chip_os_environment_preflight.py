@@ -70,6 +70,12 @@ TOOLS = (
     ToolSpec(
         "java", "run AOSP/Android tooling and Tradefed style checks", ("aosp_build_and_cts_vts",)
     ),
+    ToolSpec("aapt", "inspect Android APK package/assets for release validation", ("android_agent_payload",)),
+    ToolSpec("apkanalyzer", "inspect Android APK manifest and native payloads", ("android_agent_payload",)),
+    ToolSpec("curl", "capture agent /api/health evidence", ("android_agent_health", "linux_agent_liveness")),
+    ToolSpec("jq", "inspect structured evidence payloads in shell capture flows", ("workflow",)),
+    ToolSpec("node", "run Android/release manifest validators", ("android_release_validation",)),
+    ToolSpec("bun", "build/package the shared Eliza agent payload", ("agent_payload_build",)),
     ToolSpec("make", "run chip and OS bring-up targets", ("workflow",)),
 )
 
@@ -106,6 +112,35 @@ ENVS = (
         ("generated_ap_linux_boot",),
     ),
 )
+
+ENV_DEFAULT_PATHS = {
+    "AOSP_DIR": (Path("/home/shaw/aosp"),),
+    "ELIZA_LINUX_TREE": (ROOT / "external/linux",),
+    "ELIZA_BUILDROOT_TREE": (
+        ROOT / "external/buildroot-2024.11",
+        ROOT / "external/buildroot-rv64-src",
+    ),
+    "ELIZA_OPENSBI_TREE": (ROOT / "external/opensbi", ROOT / "external/opensbi/opensbi"),
+    "CHIPYARD_LINUX_BINARY": (
+        ROOT
+        / "external/chipyard/software/firemarshal/images/firechip/eliza-e1-linux-smoke/eliza-e1-linux-smoke-bin-nodisk",
+    ),
+}
+
+TOOL_DEFAULT_PATHS = {
+    "qemu-system-riscv64": (
+        ROOT / "tools/bin/qemu-system-riscv64",
+        ROOT / "external/qemu-build/bin/qemu-system-riscv64",
+    ),
+    "aapt": (
+        Path("/home/shaw/Android/Sdk/build-tools/36.0.0/aapt"),
+        Path("/home/shaw/Android/Sdk/build-tools/35.0.0/aapt"),
+        Path("/home/shaw/Android/Sdk/build-tools/34.0.0/aapt"),
+    ),
+    "apkanalyzer": (Path("/home/shaw/Android/Sdk/cmdline-tools/latest/bin/apkanalyzer"),),
+    "verilator": (ROOT / "external/oss-cad-suite/bin/verilator",),
+    "renode": (ROOT / "external/renode_1.16.1-dotnet_portable/renode",),
+}
 
 PATHS = (
     PathSpec(
@@ -158,6 +193,30 @@ PATHS = (
         "Android Eliza privileged APK prebuilt",
         ("android_launcher_runtime", "android_agent_health"),
     ),
+    PathSpec(
+        "android_app_agent_plugin_manifest",
+        "packages/app-core/platforms/electrobun/remotes/runtime/plugin.json",
+        "Android app bundled agent/runtime plugin manifest",
+        ("android_agent_payload",),
+    ),
+    PathSpec(
+        "android_release_manifest",
+        "packages/os/release/beta-2026-05-16/android-release-manifest.json",
+        "Android release manifest",
+        ("android_release_validation",),
+    ),
+    PathSpec(
+        "android_post_flash_validator",
+        "packages/os/android/installer/scripts/validate-post-flash.sh",
+        "Android post-flash launcher/agent validator",
+        ("android_release_validation", "android_launcher_runtime"),
+    ),
+    PathSpec(
+        "android_release_manifest_validator",
+        "packages/os/android/installer/scripts/validate-release-manifest.mjs",
+        "Android release manifest validator",
+        ("android_release_validation",),
+    ),
 )
 
 
@@ -185,12 +244,20 @@ def check_tools(
     findings: list[dict[str, Any]] = []
     for spec in TOOLS:
         resolved = which(spec.name)
+        source = "path" if resolved else "missing"
+        if not resolved:
+            for candidate in TOOL_DEFAULT_PATHS.get(spec.name, ()):
+                if candidate.is_file() and os.access(candidate, os.X_OK):
+                    resolved = str(candidate)
+                    source = "repo-default"
+                    break
         present = bool(resolved)
         rows.append(
             {
                 "name": spec.name,
                 "present": present,
                 "path": resolved or "",
+                "source": source,
                 "purpose": spec.purpose,
                 "required_for": list(spec.required_for),
             }
@@ -207,17 +274,27 @@ def check_tools(
     return rows, findings
 
 
+def default_env_value(name: str) -> str:
+    for candidate in ENV_DEFAULT_PATHS.get(name, ()):
+        if candidate.exists():
+            return str(candidate)
+    return ""
+
+
 def check_env(env: dict[str, str]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     rows: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     for spec in ENVS:
-        value = env.get(spec.name, "")
+        explicit_value = env.get(spec.name, "")
+        inferred_value = "" if explicit_value else default_env_value(spec.name)
+        value = explicit_value or inferred_value
         present = bool(value)
         rows.append(
             {
                 "name": spec.name,
                 "present": present,
                 "value": value,
+                "source": "env" if explicit_value else ("repo-default" if inferred_value else "missing"),
                 "purpose": spec.purpose,
                 "required_for": list(spec.required_for),
             }

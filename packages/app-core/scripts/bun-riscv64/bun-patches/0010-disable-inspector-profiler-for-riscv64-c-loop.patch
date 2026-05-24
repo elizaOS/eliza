@@ -1,0 +1,103 @@
+diff --git a/src/bun.js/bindings/BunCPUProfiler.cpp b/src/bun.js/bindings/BunCPUProfiler.cpp
+index a14d75d..742e63c 100644
+--- a/src/bun.js/bindings/BunCPUProfiler.cpp
++++ b/src/bun.js/bindings/BunCPUProfiler.cpp
+@@ -1,3 +1,34 @@
++#if defined(__riscv) && __riscv_xlen == 64
++#include "root.h"
++#include "BunCPUProfiler.h"
++#include "BunString.h"
++#include "helpers.h"
++
++extern "C" void Bun__setSamplingInterval(int) { }
++
++namespace Bun {
++void setSamplingInterval(int) { }
++bool isCPUProfilerRunning() { return false; }
++void startCPUProfiler(JSC::VM&) { }
++void stopCPUProfiler(JSC::VM&, WTF::String* outJSON, WTF::String* outText)
++{
++    if (outJSON)
++        *outJSON = WTF::String();
++    if (outText)
++        *outText = WTF::String();
++}
++} // namespace Bun
++
++extern "C" void Bun__startCPUProfiler(JSC::VM*) { }
++extern "C" void Bun__stopCPUProfiler(JSC::VM*, BunString* outJSON, BunString* outText)
++{
++    if (outJSON)
++        *outJSON = Bun::toStringRef(WTF::String());
++    if (outText)
++        *outText = Bun::toStringRef(WTF::String());
++}
++
++#else
+ #include "root.h"
+ #include "BunCPUProfiler.h"
+ #include "ZigGlobalObject.h"
+@@ -945,3 +976,4 @@ extern "C" void Bun__stopCPUProfiler(JSC::VM* vm, BunString* outJSON, BunString*
+     if (outText)
+         *outText = Bun::toStringRef(textResult);
+ }
++#endif
+diff --git a/src/bun.js/bindings/BunDebugger.cpp b/src/bun.js/bindings/BunDebugger.cpp
+index 953cef6..9e90fab 100644
+--- a/src/bun.js/bindings/BunDebugger.cpp
++++ b/src/bun.js/bindings/BunDebugger.cpp
+@@ -1,3 +1,26 @@
++#if defined(__riscv) && __riscv_xlen == 64
++#include "root.h"
++#include "headers-handwritten.h"
++
++namespace JSC {
++class JSGlobalObject;
++}
++namespace Zig {
++class GlobalObject;
++}
++
++using ScriptExecutionContextIdentifier = uint32_t;
++
++extern "C" unsigned int Bun__createJSDebugger(Zig::GlobalObject*) { return 0; }
++extern "C" void Bun__ensureDebugger(ScriptExecutionContextIdentifier, bool) { }
++extern "C" void BunDebugger__willHotReload() { }
++extern "C" void Bun__startJSDebuggerThread(Zig::GlobalObject*, ScriptExecutionContextIdentifier, BunString*, int, bool) { }
++extern "C" void Debugger__didScheduleAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t, bool) { }
++extern "C" void Debugger__didCancelAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++extern "C" void Debugger__didDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++extern "C" void Debugger__willDispatchAsyncCall(JSC::JSGlobalObject*, uint8_t, uint64_t) { }
++
++#else
+ #include "root.h"
+ 
+ #include "ZigGlobalObject.h"
+@@ -709,3 +732,4 @@ extern "C" void Debugger__willDispatchAsyncCall(JSGlobalObject* globalObject, As
+     agent->willDispatchAsyncCall(getCallType(callType), callbackId);
+ }
+ }
++#endif
+diff --git a/src/bun.js/bindings/BunInspector.cpp b/src/bun.js/bindings/BunInspector.cpp
+index cbabe4f..9350955 100644
+--- a/src/bun.js/bindings/BunInspector.cpp
++++ b/src/bun.js/bindings/BunInspector.cpp
+@@ -1,3 +1,13 @@
++#if defined(__riscv) && __riscv_xlen == 64
++#include "root.h"
++
++namespace JSC {
++class JSGlobalObject;
++}
++
++extern "C" void Bun__addInspector(bool, void*, JSC::JSGlobalObject*) { }
++
++#else
+ #include "root.h"
+ #include <bun-uws/src/App.h>
+ 
+@@ -188,3 +198,4 @@ Bun__addInspector(bool isSSL, void* app, JSC::JSGlobalObject* globalObject)
+     }
+ };
+ }
++#endif

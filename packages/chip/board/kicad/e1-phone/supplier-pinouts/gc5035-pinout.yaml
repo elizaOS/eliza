@@ -1,12 +1,13 @@
 schema: eliza.e1_phone_supplier_pinout.v1
-part: GC5035 (module class - 22-pin FPC front camera, e.g. Sincere First SF-G5035S60FY)
+part: GC5035 (module class - 30-pin FPC front camera, e.g. Sincere First SF-G5035S60FY)
 manufacturer: GalaxyCore Microelectronics (sensor) / Guangzhou Sincere Information Technology (module)
-package: 5MP CMOS sensor module on 22-pin 0.5 mm-pitch FPC tail
+package: 5MP CMOS sensor module on 30-pin 0.5 mm-pitch FPC connector class
 source_doc: https://sincerefirst.en.made-in-china.com/product/stzRqCgufMVy/China-5MP-Gc5035-CMOS-Image-Sensor-Small-Size-Fixed-Focus-Mipi-Camera-Module.html
 source_doc_alt:
   - https://www.gophotonics.com/products/cmos-image-sensors/galaxycore-microelectronics/21-117-gc5035
   - https://newmoshine.en.made-in-china.com/product/BJYUCxwcAoWv/China-Factory-Customized-Gc5035-Auto-Focus-Full-HD-5MP-30fps-Mipi-Camera-Module.html
   - https://www.sinoseen.com/high-resolution-gc5035-5mp-dual-lens-camera-module-mipi-interface
+  - https://www.asmec.co.jp/file.upload/images/Gid1993Pdf_SINCERE%20FIRST%20FPC%20Camera%20Module%20List%28%E7%9B%AE%E5%BD%95%29_2024-03-27.pdf
 source_doc_revision: vendor product page observed 2026-05-20; GC5035 family datasheet under GalaxyCore NDA
 captured_date: 2026-05-21
 captured_by: agent
@@ -15,17 +16,19 @@ procurement_status: per_pin_fpc_pinout_requires_module_house_signed_drawing
 procurement_url: https://sincerefirst.en.made-in-china.com/contactus.html
 notes: |
   GC5035 is a 5MP 1/5" CMOS image sensor (2592x1944). Fixed-focus and
-  auto-focus module variants wrap the sensor on a 22-pin FPC tail with 2-lane
-  MIPI CSI-2 (the sensor only supports 2 data lanes), 3-rail power, I2C,
-  MCLK, reset, and power-down. Per-pin FPC ordering is module-house specific
-  and is captured by the signed 2D drawing in the supplier RFQ response.
+  auto-focus module variants wrap the sensor on module-house-specific FPC
+  tails. The selected public SF-G5035S60FY listing and Sincere First catalog
+  identify a 30-pin OK-06M030-04 connector class, not the older placeholder
+  22-pin assumption. The module still carries 2-lane MIPI CSI-2, 3-rail power,
+  I2C, MCLK, reset, and power-down. Per-pin FPC ordering is captured only by
+  the signed 2D drawing in the supplier RFQ response.
 mechanical:
   sensor: GC5035
   resolution_mp: 5
   resolution_px: [2592, 1944]
   pixel_size_um: 1.12
   optical_format_in: 0.2
-  fpc_pin_count: 22
+  fpc_pin_count: 30
   fpc_pitch_mm: 0.5
   csi2_lanes: 2
   af: optional_per_variant
@@ -57,7 +60,7 @@ pin_signal_set:
 pins:
   - pin: ALL
     name: fetch_required
-    function: full_22pin_fpc_order
+    function: full_30pin_fpc_order
     direction: unknown
     voltage_v: null
     notes: |

@@ -23,8 +23,8 @@ options:
   --manifest=PATH         AOSP manifest XML from Task 28; recorded with sha256
   --adb-serial=SERIAL     adb -s <serial> for multi-device hosts
   --runtime-dir=PATH      Cuttlefish runtime directory (default: ~/cuttlefish_runtime)
-  --agent-package=PKG     launcher/agent package id (default: ai.elizaos.app)
-  --agent-service=COMP    foreground service component (default: ai.elizaos.app/.ElizaAgentService)
+  --agent-package=PKG     launcher/agent package id (default: ai.milady.milady)
+  --agent-service=COMP    foreground service component (default: ai.milady.milady/.ElizaAgentService)
   --agent-host-port=PORT  host adb-forwarded port for /api/health (default: 31337)
   --agent-device-port=N   device port for /api/health (default: 31337)
   --launcher-evidence=PATH structured launcher runtime evidence JSON output
@@ -59,8 +59,8 @@ out=
 manifest=
 adb_serial=
 runtime_dir="$HOME/cuttlefish_runtime"
-agent_package="ai.elizaos.app"
-agent_service="ai.elizaos.app/.ElizaAgentService"
+agent_package="ai.milady.milady"
+agent_service="ai.milady.milady/.ElizaAgentService"
 agent_host_port=31337
 agent_device_port=31337
 launcher_evidence=
@@ -151,7 +151,7 @@ emit() {
 		# as `boot-validate.mjs --expected-abi <abi>`); the brand-config
 		# mjs validator owns the x86_64/arm64/riscv64 image path. This gate
 		# keeps its own host-side copy because it targets the chip
-		# ai.elizaos.app product without going through a distro-android brand
+		# ai.milady.milady product without going through a distro-android brand
 		# config, and pairs the triad with the kernel.log / manifest /
 		# evidence-emission assertions the mjs validator does not perform.
 		# Keep the two in sync.

@@ -1,0 +1,113 @@
+{
+  "schema": "robot-alberta-end-to-end-report-v1",
+  "ok": false,
+  "generated_at": "2026-05-23T18:02:44.994351Z",
+  "scope": "synced-production-incomplete-run",
+  "sources": {
+    "backend_dir": "evidence/nebius_full_training/synced_run/evidence/backend_compare/asimov-1",
+    "backend_validation": "evidence/nebius_full_training/synced_run/evidence/backend_compare/asimov-1/validation_report.json",
+    "obstacle_dir": "evidence/nebius_full_training/synced_run/evidence/alberta_obstacle_course",
+    "obstacle_validation": "evidence/nebius_full_training/synced_run/evidence/alberta_obstacle_course/validation_report.json",
+    "video_review": "evidence/nebius_full_training/synced_run/evidence/video_review_production/video_review.json",
+    "video_manifest": "evidence/nebius_full_training/synced_run/evidence/agent_videos/manifest.json"
+  },
+  "production_complete": false,
+  "production_blocker": "nebius_cli_auth_required",
+  "backend_comparison": {
+    "ok": null,
+    "profile_id": null,
+    "tasks": null,
+    "steps": null,
+    "winner_by_mean_reward": null,
+    "alberta_minus_ppo_mean_reward": null,
+    "alberta_gte_ppo_by_mean_reward": false,
+    "alberta_mean_reward": null,
+    "ppo_mean_reward": null,
+    "checks": null
+  },
+  "continual_obstacle_course": {
+    "ok": null,
+    "env_kind": null,
+    "steps_per_task": null,
+    "seeds": null,
+    "alberta_acc": null,
+    "ppo_acc": null,
+    "alberta_forgetting": null,
+    "ppo_forgetting": null,
+    "deltas": null,
+    "alberta_acc_gte_ppo": false,
+    "alberta_forgetting_lte_ppo": false,
+    "checks": null
+  },
+  "video_review": {
+    "ok": true,
+    "video_count": 20,
+    "profiles": [
+      "asimov-1",
+      "hiwonder-ainex",
+      "unitree-g1",
+      "unitree-h1"
+    ],
+    "min_visual_progress": 0.00020163143418875396,
+    "mean_visual_progress": 0.0038949327104195373,
+    "manifest_video_count": 20,
+    "expected_video_count": 20,
+    "manifest_review_consistent": true,
+    "all_manifest_profiles_ok": true,
+    "min_frame_count": 40,
+    "profile_video_counts": {
+      "hiwonder-ainex": {
+        "videos": 5,
+        "expected": 5,
+        "missing": 0,
+        "combined_present": true,
+        "ok": true
+      },
+      "asimov-1": {
+        "videos": 5,
+        "expected": 5,
+        "missing": 0,
+        "combined_present": true,
+        "ok": true
+      },
+      "unitree-g1": {
+        "videos": 5,
+        "expected": 5,
+        "missing": 0,
+        "combined_present": true,
+        "ok": true
+      },
+      "unitree-h1": {
+        "videos": 5,
+        "expected": 5,
+        "missing": 0,
+        "combined_present": true,
+        "ok": true
+      }
+    }
+  },
+  "claim_support": {
+    "evidence_consistent": false,
+    "backend_alberta_gte_ppo": false,
+    "obstacle_alberta_acc_gte_ppo": false,
+    "obstacle_alberta_forgetting_lte_ppo": false,
+    "alberta_obstacle_advantage_supported": false,
+    "alberta_robot_backend_advantage_supported": false,
+    "production_claim_supported": false
+  },
+  "objective_audit": {
+    "ok": false,
+    "passed": [
+      "alberta_framework_integrated",
+      "clean_relaunch_path_ready"
+    ],
+    "failed": [
+      "unified_robot_interface_all_profiles",
+      "traditional_and_sota_baselines_available",
+      "alberta_vs_ppo_side_by_side_comparison",
+      "continual_learning_obstacle_demo_no_forgetting",
+      "production_robot_policy_videos_reviewed",
+      "nebius_production_training_complete"
+    ]
+  }
+}

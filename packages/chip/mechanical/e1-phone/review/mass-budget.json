@@ -1,12 +1,17 @@
 {
   "claim_boundary": "Rough CAD mass estimate using nominal densities; not measured mass.",
-  "total_estimated_mass_g": 183.15,
+  "total_estimated_mass_g": 182.18,
   "mass_by_role_g": {
     "EMI shield": 7.01,
     "I/O": 1.77,
     "I/O seal": 0.02,
-    "PCB": 5.45,
+    "PCB": 4.17,
+    "PCB assembly marker": 0.0,
     "PCB component marker": 0.0,
+    "PCB mechanical marker": 0.0,
+    "PCB passive marker": 0.0,
+    "PCB protection marker": 0.0,
+    "PCB test marker": 0.0,
     "RF feed": 0.0,
     "RF keepout": 0.0,
     "RF tuner": 0.0,
@@ -21,9 +26,13 @@
     "camera optical clearance": 0.0,
     "camera seal": 0.04,
     "cellular module": 0.0,
+    "compute interconnect": 0.15,
+    "compute module keepout": 0.0,
+    "connection terminal": 0.0,
     "connector": 0.21,
+    "flex/cable": 0.01,
     "haptics": 0.22,
-    "molded enclosure": 23.82,
+    "molded enclosure": 23.96,
     "screen": 57.57,
     "screen retention": 0.2,
     "service": 0.0,
@@ -33,9 +42,9 @@
     {
       "name": "orange_back_shell",
       "role": "molded enclosure",
-      "volume_mm3": 14178.292,
+      "volume_mm3": 14302.89,
       "density_g_per_cm3": 1.15,
-      "mass_g": 16.305,
+      "mass_g": 16.448,
       "excluded_placeholder": false
     },
     {
@@ -65,9 +74,9 @@
     {
       "name": "main_pcb",
       "role": "PCB",
-      "volume_mm3": 2944.0,
+      "volume_mm3": 2252.8,
       "density_g_per_cm3": 1.85,
-      "mass_g": 5.446,
+      "mass_g": 4.168,
       "excluded_placeholder": false
     },
     {
@@ -1063,6 +1072,22 @@
       "excluded_placeholder": true
     },
     {
+      "name": "compute_som_sodimm_connector",
+      "role": "compute interconnect",
+      "volume_mm3": 50.7,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.152,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "compute_som_daughterboard_keepout",
+      "role": "compute module keepout",
+      "volume_mm3": 2448.0,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
       "name": "soc_package_marker",
       "role": "PCB component marker",
       "volume_mm3": 40.56,
@@ -1095,6 +1120,14 @@
       "excluded_placeholder": true
     },
     {
+      "name": "audio_codec_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 10.78,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
       "name": "rf_transceiver_package_marker",
       "role": "PCB component marker",
       "volume_mm3": 12.375,
@@ -1111,7 +1144,159 @@
       "excluded_placeholder": true
     },
     {
-      "name": "wifi_bt_rf_feed_coax_stub",
+      "name": "backlight_bias_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 3.52,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "fuel_gauge_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 0.513,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "haptic_driver_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 0.353,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "usim_levelshift_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 0.983,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "esim_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 0.72,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "nfc_controller_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 5.5,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "nfc_loop_match_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.672,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "sensor_hub_package_marker",
+      "role": "PCB component marker",
+      "volume_mm3": 1.8,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "esd_array_6ch_marker",
+      "role": "PCB protection marker",
+      "volume_mm3": 0.32,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "tvs_diode_2p_marker",
+      "role": "PCB protection marker",
+      "volume_mm3": 0.154,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "testpoint_1mm_marker",
+      "role": "PCB test marker",
+      "volume_mm3": 0.04,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "fiducial_1mm_marker",
+      "role": "PCB assembly marker",
+      "volume_mm3": 0.03,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "mounting_hole_1p2_marker",
+      "role": "PCB mechanical marker",
+      "volume_mm3": 0.058,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "r0402_component_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.08,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "c0402_component_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.08,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "l0402_component_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.12,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "pi_match_0402_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.475,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rc_array_4ch_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 0.36,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "shunt_1206_marker",
+      "role": "PCB passive marker",
+      "volume_mm3": 1.126,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "wifi_bt_rf_feed_development_envelope",
       "role": "RF feed",
       "volume_mm3": 1.575,
       "density_g_per_cm3": 0.0,
@@ -1119,12 +1304,140 @@
       "excluded_placeholder": true
     },
     {
-      "name": "cellular_rf_feed_coax_stub",
+      "name": "cellular_rf_feed_development_envelope",
       "role": "RF feed",
       "volume_mm3": 2.363,
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "display_fpc_tail",
+      "role": "flex/cable",
+      "volume_mm3": 7.2,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "rear_camera_fpc_tail",
+      "role": "flex/cable",
+      "volume_mm3": 1.152,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "front_camera_fpc_tail",
+      "role": "flex/cable",
+      "volume_mm3": 0.864,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "side_key_flex_tail",
+      "role": "flex/cable",
+      "volume_mm3": 3.36,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.004,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "battery_connector_lead_flex",
+      "role": "flex/cable",
+      "volume_mm3": 1.152,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "usb_c_power_data_escape_tail",
+      "role": "flex/cable",
+      "volume_mm3": 2.16,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_lead_pair",
+      "role": "flex/cable",
+      "volume_mm3": 1.2,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_microphone_flex_leads",
+      "role": "flex/cable",
+      "volume_mm3": 0.96,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "top_microphone_flex_tail",
+      "role": "flex/cable",
+      "volume_mm3": 1.728,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.002,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "earpiece_receiver_lead_flex",
+      "role": "flex/cable",
+      "volume_mm3": 1.344,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "haptic_flex_tail",
+      "role": "flex/cable",
+      "volume_mm3": 1.44,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.002,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "sim_esim_signal_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 1.08,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "nfc_loop_antenna_flex_marker",
+      "role": "flex/cable",
+      "volume_mm3": 0.72,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.001,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_div_rf_feed_development_envelope",
+      "role": "RF feed",
+      "volume_mm3": 1.512,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "cellular_gnss_rf_feed_development_envelope",
+      "role": "RF feed",
+      "volume_mm3": 1.26,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "wifi_bt_rf1_feed_development_envelope",
+      "role": "RF feed",
+      "volume_mm3": 1.26,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.002,
+      "excluded_placeholder": false
     },
     {
       "name": "haptic_lra",
@@ -1165,6 +1478,342 @@
       "density_g_per_cm3": 0.0,
       "mass_g": 0.0,
       "excluded_placeholder": true
+    },
+    {
+      "name": "display_touch_fpc_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "display_touch_fpc_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_camera_csi_fpc_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "rear_camera_csi_fpc_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "front_camera_csi_fpc_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "front_camera_csi_fpc_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 2.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "side_key_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "side_key_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "battery_lead_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "battery_lead_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "usb_c_escape_tail_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "usb_c_escape_tail_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_lead_pair_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_speaker_lead_pair_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "bottom_microphone_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "bottom_microphone_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "top_microphone_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "top_microphone_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "earpiece_receiver_lead_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "earpiece_receiver_lead_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "haptic_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "haptic_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "sim_esim_signal_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "sim_esim_signal_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "nfc_loop_antenna_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "nfc_loop_antenna_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "compute_som_sodimm_carrier_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "compute_som_sodimm_carrier_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_main_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_main_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_diversity_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_diversity_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_antenna_aperture_tuner_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "cellular_antenna_aperture_tuner_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 0.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": true
+    },
+    {
+      "name": "cellular_gnss_rf_feed_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "cellular_gnss_rf_feed_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "wifi_bt_rf0_feed_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "wifi_bt_rf0_feed_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "wifi_bt_rf1_feed_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "wifi_bt_rf1_feed_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 1.2,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_side_flex_from_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
+    },
+    {
+      "name": "split_interconnect_side_flex_to_terminal",
+      "role": "connection terminal",
+      "volume_mm3": 0.002,
+      "density_g_per_cm3": 3.0,
+      "mass_g": 0.0,
+      "excluded_placeholder": false
     }
   ]
 }

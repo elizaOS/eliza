@@ -7,7 +7,7 @@ scope:
   - Phone-class memory claim boundary
 non_goals:
   - Production reset ROM, boot SRAM, ROM-to-SRAM copy, DRAM init, or OpenSBI handoff evidence.
-  - Real DRAM controller, LPDDR/DDR PHY, training, refresh, timing, capacity, or ECC evidence.
+  - Phone-class DRAM controller integration, LPDDR/DDR PHY, training, refresh, timing, capacity, or ECC evidence. Controller RTL simulation alone is not phone-class LPDDR evidence.
   - AXI4, TileLink, CHI, ACE, or other burst-capable coherent/non-coherent production fabric evidence.
   - Cache hierarchy or system-level SRAM evidence.
   - UMA cache coherency, coherent DMA, snooping, or cache-maintenance ABI evidence.
@@ -59,18 +59,28 @@ bandwidth_latency_evidence_contract:
     - docs/evidence/memory/phone_2028_memory_scorecard.json
   minimum_report_fields:
     - schema
-    - target_id
-    - capture_utc
-    - process_effects_contract
-    - process_corner_count
-    - worst_process_corner
-    - memory_type
-    - capacity_gib
-    - clock_state
-    - thermal_state
+    - evidence_class
+    - target
+    - target.target_id
+    - target.target_kind
+    - target.is_host
+    - target.is_simulator
+    - target.capture_utc
+    - process_corners
+    - process_corners.process_effects_contract
+    - process_corners.process_effects_contract.path
+    - process_corners.process_effects_contract.sha256
+    - process_corners.process_corner_count
+    - process_corners.worst_process_corner
+    - process_corners.pdk_signoff_claim
+    - memory_config
+    - memory_config.memory_type
+    - memory_config.capacity_gib
+    - runtime_state
     - benchmark_commands
-    - raw_log_paths
+    - raw_artifacts
     - parsed_metrics
+    - contention_workload
     - pass_fail_against_phone_2028_target_profile
   required_metrics:
     - peak_bandwidth_gbps
@@ -88,7 +98,7 @@ bandwidth_latency_evidence_contract:
     - Generated memmap, DTS, FIRRTL, or Verilog source without a real target run.
     - Process-corner derates without the docs/spec-db/process-14a-effects.yaml contract hash.
 
-current_actual_capability:
+linux_scaffold_current_capability:
   reset_rom: contract_identity_rom_and_separate_minimal_rv64_scaffold_only
   boot_sram: none
   dram_init_or_training: none
@@ -111,6 +121,23 @@ current_actual_capability:
   clint_plic_access_map: incomplete
   dram_phy: none
   phone_class_status: blocked
+
+separate_local_rtl_evidence:
+  dram_controller_boundary:
+    status: sim_passes
+    rtl:
+      - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+      - rtl/memory/dram_ctrl/e1_axi4_dram_model.sv
+    gate: make dram-controller-check
+    report: build/reports/dram_controller.json
+    claim_boundary: RTL AXI4 DRAM-controller simulation evidence only, including parameterized model capacity and DRAMsim-derived row timing; not LPDDR PHY/training, phone-class capacity/timing, or Linux memory-map evidence.
+  iommu_boundary:
+    status: sim_passes_but_phone_linux_blocked
+    rtl:
+      - rtl/iommu/e1_riscv_iommu.sv
+      - rtl/iommu/e1_riscv_iommu_pkg.sv
+    gate: make iommu-evidence-check
+    claim_boundary: Register/fault surface, allowlist/PASID behavior, IOFENCE.C, and minimal DDT + Sv39 first-stage KAT; not non-identity G-stage/PDT/full Linux or phone evidence.
 
 memory_roadmap_phases:
   - id: phase0_sram_dma_containment
@@ -351,17 +378,17 @@ blocked_real_claims:
       - OpenSBI transcript showing discovered memory size, next-stage handoff, and no use of uninitialized DRAM.
   - id: real_dram_controller_phy
     status: blocked
-    reason: Current RTL uses rtl/memory/e1_axi_lite_dram.sv, a small SRAM-backed AXI-Lite model.
+    reason: Local DRAM-controller RTL/sim evidence exists via rtl/memory/dram_ctrl/e1_dram_ctrl.sv and make dram-controller-check, including parameterized model capacity and DRAMsim-derived row timing, but phone-class LPDDR PHY/training/capacity/timing, SoC-top integration, and Linux memory discovery evidence are absent.
     evidence_artifacts:
       - docs/evidence/memory/real_dram_controller_phy_report.json
       - docs/evidence/memory/dram_training_timing_report.json
     unblock_requires:
-      - DRAM controller and PHY boundary RTL or integrated IP configuration.
-      - Timing, refresh, training, capacity, and error-policy evidence.
+      - LPDDR controller/PHY boundary RTL or integrated IP configuration tied to the selected phone memory.
+      - Timing, refresh, training, capacity, and error-policy evidence from the selected target.
       - Boot-time memory discovery evidence from the selected software stack.
   - id: cache_hierarchy_latency
     status: blocked
-    reason: No CPU cache hierarchy, shared system cache, refill path, miss latency model, or cache performance counters exist in this memory scaffold.
+    reason: Cache hierarchy RTL and local cache-pressure evidence exist, but they are not integrated with measured phone-class DRAM latency/coherency, refill-path, and counter evidence in this memory gate.
     evidence_artifacts:
       - docs/evidence/memory/cache_hierarchy_report.json
       - docs/evidence/memory/cache_latency_counter_report.json
@@ -408,12 +435,12 @@ blocked_real_claims:
       - Android userspace and driver tests showing CPU/device producer-consumer correctness with stale-data negative cases.
   - id: iommu_smmu_dma_isolation
     status: blocked
-    reason: DMA containment is address-response behavior in the scaffold, not page-table translation or kernel-visible faults.
+    reason: A local IOMMU translation subset exists, but full phone/Linux DMA isolation, kernel-visible fault delivery, ATS/PRI/MSI/PDT, non-identity G-stage behavior, and integration evidence are absent.
     evidence_artifacts:
       - docs/evidence/memory/iommu_fault_injection_report.json
       - docs/evidence/memory/dma_isolation_fault_visibility_report.json
     unblock_requires:
-      - IOMMU/SMMU or explicit DMA allowlist implementation.
+      - Full phone/Linux IOMMU/SMMU integration, extending beyond the local allowlist and minimal DDT + Sv39 first-stage subset.
       - Fault injection evidence proving unauthorized DMA is blocked and reported to software.
       - Page fault reporting fields for master/client ID, IOVA, translated physical address when available, access type, permissions, syndrome/status, and recovery/reset behavior.
   - id: memory_qos_bandwidth
@@ -504,10 +531,12 @@ sku_split_decision:
     The 240 GB/s sustained number in
     docs/architecture-optimization/soc-optimized-operating-point.yaml
     cannot be delivered by any 64-bit LPDDR5X-10667 SKU (max 85.3 GB/s
-    peak). The phone_2028_target_profile bandwidth gates (180 GB/s peak,
-    120 GB/s sustained) only map to the LPDDR6-14400 AI SKU on a 96-bit
-    bus. The repository keeps two SKUs in parallel rather than silently
-    lowering or raising either number.
+    peak). The closest tracked phone AI SKU is LPDDR6-14400 on a 96-bit
+    bus at 172.8 GB/s peak, which still misses the
+    phone_2028_target_profile 180 GB/s peak gate while satisfying the
+    120 GB/s sustained gate target. The repository keeps both SKUs and
+    the stricter target profile in parallel rather than silently lowering
+    or raising either number.
   baseline_sku:
     standard: LPDDR5X-10667
     bus_width_bits: 64
@@ -530,9 +559,11 @@ sku_split_decision:
     sustained_target_gbps_min: 140
     capacity_gib_skus: [24]
     note: >
-      This is the SKU that the existing phone_2028_target_profile
-      thresholds (180 GB/s peak, 120 GB/s sustained) apply to. The
-      optimizer's 240 GB/s figure remains as a guardband headroom
+      This is the closest tracked SKU for the existing
+      phone_2028_target_profile thresholds. It satisfies the 120 GB/s
+      sustained target but does not satisfy the 180 GB/s peak gate
+      without a wider bus, faster data rate, or a revised target profile.
+      The optimizer's 240 GB/s figure remains as a guardband headroom
       number, not as a per-SKU sustained gate.
   closed_ip_blocker:
     description: >
@@ -543,7 +574,7 @@ sku_split_decision:
       docs/evidence/memory/lpddr-phy-procurement.yaml. No phone-class
       bandwidth claim may be promoted while that gate is BLOCKED.
   policy_implications:
-    - The phone_2028_target_profile thresholds in this gate apply to the AI SKU only.
+    - The phone_2028_target_profile thresholds remain stricter than the current tracked AI SKU peak bandwidth.
     - The baseline SKU has its own bandwidth expectations (~70 GB/s sustained) and shares the same RTL but a different LPDDR PHY data rate and bus width.
     - Reports filed against this gate must declare which SKU they pertain to.
     - The 240 GB/s optimizer guardband is not a per-SKU sustained gate and must not be quoted as one.

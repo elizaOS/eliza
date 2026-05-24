@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import json
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -119,79 +120,169 @@ def parse_structured_file(path: Path) -> tuple[str, Any | None, str | None]:
                 reader = csv.DictReader(handle)
                 rows = list(reader)
             return "csv", {"fieldnames": reader.fieldnames or [], "rows": rows}, None
+        if suffix == ".kicad_sch":
+            text = path.read_text(encoding="utf-8")
+            if (
+                "eliza.e1_phone_supplier_return_intake_placeholder.v1" in text
+                or "blocked_pending_supplier_return" in text
+            ):
+                parsed = yaml.safe_load(text)
+                if isinstance(parsed, dict):
+                    return "kicad_sch_placeholder_metadata", parsed, None
+            return "kicad_sch", None, None
     except Exception as exc:  # pragma: no cover - exercised by real artifacts when malformed
         return suffix.lstrip(".") or "file", None, str(exc)
     return suffix.lstrip(".") or "file", None, None
 
 
-def content_findings(row: dict[str, Any], resolved: Path | None) -> dict[str, Any]:
-    failures: list[str] = []
+def directory_manifest(path: Path) -> Path | None:
+    for candidate in (
+        path / "release-manifest.yaml",
+        path / "manifest.yaml",
+        path / "index.yaml",
+    ):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def required_fields_by_category(contract: dict[str, Any]) -> dict[str, set[str]]:
+    fields: dict[str, set[str]] = {}
+    for content_contract in contract.get("content_contracts", []):
+        if not isinstance(content_contract, dict):
+            continue
+        category = content_contract.get("id")
+        required = content_contract.get("required_content_fields")
+        if not isinstance(category, str):
+            continue
+        if not isinstance(required, list) or not all(
+            isinstance(field, str) for field in required
+        ):
+            raise ValueError(f"content contract {category} missing required_content_fields")
+        fields[category] = set(required)
+    return fields
+
+
+def content_findings(
+    row: dict[str, Any],
+    resolved: Path | None,
+    category_required_fields: dict[str, set[str]] | None = None,
+) -> dict[str, Any]:
+    local_failures: list[str] = []
+    release_failures: list[str] = []
     warnings: list[str] = []
     parsed_kind = "missing"
     parsed: Any | None = None
     parse_error: str | None = None
     content_hash: str | None = None
     file_size: int | None = None
+    required_fields = set(REQUIRED_CONTENT_FIELDS)
+    if category_required_fields:
+        category = str(row["category"])
+        if category not in category_required_fields:
+            raise ValueError(f"no content contract required fields for category {category}")
+        required_fields = set(category_required_fields[category])
+    missing_fields: list[str] = []
 
     if row["release_allowed"] is not True:
-        failures.append("contract_row_release_not_allowed")
+        release_failures.append("contract_row_release_not_allowed")
     if row["template_only"]:
-        failures.append("template_only_artifact_cannot_validate")
+        local_failures.append("template_only_artifact_cannot_validate")
+        release_failures.append("template_only_artifact_cannot_validate")
     if row["presence_only"]:
-        failures.append("contract_row_is_presence_only")
+        release_failures.append("contract_row_is_presence_only")
     if row["validated"] is not True:
-        failures.append("contract_row_not_validated")
+        release_failures.append("contract_row_not_validated")
     if row["approval_status"] != "approved":
-        failures.append("approval_status_not_approved")
+        release_failures.append("approval_status_not_approved")
 
     if resolved is None:
-        failures.append("missing_path")
+        local_failures.append("missing_path")
     elif not resolved.exists():
-        failures.append("artifact_missing")
+        local_failures.append("artifact_missing")
     else:
         try:
             resolved_real = resolved.resolve()
             resolved_real.relative_to(REPO_ROOT)
         except ValueError:
-            failures.append("path_resolves_outside_repository")
+            local_failures.append("path_resolves_outside_repository")
         if resolved.is_symlink():
             warnings.append("symlink_requires_manual_review")
 
     if resolved is not None and resolved.exists() and resolved.is_dir():
         parsed_kind = "directory"
         if not any(resolved.iterdir()):
-            failures.append("directory_empty")
-        failures.append("directory_presence_is_not_content_validation")
+            local_failures.append("directory_empty")
+        manifest_path = directory_manifest(resolved)
+        if manifest_path is None:
+            local_failures.append("directory_release_manifest_missing")
+        else:
+            parsed_kind, parsed, parse_error = parse_structured_file(manifest_path)
+            parsed_kind = "directory_manifest_" + parsed_kind
+            if parse_error:
+                local_failures.append("directory_release_manifest_parse_error")
+            elif isinstance(parsed, dict):
+                missing_fields = sorted(required_fields - set(parsed))
+                if missing_fields:
+                    local_failures.append("required_content_fields_missing")
+                    warnings.append("missing_fields:" + ",".join(missing_fields))
+                if parsed.get("release_allowed") is False:
+                    local_failures.append("directory_manifest_release_not_allowed")
+                if parsed.get("release_children_complete") is False:
+                    local_failures.append("directory_manifest_release_children_incomplete")
+                if parsed.get("disposition") != "approved":
+                    local_failures.append("directory_manifest_disposition_not_approved")
+                text = "\n".join(scalar_strings(parsed)).lower()
+                markers = sorted(marker for marker in PLACEHOLDER_MARKERS if marker in text)
+                if markers:
+                    local_failures.append("placeholder_or_blocked_content_marker_present")
+                    warnings.append("markers:" + ",".join(markers))
+            else:
+                local_failures.append("directory_release_manifest_not_mapping")
+        release_failures.append("directory_presence_is_not_content_validation")
     elif resolved is not None and resolved.exists() and resolved.is_file():
         file_size = resolved.stat().st_size
         content_hash = sha256(resolved)
         if row.get("sha256") and row["sha256"] != content_hash:
-            failures.append("contract_sha256_mismatch")
+            local_failures.append("contract_sha256_mismatch")
         if file_size == 0:
-            failures.append("file_empty")
+            local_failures.append("file_empty")
         parsed_kind, parsed, parse_error = parse_structured_file(resolved)
         if parse_error:
-            failures.append("parse_error")
+            local_failures.append("parse_error")
         suffix = resolved.suffix.lower()
         if suffix in {".pdf", ".step", ".stp", ".brep"}:
-            failures.append("binary_or_cad_file_requires_external_signed_review")
-        elif suffix in {".yaml", ".yml", ".json", ".csv"}:
+            release_failures.append("binary_or_cad_file_requires_external_signed_review")
+        elif suffix in {".yaml", ".yml", ".json", ".csv", ".kicad_sch"}:
             if parsed is None:
-                failures.append("structured_content_missing")
+                local_failures.append("structured_content_missing")
             elif isinstance(parsed, dict):
-                missing_fields = sorted(REQUIRED_CONTENT_FIELDS - set(parsed))
+                present_fields = set(parsed)
+                if parsed_kind == "csv" and isinstance(parsed.get("fieldnames"), list):
+                    present_fields = {str(field) for field in parsed["fieldnames"]}
+                missing_fields = sorted(required_fields - present_fields)
                 if missing_fields:
-                    failures.append("required_content_fields_missing")
+                    local_failures.append("required_content_fields_missing")
                     warnings.append("missing_fields:" + ",".join(missing_fields))
                 text = "\n".join(scalar_strings(parsed)).lower()
                 markers = sorted(marker for marker in PLACEHOLDER_MARKERS if marker in text)
                 if markers:
-                    failures.append("placeholder_or_blocked_content_marker_present")
+                    local_failures.append("placeholder_or_blocked_content_marker_present")
                     warnings.append("markers:" + ",".join(markers))
             else:
-                failures.append("structured_content_not_mapping")
+                local_failures.append("structured_content_not_mapping")
         else:
-            failures.append("unsupported_artifact_type_requires_manual_contract_extension")
+            release_failures.append("unsupported_artifact_type_requires_manual_contract_extension")
+
+    failures = local_failures + [
+        failure for failure in release_failures if failure not in local_failures
+    ]
+    local_validation_state = (
+        "locally_validated" if not local_failures else "local_blocked_fail_closed"
+    )
+    release_validation_state = (
+        "blocked_fail_closed" if failures else "validated"
+    )
 
     return {
         "evidence_id": row["evidence_id"],
@@ -208,7 +299,14 @@ def content_findings(row: dict[str, Any], resolved: Path | None) -> dict[str, An
         "parsed_kind": parsed_kind,
         "file_size_bytes": file_size,
         "sha256": content_hash,
-        "validation_state": "blocked_fail_closed" if failures else "validated",
+        "required_content_fields": sorted(required_fields),
+        "required_content_fields_present": not missing_fields,
+        "missing_required_content_fields": missing_fields,
+        "local_evidence_validation_state": local_validation_state,
+        "local_validation_failures": local_failures,
+        "external_release_validation_state": release_validation_state,
+        "external_release_failures": release_failures,
+        "validation_state": release_validation_state,
         "release_allowed": False,
         "failures": failures,
         "warnings": warnings,
@@ -218,7 +316,13 @@ def content_findings(row: dict[str, Any], resolved: Path | None) -> dict[str, An
 def build_report(contract_path: Path, report_path: Path) -> dict[str, Any]:
     contract = load_yaml(contract_path)
     rows = contract["artifact_content_requirements"]
-    validation_rows = [content_findings(row, resolve_path(row.get("path"))) for row in rows]
+    category_required_fields = required_fields_by_category(contract)
+    if not category_required_fields:
+        raise ValueError("content_contracts required_content_fields mapping is empty")
+    validation_rows = [
+        content_findings(row, resolve_path(row.get("path")), category_required_fields)
+        for row in rows
+    ]
     missing = [
         row
         for row in validation_rows
@@ -230,6 +334,21 @@ def build_report(contract_path: Path, report_path: Path) -> dict[str, Any]:
         if row["present"] and row["validation_state"] == "blocked_fail_closed"
     ]
     validated = [row for row in validation_rows if row["validation_state"] == "validated"]
+    locally_validated = [
+        row
+        for row in validation_rows
+        if row["local_evidence_validation_state"] == "locally_validated"
+    ]
+    category_counts = Counter(str(row["category"]) for row in validation_rows)
+    missing_by_category = Counter(
+        str(row["category"])
+        for row in validation_rows
+        if "artifact_missing" in row["failures"] or "missing_path" in row["failures"]
+    )
+    present_blocked_by_category = Counter(str(row["category"]) for row in present_blocked)
+    failure_counts = Counter(
+        failure for row in validation_rows for failure in row["failures"]
+    )
 
     return {
         "schema": "eliza.e1_phone_release_evidence_validation_dry_run.v1",
@@ -250,13 +369,22 @@ def build_report(contract_path: Path, report_path: Path) -> dict[str, Any]:
         "summary": {
             "artifact_content_requirement_count": len(rows),
             "validation_row_count": len(validation_rows),
+            "locally_validated_row_count": len(locally_validated),
+            "locally_blocked_row_count": len(validation_rows) - len(locally_validated),
             "validated_row_count": len(validated),
             "blocked_row_count": len(validation_rows) - len(validated),
             "missing_or_unmapped_row_count": len(missing),
             "present_but_blocked_row_count": len(present_blocked),
+            "external_release_validated_row_count": len(validated),
+            "external_release_blocked_row_count": len(validation_rows) - len(validated),
+            "category_counts": dict(sorted(category_counts.items())),
+            "missing_or_unmapped_by_category": dict(sorted(missing_by_category.items())),
+            "present_but_blocked_by_category": dict(sorted(present_blocked_by_category.items())),
+            "failure_counts": dict(sorted(failure_counts.items())),
             "release_state": "blocked_fail_closed",
         },
         "validation_policy": {
+            "local_evidence_validation_does_not_unlock_release": True,
             "missing_artifact_blocks_release": True,
             "template_only_blocks_release": True,
             "presence_only_blocks_release": True,

@@ -9,6 +9,7 @@ COMMON_SOURCES := \
 	$(REPO)/rtl/cpu/bpu/tage.sv \
 	$(REPO)/rtl/cpu/bpu/ittage.sv \
 	$(REPO)/rtl/cpu/bpu/sc.sv \
+	$(REPO)/rtl/cpu/bpu/h2p_corrector.sv \
 	$(REPO)/rtl/cpu/bpu/loop_predictor.sv \
 	$(REPO)/rtl/cpu/bpu/ftb.sv \
 	$(REPO)/rtl/cpu/bpu/uftb.sv \
@@ -34,6 +35,8 @@ ifeq ($(TOPLEVEL),e1_bpu_l1i_frontend_tb)
 VERILOG_SOURCES += \
 	$(REPO)/rtl/cache/cache_pkg.sv \
 	$(REPO)/rtl/cache/ftq_to_l1i_pkg.sv \
+	$(REPO)/rtl/cpu/bpu/ftq_to_fetch_stream.sv \
+	$(REPO)/rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv \
 	$(REPO)/rtl/cpu/bpu/ftq_to_l1i_shim.sv \
 	$(REPO)/rtl/cache/prefetch/e1_fdip_l1i_prefetcher.sv \
 	$(REPO)/rtl/cache/l1i/e1_l1i_cache.sv \

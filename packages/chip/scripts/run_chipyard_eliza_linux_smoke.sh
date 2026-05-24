@@ -14,14 +14,21 @@ lock_dir="$out_dir/verilator-linux-smoke.lock"
 config="${CHIPYARD_CONFIG:-ElizaRocketConfig}"
 config_package="${CHIPYARD_CONFIG_PACKAGE:-eliza}"
 binary="${CHIPYARD_LINUX_BINARY:-}"
-timeout_seconds="${CHIPYARD_LINUX_SMOKE_SECONDS:-1200}"
+timeout_seconds="${CHIPYARD_LINUX_SMOKE_SECONDS:-5400}"
 timeout_seconds="${CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS:-$timeout_seconds}"
 timeout_cycles="${CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES:-1000000000}"
 jobs="${CHIPYARD_LINUX_SMOKE_JOBS:-1}"
 loadmem="${CHIPYARD_LINUX_SMOKE_LOADMEM:-1}"
 disable_dramsim="${CHIPYARD_LINUX_SMOKE_DISABLE_DRAMSIM:-0}"
 binary_arg="${CHIPYARD_LINUX_SMOKE_BINARY_ARG:-$binary}"
-extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-+custom_boot_pin=1 +uart_tx_printf=1}"
+trace_verbose="${CHIPYARD_LINUX_SMOKE_TRACE_VERBOSE:-0}"
+extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-+uart_tx_printf=1}"
+if [ "$trace_verbose" = "1" ]; then
+	case " $extra_sim_flags " in
+		*" +verbose "*) ;;
+		*) extra_sim_flags="$extra_sim_flags +verbose" ;;
+	esac
+fi
 extra_sim_cxxflags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_CXXFLAGS:-}"
 extra_sim_ldflags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_LDFLAGS:-}"
 use_docker="${CHIPYARD_LINUX_SMOKE_USE_DOCKER:-auto}"
@@ -170,6 +177,46 @@ if [ -z "$binary_arg" ]; then
 	binary_arg="$binary"
 fi
 
+if [ "$(basename -- "$binary")" = "eliza-e1-linux-smoke-bin-nodisk" ]; then
+	kfrag="$repo_dir/sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke-kfrag"
+	linux_config="$checkout/software/firemarshal/images/firechip/eliza-e1-linux-smoke/linux_config"
+	kfrag_cmdline=""
+	linux_cmdline=""
+	missing_kfrag_options=""
+	if [ -f "$kfrag" ] && [ -f "$linux_config" ]; then
+		while IFS= read -r kfrag_line || [ -n "$kfrag_line" ]; do
+			[ -n "$kfrag_line" ] || continue
+			case "$kfrag_line" in
+				\#*) continue ;;
+			esac
+			if ! grep -F -x -q -- "$kfrag_line" "$linux_config"; then
+				missing_kfrag_options="${missing_kfrag_options}${missing_kfrag_options:+, }$kfrag_line"
+			fi
+		done <"$kfrag"
+	fi
+	if [ -f "$kfrag" ] && [ -f "$binary" ] && [ -n "$missing_kfrag_options" ]; then
+		printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
+		printf '  simulator_path: external/chipyard/sims/verilator\n'
+		printf '  - preferred FireMarshal payload is missing current %s option(s): %s\n' "${kfrag#"$repo_dir"/}" "$missing_kfrag_options"
+		printf '  next_command: scripts/build_firemarshal_eliza_linux_smoke_payload.sh\n'
+		exit 2
+	fi
+	if [ -f "$kfrag" ] && [ -f "$linux_config" ]; then
+		kfrag_cmdline="$(sed -n 's/^CONFIG_CMDLINE=//p' "$kfrag" | tail -n 1 | tr -d '"')"
+		linux_cmdline="$(sed -n 's/^CONFIG_CMDLINE=//p' "$linux_config" | tail -n 1 | tr -d '"')"
+		if [ -n "$kfrag_cmdline" ] && [ -n "$linux_cmdline" ] &&
+			[ "$kfrag_cmdline" != "$linux_cmdline" ]; then
+			printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
+			printf '  simulator_path: external/chipyard/sims/verilator\n'
+			printf '  - preferred FireMarshal payload linux_config cmdline is stale\n'
+			printf '    built:  %s\n' "$linux_cmdline"
+			printf '    source: %s\n' "$kfrag_cmdline"
+			printf '  next_command: scripts/build_firemarshal_eliza_linux_smoke_payload.sh\n'
+			exit 2
+		fi
+	fi
+fi
+
 case "$run_target" in
 	run-binary|run-binary-fast) ;;
 	*)
@@ -299,6 +346,7 @@ command_text="$command_text $run_target"
 	printf 'eliza-evidence: loadmem=%s\n' "$loadmem"
 	printf 'eliza-evidence: break_sim_prereq=%s\n' "$break_sim_prereq"
 	printf 'eliza-evidence: disable_dramsim=%s\n' "$disable_dramsim"
+	printf 'eliza-evidence: trace_verbose=%s\n' "$trace_verbose"
 	if [ -n "$extra_sim_flags" ]; then
 		printf 'eliza-evidence: extra_sim_flags=%s\n' "$extra_sim_flags"
 	fi
@@ -313,7 +361,7 @@ command_text="$command_text $run_target"
 } >"$log_tmp"
 : >"$raw_log"
 trace_out="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "$binary_arg").out"
-if [ "$run_target" = "run-binary-fast" ] && [ -f "$trace_out" ]; then
+if { [ "$run_target" = "run-binary-fast" ] || [ "$trace_verbose" = "1" ]; } && [ -f "$trace_out" ]; then
 	rm -f "$trace_out"
 	printf 'eliza-evidence: removed_stale_trace=%s\n' "${trace_out#"$repo_dir"/}" >>"$log_tmp"
 fi

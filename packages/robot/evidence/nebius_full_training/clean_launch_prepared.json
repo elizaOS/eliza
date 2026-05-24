@@ -1,0 +1,41 @@
+{
+  "blocker": "Nebius CLI OAuth token expired; disk create blocks on browser authentication.",
+  "bucket": "robot-rl-results-1779358330",
+  "compute_created": false,
+  "disk_create_request": "/tmp/robot-full-clean-1779556360/disk-create.json",
+  "instance_create_redacted_request": "/tmp/robot-full-clean-1779556360/instance-create.redacted.json",
+  "instance_launch_hygiene_ok": true,
+  "next_commands": [
+    "nebius compute disk create --file /tmp/robot-full-clean-1779556360/disk-create.json --format json > /tmp/robot-full-clean-1779556360/disk-create.out.json",
+    "fill <disk-id> into /tmp/robot-full-clean-1779556360/instance-create.template.json, then nebius compute instance create --file /tmp/robot-full-clean-1779556360/instance-create.json --format json > /tmp/robot-full-clean-1779556360/instance-create.out.json",
+    "ssh robot@<new-public-ip> and install /tmp/robot-full-clean-1779556360.env as /etc/robot-full/object-storage.env with root-only permissions"
+  ],
+  "ok": false,
+  "payload_bytes": 159761623,
+  "payload_contains_latest_alberta_report": true,
+  "payload_contains_production_report_paths": true,
+  "payload_excludes": [
+    "robot/.venv",
+    "robot/.tools",
+    "robot/.mypy_cache",
+    "robot/checkpoints",
+    "robot/evidence/nebius_full_training",
+    "robot/vendor/asimov-1/mechanical",
+    "nested .git directories",
+    "large Unitree simulation build/demo assets"
+  ],
+  "payload_large_bytes": 1849792375,
+  "payload_optimized": true,
+  "payload_refreshed_at": "2026-05-24T02:20:32Z",
+  "payload_refreshed_for": "sac_delta_comparison_123_test_gate",
+  "payload_sha256": "684b10c77f38c375599405d051e710d7183ba22190aab659c104b72713d7b326",
+  "payload_uploaded": true,
+  "payload_uploaded_at": "2026-05-24T02:20:32Z",
+  "payload_uri": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/payload.tar.gz",
+  "prefix": "s3://robot-rl-results-1779358330/robot-full-clean-1779556360/",
+  "resume_command": "uv run eliza-robot-launch-prepared-nebius-clean-run --prepared-report evidence/nebius_full_training/clean_launch_prepared.json --secret-env /tmp/robot-full-clean-1779556360.env --identity ~/.ssh/id_ed25519 --ssh-timeout-seconds 900 --auth-timeout-seconds 20",
+  "resume_command_ready": true,
+  "run_id": "robot-full-clean-1779556360",
+  "schema": "robot-nebius-clean-launch-prepared-v1",
+  "state": "awaiting_nebius_cli_auth"
+}

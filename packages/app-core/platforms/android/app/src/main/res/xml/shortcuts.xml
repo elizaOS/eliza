@@ -45,8 +45,8 @@
         android:shortcutLongLabel="@string/app_action_chat_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="ai.elizaos.app"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.milady.milady"
+            android:targetClass="ai.milady.milady.MainActivity"
             android:data="elizaos://chat?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -61,8 +61,8 @@
         android:shortcutLongLabel="@string/app_action_voice_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="ai.elizaos.app"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.milady.milady"
+            android:targetClass="ai.milady.milady.MainActivity"
             android:data="elizaos://voice?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -77,8 +77,8 @@
         android:shortcutLongLabel="@string/app_action_daily_brief_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="ai.elizaos.app"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.milady.milady"
+            android:targetClass="ai.milady.milady.MainActivity"
             android:data="elizaos://lifeops/daily-brief?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -93,8 +93,8 @@
         android:shortcutLongLabel="@string/app_action_new_task_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="ai.elizaos.app"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.milady.milady"
+            android:targetClass="ai.milady.milady.MainActivity"
             android:data="elizaos://lifeops/task/new?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding
@@ -109,8 +109,8 @@
         android:shortcutLongLabel="@string/app_action_tasks_long">
         <intent
             android:action="android.intent.action.VIEW"
-            android:targetPackage="ai.elizaos.app"
-            android:targetClass="ai.elizaos.app.MainActivity"
+            android:targetPackage="ai.milady.milady"
+            android:targetClass="ai.milady.milady.MainActivity"
             android:data="elizaos://lifeops/tasks?source=android-static-shortcut" />
         <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
             <parameter-binding

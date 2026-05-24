@@ -18,7 +18,6 @@ cc_binary {
     relative_install_path: "hw",
     vendor: true,
     init_rc: ["vendor.eliza.e1_npu@1.0-service.sim.rc"],
-    vintf_fragments: ["vendor.eliza.e1_npu@1.0-service.sim.xml"],
 
     srcs: [
         "service.cpp",

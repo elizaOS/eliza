@@ -2,6 +2,7 @@
 import json
 import tempfile
 from pathlib import Path
+from unittest import mock
 
 import check_pd_signoff
 import yaml
@@ -215,6 +216,107 @@ def test_missing_artifact_report_uses_human_labels() -> None:
         assert expected in message, message
 
 
+def test_closest_run_diagnostics_name_missing_artifact_classes() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        run = root / "pd/openlane/runs/RUN_one"
+        run.mkdir(parents=True)
+        manifest = {
+            "required_artifacts": {
+                "gds": {"globs": ["pd/openlane/runs/*/final/gds/*.gds"]},
+                "antenna_report": {
+                    "globs": ["pd/openlane/runs/*/reports/signoff/*antenna*.rpt"]
+                },
+                "sta_report": {"globs": ["pd/openlane/runs/*/reports/signoff/*sta*.rpt"]},
+            }
+        }
+
+        diagnostic = check_pd_signoff.closest_run_diagnostics(
+            root,
+            manifest,
+            {run: ["antenna_report", "sta_report"]},
+        )
+
+        assert diagnostic["release_credit"] is False
+        closest = diagnostic["closest_run"]
+        assert closest["run"] == "pd/openlane/runs/RUN_one"
+        classes = {
+            row["blocker_class"] for row in closest["missing_artifact_classes"]
+        }
+        assert {"antenna", "timing"} <= classes
+        assert "python3 scripts/check_pd_signoff.py" in closest["next_command"]
+        first_gap = closest["missing_artifact_classes"][0]
+        assert first_gap["producer_command"] == "scripts/run_openlane.sh --release"
+        assert first_gap["validation_command"] == "python3 scripts/check_pd_signoff.py"
+        assert first_gap["accepted_exit_code"] == 0
+
+
+def test_blocked_artifact_report_summarizes_closest_run_gap() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report_dir = Path(tmp)
+        artifact_report = report_dir / "pd_signoff.json"
+        manifest = {
+            "required_artifacts": {
+                "gds": {"globs": ["pd/openlane/runs/*/final/gds/*.gds"]},
+                "run_manifest": {"globs": ["pd/openlane/runs/*/signoff-run.yaml"]},
+            },
+            "blocked_gates": {
+                "pd_release": {
+                    "blocked": True,
+                    "reason": "signoff replay missing",
+                    "evidence_manifest": "pd/signoff/manifest.yaml",
+                    "unblock_requires": ["run release replay"],
+                }
+            },
+        }
+        run = check_pd_signoff.ROOT / "pd/openlane/runs/synthetic"
+        diagnostics = {
+            "artifact_gap": check_pd_signoff.closest_run_diagnostics(
+                check_pd_signoff.ROOT,
+                manifest,
+                {run: ["run_manifest"]},
+            ),
+            "blocker_classes": check_pd_signoff.report_blocker_diagnostics(
+                check_pd_signoff.ROOT,
+                manifest,
+                None,
+            ),
+        }
+
+        with mock.patch.object(check_pd_signoff, "REPORT", artifact_report):
+            check_pd_signoff.write_report(
+                "blocked",
+                "artifacts",
+                Path("pd/signoff/manifest.yaml"),
+                ["no single PD run contains all required signoff artifacts; closest run missing run manifest"],
+                diagnostics=diagnostics,
+            )
+
+        payload = json.loads(artifact_report.read_text(encoding="utf-8"))
+        assert payload["summary"]["blockers"] == 1
+        assert payload["summary"]["closest_run_missing_artifact_count"] == 1
+        assert payload["summary"]["blocked_release_gate_count"] == 1
+        assert payload["diagnostics"]["blocker_classes"]["blocked_release_gates"][0][
+            "gate"
+        ] == "pd_release"
+        assert payload["release_unblock_plan"]["release_credit"] is False
+        assert payload["release_unblock_plan"]["missing_artifact_count"] == 1
+        assert payload["release_unblock_plan"]["blocked_release_gate_count"] == 1
+        generation = payload["repo_artifact_generation_plan"]
+        assert generation["release_credit"] is False
+        assert generation["repo_generatable_now_count"] == 0
+        assert generation["can_close_from_current_repo_count"] == 0
+        assert generation["blocked_missing_artifact_count"] == 1
+        assert generation["blocked_release_gate_count"] == 1
+        assert generation["blocked_generation_count"] == 2
+        assert generation["missing_artifacts"][0]["repo_generatable_now"] is False
+        assert (
+            generation["missing_artifacts"][0]["can_close_release_from_current_repo"]
+            is False
+        )
+        assert "blocked_release_gates" in generation["missing_artifacts"][0]["blocked_by"]
+
+
 def test_duplicate_key_detection() -> None:
     failures = check_pd_signoff.validate_no_duplicate_yaml_keys("signoff: first\nsignoff: second\n")
     assert failures and "duplicate YAML key" in failures[0], failures
@@ -312,6 +414,38 @@ def test_manifest_rejects_fail_open_release_config() -> None:
         assert any("must set fail-closed keys true" in failure for failure in failures), failures
 
 
+def test_manifest_report_does_not_overwrite_artifact_report() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        report_dir = Path(tmp)
+        artifact_report = report_dir / "pd_signoff.json"
+        manifest_report = report_dir / "pd_signoff_manifest.json"
+        with (
+            mock.patch.object(check_pd_signoff, "REPORT", artifact_report),
+            mock.patch.object(check_pd_signoff, "MANIFEST_REPORT", manifest_report),
+        ):
+            check_pd_signoff.write_report(
+                "blocked",
+                "artifacts",
+                Path("pd/signoff/manifest.yaml"),
+                ["release gate remains blocked"],
+            )
+            artifact_payload = json.loads(artifact_report.read_text(encoding="utf-8"))
+            check_pd_signoff.write_report(
+                "pass",
+                "manifest",
+                Path("pd/signoff/manifest.yaml"),
+                [],
+            )
+
+        self_artifact = json.loads(artifact_report.read_text(encoding="utf-8"))
+        self_manifest = json.loads(manifest_report.read_text(encoding="utf-8"))
+        assert self_artifact == artifact_payload
+        assert self_artifact["mode"] == "artifacts"
+        assert self_artifact["status"] == "blocked"
+        assert self_manifest["mode"] == "manifest"
+        assert self_manifest["status"] == "pass"
+
+
 def main() -> int:
     test_valid_run_manifest()
     test_invalid_run_manifest_reports_missing_report()
@@ -320,12 +454,15 @@ def main() -> int:
     test_invalid_run_manifest_reports_missing_output_keys()
     test_invalid_run_manifest_rejects_placeholder_and_unwaived_fake_claims()
     test_missing_artifact_report_uses_human_labels()
+    test_closest_run_diagnostics_name_missing_artifact_classes()
+    test_blocked_artifact_report_summarizes_closest_run_gap()
     test_duplicate_key_detection()
     test_invalid_run_manifest_rejects_bogus_tool_digest()
     test_invalid_run_manifest_unavailable_digest_requires_reason()
     test_invalid_run_manifest_rejects_missing_psm_ir_drop_report()
     test_invalid_run_manifest_rejects_pdn_topology_missing_field()
     test_manifest_rejects_fail_open_release_config()
+    test_manifest_report_does_not_overwrite_artifact_report()
     print("PD signoff manifest parser tests passed.")
     return 0
 

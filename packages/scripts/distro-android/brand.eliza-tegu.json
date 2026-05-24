@@ -1,7 +1,7 @@
 {
   "brand": "eliza",
   "appName": "Eliza",
-  "distroName": "ElizaOS",
+  "distroName": "elizaOS",
   "packageName": "ai.elizaos.app",
   "classPrefix": "Eliza",
   "productName": "eliza_tegu_phone",

@@ -33,6 +33,7 @@ CHIP_PRODUCT = CHIP_DEVICE / "eliza_ai_soc.mk"
 CHIP_DEVICE_MK = CHIP_DEVICE / "device.mk"
 CHIP_BOARD = CHIP_DEVICE / "BoardConfig.mk"
 CHIP_MANIFEST = CHIP_DEVICE / "manifest.xml"
+CHIP_E1_VINTF_FRAGMENT = CHIP_DEVICE / "hal/e1_npu/vendor.eliza.e1_npu@1.0-service.xml"
 OS_ANDROID_PRODUCTS = OS_VENDOR / "AndroidProducts.mk"
 OS_COMMON = OS_VENDOR / "eliza_common.mk"
 OS_OPENAGENT_PRODUCT = OS_VENDOR / "products/eliza_openagent_ai_soc_phone.mk"
@@ -57,8 +58,12 @@ REQUIRED_ELIZA_PACKAGES = {
 }
 REQUIRED_HAL_PACKAGES = {
     "vendor.eliza.e1_npu@1.0-service",
-    "android.hardware.graphics.composer@2.4-service.eliza_ai_soc",
 }
+DEPRECATED_LOCAL_HWC_PACKAGES = {
+    "android.hardware.graphics.composer@2.4-service.eliza_ai_soc",
+    "hwcomposer.eliza_ai_soc",
+}
+UPSTREAM_CF_PHONE_PRODUCT = "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk"
 
 
 @dataclass(frozen=True)
@@ -166,6 +171,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         CHIP_DEVICE_MK,
         CHIP_BOARD,
         CHIP_MANIFEST,
+        CHIP_E1_VINTF_FRAGMENT,
         OS_ANDROID_PRODUCTS,
         OS_COMMON,
         OS_OPENAGENT_PRODUCT,
@@ -203,11 +209,13 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     chip_packages = makefile_product_packages(chip_device_text)
     os_common_packages = makefile_product_packages(os_common_text)
     chip_inherits_eliza_common = "vendor/eliza/eliza_common.mk" in chip_inherits
+    chip_inherits_cuttlefish_phone = UPSTREAM_CF_PHONE_PRODUCT in chip_inherits
     effective_chip_packages = chip_packages | (
         os_common_packages if chip_inherits_eliza_common else set()
     )
     local_dests = local_manifest_dests(LOCAL_MANIFEST)
     chip_manifest_hals = manifest_hal_names(CHIP_MANIFEST)
+    e1_vintf_hals = manifest_hal_names(CHIP_E1_VINTF_FRAGMENT)
 
     os_product_choices = set(
         re.findall(r"^\s*([A-Za-z0-9_]+-trunk_staging-userdebug)\b", os_products_text, re.MULTILINE)
@@ -327,17 +335,33 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         findings,
         bool(REQUIRED_HAL_PACKAGES - chip_packages),
         "chip_product_missing_active_hal_packages",
-        "chip AOSP product does not include active e1 NPU and hwcomposer service packages",
+        "chip AOSP product does not include required active e1 NPU service packages",
         f"missing={sorted(REQUIRED_HAL_PACKAGES - chip_packages)}",
         "Add HAL service packages only with matching source/prebuilts, VINTF fragments, SELinux policy, and smoke evidence.",
     )
     add_if(
         findings,
-        not chip_manifest_hals,
-        "chip_vintf_manifest_has_no_active_hals",
-        "chip AOSP VINTF manifest has no active HAL entries",
-        rel(CHIP_MANIFEST),
-        "Declare active HALs only when the selected product installs and starts matching service binaries.",
+        bool(DEPRECATED_LOCAL_HWC_PACKAGES & chip_packages),
+        "chip_product_packages_deprecated_hidl_hwcomposer",
+        "chip AOSP product packages a local composer@2.4 HIDL path rejected by current FCM",
+        f"deprecated={sorted(DEPRECATED_LOCAL_HWC_PACKAGES & chip_packages)}",
+        "Use the inherited Cuttlefish composer3 APEX packages for this riscv64 virtual device, or add a non-deprecated composer3/AIDL implementation.",
+    )
+    add_if(
+        findings,
+        not chip_inherits_cuttlefish_phone,
+        "chip_product_missing_modern_graphics_base",
+        "chip AOSP product does not inherit the Cuttlefish riscv64 phone graphics base",
+        f"inherits={sorted(chip_inherits)}",
+        "Inherit the upstream Cuttlefish riscv64 phone product so the image carries composer3 graphics packages, or provide an equivalent modern graphics stack.",
+    )
+    add_if(
+        findings,
+        "vendor.eliza.e1_npu" not in e1_vintf_hals,
+        "chip_e1_npu_vintf_fragment_missing_active_hal",
+        "chip AOSP product lacks the per-service VINTF fragment for vendor.eliza.e1_npu",
+        rel(CHIP_E1_VINTF_FRAGMENT),
+        "Keep the e1 NPU HAL declaration in the service VINTF fragment so it tracks the packaged service binary without reviving legacy manifest.xml entries.",
     )
     add_if(
         findings,
@@ -356,12 +380,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "capture_cuttlefish_product": capture_cuttlefish_product,
         "os_product_choices": sorted(os_product_choices),
         "chip_product_inherits": sorted(chip_inherits),
+        "chip_inherits_cuttlefish_phone": chip_inherits_cuttlefish_phone,
         "os_openagent_inherits": sorted(openagent_inherits),
         "chip_product_packages": sorted(chip_packages),
         "effective_chip_product_packages": sorted(effective_chip_packages),
         "os_common_packages": sorted(os_common_packages),
         "local_manifest_dest_count": len(local_dests),
         "chip_vintf_hals": sorted(chip_manifest_hals),
+        "chip_e1_vintf_hals": sorted(e1_vintf_hals),
         "claim_products": {
             "fused_chip_emulator": ELIZA_FUSED_PRODUCT,
             "chip_scaffold": CHIP_SCAFFOLD_PRODUCT,

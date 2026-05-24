@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""RTL-corroborated MPKI comparison: E1 BPU RTL vs CVA6-class baseline model.
+"""Fail-closed MPKI comparison: E1 BPU RTL vs CVA6-class baseline model.
 
 The behavioural head-to-head lives in :mod:`benchmarks.cpu.branch.compare_mpki`
 and writes ``docs/evidence/cpu_ap/bpu-vs-cva6-mpki.json`` at claim level
@@ -14,7 +14,7 @@ model MPKI, and reports:
     predictor to run here — its BHT(128)+BTB(32)+RAS(2) front-end is simple
     enough that the behavioural model is faithful; the model is sized directly
     from the CVA6 RTL, cited below).
-  * The RTL-corroborated improvement ratio (CVA6 model geomean / E1 RTL geomean).
+  * The RTL improvement ratio (CVA6 model geomean / E1 RTL geomean).
   * The E1 model<->RTL correlation on the shared traces, which is what validates
     that the model-level head-to-head is a faithful proxy for the RTL.
 
@@ -58,9 +58,9 @@ CVA6_RTL_CITATIONS = [
 
 # Tolerance band for declaring the E1 RTL "converged" against its own model. The
 # RTL and model implement the same TAGE-SC-L+ITTAGE algorithm; once the RTL is
-# stable they track within small-window noise. A relative gap beyond this band on
-# the shared traces means the RTL is mid-edit / non-converged and must NOT be
-# quoted as a hardened win.
+# stable they should track within the configured evidence band. A relative gap
+# beyond this band on the shared traces fails closed and must not be quoted as a
+# hardened RTL win.
 RTL_MODEL_REL_GAP_CONVERGED = 0.50  # 50% relative MPKI gap, geomean
 
 
@@ -140,7 +140,7 @@ def build_evidence() -> dict:
     if not rtl:
         raise FileNotFoundError(
             "no E1 RTL MPKI evidence found; run the cocotb harness "
-            "(make mpki-eval-rtl / mpki-eval-workload-rtl) first"
+            "(make mpki-eval-rtl) first"
         )
 
     model_per_trace = model_doc["per_trace"]
@@ -197,19 +197,17 @@ def build_evidence() -> dict:
             "E1 RTL tracks the E1 behavioural model within the convergence band "
             "on the shared traces; the model-level head-to-head win is RTL-validated "
             "on the E1 side. Comparison is held at L2_ARCH_SIM because the CVA6 side "
-            "remains a behavioural model."
+            "remains a behavioural model. Traces listed in rtl_traces_without_model_pair "
+            "are reported separately and do not contribute to this corroboration status."
         )
     else:
         comparison_status = "BLOCKED_RTL_NOT_CONVERGED"
         headline_note = (
             "E1 RTL does NOT currently track the E1 behavioural model on the shared "
-            "traces (geomean relative gap exceeds the convergence band). The BPU RTL "
-            "is mid-edit in the working tree (FTB multi-slot restructure, SC local "
-            "history, ITTAGE token history), so the measured RTL MPKI regresses vs both "
-            "the model and the last committed RTL evidence. This file records the "
-            "measured RTL numbers honestly and FAILS CLOSED: it does not back an "
-            "RTL-corroborated win until the RTL reconverges with the model. Re-run "
-            "make mpki-eval-rtl + mpki-eval-workload-rtl after the RTL stabilises."
+            "traces (geomean relative gap exceeds the convergence band). This file "
+            "records the RTL numbers honestly and FAILS CLOSED: it does not back an "
+            "RTL-backed win until the RTL reconverges with the model. Re-run "
+            "make bpu-vs-cva6-mpki-rtl after the RTL/model evidence stabilises."
         )
 
     return {
@@ -223,7 +221,7 @@ def build_evidence() -> dict:
         "simulator": "verilator (oss-cad-suite) via cocotb on bpu_top.sv",
         "harness": "benchmarks/cpu/branch/compare_mpki_rtl.py",
         "description": (
-            "RTL-corroborated MPKI comparison. The E1 side is measured on the "
+            "Fail-closed RTL MPKI comparison. The E1 side is measured on the "
             "synthesizable bpu_top.sv via the cocotb harness (L1_RTL_FULL_SOC); the "
             "CVA6 side is the behavioural BHT+BTB+RAS baseline model (L2_ARCH_SIM), "
             "sized directly from CVA6 RTL. The headline comparison is held at the "
@@ -253,7 +251,7 @@ def build_evidence() -> dict:
             "e1_rtl_geomean_mpki": round(e1_rtl_geo, 6),
             "e1_model_geomean_mpki": round(e1_model_geo, 6),
             "cva6_model_geomean_mpki": round(cva6_model_geo, 6),
-            "rtl_corroborated_improvement_ratio_cva6_over_e1_rtl": (
+            "rtl_improvement_ratio_cva6_over_e1_rtl": (
                 round(ratio_rtl_geo, 4) if ratio_rtl_geo is not None else None
             ),
         },
@@ -303,7 +301,7 @@ def main() -> int:
         f"eliza-evidence: status={evidence['comparison_status']} "
         f"E1 RTL geomean MPKI={agg['e1_rtl_geomean_mpki']} "
         f"CVA6 model geomean MPKI={agg['cva6_model_geomean_mpki']} "
-        f"ratio={agg['rtl_corroborated_improvement_ratio_cva6_over_e1_rtl']} "
+        f"ratio={agg['rtl_improvement_ratio_cva6_over_e1_rtl']} "
         f"pearson={corr['pearson_r']} spearman={corr['spearman_rho']} "
         f"over {evidence['shared_trace_count']} shared traces",
         file=sys.stderr,
@@ -315,7 +313,10 @@ def main() -> int:
         return 0
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
-    print(f"eliza-evidence: status=PASS path={args.out.relative_to(ROOT)}")
+    print(
+        f"eliza-evidence: status={evidence['comparison_status']} "
+        f"path={args.out.relative_to(ROOT)}"
+    )
     return 0
 
 

@@ -3,7 +3,7 @@
 #
 # Every task here is consumed by:
 #   - the bridge's policy.start handler (task name lookup)
-#   - the Brax-PPO trainer (env factory + reward + text embedding)
+#   - the Alberta trainer and PPO/Brax baselines (env factory + reward + text embedding)
 #   - the motion-analysis testbed (programmatic success criteria)
 #   - the plugin's action surface (text variants → similes)
 #
@@ -22,7 +22,7 @@
 #   max_episode_s   episode timeout in seconds
 #   requires_target boolean — does the task need a target entity in the scene
 
-version: 1
+version: 2
 default_action_dim: 24
 default_max_episode_s: 8.0
 
@@ -45,7 +45,7 @@ tasks:
   - id: stand_up
     tier: 1
     verbs:
-      en: ["stand up", "stand", "get up", "rise", "stand still", "hold still",
+      en: ["stand up", "stand", "rise", "stand still", "hold still",
            "be still", "go upright", "stand to attention"]
       es: ["levántate", "ponte de pie", "quédate quieto"]
       fr: ["lève-toi", "reste debout", "tiens-toi droit"]

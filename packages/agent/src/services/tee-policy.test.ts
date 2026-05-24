@@ -133,3 +133,57 @@ describe("TEE evidence policy", () => {
     });
   });
 });
+
+describe("simulated-evidence detection (verifier markers)", () => {
+  const coveEvidence = {
+    kind: "cove",
+    provider: "eliza-riscv",
+    securityVersion: 7,
+    measurements: { agent: "sha256:abc" },
+    claims: { debugDisabled: true },
+  };
+
+  it("accepts the real on-device eliza-local-verifier under the production profile", () => {
+    expect(
+      evaluateTeeEvidencePolicy(
+        {
+          ...coveEvidence,
+          freshness: { verifier: "eliza-local-verifier", nonce: "n" },
+        },
+        {
+          required: true,
+          allowedKinds: ["cove"],
+          rejectSimulatedEvidence: true,
+        },
+      ),
+    ).toMatchObject({ trusted: true, reason: "allowed" });
+  });
+
+  it.each([
+    "local-smoke",
+    "eliza-local-smoke",
+    "localsim",
+    "mock-verifier",
+    "sim-verifier",
+    "fake-verifier",
+    "devmode-verifier",
+    "debug-verifier",
+  ])("rejects the simulated verifier %s under the production profile", (v) => {
+    expect(
+      evaluateTeeEvidencePolicy(
+        {
+          ...coveEvidence,
+          freshness: { verifier: v, nonce: "n" },
+        },
+        {
+          required: true,
+          allowedKinds: ["cove"],
+          rejectSimulatedEvidence: true,
+        },
+      ),
+    ).toMatchObject({
+      trusted: false,
+      reason: "simulated-evidence-rejected",
+    });
+  });
+});

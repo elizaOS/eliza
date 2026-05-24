@@ -14,6 +14,9 @@ MANIFEST = ROOT / "pd/signoff/manifest.yaml"
 DEFAULT_OPENLANE_IMAGE = "ghcr.io/efabless/openlane2:2.4.0.dev1"
 DEFAULT_OPENLANE_DIGEST = "sha256:bcaabac3b114dfb9e739af9f16b53a79ce1b744bcdb3ad4fc476c961581fe5d5"
 LOCK_DIR = ROOT / ".openlane-run.lock"
+REPORT = ROOT / "build/reports/openlane_run_preflight.json"
+RELEASE_REPORT = ROOT / "build/reports/openlane_run_release_preflight.json"
+REPORT_SCHEMA = "eliza.openlane_run_preflight.v1"
 RELEASE_CONFIGS = (
     "pd/openlane/config.json",
     "pd/openlane/config.sky130.json",
@@ -248,6 +251,125 @@ def release_artifact_blockers(manifest: dict) -> list[str]:
     return gate_blockers
 
 
+def blocker_category(blocker: str) -> str:
+    lowered = blocker.lower()
+    if "release gate remains blocked:" in lowered:
+        if "pd_release" in lowered:
+            return "pd_release_gate_blocked"
+        if "tapeout_release" in lowered:
+            return "tapeout_release_gate_blocked"
+        if "board_fabrication_release" in lowered:
+            return "board_fabrication_release_gate_blocked"
+        return "release_gate_blocked"
+    if "openlane command missing" in lowered or "docker image" in lowered:
+        return "runner_unavailable"
+    if "latest openlane run" in lowered:
+        return "run_incomplete_or_missing_final"
+    if "release requires openlane signoff artifacts" in lowered:
+        return "release_artifacts_missing"
+    if "release requires clean openlane reports" in lowered:
+        return "dirty_signoff_reports"
+    if "explicit clean markers" in lowered:
+        return "clean_markers_missing"
+    if "stale openlane launcher lock" in lowered or "launcher lock is active" in lowered:
+        return "orchestration_lock"
+    if "active labeled openlane docker containers" in lowered:
+        return "orchestration_container_active"
+    if "exploratory for release" in lowered:
+        return "release_config_not_fail_closed"
+    return "openlane_release_blocker"
+
+
+def release_gate_records(manifest: dict) -> list[dict]:
+    blocked_gates = manifest.get("blocked_gates", {})
+    if not isinstance(blocked_gates, dict):
+        return []
+    records = []
+    for gate_name, gate in sorted(blocked_gates.items()):
+        if not isinstance(gate, dict) or gate.get("blocked") is not True:
+            continue
+        records.append(
+            {
+                "gate": gate_name,
+                "blocked": True,
+                "reason": gate.get("reason"),
+                "evidence_manifest": gate.get("evidence_manifest"),
+                "unblock_requires": gate.get("unblock_requires", []),
+                "release_credit": False,
+            }
+        )
+    return records
+
+
+def blocker_category_counts(blockers: list[str]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for blocker in blockers:
+        category = blocker_category(blocker)
+        counts[category] = counts.get(category, 0) + 1
+    return counts
+
+
+def write_report(
+    report_path: Path,
+    status: str,
+    failures: list[str],
+    blockers: list[str],
+    *,
+    release: bool,
+    image: str,
+    digest_pin: str,
+    manifest: dict | None = None,
+) -> None:
+    findings = []
+    for failure in failures:
+        findings.append(
+            {
+                "code": "openlane_preflight_failure",
+                "message": failure,
+                "next_step": "fix OpenLane manifest/config structure",
+                "severity": "error",
+            }
+        )
+    for blocker in blockers:
+        findings.append(
+            {
+                "code": "openlane_release_blocked",
+                "message": blocker,
+                "next_step": "run a complete pinned OpenLane flow and archive release-clean signoff artifacts",
+                "severity": "blocker",
+            }
+        )
+    report = {
+        "schema": REPORT_SCHEMA,
+        "status": status,
+        "summary": {
+            "release_mode": release,
+            "failure_count": len(failures),
+            "blocker_count": len(blockers),
+            "blocker_category_counts": blocker_category_counts(blockers),
+            "blocked_release_gate_count": len(release_gate_records(manifest or {})),
+            "release_ready": status == "pass",
+            "openlane_image": image,
+            "openlane_image_digest": digest_pin,
+        },
+        "findings": findings,
+        "diagnostics": {
+            "blocked_release_gates": release_gate_records(manifest or {}),
+            "blocker_categories": [
+                {
+                    "category": category,
+                    "count": count,
+                    "release_credit": False,
+                }
+                for category, count in sorted(blocker_category_counts(blockers).items())
+            ],
+        },
+        "claim_boundary": "openlane_preflight_report_only_not_pd_release_evidence",
+    }
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def main() -> int:
     parser = ArgumentParser(description="Check OpenLane/OpenROAD image and run-root readiness.")
     parser.add_argument(
@@ -255,7 +377,12 @@ def main() -> int:
         action="store_true",
         help="require installed pinned image and at least one run directory",
     )
+    parser.add_argument(
+        "--report",
+        help="write JSON report to this path (default: normal or release mode report path)",
+    )
     args = parser.parse_args()
+    report_path = Path(args.report) if args.report else (RELEASE_REPORT if args.release else REPORT)
 
     manifest = yaml.safe_load(MANIFEST.read_text())
     runner = manifest.get("runner", {}) if isinstance(manifest, dict) else {}
@@ -309,20 +436,52 @@ def main() -> int:
             )
 
     if failures:
+        write_report(
+            report_path,
+            "fail",
+            failures,
+            blockers,
+            release=args.release,
+            image=image,
+            digest_pin=digest_pin,
+            manifest=manifest if isinstance(manifest, dict) else {},
+        )
         print("OpenLane run preflight failed:")
         for failure in failures:
             print(f"  - {failure}")
         return 1
 
     if blockers:
+        write_report(
+            report_path,
+            "blocked",
+            failures,
+            blockers,
+            release=args.release,
+            image=image,
+            digest_pin=digest_pin,
+            manifest=manifest if isinstance(manifest, dict) else {},
+        )
+        print("STATUS: BLOCKED openlane_run_preflight")
         print("OpenLane run preflight blockers:")
         for blocker in blockers:
             print(f"  - {blocker}")
         if args.release:
-            return 1
+            return 2
         print("OpenLane configs are present; run/image evidence is still blocked.")
         return 0
 
+    write_report(
+        report_path,
+        "pass",
+        failures,
+        blockers,
+        release=args.release,
+        image=image,
+        digest_pin=digest_pin,
+        manifest=manifest if isinstance(manifest, dict) else {},
+    )
+    print("STATUS: PASS openlane_run_preflight")
     print("OpenLane run preflight passed.")
     return 0
 

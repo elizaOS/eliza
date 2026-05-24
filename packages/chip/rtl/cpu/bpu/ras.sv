@@ -49,6 +49,8 @@ module e1_bpu_ras (
     input  logic [VADDR_W-1:0]     commit_push_addr,
     input  logic                   commit_pop,
 
+    input  logic                   flush,
+
     // Speculative-state restore on misprediction.
     input  logic                   restore_valid,
     input  logic [RAS_IDX_W:0]     restore_top,
@@ -58,6 +60,11 @@ module e1_bpu_ras (
     // PMU strobes
     output logic                   pmu_overflow,
     output logic                   pmu_underflow
+`ifdef FORMAL
+    ,
+    output logic [RAS_IDX_W:0]     formal_spec_sp,
+    output logic [$clog2(RAS_ARCH_ENTRIES+1)-1:0] formal_arch_sp
+`endif
 );
 
     typedef struct packed {
@@ -76,6 +83,11 @@ module e1_bpu_ras (
     // Pointers point to the slot one past the top of stack (write index).
     logic [RAS_IDX_W:0] spec_sp_q;
     logic [$clog2(RAS_ARCH_ENTRIES+1)-1:0] arch_sp_q;
+
+`ifdef FORMAL
+    assign formal_spec_sp = spec_sp_q;
+    assign formal_arch_sp = arch_sp_q;
+`endif
 
     logic spec_full;
     logic spec_empty;
@@ -132,7 +144,11 @@ module e1_bpu_ras (
     end
 
     always_comb begin
-        if (spec_empty) begin
+        if (spec_empty && arch_sp_q != '0) begin
+            spec_top_addr  = arch_stack_q[arch_sp_top_rdaddr].addr;
+            spec_top_valid = arch_stack_q[arch_sp_top_rdaddr].valid;
+            spec_top_idx   = '0;
+        end else if (spec_empty) begin
             spec_top_addr  = '0;
             spec_top_valid = 1'b0;
             spec_top_idx   = '0;
@@ -159,13 +175,49 @@ module e1_bpu_ras (
             pmu_overflow  <= 1'b0;
             pmu_underflow <= 1'b0;
 
+            if (flush) begin
+                spec_sp_q <= '0;
+                arch_sp_q <= '0;
+                for (int unsigned i = 0; i < RAS_SPEC_ENTRIES; i++) begin
+                    spec_stack_q[i] <= '0;
+                end
+                for (int unsigned i = 0; i < RAS_ARCH_ENTRIES; i++) begin
+                    arch_stack_q[i] <= '0;
+                end
+            end else begin
             // Resolver-driven restore wins over the prediction path because
-            // a misprediction implies the speculative state was wrong.
+            // a misprediction implies the speculative state was wrong. A
+            // resolved call still has to seed the restored speculative stack
+            // with its committed return address; otherwise a call redirect
+            // trains architectural state but leaves the next return with an
+            // empty or stale speculative top.
             if (restore_valid) begin
-                spec_sp_q <= restore_top;
+                if (commit_push && !commit_pop &&
+                    restore_top != RAS_SPEC_ENTRIES[RAS_IDX_W:0]) begin
+                    spec_sp_q <= restore_top + 1'b1;
+                end else if (commit_pop && !commit_push && restore_top != '0) begin
+                    spec_sp_q <= restore_top - 1'b1;
+                end else begin
+                    spec_sp_q <= restore_top;
+                end
                 if (restore_top != '0 && restore_entry_valid) begin
                     spec_stack_q[restore_top[RAS_IDX_W-1:0] - 1'b1] <=
                         spec_restore_entry_n;
+                end
+                if (commit_push && !commit_pop) begin
+                    if (restore_top == RAS_SPEC_ENTRIES[RAS_IDX_W:0]) begin
+                        spec_stack_q[RAS_SPEC_ENTRIES-1].ovf <=
+                            spec_stack_q[RAS_SPEC_ENTRIES-1].ovf + 1'b1;
+                        pmu_overflow <= 1'b1;
+                    end else begin
+                        spec_stack_q[restore_top[RAS_IDX_W-1:0]] <= arch_push_entry_n;
+                    end
+                end else if (commit_pop && !commit_push) begin
+                    if (restore_top == '0) begin
+                        pmu_underflow <= 1'b1;
+                    end else begin
+                        spec_stack_q[restore_top[RAS_IDX_W-1:0] - 1'b1] <= spec_pop_entry_n;
+                    end
                 end
             end else begin
                 // Push and pop are mutually exclusive in a single cycle for a
@@ -186,7 +238,9 @@ module e1_bpu_ras (
                     end
                 end else if (spec_pop && !spec_push) begin
                     if (spec_empty) begin
-                        pmu_underflow <= 1'b1;
+                        if (arch_sp_q == '0) begin
+                            pmu_underflow <= 1'b1;
+                        end
                     end else if (spec_top_entry.ovf != '0) begin
                         spec_stack_q[spec_top_rdaddr] <= spec_pop_ovf_entry_n;
                     end else begin
@@ -218,6 +272,7 @@ module e1_bpu_ras (
                     arch_stack_q[arch_sp_top_rdaddr] <= arch_pop_entry_n;
                     arch_sp_q <= arch_sp_q - 1'b1;
                 end
+            end
             end
         end
     end

@@ -19,10 +19,13 @@ REPO_REL_E1_DIR = Path("packages/chip/board/kicad/e1-phone")
 DEFAULT_BOARD = REPO_REL_E1_DIR / "pcb/e1-phone-mainboard-concept.kicad_pcb"
 DEFAULT_BURNDOWN = REPO_REL_E1_DIR / "routed-layout-si-drc-burndown-2026-05-22.yaml"
 DEFAULT_REPORT = REPO_REL_E1_DIR / "kicad-route-readiness-inventory-2026-05-22.yaml"
+DEFAULT_DEVELOPMENT_INTAKE = REPO_REL_E1_DIR / "routed-development-board-intake-2026-05-22.yaml"
+DEFAULT_REAL_FOOTPRINT_BINDING = (
+    REPO_REL_E1_DIR / "real-footprint-development-board-binding-2026-05-22.yaml"
+)
 
 PLACEHOLDER_MARKERS = (
     "placeholder",
-    "non-release",
     "not_fabrication",
     "replace with supplier land pattern",
 )
@@ -37,14 +40,11 @@ def read_text(path: Path) -> str:
 
 
 def extract_blocks(text: str, head: str) -> list[str]:
-    """Extract top-level S-expression blocks beginning with two-space head."""
-    marker = f"  ({head}"
+    """Extract S-expression blocks beginning with a line-start head."""
     blocks: list[str] = []
-    start = 0
-    while True:
-        idx = text.find(marker, start)
-        if idx == -1:
-            return blocks
+    matches = list(re.finditer(rf"(?m)^\s*\({re.escape(head)}", text))
+    for match in matches:
+        idx = match.start()
         depth = 0
         end = idx
         in_string = False
@@ -70,7 +70,7 @@ def extract_blocks(text: str, head: str) -> list[str]:
                         break
             end += 1
         blocks.append(text[idx:end])
-        start = end
+    return blocks
 
 
 def quoted_after(pattern: str, text: str) -> str | None:
@@ -147,12 +147,39 @@ def flatten_exact_nets(exact_nets: dict[str, Any]) -> list[str]:
     return nets
 
 
-def domain_inventory(burndown: dict[str, Any], board_nets: set[str]) -> list[dict[str, Any]]:
+def load_development_aliases(root: Path, intake_path: Path) -> dict[str, str]:
+    if not intake_path.is_file():
+        return {}
+    data = yaml.safe_load(read_text(intake_path))
+    if not isinstance(data, dict):
+        return {}
+    aliases = data.get("net_aliases")
+    if not isinstance(aliases, dict):
+        coverage = data.get("coverage", {})
+        aliases = coverage.get("alias_map", {}) if isinstance(coverage, dict) else {}
+    if not isinstance(aliases, dict):
+        return {}
+    return {str(key): str(value) for key, value in aliases.items() if key and value}
+
+
+def domain_inventory(
+    burndown: dict[str, Any], board_nets: set[str], net_aliases: dict[str, str]
+) -> list[dict[str, Any]]:
     domains = []
     for domain in burndown.get("route_domains", []):
         exact_nets = sorted(set(flatten_exact_nets(domain.get("exact_nets", {}))))
-        present = [net for net in exact_nets if net in board_nets]
-        missing = [net for net in exact_nets if net not in board_nets]
+        present = []
+        missing = []
+        alias_satisfied = []
+        for net in exact_nets:
+            alias = net_aliases.get(net)
+            if net in board_nets:
+                present.append(net)
+            elif alias and alias in board_nets:
+                present.append(net)
+                alias_satisfied.append({"required_net": net, "board_net": alias})
+            else:
+                missing.append(net)
         domains.append(
             {
                 "id": domain["id"],
@@ -162,6 +189,8 @@ def domain_inventory(burndown: dict[str, Any], board_nets: set[str]) -> list[dic
                 "exact_nets_present_count": len(present),
                 "exact_nets_missing_count": len(missing),
                 "missing_exact_nets": missing,
+                "alias_satisfied_exact_net_count": len(alias_satisfied),
+                "alias_satisfied_exact_nets": alias_satisfied,
                 "source_status": domain.get("status"),
                 "route_execution_ready": False,
             }
@@ -203,6 +232,83 @@ def resolve_repo_path(root: Path, e1_dir: Path, rel_path: str) -> Path:
     return e1_dir / path
 
 
+def development_route_snapshot(root: Path, intake_path: Path) -> dict[str, Any]:
+    if not intake_path.is_file():
+        return {
+            "present": False,
+            "release_credit": False,
+            "status": "missing_development_route_snapshot",
+        }
+    intake = yaml.safe_load(read_text(intake_path))
+    if not isinstance(intake, dict):
+        return {
+            "present": False,
+            "release_credit": False,
+            "status": "invalid_development_route_snapshot",
+        }
+    board_file = root / "packages/chip" / str(intake["development_board"])
+    board = board_inventory(read_text(board_file)) if board_file.is_file() else {}
+    return {
+        "present": board_file.is_file(),
+        "board_file": str(board_file.relative_to(root)),
+        "intake": str(intake_path.relative_to(root)),
+        "status": intake.get("status"),
+        "evidence_class": intake.get("evidence_class"),
+        "route_count": intake.get("route_count", 0),
+        "segment_count": board.get("segment_count", 0),
+        "intake_segment_count": intake.get("segment_count", 0),
+        "footprint_count": board.get("footprint_count", 0),
+        "via_count": board.get("via_count", 0),
+        "missing_nets": intake.get("missing_nets", []),
+        "release_credit": False,
+        "reason_not_release": "development_routing_visualization_not_release",
+    }
+
+
+def real_footprint_development_snapshot(root: Path, binding_path: Path) -> dict[str, Any]:
+    if not binding_path.is_file():
+        return {
+            "present": False,
+            "release_credit": False,
+            "status": "missing_real_footprint_development_binding",
+        }
+    binding = yaml.safe_load(read_text(binding_path))
+    if not isinstance(binding, dict):
+        return {
+            "present": False,
+            "release_credit": False,
+            "status": "invalid_real_footprint_development_binding",
+        }
+    board_file = root / "packages/chip" / str(binding["output_board"])
+    board = board_inventory(read_text(board_file)) if board_file.is_file() else {}
+    return {
+        "present": board_file.is_file(),
+        "board_file": str(board_file.relative_to(root)),
+        "binding": str(binding_path.relative_to(root)),
+        "status": binding.get("status"),
+        "evidence_class": "real_footprint_development_board_not_release",
+        "footprint_count": board.get("footprint_count", 0),
+        "placeholder_footprint_count": board.get("placeholder_footprint_count", 0),
+        "remaining_placeholder_marker_count": binding.get("remaining_placeholder_marker_count"),
+        "bound_footprint_count": binding.get("bound_footprint_count"),
+        "unbound_footprint_count": binding.get("unbound_footprint_count"),
+        "development_bound_marker_count": binding.get("development_bound_marker_count"),
+        "embedded_library_body_count": binding.get("embedded_library_body_count"),
+        "assigned_pad_net_count": binding.get("assigned_pad_net_count"),
+        "unassigned_pad_count": binding.get("unassigned_pad_count"),
+        "unassigned_pad_disposition_counts": binding.get("unassigned_pad_disposition_counts", {}),
+        "segment_count": board.get("segment_count", 0),
+        "binding_segment_count": binding.get("segment_count", 0),
+        "via_count": board.get("via_count", 0),
+        "binding_via_count": binding.get("via_count", 0),
+        "release_credit": False,
+        "reason_not_release": (
+            "real_footprint_development_board_uses_local_development_patterns_pending_"
+            "supplier_land_patterns_drc_erc_and_release_approval"
+        ),
+    }
+
+
 def build_report(
     root: Path, board_path: Path, burndown_path: Path, report_path: Path
 ) -> dict[str, Any]:
@@ -210,8 +316,13 @@ def build_report(
     burndown = yaml.safe_load(read_text(burndown_path))
     board = board_inventory(board_text)
     board_nets = set(board["net_names"])
-    domains = domain_inventory(burndown, board_nets)
+    net_aliases = load_development_aliases(root, root / DEFAULT_DEVELOPMENT_INTAKE)
+    domains = domain_inventory(burndown, board_nets, net_aliases)
     outputs = required_output_inventory(root, burndown, board_path.parents[1])
+    development_snapshot = development_route_snapshot(root, root / DEFAULT_DEVELOPMENT_INTAKE)
+    real_footprint_snapshot = real_footprint_development_snapshot(
+        root, root / DEFAULT_REAL_FOOTPRINT_BINDING
+    )
 
     unresolved_domain_count = sum(1 for domain in domains if domain["exact_nets_missing_count"])
     missing_output_count = sum(1 for output in outputs if not output["present"])
@@ -248,6 +359,9 @@ def build_report(
             for key, value in board.items()
             if key not in {"net_names", "placeholder_footprints"}
         },
+        "development_route_snapshot": development_snapshot,
+        "development_real_footprint_snapshot": real_footprint_snapshot,
+        "development_route_net_aliases": net_aliases,
         "placeholder_footprints": board["placeholder_footprints"],
         "route_domain_net_inventory": domains,
         "critical_net_summary": {
@@ -269,7 +383,17 @@ def build_report(
         "summary": {
             "segments_present": board["segment_count"] > 0,
             "filled_zones_present": board["filled_zone_count"] > 0,
+            "production_concept_placeholder_footprints_present": (
+                board["placeholder_footprint_count"] > 0
+            ),
             "placeholder_footprints_present": board["placeholder_footprint_count"] > 0,
+            "development_real_footprints_present": real_footprint_snapshot["present"],
+            "development_remaining_placeholder_marker_count": (
+                real_footprint_snapshot.get("remaining_placeholder_marker_count")
+            ),
+            "development_placeholder_footprints_present": (
+                real_footprint_snapshot.get("placeholder_footprint_count", 0) > 0
+            ),
             "missing_required_output_count": missing_output_count,
             "routing_evidence_absent_or_incomplete": routing_evidence_absent,
             "release_state": "blocked_fail_closed",

@@ -1,0 +1,37 @@
+{
+  "profile": "unitree-h1",
+  "label": "turn right",
+  "task_id": "turn_right",
+  "policy_source": "sb3_smoke",
+  "steps_requested": 40,
+  "steps_executed": 40,
+  "terminated": false,
+  "truncated": true,
+  "first_done_step": 40,
+  "done_reason": "truncated",
+  "fall_threshold": 0.612,
+  "torso_z": {
+    "min": 0.8020039036385864,
+    "max": 0.9792107697969665,
+    "final": 0.8020039036385864,
+    "mean": 0.9173981703426402
+  },
+  "upright_proj": {
+    "min": 0.7733055322016202,
+    "max": 0.9999914408223328,
+    "final": 0.7733055322016202,
+    "mean": 0.9476833313359947
+  },
+  "reward": {
+    "min": 2.5487063911384302,
+    "max": 3.387115696802648,
+    "final": 2.5487063911384302,
+    "mean": 3.0766374076815723
+  },
+  "rollout_ok": true,
+  "checks": {
+    "no_termination": true,
+    "torso_above_fall_threshold": true,
+    "upright_positive": true
+  }
+}

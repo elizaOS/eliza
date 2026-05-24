@@ -1,0 +1,29 @@
+; Generated-AP transcript fio job.
+;
+; The board-level UFS contention profile lives under benchmarks/memory/fio.
+; This no-disk initramfs job keeps the command target-runnable on the
+; generated AP before real storage evidence exists.
+
+[global]
+ioengine=sync
+runtime=5
+time_based=1
+group_reporting=1
+filename=/tmp/eliza-fio-target
+size=16m
+
+[ufs-rand-read]
+rw=randread
+bs=4k
+
+[ufs-seq-read]
+rw=read
+bs=128k
+
+[ufs-rand-write]
+rw=randwrite
+bs=4k
+
+[ufs-seq-write]
+rw=write
+bs=128k

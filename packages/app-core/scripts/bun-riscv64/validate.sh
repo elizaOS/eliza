@@ -3,12 +3,14 @@
 # Validate the Bun riscv64 patch series WITHOUT running a full build.
 #
 # Checks:
-#   1. Every *.patch + *.recipe in bun-patches/ and webkit-patches/ matches
+#   1. If dist/bun-linux-riscv64-musl.zip exists, it is newer than the current
+#      version pin and patch/recipe inputs.
+#   2. Every *.patch + *.recipe in bun-patches/ and webkit-patches/ matches
 #      the SHA256 recorded in bun-version.json:patch_series.
-#   2. Every Bun patch applies cleanly via `git apply --check` against a
+#   3. Every Bun patch applies cleanly in lexical stack order against a
 #      shallow clone of oven-sh/bun @ bun.tag.
-#   3. The WebKit patches we do have (0003) apply against the oven-sh/WebKit
-#      fork_commit; the recipe-only ones are skipped (operator must realize).
+#   4. The WebKit patches apply cleanly in lexical stack order against the
+#      oven-sh/WebKit fork_commit; the recipe-only ones are skipped.
 #
 # Outputs:
 #   - validate-report.txt under dist/ with PASS/FAIL per patch.
@@ -35,6 +37,33 @@ log "Script  : $0"
 
 VERSION_FILE="$SCRIPT_DIR/bun-version.json"
 [ -r "$VERSION_FILE" ] || fail "bun-version.json missing at $VERSION_FILE"
+DIST_ZIP="$DIST_DIR/bun-linux-riscv64-musl.zip"
+
+# ──────────────────────────────────────────────────────────────────────────
+# 1. Published artifact freshness
+# ──────────────────────────────────────────────────────────────────────────
+log "── 1. Published artifact freshness ────────────────────────────────"
+
+if [ -f "$DIST_ZIP" ]; then
+    stale_input="$(
+        find \
+            "$VERSION_FILE" \
+            "$SCRIPT_DIR/bun-patches" \
+            "$SCRIPT_DIR/webkit-patches" \
+            -type f \( -name '*.patch' -o -name '*.recipe' -o -name 'bun-version.json' \) \
+            -newer "$DIST_ZIP" \
+            -print \
+            | head -1
+    )"
+    if [ -n "$stale_input" ]; then
+        fail "dist/bun-linux-riscv64-musl.zip predates current patch-series input: ${stale_input#"$SCRIPT_DIR/"}"
+    fi
+    log "  ok  dist/bun-linux-riscv64-musl.zip is current relative to version and patch inputs"
+else
+    log "  note dist/bun-linux-riscv64-musl.zip is absent; patch validation will still run"
+fi
+
+log ""
 
 # Use bun if available, fall back to python3 for JSON parsing.
 json_get() {
@@ -62,9 +91,9 @@ log "WebKit  : $WEBKIT_COMMIT"
 log ""
 
 # ──────────────────────────────────────────────────────────────────────────
-# 1. SHA256 check
+# 2. SHA256 check
 # ──────────────────────────────────────────────────────────────────────────
-log "── 1. SHA256 integrity ─────────────────────────────────────────────"
+log "── 2. SHA256 integrity ─────────────────────────────────────────────"
 
 check_sha() {
     local path="$1" expected="$2"
@@ -115,10 +144,39 @@ fi
 
 log ""
 
+declare -A RECORDED_PATCH_PATHS=()
+if command -v bun >/dev/null 2>&1; then
+    while IFS= read -r path; do
+        RECORDED_PATCH_PATHS["$path"]=1
+    done < <(bun -e "
+        const v = JSON.parse(require('fs').readFileSync('$VERSION_FILE','utf8'));
+        for (const k of Object.keys(v.patch_series.bun_patches)) console.log('bun-patches/'+k);
+        for (const k of Object.keys(v.patch_series.webkit_patches)) console.log('webkit-patches/'+k);
+        for (const k of Object.keys(v.patch_series.webkit_recipes)) console.log('webkit-patches/'+k);
+    ")
+else
+    while IFS= read -r path; do
+        RECORDED_PATCH_PATHS["$path"]=1
+    done < <(python3 -c "
+import json
+v = json.load(open('$VERSION_FILE'))
+for k in v['patch_series']['bun_patches']: print('bun-patches/'+k)
+for k in v['patch_series']['webkit_patches']: print('webkit-patches/'+k)
+for k in v['patch_series']['webkit_recipes']: print('webkit-patches/'+k)
+")
+fi
+for actual in "$SCRIPT_DIR"/bun-patches/*.patch "$SCRIPT_DIR"/webkit-patches/*.patch "$SCRIPT_DIR"/webkit-patches/*.recipe; do
+    [ -e "$actual" ] || continue
+    rel_path="${actual#"$SCRIPT_DIR/"}"
+    if [ -z "${RECORDED_PATCH_PATHS[$rel_path]+x}" ]; then
+        fail "unrecorded patch/recipe on disk: $rel_path"
+    fi
+done
+
 # ──────────────────────────────────────────────────────────────────────────
-# 2. Bun patches apply cleanly
+# 3. Bun patches apply cleanly
 # ──────────────────────────────────────────────────────────────────────────
-log "── 2. Bun patches applicability ────────────────────────────────────"
+log "── 3. Bun patch stack applicability ────────────────────────────────"
 
 if ! command -v git >/dev/null 2>&1; then
     fail "git not available — cannot run apply check"
@@ -136,26 +194,31 @@ else
     log "Reusing existing clone at $CLONE_DIR"
 fi
 
+git -C "$CLONE_DIR" reset --hard "$BUN_TAG" >>"$REPORT" 2>&1
+git -C "$CLONE_DIR" clean -fd >>"$REPORT" 2>&1
 for p in "$SCRIPT_DIR"/bun-patches/*.patch; do
     name="$(basename "$p")"
     if (cd "$CLONE_DIR" && git apply --check "$p") >>"$REPORT" 2>&1; then
-        log "  ok  $name applies cleanly"
+        (cd "$CLONE_DIR" && git apply "$p") >>"$REPORT" 2>&1
+        log "  ok  $name applies cleanly in stack order"
     else
-        log "  WARN $name does not apply cleanly via git apply"
-        log "       (git am --3way during real build may still succeed; see $REPORT)"
-        # Don't hard-fail — the patches use 3-way merge tolerantly in
-        # build.sh. A drift in upstream context lines is recoverable.
+        fail "$name does not apply cleanly in stack order — see $REPORT"
     fi
 done
 
 log ""
 
 # ──────────────────────────────────────────────────────────────────────────
-# 3. WebKit patches applicability
+# 4. WebKit patches applicability
 # ──────────────────────────────────────────────────────────────────────────
-log "── 3. WebKit patches applicability ─────────────────────────────────"
+log "── 4. WebKit patches applicability ─────────────────────────────────"
 
 WK_CLONE_DIR="${VALIDATE_WK_CLONE_DIR:-/tmp/bun-riscv64-validate-webkit}"
+if [ -d "$WK_CLONE_DIR/.git" ] && ! git -C "$WK_CLONE_DIR" rev-parse --verify "$WEBKIT_COMMIT^{commit}" >/dev/null 2>&1; then
+    log "Discarding incomplete WebKit clone at $WK_CLONE_DIR"
+    rm -rf "$WK_CLONE_DIR"
+fi
+
 if [ ! -d "$WK_CLONE_DIR/.git" ]; then
     log "Cloning oven-sh/WebKit @ $WEBKIT_COMMIT into $WK_CLONE_DIR (shallow)…"
     rm -rf "$WK_CLONE_DIR"
@@ -164,20 +227,30 @@ if [ ! -d "$WK_CLONE_DIR/.git" ]; then
     if ! git -C "$WK_CLONE_DIR" fetch --depth=1 --filter=blob:none origin "$WEBKIT_COMMIT" >>"$REPORT" 2>&1; then
         fail "git fetch of oven-sh/WebKit @ $WEBKIT_COMMIT failed — see $REPORT"
     fi
-    git -C "$WK_CLONE_DIR" checkout "$WEBKIT_COMMIT" >>"$REPORT" 2>&1
 else
     log "Reusing existing WebKit clone at $WK_CLONE_DIR"
 fi
 
+WK_INDEX="$WK_CLONE_DIR/.git/validate-index"
+rm -f "$WK_INDEX"
+GIT_INDEX_FILE="$WK_INDEX" git -C "$WK_CLONE_DIR" read-tree "$WEBKIT_COMMIT" >>"$REPORT" 2>&1
 for p in "$SCRIPT_DIR"/webkit-patches/*.patch; do
     [ -f "$p" ] || continue
     name="$(basename "$p")"
-    if (cd "$WK_CLONE_DIR" && git apply --check "$p") >>"$REPORT" 2>&1; then
-        log "  ok  $name applies cleanly"
+    case "$name" in
+        0003-disable-dfg-ftl-on-riscv64.patch)
+            log "  skip $name (C_LOOP build skips DFG/FTL default guard)"
+            continue
+            ;;
+    esac
+    if GIT_INDEX_FILE="$WK_INDEX" git -C "$WK_CLONE_DIR" apply --cached --check "$p" >>"$REPORT" 2>&1; then
+        GIT_INDEX_FILE="$WK_INDEX" git -C "$WK_CLONE_DIR" apply --cached "$p" >>"$REPORT" 2>&1
+        log "  ok  $name applies cleanly in stack order"
     else
-        log "  WARN $name does not apply cleanly (may be a no-op against vanilla — patch comment explains)"
+        fail "$name does not apply cleanly in stack order — see $REPORT"
     fi
 done
+rm -f "$WK_INDEX"
 
 # Recipes: just announce them.
 for r in "$SCRIPT_DIR"/webkit-patches/*.recipe; do

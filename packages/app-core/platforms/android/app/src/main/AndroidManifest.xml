@@ -69,12 +69,12 @@
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
 <service
-            android:name="ai.elizaos.app.GatewayConnectionService"
+            android:name="ai.milady.milady.GatewayConnectionService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
     
         <service
-            android:name="ai.elizaos.app.ElizaAgentService"
+            android:name="ai.milady.milady.ElizaAgentService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -83,7 +83,7 @@
         </service>
     
         <activity
-            android:name="ai.elizaos.app.ElizaDialActivity"
+            android:name="ai.milady.milady.ElizaDialActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -98,7 +98,7 @@
         </activity>
     
         <activity
-            android:name="ai.elizaos.app.ElizaAssistActivity"
+            android:name="ai.milady.milady.ElizaAssistActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -112,7 +112,7 @@
         </activity>
     
         <service
-            android:name="ai.elizaos.app.ElizaAccessibilityService"
+            android:name="ai.milady.milady.ElizaAccessibilityService"
             android:exported="true"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
@@ -124,7 +124,7 @@
         </service>
     
         <service
-            android:name="ai.elizaos.app.ElizaNotificationListenerService"
+            android:name="ai.milady.milady.ElizaNotificationListenerService"
             android:exported="true"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
@@ -133,7 +133,7 @@
         </service>
     
         <service
-            android:name="ai.elizaos.app.ElizaInCallService"
+            android:name="ai.milady.milady.ElizaInCallService"
             android:exported="true"
             android:permission="android.permission.BIND_INCALL_SERVICE">
             <meta-data
@@ -148,7 +148,7 @@
         </service>
     
         <receiver
-            android:name="ai.elizaos.app.ElizaSmsReceiver"
+            android:name="ai.milady.milady.ElizaSmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
             <intent-filter>
@@ -157,7 +157,7 @@
         </receiver>
     
         <receiver
-            android:name="ai.elizaos.app.ElizaMmsReceiver"
+            android:name="ai.milady.milady.ElizaMmsReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_WAP_PUSH">
             <intent-filter>
@@ -167,11 +167,11 @@
         </receiver>
     
         <service
-            android:name="ai.elizaos.app.ElizaSmsGatewayService"
+            android:name="ai.milady.milady.ElizaSmsGatewayService"
             android:exported="false" />
     
         <service
-            android:name="ai.elizaos.app.ElizaRespondViaMessageService"
+            android:name="ai.milady.milady.ElizaRespondViaMessageService"
             android:exported="true"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE">
             <intent-filter>
@@ -184,7 +184,7 @@
         </service>
     
         <activity
-            android:name="ai.elizaos.app.ElizaSmsComposeActivity"
+            android:name="ai.milady.milady.ElizaSmsComposeActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -196,29 +196,19 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </activity>
-
+    
         <receiver
-            android:name="ai.elizaos.app.ElizaBootReceiver"
+            android:name="ai.milady.milady.ElizaBootReceiver"
             android:directBootAware="true"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
-            <!--
-                ElizaBootReceiver.onReceive also handles MY_PACKAGE_REPLACED to
-                re-arm the agent service + WorkManager after a /system/priv-app
-                or Play update. The action is only delivered when registered in
-                its own filter; the BOOT_COMPLETED filter above does not cover
-                it. Without this the package-replaced re-arm branch is dead.
-            -->
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
         </receiver>
     
         <activity
-            android:name="ai.elizaos.app.ElizaBrowserActivity"
+            android:name="ai.milady.milady.ElizaBrowserActivity"
             android:exported="true"
             android:theme="@style/AppTheme.NoActionBar">
             <intent-filter>
@@ -235,7 +225,7 @@
         </activity>
     
         <activity
-            android:name="ai.elizaos.app.ElizaContactsActivity"
+            android:name="ai.milady.milady.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
             android:theme="@style/AppTheme.NoActionBar">
@@ -259,7 +249,7 @@
         </activity>
     
         <activity
-            android:name="ai.elizaos.app.ElizaCameraActivity"
+            android:name="ai.milady.milady.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
             android:theme="@style/AppTheme.NoActionBar">
@@ -282,7 +272,7 @@
         </activity>
     
         <activity
-            android:name="ai.elizaos.app.ElizaClockActivity"
+            android:name="ai.milady.milady.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
             android:theme="@style/AppTheme.NoActionBar">
@@ -313,7 +303,7 @@
         </activity>
     
         <activity
-            android:name="ai.elizaos.app.ElizaCalendarActivity"
+            android:name="ai.milady.milady.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
             android:theme="@style/AppTheme.NoActionBar">

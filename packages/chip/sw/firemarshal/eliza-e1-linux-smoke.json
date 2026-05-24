@@ -3,11 +3,14 @@
   "base": "br-base.json",
   "linux-config": "eliza-e1-linux-smoke-kfrag",
   "overlay": "eliza-e1-linux-smoke-overlay",
+  "host-init": "build-hwprobe.sh",
   "files": [
-    ["eliza-e1-linux-smoke.sh", "/usr/bin/eliza-e1-linux-smoke"]
+    ["eliza-e1-linux-smoke.sh", "/usr/bin/eliza-e1-linux-smoke"],
+    ["eliza-riscv-hwprobe", "/usr/bin/eliza-riscv-hwprobe"],
+    ["e1-npu-ml-smoke", "/usr/bin/e1-npu-ml-smoke"]
   ],
   "command": "/usr/bin/eliza-e1-linux-smoke",
   "firmware": {
-    "opensbi-build-args": "FW_OPTIONS=1"
+    "opensbi-build-args": "FW_OPTIONS=0 FW_PAYLOAD_FDT_ADDR=0x88000000"
   }
 }

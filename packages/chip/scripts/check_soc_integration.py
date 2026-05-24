@@ -45,6 +45,9 @@ EXPECTED_BOOT_TESTS = (
 EXPECTED_CROSS_TESTS = (
     "bpu_pmu_strobe_increments_zihpm_counter",
     "bpu_resolve_does_not_increment_unrelated_event",
+    "bpu_vector_redirect_lanes_are_soc_visible",
+    "bpu_fetch_stream_backpressures_soc_ftq_pop",
+    "bpu_fetch_stream_drives_soc_l1i_demand_lanes",
     "cluster_lite_tieoff_drives_axi_to_quiet",
     "iommu_fault_count_initially_zero",
     "pmc_mailbox_roundtrips_telemetry",
@@ -90,6 +93,8 @@ def verilator_lint() -> int:
         )
 
     sources = [
+        "rtl/top/e1_topology_pkg.sv",
+        "rtl/top/e1_soc_pkg.sv",
         "rtl/interconnect/axi4/e1_axi4_pkg.sv",
         "rtl/cache/cache_pkg.sv",
         "rtl/cache/ftq_to_l1i_pkg.sv",
@@ -102,6 +107,7 @@ def verilator_lint() -> int:
         "rtl/cpu/bpu/bpu_csr.sv",
         "rtl/cpu/bpu/ftb.sv",
         "rtl/cpu/bpu/ftq.sv",
+        "rtl/cpu/bpu/h2p_corrector.sv",
         "rtl/cpu/bpu/ittage.sv",
         "rtl/cpu/bpu/loop_predictor.sv",
         "rtl/cpu/bpu/ras.sv",
@@ -110,6 +116,8 @@ def verilator_lint() -> int:
         "rtl/cpu/bpu/tage_table.sv",
         "rtl/cpu/bpu/uftb.sv",
         "rtl/cpu/bpu/bpu_top.sv",
+        "rtl/cpu/bpu/ftq_to_fetch_stream.sv",
+        "rtl/cpu/bpu/fetch_stream_to_l1i_demand.sv",
         "rtl/cpu/bpu/ftq_to_l1i_shim.sv",
         "rtl/cpu/csr/bpu_to_zihpm_remap.sv",
         "rtl/cpu/cluster/e1_cluster_top.sv",
@@ -127,6 +135,10 @@ def verilator_lint() -> int:
         "rtl/npu/e1_npu.sv",
         "rtl/display/e1_display.sv",
         "rtl/top/adapters/e1_slc_to_chi_line_shim.sv",
+        "rtl/top/adapters/e1_axi4_width_converter.sv",
+        "rtl/peripherals/e1_mmio_decode.sv",
+        "rtl/peripherals/e1_clint.sv",
+        "rtl/memory/e1_behavioral_dram.sv",
         "rtl/top/e1_soc_integrated.sv",
         "verify/cocotb/integration/e1_soc_integrated_tb.sv",
     ]

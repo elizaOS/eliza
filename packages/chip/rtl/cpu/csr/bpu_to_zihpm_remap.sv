@@ -1,6 +1,6 @@
 // bpu_to_zihpm_remap.sv  —  BPU PMU bundle to Zihpm event-bus adapter.
 //
-// The BPU agent emits a 20-entry `pmu_event_e` stream (5-bit ID) declared in
+// The BPU agent emits a 26-entry `pmu_event_e` stream (5-bit ID) declared in
 // `rtl/cpu/bpu/bpu_pkg.sv`. The CSR-visible Zihpm event encoding declared in
 // `rtl/cpu/csr/zihpm.sv` is the authoritative system contract (OoO/CSR is
 // canonical for the cross-domain PMU surface). The two enumerations differ
@@ -8,9 +8,10 @@
 //
 //   1. EVT_NONE = 0 in Zihpm. BPU IDs start at 0 with PMU_BR_PRED, so each
 //      BPU event must be shifted by +1 before driving the Zihpm event bus.
-//   2. Within the branch block, the BPU enum places PMU_BR_MISP at id=1 and
-//      PMU_BR_TAKEN at id=2; the Zihpm enum places EVT_BR_TAKEN at id=2 and
-//      EVT_BR_MISP at id=3. The remap rewires by *name*, not by raw id.
+//   2. Within the branch block, the BPU enum places PMU_BR_TAKEN at id=1 and
+//      PMU_BR_MISP at id=2; the Zihpm enum places EVT_BR_TAKEN at id=2 and
+//      EVT_BR_MISP at id=3 after EVT_NONE. The remap rewires by *name*, not
+//      by raw id.
 //   3. The BPU enum names the FTB miss event `PMU_FTB_MISS`. The Zihpm enum
 //      calls the same architectural event `EVT_BTB_MISS` (BTB is the
 //      published name in the RVA23 manual). The remap binds these together.
@@ -42,7 +43,7 @@ module bpu_to_zihpm_remap
     parameter int unsigned EVT_BUS_W = 256
 ) (
     // BPU PMU strobes: bit `i` asserted means BPU event id `i` fired this
-    // cycle (i.e. PMU_BR_PRED when i==0, PMU_BR_MISP when i==1, etc.)
+    // cycle (i.e. PMU_BR_PRED when i==0, PMU_BR_TAKEN when i==1, etc.)
     input  logic [PMU_EVENTS-1:0]      bpu_strobes_i,
 
     // Zihpm event bus. Only the bits the BPU domain owns are driven; all
@@ -52,11 +53,11 @@ module bpu_to_zihpm_remap
 );
 
     // Compile-time sanity: the BPU and Zihpm enums must each enumerate
-    // PMU_EVENTS=20 named events in the branch block.
+    // PMU_EVENTS=26 named events in the branch block.
     initial begin
         // synthesis translate_off
-        if (PMU_EVENTS != 32'd20) begin
-            $fatal(1, "bpu_to_zihpm_remap: PMU_EVENTS=%0d, expected 20", PMU_EVENTS);
+        if (PMU_EVENTS != 32'd26) begin
+            $fatal(1, "bpu_to_zihpm_remap: PMU_EVENTS=%0d, expected 26", PMU_EVENTS);
         end
         // synthesis translate_on
     end
@@ -86,6 +87,14 @@ module bpu_to_zihpm_remap
         zihpm_evbus_o[EVT_TAGE_ALLOC]     = bpu_strobes_i[PMU_TAGE_ALLOC];
         zihpm_evbus_o[EVT_LOOP_HIT]       = bpu_strobes_i[PMU_LOOP_HIT];
         zihpm_evbus_o[EVT_SC_OVERRIDE]    = bpu_strobes_i[PMU_SC_OVERRIDE];
+        zihpm_evbus_o[EVT_H2P_OVERRIDE]   = bpu_strobes_i[PMU_H2P_OVERRIDE];
+        zihpm_evbus_o[EVT_L2_BTB_HIT]     = bpu_strobes_i[PMU_L2_FTB_HIT];
+        zihpm_evbus_o[EVT_L2_BTB_MISS]    = bpu_strobes_i[PMU_L2_FTB_MISS];
+        zihpm_evbus_o[EVT_TWO_AHEAD_REDIRECT] =
+            bpu_strobes_i[PMU_TWO_AHEAD_REDIRECT];
+        zihpm_evbus_o[EVT_LOCAL_DIR_OVERRIDE] =
+            bpu_strobes_i[PMU_LOCAL_DIR_OVERRIDE];
+        zihpm_evbus_o[EVT_BPU_META_TRAIN] = bpu_strobes_i[PMU_META_TRAIN];
     end
 
 endmodule

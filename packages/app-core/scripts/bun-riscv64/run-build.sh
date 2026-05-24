@@ -93,6 +93,7 @@ fi
 
 # ─── Run the cross-compile ─────────────────────────────────────────────────
 mkdir -p "$HERE/dist"
+mkdir -p "$HERE/dist/src-cache"
 
 DOCKER_RUN_ARGS=(
     --rm
@@ -101,6 +102,7 @@ DOCKER_RUN_ARGS=(
     -v "$HERE/bun-patches:/opt/bun-patches:ro"
     -v "$HERE/webkit-patches:/opt/webkit-patches:ro"
     -v "$HERE/dist:/artifact"
+    -v "$HERE/dist/src-cache:/work/src"
 )
 
 if [ -n "$JOBS" ]; then

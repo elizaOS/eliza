@@ -1,0 +1,39 @@
+{
+  "regime": "brax_ppo",
+  "curriculum_version": 1,
+  "pca_dim": 32,
+  "active_tasks": [
+    "stand_up",
+    "sit_down",
+    "walk_forward",
+    "walk_backward",
+    "sidestep_left",
+    "sidestep_right",
+    "turn_left",
+    "turn_right",
+    "turn_around",
+    "look_up",
+    "look_down"
+  ],
+  "obs_dim": 277,
+  "action_dim": 24,
+  "total_steps": 250000000,
+  "wall_clock_s": 6807.1,
+  "best_reward": 8.52096176147461,
+  "seed": 0,
+  "ckpt": "final_params",
+  "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "policy_hidden_layer_sizes": [
+    512,
+    256,
+    128
+  ],
+  "value_hidden_layer_sizes": [
+    512,
+    256,
+    128
+  ],
+  "normalize_observations": true,
+  "proprio_dim": 255,
+  "text_dim": 22
+}

@@ -1,19 +1,21 @@
-"""Text-conditioned PPO trainer for the AiNex curriculum.
+"""Text-conditioned trainer for robot curricula.
 
-Two regimes:
-  - `--smoke`  : CPU-friendly stable-baselines3 PPO on
-                 `TextConditionedJoystickEnv` (uses python-mujoco, not MJX).
+Three regimes:
+  - default    : Alberta streaming continual learning on the profile-driven
+                 MuJoCo env. This is the production default for continual
+                 task sequences and writes `regime="alberta_streaming"`.
+  - `--smoke`  : CPU-friendly stable-baselines3 PPO on the profile-driven
+                 MuJoCo text-conditioned env (uses python-mujoco, not MJX).
                  Default 30k env steps, runs in ~3-5 minutes on a laptop.
                  Saves checkpoint to `checkpoints/text_conditioned_smoke/`.
 
-  - `--full`   : (recommended on Nebius / 5080) MJX-Brax PPO on the same
-                 logical env via a thin Brax wrapper. 150M env steps,
-                 ~1-3 hours wall-clock on a 16 GB GPU per the Playground
-                 research surveys.
+  - `--full`   : legacy ASIMOV-1 MJX-Brax PPO baseline job package. Use this
+                 for comparison evidence only; Alberta is the default
+                 production continual-learning path.
 
 The checkpoint format is unified at the manifest/policy wrapper boundary:
-smoke SB3 runs write `policy.zip`, ASIMOV full MJX/Brax runs write
-`policy_brax.pkl`, and both write `manifest.json` for
+Alberta runs write `alberta_policy.npz`, smoke SB3 runs write `policy.zip`,
+ASIMOV full MJX/Brax runs write `policy_brax.pkl`, and all write `manifest.json` for
 `eliza_robot.rl.text_conditioned.policy`.
 """
 
@@ -28,42 +30,55 @@ from pathlib import Path
 import numpy as np
 
 from eliza_robot.curriculum.loader import load_curriculum
-from eliza_robot.rl.text_conditioned.encoder import build_task_embeddings
-from eliza_robot.rl.text_conditioned.env import (
-    TextConditionedJoystickEnv,
-    TextEnvConfig,
+from eliza_robot.profiles.schema import load_profile
+from eliza_robot.rl.text_conditioned.profile_env import (
+    ProfileEnvConfig,
+    make_text_conditioned_env,
 )
 from eliza_robot.sim.mujoco.asimov_training import (
     asimov_full_training_job_spec,
-    asimov_text_conditioned_manifest_template,
 )
 
+PKG_ROOT = Path(__file__).resolve().parents[2].parent
+DEFAULT_ALBERTA_OUT = PKG_ROOT / "checkpoints" / "alberta_text_conditioned"
+DEFAULT_SMOKE_OUT = PKG_ROOT / "checkpoints" / "text_conditioned_smoke"
+DEFAULT_DRY_RUN_OUT = PKG_ROOT / "checkpoints" / "text_conditioned_dry_run"
+DEFAULT_FULL_OUT = PKG_ROOT / "checkpoints" / "asimov_1_brax_mjx_baseline"
 
-def _train_smoke(out_dir: Path, total_steps: int, seed: int = 0) -> dict:
-    """Stable-baselines3 PPO smoke run on CPU. Returns a manifest dict."""
+
+def _train_smoke(
+    out_dir: Path,
+    profile_id: str,
+    total_steps: int,
+    *,
+    seed: int = 0,
+    tasks: list[str],
+    pca_dim: int,
+    domain_rand: bool,
+) -> dict:
+    """Stable-baselines3 PPO smoke run on the profile-driven MuJoCo env."""
     from stable_baselines3 import PPO
     from stable_baselines3.common.monitor import Monitor
     from stable_baselines3.common.vec_env import DummyVecEnv
 
     out_dir.mkdir(parents=True, exist_ok=True)
-
+    profile = load_profile(profile_id)
     curriculum = load_curriculum()
-    embeddings = build_task_embeddings(curriculum=curriculum)
 
     # Stick to a small task subset for the smoke so the policy can
     # actually start producing meaningful joint targets in minutes.
-    cfg = TextEnvConfig(
+    active_tasks = tuple(tasks or ["stand_up", "walk_forward", "turn_left", "turn_right"])
+    cfg = ProfileEnvConfig(
         tier_subset=(1,),
-        include_tasks=("stand_up", "walk_forward", "turn_left", "turn_right"),
+        include_tasks=active_tasks,
         exclude_tasks=(),
-        pca_dim=32,
+        pca_dim=pca_dim,
         episode_steps=200,
+        domain_rand=domain_rand,
     )
 
-    def _make() -> TextConditionedJoystickEnv:
-        env = TextConditionedJoystickEnv(
-            config=cfg, curriculum=curriculum, embeddings=embeddings
-        )
+    def _make():
+        env = make_text_conditioned_env(profile_id, config=cfg)
         return Monitor(env)
 
     vec_env = DummyVecEnv([_make])
@@ -86,23 +101,31 @@ def _train_smoke(out_dir: Path, total_steps: int, seed: int = 0) -> dict:
         verbose=1,
     )
     print(
-        f"[smoke] PPO over {len(cfg.include_tasks)} tasks "
+        f"[smoke] {profile_id} PPO over {len(cfg.include_tasks)} tasks "
         f"(obs={vec_env.observation_space.shape}, act={vec_env.action_space.shape}), "
         f"target={total_steps} env steps"
     )
     t0 = time.time()
     model.learn(total_timesteps=total_steps, progress_bar=False)
     wall_s = time.time() - t0
+    actual_steps = int(model.num_timesteps)
     ckpt_path = out_dir / "policy.zip"
     model.save(str(ckpt_path))
     manifest = {
         "regime": "smoke_sb3_ppo",
+        "profile_id": profile_id,
+        "profile_version": profile.version,
         "curriculum_version": curriculum.version,
         "pca_dim": cfg.pca_dim,
         "active_tasks": list(cfg.include_tasks),
         "obs_dim": int(vec_env.observation_space.shape[0]),
         "action_dim": int(vec_env.action_space.shape[0]),
-        "total_steps": total_steps,
+        "output_dim": len(profile.kinematics.joints),
+        "proprio_dim": int(vec_env.observation_space.shape[0]) - cfg.pca_dim,
+        "text_dim": cfg.pca_dim,
+        "requested_total_steps": int(total_steps),
+        "total_steps": actual_steps,
+        "domain_rand": bool(domain_rand),
         "wall_clock_s": round(wall_s, 1),
         "seed": seed,
         "ckpt": str(ckpt_path.name),
@@ -111,7 +134,7 @@ def _train_smoke(out_dir: Path, total_steps: int, seed: int = 0) -> dict:
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
     print(
         f"[smoke] saved {ckpt_path.name} + manifest.json — "
-        f"{total_steps} steps in {wall_s:.1f}s"
+        f"{actual_steps} steps in {wall_s:.1f}s"
     )
     return manifest
 
@@ -119,63 +142,71 @@ def _train_smoke(out_dir: Path, total_steps: int, seed: int = 0) -> dict:
 def _write_manifest_dry_run(out_dir: Path, profile_id: str, seed: int = 0) -> dict:
     out_dir.mkdir(parents=True, exist_ok=True)
     curriculum = load_curriculum()
-    if profile_id == "asimov-1":
-        manifest = asimov_text_conditioned_manifest_template(
-            curriculum_version=curriculum.version,
+    env = make_text_conditioned_env(
+        profile_id,
+        config=ProfileEnvConfig(
+            include_tasks=("walk_forward",),
+            exclude_tasks=(),
             pca_dim=32,
-        )
-        manifest.update(
-            {
-                "regime": "dry_run",
-                "dry_run": True,
-                "seed": int(seed),
-            }
-        )
-    else:
-        manifest = {
-            "regime": "dry_run",
-            "profile_id": profile_id,
-            "curriculum_version": curriculum.version,
-            "pca_dim": 32,
-            "active_tasks": ["stand_up", "walk_forward"],
-            "obs_dim": 77,
-            "proprio_dim": 45,
-            "text_dim": 32,
-            "action_dim": 24,
-            "output_dim": 24,
-            "ckpt": "policy.zip",
-            "dry_run": True,
-            "seed": int(seed),
-        }
+            episode_steps=4,
+        ),
+    )
+    obs, _ = env.reset(seed=seed)
+    step = env.step(np.zeros(env.action_space.shape, dtype=np.float32))
+    manifest = {
+        "regime": "dry_run",
+        "profile_id": profile_id,
+        "profile_version": env.profile.version,
+        "curriculum_version": curriculum.version,
+        "pca_dim": 32,
+        "active_tasks": [task.id for task in env.active_tasks],
+        "obs_dim": int(env.observation_space.shape[0]),
+        "proprio_dim": int(env.observation_space.shape[0]) - 32,
+        "text_dim": 32,
+        "action_dim": int(env.action_space.shape[0]),
+        "output_dim": len(env.profile.kinematics.joints),
+        "default_backend": "alberta",
+        "reset_obs_shape": list(obs.shape),
+        "step_reward": float(step[1]),
+        "step_terminated": bool(step[2]),
+        "dry_run": True,
+        "seed": int(seed),
+    }
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
     return manifest
 
 
-def _train_asimov_smoke(out_dir: Path, total_steps: int, seed: int = 0) -> dict:
-    out_dir.mkdir(parents=True, exist_ok=True)
-    curriculum = load_curriculum()
-    manifest = asimov_text_conditioned_manifest_template(
-        curriculum_version=curriculum.version,
-        pca_dim=32,
+def _train_alberta(
+    out_dir: Path,
+    profile_id: str,
+    *,
+    total_steps: int,
+    seed: int,
+    tasks: list[str],
+    pca_dim: int,
+    episode_steps: int,
+    eval_episodes: int,
+    domain_rand: bool,
+) -> dict:
+    from eliza_robot.rl.alberta.train_robot import (
+        steps_per_task_from_total,
+        train_robot,
     )
-    obs_dim = int(manifest["obs_dim"])
-    action_dim = int(manifest["action_dim"])
-    rng = np.random.default_rng(seed)
-    weights = rng.normal(0.0, 0.005, size=(obs_dim, action_dim)).astype(np.float32)
-    bias = np.zeros(action_dim, dtype=np.float32)
-    manifest.update(
-        {
-            "regime": "numpy_linear_rl_smoke",
-            "ckpt": "policy_numpy.json",
-            "total_steps": int(total_steps),
-            "seed": int(seed),
-        }
+
+    steps_per_task = steps_per_task_from_total(total_steps, len(tasks))
+
+    return train_robot(
+        profile_id,
+        tasks,
+        steps_per_task,
+        out_dir,
+        pca_dim=pca_dim,
+        episode_steps=episode_steps,
+        eval_episodes=eval_episodes,
+        seed=seed,
+        requested_total_steps=total_steps,
+        domain_rand=domain_rand,
     )
-    (out_dir / "policy_numpy.json").write_text(
-        json.dumps({"weights": weights.tolist(), "bias": bias.tolist()}, indent=2) + "\n"
-    )
-    (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
-    return manifest
 
 
 def _write_full_training_job(
@@ -207,6 +238,7 @@ def _write_full_training_job(
     (out_dir / "manifest.template.json").write_text(json.dumps(job["manifest_template"], indent=2) + "\n")
     run_script = out_dir / "run_full_training.sh"
     package_root = Path(__file__).resolve().parents[3]
+    critic_obs_dim = int(job["manifest_template"]["critic_obs_dim"])
     run_script.write_text(
         "#!/usr/bin/env bash\n"
         "set -euo pipefail\n"
@@ -214,16 +246,17 @@ def _write_full_training_job(
         "JOB_DIR=\"$(cd \"$(dirname \"${BASH_SOURCE[0]}\")\" && pwd)\"\n"
         f"PACKAGE_ROOT=\"${{ELIZA_ROBOT_PACKAGE_ROOT:-{package_root}}}\"\n"
         "cd \"$PACKAGE_ROOT\"\n"
-        "python3 scripts/validate_asimov1_full_training_job.py --job-dir \"$JOB_DIR\"\n"
+        "uv run python scripts/validate_asimov1_full_training_job.py --job-dir \"$JOB_DIR\"\n"
         "if [[ \"$MODE\" == \"--check\" || \"$MODE\" == \"check\" ]]; then\n"
-        "  python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\" --check-only --require-ready\n"
+        "  uv run python scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\" --check-only --require-ready\n"
         "  echo 'ASIMOV-1 full-training package is valid and ready.'\n"
         "elif [[ \"$MODE\" == \"--train\" || \"$MODE\" == \"train\" ]]; then\n"
-        "  python3 scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\"\n"
-        "  python3 scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25\n"
-        f"  python3 scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps {total_steps}\n"
-        "  python3 scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200\n"
-        "  python3 scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\"\n"
+        "  uv run python scripts/run_asimov1_full_training.py --job-dir \"$JOB_DIR\" --out \"$JOB_DIR/full_training_run.json\"\n"
+        "  uv run python scripts/validate_asimov1_full_training_run.py \"$JOB_DIR/full_training_run.json\" --job-dir \"$JOB_DIR\"\n"
+        f"  uv run python scripts/verify_brax_text_policy.py --ckpt \"$JOB_DIR\" --profile asimov-1 --require-proprio-dim 45 --require-action-dim 12 --require-output-dim 25 --require-critic-obs-dim {critic_obs_dim} --require-policy-obs-key state --require-value-obs-key privileged_state\n"
+        f"  uv run python scripts/validate_asimov1_production_checkpoint.py \"$JOB_DIR\" --min-steps {total_steps} --require-inference-check\n"
+        "  uv run python scripts/eval_text_policy.py --profile asimov-1 --backend mjx --ckpt \"$JOB_DIR\" --tasks stand_up walk_forward walk_backward sidestep_left sidestep_right turn_left turn_right --episodes 5 --max-steps 200\n"
+        "  uv run python scripts/sim_validation_gate.py --profile asimov-1 --checkpoint \"$JOB_DIR\" --require-asimov-model-provenance\n"
         "else\n"
         "  echo \"usage: $0 [--check|--train]\" >&2\n"
         "  exit 64\n"
@@ -232,31 +265,65 @@ def _write_full_training_job(
     run_script.chmod(0o755)
     (out_dir / "README.full_training.md").write_text(
         "# ASIMOV-1 Full Training Job\n\n"
-        "Reproducible ASIMOV-1 text-conditioned PPO/MJX job package.\n\n"
+        "Reproducible ASIMOV-1 text-conditioned PPO/MJX baseline package.\n\n"
         "Run `./run_full_training.sh --check` on a development machine to validate "
         "the package and installed training dependencies. Run "
         "`./run_full_training.sh --train` on a GPU training host to start Brax/MJX "
-        "PPO and then execute the policy verifier, production checkpoint "
-        "validator, ASIMOV MJX evaluator, and simulation validation gate.\n"
+        "PPO baseline training and then execute the policy verifier, production "
+        "checkpoint validator, ASIMOV MJX evaluator, and simulation validation "
+        "gate. For the default continual-learning path, use this module without "
+        "`--full` or run `scripts/train_text_conditioned.py --backend alberta`.\n"
     )
     return job
 
 
-def main() -> int:
+def _resolve_out_dir(
+    out: Path | None,
+    *,
+    dry_run: bool,
+    smoke: bool,
+    full: bool,
+) -> Path:
+    if out is not None:
+        return out
+    if dry_run:
+        return DEFAULT_DRY_RUN_OUT
+    if smoke:
+        return DEFAULT_SMOKE_OUT
+    if full:
+        return DEFAULT_FULL_OUT
+    return DEFAULT_ALBERTA_OUT
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--out",
         type=Path,
-        default=Path(__file__).resolve().parents[2].parent
-        / "checkpoints"
-        / "text_conditioned_smoke",
-        help="output directory for the checkpoint + manifest",
+        default=None,
+        help=(
+            "output directory for the checkpoint + manifest. Defaults by mode: "
+            "Alberta -> checkpoints/alberta_text_conditioned, "
+            "smoke -> checkpoints/text_conditioned_smoke, "
+            "full -> checkpoints/asimov_1_brax_mjx_baseline, "
+            "dry-run -> checkpoints/text_conditioned_dry_run."
+        ),
     )
     parser.add_argument(
-        "--steps", type=int, default=30_000, help="env steps for the smoke run"
+        "--steps",
+        type=int,
+        default=30_000,
+        help=(
+            "total env-step budget for training; the default Alberta path "
+            "splits it evenly across tasks"
+        ),
     )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--profile", default="hiwonder-ainex")
+    parser.add_argument("--tasks", nargs="+", default=["stand_up", "walk_forward"])
+    parser.add_argument("--pca-dim", type=int, default=32)
+    parser.add_argument("--episode-steps", type=int, default=200)
+    parser.add_argument("--eval-episodes", type=int, default=3)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--num-envs", type=int, default=8192)
@@ -266,16 +333,22 @@ def main() -> int:
     parser.add_argument(
         "--smoke",
         action="store_true",
-        default=True,
-        help="run the CPU SB3 smoke trainer (default).",
+        default=False,
+        help="run the CPU SB3 smoke trainer instead of the default Alberta trainer.",
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+    out_dir = _resolve_out_dir(
+        args.out,
+        dry_run=args.dry_run,
+        smoke=args.smoke,
+        full=args.full,
+    )
     if args.dry_run:
-        _write_manifest_dry_run(args.out, args.profile, args.seed)
+        _write_manifest_dry_run(out_dir, args.profile, args.seed)
         return 0
     if args.full:
         _write_full_training_job(
-            args.out,
+            out_dir,
             args.profile,
             total_steps=args.steps,
             num_envs=args.num_envs,
@@ -285,14 +358,29 @@ def main() -> int:
             domain_rand=not args.no_domain_rand,
         )
         return 0
-    if args.profile == "asimov-1":
-        _train_asimov_smoke(args.out, args.steps, args.seed)
-        return 0
     if args.smoke:
-        _train_smoke(args.out, args.steps, args.seed)
+        _train_smoke(
+            out_dir,
+            args.profile,
+            args.steps,
+            seed=args.seed,
+            tasks=args.tasks,
+            pca_dim=args.pca_dim,
+            domain_rand=not args.no_domain_rand,
+        )
         return 0
-    print("--full not yet implemented in this revision", file=sys.stderr)
-    return 2
+    _train_alberta(
+        out_dir,
+        args.profile,
+        total_steps=args.steps,
+        seed=args.seed,
+        tasks=args.tasks,
+        pca_dim=args.pca_dim,
+        episode_steps=args.episode_steps,
+        eval_episodes=args.eval_episodes,
+        domain_rand=not args.no_domain_rand,
+    )
+    return 0
 
 
 if __name__ == "__main__":

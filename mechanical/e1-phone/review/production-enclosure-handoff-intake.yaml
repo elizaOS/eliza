@@ -1,0 +1,86 @@
+schema: eliza.e1_phone_production_enclosure_handoff_intake.v1
+status: empty_intake_blocked_waiting_factory_limits_supplier_quote_pack_signed_traveler_and_release_disposition
+date: 2026-05-22
+claim_boundary: >
+  Empty production enclosure handoff intake template. This is not a production
+  release, factory acceptance, or enclosure approval.
+
+mapped_source_artifacts:
+  - packages/chip/board/kicad/e1-phone/enclosure-mechanical-release-burndown-2026-05-22.yaml
+  - packages/chip/board/kicad/e1-phone/production-enclosure-first-article-release-execution.yaml
+
+intake_metadata:
+  handoff_id: null
+  release_revision: EVT1-routed-first-article
+  enclosure_supplier: null
+  enclosure_lot: null
+  factory_contact: null
+  owner: null
+  handoff_date: null
+  disposition: not_reviewed
+
+required_inputs:
+  final_enclosure_cad: null
+  enclosure_manufacturing_drawing: null
+  tolerance_stack_report: null
+  material_finish_color_callouts: null
+  supplier_quote_pack: null
+  supplier_dfm_feedback: null
+  approved_deviations: []
+  routed_board_clearance_release: mechanical/e1-phone/review/routed-board-clearance-release-intake.yaml
+  enclosure_fit_first_article: mechanical/e1-phone/review/enclosure-fit-first-article-intake.yaml
+  factory_test_limits: packages/chip/board/kicad/e1-phone/production/test/factory-test-limits.yaml
+  inspection_plan: null
+  fixture_references: []
+  serialization_plan: null
+  signed_first_article_traveler: null
+
+handoff_sections:
+  cad_and_drawing_release:
+    final_cad_present: false
+    drawing_revision_present: false
+    dimensions_and_datums_complete: false
+    material_finish_callouts_complete: false
+    pass: false
+  manufacturing_and_supplier_readiness:
+    quote_pack_present: false
+    dfm_feedback_closed: false
+    tooling_plan_present: false
+    incoming_inspection_plan_present: false
+    pass: false
+  factory_and_traceability:
+    factory_limits_present: false
+    fixture_references_present: false
+    serialization_plan_present: false
+    traceability_fields_complete: false
+    pass: false
+  first_article_and_release_disposition:
+    enclosure_fit_first_article_passed: false
+    signed_traveler_present: false
+    deviations_dispositioned: false
+    release_notes_present: false
+    pass: false
+
+release_flags:
+  final_enclosure_package_present: false
+  supplier_quote_and_dfm_closed: false
+  factory_limits_and_inspection_plan_present: false
+  first_article_traveler_signed: false
+  production_enclosure_handoff_approved: false
+  ready_for_fabrication: false
+  ready_for_enclosure: false
+  ready_for_end_to_end_phone_release: false
+  release_allowed: false
+
+open_items:
+  - final enclosure manufacturing package is missing
+  - supplier quote pack and DFM closure are missing
+  - factory limits, fixture references, and inspection plan are missing
+  - signed first-article traveler and release disposition are missing
+
+forbidden_claims:
+  - production_enclosure_handoff_approved
+  - production_release_ready
+  - fabrication_ready
+  - enclosure_ready
+  - end_to_end_phone_ready

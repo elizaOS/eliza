@@ -178,6 +178,56 @@ SCHEMA = "eliza.release_archive.v1"
 CLAIM_BOUNDARY = "release_archive_validation_only_not_release_evidence"
 
 
+def finding_payload(status: str, archive: Path, index: int, finding: str) -> dict:
+    payload = {
+        "code": f"release_archive_{status}_{index}",
+        "severity": "blocker" if status == "blocked" else "error",
+        "message": finding,
+        "evidence": str(archive),
+        "next_step": (
+            "Regenerate the release archive from real checked release artifacts "
+            "and rerun this checker."
+        ),
+        "next_command": f"python3 scripts/check_release_archive.py {archive}",
+        "next_commands": [
+            "scripts/archive_release.sh",
+            f"python3 scripts/check_release_archive.py {archive}",
+        ],
+        "evidence_requirements": {
+            "required_suffixes": REQUIRED_SUFFIXES,
+            "required_text": REQUIRED_TEXT,
+            "claim_boundary": CLAIM_BOUNDARY,
+        },
+    }
+    if finding.startswith("release archive missing: "):
+        payload["missing_artifact"] = str(archive)
+        payload["next_command"] = "scripts/archive_release.sh"
+    elif finding.startswith("missing archive member ending with "):
+        suffix = finding.removeprefix("missing archive member ending with ")
+        payload["missing_artifact_suffix"] = suffix
+        payload["next_step"] = (
+            f"Archive a real release artifact ending with {suffix}, regenerate "
+            "SHA256SUMS, then rerun this checker."
+        )
+    elif finding.startswith("SHA256SUMS does not reference "):
+        member = finding.removeprefix("SHA256SUMS does not reference ")
+        payload["archive_member"] = member
+        payload["missing_checksum_entry"] = member
+        payload["next_step"] = (
+            f"Regenerate SHA256SUMS so it contains the archived member {member}, "
+            "then rerun this checker."
+        )
+    elif " missing required text token: " in finding:
+        suffix, token = finding.split(" missing required text token: ", 1)
+        payload["archive_member_suffix"] = suffix
+        payload["missing_text_token"] = token
+        payload["next_step"] = (
+            f"Update the archived {suffix} source artifact to include the required "
+            f"release-evidence token {token!r}, rebuild the archive, then rerun this checker."
+        )
+    return payload
+
+
 def write_report(status: str, archive: Path, findings: list[str]) -> None:
     payload = {
         "schema": SCHEMA,
@@ -190,16 +240,7 @@ def write_report(status: str, archive: Path, findings: list[str]) -> None:
             "failures": len(findings) if status == "fail" else 0,
         },
         "findings": [
-            {
-                "code": f"release_archive_{status}_{index}",
-                "severity": "blocker" if status == "blocked" else "error",
-                "message": finding,
-                "evidence": str(archive),
-                "next_step": (
-                    "Regenerate the release archive from real checked release artifacts "
-                    "and rerun this checker."
-                ),
-            }
+            finding_payload(status, archive, index, finding)
             for index, finding in enumerate(findings, start=1)
         ],
     }

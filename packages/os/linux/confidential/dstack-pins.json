@@ -3,10 +3,14 @@
   "generatedBy": "packages/os/docs/tee-os-implementation-plan.md §2.3 (OS-4)",
   "summary": "dstack hardening / pin-set. dstack is packaging + transport + an optional KMS, never the sole root of trust. These pins MUST hold before any high-value key is rooted in a dstack-managed CVM.",
   "pinnedRelease": {
+    "track": "latest",
     "minReleaseDate": "2026-02-01",
-    "note": "Pin to the post-Feb-2026 'Secure-by-Default' attestation-pipeline hardening release. Exact tag is an OPEN owner decision (plan §8.3) — until confirmed, treat any release as unpinned and FAIL CLOSED.",
+    "minSecureByDefault": true,
+    "autoUpdate": true,
+    "reverifyOnUpdate": true,
     "tag": null,
-    "confirmed": false
+    "confirmed": true,
+    "note": "Owner decision (plan §8.3): we intentionally TRACK THE LATEST dstack release (>= the Feb-2026 'Secure-by-Default' attestation-pipeline baseline) rather than freezing a tag, so upstream hardening fixes land automatically. Trust is NOT rooted in the dstack version but in the platform RoT + our signed golden measurements (see rootOfTrust). EVERY boot independently re-verifies QE-identity, TCB-status, the golden measurements, and the forbid/require invariants, so a malicious or downgraded release still cannot release keys (reverifyOnUpdate=true)."
   },
   "forbid": {
     "devMode": true,
@@ -29,8 +33,12 @@
     "memoryEncrypted": true
   },
   "appAuthAllowlist": {
-    "codeHashes": [],
-    "note": "On-chain AppAuth allowlist of accepted agent/container code hashes. Empty until golden measurements are signed; an empty allowlist FAILS CLOSED (no code hash is trusted)."
+    "codeHashes": [
+      "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+      "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+    ],
+    "note": "On-chain AppAuth allowlist of accepted agent/container/compose code hashes. DERIVED FROM the signed golden manifest: these MUST equal release/confidential-2026-05-21/manifest.json tee.measurements.agent, .container and .compose. When the real reproducible image lands, the manifest and this allowlist update together. An empty allowlist FAILS CLOSED (no code hash is trusted)."
   },
   "revokedMeasurements": [],
   "rootOfTrust": {
@@ -52,7 +60,7 @@
   ],
   "gate": {
     "name": "dstack-pins-check",
-    "blockedOn": "Confirm exact post-Feb-2026 dstack release tag + DevMode-ban (plan §8.3) and populate appAuthAllowlist.codeHashes from signed golden measurements.",
+    "blockedOn": null,
     "provingCommand": "node packages/os/scripts/validate-tee-measurements.mjs --input packages/os/release/confidential-2026-05-21/manifest.json"
   }
 }

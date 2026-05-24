@@ -7,9 +7,9 @@
       "id": "real_dram_controller_or_memory_model",
       "status": "blocked_missing_real_dram",
       "paths": [],
-      "blocked_reason": "Current RTL exposes a 256 MiB Linux aperture backed by a 4 KiB SRAM model; no real DRAM controller, PHY, training, refresh, ECC, cacheability, or Linux memblock evidence exists.",
+      "blocked_reason": "Current Linux evidence exposes a 256 MiB aperture backed by a 4 KiB SRAM model. DRAM-controller RTL and simulation evidence exist, but no phone-class LPDDR PHY, training, capacity, timing, refresh, ECC, cacheability, or Linux memblock evidence exists.",
       "required_to_clear": [
-        "DRAM controller or simulator memory model sized to the advertised aperture",
+        "Phone-class LPDDR controller/PHY integration or simulator memory model sized to the advertised aperture",
         "boot firmware memory discovery handoff",
         "Linux boot log showing usable memory"
       ]

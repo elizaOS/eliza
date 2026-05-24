@@ -1,0 +1,68 @@
+{
+  "regime": "alberta_streaming",
+  "curriculum_version": 2,
+  "pca_dim": 32,
+  "active_tasks": [
+    "stand_up",
+    "walk_forward"
+  ],
+  "obs_dim": 77,
+  "action_dim": 12,
+  "output_dim": 24,
+  "profile_id": "hiwonder-ainex",
+  "profile_version": "1.0.0",
+  "proprio_dim": 45,
+  "text_dim": 32,
+  "ckpt": "alberta_policy.npz",
+  "requested_total_steps": 64,
+  "steps_per_task": 32,
+  "total_steps": 64,
+  "episode_steps": 200,
+  "eval_episodes": 1,
+  "seed": 0,
+  "domain_rand": false,
+  "controller": {
+    "gamma": 0.5,
+    "actor_step_size": 0.005,
+    "critic_step_size": 0.01,
+    "actor_lamda": 0.8,
+    "critic_lamda": 0.8,
+    "log_sigma_init": -1.0,
+    "log_sigma_min": -5.0,
+    "log_sigma_max": 0.5,
+    "action_low": -1.0,
+    "action_high": 1.0,
+    "obgd_kappa": 2.0,
+    "normalize": false,
+    "normalizer_decay": 0.999,
+    "decouple_global_bias": true,
+    "features": {
+      "mode": "sparse_gated",
+      "embed_dim": 32,
+      "n_prototypes": 64,
+      "gate_hard": true,
+      "gate_temperature": 0.1,
+      "proprio_random_dim": 32,
+      "random_dim": 256,
+      "scale": 1.0,
+      "seed": 0
+    }
+  },
+  "trained_at": "2026-05-22T22:27:01",
+  "history": [
+    {
+      "phase": 0,
+      "task": "stand_up",
+      "train_episodes": 32,
+      "train_mean_return": -6.765923341719635,
+      "eval_mean_return": -6.764432530155025
+    },
+    {
+      "phase": 1,
+      "task": "walk_forward",
+      "train_episodes": 32,
+      "train_mean_return": -6.772503156323451,
+      "eval_mean_return": -6.7712190200912294
+    }
+  ]
+}

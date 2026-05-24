@@ -20,6 +20,7 @@ from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
 DEVICE = ROOT / "sw/aosp-device/device/eliza/eliza_ai_soc"
+ELIZA_PRODUCT_MK = DEVICE / "eliza_ai_soc.mk"
 DEVICE_MK = DEVICE / "device.mk"
 BOARD_CONFIG = DEVICE / "BoardConfig.mk"
 INIT_RC = DEVICE / "init.eliza.rc"
@@ -30,6 +31,7 @@ HAL_BP = HAL_DIR / "Android.bp"
 HAL_RC = HAL_DIR / "vendor.eliza.e1_npu@1.0-service.rc"
 HAL_IMPL = HAL_DIR / "E1Npu.h"
 HAL_IMPL_CC = HAL_DIR / "E1Npu.cpp"
+HAL_UAPI = HAL_DIR / "E1NpuUapi.h"
 HAL_INTERFACE = HAL_DIR / "1.0/IE1Npu.hal"
 HAL_INTERFACE_BP = HAL_DIR / "1.0/Android.bp"
 HWC_DIR = DEVICE / "hal/hwcomposer"
@@ -42,11 +44,16 @@ SEPOLICY = DEVICE / "sepolicy"
 FILE_CONTEXTS = SEPOLICY / "file_contexts"
 E1_NPU_TE = SEPOLICY / "e1_npu.te"
 LINUX_CONTRACT_HEADER = ROOT / "sw/linux/drivers/e1/e1_platform_contract.h"
+LINUX_NPU_UAPI_HEADER = ROOT / "sw/linux/drivers/e1/e1-npu-uapi.h"
 REPORT = ROOT / "build/reports/aosp_hal_service_contract.json"
 SCHEMA = "eliza.aosp_hal_service_contract.v1"
 CLAIM_BOUNDARY = "static_aosp_hal_service_contract_only_not_vintf_or_boot_evidence"
 E1_NPU_SERVICE_PACKAGE = "vendor.eliza.e1_npu@1.0-service"
 HWC_SERVICE_PACKAGE = "android.hardware.graphics.composer@2.4-service.eliza_ai_soc"
+MODERN_CUTTLEFISH_GRAPHICS_PACKAGES = (
+    "com.android.hardware.graphics.composer.drm_hwcomposer",
+    "com.android.hardware.graphics.composer.ranchu",
+)
 E1_NPU_HAL = "vendor.eliza.e1_npu"
 
 
@@ -132,6 +139,7 @@ def int_from_literal(value: str | None) -> int | None:
 
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     inputs = (
+        ELIZA_PRODUCT_MK,
         DEVICE_MK,
         BOARD_CONFIG,
         INIT_RC,
@@ -141,6 +149,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         HAL_RC,
         HAL_IMPL,
         HAL_IMPL_CC,
+        HAL_UAPI,
         HAL_INTERFACE,
         HAL_INTERFACE_BP,
         HWC_BP,
@@ -151,6 +160,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         FILE_CONTEXTS,
         E1_NPU_TE,
         LINUX_CONTRACT_HEADER,
+        LINUX_NPU_UAPI_HEADER,
     )
     findings: list[Finding] = []
     for path in inputs:
@@ -166,12 +176,14 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         return payload(findings, {})
 
     device_mk = read_text(DEVICE_MK)
+    product_mk = read_text(ELIZA_PRODUCT_MK)
     board = read_text(BOARD_CONFIG)
     init_rc = read_text(INIT_RC)
     hal_bp = read_text(HAL_BP)
     hal_rc = read_text(HAL_RC)
     hal_impl = read_text(HAL_IMPL)
     hal_impl_cc = read_text(HAL_IMPL_CC)
+    hal_uapi = read_text(HAL_UAPI)
     hal_interface = read_text(HAL_INTERFACE)
     hwc_bp = read_text(HWC_BP)
     hwc_impl = read_text(HWC_IMPL)
@@ -181,11 +193,15 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     file_contexts = read_text(FILE_CONTEXTS)
     te = read_text(E1_NPU_TE)
     contract = read_text(LINUX_CONTRACT_HEADER)
+    linux_npu_uapi = read_text(LINUX_NPU_UAPI_HEADER)
     interface_bp = read_text(HAL_INTERFACE_BP)
-    e1_hal_sources = "\n".join((hal_bp, hal_impl, hal_interface))
+    e1_hal_sources = "\n".join((hal_bp, hal_impl, hal_impl_cc, hal_uapi, hal_interface))
     hwc_sources = "\n".join((hwc_bp, hwc_impl))
     sim_hal_sources = "\n".join((sim_hal_bp, sim_hal_impl, sim_hal_rc))
     packages = product_packages(device_mk)
+    inherits_cuttlefish_phone = (
+        "device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk" in product_mk
+    )
     manifest_hals_declared = manifest_hals(DEVICE_MANIFEST) | manifest_hals(E1_MANIFEST)
     service_declared = E1_NPU_HAL in manifest_hals_declared
     contract_result_offset = int_from_literal(macro_value(contract, "E1_NPU_RESULT_OFFSET"))
@@ -202,11 +218,19 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        HWC_SERVICE_PACKAGE not in packages,
-        "aosp_hwcomposer_service_not_packaged",
-        "hwcomposer service package is referenced by device config but not installed by the chip product",
+        HWC_SERVICE_PACKAGE in packages or "hwcomposer.eliza_ai_soc" in packages,
+        "aosp_hwcomposer_deprecated_hidl_service_packaged",
+        "chip product packages the deprecated local HIDL composer@2.4 service rejected by FCM 202604",
         f"packages={sorted(packages)}",
-        "Install the composer service or remove graphics HAL claims from the selected product.",
+        "Use the inherited Cuttlefish composer3 APEX packages for the riscv64 virtual device, or replace the local display path with a composer3/AIDL HAL before declaring it.",
+    )
+    add_if(
+        findings,
+        not inherits_cuttlefish_phone and HWC_SERVICE_PACKAGE not in packages,
+        "aosp_modern_graphics_composer_source_missing",
+        "chip product does not inherit a modern graphics composer source and does not package a local composer",
+        rel(ELIZA_PRODUCT_MK),
+        "Inherit the Cuttlefish riscv64 phone product or add a non-deprecated composer3 graphics path before claiming Android GUI readiness.",
     )
     add_if(
         findings,
@@ -274,6 +298,24 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         f"linux_E1_NPU_RESULT_OFFSET={contract_result_offset} hal_kResultOffset={hal_result_offset}",
         "Generate HAL constants from the same platform contract header used by the Linux driver.",
     )
+    uapi_sync_tokens = (
+        "struct e1_npu_contract",
+        "struct e1_npu_cmd",
+        "struct e1_npu_gemm_s8",
+        "E1_NPU_IOC_RUN_CMD",
+        "E1_NPU_IOC_RUN_GEMM_S8",
+        "E1_NPU_IOC_GET_CONTRACT",
+        "E1_NPU_OP_RELU4_S8 10u",
+        "E1_NPU_SCRATCH_BYTES 64u",
+    )
+    add_if(
+        findings,
+        not all(token in hal_uapi and token in linux_npu_uapi for token in uapi_sync_tokens),
+        "aosp_e1_npu_hal_uapi_not_synced_with_linux",
+        "e1 NPU HAL local userspace ABI copy does not match the Linux driver UAPI tokens needed by smoke()",
+        f"{rel(HAL_UAPI)}, {rel(LINUX_NPU_UAPI_HEADER)}",
+        "Keep E1NpuUapi.h synchronized with sw/linux/drivers/e1/e1-npu-uapi.h or import the generated kernel UAPI header directly.",
+    )
     add_if(
         findings,
         not (
@@ -288,39 +330,41 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         rel(HAL_INTERFACE_BP),
         "Add the HIDL interface package/import path to the external AOSP tree and gate hidl-gen/build evidence.",
     )
-    hal_fail_closed = (
+    hal_kernel_smoke = (
         'static constexpr const char* kDevicePath = "/dev/e1-npu"' in hal_impl
         and "O_RDWR | O_CLOEXEC" in hal_impl_cc
         and "Status::NOT_SUPPORTED" in hal_impl_cc
-        and "::read(fd.get(), &identity, sizeof(identity))" in hal_impl_cc
+        and "E1_NPU_IOC_GET_CONTRACT" in hal_impl_cc
+        and "E1_NPU_IOC_RUN_CMD" in hal_impl_cc
+        and "E1_NPU_IOC_RUN_GEMM_S8" in hal_impl_cc
+        and "E1_NPU_OP_RELU4_S8" in hal_impl_cc
+        and "0x800700fcu" in hal_impl_cc
+        and "0x00070000u" in hal_impl_cc
+        and "kExpectedGemm[4] = {-44, 8, 139, -54}" in hal_impl_cc
+        and "contract.npu_base" in hal_impl_cc
+        and "E1_NPU_SCRATCH_BYTES 64u" in hal_uapi
+        and "E1_NPU_IOC_GET_CONTRACT" in hal_uapi
+        and "E1_NPU_IOC_RUN_GEMM_S8" in hal_uapi
+        and "::read(fd.get(), &identity, sizeof(identity))" not in hal_impl_cc
         and "kSimulatedIdentity" not in e1_hal_sources
     )
     add_if(
         findings,
-        not hal_fail_closed,
+        not hal_kernel_smoke,
         "aosp_e1_npu_hal_not_fail_closed_to_kernel_node",
-        "e1 NPU HAL does not prove a fail-closed path to /dev/e1-npu and the driver identity read",
-        f"{rel(HAL_IMPL)}, {rel(HAL_IMPL_CC)}",
-        "Keep the HAL backed by /dev/e1-npu, return NOT_SUPPORTED when the node is absent, and avoid simulator constants in the real HAL.",
+        "e1 NPU HAL does not prove a fail-closed fixed-vector ioctl smoke path to /dev/e1-npu",
+        f"{rel(HAL_IMPL)}, {rel(HAL_IMPL_CC)}, {rel(HAL_UAPI)}",
+        "Keep the HAL backed by /dev/e1-npu, return NOT_SUPPORTED when the node is absent, run the contract/RELU/GEMM ioctls, and avoid simulator constants in the real HAL.",
     )
     if "smoke() generates" in hal_interface:
         runtime_requirements.append(
-            "Booted selected chip target must capture IE1Npu/default lshal registration and smoke() identity read from /dev/e1-npu before NPU liveness is unblocked."
+            "Booted selected chip target must capture IE1Npu/default lshal registration and smoke() fixed-vector contract/RELU/GEMM ioctl pass against /dev/e1-npu before NPU liveness is unblocked."
         )
-    add_if(
-        findings,
-        not (
-            "/dev/graphics/fb0" in hwc_sources
-            and "FBIOGET_VSCREENINFO" in hwc_sources
-            and "FBIOGET_FSCREENINFO" in hwc_sources
-            and "android.hardware.graphics.composer@2.4-service.eliza_ai_soc" in packages
-        ),
-        "aosp_hwcomposer_fbdev_probe_missing",
-        "hwcomposer package does not prove a fail-closed framebuffer probe path",
-        f"{rel(HWC_BP)}, {rel(HWC_IMPL)}",
-        "Keep the composer package tied to an fbdev/simple-framebuffer probe and capture booted SurfaceFlinger/display evidence.",
-    )
-    if "getFunction = nullptr" in hwc_sources:
+    if inherits_cuttlefish_phone:
+        runtime_requirements.append(
+            "Display readiness uses the inherited Cuttlefish composer3 APEX packages; booted evidence must prove SurfaceFlinger selects the expected composer3 service on the chip/riscv64 target."
+        )
+    if HWC_SERVICE_PACKAGE in packages and "getFunction = nullptr" in hwc_sources:
         runtime_requirements.append(
             "Display readiness remains blocked until booted SurfaceFlinger/HWC evidence proves the selected product renders through the intended graphics path."
         )
@@ -353,16 +397,21 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
 
     evidence = {
+        "product_mk": rel(ELIZA_PRODUCT_MK),
         "device_mk": rel(DEVICE_MK),
         "board_config": rel(BOARD_CONFIG),
         "init_rc": rel(INIT_RC),
         "manifest_hals": sorted(manifest_hals_declared),
         "product_packages": sorted(packages),
         "linux_result_offset": contract_result_offset,
+        "linux_npu_uapi": rel(LINUX_NPU_UAPI_HEADER),
         "hal_result_offset": hal_result_offset,
+        "hal_uapi": rel(HAL_UAPI),
         "hal_rc": rel(HAL_RC),
         "hal_interface": rel(HAL_INTERFACE),
-        "hwcomposer": rel(HWC_IMPL),
+        "inherits_cuttlefish_phone": inherits_cuttlefish_phone,
+        "inherited_graphics_packages": list(MODERN_CUTTLEFISH_GRAPHICS_PACKAGES),
+        "deprecated_hwcomposer": rel(HWC_IMPL),
         "sim_hal": rel(SIM_HAL_IMPL),
         "sepolicy": rel(SEPOLICY),
         "runtime_requirements": runtime_requirements,

@@ -54,6 +54,6 @@ Status: shortlist for CAD lock, not a purchase order.
 
 - Role: `camera`
 - Candidate: single 5-8 MP fixed-focus MIPI module behind cover glass, single lens
-- Source: TBD
+- Source: external source pending
 - Lock state: placeholder envelope; needs Shenzhen/OEM module selection after cover-glass aperture decision
 - Mechanical lock: `{"lens_diameter_mm": 3.4, "module_mm": [6.5, 6.5, 3.2]}`

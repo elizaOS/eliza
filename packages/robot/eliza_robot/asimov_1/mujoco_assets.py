@@ -22,6 +22,10 @@ from eliza_robot.asimov_1.constants import (
 from eliza_robot.asimov_1.urdf_assets import generate_asimov1_urdf
 
 
+def _cad_root_for_source(source_xml: Path) -> Path:
+    return source_xml.resolve().parents[2]
+
+
 def _joint_ranges(root: ET.Element) -> dict[str, tuple[float, float]]:
     ranges: dict[str, tuple[float, float]] = {}
     for joint in root.findall(".//joint"):
@@ -83,7 +87,14 @@ def generate_asimov1_mjcf(
         ASIMOV1_GENERATED_URDF if output_xml == ASIMOV1_GENERATED_MJCF else output_xml.parent.parent / "asimov.urdf"
     )
     generate_asimov1_urdf(source_xml=output_xml, output_urdf=urdf_path)
-    inventory = validate_cad_tree()
+    cad_root = _cad_root_for_source(source_xml)
+    inventory = validate_cad_tree(
+        mechanical_root=cad_root / "mechanical" / "ASV1",
+        main_step=cad_root / "mechanical" / "ASV1" / "ASIMOV_V1.STEP",
+        source_xml=source_xml,
+        mesh_dir=mesh_dir,
+        fabrication_manifest=cad_root / "mechanical" / "FABRICATION_MANIFEST.json",
+    )
     manifest = {
         "profile_id": "asimov-1",
         "source_xml": str(source_xml),

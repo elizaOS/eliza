@@ -24,11 +24,42 @@ OUT = ROOT / "build/chipyard/eliza_rocket"
 WORK = OUT / "isa-cache-mmu-probe"
 REPORT = ROOT / "build/reports/cpu_ap_isa_cache_mmu_probe.json"
 RAW_LOG = ROOT / "build/evidence/cpu_ap/isa_cache_mmu_probe/isa_cache_mmu_probe.raw.log"
+COMBINED_SOURCE_LOG = ROOT / "build/evidence/cpu_ap/isa_cache_mmu_probe/isa_cache_mmu.combined-source.log"
+FINAL_EVIDENCE = ROOT / "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"
+LINUX_SMOKE_LOG = ROOT / "build/chipyard/eliza_rocket/verilator-linux-smoke.log"
+LINUX_SMOKE_REPORT = ROOT / "build/reports/chipyard_verilator_linux_smoke.json"
+LINUX_SMOKE_WORKLOAD = ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-e1-linux-smoke.sh"
+LINUX_SMOKE_JSON = ROOT / "sw/firemarshal/eliza-e1-linux-smoke.json"
+HWPROBE_SOURCE = ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-riscv-hwprobe.c"
+HWPROBE_BUILD_SCRIPT = ROOT / "sw/firemarshal/eliza-e1-linux-smoke/build-hwprobe.sh"
+HWPROBE_BINARY = ROOT / "sw/firemarshal/eliza-e1-linux-smoke/eliza-riscv-hwprobe"
+CAPTURE_INTAKE = ROOT / "scripts/capture_cpu_ap_evidence.py"
 DEFAULT_SIMULATOR = (
     ROOT / "build/chipyard/eliza_rocket/simulator/simulator-chipyard.harness-ElizaRocketConfig"
 )
 MANIFEST = OUT / "ElizaRocketConfig.manifest.json"
 DTS = OUT / "eliza-e1.dts"
+DRAMSIM_INI = (
+    ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
+)
+FINAL_RAW_MARKERS = (
+    "ISA profile",
+    "RV64GC",
+    "misa",
+    "riscv_hwprobe",
+    "Zicsr",
+    "Zifencei",
+    "Sv39",
+    "satp",
+    "I-cache",
+    "D-cache",
+    "L2 cache",
+    "cache line",
+    "TLB",
+    "page table",
+)
+BAREMETAL_MARKERS = tuple(marker for marker in FINAL_RAW_MARKERS if marker != "riscv_hwprobe")
+HWPROBE_SUCCESS_MARKER = "riscv_hwprobe: syscall rc=0"
 DRAMSIM_INI = ROOT / "external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini"
 
 LINKER = r"""
@@ -234,8 +265,200 @@ def utc_now() -> str:
 
 
 def write_report(payload: dict[str, object]) -> None:
+    status = str(payload.get("status") or "unknown")
+    problems = [str(item) for item in payload.get("problems", []) if str(item)]
+    findings = payload.get("findings")
+    if not isinstance(findings, list):
+        findings = [
+            {
+                "code": "cpu_ap_isa_cache_mmu_probe_blocked",
+                "severity": "blocker" if status == "blocked" else "error",
+                "message": problem,
+                "evidence": payload.get("raw_log") or payload.get("payload"),
+            }
+            for problem in problems
+        ]
+    payload.setdefault(
+        "summary",
+        {
+            "release_ready": False,
+            "evidence_log_created": payload.get("evidence_log_created") is True,
+            "problem_count": len(problems),
+        },
+    )
+    payload.setdefault("findings", findings)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def scan_text_markers(path: Path, markers: tuple[str, ...]) -> tuple[list[str], list[str]]:
+    """Scan large transcripts without loading multi-GB simulator logs into memory."""
+
+    if not path.is_file():
+        return [], list(markers)
+
+    remaining = set(markers)
+    found: set[str] = set()
+    carry = ""
+    max_marker = max((len(marker) for marker in markers), default=0)
+    with path.open("r", encoding="utf-8", errors="ignore") as handle:
+        while remaining:
+            chunk = handle.read(1024 * 1024)
+            if not chunk:
+                break
+            text = carry + chunk
+            for marker in list(remaining):
+                if marker in text:
+                    remaining.remove(marker)
+                    found.add(marker)
+            carry = text[-max_marker:] if max_marker else ""
+    return [marker for marker in markers if marker in found], [marker for marker in markers if marker in remaining]
+
+
+def linux_smoke_report_summary() -> dict[str, object]:
+    if not LINUX_SMOKE_REPORT.is_file():
+        return {
+            "path": rel(LINUX_SMOKE_REPORT),
+            "exists": False,
+        }
+    try:
+        report = json.loads(LINUX_SMOKE_REPORT.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        return {
+            "path": rel(LINUX_SMOKE_REPORT),
+            "exists": True,
+            "parse_error": str(exc),
+        }
+
+    summary: dict[str, object] = {
+        "path": rel(LINUX_SMOKE_REPORT),
+        "exists": True,
+        "status": report.get("status"),
+    }
+    for key in (
+        "stage",
+        "code",
+        "problem",
+        "next_safe_action",
+        "next_command",
+    ):
+        if key in report:
+            summary[key] = report[key]
+    blockers = report.get("blockers")
+    if isinstance(blockers, list):
+        summary["blockers"] = blockers[:8]
+    for key in (
+        "progress",
+        "loadmem_diagnosis",
+        "uart_console_diagnosis",
+        "fdt_handoff_diagnosis",
+    ):
+        if key in report:
+            summary[key] = report[key]
+    return summary
+
+
+def linux_hwprobe_scan() -> dict[str, object]:
+    linux_required_markers = ("riscv_hwprobe", HWPROBE_SUCCESS_MARKER)
+    observed_hwprobe, missing_hwprobe = scan_text_markers(LINUX_SMOKE_LOG, linux_required_markers)
+    observed, missing = scan_text_markers(LINUX_SMOKE_LOG, FINAL_RAW_MARKERS)
+    workload_text = (
+        LINUX_SMOKE_WORKLOAD.read_text(encoding="utf-8", errors="ignore")
+        if LINUX_SMOKE_WORKLOAD.is_file()
+        else ""
+    )
+    workload_json_text = (
+        LINUX_SMOKE_JSON.read_text(encoding="utf-8", errors="ignore")
+        if LINUX_SMOKE_JSON.is_file()
+        else ""
+    )
+    return {
+        "log": rel(LINUX_SMOKE_LOG),
+        "exists": LINUX_SMOKE_LOG.is_file(),
+        "size_bytes": LINUX_SMOKE_LOG.stat().st_size if LINUX_SMOKE_LOG.is_file() else 0,
+        "observed_final_markers": observed,
+        "missing_final_markers": missing,
+        "contains_riscv_hwprobe": "riscv_hwprobe" in observed,
+        "contains_riscv_hwprobe_success": HWPROBE_SUCCESS_MARKER in observed_hwprobe,
+        "observed_hwprobe_markers": observed_hwprobe,
+        "missing_hwprobe_markers": missing_hwprobe,
+        "userspace_hook": {
+            "workload": rel(LINUX_SMOKE_WORKLOAD),
+            "workload_invokes_helper": "/usr/bin/eliza-riscv-hwprobe" in workload_text,
+            "workload_json": rel(LINUX_SMOKE_JSON),
+            "workload_packages_helper": "eliza-riscv-hwprobe" in workload_json_text,
+            "source": rel(HWPROBE_SOURCE),
+            "source_exists": HWPROBE_SOURCE.is_file(),
+            "source_uses_syscall": "__NR_riscv_hwprobe" in (
+                HWPROBE_SOURCE.read_text(encoding="utf-8", errors="ignore")
+                if HWPROBE_SOURCE.is_file()
+                else ""
+            ),
+            "build_script": rel(HWPROBE_BUILD_SCRIPT),
+            "build_script_executable": HWPROBE_BUILD_SCRIPT.is_file()
+            and os.access(HWPROBE_BUILD_SCRIPT, os.X_OK),
+            "built_binary": rel(HWPROBE_BINARY),
+            "built_binary_exists": HWPROBE_BINARY.is_file(),
+            "built_during_firemarshal_host_init": "build-hwprobe.sh" in workload_json_text,
+        },
+        "report": linux_smoke_report_summary(),
+    }
+
+
+def extract_lines(path: Path, markers: tuple[str, ...]) -> list[str]:
+    lines: list[str] = []
+    if not path.is_file():
+        return lines
+    with path.open("r", encoding="utf-8", errors="ignore") as handle:
+        for line in handle:
+            if any(marker in line for marker in markers):
+                lines.append(line.rstrip("\n"))
+    return lines
+
+
+def archive_final_evidence(sim_stdout: str, command: str) -> tuple[bool, str]:
+    linux_lines = extract_lines(
+        LINUX_SMOKE_LOG,
+        (
+            "Linux",
+            "riscv_hwprobe",
+            "CONFIG_MMU",
+            "initramfs start",
+            "eliza-evidence: target=generated_chipyard_ap artifact=eliza-e1-linux-smoke",
+        ),
+    )
+    COMBINED_SOURCE_LOG.parent.mkdir(parents=True, exist_ok=True)
+    COMBINED_SOURCE_LOG.write_text(
+        "\n".join(
+            [
+                "eliza-evidence: combined_source=generated_ap_baremetal_plus_linux_userspace",
+                "eliza-evidence: baremetal_source=" + rel(RAW_LOG),
+                "eliza-evidence: linux_userspace_source=" + rel(LINUX_SMOKE_LOG),
+                "eliza-evidence: baremetal_transcript_begin",
+                sim_stdout.rstrip(),
+                "eliza-evidence: baremetal_transcript_end",
+                "eliza-evidence: linux_userspace_hwprobe_excerpt_begin",
+                *linux_lines,
+                "eliza-evidence: linux_userspace_hwprobe_excerpt_end",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    intake_cmd = [
+        sys.executable,
+        str(CAPTURE_INTAKE),
+        "intake",
+        "isa-cache-mmu",
+        "--source",
+        str(COMBINED_SOURCE_LOG),
+        "--command",
+        command,
+        "--generated-manifest",
+        str(MANIFEST),
+    ]
+    proc = run(intake_cmd, cwd=ROOT)
+    return proc.returncode == 0, proc.stdout.rstrip()
 
 
 def main(argv: list[str]) -> int:
@@ -276,9 +499,10 @@ def main(argv: list[str]) -> int:
                 "claim_boundary": "no_final_isa_cache_mmu_evidence_created",
                 "generated_manifest": rel(MANIFEST),
                 "raw_log": rel(RAW_LOG),
-                "evidence_log": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-                "evidence_log_created": False,
+                "evidence_log": rel(FINAL_EVIDENCE),
+                "evidence_log_created": FINAL_EVIDENCE.is_file(),
                 "problems": problems,
+                "linux_userspace_hwprobe": linux_hwprobe_scan(),
                 "updated_utc": utc_now(),
             }
         )
@@ -368,10 +592,12 @@ def main(argv: list[str]) -> int:
                 "simulator": rel(simulator),
                 "payload": rel(elf),
                 "raw_log": rel(RAW_LOG),
-                "evidence_log": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-                "evidence_log_created": False,
+                "evidence_log": rel(FINAL_EVIDENCE),
+                "evidence_log_created": FINAL_EVIDENCE.is_file(),
                 "timeout_seconds": args.timeout_seconds,
                 "max_cycles": args.max_cycles,
+                "problems": ["generated-AP bare-metal ISA/cache/MMU probe timed out before completion"],
+                "linux_userspace_hwprobe": linux_hwprobe_scan(),
                 "problems": [
                     "generated-AP bare-metal ISA/cache/MMU probe timed out before completion"
                 ],
@@ -395,9 +621,10 @@ def main(argv: list[str]) -> int:
                 "simulator": rel(simulator),
                 "payload": rel(elf),
                 "raw_log": rel(RAW_LOG),
-                "evidence_log": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-                "evidence_log_created": False,
+                "evidence_log": rel(FINAL_EVIDENCE),
+                "evidence_log_created": FINAL_EVIDENCE.is_file(),
                 "simulator_exit_code": sim_proc.returncode,
+                "linux_userspace_hwprobe": linux_hwprobe_scan(),
                 "updated_utc": utc_now(),
             }
         )
@@ -417,6 +644,82 @@ def main(argv: list[str]) -> int:
         ),
         encoding="utf-8",
     )
+    observed_baremetal = [
+        marker
+        for marker in BAREMETAL_MARKERS
+        if marker in sim_stdout
+    ]
+    missing_baremetal = [
+        marker
+        for marker in BAREMETAL_MARKERS
+        if marker not in sim_stdout
+    ]
+    linux_hwprobe = linux_hwprobe_scan()
+    if missing_baremetal:
+        status = "fail"
+        problems = [
+            "generated-AP bare-metal probe did not emit all non-Linux ISA/cache/MMU markers",
+            *[f"missing bare-metal marker: {marker}" for marker in missing_baremetal],
+        ]
+    else:
+        problems = [
+            "generated-AP bare-metal ISA/cache/MMU markers completed",
+            (
+                "generated-AP Linux smoke packages /usr/bin/eliza-riscv-hwprobe, but "
+                "the latest Linux transcript has not reached userspace and emitted "
+                "successful riscv_hwprobe syscall output"
+            ),
+            "blocked behind generated-AP Linux boot/userland reachability; do not archive this probe alone as eliza_e1_isa_cache_mmu.log",
+        ]
+    combined_missing_final_markers = list(missing_baremetal)
+    if not linux_hwprobe["contains_riscv_hwprobe"]:
+        combined_missing_final_markers.append("riscv_hwprobe")
+    if not linux_hwprobe["contains_riscv_hwprobe_success"]:
+        combined_missing_final_markers.append(HWPROBE_SUCCESS_MARKER)
+    archive_output = ""
+    if not missing_baremetal and linux_hwprobe["contains_riscv_hwprobe_success"]:
+        evidence_command = (
+            "scripts/run_chipyard_eliza_isa_cache_mmu_probe.py; "
+            "scripts/run_chipyard_eliza_linux_smoke.sh with "
+            "/usr/bin/eliza-riscv-hwprobe packaged by sw/firemarshal/eliza-e1-linux-smoke"
+        )
+        archived, archive_output = archive_final_evidence(sim_stdout, evidence_command)
+        if archived:
+            write_report(
+                {
+                    "schema": "eliza.cpu_ap_isa_cache_mmu_probe.v1",
+                    "status": "pass",
+                    "claim_boundary": "final_isa_cache_mmu_evidence_archived_from_real_generated_ap_transcripts",
+                    "generated_manifest": rel(MANIFEST),
+                    "generated_dts": rel(DTS),
+                    "simulator": rel(simulator),
+                    "payload": rel(elf),
+                    "raw_log": rel(RAW_LOG),
+                    "combined_source_log": rel(COMBINED_SOURCE_LOG),
+                    "evidence_log": rel(FINAL_EVIDENCE),
+                    "evidence_log_created": FINAL_EVIDENCE.is_file(),
+                    "intake_output": archive_output,
+                    "baremetal_probe": {
+                        "status": "pass",
+                        "observed_markers": observed_baremetal,
+                        "missing_markers": [],
+                        "raw_log": rel(RAW_LOG),
+                    },
+                    "linux_userspace_hwprobe": linux_hwprobe,
+                    "observed_markers": FINAL_RAW_MARKERS,
+                    "missing_final_markers": [],
+                    "problems": [],
+                    "updated_utc": utc_now(),
+                }
+            )
+            print(archive_output)
+            print("STATUS: PASS chipyard.isa_cache_mmu_probe - archived final ISA/cache/MMU evidence")
+            return 0
+        status = "fail"
+        problems = [
+            "combined real bare-metal and Linux hwprobe transcript failed isa-cache-mmu intake",
+            archive_output or "capture_cpu_ap_evidence.py intake returned nonzero",
+        ]
     write_report(
         {
             "schema": "eliza.cpu_ap_isa_cache_mmu_probe.v1",
@@ -427,33 +730,34 @@ def main(argv: list[str]) -> int:
             "simulator": rel(simulator),
             "payload": rel(elf),
             "raw_log": rel(RAW_LOG),
-            "evidence_log": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-            "evidence_log_created": False,
+            "combined_source_log": rel(COMBINED_SOURCE_LOG),
+            "evidence_log": rel(FINAL_EVIDENCE),
+            "evidence_log_created": FINAL_EVIDENCE.is_file(),
             "simulator_exit_code": sim_returncode,
-            "observed_markers": [
-                marker
-                for marker in (
-                    "ISA profile",
-                    "RV64GC",
-                    "misa",
-                    "Zicsr",
-                    "Zifencei",
-                    "Sv39",
-                    "satp",
-                    "I-cache",
-                    "D-cache",
-                    "L2 cache",
-                    "cache line",
-                    "TLB",
-                    "page table",
-                )
-                if marker in sim_stdout
-            ],
-            "missing_final_markers": ["riscv_hwprobe"],
+            "baremetal_probe": {
+                "status": "pass" if not missing_baremetal else "fail",
+                "observed_markers": observed_baremetal,
+                "missing_markers": missing_baremetal,
+                "raw_log": rel(RAW_LOG),
+            },
+            "linux_userspace_hwprobe": linux_hwprobe,
+            "observed_markers": observed_baremetal,
+            "missing_final_markers": combined_missing_final_markers,
+            "next_required_prerequisite": (
+                "Rebuild the eliza-e1-linux-smoke FireMarshal payload so it packages "
+                "/usr/bin/eliza-riscv-hwprobe, then reach generated-AP Linux userspace "
+                "and emit a real successful riscv_hwprobe syscall transcript. The probe runner will "
+                "archive final isa-cache-mmu evidence only after both the bare-metal "
+                "markers and Linux hwprobe output are present."
+            ),
             "problems": problems,
+            "intake_output": archive_output,
             "updated_utc": utc_now(),
         }
     )
+    if missing_baremetal:
+        print("STATUS: FAIL chipyard.isa_cache_mmu_probe - bare-metal marker set incomplete")
+        return 1
     print(
         "STATUS: BLOCKED chipyard.isa_cache_mmu_probe - bare-metal generated-AP "
         "diagnostic ran, but final isa-cache-mmu intake still requires a "

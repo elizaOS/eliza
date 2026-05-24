@@ -28,6 +28,7 @@ from typing import Any
 
 DEFAULT_CONFIG = Path("benchmarks/configs/benchmark_plan.json")
 DEFAULT_OUT_DIR = Path("benchmarks/results")
+ROOT = Path(__file__).resolve().parents[1]
 COMMANDS = {"list", "plan", "run", "validate-report"}
 VALID_CLAIM_LEVELS = {
     "L0_RTL_UNIT",
@@ -64,7 +65,15 @@ VALID_PARSERS = {
     "tflite_benchmark_model",
     "simulator_metrics_v1",
 }
-VALID_PROVENANCE = {"dry_run", "measured", "simulator", "imported"}
+VALID_PROVENANCE = {
+    "dry_run",
+    "measured",
+    "target-measured",
+    "silicon-measured",
+    "simulator",
+    "imported",
+    "blocked_placeholder",
+}
 E1_NPU_REQUIRED_CAPTURE_COMMANDS = {
     "adb_devices": "adb devices",
     "nnapi_accelerator_query": "adb shell cmd neuralnetworks list",
@@ -86,6 +95,13 @@ REAL_METADATA_SECTIONS = (
     "process",
     "calibration",
 )
+L5_L6_CLAIM_LEVELS = {"L5_PROTOTYPE_SILICON", "L6_COMPLETE_PHONE"}
+REAL_TARGET_RUNNERS = {"board", "prototype", "silicon", "phone", "firesim", "cuttlefish"}
+PHONE_L5_L6_TARGET_RUNNERS = {"prototype", "silicon", "phone"}
+TARGET_EXECUTION_METADATA_FIELDS = {
+    "runner": str,
+    "transcript_sha256": str,
+}
 REAL_METADATA_REQUIRED_FIELDS: dict[str, dict[str, Any]] = {
     "software": {
         "os": str,
@@ -139,8 +155,12 @@ REAL_METADATA_REQUIRED_FIELDS: dict[str, dict[str, Any]] = {
 REQUIRED_REPORT_FIELDS = {
     "schema": str,
     "report_id": str,
+    "status": str,
     "date_utc": str,
     "dry_run": bool,
+    "claim_allowed": bool,
+    "phone_claim_allowed": bool,
+    "release_claim_allowed": bool,
     "claim_level": str,
     "platform": dict,
     "config": dict,
@@ -1058,7 +1078,31 @@ def is_blocked_value(value: Any) -> bool:
     return isinstance(value, str) and value.strip().startswith(BLOCKED_PREFIX)
 
 
-def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dict[str, Any]]:
+def calibration_asset_artifact_errors(asset_name: str, asset: dict[str, Any], root: Path) -> list[str]:
+    evidence = asset.get("evidence")
+    if not isinstance(evidence, str) or not evidence.strip():
+        return ["evidence_missing"]
+    evidence_path = Path(evidence)
+    if not evidence_path.is_absolute():
+        evidence_path = root / evidence_path
+    try:
+        resolved = evidence_path.resolve()
+        resolved.relative_to(root.resolve())
+    except ValueError:
+        return ["evidence_outside_repo"]
+    if not resolved.is_file():
+        return ["evidence_missing"]
+    digest = asset.get("sha256")
+    if is_sha256(digest) and sha256_file(resolved) != digest:
+        return ["evidence_hash_mismatch"]
+    return []
+
+
+def metadata_blockers(
+    report: dict[str, Any],
+    bench: dict[str, Any],
+    root: Path | None = None,
+) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
     required_sections = required_metadata_sections(bench)
     for section in required_sections:
@@ -1118,6 +1162,26 @@ def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dic
                             "resolution": "Record the sha256 of the process effects contract used for this benchmark run.",
                         }
                     )
+                elif path == PROCESS_EFFECTS_CONTRACT_PATH:
+                    contract_path = ROOT / PROCESS_EFFECTS_CONTRACT_PATH
+                    if not contract_path.is_file():
+                        blockers.append(
+                            {
+                                "name": "process.process_effects_contract.sha256",
+                                "kind": "metadata",
+                                "reason": "process_effects_contract_missing",
+                                "resolution": f"Archive {PROCESS_EFFECTS_CONTRACT_PATH} before making a real benchmark claim.",
+                            }
+                        )
+                    elif sha256_file(contract_path) != digest:
+                        blockers.append(
+                            {
+                                "name": "process.process_effects_contract.sha256",
+                                "kind": "metadata",
+                                "reason": "process_effects_contract_hash_mismatch",
+                                "resolution": f"Set process.process_effects_contract.sha256 to the SHA-256 of {PROCESS_EFFECTS_CONTRACT_PATH}.",
+                            }
+                        )
             count = data.get("process_corner_count")
             node = data.get("node")
             if not isinstance(node, str) or "14A" not in node:
@@ -1220,6 +1284,19 @@ def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dic
                         "resolution": f"Record a lowercase SHA-256 digest for calibration.assets.{asset_name}.sha256.",
                     }
                 )
+            if root is not None and report.get("claim_level") in L5_L6_CLAIM_LEVELS:
+                for reason in calibration_asset_artifact_errors(asset_name, asset, root):
+                    blockers.append(
+                        {
+                            "name": f"calibration.assets.{asset_name}.evidence",
+                            "kind": "calibration",
+                            "reason": reason,
+                            "resolution": (
+                                f"Archive calibration.assets.{asset_name}.evidence under "
+                                "packages/chip and record its matching SHA-256 digest."
+                            ),
+                        }
+                    )
     return blockers
 
 
@@ -1268,9 +1345,16 @@ def base_report(args: argparse.Namespace, config: dict[str, Any], root: Path) ->
         resolved = metadata_path if metadata_path.is_absolute() else root / metadata_path
         with resolved.open("r", encoding="utf-8") as f:
             metadata = json.load(f)
+        report["artifacts"] = {
+            "target_metadata": display_path(resolved, root),
+            "target_metadata_sha256": sha256_file(resolved),
+            "target_metadata_bytes": resolved.stat().st_size,
+        }
         for key in REAL_METADATA_SECTIONS:
             if key in metadata:
                 report[key] = metadata[key]
+        if "target_execution" in metadata:
+            report["target_execution"] = metadata["target_execution"]
     return report
 
 
@@ -1566,7 +1650,11 @@ def check_metric_requirements(metrics: dict[str, Any], run_metadata: dict[str, A
     return errors
 
 
-def check_calibration_requirements(report: dict[str, Any], result: dict[str, Any]) -> list[str]:
+def check_calibration_requirements(
+    report: dict[str, Any],
+    result: dict[str, Any],
+    artifact_root: Path | None = None,
+) -> list[str]:
     errors: list[str] = []
     calibration = report.get("calibration")
     if not isinstance(calibration, dict):
@@ -1599,10 +1687,106 @@ def check_calibration_requirements(report: dict[str, Any], result: dict[str, Any
                 )
         if not is_sha256(asset.get("sha256")):
             errors.append(f"calibration asset {asset_name}.sha256 must be lowercase SHA-256 hex")
+        if artifact_root is not None and report.get("claim_level") in L5_L6_CLAIM_LEVELS:
+            for reason in calibration_asset_artifact_errors(asset_name, asset, artifact_root):
+                errors.append(f"calibration asset {asset_name}.evidence {reason}")
     return errors
 
 
-def validate_report(report: dict[str, Any]) -> list[str]:
+def check_target_execution_metadata(value: Any, scope: str) -> list[str]:
+    if not isinstance(value, dict):
+        return [f"{scope} missing target_execution metadata"]
+    errors: list[str] = []
+    for field, expected_type in TARGET_EXECUTION_METADATA_FIELDS.items():
+        if not isinstance(value.get(field), expected_type):
+            errors.append(f"{scope}.target_execution.{field} must be {expected_type.__name__}")
+        elif isinstance(value.get(field), str) and not value[field].strip():
+            errors.append(f"{scope}.target_execution.{field} must be non-empty")
+    runner = value.get("runner")
+    if runner not in REAL_TARGET_RUNNERS:
+        errors.append(
+            f"{scope}.target_execution.runner must identify a real target "
+            f"({', '.join(sorted(REAL_TARGET_RUNNERS))})"
+        )
+    if value.get("runner") in {"host", "local"} or value.get("host_run") is True:
+        errors.append(f"{scope}.target_execution must not describe host/local execution")
+    if not is_sha256(value.get("transcript_sha256")):
+        errors.append(f"{scope}.target_execution.transcript_sha256 must be lowercase SHA-256 hex")
+    return errors
+
+
+def check_target_execution_transcript_artifact(
+    value: Any, scope: str, artifact_root: Path
+) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    errors: list[str] = []
+    transcript_path = value.get("transcript_path")
+    digest = value.get("transcript_sha256")
+    if not isinstance(transcript_path, str) or not transcript_path.strip():
+        return [f"{scope}.target_execution.transcript_path must name an archived transcript"]
+    path = Path(transcript_path)
+    if path.is_absolute() or ".." in path.parts:
+        return [f"{scope}.target_execution.transcript_path must be a relative path under artifact root"]
+    resolved = artifact_root / path
+    try:
+        resolved = resolved.resolve()
+        resolved.relative_to(artifact_root.resolve())
+    except ValueError:
+        return [f"{scope}.target_execution.transcript_path must resolve under artifact root"]
+    if not resolved.is_file():
+        return [f"{scope}.target_execution.transcript_path is missing: {transcript_path}"]
+    if resolved.stat().st_size == 0:
+        return [f"{scope}.target_execution.transcript_path must not be empty"]
+    if is_sha256(digest) and sha256_file(resolved) != digest:
+        errors.append(f"{scope}.target_execution.transcript_sha256 does not match transcript_path")
+    return errors
+
+
+def check_result_raw_output_artifact(
+    result: dict[str, Any], scope: str, artifact_root: Path
+) -> list[str]:
+    artifacts = result.get("artifacts")
+    if not isinstance(artifacts, dict):
+        return [f"{scope}.artifacts must include raw_output and raw_output_sha256"]
+    raw_output = artifacts.get("raw_output")
+    digest = artifacts.get("raw_output_sha256")
+    errors: list[str] = []
+    if not isinstance(raw_output, str) or not raw_output.strip():
+        return [f"{scope}.artifacts.raw_output must name an archived transcript"]
+    path = Path(raw_output)
+    if path.is_absolute() or ".." in path.parts:
+        return [f"{scope}.artifacts.raw_output must be a relative path under artifact root"]
+    resolved = artifact_root / path
+    try:
+        resolved = resolved.resolve()
+        resolved.relative_to(artifact_root.resolve())
+    except ValueError:
+        return [f"{scope}.artifacts.raw_output must resolve under artifact root"]
+    if not resolved.is_file():
+        return [f"{scope}.artifacts.raw_output is missing: {raw_output}"]
+    if resolved.stat().st_size == 0:
+        return [f"{scope}.artifacts.raw_output must not be empty"]
+    if not is_sha256(digest):
+        errors.append(f"{scope}.artifacts.raw_output_sha256 must be lowercase SHA-256 hex")
+    elif sha256_file(resolved) != digest:
+        errors.append(f"{scope}.artifacts.raw_output_sha256 does not match raw_output")
+    target = result.get("target_execution")
+    if isinstance(target, dict):
+        transcript_path = target.get("transcript_path")
+        if isinstance(transcript_path, str) and transcript_path.strip():
+            errors.extend(
+                check_target_execution_transcript_artifact(target, scope, artifact_root)
+            )
+        elif is_sha256(digest) and target.get("transcript_sha256") != digest:
+            errors.append(
+                f"{scope}.target_execution.transcript_sha256 must match raw_output_sha256 "
+                "or provide target_execution.transcript_path"
+            )
+    return errors
+
+
+def validate_report(report: dict[str, Any], artifact_root: Path | None = None) -> list[str]:
     errors: list[str] = []
     for field, expected_type in REQUIRED_REPORT_FIELDS.items():
         if field not in report:
@@ -1612,14 +1796,59 @@ def validate_report(report: dict[str, Any]) -> list[str]:
 
     if report.get("schema") != "eliza.benchmark_run.v1":
         errors.append("report.schema must be eliza.benchmark_run.v1")
+    if report.get("status") not in {"passed", "blocked", "failed"}:
+        errors.append("report.status must be passed, blocked, or failed")
     if report.get("claim_level") not in VALID_CLAIM_LEVELS:
         errors.append("report.claim_level is not a valid claim level")
+    result_statuses = [
+        result.get("status")
+        for result in report.get("results", [])
+        if isinstance(result, dict)
+    ]
+    if isinstance(report.get("results"), list) and not report["results"]:
+        errors.append("report.results must contain at least one benchmark result")
+    has_failed_result = any(status in {"failed", "timeout", "error"} for status in result_statuses)
+    has_blocked_result = any(
+        status in {"blocked", "missing_dependencies", "planned_missing_deps"}
+        for status in result_statuses
+    )
+    if has_failed_result:
+        expected_report_status = "failed"
+    elif has_blocked_result:
+        expected_report_status = "blocked"
+    else:
+        expected_report_status = "passed"
+    if result_statuses and report.get("status") != expected_report_status:
+        errors.append(f"report.status must be {expected_report_status} for contained results")
+    report_claim_passed = report.get("status") == "passed" and report.get("dry_run") is False
+    if report.get("claim_allowed") is not report_claim_passed:
+        errors.append("report.claim_allowed must match passed real-run status")
+    expected_phone_claim = report_claim_passed and report.get("claim_level") in L5_L6_CLAIM_LEVELS
+    if report.get("phone_claim_allowed") is not expected_phone_claim:
+        errors.append("report.phone_claim_allowed must match passed L5/L6 status")
+    expected_release_claim = report_claim_passed and report.get("claim_level") == "L6_COMPLETE_PHONE"
+    if report.get("release_claim_allowed") is not expected_release_claim:
+        errors.append("report.release_claim_allowed must match passed L6 status")
     has_passed_measured_results = any(
         isinstance(result, dict)
         and result.get("status") == "passed"
         and result.get("provenance") != "simulator"
         for result in report.get("results", [])
     )
+    is_l5_l6_claim = report.get("claim_level") in L5_L6_CLAIM_LEVELS
+    if is_l5_l6_claim and has_passed_measured_results:
+        errors.extend(check_target_execution_metadata(report.get("target_execution"), "report"))
+        if artifact_root is not None:
+            errors.extend(
+                check_target_execution_transcript_artifact(
+                    report.get("target_execution"), "report", artifact_root
+                )
+            )
+        runner = report.get("target_execution", {}).get("runner") if isinstance(report.get("target_execution"), dict) else None
+        if runner not in PHONE_L5_L6_TARGET_RUNNERS:
+            errors.append(
+                "report.target_execution.runner must be prototype, silicon, or phone for L5/L6 phone claims"
+            )
     if report.get("dry_run") is False and has_passed_measured_results:
         for section in REAL_METADATA_SECTIONS:
             if not isinstance(report.get(section), dict):
@@ -1660,6 +1889,19 @@ def validate_report(report: dict[str, Any]) -> list[str]:
                         errors.append(
                             "real report metadata process.process_effects_contract.sha256 must be lowercase hex sha256"
                         )
+                    elif contract.get("path") == PROCESS_EFFECTS_CONTRACT_PATH:
+                        contract_root = artifact_root or ROOT
+                        contract_path = contract_root / PROCESS_EFFECTS_CONTRACT_PATH
+                        if not contract_path.is_file():
+                            errors.append(
+                                "real report metadata process.process_effects_contract.sha256 "
+                                f"cannot be verified because {PROCESS_EFFECTS_CONTRACT_PATH} is missing"
+                            )
+                        elif sha256_file(contract_path) != digest:
+                            errors.append(
+                                "real report metadata process.process_effects_contract.sha256 "
+                                f"must match {PROCESS_EFFECTS_CONTRACT_PATH}"
+                            )
                 count = process.get("process_corner_count")
                 node = process.get("node")
                 if not isinstance(node, str) or "14A" not in node:
@@ -1707,6 +1949,14 @@ def validate_report(report: dict[str, Any]) -> list[str]:
             errors.append(f"{prefix}.provenance is not supported")
         if status not in VALID_RESULT_STATUSES:
             errors.append(f"{prefix}.status {status!r} is not valid")
+        if status == "blocked":
+            expected_blocked_provenance = (
+                "dry_run" if report.get("dry_run") is True else "blocked_placeholder"
+            )
+            if result.get("provenance") != expected_blocked_provenance:
+                errors.append(
+                    f"{prefix} blocked result provenance must be {expected_blocked_provenance}"
+                )
         if report.get("dry_run") is True and status == "passed":
             errors.append(f"{prefix} dry-run report must not contain passed results")
         if report.get("dry_run") is True and result.get("provenance") != "dry_run":
@@ -1714,6 +1964,17 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         if report.get("dry_run") is False and status == "passed":
             if result.get("provenance") == "dry_run":
                 errors.append(f"{prefix} real passed result cannot use dry_run provenance")
+            if is_l5_l6_claim and result.get("provenance") != "simulator":
+                errors.extend(
+                    check_target_execution_metadata(result.get("target_execution"), prefix)
+                )
+                if artifact_root is not None:
+                    errors.extend(check_result_raw_output_artifact(result, prefix, artifact_root))
+                runner = result.get("target_execution", {}).get("runner") if isinstance(result.get("target_execution"), dict) else None
+                if runner not in PHONE_L5_L6_TARGET_RUNNERS:
+                    errors.append(
+                        f"{prefix}.target_execution.runner must be prototype, silicon, or phone for L5/L6 phone claims"
+                    )
             if not isinstance(result.get("metrics"), dict) or not result["metrics"]:
                 errors.append(f"{prefix} passed result missing parsed metrics")
             if not isinstance(result.get("run_metadata"), dict):
@@ -1727,7 +1988,7 @@ def validate_report(report: dict[str, Any]) -> list[str]:
                     result["run_metadata"].get("required_calibration_assets")
                 )
                 if result.get("provenance") != "simulator" or requires_calibration:
-                    for error in check_calibration_requirements(report, result):
+                    for error in check_calibration_requirements(report, result, artifact_root):
                         errors.append(f"{prefix}.calibration {error}")
         if status == "passed":
             if result.get("missing_dependencies"):
@@ -1768,6 +2029,19 @@ def validate_report(report: dict[str, Any]) -> list[str]:
             errors.append(
                 f"{prefix} blocked without blocked_assets, blocked_requirements, or missing_dependencies"
             )
+        blocked_requirements = result.get("blocked_requirements")
+        if blocked_requirements is not None:
+            if not isinstance(blocked_requirements, list):
+                errors.append(f"{prefix}.blocked_requirements must be a list")
+            else:
+                for req_index, requirement in enumerate(blocked_requirements):
+                    req_prefix = f"{prefix}.blocked_requirements[{req_index}]"
+                    if not isinstance(requirement, dict):
+                        errors.append(f"{req_prefix} must be an object")
+                        continue
+                    for field in ("name", "reason", "resolution"):
+                        if not isinstance(requirement.get(field), str) or not requirement.get(field):
+                            errors.append(f"{req_prefix}.{field} must be non-empty string")
         if result.get("provenance") == "simulator":
             metrics = result.get("metrics", {})
             if isinstance(metrics, dict):
@@ -1808,10 +2082,10 @@ def validate_report(report: dict[str, Any]) -> list[str]:
     return errors
 
 
-def validate_report_file(path: Path) -> list[str]:
+def validate_report_file(path: Path, artifact_root: Path | None = None) -> list[str]:
     with path.open("r", encoding="utf-8") as f:
         report = json.load(f)
-    return validate_report(report)
+    return validate_report(report, artifact_root)
 
 
 def run_benchmark(
@@ -1831,7 +2105,7 @@ def run_benchmark(
     blocked_requirements = []
     if not args.dry_run:
         blocked_requirements.extend(dependency_blockers)
-        blocked_requirements.extend(metadata_blockers(report, bench))
+        blocked_requirements.extend(metadata_blockers(report, bench, root))
     log_path = run_dir / f"{bench['name']}.log"
     result: dict[str, Any] = {
         "name": bench["name"],
@@ -1844,8 +2118,17 @@ def run_benchmark(
         "parser": bench["parser"],
         "provenance": "dry_run" if args.dry_run else bench.get("provenance", "measured"),
         "dependencies": statuses,
-        "artifacts": {"raw_output": str(log_path)},
+        "artifacts": {"raw_output": display_path(log_path, root)},
     }
+    report_artifacts = report.get("artifacts")
+    if isinstance(report_artifacts, dict) and report_artifacts.get("target_metadata"):
+        result["artifacts"]["target_metadata"] = report_artifacts["target_metadata"]
+        result["artifacts"]["target_metadata_sha256"] = report_artifacts.get(
+            "target_metadata_sha256"
+        )
+        result["artifacts"]["target_metadata_bytes"] = report_artifacts.get(
+            "target_metadata_bytes"
+        )
     if execution_command != command:
         result["resolved_command"] = execution_command
     # MLPerf Power-style integrated energy is passed through verbatim from
@@ -1872,7 +2155,18 @@ def run_benchmark(
         return result
 
     if blocked or blocked_requirements:
+        for status in statuses:
+            if status.get("release_claim_allowed") is True:
+                status["release_claim_allowed"] = False
+                status["release_claim_blocked_reason"] = (
+                    "benchmark result is blocked; dependency cannot support a release claim "
+                        "until all benchmark requirements pass"
+                )
+        result["provenance"] = "blocked_placeholder"
         result["status"] = "blocked"
+        result["claim_allowed"] = False
+        result["phone_claim_allowed"] = False
+        result["release_claim_allowed"] = False
         result["missing_dependencies"] = missing
         if missing_details:
             result["missing_dependency_details"] = missing_details
@@ -1969,6 +2263,10 @@ def run_benchmark(
         "metric_gates": bench.get("metric_gates", []),
         "required_calibration_assets": bench.get("required_calibration_assets", []),
     }
+    if isinstance(bench.get("target_execution"), dict):
+        result["target_execution"] = copy.deepcopy(bench["target_execution"])
+    elif isinstance(report.get("target_execution"), dict):
+        result["target_execution"] = copy.deepcopy(report["target_execution"])
     metric_errors = check_metric_requirements(result["metrics"], result["run_metadata"])
     if metric_errors:
         result.update(
@@ -2125,8 +2423,17 @@ def run_plan_or_real(args: argparse.Namespace) -> int:
         report["status"] = "blocked"
     else:
         report["status"] = "passed"
+    report_claim_passed = report["status"] == "passed" and args.dry_run is False
+    report["claim_allowed"] = report_claim_passed
+    report["phone_claim_allowed"] = report_claim_passed and args.claim_level in {
+        "L5_PROTOTYPE_SILICON",
+        "L6_COMPLETE_PHONE",
+    }
+    report["release_claim_allowed"] = (
+        report_claim_passed and args.claim_level == "L6_COMPLETE_PHONE"
+    )
 
-    errors = validate_report(report)
+    errors = validate_report(report, root)
     if errors:
         for error in errors:
             print(f"schema error: {error}", file=sys.stderr)
@@ -2161,7 +2468,7 @@ def main(argv: list[str]) -> int:
     root = repo_root()
     if args.command == "validate-report":
         report_path = args.report if args.report.is_absolute() else root / args.report
-        errors = validate_report_file(report_path)
+        errors = validate_report_file(report_path, root)
         if errors:
             for error in errors:
                 print(f"schema error: {error}", file=sys.stderr)

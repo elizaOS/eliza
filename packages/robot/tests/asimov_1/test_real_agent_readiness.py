@@ -22,6 +22,12 @@ def _fake_step(name: str, *, passed: bool = True) -> dict:
     }
 
 
+def _fake_step_with_argv(name: str, argv: list[str], *, passed: bool = True) -> dict:
+    row = _fake_step(name, passed=passed)
+    row["argv"] = argv
+    return row
+
+
 def test_real_agent_readiness_contract_passes_without_production_requirements(
     monkeypatch,
 ) -> None:
@@ -53,7 +59,7 @@ def test_real_agent_readiness_requires_production_and_hardware_when_requested(
 
     def fake_run(name: str, argv: list[str], *, cwd: Path = readiness.ROOT) -> dict:
         calls.append(name)
-        return _fake_step(name, passed=name != "real_hardware_evidence")
+        return _fake_step_with_argv(name, argv, passed=name != "real_hardware_evidence")
 
     monkeypatch.setattr(readiness, "_run", fake_run)
 
@@ -68,6 +74,10 @@ def test_real_agent_readiness_requires_production_and_hardware_when_requested(
     assert report["checks"]["production_checkpoint"] is True
     assert report["checks"]["real_hardware_evidence"] is False
     assert calls[-2:] == ["production_checkpoint", "real_hardware_evidence"]
+    production_step = next(step for step in report["steps"] if step["name"] == "production_checkpoint")
+    assert "-m" in production_step["argv"]
+    assert "scripts.validate_asimov1_production_checkpoint" in production_step["argv"]
+    assert "--require-inference-check" in production_step["argv"]
 
 
 def test_real_agent_readiness_reports_production_ready_with_both_artifacts(
