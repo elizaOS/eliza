@@ -114,8 +114,7 @@ def _parse_results() -> tuple[bool, str]:
             return False, f"test skipped: {case.get('name')}"
         if failure is not None or error is not None:
             node = failure if failure is not None else error
-            if node is None:
-                continue
+            assert node is not None  # narrowed by the guard above
             msg = (node.get("message") or node.text or "assertion failed").strip()
             return False, f"{case.get('name')}: {msg[:400]}"
     if seen == 0:
