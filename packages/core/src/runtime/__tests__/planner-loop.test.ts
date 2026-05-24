@@ -170,6 +170,27 @@ describe("v5 planner loop skeleton", () => {
 		);
 	});
 
+	it("forbids using SHELL as a fallback for chat-message search/recall", () => {
+		// Regression for the planner-quality bug surfaced in elizaOS/eliza#7935:
+		// Stage 1 hinted candidateActions=["SEARCH_MESSAGES"] for "look in chat
+		// for any mention of <X>", but no SEARCH_MESSAGES action was registered
+		// in the runtime. The planner fell back to SHELL with `echo "placeholder"`
+		// and unbounded `grep -R <X> -n .` operations that timed out after
+		// 60-120s each, burned 4 planner iterations / 180k prompt tokens /
+		// $0.12 / 1.8 MB trajectory, and ultimately produced an empty Discord
+		// reply.
+		//
+		// The rule pins the structural contract: SHELL is for
+		// filesystem/process work, never a substitute for chat-recall when no
+		// dedicated search action exists.
+		expect(plannerTemplate).toContain(
+			"SHELL is for filesystem/process work, not a fallback for chat-message search/recall",
+		);
+		expect(plannerTemplate).toContain(
+			"do not run shell greps, echo placeholders, or simulate the search",
+		);
+	});
+
 	it("calls ACTION_PLANNER, executes the first queued tool, then evaluates", async () => {
 		const runtime = {
 			useModel: vi.fn(async () => ({
