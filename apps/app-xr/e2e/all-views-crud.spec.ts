@@ -45,8 +45,9 @@ test.describe("XR view CRUD — all 24 views", () => {
 
       expect(response?.status()).toBe(200);
 
-      // Shell must render
+      // Shell must render and be fully painted before trace frames are captured.
       await expect(page.locator("#xr-shell")).toBeVisible();
+      await page.waitForLoadState("networkidle");
 
       // View id must be in the HTML
       const html = await page.content();
