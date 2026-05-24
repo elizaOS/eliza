@@ -932,20 +932,49 @@ def build_fembot_component_constraint_coverage_proof(
         "fastener_or_thread",
         "wiring_or_service_access",
     ):
-        evidence = step_evidence[family_name]
+        supplier_evidence = [
+            {
+                "supplier_code": target["supplier_code"],
+                "component_type": target["classification"].get("component_type"),
+                "classification_status": target["classification"].get("classification_status"),
+                "datasheet_backed": target["classification"].get("datasheet_backed"),
+                "source": target["classification"].get("source"),
+                "source_url": target["classification"].get("source_url"),
+                "referenced_by_groups": target.get("referenced_by_groups", []),
+                "referenced_by_links": target.get("referenced_by_links", []),
+                "path_count": target.get("path_count"),
+                "geometry_loaded_count": target.get("geometry_loaded_count"),
+                "geometry_failed_count": target.get("geometry_failed_count"),
+                "generated_link_fit_checked_count": target.get("generated_link_fit_checked_count"),
+                "generated_link_fit_fail_count": target.get("generated_link_fit_fail_count"),
+                "max_body_bbox_extent_m": target.get("max_body_bbox_extent_m"),
+                "evidence_kind": "classified_supplier_code_step_geometry",
+            }
+            for target in vendor_summary["supplier_code_classification_targets"]
+            if target["classification"].get("family") == family_name
+        ]
+        evidence = [*step_evidence[family_name], *supplier_evidence]
+        has_supplier_geometry = any(
+            int(item.get("geometry_loaded_count") or 0) > 0
+            for item in supplier_evidence
+        )
         records.append(
             _family_record(
                 family=family_by_name[family_name],
                 covered_count=len(evidence),
-                covered_links={link for item in evidence for link in item.get("links", [])},
+                covered_links={
+                    link
+                    for item in evidence
+                    for link in [*item.get("links", []), *item.get("referenced_by_links", [])]
+                },
                 evidence=evidence,
-                clearance_geometry=False,
+                clearance_geometry=has_supplier_geometry,
                 clearance_verified=False,
                 acceptance_blocker=(
                     "no named STEP, MJCF, or manifest geometry has been classified for this "
                     "component family"
                     if not evidence
-                    else "name-pattern evidence exists, but explicit component dimensions and clearance geometry are not proven"
+                    else "classified STEP/vendor geometry exists, but exact measured dimensions and positive generated-body clearance are not certified"
                 ),
             )
         )
@@ -998,8 +1027,14 @@ def build_fembot_component_constraint_coverage_proof(
             "unique_vendor_supplier_codes": vendor_summary[
                 "unique_vendor_supplier_codes"
             ],
+            "classified_vendor_supplier_codes": vendor_summary[
+                "classified_vendor_supplier_codes"
+            ],
             "unclassified_vendor_supplier_codes": vendor_summary[
                 "unclassified_vendor_supplier_codes"
+            ],
+            "supplier_code_family_counts": vendor_summary[
+                "supplier_code_family_counts"
             ],
             "supplier_code_geometry_loaded_paths": vendor_summary[
                 "supplier_code_geometry_loaded_paths"
@@ -1045,10 +1080,11 @@ def build_fembot_component_constraint_coverage_proof(
                 None
                 if accepted
                 else (
-                    "motors, joints, collision, source mesh, and vendor envelopes are inventoried; "
-                    "bearings/rings, gears/pulleys/belts, fasteners/threads, wiring/service access, "
-                    "and final positive clearance checks still need explicit geometry before thinning "
-                    "can be accepted"
+                    "motors, joints, collision, source mesh, vendor envelopes, bearing/ring "
+                    "supplier codes, and fastener/thread supplier codes are inventoried; "
+                    "gears/pulleys/belts, wiring/service access, exact measured dimensions, "
+                    "and final positive clearance checks still need explicit geometry before "
+                    "thinning can be accepted"
                 )
             ),
         },
