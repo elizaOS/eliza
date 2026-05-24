@@ -233,7 +233,7 @@ describe("OpenAI native text plumbing", () => {
   it("marks unconsumed streaming companion promises as handled", async () => {
     const noOutputError = Object.assign(
       new Error("No output generated. Check the stream for errors."),
-      { name: "AI_NoOutputGeneratedError" },
+      { name: "AI_NoOutputGeneratedError" }
     );
     aiMocks.streamText.mockResolvedValue({
       textStream: (async function* textStream() {

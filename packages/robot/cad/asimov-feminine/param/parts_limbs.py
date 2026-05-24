@@ -49,7 +49,7 @@ SLIM = {
     # ── legs (weight-bearing — slim but not fragile) ─────────────────────────
     'LEFT_HIP_PITCH': 1.00,      # hip yoke: keep original — slimming it (spine=y scales Z) nudged it into HIP_YAW (collision)
     'LEFT_HIP_ROLL': 1.00,       # hip link: keep original for the same reason
-    'LEFT_HIP_YAW': 0.82,        # upper thigh shaft
+    'LEFT_HIP_YAW': 1.00,        # upper thigh: joint clevis receives hip cluster — ANY slim pinches HIP_PITCH (collision). Keep full; slim calf carries the leg shape.
     'LEFT_KNEE': 0.80,           # thigh+calf shaft
     'LEFT_ANKLE_A': 0.88,        # ankle pitch (spine z -> scales X,Y about leg axis)
 

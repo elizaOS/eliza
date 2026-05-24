@@ -782,7 +782,7 @@ function handledPromise<T>(value: T | PromiseLike<T>): Promise<T> {
 
 function handledMappedPromise<T, U>(
   value: T | PromiseLike<T>,
-  mapper: (resolved: T) => U | PromiseLike<U>,
+  mapper: (resolved: T) => U | PromiseLike<U>
 ): Promise<U> {
   return handledPromise(handledPromise(value).then(mapper));
 }

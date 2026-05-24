@@ -202,8 +202,8 @@ non-star-shaped cross-section that exceeded tolerance; `plane_loops` now proves
 that link by fitting 59 ordered contour loops across 12 section levels. The
 current accepted hash-bound reports are `LEFT_SHOULDER_PITCH`, `LEFT_ANKLE_A`,
 `RIGHT_ANKLE_A`, `LEFT_HIP_ROLL`, `RIGHT_HIP_ROLL`, `LEFT_SHOULDER_YAW`, and
-`RIGHT_SHOULDER_YAW`, `LEFT_WRIST_YAW`, and `RIGHT_WRIST_YAW`. The ankle,
-hip-roll, shoulder-yaw, and wrist-yaw reports are
+`RIGHT_SHOULDER_YAW`, `LEFT_WRIST_YAW`, `RIGHT_WRIST_YAW`, `NECK_PITCH`, and
+`NECK_YAW`. The ankle, hip-roll, shoulder-yaw, wrist-yaw, and neck reports are
 preservation-baseline similarity warps that keep reserved interface slabs inside
 tolerance; they are still not STEP/B-rep reconstruction proofs.
 
@@ -249,16 +249,15 @@ python3 packages/robot/scripts/rank_asimov1_spline_fit_failures.py --limit 10
 
 At the current checkpoint, spline proof reports are SHA-256-bound to the exact
 source and output STL bytes; stale proof JSON no longer counts. Under that
-stricter gate, 9 of 28 visual mesh links have accepted spline, interface,
-topology, and surface-distance proof reports. The remaining 19 failed-attempt
-reports include 14 interface failures, 17 topology failures, and 2
+stricter gate, 11 of 28 visual mesh links have accepted spline, interface,
+topology, and surface-distance proof reports. The remaining 17 failed-attempt
+reports include 12 interface failures, 17 topology failures, and 2
 surface-distance failures. The all-link refresh uses `plane_loops`, which proves
 section fits for the current top repair targets and exposes reserved interface
-preservation as the first blocker. `NECK_PITCH` is currently the highest-ranked
-repair target because its spline, topology, and surface-distance checks pass but
-one reserved interface slab is over tolerance. `RIGHT_HIP_YAW`
-remains an inherited-topology target: the source and output both have 7
-nonmanifold edges split across 7 manifold face components.
+preservation as the first blocker. The remaining top-ranked repairs are now
+inherited-topology targets. `RIGHT_HIP_YAW` is first: the source and output both
+have 7 nonmanifold edges split across 7 manifold face components, and both
+reserved interface slabs are still over tolerance.
 
 The first `RIGHT_HIP_YAW` repair pass shows that a full clean loft is not enough
 by itself: it fixes topology but misses both reserved interfaces and reaches

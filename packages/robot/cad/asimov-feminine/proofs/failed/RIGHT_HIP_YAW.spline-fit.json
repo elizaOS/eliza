@@ -9,21 +9,21 @@
   },
   "interfaces": [
     {
-      "bbox_delta_m": 0.006705000996589661,
-      "centroid_delta_m": 0.0022285416716307485,
+      "bbox_delta_m": 0.0,
+      "centroid_delta_m": 0.0,
       "level": -0.19564,
-      "ok": false,
+      "ok": true,
       "output_point_count": 2439,
-      "radius_delta_m": 0.010868726836746882,
+      "radius_delta_m": 0.0,
       "source_point_count": 2439
     },
     {
-      "bbox_delta_m": 0.011723276227712631,
-      "centroid_delta_m": 0.0006966076406636145,
+      "bbox_delta_m": 0.0,
+      "centroid_delta_m": 0.0,
       "level": 0.0,
-      "ok": false,
+      "ok": true,
       "output_point_count": 1465,
-      "radius_delta_m": 0.011547845063758187,
+      "radius_delta_m": 0.0,
       "source_point_count": 1465
     }
   ],
@@ -35,7 +35,7 @@
   "nudged_levels": [],
   "output_mesh_bytes": 1833684,
   "output_mesh_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/RIGHT_HIP_YAW.STL",
-  "output_mesh_sha256": "e80aa63fec71b8dc63486131aba4def9faa5bdee632635a8f7393370ee247f7e",
+  "output_mesh_sha256": "728c1330a69ea70d2bfba704f74ef4ab09979995e5fd5c341ebfc84aaf76f61e",
   "rings": [
     {
       "control_count": 64,
@@ -2032,18 +2032,17 @@
   "step_m": 0.01,
   "summary": {
     "failure_reasons": [
-      "interface:2_levels_over_tolerance",
       "topology:boundary=0,nonmanifold=7,degenerate=0"
     ],
     "fitted_span_m": 0.30000000000000027,
     "interfaces_checked": 2,
-    "interfaces_ok": 0,
+    "interfaces_ok": 2,
     "internal_rings_skipped": 0,
     "levels_checked": 31,
     "max_error_m": 0.0010292863436561816,
-    "max_interface_bbox_delta_m": 0.011723276227712631,
-    "max_interface_centroid_delta_m": 0.0022285416716307485,
-    "max_interface_radius_delta_m": 0.011547845063758187,
+    "max_interface_bbox_delta_m": 0.0,
+    "max_interface_centroid_delta_m": 0.0,
+    "max_interface_radius_delta_m": 0.0,
     "max_rms_error_m": 0.00037243817769859466,
     "min_section_span_ratio": 0.3333333333333333,
     "nudged_levels": 0,
@@ -2063,19 +2062,19 @@
     "source_manifold_component_count": 7,
     "source_nonmanifold_edges": 7,
     "source_watertight": false,
-    "surface_symmetric_chamfer_rms_m": 0.005788098769195868,
-    "surface_symmetric_hausdorff_m": 0.012153249952298165
+    "surface_symmetric_chamfer_rms_m": 2.268710951813844e-15,
+    "surface_symmetric_hausdorff_m": 1.6033643444375188e-13
   },
   "surface_distance": {
     "ok": true,
     "output_sample_count": 5000,
-    "output_to_source_max_m": 0.012153247466150714,
-    "output_to_source_rms_m": 0.005045470287725199,
+    "output_to_source_max_m": 1.6033643444375188e-13,
+    "output_to_source_rms_m": 2.2678759283986364e-15,
     "source_sample_count": 5000,
-    "source_to_output_max_m": 0.012153249952298165,
-    "source_to_output_rms_m": 0.006445727600482015,
-    "symmetric_chamfer_rms_m": 0.005788098769195868,
-    "symmetric_hausdorff_m": 0.012153249952298165
+    "source_to_output_max_m": 1.6033643444375188e-13,
+    "source_to_output_rms_m": 2.269545668002779e-15,
+    "symmetric_chamfer_rms_m": 2.268710951813844e-15,
+    "symmetric_hausdorff_m": 1.6033643444375188e-13
   },
   "tolerances": {
     "interface_tolerance_m": 0.003,

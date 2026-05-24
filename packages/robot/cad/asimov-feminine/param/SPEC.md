@@ -136,10 +136,11 @@ python3 scripts/generate_asimov1_spline_fit_proof.py \
 The current accepted hash-bound reports are `LEFT_SHOULDER_PITCH`,
 `LEFT_ANKLE_A`, `RIGHT_ANKLE_A`, `LEFT_HIP_ROLL`, `RIGHT_HIP_ROLL`,
 `LEFT_SHOULDER_YAW`, `RIGHT_SHOULDER_YAW`, `LEFT_WRIST_YAW`, and
-`RIGHT_WRIST_YAW`. `LEFT_SHOULDER_PITCH` uses `plane_loops` and proves 59
-ordered contour loops across 12 section levels after the single radial
-exact-section model exposed a non-star-shaped cross-section. The ankle,
-hip-roll, shoulder-yaw, and wrist-yaw reports use constrained similarity warps
+`RIGHT_WRIST_YAW`, `NECK_PITCH`, and `NECK_YAW`. `LEFT_SHOULDER_PITCH` uses
+`plane_loops` and proves 59 ordered contour loops across 12 section levels after
+the single radial exact-section model exposed a non-star-shaped cross-section.
+The ankle, hip-roll, shoulder-yaw, wrist-yaw, and neck reports use constrained
+similarity warps
 as preservation baselines, keeping reserved interfaces inside tolerance while
 retaining the original mesh topology. They are still not STEP/B-rep
 reconstruction proofs.
@@ -152,16 +153,15 @@ python3 scripts/rank_asimov1_spline_fit_failures.py --limit 10
 
 Current checkpoint: proof reports are now SHA-256-bound to the exact source and
 output STL bytes; stale proof JSON no longer counts. Under that stricter gate,
-9 of 28 links have accepted geometry proof reports and 19 remain failed or
-missing accepted proofs. The strict matrix currently fails with 14 interface
+11 of 28 links have accepted geometry proof reports and 17 remain failed or
+missing accepted proofs. The strict matrix currently fails with 12 interface
 failures, 17 topology failures, and 2 surface-distance failures. The all-link
 refresh uses `plane_loops`, which proves section fits for the current top repair
-targets and exposes reserved-interface preservation as the first blocker.
-`NECK_PITCH` is currently the highest-ranked repair target because its spline,
-topology, and surface-distance checks pass but one reserved interface slab is
-over tolerance. `RIGHT_HIP_YAW` remains an inherited-topology target:
-the source and output both have 7 nonmanifold edges split across 7 manifold face
-components.
+targets and exposes reserved-interface preservation as the first blocker. The
+remaining top-ranked repairs are now inherited-topology targets. `RIGHT_HIP_YAW`
+is first: the source and output both have 7 nonmanifold edges split across 7
+manifold face components, and both reserved interface slabs are still over
+tolerance.
 
 `RIGHT_HIP_YAW` repair checkpoint: the shared hip clean-loft builder produces a
 watertight mesh, but it is not yet a valid replacement because both reserved

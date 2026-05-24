@@ -16,9 +16,9 @@ def test_spline_fit_proof_matrix_lists_all_expected_links_and_current_gaps() -> 
     assert matrix["schema"] == "asimov-1-spline-fit-proof-matrix-v1"
     assert matrix["ok"] is False
     assert matrix["counts"]["expected_links"] == 28
-    assert matrix["counts"]["passed"] == 9
-    assert matrix["counts"]["missing_or_failed"] == 19
-    assert matrix["counts"]["failed_attempt_reports"] >= 19
+    assert matrix["counts"]["passed"] == 11
+    assert matrix["counts"]["missing_or_failed"] == 17
+    assert matrix["counts"]["failed_attempt_reports"] >= 17
     assert matrix["failure_reason_counts"]["interface"] > 0
     assert matrix["failure_reason_counts"]["topology"] > 0
 
@@ -68,17 +68,17 @@ def test_spline_fit_repair_ranking_updates_after_loop_proofs() -> None:
 
     assert ranking["schema"] == "asimov-1-spline-fit-repair-ranking-v1"
     assert ranking["counts"]["expected_links"] == 28
-    assert ranking["counts"]["passed"] == 9
+    assert ranking["counts"]["passed"] == 11
     assert ranking["counts"]["ranked_targets"] >= 5
 
     first = ranking["targets"][0]
-    assert first["link"] == "NECK_PITCH"
-    assert first["category"] == "interface_only"
+    assert first["link"] == "RIGHT_HIP_YAW"
+    assert first["category"] == "inherited_topology"
     assert first["failed_ring_count"] == 0
     assert first["boundary_edges"] == 0
-    assert first["nonmanifold_edges"] == 0
-    assert first["source_nonmanifold_edges"] == 0
-    assert first["inherited_topology"] is False
+    assert first["nonmanifold_edges"] == 7
+    assert first["source_nonmanifold_edges"] == 7
+    assert first["inherited_topology"] is True
     assert first["internal_rings_skipped"] == 0
     assert first["worst_ring_level"] is None
     by_link = {target["link"]: target for target in ranking["targets"]}
@@ -103,7 +103,7 @@ def test_spline_fit_repair_ranking_cli_supports_limit() -> None:
 
     assert proc.returncode == 0
     assert '"ranked_targets": 3' in proc.stdout
-    assert '"NECK_PITCH"' in proc.stdout
+    assert '"RIGHT_HIP_YAW"' in proc.stdout
 
 
 def test_batch_spline_fit_generator_uses_connection_axes(tmp_path: Path) -> None:

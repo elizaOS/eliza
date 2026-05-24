@@ -1,0 +1,2336 @@
+{
+  "accepted": false,
+  "body_groups": [
+    {
+      "accepted": false,
+      "assembly_candidates": [
+        "200",
+        "700"
+      ],
+      "assembly_records": [
+        {
+          "assembly": "200",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/ASV1_200.STEP",
+          "assembly_step_sha256": "0f4653ad7cb17d406a21967b79e8f0983d6cbc8a4eb980fbce43292b0b4b71d8",
+          "step_file_count": 17
+        },
+        {
+          "assembly": "700",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/ASV1_700.STEP",
+          "assembly_step_sha256": "c5d008bfb783542f978d0c20000a23b7bf6389335c44548159adaf3799fb2582",
+          "step_file_count": 14
+        }
+      ],
+      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "exact_link_assignments": [],
+      "group": "torso",
+      "links": [
+        "IMU_ORIGIN",
+        "WAIST_YAW"
+      ],
+      "source_kind": "source_step_group_candidate_manifest",
+      "step_file_count": 31,
+      "step_files": [
+        {
+          "assembly": "200",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_200.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/ASV1_200.STEP",
+          "relative_path": "200/ASV1_200.STEP",
+          "sha256": "0f4653ad7cb17d406a21967b79e8f0983d6cbc8a4eb980fbce43292b0b4b71d8"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_200_02A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/ALU_7075/ASV1_200_02A.STEP",
+          "relative_path": "200/FABRICATION/ALU_7075/ASV1_200_02A.STEP",
+          "sha256": "2b577f3fd36fd9e9b81234ed144077316c225127a5c2014c82773f21d0055a30"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_200_03A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/ALU_7075/ASV1_200_03A.STEP",
+          "relative_path": "200/FABRICATION/ALU_7075/ASV1_200_03A.STEP",
+          "sha256": "7c4eb430c930c4701c9b9fa3398de3ae87601e213a428911353c472836e71fd3"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_200_16A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/ALU_7075/ASV1_200_16A.STEP",
+          "relative_path": "200/FABRICATION/ALU_7075/ASV1_200_16A.STEP",
+          "sha256": "c7f7755e2442866e38d852116f502a686783a4ad8a8e514c8f9324cb9ee7d083"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_01C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_01C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_01C.STEP",
+          "sha256": "cbaa717718b84576d96f77f912e7e94bde9a2d79722324c2fc8cef533eada670"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_06C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_06C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_06C.STEP",
+          "sha256": "d8e49b141f061747444726ba4e300a4d11c25b8407960ebc0edb2c779b087fb8"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_07C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_07C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_07C.STEP",
+          "sha256": "d3adf315020605a19cb0253709e1635e57147189914cc0fd19a890d6cc36bcdc"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_08C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_08C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_08C.STEP",
+          "sha256": "dd078db12aa2fbb2a2f9d1e7923732eb840f2b0f3d9fce2226721a05f412271b"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_09C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_09C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_09C.STEP",
+          "sha256": "87e616b82ff6a47c75b1c11a991c1655e80672ac77e6779cec8441147e101e34"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_200_15C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/MJF_PA12/ASV1_200_15C.STEP",
+          "relative_path": "200/FABRICATION/MJF_PA12/ASV1_200_15C.STEP",
+          "sha256": "6087b8c58fcb0cea9f6fd4779787c77a014f8ed24ea9f15f198d1767f43019cf"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_200_10X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/OFF_THE_SHELF/ASV1_200_10X.STEP",
+          "relative_path": "200/FABRICATION/OFF_THE_SHELF/ASV1_200_10X.STEP",
+          "sha256": "3dcdd6b5b9b9a41c742bc4fbed0033c869d986cc8cb98a67980b3e43664e8392"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_200_11X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/OFF_THE_SHELF/ASV1_200_11X.STEP",
+          "relative_path": "200/FABRICATION/OFF_THE_SHELF/ASV1_200_11X.STEP",
+          "sha256": "3dcdd6b5b9b9a41c742bc4fbed0033c869d986cc8cb98a67980b3e43664e8392"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_200_12X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/OFF_THE_SHELF/ASV1_200_12X.STEP",
+          "relative_path": "200/FABRICATION/OFF_THE_SHELF/ASV1_200_12X.STEP",
+          "sha256": "3dcdd6b5b9b9a41c742bc4fbed0033c869d986cc8cb98a67980b3e43664e8392"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_200_13X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/OFF_THE_SHELF/ASV1_200_13X.STEP",
+          "relative_path": "200/FABRICATION/OFF_THE_SHELF/ASV1_200_13X.STEP",
+          "sha256": "7bde50d0470678bc041ce83c04024065e4ef7bd047b7a599ac61953fb0269fa3"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_200_14X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/OFF_THE_SHELF/ASV1_200_14X.STEP",
+          "relative_path": "200/FABRICATION/OFF_THE_SHELF/ASV1_200_14X.STEP",
+          "sha256": "7bde50d0470678bc041ce83c04024065e4ef7bd047b7a599ac61953fb0269fa3"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_200_04B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/SML_316L/ASV1_200_04B.STEP",
+          "relative_path": "200/FABRICATION/SML_316L/ASV1_200_04B.STEP",
+          "sha256": "74c106f5159f6d2c24cbadf961e967e7ff37449b22bfe3b4a3c1ceb9f62c2015"
+        },
+        {
+          "assembly": "200",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_200_05B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/200/FABRICATION/SML_316L/ASV1_200_05B.STEP",
+          "relative_path": "200/FABRICATION/SML_316L/ASV1_200_05B.STEP",
+          "sha256": "a6aa835b4a500f86b7540f594b6a8fbd72ccf22155a82c181df0349d6e7aa382"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_700.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/ASV1_700.STEP",
+          "relative_path": "700/ASV1_700.STEP",
+          "sha256": "c5d008bfb783542f978d0c20000a23b7bf6389335c44548159adaf3799fb2582"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_03C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_03C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_03C.STEP",
+          "sha256": "5410ccb613e4dceeb20752fcb18098aeeda8a8a4829528cb3395636fbbed24de"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_04C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_04C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_04C.STEP",
+          "sha256": "e837d1a57a66cf9c6ad65f8a585608bc8c5c53b420c3a44cb14739e997b21f25"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_05C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_05C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_05C.STEP",
+          "sha256": "1b6650e6dd9a15e36331a3d450422ba91088302f2cf0e250ff807dde11680560"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_06C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_06C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_06C.STEP",
+          "sha256": "2a9301ba39e047c7d6cf2fbec9fa233ecea324f6ae8ceacbf4555fab7e74edb8"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_07C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_07C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_07C.STEP",
+          "sha256": "33d024c6e1780aad736b789165bc86a0205a8b605e3b7ea80d429adf9f6952b4"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_700_11C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/MJF_PA12/ASV1_700_11C.STEP",
+          "relative_path": "700/FABRICATION/MJF_PA12/ASV1_700_11C.STEP",
+          "sha256": "7967bcb51f38e79f9537b2cc98c7a15280235643cd236731558ee3bb2dcb63bf"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_700_08X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/OFF_THE_SHELF/ASV1_700_08X.STEP",
+          "relative_path": "700/FABRICATION/OFF_THE_SHELF/ASV1_700_08X.STEP",
+          "sha256": "029b1e0c8c28c755db7b3e3d591cafad7108dd00d0d7fbb9a899880e011aa4a9"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_700_09X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/OFF_THE_SHELF/ASV1_700_09X.STEP",
+          "relative_path": "700/FABRICATION/OFF_THE_SHELF/ASV1_700_09X.STEP",
+          "sha256": "2ea9c132c15b9beb051fa262fe1040288f82ae30eb56d0d114dad4c5878a2f88"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_700_10X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/OFF_THE_SHELF/ASV1_700_10X.STEP",
+          "relative_path": "700/FABRICATION/OFF_THE_SHELF/ASV1_700_10X.STEP",
+          "sha256": "8063e55b1367dd94ba17995630d89a3347f69639341f2b6ce563fccea934d2c7"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_700_12X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/OFF_THE_SHELF/ASV1_700_12X.STEP",
+          "relative_path": "700/FABRICATION/OFF_THE_SHELF/ASV1_700_12X.STEP",
+          "sha256": "d01d2551fb54e02e5249f20144c28e159441bed57ffa2eac510a24f54c7b5cfd"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_700_13X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/OFF_THE_SHELF/ASV1_700_13X.STEP",
+          "relative_path": "700/FABRICATION/OFF_THE_SHELF/ASV1_700_13X.STEP",
+          "sha256": "4749c76a422d5fda241443ae35fc46c91cda57d518a1c6f7fcb76310fb6367bf"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_700_01B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/SML_316L/ASV1_700_01B.STEP",
+          "relative_path": "700/FABRICATION/SML_316L/ASV1_700_01B.STEP",
+          "sha256": "7519d14ba4c21b538883fbcff21211b167385923fa3594b1190a31c58307d6c7"
+        },
+        {
+          "assembly": "700",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_700_02B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/700/FABRICATION/SML_316L/ASV1_700_02B.STEP",
+          "relative_path": "700/FABRICATION/SML_316L/ASV1_700_02B.STEP",
+          "sha256": "347e512b59519928186d6b19069b322b857820c93d7a1743d501f883d8f70412"
+        }
+      ],
+      "unresolved_links": [
+        "IMU_ORIGIN",
+        "WAIST_YAW"
+      ]
+    },
+    {
+      "accepted": false,
+      "assembly_candidates": [
+        "100"
+      ],
+      "assembly_records": [
+        {
+          "assembly": "100",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/ASV1_100.STEP",
+          "assembly_step_sha256": "391cf0f2b4b15ec35de48cf8c8d913b9fbebfe4e1e919c3a0bb7286d3d1c237a",
+          "step_file_count": 14
+        }
+      ],
+      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "exact_link_assignments": [],
+      "group": "head",
+      "links": [
+        "NECK_YAW",
+        "NECK_PITCH"
+      ],
+      "source_kind": "source_step_group_candidate_manifest",
+      "step_file_count": 14,
+      "step_files": [
+        {
+          "assembly": "100",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_100.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/ASV1_100.STEP",
+          "relative_path": "100/ASV1_100.STEP",
+          "sha256": "391cf0f2b4b15ec35de48cf8c8d913b9fbebfe4e1e919c3a0bb7286d3d1c237a"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_100_02A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/ALU_7075/ASV1_100_02A.STEP",
+          "relative_path": "100/FABRICATION/ALU_7075/ASV1_100_02A.STEP",
+          "sha256": "7a4e6f9900125a31f64a66deb7034bf3c8299966b3077d928d4a50aba902184d"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_100_03A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/ALU_7075/ASV1_100_03A.STEP",
+          "relative_path": "100/FABRICATION/ALU_7075/ASV1_100_03A.STEP",
+          "sha256": "8cb1ed1f81382dc5687ce281a87396db6d4a61b719fd245742572f9b6e56406e"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_01C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_01C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_01C.STEP",
+          "sha256": "c3e24ef9151684af5e0664a42deb016f9eac89211be47226cbbe1df0553123f7"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_04C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_04C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_04C.STEP",
+          "sha256": "c5aa469cfcdb2cbc7aa2fd8003f77d7c9e97dae5102b11e1cdbeacc01f7e214a"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_05C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_05C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_05C.STEP",
+          "sha256": "f2ae179b0fd40c08f8a08fd455f2d1e433da3be0d56a7306d95b723146dc1c6e"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_06C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_06C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_06C.STEP",
+          "sha256": "2e4ae9777be8c8e78efc80be19339ece3c327fede1d59384180330971387d3db"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_10C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_10C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_10C.STEP",
+          "sha256": "c31fc896b10a54b1adc21cd3165a64357bd3dd9ffb5da60476bc815b7e53faf7"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_100_12C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/MJF_PA12/ASV1_100_12C.STEP",
+          "relative_path": "100/FABRICATION/MJF_PA12/ASV1_100_12C.STEP",
+          "sha256": "d732af161ebfe5d0bb54f16aaaa600f10b616681d56befb5c825ed428773c147"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_100_07X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/OFF_THE_SHELF/ASV1_100_07X.STEP",
+          "relative_path": "100/FABRICATION/OFF_THE_SHELF/ASV1_100_07X.STEP",
+          "sha256": "62d630e612cdb58f6cf34d7d5efa7b755efa85c2844c9dfec8efcaf9ab638d18"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_100_08X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/OFF_THE_SHELF/ASV1_100_08X.STEP",
+          "relative_path": "100/FABRICATION/OFF_THE_SHELF/ASV1_100_08X.STEP",
+          "sha256": "39b83debe8d53437f4ff8d62941f44e8c2340a4e0d86b6b44c0b71ee8f290029"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_100_09X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/OFF_THE_SHELF/ASV1_100_09X.STEP",
+          "relative_path": "100/FABRICATION/OFF_THE_SHELF/ASV1_100_09X.STEP",
+          "sha256": "673e96a8b436e68197ff69883b98f2c6865314078f2d5a41ab146da318c7eeef"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_100_11X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/OFF_THE_SHELF/ASV1_100_11X.STEP",
+          "relative_path": "100/FABRICATION/OFF_THE_SHELF/ASV1_100_11X.STEP",
+          "sha256": "c9f2a349914704395545d7fdf8abba330ff8234b6229fd0b19d0f9fde4452463"
+        },
+        {
+          "assembly": "100",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_100_13X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/100/FABRICATION/OFF_THE_SHELF/ASV1_100_13X.STEP",
+          "relative_path": "100/FABRICATION/OFF_THE_SHELF/ASV1_100_13X.STEP",
+          "sha256": "1323788b5ef2d92157d18eb1e270ea65a659229a5502b7419073a3553ccd726d"
+        }
+      ],
+      "unresolved_links": [
+        "NECK_YAW",
+        "NECK_PITCH"
+      ]
+    },
+    {
+      "accepted": false,
+      "assembly_candidates": [
+        "300",
+        "400"
+      ],
+      "assembly_records": [
+        {
+          "assembly": "300",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/ASV1_300.STEP",
+          "assembly_step_sha256": "8b4ee22204c168a0191b66a7d42774e8a4d6735f59e3fa91771d538ac0367106",
+          "step_file_count": 24
+        },
+        {
+          "assembly": "400",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/ASV1_400.STEP",
+          "assembly_step_sha256": "2fb6bf5d55129a14c348196e078b82cb9c837dafb95ed9f470cab432bb045000",
+          "step_file_count": 24
+        }
+      ],
+      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "exact_link_assignments": [],
+      "group": "arm",
+      "links": [
+        "LEFT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ],
+      "source_kind": "source_step_group_candidate_manifest",
+      "step_file_count": 48,
+      "step_files": [
+        {
+          "assembly": "300",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_300.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/ASV1_300.STEP",
+          "relative_path": "300/ASV1_300.STEP",
+          "sha256": "8b4ee22204c168a0191b66a7d42774e8a4d6735f59e3fa91771d538ac0367106"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_01A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_01A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_01A.STEP",
+          "sha256": "07812db0489408f0fe567753b5a998d5f2ba0599a2f15a29d1c202c3d0b87007"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_03A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_03A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_03A.STEP",
+          "sha256": "83c93257cc98fbcd1a20b06b644cc3672896c3cfe67c66268ecc978c083e680e"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_05A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_05A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_05A.STEP",
+          "sha256": "1b8396c1224a3e1264d0a616956eab393bf19b992f7deb89395b94e305265548"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_07A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_07A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_07A.STEP",
+          "sha256": "c1498f56a80103fc31a34f5c345801b5e027d90cc5d1a432cd4d79aec823004d"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_08A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_08A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_08A.STEP",
+          "sha256": "248d4e906dc4dbeee852bc998969371d9342f57cea87eb16494b460026870fea"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_09A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_09A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_09A.STEP",
+          "sha256": "1e24b85a7b4632fa4a3a67d7a389841ac8a03137365e8f61e13e38b3f3ce1ab6"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_10A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_10A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_10A.STEP",
+          "sha256": "efce31429ac03d202f10ed5c76d5ae770ec9e0fabb9f8d8d44da30df97223330"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_300_11A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/ALU_7075/ASV1_300_11A.STEP",
+          "relative_path": "300/FABRICATION/ALU_7075/ASV1_300_11A.STEP",
+          "sha256": "5f51beee44a511376b34dc065e1ce05785359038fdb5d876bfa5a532e750c4c3"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_300_13C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/MJF_PA12/ASV1_300_13C.STEP",
+          "relative_path": "300/FABRICATION/MJF_PA12/ASV1_300_13C.STEP",
+          "sha256": "48d71d83977382376074829c80f95be07dc5c66f97a8e3520c1b58d156fd6803"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_300_14C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/MJF_PA12/ASV1_300_14C.STEP",
+          "relative_path": "300/FABRICATION/MJF_PA12/ASV1_300_14C.STEP",
+          "sha256": "f4a57cf2182bda2c9805387f558c6ccbb2e2317bfe9df694ff5ec8d08f19d906"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_300_15C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/MJF_PA12/ASV1_300_15C.STEP",
+          "relative_path": "300/FABRICATION/MJF_PA12/ASV1_300_15C.STEP",
+          "sha256": "2d1270c2c0e8d9c45b4818952576573748e22ad8b36927d8cb67d7130db90e5b"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_300_16C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/MJF_PA12/ASV1_300_16C.STEP",
+          "relative_path": "300/FABRICATION/MJF_PA12/ASV1_300_16C.STEP",
+          "sha256": "8c2b7502688f408e4fd285c6a824e6b2d47e1cd16635a64b689d0e29b1676ce3"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_17X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_17X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_17X.STEP",
+          "sha256": "631cacb5eb3c7aeba23626e841b3913660e627648a0b66b4db03d10af7799af3"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_18X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_18X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_18X.STEP",
+          "sha256": "eeabb7e86d8ed19e7cf1f01d2478a6d8e90802a61a600c6cc92419a1cac2f9e5"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_19X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_19X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_19X.STEP",
+          "sha256": "58a263278cdfc065509019cbc0a0971c6e53def08936b87dc9ea65619a347c1b"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_20X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_20X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_20X.STEP",
+          "sha256": "a73d61a37981c05fd377c2b32ae081dad5874a5ee2832a0e579f6de611e04c17"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_21X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_21X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_21X.STEP",
+          "sha256": "7387bc99930a19e4af77828c3fb3ad5d8be1277e9e8c1c111d8c10a4f7de1397"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_22X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_22X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_22X.STEP",
+          "sha256": "036016b36fae1defd4b3c3223c2090d21eaea3519af7665da38d9d23998ce9d2"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_300_23X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/OFF_THE_SHELF/ASV1_300_23X.STEP",
+          "relative_path": "300/FABRICATION/OFF_THE_SHELF/ASV1_300_23X.STEP",
+          "sha256": "036016b36fae1defd4b3c3223c2090d21eaea3519af7665da38d9d23998ce9d2"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_300_02B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/SML_316L/ASV1_300_02B.STEP",
+          "relative_path": "300/FABRICATION/SML_316L/ASV1_300_02B.STEP",
+          "sha256": "70135615d5d1fce469e0efdda575759f847c90a685c8ec79777686e3a054dcfd"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_300_04B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/SML_316L/ASV1_300_04B.STEP",
+          "relative_path": "300/FABRICATION/SML_316L/ASV1_300_04B.STEP",
+          "sha256": "48c6aa6741ad3311de2c89e523e6a5bd27851fff0d454b310e1f0fb72b8be837"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_300_06B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/SML_316L/ASV1_300_06B.STEP",
+          "relative_path": "300/FABRICATION/SML_316L/ASV1_300_06B.STEP",
+          "sha256": "0b44218cac94203a5cc7b62cc0951be0ebc1f695dd810bb848d7c0db17bbaa7d"
+        },
+        {
+          "assembly": "300",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_300_12B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/300/FABRICATION/SML_316L/ASV1_300_12B.STEP",
+          "relative_path": "300/FABRICATION/SML_316L/ASV1_300_12B.STEP",
+          "sha256": "7c1a88cf059c87b9e1778e0a39a1548b553308c53f653bd139a446dc00cc2909"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_400.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/ASV1_400.STEP",
+          "relative_path": "400/ASV1_400.STEP",
+          "sha256": "2fb6bf5d55129a14c348196e078b82cb9c837dafb95ed9f470cab432bb045000"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_04A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_04A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_04A.STEP",
+          "sha256": "e7ef9af23d01936b4cea2a77df81a4c3389cdac55137f8899828b5965c0e9a77"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_05A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_05A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_05A.STEP",
+          "sha256": "393074ebb37a814b83c2f142ba6ddf2beedbf49b6c9c1e2538d27460050b726d"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_11A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_11A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_11A.STEP",
+          "sha256": "f96d08536bb37bc92ddebb9c1660059c0eb53ab1201c242c7e5f749a16bda48b"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_13A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_13A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_13A.STEP",
+          "sha256": "c1498f56a80103fc31a34f5c345801b5e027d90cc5d1a432cd4d79aec823004d"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_14A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_14A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_14A.STEP",
+          "sha256": "248d4e906dc4dbeee852bc998969371d9342f57cea87eb16494b460026870fea"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_17A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_17A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_17A.STEP",
+          "sha256": "ac6846a5a7b48bb22f10a622a8a8ab259b3422bd9e3ca62bf7c20c7baee8f6e7"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_18A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_18A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_18A.STEP",
+          "sha256": "11900e3948786299b5cc8e67478762f3dd09347184c119cf259c8b080fb53a4f"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_400_19A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/ALU_7075/ASV1_400_19A.STEP",
+          "relative_path": "400/FABRICATION/ALU_7075/ASV1_400_19A.STEP",
+          "sha256": "8e1272106ec053b411e88eabb44a7ce850baf81c8575b836da29c07ec175a508"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_400_06C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/MJF_PA12/ASV1_400_06C.STEP",
+          "relative_path": "400/FABRICATION/MJF_PA12/ASV1_400_06C.STEP",
+          "sha256": "417a2a0dce2b7c0b3b8c9641737e41cdb4880eb6e5f4c7fc764850f79590fec1"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_400_07C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/MJF_PA12/ASV1_400_07C.STEP",
+          "relative_path": "400/FABRICATION/MJF_PA12/ASV1_400_07C.STEP",
+          "sha256": "b13e884e6bd3b7cc0448dfac2234c7fd8293d37255cc5a913dbba47d15063548"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_01X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_01X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_01X.STEP",
+          "sha256": "835c0e351a357ce1658e7c51a32d48d7abe6c010ad5841d88e1111a92c05b010"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_08X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_08X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_08X.STEP",
+          "sha256": "5da5aae79f13f5938a13ac7471b764652dd5d19ccfb5030ef509e78a0976d23c"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_09X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_09X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_09X.STEP",
+          "sha256": "d46261272cc416c139fbbb44fad8f8319595c4a86f6b3fb45fdeaee50d5acc61"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_10X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_10X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_10X.STEP",
+          "sha256": "6cebacc5194525048a9f9a09684cfb71acf2250fe4585227dd7367f7ad95562e"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_21X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_21X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_21X.STEP",
+          "sha256": "946bf62632eccafdf7bb514f9b94ab159c99ebd15b78df43d45ccac3895885e8"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_22X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_22X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_22X.STEP",
+          "sha256": "673e96a8b436e68197ff69883b98f2c6865314078f2d5a41ab146da318c7eeef"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_400_23X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/OFF_THE_SHELF/ASV1_400_23X.STEP",
+          "relative_path": "400/FABRICATION/OFF_THE_SHELF/ASV1_400_23X.STEP",
+          "sha256": "cf2cbce5c98d46c99741cc05315ed8de17ccd5cd4bdb92dd7cd6a4b57c45c92b"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_400_02B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/SML_316L/ASV1_400_02B.STEP",
+          "relative_path": "400/FABRICATION/SML_316L/ASV1_400_02B.STEP",
+          "sha256": "ed108b17d507feafdb5dc0ebfab3c2fdd1027fcf916533b944f2ef8f15bf7511"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_400_03B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/SML_316L/ASV1_400_03B.STEP",
+          "relative_path": "400/FABRICATION/SML_316L/ASV1_400_03B.STEP",
+          "sha256": "fefdff5a1fbed9ee970510800838052beccab193e783f321a188111070b834bc"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_400_12B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/SML_316L/ASV1_400_12B.STEP",
+          "relative_path": "400/FABRICATION/SML_316L/ASV1_400_12B.STEP",
+          "sha256": "8cd7d15904f6e96e1599e33b9b043a0d0646eee077a670396dd4a2653c40615d"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_400_20B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/SML_316L/ASV1_400_20B.STEP",
+          "relative_path": "400/FABRICATION/SML_316L/ASV1_400_20B.STEP",
+          "sha256": "689753057c5c2510a313b9ccba192927347932d9c1a662527262ef32b96ea3f4"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_400_15C.step",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/MJF_PA12/ASV1_400_15C.step",
+          "relative_path": "400/FABRICATION/MJF_PA12/ASV1_400_15C.step",
+          "sha256": "be27cdf2434185ccc7881ba7bada575222a650a95f7bd5495e86fed97c6b26ca"
+        },
+        {
+          "assembly": "400",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_400_16C.step",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/400/FABRICATION/MJF_PA12/ASV1_400_16C.step",
+          "relative_path": "400/FABRICATION/MJF_PA12/ASV1_400_16C.step",
+          "sha256": "f9df3d4943ec53fa37ca7c753b8e3175acd190f605535d2e588ca7b81a1f305b"
+        }
+      ],
+      "unresolved_links": [
+        "LEFT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "RIGHT_SHOULDER_YAW",
+        "LEFT_ELBOW",
+        "RIGHT_ELBOW",
+        "LEFT_WRIST_YAW",
+        "RIGHT_WRIST_YAW"
+      ]
+    },
+    {
+      "accepted": false,
+      "assembly_candidates": [
+        "500",
+        "600"
+      ],
+      "assembly_records": [
+        {
+          "assembly": "500",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/ASV1_500.STEP",
+          "assembly_step_sha256": "4729aadd4d030edd244a8041d82e965ca12aa69186af36f8b933bc0fbe2a767b",
+          "step_file_count": 42
+        },
+        {
+          "assembly": "600",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/ASV1_600.STEP",
+          "assembly_step_sha256": "32f51ae8d82c21988ad3f3ef063ba41a05e3d7aa11861ef1dd1220aabb0a7125",
+          "step_file_count": 42
+        }
+      ],
+      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "exact_link_assignments": [],
+      "group": "leg",
+      "links": [
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_ANKLE_A",
+        "RIGHT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B"
+      ],
+      "source_kind": "source_step_group_candidate_manifest",
+      "step_file_count": 84,
+      "step_files": [
+        {
+          "assembly": "500",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_500.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/ASV1_500.STEP",
+          "relative_path": "500/ASV1_500.STEP",
+          "sha256": "4729aadd4d030edd244a8041d82e965ca12aa69186af36f8b933bc0fbe2a767b"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_05A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_05A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_05A.STEP",
+          "sha256": "20b18d221452a6dcb6de3f379c7ae0d4c47c156ab233ad97879ca65f85d86e3a"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_06A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_06A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_06A.STEP",
+          "sha256": "6da718b84db46a512e33d2e7c89efc3a3bd718d2513b271c4756691daae434d7"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_08A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_08A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_08A.STEP",
+          "sha256": "29923bede557177d5f241c7769cbbee4318d155b62306b114f7a70521b16e739"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_09A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_09A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_09A.STEP",
+          "sha256": "5f7b67bd7c598436cbd8e338a4ad7e955d294deca38c4b3b771d649f8c0ea86d"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_12A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_12A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_12A.STEP",
+          "sha256": "ddfaaa849f7f36a2b51af1cb8b9006d0e380f4d9a29fa760032a63457bf23835"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_23A_SS.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_23A_SS.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_23A_SS.STEP",
+          "sha256": "f0d74a60bb065a8eade0f5df7b132925a04883d102422c558df3aeb2d4b84b89"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_24A_SS.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_24A_SS.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_24A_SS.STEP",
+          "sha256": "c18b819f3773432379513bed56c785ba7e0e45cf0556963299ade286aca639d3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_25A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_25A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_25A.STEP",
+          "sha256": "cdb0cf818424a2648ed50312ede0f18a52224c6ef7687edb40e96f56e4de45e1"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_36A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_36A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_36A.STEP",
+          "sha256": "bb404d090ebfce190f14dc11fd3813388eff47c5eb552fefcac0b2b93cbd0e3e"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_03C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_03C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_03C.STEP",
+          "sha256": "0d7653ac2c9a6fae11aa015829bb3495b9b5d709eb688fa26ee2c7e920cac001"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_04C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_04C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_04C.STEP",
+          "sha256": "bdfdf31f363681e4b9a587a3a1662779d39084c8469979b9393d50c83d178db7"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_10C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_10C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_10C.STEP",
+          "sha256": "a623d6f59aa5635fdb1dfe18c4a440f7de94903969968b0963429e71a4bc01cf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_13C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_13C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_13C.STEP",
+          "sha256": "525daf8a2cf4f48fb7eec66fa8504f27da1ca93bb38a7b78c7dc764914c00da2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_14C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_14C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_14C.STEP",
+          "sha256": "2441fc888a6c384046161bad087d3d8b3e92e19b37ab25ab53d00a5d8028d892"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_37C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_37C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_37C.STEP",
+          "sha256": "62db8a53895f70d77db97d6b1e3f33c1ca268af727dccee905ab488c44a4e3bb"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_38C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_38C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_38C.STEP",
+          "sha256": "62e1f707955c63b421d95b0fe5dfb063871d0b8e033a5f9086cd58dcdbe99029"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_39C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_39C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_39C.STEP",
+          "sha256": "52cb3e620b17dc7806bbe783e076cd6f06b4144c6a00f6ae665e79877d02a110"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_40C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_40C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_40C.STEP",
+          "sha256": "9916a5180d369da3c8c1aa187c5f02a13462c5fa2ac5af15fc1fd1a9f372acc2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_02X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_02X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_02X.STEP",
+          "sha256": "b9eeebc9871878875696bfbad1e51534a5a7f9a15f5c9ef48351ed445aae74c1"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_07X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_07X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_07X.STEP",
+          "sha256": "304d875f7bb7522d11609c0b610c6f761a6cd438efea3381f8af517f6e69b906"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_11X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_11X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_11X.STEP",
+          "sha256": "036016b36fae1defd4b3c3223c2090d21eaea3519af7665da38d9d23998ce9d2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_15X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_15X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_15X.STEP",
+          "sha256": "4749c76a422d5fda241443ae35fc46c91cda57d518a1c6f7fcb76310fb6367bf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_16X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_16X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_16X.STEP",
+          "sha256": "4749c76a422d5fda241443ae35fc46c91cda57d518a1c6f7fcb76310fb6367bf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_19X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_19X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_19X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_20X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_20X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_20X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_21X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_21X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_21X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_22X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_22X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_22X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_27X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_27X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_27X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_28X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_28X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_28X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_29X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_29X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_29X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_30X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_30X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_30X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_31X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_31X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_31X.STEP",
+          "sha256": "9931a242fd05225d68c00926301bfd4e64e53031f6088640e89fdd54a9ab7312"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_32X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_32X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_32X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_33X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_33X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_33X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_34X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_34X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_34X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_35X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_35X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_35X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_41X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_41X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_41X.STEP",
+          "sha256": "8aee9880aaa5edac2e7decf264545403f8a50e3db98caa2758b04793fa4dc520"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_01B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_01B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_01B.STEP",
+          "sha256": "813bd80f0287d014f79d99b072715478c393311e9dcc53197eba542a12b57471"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_17B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_17B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_17B.STEP",
+          "sha256": "ce358d2af264114538adb757962f063ff99a5a1f9c2d711087cb7e540b859978"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_18B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_18B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_18B.STEP",
+          "sha256": "ce358d2af264114538adb757962f063ff99a5a1f9c2d711087cb7e540b859978"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_26B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_26B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_26B.STEP",
+          "sha256": "e2ac656f47f11cd81110e53309c0e32540a7059495d205268d816ffaa8803a8b"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_600.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/ASV1_600.STEP",
+          "relative_path": "600/ASV1_600.STEP",
+          "sha256": "32f51ae8d82c21988ad3f3ef063ba41a05e3d7aa11861ef1dd1220aabb0a7125"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_05A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_05A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_05A.step.STEP",
+          "sha256": "a12f7dfcd4586e378f09e27bbd8ff56197ce8fd0c492a5db1654bf43de1bd6ef"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_06A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_06A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_06A.step.STEP",
+          "sha256": "69681202a2ba5905c458191d8119a675f07d3db93de7c44a29ab3f1ffeb690a0"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_08A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_08A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_08A.step.STEP",
+          "sha256": "b6aab3842d18c8ad3e84feca51d290a8e21e3b6948040cb5fd2414b0fa4473fd"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_09A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_09A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_09A.step.STEP",
+          "sha256": "2adcc8aa9a7305753d6eb1b98c3127d627b53c389f919c0df37a47c1ed41dcca"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_12A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_12A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_12A.step.STEP",
+          "sha256": "3118119108f51e6e0c912e49724c8bafd00a57f2047c30e73f588baa4565bfc9"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_23A_SS.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_23A_SS.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_23A_SS.step.STEP",
+          "sha256": "ccb8ab1ffded74a19fff40514ab978a614241ee99dbda35ce94ecc6fd5cf6709"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_24A_SS.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_24A_SS.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_24A_SS.step.STEP",
+          "sha256": "d87fc0d45a318ff7fb989ac751a43e229d0b5cd6900b060661361291808024a4"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_25A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_25A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_25A.step.STEP",
+          "sha256": "d075232de7171cc69b776e7b58449343c8d85f05e00a7dec539307dbeba9612e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_36A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_36A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_36A.step.STEP",
+          "sha256": "8d846207a2c4279fc90b019084ee77b0aded78a6533314d1a938c28136dbf55a"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_03C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_03C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_03C.step.STEP",
+          "sha256": "586988ced753a2066a451755c5afd8a9e4229d3ea1c88e4d81174fd3bc01e10c"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_04C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_04C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_04C.step.STEP",
+          "sha256": "163034570355dbadd225e96fff6151ed01c688fc5be3005233f769cbfd8cb0d3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_10C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_10C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_10C.step.STEP",
+          "sha256": "95cd837e48e9ab3b63f36dd2de735eae256dd47b0f08973a8359df74165fe03f"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_13C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_13C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_13C.step.STEP",
+          "sha256": "dbbfbe8c57368163866c4297245baf03b2a19f68511df848587996afa1489055"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_14C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_14C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_14C.step.STEP",
+          "sha256": "b1d5fcff011088474300c0854044e943bed3674c4180c0ce02186f18043cc0cf"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_37C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_37C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_37C.step.STEP",
+          "sha256": "65b273ddcb1769c07fd9b551c795cdfb7f7c79ca74529bf87cf14c0ac1b16ed0"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_38C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_38C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_38C.step.STEP",
+          "sha256": "181b441dab186d09e58674117300d795efa71e1a6385642e605c6c5c22a26be3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_39C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_39C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_39C.step.STEP",
+          "sha256": "fdc0d9812e3587cfac396b9cc15e0c5bb48a868ce9ecadf23397d4709b2edde6"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_40C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_40C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_40C.step.STEP",
+          "sha256": "a4fcb1ac166334627f9e747c08d43fc42b0f08a496cd62cea4404fed3f2a6e71"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_02X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_02X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_02X.step.STEP",
+          "sha256": "722e30e15a48479c4cf8724b98bdc09e89f02845a96bd75b120264d42d0f9efd"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_07X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_07X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_07X.step.STEP",
+          "sha256": "34b55d44a2a491cb5f780bb620803ffcc29cb9638eb0994ec2626ec9aeed723a"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_11X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_11X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_11X.step.STEP",
+          "sha256": "416d8026b797f9d6d4e8f6239f6e485ddf7b13fa8d4db09d5bc5fcaea3f2019c"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_15X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_15X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_15X.step.STEP",
+          "sha256": "1b99d115cfeb358432f2e33008c91901010cf55213b5c84768075835d50dae60"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_16X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_16X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_16X.step.STEP",
+          "sha256": "a489f4473036a1a763ff217c38f217c565e191c486a2c9a1b4ffbd3483789af3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_19X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_19X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_19X.step.STEP",
+          "sha256": "b791e55f535f2d7627b9ad53e9b90f24edcf6f1559f24c8d87648837f970ab6e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_20X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_20X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_20X.step.STEP",
+          "sha256": "514f996076c6ca8718283678073e1702e051972d4d95c47a13afaed88dcc90bf"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_21X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_21X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_21X.step.STEP",
+          "sha256": "b5e2024e80062ac018e6568550cddd38582cc9bf8397fc528695eb99d2e04d66"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_22X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_22X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_22X.step.STEP",
+          "sha256": "b4f955782ee8b036f252e8aadbcf426de196423c1e29381b89de8458ee77729b"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_27X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_27X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_27X.step.STEP",
+          "sha256": "b80f08a77cf2a4185695cf20f07517b2ba805d34c324fab6d4988e195564ae90"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_28X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_28X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_28X.step.STEP",
+          "sha256": "672384fa6b1526efbca10947516e36837411f91c08124ab7093b64f78ae39535"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_29X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_29X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_29X.step.STEP",
+          "sha256": "d81dfa1b99fbac794b319abcba774c13f3a2d4e77b170b28f73bf13959e6a3e6"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_30X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_30X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_30X.step.STEP",
+          "sha256": "58890d5a7722e1ac053402d0dfb83c7d8a7e4c8f00da0d24102917a88d7e03db"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_31X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_31X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_31X.step.STEP",
+          "sha256": "318a685028b82c22296418470883272a8e4caa68f833781161eb908f89b84910"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_32X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_33X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_34X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_35X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_41X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_41X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_41X.STEP",
+          "sha256": "8aee9880aaa5edac2e7decf264545403f8a50e3db98caa2758b04793fa4dc520"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_01B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_01B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_01B.step.STEP",
+          "sha256": "aa55627da294ad391ae6beabf50dc9feb73154574a77e192fab64ca3f86cfdfe"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_17B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_17B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_17B.step.STEP",
+          "sha256": "82eb82e2d38cf819cbdf214d6d7324d8248873d212226d929b46f449d983ea40"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_18B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_18B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_18B.step.STEP",
+          "sha256": "86068d22f56211879cafbad16f7eb516e1e14ca89b3c8ccc963e6986bee8a86e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_26B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_26B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_26B.step.STEP",
+          "sha256": "1e6d5ce73dd09d8db5ef1872cea16a61986c5507cfccc367fecb2abe17988ac2"
+        }
+      ],
+      "unresolved_links": [
+        "LEFT_HIP_PITCH",
+        "RIGHT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "RIGHT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "RIGHT_HIP_YAW",
+        "LEFT_KNEE",
+        "RIGHT_KNEE",
+        "LEFT_ANKLE_A",
+        "RIGHT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "RIGHT_ANKLE_B"
+      ]
+    },
+    {
+      "accepted": false,
+      "assembly_candidates": [
+        "500",
+        "600"
+      ],
+      "assembly_records": [
+        {
+          "assembly": "500",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/ASV1_500.STEP",
+          "assembly_step_sha256": "4729aadd4d030edd244a8041d82e965ca12aa69186af36f8b933bc0fbe2a767b",
+          "step_file_count": 42
+        },
+        {
+          "assembly": "600",
+          "assembly_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600",
+          "assembly_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/ASV1_600.STEP",
+          "assembly_step_sha256": "32f51ae8d82c21988ad3f3ef063ba41a05e3d7aa11861ef1dd1220aabb0a7125",
+          "step_file_count": 42
+        }
+      ],
+      "blocking_reason": "body-group STEP candidates are inventoried, but individual simulation links are not yet assigned to exact STEP/B-rep bodies or controlled loft sources",
+      "exact_link_assignments": [],
+      "group": "foot",
+      "links": [
+        "LEFT_TOE",
+        "RIGHT_TOE"
+      ],
+      "source_kind": "source_step_group_candidate_manifest",
+      "step_file_count": 84,
+      "step_files": [
+        {
+          "assembly": "500",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_500.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/ASV1_500.STEP",
+          "relative_path": "500/ASV1_500.STEP",
+          "sha256": "4729aadd4d030edd244a8041d82e965ca12aa69186af36f8b933bc0fbe2a767b"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_05A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_05A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_05A.STEP",
+          "sha256": "20b18d221452a6dcb6de3f379c7ae0d4c47c156ab233ad97879ca65f85d86e3a"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_06A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_06A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_06A.STEP",
+          "sha256": "6da718b84db46a512e33d2e7c89efc3a3bd718d2513b271c4756691daae434d7"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_08A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_08A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_08A.STEP",
+          "sha256": "29923bede557177d5f241c7769cbbee4318d155b62306b114f7a70521b16e739"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_09A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_09A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_09A.STEP",
+          "sha256": "5f7b67bd7c598436cbd8e338a4ad7e955d294deca38c4b3b771d649f8c0ea86d"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_12A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_12A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_12A.STEP",
+          "sha256": "ddfaaa849f7f36a2b51af1cb8b9006d0e380f4d9a29fa760032a63457bf23835"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_23A_SS.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_23A_SS.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_23A_SS.STEP",
+          "sha256": "f0d74a60bb065a8eade0f5df7b132925a04883d102422c558df3aeb2d4b84b89"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_24A_SS.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_24A_SS.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_24A_SS.STEP",
+          "sha256": "c18b819f3773432379513bed56c785ba7e0e45cf0556963299ade286aca639d3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_25A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_25A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_25A.STEP",
+          "sha256": "cdb0cf818424a2648ed50312ede0f18a52224c6ef7687edb40e96f56e4de45e1"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_500_36A.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/ALU_7075/ASV1_500_36A.STEP",
+          "relative_path": "500/FABRICATION/ALU_7075/ASV1_500_36A.STEP",
+          "sha256": "bb404d090ebfce190f14dc11fd3813388eff47c5eb552fefcac0b2b93cbd0e3e"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_03C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_03C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_03C.STEP",
+          "sha256": "0d7653ac2c9a6fae11aa015829bb3495b9b5d709eb688fa26ee2c7e920cac001"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_04C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_04C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_04C.STEP",
+          "sha256": "bdfdf31f363681e4b9a587a3a1662779d39084c8469979b9393d50c83d178db7"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_10C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_10C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_10C.STEP",
+          "sha256": "a623d6f59aa5635fdb1dfe18c4a440f7de94903969968b0963429e71a4bc01cf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_13C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_13C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_13C.STEP",
+          "sha256": "525daf8a2cf4f48fb7eec66fa8504f27da1ca93bb38a7b78c7dc764914c00da2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_14C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_14C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_14C.STEP",
+          "sha256": "2441fc888a6c384046161bad087d3d8b3e92e19b37ab25ab53d00a5d8028d892"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_37C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_37C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_37C.STEP",
+          "sha256": "62db8a53895f70d77db97d6b1e3f33c1ca268af727dccee905ab488c44a4e3bb"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_38C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_38C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_38C.STEP",
+          "sha256": "62e1f707955c63b421d95b0fe5dfb063871d0b8e033a5f9086cd58dcdbe99029"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_39C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_39C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_39C.STEP",
+          "sha256": "52cb3e620b17dc7806bbe783e076cd6f06b4144c6a00f6ae665e79877d02a110"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_500_40C.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/MJF_PA12/ASV1_500_40C.STEP",
+          "relative_path": "500/FABRICATION/MJF_PA12/ASV1_500_40C.STEP",
+          "sha256": "9916a5180d369da3c8c1aa187c5f02a13462c5fa2ac5af15fc1fd1a9f372acc2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_02X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_02X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_02X.STEP",
+          "sha256": "b9eeebc9871878875696bfbad1e51534a5a7f9a15f5c9ef48351ed445aae74c1"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_07X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_07X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_07X.STEP",
+          "sha256": "304d875f7bb7522d11609c0b610c6f761a6cd438efea3381f8af517f6e69b906"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_11X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_11X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_11X.STEP",
+          "sha256": "036016b36fae1defd4b3c3223c2090d21eaea3519af7665da38d9d23998ce9d2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_15X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_15X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_15X.STEP",
+          "sha256": "4749c76a422d5fda241443ae35fc46c91cda57d518a1c6f7fcb76310fb6367bf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_16X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_16X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_16X.STEP",
+          "sha256": "4749c76a422d5fda241443ae35fc46c91cda57d518a1c6f7fcb76310fb6367bf"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_19X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_19X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_19X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_20X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_20X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_20X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_21X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_21X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_21X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_22X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_22X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_22X.STEP",
+          "sha256": "fe65362ae1b5cc55530fadf9cfee1b7d00922cb1a3ef4f053f5f6d0a4209a8f2"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_27X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_27X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_27X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_28X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_28X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_28X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_29X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_29X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_29X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_30X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_30X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_30X.STEP",
+          "sha256": "841815e08479e5f565351dca57def47292cb042f78327811a86be249551d50b5"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_31X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_31X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_31X.STEP",
+          "sha256": "9931a242fd05225d68c00926301bfd4e64e53031f6088640e89fdd54a9ab7312"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_32X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_32X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_32X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_33X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_33X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_33X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_34X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_34X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_34X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_35X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_35X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_35X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_500_41X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/OFF_THE_SHELF/ASV1_500_41X.STEP",
+          "relative_path": "500/FABRICATION/OFF_THE_SHELF/ASV1_500_41X.STEP",
+          "sha256": "8aee9880aaa5edac2e7decf264545403f8a50e3db98caa2758b04793fa4dc520"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_01B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_01B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_01B.STEP",
+          "sha256": "813bd80f0287d014f79d99b072715478c393311e9dcc53197eba542a12b57471"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_17B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_17B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_17B.STEP",
+          "sha256": "ce358d2af264114538adb757962f063ff99a5a1f9c2d711087cb7e540b859978"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_18B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_18B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_18B.STEP",
+          "sha256": "ce358d2af264114538adb757962f063ff99a5a1f9c2d711087cb7e540b859978"
+        },
+        {
+          "assembly": "500",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_500_26B.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/500/FABRICATION/SML_316L/ASV1_500_26B.STEP",
+          "relative_path": "500/FABRICATION/SML_316L/ASV1_500_26B.STEP",
+          "sha256": "e2ac656f47f11cd81110e53309c0e32540a7059495d205268d816ffaa8803a8b"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ASSEMBLY",
+          "name": "ASV1_600.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/ASV1_600.STEP",
+          "relative_path": "600/ASV1_600.STEP",
+          "sha256": "32f51ae8d82c21988ad3f3ef063ba41a05e3d7aa11861ef1dd1220aabb0a7125"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_05A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_05A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_05A.step.STEP",
+          "sha256": "a12f7dfcd4586e378f09e27bbd8ff56197ce8fd0c492a5db1654bf43de1bd6ef"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_06A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_06A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_06A.step.STEP",
+          "sha256": "69681202a2ba5905c458191d8119a675f07d3db93de7c44a29ab3f1ffeb690a0"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_08A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_08A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_08A.step.STEP",
+          "sha256": "b6aab3842d18c8ad3e84feca51d290a8e21e3b6948040cb5fd2414b0fa4473fd"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_09A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_09A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_09A.step.STEP",
+          "sha256": "2adcc8aa9a7305753d6eb1b98c3127d627b53c389f919c0df37a47c1ed41dcca"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_12A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_12A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_12A.step.STEP",
+          "sha256": "3118119108f51e6e0c912e49724c8bafd00a57f2047c30e73f588baa4565bfc9"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_23A_SS.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_23A_SS.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_23A_SS.step.STEP",
+          "sha256": "ccb8ab1ffded74a19fff40514ab978a614241ee99dbda35ce94ecc6fd5cf6709"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_24A_SS.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_24A_SS.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_24A_SS.step.STEP",
+          "sha256": "d87fc0d45a318ff7fb989ac751a43e229d0b5cd6900b060661361291808024a4"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_25A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_25A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_25A.step.STEP",
+          "sha256": "d075232de7171cc69b776e7b58449343c8d85f05e00a7dec539307dbeba9612e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "ALU_7075",
+          "name": "ASV1_600_36A.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/ALU_7075/ASV1_600_36A.step.STEP",
+          "relative_path": "600/FABRICATION/ALU_7075/ASV1_600_36A.step.STEP",
+          "sha256": "8d846207a2c4279fc90b019084ee77b0aded78a6533314d1a938c28136dbf55a"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_03C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_03C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_03C.step.STEP",
+          "sha256": "586988ced753a2066a451755c5afd8a9e4229d3ea1c88e4d81174fd3bc01e10c"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_04C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_04C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_04C.step.STEP",
+          "sha256": "163034570355dbadd225e96fff6151ed01c688fc5be3005233f769cbfd8cb0d3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_10C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_10C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_10C.step.STEP",
+          "sha256": "95cd837e48e9ab3b63f36dd2de735eae256dd47b0f08973a8359df74165fe03f"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_13C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_13C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_13C.step.STEP",
+          "sha256": "dbbfbe8c57368163866c4297245baf03b2a19f68511df848587996afa1489055"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_14C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_14C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_14C.step.STEP",
+          "sha256": "b1d5fcff011088474300c0854044e943bed3674c4180c0ce02186f18043cc0cf"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_37C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_37C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_37C.step.STEP",
+          "sha256": "65b273ddcb1769c07fd9b551c795cdfb7f7c79ca74529bf87cf14c0ac1b16ed0"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_38C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_38C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_38C.step.STEP",
+          "sha256": "181b441dab186d09e58674117300d795efa71e1a6385642e605c6c5c22a26be3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_39C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_39C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_39C.step.STEP",
+          "sha256": "fdc0d9812e3587cfac396b9cc15e0c5bb48a868ce9ecadf23397d4709b2edde6"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "MJF_PA12",
+          "name": "ASV1_600_40C.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/MJF_PA12/ASV1_600_40C.step.STEP",
+          "relative_path": "600/FABRICATION/MJF_PA12/ASV1_600_40C.step.STEP",
+          "sha256": "a4fcb1ac166334627f9e747c08d43fc42b0f08a496cd62cea4404fed3f2a6e71"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_02X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_02X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_02X.step.STEP",
+          "sha256": "722e30e15a48479c4cf8724b98bdc09e89f02845a96bd75b120264d42d0f9efd"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_07X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_07X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_07X.step.STEP",
+          "sha256": "34b55d44a2a491cb5f780bb620803ffcc29cb9638eb0994ec2626ec9aeed723a"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_11X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_11X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_11X.step.STEP",
+          "sha256": "416d8026b797f9d6d4e8f6239f6e485ddf7b13fa8d4db09d5bc5fcaea3f2019c"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_15X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_15X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_15X.step.STEP",
+          "sha256": "1b99d115cfeb358432f2e33008c91901010cf55213b5c84768075835d50dae60"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_16X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_16X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_16X.step.STEP",
+          "sha256": "a489f4473036a1a763ff217c38f217c565e191c486a2c9a1b4ffbd3483789af3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_19X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_19X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_19X.step.STEP",
+          "sha256": "b791e55f535f2d7627b9ad53e9b90f24edcf6f1559f24c8d87648837f970ab6e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_20X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_20X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_20X.step.STEP",
+          "sha256": "514f996076c6ca8718283678073e1702e051972d4d95c47a13afaed88dcc90bf"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_21X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_21X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_21X.step.STEP",
+          "sha256": "b5e2024e80062ac018e6568550cddd38582cc9bf8397fc528695eb99d2e04d66"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_22X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_22X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_22X.step.STEP",
+          "sha256": "b4f955782ee8b036f252e8aadbcf426de196423c1e29381b89de8458ee77729b"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_27X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_27X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_27X.step.STEP",
+          "sha256": "b80f08a77cf2a4185695cf20f07517b2ba805d34c324fab6d4988e195564ae90"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_28X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_28X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_28X.step.STEP",
+          "sha256": "672384fa6b1526efbca10947516e36837411f91c08124ab7093b64f78ae39535"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_29X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_29X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_29X.step.STEP",
+          "sha256": "d81dfa1b99fbac794b319abcba774c13f3a2d4e77b170b28f73bf13959e6a3e6"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_30X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_30X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_30X.step.STEP",
+          "sha256": "58890d5a7722e1ac053402d0dfb83c7d8a7e4c8f00da0d24102917a88d7e03db"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_31X.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_31X.step.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_31X.step.STEP",
+          "sha256": "318a685028b82c22296418470883272a8e4caa68f833781161eb908f89b84910"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_32X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_32X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_33X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_33X.STEP",
+          "sha256": "bef89c3c39e7c699024f176eeb41ed07033563f34b79b61e663156799f957002"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_34X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_34X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_35X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_35X.STEP",
+          "sha256": "02eac7574fdaa6aed345e2da776648ffca652646b1104a41b6ee20d631d856a3"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "OFF_THE_SHELF",
+          "name": "ASV1_600_41X.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/OFF_THE_SHELF/ASV1_600_41X.STEP",
+          "relative_path": "600/FABRICATION/OFF_THE_SHELF/ASV1_600_41X.STEP",
+          "sha256": "8aee9880aaa5edac2e7decf264545403f8a50e3db98caa2758b04793fa4dc520"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_01B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_01B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_01B.step.STEP",
+          "sha256": "aa55627da294ad391ae6beabf50dc9feb73154574a77e192fab64ca3f86cfdfe"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_17B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_17B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_17B.step.STEP",
+          "sha256": "82eb82e2d38cf819cbdf214d6d7324d8248873d212226d929b46f449d983ea40"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_18B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_18B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_18B.step.STEP",
+          "sha256": "86068d22f56211879cafbad16f7eb516e1e14ca89b3c8ccc963e6986bee8a86e"
+        },
+        {
+          "assembly": "600",
+          "fabrication_class": "SML_316L",
+          "name": "ASV1_600_26B.step.STEP",
+          "path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/600/FABRICATION/SML_316L/ASV1_600_26B.step.STEP",
+          "relative_path": "600/FABRICATION/SML_316L/ASV1_600_26B.step.STEP",
+          "sha256": "1e6d5ce73dd09d8db5ef1872cea16a61986c5507cfccc367fecb2abe17988ac2"
+        }
+      ],
+      "unresolved_links": [
+        "LEFT_TOE",
+        "RIGHT_TOE"
+      ]
+    }
+  ],
+  "ok": true,
+  "schema": "asimov-fembot-source-manifest-v1",
+  "source": {
+    "main_step": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1/ASIMOV_V1.STEP",
+    "main_step_sha256": "f68d0493683c86f59b949cf540cba894699e70c1074cfde39996885d8a497343",
+    "mechanical_root": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/mechanical/ASV1"
+  },
+  "summary": {
+    "acceptance_blocker": "the ASIMOV source STEP split is inventoried by fembot body group, but every simulation link still needs exact STEP/B-rep body assignment or a controlled loft source with fit and interface error bounds",
+    "accepted": false,
+    "body_groups": 5,
+    "exact_link_assignments": 0,
+    "fabrication_class_counts": {
+      "ALU_7075": 57,
+      "ASSEMBLY": 9,
+      "MJF_PA12": 62,
+      "OFF_THE_SHELF": 105,
+      "SML_316L": 28
+    },
+    "group_step_file_references": 261,
+    "links": 28,
+    "missing_assemblies": [],
+    "unique_step_files": 177,
+    "unresolved_links": 28
+  }
+}

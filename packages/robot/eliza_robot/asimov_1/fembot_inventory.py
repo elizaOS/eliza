@@ -16,7 +16,9 @@ from eliza_robot.asimov_1.constants import (
 )
 from eliza_robot.asimov_1.collision_sweep import build_asimov1_collision_sweep_proof
 from eliza_robot.asimov_1.fembot_keepouts import build_fembot_keepout_proof
+from eliza_robot.asimov_1.fembot_link_sources import build_fembot_link_source_assignment_proof
 from eliza_robot.asimov_1.fembot_materials import build_fembot_material_manufacturing_proof
+from eliza_robot.asimov_1.fembot_source_manifest import build_fembot_source_manifest_proof
 from eliza_robot.asimov_1.fembot_surface_quality import build_fembot_surface_quality_proof
 from eliza_robot.asimov_1.mujoco_load_proof import build_mujoco_load_proof
 from eliza_robot.asimov_1.parametric_inventory import collect_asimov1_parametric_inventory
@@ -332,6 +334,17 @@ def collect_fembot_inventory(
 
     all_links = sorted({link for links in FEMBOT_BODY_GROUP_LINKS.values() for link in links})
     records_dict = [_group_record_dict(record) for record in group_records]
+    source_manifest = build_fembot_source_manifest_proof(
+        records_dict,
+        main_step=main_step,
+        mechanical_root=mechanical_root,
+    )
+    link_source_assignments = build_fembot_link_source_assignment_proof(
+        records_dict,
+        main_step=main_step,
+        mechanical_root=mechanical_root,
+        mesh_dir=mesh_dir,
+    )
     material_manufacturing = build_fembot_material_manufacturing_proof(records_dict)
     surface_quality = build_fembot_surface_quality_proof(records_dict, mesh_dir=mesh_dir)
     keepouts = build_fembot_keepout_proof(records_dict, mjcf_path=mjcf_path, mesh_dir=mesh_dir)
@@ -364,6 +377,16 @@ def collect_fembot_inventory(
             "dynamic_ok": dynamic_mujoco_ok,
             "summary": mujoco.get("summary", {}),
             "load_error": mujoco.get("load", {}).get("error"),
+        },
+        "source_manifest": {
+            "ok": bool(source_manifest.get("ok")),
+            "accepted": bool(source_manifest.get("accepted")),
+            "summary": source_manifest.get("summary", {}),
+        },
+        "link_source_assignments": {
+            "ok": bool(link_source_assignments.get("ok")),
+            "accepted": bool(link_source_assignments.get("accepted")),
+            "summary": link_source_assignments.get("summary", {}),
         },
         "collision_sweep": {
             "ok": bool(collision_sweep.get("ok")),

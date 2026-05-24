@@ -48,6 +48,8 @@ python3 scripts/validate_asimov1_morphology_parameters.py
 python3 scripts/rank_asimov1_spline_fit_failures.py --limit 12
 python3 scripts/generate_asimov1_mujoco_load_proof.py
 python3 scripts/generate_asimov1_collision_sweep_proof.py
+python3 scripts/generate_asimov_fembot_source_manifest.py
+python3 scripts/generate_asimov_fembot_link_source_assignments.py
 python3 scripts/generate_asimov_fembot_material_manufacturing_proof.py
 python3 scripts/generate_asimov_fembot_surface_quality_proof.py
 python3 scripts/generate_asimov_fembot_keepout_proof.py
@@ -95,6 +97,19 @@ Observed state:
   material/manufacturing evidence until generated fembot parts have measured
   wall thickness, flatness/smoothness, tool access, draft/undercut, tolerance,
   mass, and inertia records.
+- The fembot source split manifest now anchors the five body groups to the
+  ASIMOV STEP source tree. It records 177 unique STEP files and 261 body-group
+  STEP references across torso, head, arm, leg, and foot candidates. This is
+  not accepted production source proof because all 28 simulation links still
+  need exact STEP/B-rep body assignment or controlled-loft reconstruction with
+  fit and interface error bounds.
+- Per-link source assignment scaffolding now emits 28 candidate link records,
+  each with body-group STEP source paths, source STL reference hashes, and the
+  required controlled-loft/B-rep matching fields from the production source
+  contract. FreeCAD is detected locally at
+  `/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd`, but body
+  matching has not been run; all 28 records remain unaccepted until an exact
+  STEP/B-rep body or accepted controlled loft is assigned.
 - Source STL surface-quality measurement now runs for 28/28 links and records
   largest planar patch flatness plus adjacent normal-angle discontinuity for
   each mesh. This is useful baseline evidence for deciding which surfaces must
@@ -173,6 +188,18 @@ The current ASIMOV collision baseline is emitted by:
 .venv/bin/python scripts/generate_asimov1_collision_sweep_proof.py
 ```
 
+The current body-group STEP source split manifest is emitted by:
+
+```bash
+.venv/bin/python scripts/generate_asimov_fembot_source_manifest.py
+```
+
+The current candidate per-link source assignment proof is emitted by:
+
+```bash
+.venv/bin/python scripts/generate_asimov_fembot_link_source_assignments.py
+```
+
 The current material/manufacturing source classification proof is emitted by:
 
 ```bash
@@ -212,8 +239,9 @@ The current component keepout inventory proof is emitted by:
 
 ## Immediate Next Build Tasks
 
-1. Add a fembot STEP/B-rep inventory script that maps `ASV1_*` fabrication STEP
-   files to simulation links and material/process folders.
+1. Run CAD-kernel body matching from candidate ASV1 assemblies to each source
+   STL and mate interface; assign exact STEP/B-rep bodies where possible and
+   keep controlled-loft reconstruction only for unresolved visual-only links.
 2. Extend the keepout proof from inventory to clearance checking by fitting
    generated fembot geometry against motor, bearing, ring, gear, pulley, belt,
    fastener, wiring, and joint-travel envelopes.

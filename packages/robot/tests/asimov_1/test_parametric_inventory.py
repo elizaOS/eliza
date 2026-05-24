@@ -15,13 +15,13 @@ def test_asimov_parametric_inventory_separates_mesh_warps_from_proven_parametric
     assert report["counts"]["mesh_files"] == 28
     assert report["counts"]["with_connection_specs"] == 28
     assert report["counts"]["with_part_scripts"] == 28
-    assert report["counts"]["with_spline_fit_proofs"] == 9
-    assert report["counts"]["with_interface_proofs"] == 9
-    assert report["counts"]["with_topology_proofs"] == 9
-    assert report["counts"]["with_surface_distance_proofs"] == 9
+    assert report["counts"]["with_spline_fit_proofs"] == 11
+    assert report["counts"]["with_interface_proofs"] == 11
+    assert report["counts"]["with_topology_proofs"] == 11
+    assert report["counts"]["with_surface_distance_proofs"] == 11
     assert report["counts"]["proven_parametric"] == 0
-    assert report["statuses"].get("mesh_derived_parametric_unproven") == 26
-    assert report["statuses"].get("non_parametric_mesh_warp") == 2
+    assert report["statuses"].get("mesh_derived_parametric_unproven") == 25
+    assert report["statuses"].get("non_parametric_mesh_warp") == 3
 
     waist = next(record for record in report["records"] if record["link"] == "WAIST_YAW")
     assert waist["current_method"] == "mesh_section_loft"
@@ -34,18 +34,6 @@ def test_asimov_parametric_inventory_separates_mesh_warps_from_proven_parametric
     assert ankle["topology_proven"] is True
     assert ankle["surface_distance_proven"] is True
     assert ankle["proven_against_step"] is False
-
-    neck = next(record for record in report["records"] if record["link"] == "NECK_PITCH")
-    assert neck["spline_fit_proven"] is False
-    assert neck["interface_proven"] is False
-    assert neck["topology_proven"] is False
-    assert neck["surface_distance_proven"] is False
-
-    neck_yaw = next(record for record in report["records"] if record["link"] == "NECK_YAW")
-    assert neck_yaw["spline_fit_proven"] is False
-    assert neck_yaw["interface_proven"] is False
-    assert neck_yaw["topology_proven"] is False
-    assert neck_yaw["surface_distance_proven"] is False
 
     shoulder = next(
         record for record in report["records"] if record["link"] == "LEFT_SHOULDER_PITCH"
@@ -64,6 +52,8 @@ def test_asimov_parametric_inventory_separates_mesh_warps_from_proven_parametric
         "RIGHT_SHOULDER_YAW",
         "LEFT_WRIST_YAW",
         "RIGHT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
     ):
         proven = next(record for record in report["records"] if record["link"] == link)
         assert proven["spline_fit_proven"] is True
