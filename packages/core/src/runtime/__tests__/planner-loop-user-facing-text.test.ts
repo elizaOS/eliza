@@ -142,9 +142,12 @@ describe("planner-loop — user-facing tool text isolation", () => {
 		expect(result.finalMessage ?? "").not.toContain("[exit 0]");
 	});
 
-	it("does not regress evaluator's explicit messageToUser path", async () => {
-		// When evaluator provides a clean messageToUser, the tool's
-		// userFacingText is not even consulted — the evaluator wins.
+	it("uses evaluator messageToUser when the tool did not produce user-facing output", async () => {
+		// When the tool only emits an internal log (no userFacingText), the
+		// evaluator's explicit messageToUser is the authoritative reply.
+		// Note: this complements `prefers a single tool's verified user-facing
+		// text over evaluator paraphrase` in planner-happy-path.test.ts — tools
+		// that DO produce verified user-facing text win over evaluator paraphrase.
 		const evaluatorMessage = "All three counters reset to zero.";
 		const runtime = {
 			useModel: vi
@@ -167,7 +170,7 @@ describe("planner-loop — user-facing tool text isolation", () => {
 		const executeToolCall = vi.fn(async () => ({
 			success: true,
 			text: "internal log",
-			userFacingText: "tool would also have something to say",
+			// No userFacingText — tool is log-only, evaluator must speak for the user.
 		}));
 		const evaluate = vi.fn(async () => ({
 			success: true,
