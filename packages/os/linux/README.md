@@ -1,11 +1,12 @@
 # elizaOS Live
 
-elizaOS Live is a bootable USB Linux distribution. It uses Tails'
-live-OS plumbing for the hard parts of amnesia, Tor mode, MAC spoofing,
-AppArmor, persistence, and live-build, but the primary boot, greeter, and
-desktop experience are branded as **elizaOS Live**. Tails attribution is
-kept in credits, license files, and engineering docs; users should not see
-derivative branding as the main product identity.
+elizaOS Live is the canonical elizaOS Debian fork and bootable USB Linux
+distribution. It uses Tails' live-OS plumbing for the hard parts of
+amnesia, Tor mode, MAC spoofing, AppArmor, persistence, and live-build, but
+the primary boot, greeter, and desktop experience are branded as
+**elizaOS Live**. Tails attribution is kept in credits, license files, and
+engineering docs; users should not see derivative branding as the main
+product identity.
 
 The product boots into a normal GNOME desktop with the bundled elizaOS app
 as the home surface. Users choose storage behavior and network privacy per
@@ -87,6 +88,11 @@ intermediate nested distro wrapper were removed from this branch so the Linux
 tree has one source of truth: `packages/os/linux/`. Multi-architecture support
 is expressed by build targets and package contracts, not by separate distro
 directories.
+
+This is the only elizaOS Linux distribution in the repo. The inherited
+upstream tree remains at `tails/` because that name is part of the Tails
+live-OS code, AppArmor, persistence, and update contracts; it is not a
+separate product or variant.
 
 The user-facing product is **elizaOS Live**. Internal paths that still say
 `elizaos` are app/runtime paths and should only be renamed when the app

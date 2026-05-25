@@ -92,10 +92,10 @@ Mapping to our normalized `TeeMeasurements`:
 
 ### 1.3 Recommendation: meta-dstack Yocto for the confidential profile, NOT a fork of the Tails build
 
-The active Linux build (`packages/os/linux/elizaos/`) is a Debian live-build
-(`lb`) ISO with a `secure` overlay (RAM-only home, MAC randomization, Tor,
-AppArmor). It is excellent for the **USB live-key product** but is the wrong base
-for a confidential guest:
+The active Linux build (`packages/os/linux/`) is the canonical Tails-derived
+elizaOS Debian fork: a Debian live-build (`lb`) ISO with Tails live-OS
+plumbing and elizaOS overlays. It is excellent for the **USB live-key
+product** but is the wrong base for a confidential guest:
 
 - live-build is not bit-reproducible by construction (apt snapshot drift, build
   timestamps, non-deterministic squashfs ordering). Measured boot is worthless

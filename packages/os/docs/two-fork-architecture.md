@@ -12,7 +12,7 @@ format, and boot chain.
 | Boot chain | fastboot → ramdisk → init.rc → zygote → app | u-boot → grub-efi → kernel → systemd → app |
 | Sandboxing | SELinux `untrusted_app` + seccomp | systemd unit + namespaces |
 | Distribution | OTA / sideload | USB installer / OTA |
-| Supported arches | arm64-v8a, x86_64, riscv64 | x86_64 (Tails variant), riscv64 (Debian variant) |
+| Supported arches | arm64-v8a, x86_64, riscv64 | x86_64, arm64, riscv64 build targets of the same Debian fork |
 | Real-device targets | Pixel (oriole/panther/shiba/caiman/tegu), e1 SoC | any UEFI x86_64 / riscv64 SBC |
 | Virtual targets | Cuttlefish (`vsoc_x86_64_only`, `vsoc_riscv64_only`) | QEMU virt + UEFI |
 
@@ -63,8 +63,9 @@ Code that lives in exactly one fork and should not be unified:
 | `packages/chip/sw/aosp-device/` | AOSP |
 | `packages/os/android/` (system-ui, vendor, installer) | AOSP |
 | `packages/os/setup/` (Pixel/fastboot flasher UI) | AOSP |
-| `packages/os/linux/elizaos/` (`ARCH=amd64`) | Debian (x86_64) |
-| `packages/os/linux/elizaos/` (`ARCH=riscv64`) | Debian (riscv64) |
+| `packages/os/linux/` (`ELIZAOS_ARCH=amd64`) | Debian (x86_64) |
+| `packages/os/linux/` (`ELIZAOS_ARCH=arm64`) | Debian (arm64) |
+| `packages/os/linux/` (`ELIZAOS_ARCH=riscv64`) | Debian (riscv64) |
 | `packages/chip/sw/linux/{configs,dts,drivers}` | Debian (e1) |
 
 ## Cross-fork contracts that MUST stay aligned
@@ -113,5 +114,5 @@ bun run verify:riscv64:e2e      # full end-to-end matrix
 The `verify:riscv64:e2e` matrix covers shared code (native plugins,
 schema, USB installer, Bun pipeline, cloud Dockerfiles), AOSP-fork
 specifics (AOSP scripts, seccomp shim, Bun-riscv64 source-build,
-Cuttlefish smoke), and Debian-fork specifics (variant scaffold,
+Cuttlefish smoke), and Debian-fork specifics (canonical Linux build path,
 manifest template). Output: `reports/riscv64-end-to-end.md`.

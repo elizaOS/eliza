@@ -19,7 +19,7 @@ Current hardening status:
   repeat flash/readback, real hardware boot, and real USB persistence
   validation before stable release.
 - v1 is USB-only; internal-disk install is deferred.
-- A guarded developer writer exists in the live-USB variant. Production
+- A guarded developer writer exists in the canonical live-USB build. Production
   still needs a signed GUI/CLI flasher for macOS, Windows, and Linux.
 - App/runtime/model updates should not require a new full image once the
   signed update channels are implemented. OS/base changes can use signed
