@@ -18,7 +18,14 @@
  * handled by the loader itself even when the module has no interact export.
  */
 
-import { type ComponentType, memo, useEffect, useRef, useState } from "react";
+import {
+  type ComponentType,
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { isDynamicViewLoadingAllowed } from "../../platform/platform-guards";
 import { ErrorBoundary } from "../ui/error-boundary";
 import { registerViewInteractHandler } from "./view-interact-registry";
@@ -431,7 +438,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bundle) return;
 
     const unregister = registerViewInteractHandler(
