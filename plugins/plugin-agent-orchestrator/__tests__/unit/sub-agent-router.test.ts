@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   extractSubResources,
   normalizeUrlsInText,
+  redactLoopbackUrls,
   SubAgentRouter,
 } from "../../src/services/sub-agent-router.js";
 import type { SessionInfo } from "../../src/services/types.js";
@@ -1652,6 +1653,81 @@ describe("normalizeUrlsInText", () => {
   it("returns text unchanged when it contains no URLs", () => {
     expect(normalizeUrlsInText("just some prose — no links")).toBe(
       "just some prose — no links",
+    );
+  });
+});
+
+describe("redactLoopbackUrls", () => {
+  // Live regression: on 2026-05-25 a "make me a 1-page PDF" sub-agent
+  // task ran successfully but the sub-agent's task report mentioned
+  // `http://127.0.0.1:6900/apps/` (it had curl-probed a local dev URL
+  // while diagnosing whether a build was deployed). That internal URL
+  // leaked into Discord across THREE separate task_complete events:
+  //   "Both URLs returned HTTP 404 Not Found, so they aren't reachable..."
+  //   "http://127.0.0.1:6900/apps/ → HTTP 404 Not Found..."
+  //   "Confirmed the HTTP checks: http://127.0.0.1:6900/apps/ ..."
+  // The user-facing reply must never contain loopback URLs — they are
+  // unreachable from the user's machine, leak internal addresses, and
+  // make the bot look broken. The URL verification pipeline (which can
+  // legitimately probe loopback in dev-app scenarios) is unaffected;
+  // this function only scrubs the OUTGOING text right before posting.
+  it("strips http://127.0.0.1 URLs and keeps the surrounding sentence readable", () => {
+    expect(
+      redactLoopbackUrls(
+        "The checks show http://127.0.0.1:6900/apps/ returned 404.",
+      ),
+    ).toBe("The checks show  returned 404.");
+  });
+
+  it("strips http://localhost URLs across all ports", () => {
+    expect(
+      redactLoopbackUrls("Local at http://localhost:3000/dashboard works."),
+    ).toBe("Local at  works.");
+  });
+
+  it("strips 127.x.x.x address space (not just 127.0.0.1)", () => {
+    expect(redactLoopbackUrls("see http://127.5.4.3:8080/")).toBe("see");
+  });
+
+  it("strips https:// loopback URLs as well as http://", () => {
+    // Leading whitespace at start of trimmed output collapses; both
+    // shapes are acceptable as long as the URL itself is gone and the
+    // word "failed" remains intact.
+    const out = redactLoopbackUrls(
+      "https://localhost:8443/api/health failed",
+    );
+    expect(out).not.toContain("localhost");
+    expect(out).toContain("failed");
+  });
+
+  it("keeps public URLs that share the same path as the loopback URL", () => {
+    // Verification design: even when a loopback alias is detected for
+    // a public route, the PUBLIC URL is what the user can see — it must
+    // survive the redaction.
+    const text =
+      "Local: http://127.0.0.1:6900/apps/x/ — Public: https://nubilio.org/apps/x/";
+    expect(redactLoopbackUrls(text)).toContain("https://nubilio.org/apps/x/");
+    expect(redactLoopbackUrls(text)).not.toContain("127.0.0.1");
+  });
+
+  it("removes orphan bullet lines that become only punctuation after URL strip", () => {
+    const text =
+      "Build complete!\n- http://127.0.0.1:6900/apps/main/\n- https://example.test/\nDone.";
+    const out = redactLoopbackUrls(text);
+    expect(out).not.toContain("127.0.0.1");
+    expect(out).toContain("https://example.test/");
+    expect(out).toContain("Build complete!");
+    expect(out).toContain("Done.");
+  });
+
+  it("returns text unchanged when no loopback URLs are present", () => {
+    const text = "Public URL: https://nubilio.org/apps/x/ is reachable.";
+    expect(redactLoopbackUrls(text)).toBe(text);
+  });
+
+  it("handles ::1 IPv6 loopback host (bracketed and unbracketed)", () => {
+    expect(redactLoopbackUrls("dev at http://[::1]:3000/health is up")).toBe(
+      "dev at  is up",
     );
   });
 });
