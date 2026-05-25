@@ -29,6 +29,11 @@
     "typescript": "^6.0.3"
   },
   "exports": {
+    "./error": {
+      "types": "./dist/error.d.ts",
+      "import": "./dist/error.js",
+      "default": "./dist/error.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",

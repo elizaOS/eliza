@@ -129,7 +129,9 @@ jobs:
           (cd packages/contracts && bun run build)
           node packages/shared/scripts/generate-keywords.mjs --target ts
           (cd packages/core && bun run build.ts --node-only)
-          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/ui; do
+          # security → plugin-remote-manifest → plugin-worker-runtime: ordered by
+          # build-time type deps; agent boot ERR_MODULE_NOT_FOUNDs without their dist.
+          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/ui packages/security packages/plugin-remote-manifest packages/plugin-worker-runtime; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
               echo "::group::Building $pkg"
               (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)
