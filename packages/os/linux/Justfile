@@ -300,3 +300,61 @@ clean:
 cache-clean:
     docker volume rm elizaos-acng elizaos-acng 2>/dev/null || true
     @echo "apt-cacher-ng cache volume removed."
+
+# Fast per-arch Dockerfile smoke. Validates ONLY the per-arch bootloader
+# package case in 2-5 min (no full chroot, no live-build, no apt-cacher).
+# Use this when iterating on the multi-arch parameterization in
+# Dockerfile / build.sh — catches "Unable to locate package grub-pc-bin"
+# on arm64 / riscv64 in minutes instead of waiting hours for a real ISO
+# build to fail at the same step.
+#
+#   just smoke-arch                 # default amd64, no emulation, ~2 min
+#   just smoke-arch arm64           # qemu-aarch64 emulation, ~3 min
+#   just smoke-arch riscv64         # qemu-riscv64 emulation, ~5 min
+#
+# arm64 + riscv64 require qemu-user-static + binfmt_misc registered:
+#   docker run --rm --privileged tonistiigi/binfmt --install all
+#
+# Update the inline Dockerfile here whenever the real Dockerfile's
+# per-arch case changes — the inline version is what the smoke
+# actually tests.
+smoke-arch arch="amd64":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{arch}}" in
+        amd64|arm64|riscv64) ;;
+        *) echo "ERROR: arch must be amd64, arm64, or riscv64 (got {{arch}})" >&2; exit 1 ;;
+    esac
+    tmp=$(mktemp -d)
+    trap 'rm -rf "$tmp"' EXIT
+    cat > "$tmp/Dockerfile" <<'EOF'
+    FROM debian:trixie
+    ENV DEBIAN_FRONTEND=noninteractive
+    ARG TARGETARCH=amd64
+    RUN apt-get update && apt-get install -y --no-install-recommends \
+            grub2-common debootstrap rsync xorriso ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+    RUN apt-get update && case "${TARGETARCH}" in \
+            amd64) apt-get install -y --no-install-recommends \
+                       isolinux syslinux syslinux-common \
+                       grub-pc-bin grub-efi-amd64-bin ;; \
+            arm64) apt-get install -y --no-install-recommends \
+                       grub-efi-arm64-bin ;; \
+            riscv64) apt-get install -y --no-install-recommends \
+                       grub-efi-riscv64-bin ;; \
+        esac \
+        && rm -rf /var/lib/apt/lists/*
+    RUN echo "=== installed bootloader for TARGETARCH=${TARGETARCH} ===" \
+        && dpkg-query -W -f '${Package}\n' \
+            isolinux syslinux syslinux-common grub-pc-bin grub-efi-amd64-bin \
+            grub-efi-arm64-bin grub-efi-riscv64-bin 2>/dev/null | sort
+    EOF
+    echo "=== smoke build {{arch}} (per-arch package set only, not the full ISO build) ==="
+    docker build \
+        --platform "linux/{{arch}}" \
+        --build-arg "TARGETARCH={{arch}}" \
+        -t "elizaos-smoke-{{arch}}" \
+        "$tmp"
+    echo
+    echo "✅ smoke passed for {{arch}}. To run the full ISO build:"
+    echo "    ELIZAOS_ARCH={{arch}} just build"
