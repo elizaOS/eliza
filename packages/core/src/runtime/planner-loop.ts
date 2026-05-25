@@ -102,6 +102,8 @@ export type {
 	PlannerTrajectory,
 } from "./planner-types";
 
+const DEFAULT_PLANNER_MAX_TOKENS = 1024;
+
 interface RawPlannerOutput {
 	action?: unknown;
 	parameters?: unknown;
@@ -989,6 +991,7 @@ async function callPlanner(params: {
 		responseSkeleton?: ResponseSkeleton;
 		grammar?: string;
 		spanSamplerPlan?: SpanSamplerPlan;
+		maxTokens?: number;
 	} = {
 		messages: renderedInput.messages,
 		promptSegments: renderedInput.promptSegments,
@@ -1003,6 +1006,15 @@ async function callPlanner(params: {
 			}),
 			modelInputBudget,
 		),
+		maxTokens: DEFAULT_PLANNER_MAX_TOKENS,
+	};
+	modelParams.providerOptions = {
+		...modelParams.providerOptions,
+		eliza: {
+			...((modelParams.providerOptions as { eliza?: Record<string, unknown> })
+				.eliza ?? {}),
+			thinking: "off",
+		},
 	};
 	if (hasTools) {
 		modelParams.tools = params.tools;

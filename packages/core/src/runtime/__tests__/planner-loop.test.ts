@@ -345,6 +345,8 @@ describe("v5 planner loop skeleton", () => {
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+		expect(plannerParams.maxTokens).toBe(1024);
+		expect(plannerParams.providerOptions.eliza.thinking).toBe("off");
 		expect(executeToolCall).toHaveBeenCalledWith(
 			{ id: "call-1", name: "LOOKUP", params: { query: "status" } },
 			expect.objectContaining({ iteration: 1 }),

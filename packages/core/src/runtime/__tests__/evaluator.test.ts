@@ -135,6 +135,7 @@ df -h / /home
 		const evaluatorParams = runtime.useModel.mock.calls[0][1];
 		// Wire-shape contract: evaluator emits ONLY `messages`.
 		expect(evaluatorParams.prompt).toBeUndefined();
+		expect(evaluatorParams.maxTokens).toBe(1024);
 		expect(evaluatorParams.messages.map((message) => message.role)).toEqual([
 			"system",
 			"user",
@@ -159,6 +160,7 @@ df -h / /home
 			reserveTokens: 10_000,
 			shouldCompact: false,
 		});
+		expect(evaluatorParams.providerOptions.eliza.thinking).toBe("off");
 		expect(result.decision).toBe("FINISH");
 		expect(copyToClipboard).toHaveBeenCalledWith({
 			title: "Artifact",

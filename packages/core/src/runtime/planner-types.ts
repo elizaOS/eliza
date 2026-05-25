@@ -26,6 +26,7 @@ export interface EvaluatorRuntime {
 		modelType: TextGenerationModelType,
 		params: {
 			messages: ChatMessage[];
+			maxTokens?: number;
 			responseSchema?: unknown;
 			promptSegments?: PromptSegment[];
 			providerOptions?: Record<string, unknown>;
@@ -59,6 +60,7 @@ export interface PlannerRuntime {
 		modelType: TextGenerationModelType,
 		params: {
 			messages: ChatMessage[];
+			maxTokens?: number;
 			tools?: ToolDefinition[];
 			toolChoice?: ToolChoice;
 			responseSchema?: unknown;

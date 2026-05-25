@@ -22,6 +22,8 @@
 		"paths": {
 			"@elizaos/contracts": ["../contracts/src/index.ts"],
 			"@elizaos/contracts/*": ["../contracts/src/*"],
+			"@elizaos/prompts": ["../prompts/src/index.ts"],
+			"@elizaos/prompts/*": ["../prompts/src/*"],
 			"@elizaos/core": ["./src/index.node.ts"],
 			"@elizaos/shared": ["../shared/src/index.ts"],
 			"@elizaos/plugin-elizacloud": [
