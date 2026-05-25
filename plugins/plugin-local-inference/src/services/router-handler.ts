@@ -289,7 +289,14 @@ function makeRouterHandler(slot: AgentModelSlot): AnyHandler {
  * Called from `ensure-local-inference-handler.ts` after `handlerRegistry`
  * has been installed on the runtime.
  */
-export function installRouterHandler(runtime: AgentRuntime): void {
+export interface RouterInstallOptions {
+	skipSlots?: readonly AgentModelSlot[];
+}
+
+export function installRouterHandler(
+	runtime: AgentRuntime,
+	options: RouterInstallOptions = {},
+): void {
 	const rt = runtime as AgentRuntime & {
 		registerModel?: (
 			modelType: string,
@@ -300,7 +307,9 @@ export function installRouterHandler(runtime: AgentRuntime): void {
 	};
 	if (typeof rt.registerModel !== "function") return;
 
+	const skippedSlots = new Set(options.skipSlots ?? []);
 	for (const slot of AGENT_MODEL_SLOTS) {
+		if (skippedSlots.has(slot)) continue;
 		const modelType = slotToModelType(slot);
 		if (!modelType) continue;
 		rt.registerModel(

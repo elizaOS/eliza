@@ -63,13 +63,39 @@ function makeManagedBinary(root: string): string {
 		"local-inference",
 		"bin",
 		"dflash",
-		`${process.platform}-${process.arch}-${backend}`,
-		"llama-server",
+		`${testRuntimePlatformKey()}-${process.arch}-${backend}`,
+		testServerBinaryName(),
 	);
 	fs.mkdirSync(path.dirname(managed), { recursive: true });
 	fs.writeFileSync(managed, "#!/bin/sh\n", "utf8");
 	fs.chmodSync(managed, 0o755);
 	return managed;
+}
+
+function makeDflashBuildBinary(
+	stateRoot: string,
+	buildDirName: string,
+): string {
+	const binary = path.join(
+		stateRoot,
+		"local-inference",
+		"bin",
+		"dflash",
+		buildDirName,
+		testServerBinaryName(),
+	);
+	fs.mkdirSync(path.dirname(binary), { recursive: true });
+	fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+	fs.chmodSync(binary, 0o755);
+	return binary;
+}
+
+function testRuntimePlatformKey(): string {
+	return process.platform === "win32" ? "windows" : process.platform;
+}
+
+function testServerBinaryName(): string {
+	return process.platform === "win32" ? "llama-server.exe" : "llama-server";
 }
 
 function u32(value: number): Buffer {
@@ -224,8 +250,37 @@ describe("DFlash runtime discovery", () => {
 		expect(getDflashRuntimeStatus().enabled).toBe(true);
 	});
 
+	it("auto-enables from the user-default DFlash runtime when model state is isolated", () => {
+		const isolatedState = fs.mkdtempSync(
+			path.join(os.tmpdir(), "eliza-isolated-state-"),
+		);
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-home-"));
+		vi.spyOn(os, "homedir").mockReturnValue(home);
+		process.env.ELIZA_STATE_DIR = isolatedState;
+		delete process.env.ELIZA_DFLASH_ENABLED;
+		delete process.env.ELIZA_DFLASH_BACKEND;
+		delete process.env.ELIZA_DFLASH_LLAMA_SERVER;
+		delete process.env.HIP_VISIBLE_DEVICES;
+		delete process.env.ROCR_VISIBLE_DEVICES;
+		delete process.env.CUDA_VISIBLE_DEVICES;
+		const backend = process.platform === "darwin" ? "metal" : "cuda";
+		const binary = makeDflashBuildBinary(
+			path.join(home, ".eliza"),
+			`${testRuntimePlatformKey()}-${process.arch}-${backend}-fused-sm89-durable`,
+		);
+
+		expect(resolveDflashBinary()).toBe(binary);
+		expect(dflashEnabled()).toBe(true);
+		expect(getDflashRuntimeStatus()).toMatchObject({
+			enabled: true,
+			binaryPath: binary,
+		});
+	});
+
 	it("does not use PATH llama-server unless explicitly enabled", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-dflash-test-"));
+		const home = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-home-no-bin-"));
+		vi.spyOn(os, "homedir").mockReturnValue(home);
 		const binDir = path.join(root, "bin");
 		fs.mkdirSync(binDir, { recursive: true });
 		fs.writeFileSync(path.join(binDir, "llama-server"), "#!/bin/sh\n", "utf8");
@@ -248,7 +303,7 @@ describe("DFlash runtime discovery", () => {
 describe("fused-vs-two-process spawn selection", () => {
 	function fusedBackendKey(): string {
 		const backend = process.platform === "darwin" ? "metal" : "cpu";
-		return `${process.platform}-${process.arch}-${backend}-fused`;
+		return `${testRuntimePlatformKey()}-${process.arch}-${backend}-fused`;
 	}
 	function makeFusedBinary(
 		root: string,
@@ -262,7 +317,7 @@ describe("fused-vs-two-process spawn selection", () => {
 			fusedBackendKey(),
 		);
 		fs.mkdirSync(dir, { recursive: true });
-		const bin = path.join(dir, "llama-server");
+		const bin = path.join(dir, testServerBinaryName());
 		fs.writeFileSync(bin, "#!/bin/sh\n", "utf8");
 		fs.chmodSync(bin, 0o755);
 		fs.writeFileSync(
@@ -363,62 +418,67 @@ describe("fused-vs-two-process spawn selection", () => {
 });
 
 describe("DflashLlamaServer runtime load config", () => {
-	it("reports the normalized target GPU layers passed to llama-server", async () => {
-		const root = fs.mkdtempSync(
-			path.join(os.tmpdir(), "eliza-runtime-config-"),
-		);
-		const binary = path.join(root, "llama-server");
-		fs.writeFileSync(
-			binary,
-			[
-				"#!/bin/sh",
-				'if [ "$1" = "--help" ]; then',
-				'  echo "--n-gpu-layers N"',
-				"  exit 0",
-				"fi",
-				"trap 'exit 0' TERM INT",
-				"while true; do sleep 1; done",
-				"",
-			].join("\n"),
-			"utf8",
-		);
-		fs.chmodSync(binary, 0o755);
-		process.env.ELIZA_STATE_DIR = root;
-		process.env.ELIZA_DFLASH_ENABLED = "1";
-		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
-		__setCtxCheckpointsProbeCacheForTests(binary, false);
-		installDflashFetchMock((url) =>
-			url.pathname === "/health"
-				? new Response("{}", { status: 200 })
-				: notFoundResponse(),
-		);
+	const itWithShellFixture = process.platform === "win32" ? it.skip : it;
 
-		const server = new DflashLlamaServer();
-		try {
-			await server.start({
-				targetModelPath: path.join(root, "target.gguf"),
-				drafterModelPath: path.join(root, "drafter.gguf"),
-				contextSize: 128,
-				draftContextSize: 64,
-				draftMin: 1,
-				draftMax: 4,
-				gpuLayers: "auto",
-				draftGpuLayers: "auto",
-				disableThinking: false,
-				disableDrafter: true,
-			});
+	itWithShellFixture(
+		"reports the normalized target GPU layers passed to llama-server",
+		async () => {
+			const root = fs.mkdtempSync(
+				path.join(os.tmpdir(), "eliza-runtime-config-"),
+			);
+			const binary = path.join(root, "llama-server");
+			fs.writeFileSync(
+				binary,
+				[
+					"#!/bin/sh",
+					'if [ "$1" = "--help" ]; then',
+					'  echo "--n-gpu-layers N"',
+					"  exit 0",
+					"fi",
+					"trap 'exit 0' TERM INT",
+					"while true; do sleep 1; done",
+					"",
+				].join("\n"),
+				"utf8",
+			);
+			fs.chmodSync(binary, 0o755);
+			process.env.ELIZA_STATE_DIR = root;
+			process.env.ELIZA_DFLASH_ENABLED = "1";
+			process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+			__setCtxCheckpointsProbeCacheForTests(binary, false);
+			installDflashFetchMock((url) =>
+				url.pathname === "/health"
+					? new Response("{}", { status: 200 })
+					: notFoundResponse(),
+			);
 
-			expect(server.currentRuntimeLoadConfig()).toMatchObject({
-				contextSize: 128,
-				cacheTypeK: null,
-				cacheTypeV: null,
-				gpuLayers: 99,
-				binaryPath: binary,
-			});
-		} finally {
-			await server.stop();
-		}
-	});
+			const server = new DflashLlamaServer();
+			try {
+				await server.start({
+					targetModelPath: path.join(root, "target.gguf"),
+					drafterModelPath: path.join(root, "drafter.gguf"),
+					contextSize: 128,
+					draftContextSize: 64,
+					draftMin: 1,
+					draftMax: 4,
+					gpuLayers: "auto",
+					draftGpuLayers: "auto",
+					disableThinking: false,
+					disableDrafter: true,
+				});
+
+				expect(server.currentRuntimeLoadConfig()).toMatchObject({
+					contextSize: 128,
+					cacheTypeK: null,
+					cacheTypeV: null,
+					gpuLayers: 99,
+					binaryPath: binary,
+				});
+			} finally {
+				await server.stop();
+			}
+		},
+	);
 });
 
 describe("DFlash draft CLI flag drift", () => {
@@ -473,7 +533,7 @@ describe("DFlash draft CLI flag drift", () => {
 		expect(args).toEqual(["-fit", "off"]);
 	});
 
-	for (const backend of ["metal", "vulkan"] as const) {
+	for (const backend of ["metal", "vulkan", "cuda"] as const) {
 		it(`downgrades fork-only compressed KV to q8_0 on ${backend} runtime graph dispatch`, () => {
 			const root = fs.mkdtempSync(path.join(os.tmpdir(), `${backend}-kv-`));
 			const binary = path.join(root, "llama-server");
@@ -485,7 +545,9 @@ describe("DFlash draft CLI flag drift", () => {
 					target:
 						backend === "metal"
 							? "darwin-arm64-metal-fused"
-							: "linux-x64-vulkan-fused",
+							: backend === "vulkan"
+								? "linux-x64-vulkan-fused"
+								: "windows-x64-cuda-fused",
 					backend,
 					kernels: {
 						dflash: true,
@@ -515,6 +577,30 @@ describe("DFlash draft CLI flag drift", () => {
 			);
 		});
 	}
+
+	it("downgrades compressed KV for explicit CUDA fused binary paths without CAPABILITIES.json", () => {
+		const root = fs.mkdtempSync(
+			path.join(os.tmpdir(), "windows-x64-cuda-fused-sm89-"),
+		);
+		const binary = path.join(root, "llama-server.exe");
+		fs.writeFileSync(binary, "#!/bin/sh\n", "utf8");
+		fs.chmodSync(binary, 0o755);
+
+		const resolved = resolveRuntimeCacheTypes({
+			binaryPath: binary,
+			targetModelPath: "/models/eliza-1-0_8b.gguf",
+			cacheTypeK: "qjl1_256",
+			cacheTypeV: "tbq3_0",
+			emitWarning: false,
+		});
+
+		expect(resolved).toMatchObject({
+			cacheTypeK: "q8_0",
+			cacheTypeV: "q8_0",
+			downgraded: true,
+		});
+		expect(resolved.reason).toContain("CUDA runtime graph dispatch");
+	});
 
 	it("keeps compressed KV on Metal only when the unsafe experiment flag is explicit", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "metal-kv-exp-"));

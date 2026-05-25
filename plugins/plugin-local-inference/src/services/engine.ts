@@ -208,6 +208,18 @@ function resolveActiveEliza1Bundle(
 	};
 }
 
+function resolveDirectEliza1Bundle(
+	args: LocalInferenceLoadArgs | undefined,
+	catalog: ReturnType<typeof findCatalogModel>,
+): ActiveEliza1Bundle | null {
+	if (!args?.modelId || !ELIZA_1_PLACEHOLDER_IDS.has(args.modelId)) return null;
+	return {
+		root: path.dirname(path.dirname(args.modelPath)),
+		tierId: args.modelId as Eliza1TierId,
+		voiceBackends: catalog?.voiceBackends,
+	};
+}
+
 /**
  * Map a friendly KV cache type name (`"f16"`, `"q8_0"`, `"bf16"`, etc.) to
  * the `keyof typeof GgmlType` shape node-llama-cpp expects for its
@@ -417,9 +429,9 @@ interface LlamaBindingModule {
 /**
  * In-process llama.cpp backend backed by `node-llama-cpp` 3.18.1.
  *
-	 * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
-	 * expert offload (`-ot`), `--parallel` continuous batching, or MTP
-	 * speculative decoding. Models that declare any of those in their catalog
+ * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
+ * expert offload (`-ot`), `--parallel` continuous batching, or MTP
+ * speculative decoding. Models that declare any of those in their catalog
  * `runtime.optimizations` must route to optimized llama.cpp via the dispatcher.
  *
  * `useMmap`, `useMlock`, and `defaultContextFlashAttention` are honored
@@ -1074,7 +1086,14 @@ export class LocalInferenceEngine {
 		// `bundleRoot` and an `eliza-1-<tier>` id. Reset on every load — a
 		// non-Eliza-1 model clears it (the local embedding handler then falls
 		// through to the operator-configured provider).
-		this.activeEliza1Bundle = resolveActiveEliza1Bundle(target, catalog);
+		this.activeEliza1Bundle =
+			resolveActiveEliza1Bundle(target, catalog) ??
+			resolveDirectEliza1Bundle(resolved, catalog);
+		if (this.embeddingServer) {
+			void this.embeddingServer.stop();
+			this.embeddingServer = null;
+		}
+
 		// Resolved args (when provided) carry the merged catalog defaults +
 		// per-load overrides from the active-model coordinator. Project them
 		// onto the dispatcher-level overrides shape — engine.load is also
@@ -2054,14 +2073,14 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Run one fused mic→speech voice turn through the overlapped
-		 * `VoicePipeline`: ASR → {MTP drafts ∥ target verifies} → phrase
-		 * chunker → OmniVoice → PCM ring buffer, with rollback-on-reject and
-		 * barge-in cancel. Requires `startVoice()` + `armVoice()` first.
+	 * `VoicePipeline`: ASR → {MTP drafts ∥ target verifies} → phrase
+	 * chunker → OmniVoice → PCM ring buffer, with rollback-on-reject and
+	 * barge-in cancel. Requires `startVoice()` + `armVoice()` first.
 	 *
 	 * `opts.textRunner` lets a host that runs its own text engine in-process
-		 * (the iOS/Android FFI path or the desktop FFI runtime) supply its own
-		 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
-		 * used.
+	 * (the iOS/Android FFI path or the desktop FFI runtime) supply its own
+	 * {@link MtpTextRunner}. When omitted, the active local dispatcher is
+	 * used.
 	 *
 	 * Resolves with the turn's exit reason (`done` / `token-cap` /
 	 * `cancelled`). A missing ASR region in voice mode surfaces as a

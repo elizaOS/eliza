@@ -1,17 +1,23 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it, vi } from "vitest";
-
-vi.mock("./registry", () => ({
-	listInstalledModels: vi.fn(async () => []),
-}));
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { findCatalogModel } from "./catalog";
 import { DflashLlamaServer } from "./dflash-server";
 
+const ORIGINAL_ENV = { ...process.env };
+
+afterEach(() => {
+	process.env = { ...ORIGINAL_ENV };
+	vi.restoreAllMocks();
+});
+
 describe("DflashLlamaServer direct bundle loads", () => {
 	it("uses direct bundle metadata when the registry has no installed row", async () => {
+		process.env.ELIZA_STATE_DIR = mkdtempSync(
+			path.join(tmpdir(), "eliza-dflash-state-"),
+		);
 		const bundleRoot = mkdtempSync(path.join(tmpdir(), "eliza-dflash-"));
 		mkdirSync(path.join(bundleRoot, "text"), { recursive: true });
 		const modelPath = path.join(bundleRoot, "text", "eliza-1-9b-128k.gguf");

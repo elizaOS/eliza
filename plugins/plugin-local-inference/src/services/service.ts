@@ -62,6 +62,11 @@ import {
 	removeElizaModel,
 	upsertElizaModel,
 } from "./registry";
+import {
+	readRoutingPreferences,
+	writeRoutingPreferences,
+	type RoutingPreferences,
+} from "./routing-preferences";
 import type {
 	ActiveModelState,
 	AgentModelSlot,
@@ -85,6 +90,52 @@ import type {
 import { prewarmLocalVoiceStackForModel } from "./voice-prewarm";
 
 const SYSTEM_PREFIX_CONVERSATION_ID = "__system_prefix__";
+const LOCAL_INFERENCE_PROVIDER_ID = "eliza-local-inference";
+const ACTIVATED_TEXT_ROUTING_SLOTS: AgentModelSlot[] = [
+	"TEXT_SMALL",
+	"TEXT_LARGE",
+];
+const LEGACY_LOCAL_ROUTING_PROVIDERS = new Set([
+	"capacitor-llama",
+	"eliza-device-bridge",
+	"eliza-aosp-llama",
+]);
+
+function shouldRouteActivatedModelToLocal(
+	provider: string | undefined,
+): boolean {
+	return (
+		!provider ||
+		provider === LOCAL_INFERENCE_PROVIDER_ID ||
+		LEGACY_LOCAL_ROUTING_PROVIDERS.has(provider)
+	);
+}
+
+async function routeActivatedModelToLocalText(): Promise<void> {
+	const current = await readRoutingPreferences();
+	const next: RoutingPreferences = {
+		preferredProvider: { ...current.preferredProvider },
+		policy: { ...current.policy },
+	};
+	let changed = false;
+
+	for (const slot of ACTIVATED_TEXT_ROUTING_SLOTS) {
+		const provider = next.preferredProvider[slot];
+		if (!shouldRouteActivatedModelToLocal(provider)) continue;
+		if (provider !== LOCAL_INFERENCE_PROVIDER_ID) {
+			next.preferredProvider[slot] = LOCAL_INFERENCE_PROVIDER_ID;
+			changed = true;
+		}
+		if (next.policy[slot] !== "manual") {
+			next.policy[slot] = "manual";
+			changed = true;
+		}
+	}
+
+	if (changed) {
+		await writeRoutingPreferences(next);
+	}
+}
 
 export class LocalInferenceService {
 	// The downloader runs the engine-backed on-device verify pass
@@ -339,6 +390,9 @@ export class LocalInferenceService {
 			installed,
 			overrides,
 		);
+		if (state.status === "ready") {
+			await routeActivatedModelToLocalText();
+		}
 		if (runtime && state.status === "ready") {
 			void (async () => {
 				await this.prewarmActiveVoice(modelId);

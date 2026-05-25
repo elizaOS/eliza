@@ -174,6 +174,10 @@ const BASE_REQUIRED_KERNELS: LocalRuntimeKernel[] = [
   "turbo4",
   "qjl_full",
   "polarquant",
+  // DFlash drafter is required across the active Eliza-1 release line (per
+  // REQUIRED_KERNELS_BY_TIER in manifest/schema.ts). Keep the catalog runtime
+  // requirement aligned so the runtime probe matches the manifest contract.
+  "dflash",
 ];
 
 interface TierSpec {

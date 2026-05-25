@@ -72,7 +72,9 @@ export function validateManifest(input: unknown): ValidationResult {
 		};
 	}
 
-	const errors = collectContractErrors(parsed.data);
+	const errors = collectContractErrors(parsed.data, {
+		allowVersionStaging: true,
+	});
 	if (errors.length > 0) {
 		return { ok: false, errors };
 	}
@@ -106,17 +108,15 @@ export function parseManifestOrThrow(input: unknown): Eliza1Manifest {
  *
  * A `defaultEligible: true` manifest is the strict release: every supported
  * backend kernel-verified `pass`, every required eval green. A
- * `defaultEligible: false` manifest with `releaseState` in the candidate /
- * staging vocabulary (`base-v1-candidate`, `local-standin`,
- * `upload-candidate`) is still permitted to fill an empty default slot
- * **when this device can run it** — the recommender prefers a strict
- * release over a candidate when both are installed (see
- * `isStrictReleaseManifest`). This mirrors the install gate
- * (`downloader.assertBundleInstallable`): if the device can install + run
- * the bundle, it can also fall back to running it as the default. The
- * historic "candidate bundles must never be a default" rule produced the
- * worse outcome of installing a bundle but leaving the model slot empty,
- * forcing the user to manually pick the only model they had downloaded.
+ * `defaultEligible: false` manifest with an explicit candidate/staging
+ * `releaseState` (`base-v1-candidate`, `local-standin`, `upload-candidate`)
+ * is still permitted to fill an empty default slot **when this device can
+ * run it** — the recommender prefers a strict release over a candidate when
+ * both are installed (see `isStrictReleaseManifest`). Version-only staging
+ * stamps such as `1.0.0-weights-staged.2` are accepted by the install parser
+ * so QA bundles can be materialized, but they do not get this auto-default
+ * relaxation unless the manifest also carries an explicit staging
+ * `releaseState`.
  *
  * The device-caps check rejects "this device has Vulkan only but the
  * manifest only verified Metal/CUDA" — a manifest may be contract-valid
@@ -126,7 +126,11 @@ export function canSetAsDefault(
 	manifest: Eliza1Manifest,
 	device: Eliza1DeviceCaps,
 ): boolean {
-	if (collectContractErrors(manifest).length > 0) return false;
+	if (
+		collectContractErrors(manifest, { allowVersionStaging: false }).length > 0
+	) {
+		return false;
+	}
 	if (manifest.ramBudgetMb.min > device.ramMb) return false;
 
 	// The device must expose at least one backend that the manifest verified
@@ -186,13 +190,41 @@ const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 
 const MIN_TEXT_CONTEXT = 131072;
 
-function collectContractErrors(m: Eliza1Manifest): string[] {
+const STAGING_VERSION_TOKENS: ReadonlySet<string> = new Set([
+	"candidate",
+	"staged",
+	"dev",
+	"local",
+]);
+
+function isStagingManifestVersion(version: string): boolean {
+	const prerelease = version.match(
+		/^[0-9]+\.[0-9]+\.[0-9]+-([^+]+)(?:\+.*)?$/,
+	)?.[1];
+	if (!prerelease) return false;
+	return prerelease
+		.split(/[.-]/)
+		.some((token) => STAGING_VERSION_TOKENS.has(token.toLowerCase()));
+}
+
+function dflashEnabledForTier(tier: Eliza1Tier): boolean {
+	return REQUIRED_KERNELS_BY_TIER[tier].includes("dflash");
+}
+
+function collectContractErrors(
+	m: Eliza1Manifest,
+	options: { allowVersionStaging?: boolean } = {},
+): string[] {
 	const errors: string[] = [];
 
 	const releaseState = m.provenance?.releaseState;
 	const strictRelease =
 		m.defaultEligible === true ||
-		releaseState === undefined ||
+		(releaseState === undefined &&
+			!(
+				options.allowVersionStaging === true &&
+				isStagingManifestVersion(m.version)
+			)) ||
 		STRICT_RELEASE_STATES.has(releaseState);
 
 	// Required-kernel coverage.
@@ -234,7 +266,24 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
+	const dflashEnabled = dflashEnabledForTier(m.tier);
 	const visionEnabled = VISION_TIERS.has(m.tier);
+	if (dflashEnabled) {
+		if (m.files.dflash.length === 0) {
+			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
+		}
+	} else {
+		if (m.files.dflash.length > 0) {
+			errors.push(
+				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+		if (declaredRequired.has("dflash")) {
+			errors.push(
+				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
+			);
+		}
+	}
 	if (visionEnabled) {
 		if (m.files.vision.length === 0) {
 			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
@@ -354,6 +403,30 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 			errors.push("evals.vadLatencyMs: required when files.vad is non-empty");
 		} else if (strictRelease && !m.evals.vadLatencyMs.passed) {
 			errors.push("evals.vadLatencyMs.passed: false");
+		}
+	}
+	// DFlash drafter eval gate. A defaultEligible bundle that ships `files.dflash`
+	// MUST declare a passing `evals.dflash` block with real `acceptanceRate` +
+	// `speedup` numbers (a needs-hardware bench with `null` numbers can never
+	// pass). Non-default candidate/staging bundles may carry a missing or
+	// not-yet-measured dflash eval — the bench is allowed to be deferred until
+	// hardware is available.
+	if (m.evals.dflash) {
+		const df = m.evals.dflash;
+		if (df.passed && (df.acceptanceRate == null || df.speedup == null)) {
+			errors.push(
+				"evals.dflash.passed: cannot be true when acceptanceRate or speedup is null (needs-hardware bench)",
+			);
+		}
+	}
+	if (m.defaultEligible && m.files.dflash.length > 0) {
+		const df = m.evals.dflash;
+		if (!df) {
+			errors.push(
+				"evals.dflash: required when defaultEligible=true and files.dflash is non-empty",
+			);
+		} else if (!df.passed) {
+			errors.push("evals.dflash.passed: false");
 		}
 	}
 	// Voice Wave 2 (2026-05-14): turn-detector eval gate. When the bundle

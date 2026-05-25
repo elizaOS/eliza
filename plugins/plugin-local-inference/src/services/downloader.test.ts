@@ -386,7 +386,9 @@ describe("local inference downloader status", () => {
 		}
 
 		expect(job.state).toBe("completed");
-		expect(main.path.endsWith(textPath)).toBe(true);
+		expect(path.normalize(main.path).endsWith(path.normalize(textPath))).toBe(
+			true,
+		);
 		expect(bundleRoot).toBe(
 			path.join(root, "local-inference", "models", "eliza-1-2b.bundle"),
 		);
@@ -399,7 +401,9 @@ describe("local inference downloader status", () => {
 		expect(fs.existsSync(path.join(bundleRoot, visionPath))).toBe(true);
 		expect(companion.runtimeRole).toBe("dflash-drafter");
 		expect(companion.companionFor).toBe(model.id);
-		expect(companion.path.endsWith(drafterPath)).toBe(true);
+		expect(
+			path.normalize(companion.path).endsWith(path.normalize(drafterPath)),
+		).toBe(true);
 		expect(companion.bundleRoot).toBe(bundleRoot);
 		expect(main.bundleVerifiedAt).toBeUndefined();
 		expect(await readAssignments()).toEqual({});
@@ -638,11 +642,22 @@ describe("local inference downloader status", () => {
 			]),
 		);
 
-		const verifyCalls: Array<{ modelId: string; textGgufPath: string }> = [];
+		const verifyCalls: Array<{
+			modelId: string;
+			bundleRoot: string;
+			manifestPath: string;
+			textGgufPath: string;
+		}> = [];
 		const downloader = new Downloader({
 			probeDeviceCaps: async () => cpuOnlyCaps,
-			verifyOnDevice: async ({ modelId, textGgufPath }) => {
-				verifyCalls.push({ modelId, textGgufPath });
+			verifyOnDevice: async ({
+				modelId,
+				bundleRoot,
+				manifestPath,
+				textGgufPath,
+			}) => {
+				if (!modelId) throw new Error("verify hook missing modelId");
+				verifyCalls.push({ modelId, bundleRoot, manifestPath, textGgufPath });
 			},
 		});
 		const completed = waitForTerminal(downloader, model.id);
@@ -652,11 +667,15 @@ describe("local inference downloader status", () => {
 		expect(verifyCalls).toHaveLength(1);
 		expect(verifyCalls[0]?.modelId).toBe(model.id);
 		expect(
-			verifyCalls[0]?.textGgufPath.endsWith("text/eliza-1-2b-128k.gguf"),
+			path
+				.normalize(verifyCalls[0]?.textGgufPath ?? "")
+				.endsWith(path.normalize("text/eliza-1-2b-128k.gguf")),
 		).toBe(true);
 		const installed = await listInstalledModels();
 		const main = installed.find((m) => m.id === model.id);
 		expect(main?.bundleVerifiedAt).toBeTruthy();
+		expect(verifyCalls[0]?.bundleRoot).toBe(main?.bundleRoot);
+		expect(verifyCalls[0]?.manifestPath).toBe(main?.manifestPath);
 	});
 
 	it("fails the download (no install) when the verify-on-device hook rejects", async () => {

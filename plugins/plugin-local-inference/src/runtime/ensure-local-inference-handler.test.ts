@@ -93,6 +93,7 @@ vi.mock("../services/voice", () => ({
 	})),
 }));
 
+import { installRouterHandler } from "../services/router-handler";
 import { ensureLocalInferenceHandler } from "./ensure-local-inference-handler";
 
 interface Registration {
@@ -233,6 +234,9 @@ describe("ensureLocalInferenceHandler", () => {
 				expect.objectContaining({ modelType: ModelType.TRANSCRIPTION }),
 			]),
 		);
+		expect(installRouterHandler).toHaveBeenCalledWith(runtime, {
+			skipSlots: ["TEXT_EMBEDDING"],
+		});
 	});
 
 	it("skips handler registration outside local modes", async () => {

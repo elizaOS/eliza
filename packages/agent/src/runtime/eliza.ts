@@ -882,6 +882,53 @@ export function configureLocalEmbeddingPlugin(
   );
 }
 
+const LOCAL_INFERENCE_RUNTIME_MODEL_KEYS = new Set([
+  "TEXT_SMALL",
+  "TEXT_LARGE",
+  "TEXT_EMBEDDING",
+  "RESPONSE_HANDLER",
+  "ACTION_PLANNER",
+  "TEXT_COMPLETION",
+  "TEXT_TO_SPEECH",
+  "TRANSCRIPTION",
+  "IMAGE_DESCRIPTION",
+]);
+
+function moveLocalInferenceModelsToRuntimeHandlers(plugin: Plugin): void {
+  if (!plugin.models) return;
+  const nextModels = { ...plugin.models };
+  let removed = 0;
+  for (const modelType of LOCAL_INFERENCE_RUNTIME_MODEL_KEYS) {
+    if (modelType in nextModels) {
+      delete nextModels[modelType as keyof typeof nextModels];
+      removed += 1;
+    }
+  }
+  if (removed === 0) return;
+  plugin.models =
+    Object.keys(nextModels).length > 0
+      ? (nextModels as NonNullable<Plugin["models"]>)
+      : undefined;
+  logger.info(
+    `[eliza] plugin-local-inference model handlers moved to runtime router (${removed} static handler(s) deferred)`,
+  );
+}
+
+async function ensureLocalInferenceRuntimeHandlers(
+  runtime: AgentRuntime,
+): Promise<void> {
+  try {
+    const { ensureLocalInferenceHandler } = await import(
+      "@elizaos/plugin-local-inference/runtime"
+    );
+    await ensureLocalInferenceHandler(runtime);
+  } catch (err) {
+    logger.warn(
+      `[eliza] plugin-local-inference runtime handler registration skipped: ${formatError(err)}`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -3924,9 +3971,11 @@ export async function startEliza(
   //     must not abort the app before the user can activate one.
   if (localEmbeddingPlugin) {
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
+    moveLocalInferenceModelsToRuntimeHandlers(localEmbeddingPlugin.plugin);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
+    await ensureLocalInferenceRuntimeHandlers(runtime);
     logger.info(
-      "[eliza] plugin-local-inference pre-registered (TEXT_EMBEDDING deferred until a local backend is active)",
+      "[eliza] plugin-local-inference pre-registered with runtime local handlers (TEXT_EMBEDDING follows ELIZA_DISABLE_LOCAL_EMBEDDINGS)",
     );
   } else {
     logger.warn(
@@ -4611,7 +4660,11 @@ export async function startEliza(
               freshLocalEmbeddingPlugin.plugin,
               freshConfig,
             );
+            moveLocalInferenceModelsToRuntimeHandlers(
+              freshLocalEmbeddingPlugin.plugin,
+            );
             await newRuntime.registerPlugin(freshLocalEmbeddingPlugin.plugin);
+            await ensureLocalInferenceRuntimeHandlers(newRuntime);
           }
 
           // Pre-register remaining core plugins sequentially (same as startup)
