@@ -262,32 +262,46 @@ function buildTarget(targetKey) {
   }
 
   // ── Step 2: locate the built libllama.<ext> and stage it ─────────────────
+  // Naming convention: linux/macOS produce `libllama.{so,dylib}` (CMake adds
+  // the `lib` prefix on shared libs). Windows MSVC produces `llama.dll` —
+  // the `lib` prefix is dropped because PE doesn't carry it. The runtime
+  // (`desktop-llama-adapter.ts`) always looks for `libllama.{so,dylib,dll}`,
+  // so on Windows we have to find `llama.dll` from the build tree and
+  // stage it AS `libllama.dll` in the output dir.
   const libllamaName = `libllama.${t.libExt}`;
-  const candidates = [
-    path.join(buildDir, libllamaName),
-    path.join(buildDir, "bin", libllamaName),
-    path.join(buildDir, "src", libllamaName),
-  ];
+  const buildOutputNames =
+    process.platform === "win32"
+      ? [libllamaName, `llama.${t.libExt}`]
+      : [libllamaName];
+  const candidates = [];
+  for (const name of buildOutputNames) {
+    candidates.push(
+      path.join(buildDir, name),
+      path.join(buildDir, "bin", name),
+      path.join(buildDir, "bin", "Release", name),
+      path.join(buildDir, "src", name),
+      path.join(buildDir, "src", "Release", name),
+    );
+  }
   // Also walk shallow: cmake puts the shared lib in different places
-  // depending on generator (Ninja vs Make). Fall through to a find scan.
+  // depending on generator (Ninja vs Make/VS). Fall through to a find scan.
   let libllamaSrcPath = candidates.find((p) => fs.existsSync(p));
   if (!libllamaSrcPath) {
-    const found = spawnSync(
-      "find",
-      [buildDir, "-name", libllamaName, "-print"],
-      {
+    for (const name of buildOutputNames) {
+      const found = spawnSync("find", [buildDir, "-name", name, "-print"], {
         encoding: "utf8",
-      },
-    );
-    libllamaSrcPath = found.stdout.split("\n").find((s) => s.trim());
+      });
+      libllamaSrcPath = found.stdout.split("\n").find((s) => s.trim());
+      if (libllamaSrcPath) break;
+    }
   }
   if (!libllamaSrcPath) {
     die(
-      `could not locate ${libllamaName} after cmake build in ${buildDir}; ` +
-        `check that -DBUILD_SHARED_LIBS=ON took effect`,
+      `could not locate ${buildOutputNames.join(" or ")} after cmake build ` +
+        `in ${buildDir}; check that -DBUILD_SHARED_LIBS=ON took effect`,
     );
   }
-  log(`staging ${libllamaSrcPath} → ${outDir}`);
+  log(`staging ${libllamaSrcPath} → ${outDir}/${libllamaName}`);
   fs.copyFileSync(libllamaSrcPath, path.join(outDir, libllamaName));
 
   // ── Step 2b: stage libmtmd.<ext> when vision is enabled ──────────────────
