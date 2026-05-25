@@ -501,6 +501,69 @@ describe("v5 planner loop skeleton", () => {
 		expect(result.finalMessage).toBe("Checked.");
 	});
 
+	it("surfaces captured REPLY refusal text when required-tool cap is hit, instead of throwing", async () => {
+		// Live regression: trajectory tj-3bb6dc66be0c16.json on 2026-05-25
+		// showed that when Stage 1 set requiresTool=true but no exposed tool
+		// could fulfill the task (chat-history search with no SEARCH_MESSAGES
+		// action), the planner emitted REPLY with valid honest refusals each
+		// iteration. The loop discarded every REPLY, hit maxRequiredToolMisses,
+		// threw TrajectoryLimitExceeded, and the caller emitted a generic
+		// apology ("Sorry, something went wrong—please try again"). The fix
+		// captures the most recent terminal-only refusal across iterations and
+		// returns it as the final user-facing message when the cap is reached.
+		const runtime = {
+			useModel: vi
+				.fn()
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-1",
+							name: "REPLY",
+							arguments: {
+								text: "I'm not able to search the chat history directly from here.",
+							},
+						},
+					],
+				})
+				.mockResolvedValueOnce({
+					text: "",
+					toolCalls: [
+						{
+							id: "reply-2",
+							name: "REPLY",
+							arguments: {
+								text: "I don't have a way to search the Discord message history.",
+							},
+						},
+					],
+				}),
+			logger: { warn: vi.fn() },
+		};
+
+		const result = await runPlannerLoop({
+			runtime,
+			context: { id: "ctx" },
+			tools: [
+				{
+					name: "LOOKUP",
+					description: "Lookup current status.",
+				},
+			],
+			requireNonTerminalToolCall: true,
+			config: { maxRequiredToolMisses: 2 },
+			executeToolCall: vi.fn(),
+			evaluate: vi.fn(),
+		});
+
+		expect(result.status).toBe("finished");
+		expect(result.finalMessage).toBe(
+			"I don't have a way to search the Discord message history.",
+		);
+		// Two REPLY iterations; the second hits the cap and returns.
+		expect(runtime.useModel).toHaveBeenCalledTimes(2);
+	});
+
 	it("retries planner calls to tools that are not exposed this turn", async () => {
 		const runtime = {
 			useModel: vi

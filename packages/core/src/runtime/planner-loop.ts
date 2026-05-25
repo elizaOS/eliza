@@ -175,6 +175,14 @@ export async function runPlannerLoop(
 	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
 	// field is absent the gate's other preconditions are honored as before.
 	let lastPlannerExplicitCompleted: boolean | undefined;
+	// Captures the most recent terminal-only refusal text the planner produced
+	// across iterations gated by `requireNonTerminalToolCall`. When Stage 1
+	// asserts `requiresTool=true` but no exposed tool can fulfill the request,
+	// the planner repeatedly emits REPLY (or bare messageToUser) with a valid
+	// honest refusal. Without this, the loop discards every refusal, exceeds
+	// `maxRequiredToolMisses`, throws `TrajectoryLimitExceeded`, and the
+	// caller surfaces a generic apology instead of the planner's real answer.
+	let lastTerminalRefusalText: string | undefined;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -219,7 +227,22 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					const refusalCandidate = getNonEmptyString(
+						plannerOutput.messageToUser,
+					);
+					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
+					if (
+						requiredToolMisses >= config.maxRequiredToolMisses &&
+						lastTerminalRefusalText
+					) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: lastTerminalRefusalText,
+						});
+					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
 						max: config.maxRequiredToolMisses,
@@ -320,7 +343,23 @@ export async function runPlannerLoop(
 					requireNonTerminalToolCall &&
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
+					const refusalCandidate = terminalMessageFromToolCalls(
+						plannerOutput.toolCalls,
+						plannerOutput.messageToUser,
+					);
+					if (refusalCandidate) lastTerminalRefusalText = refusalCandidate;
 					requiredToolMisses++;
+					if (
+						requiredToolMisses >= config.maxRequiredToolMisses &&
+						lastTerminalRefusalText
+					) {
+						return finishWithCapturedRefusal({
+							trajectory,
+							iteration,
+							thought: plannerOutput.thought,
+							refusal: lastTerminalRefusalText,
+						});
+					}
 					assertTrajectoryLimit({
 						kind: "required_tool_misses",
 						max: config.maxRequiredToolMisses,
@@ -2171,6 +2210,31 @@ function handleRequiredToolPlannerMiss(params: {
 			toolCalls: stringifyForModel(params.plannerOutput.toolCalls),
 		},
 	});
+}
+
+// Terminates the planner loop with a captured terminal-only refusal text in
+// place of throwing `TrajectoryLimitExceeded({kind: "required_tool_misses"})`.
+// Used when Stage 1 asserted `requiresTool=true` but no exposed tool can
+// fulfill the request: the planner produces honest REPLY refusals across
+// iterations, and surfacing the last one is materially better than the
+// generic apology the caller would otherwise emit.
+function finishWithCapturedRefusal(params: {
+	trajectory: PlannerTrajectory;
+	iteration: number;
+	thought: string | undefined;
+	refusal: string;
+}): { status: "finished"; trajectory: PlannerTrajectory; finalMessage: string | undefined } {
+	params.trajectory.steps.push({
+		iteration: params.iteration,
+		thought: params.thought,
+		terminalMessage: params.refusal,
+		terminalOnly: true,
+	});
+	return {
+		status: "finished",
+		trajectory: params.trajectory,
+		finalMessage: userSafeFinalMessage(params.refusal, params.trajectory),
+	};
 }
 
 function terminalMessageFromToolCalls(
