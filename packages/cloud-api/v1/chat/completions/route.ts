@@ -1559,3 +1559,15 @@ honoRouter.post("/", rateLimit(RateLimitPresets.RELAXED), async (c) => {
   }
 });
 export default honoRouter;
+
+/**
+ * Test-only exports. Not part of the public route surface; the `__` prefix
+ * and `TestHooks` suffix make accidental third-party use obvious. Used by
+ * `__tests__/chat-completions-tool-choice.test.ts` to exercise the AI-SDK
+ * shape conversion helpers without spinning up the Hono router or hitting
+ * any model provider.
+ */
+export const __nativeToolingTestHooks = {
+  mapToolChoice,
+  convertTools,
+} as const;
