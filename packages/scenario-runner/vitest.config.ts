@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -9,49 +9,70 @@ const workspacePluginDirs = [
   path.join(repoRoot, "plugins"),
   path.join(repoRoot, "packages"),
 ];
-const workspaceSourceAliases = [
-  {
-    find: /^@elizaos\/agent$/,
-    replacement: path.join(repoRoot, "packages", "agent", "src", "index.ts"),
-  },
-  {
-    find: /^@elizaos\/agent\/(.*)$/,
-    replacement: path.join(repoRoot, "packages", "agent", "src", "$1.ts"),
-  },
-  {
-    find: /^@elizaos\/shared$/,
-    replacement: path.join(repoRoot, "packages", "shared", "src", "index.ts"),
-  },
-];
+type SourceAliasEntry = {
+  packageName: string;
+  indexPath: string;
+  sourceDir: string;
+};
 
-// Resolve `@elizaos/plugin-*` to workspace source. The scenario runtime
+const getSourceAliasEntry = (
+  packageDir: string,
+): SourceAliasEntry | undefined => {
+  const packageJsonPath = path.join(packageDir, "package.json");
+  if (!existsSync(packageJsonPath)) {
+    return undefined;
+  }
+
+  const packageJson = JSON.parse(
+    readFileSync(packageJsonPath, "utf8"),
+  ) as { name?: string };
+  if (!packageJson.name?.startsWith("@elizaos/")) {
+    return undefined;
+  }
+  if (packageJson.name === "@elizaos/scenario-runner") {
+    return undefined;
+  }
+
+  const sourceIndex = path.join(packageDir, "src", "index.ts");
+  const rootIndex = path.join(packageDir, "index.ts");
+  if (existsSync(sourceIndex)) {
+    return {
+      packageName: packageJson.name,
+      indexPath: sourceIndex,
+      sourceDir: path.join(packageDir, "src"),
+    };
+  }
+  if (existsSync(rootIndex)) {
+    return {
+      packageName: packageJson.name,
+      indexPath: rootIndex,
+      sourceDir: packageDir,
+    };
+  }
+  return undefined;
+};
+
+// Resolve workspace `@elizaos/*` packages to source. The scenario runtime
 // transitively loads `@elizaos/agent`'s server, whose `server.ts` carries
 // dynamic `import("@elizaos/plugin-…")` specifiers for optional plugins
 // (x402, browser, …). `test:server` only runs `build:core`, so those plugins
 // have no built `dist/` in CI and Vite's eager dynamic-import resolution fails.
 // Aliasing to source makes resolution independent of build order.
-// Exact-match only (anchored regex): alias the bare package specifier to its
-// source entry without rewriting subpath imports like `@elizaos/plugin-x/foo`,
-// which must keep their normal resolution.
-const pluginSourceAliases = workspacePluginDirs.flatMap((workspaceDir) =>
+const workspaceSourceAliases = workspacePluginDirs.flatMap((workspaceDir) =>
   existsSync(workspaceDir)
     ? readdirSync(workspaceDir)
-        .filter((name) => name.startsWith("plugin-"))
-        .map((name) => ({
-          name,
-          replacement: [
-            path.join(workspaceDir, name, "src", "index.ts"),
-            path.join(workspaceDir, name, "index.ts"),
-          ].find((candidate) => existsSync(candidate)),
-        }))
-        .filter(
-          (entry): entry is { name: string; replacement: string } =>
-            entry.replacement !== undefined,
-        )
-        .map(({ name, replacement }) => ({
-          find: new RegExp(`^@elizaos/${name}$`),
-          replacement,
-        }))
+        .map((name) => getSourceAliasEntry(path.join(workspaceDir, name)))
+        .filter((entry): entry is SourceAliasEntry => entry !== undefined)
+        .flatMap(({ packageName, indexPath, sourceDir }) => [
+          {
+            find: new RegExp(`^${packageName}$`),
+            replacement: indexPath,
+          },
+          {
+            find: new RegExp(`^${packageName}/(.*)$`),
+            replacement: path.join(sourceDir, "$1.ts"),
+          },
+        ])
     : [],
 );
 
@@ -63,6 +84,6 @@ export default defineConfig({
     testTimeout: 180_000,
   },
   resolve: {
-    alias: [...workspaceSourceAliases, ...pluginSourceAliases],
+    alias: workspaceSourceAliases,
   },
 });
