@@ -35,7 +35,6 @@ import numpy as np
 import trimesh
 import paramlib as P
 import connections as C
-import warp2 as W
 from shapely.geometry import MultiPoint, LineString
 import matplotlib
 matplotlib.use('Agg')
@@ -52,9 +51,9 @@ WAIST_Z = 0.145       # waist cinch centre (m)
 WAIST_SIGMA = 0.040
 WAIST_DEPTH = 0.12    # 1 - 0.12 = 0.88 min radial multiplier at the cinch
 
-BUST_Z = 0.242        # bust peak centre (m) — below the 0.261 shoulder ring
-BUST_SIGMA = 0.034    # vertical falloff of the swell (softer = rounder, less pointy)
-BUST_AMP = 0.40       # peak front-sector multiplier (+40%)
+BUST_Z = 0.275        # bust peak centre (m) — blended above the shoulder ring
+BUST_SIGMA = 0.050    # vertical falloff of the swell (softer = rounder, less pointy)
+BUST_AMP = 0.55       # peak front-sector multiplier (+55%)
 BUST_WIDTH = np.pi * 0.78  # ~140deg: frontal swell, keeps side width ~1.0
 
 ARCH_Z = 0.180        # back-arch centre (m)
@@ -65,60 +64,43 @@ RIB_Z = 0.300         # ribcage taper centre (above bust, toward neck)
 RIB_SIGMA = 0.035
 RIB_DEPTH = 0.07      # gentle 7% slim
 
-# WAIST_YAW contains inherited four-face sheet contacts. The one/two-face
-# contact slivers must inherit the same offset as their adjacent larger sheet;
-# otherwise a generic component split leaves boundary edges or requires caps
-# that are too far from the source surface. These component ids are deterministic
-# for the source-preserving high-detail WAIST_YAW mesh under the proof's
-# 1-micron quantization.
-WAIST_CONTACT_OFFSET_ALIASES = {
-    7: 6,
-    8: 6,
-    9: 6,
-    10: 6,
-    19: 18,
-    20: 18,
-    21: 18,
-    22: 18,
-    13: 11,
-    14: 11,
-    15: 11,
-    16: 11,
-    32: 31,
-    33: 31,
-    34: 31,
-    35: 31,
-}
-
-
-def waist_similarity_scale(z):
-    # Keep this repair conservative: it is the topology-clean, proof-passing
-    # torso baseline. Larger bust/waist sculpting remains gated by the strict
-    # surface-distance proof and should be reintroduced parametrically.
-    rib = 1.0 - 0.01 * np.exp(-((z - RIB_Z) / RIB_SIGMA) ** 2)
-    return rib
-
-
-def waist_similarity_shift(z):
-    dx = -0.002 * np.exp(-((z - ARCH_Z) / ARCH_SIGMA) ** 2)
-    return (dx, 0.0)
-
-
-def waist_profile_scale(z):
-    waist = 1.0 - 0.12 * np.exp(-((z - WAIST_Z) / 0.055) ** 2)
-    rib = 1.0 - 0.018 * np.exp(-((z - RIB_Z) / RIB_SIGMA) ** 2)
-    return waist * rib
-
-
-def waist_profile_bust_gain(z):
-    # Bias the proof-visible swell slightly above the original bust design
-    # center so it remains measurable after the shoulder reserved plane lock.
-    return 1.0 + 0.70 * np.exp(-((z - 0.285) / 0.040) ** 2)
-
-
-def waist_profile_shift(z):
-    dx = -0.010 * np.exp(-((z - ARCH_Z) / ARCH_SIGMA) ** 2)
-    return (dx, 0.0)
+def _hull_ring_at_level(mesh, axis, lvl, angles):
+    a = P.AXIS_IDX[axis]
+    pdims = [d for d in range(3) if d != a]
+    origin = np.zeros(3); origin[a] = lvl
+    normal = np.zeros(3); normal[a] = 1.0
+    sec = mesh.section(plane_origin=origin, plane_normal=normal)
+    if sec is None:
+        return None
+    pts = np.vstack([pl[:, pdims] for pl in sec.discrete if len(pl) >= 2])
+    if len(pts) < 3:
+        return None
+    hull = MultiPoint([tuple(p) for p in pts]).convex_hull
+    if hull.geom_type != 'Polygon':
+        return None
+    c = np.array(hull.centroid.coords[0])
+    reach = max(hull.bounds[2] - hull.bounds[0],
+                hull.bounds[3] - hull.bounds[1]) * 2 + 1e-3
+    boundary = hull.boundary
+    radii = np.zeros(len(angles))
+    for j, ang in enumerate(angles):
+        d = np.array([np.cos(ang), np.sin(ang)])
+        far = c + d * reach
+        inter = LineString([tuple(c), tuple(far)]).intersection(boundary)
+        if inter.is_empty:
+            continue
+        if inter.geom_type == 'Point':
+            ps = [np.array(inter.coords[0])]
+        elif inter.geom_type in ('MultiPoint', 'GeometryCollection'):
+            ps = [np.array(g.coords[0]) for g in inter.geoms if g.geom_type == 'Point']
+        elif inter.geom_type == 'LineString':
+            ps = [np.array(p) for p in inter.coords]
+        else:
+            ps = []
+        radii[j] = max((np.linalg.norm(p - c) for p in ps), default=0.0)
+    if radii.max() <= 0:
+        return None
+    return c, radii
 
 
 def slice_to_hull_rings(mesh, axis='z', step=0.01, n_angular=96, pad=0.5):
@@ -136,39 +118,51 @@ def slice_to_hull_rings(mesh, axis='z', step=0.01, n_angular=96, pad=0.5):
     valid = np.zeros(K, dtype=bool)
 
     for k, lvl in enumerate(levels):
-        origin = np.zeros(3); origin[a] = lvl
-        sec = mesh.section(plane_origin=origin, plane_normal=normal)
-        if sec is None:
+        ring = _hull_ring_at_level(mesh, axis, lvl, angles)
+        if ring is None:
             continue
-        pts = np.vstack([pl[:, pdims] for pl in sec.discrete if len(pl) >= 2])
-        if len(pts) < 3:
-            continue
-        hull = MultiPoint([tuple(p) for p in pts]).convex_hull
-        if hull.geom_type != 'Polygon':
-            continue
-        c = np.array(hull.centroid.coords[0])
+        c, ring_radii = ring
         centroids[k] = c
-        reach = max(hull.bounds[2] - hull.bounds[0],
-                    hull.bounds[3] - hull.bounds[1]) * 2 + 1e-3
-        boundary = hull.boundary
-        for j, ang in enumerate(angles):
-            d = np.array([np.cos(ang), np.sin(ang)])
-            far = c + d * reach
-            inter = LineString([tuple(c), tuple(far)]).intersection(boundary)
-            if inter.is_empty:
-                continue
-            if inter.geom_type == 'Point':
-                ps = [np.array(inter.coords[0])]
-            elif inter.geom_type in ('MultiPoint', 'GeometryCollection'):
-                ps = [np.array(g.coords[0]) for g in inter.geoms if g.geom_type == 'Point']
-            elif inter.geom_type == 'LineString':
-                ps = [np.array(p) for p in inter.coords]
-            else:
-                ps = []
-            radii[k, j] = max((np.linalg.norm(p - c) for p in ps), default=0.0)
-        valid[k] = radii[k].max() > 0
+        radii[k] = ring_radii
+        valid[k] = True
 
     return P.PartParam(axis, levels, centroids, radii, angles, valid)
+
+
+def insert_exact_hull_rings(mesh, param, levels):
+    """Insert exact connection-plane hull rings so the loft itself contains the
+    mating planes, not only nearby protected samples."""
+    centroids = list(param.centroids)
+    radii = list(param.radii)
+    valid = list(param.valid)
+    ring_levels = list(param.levels)
+    for level in levels:
+        if level < mesh.bounds[0][P.AXIS_IDX[param.axis]] or level > mesh.bounds[1][P.AXIS_IDX[param.axis]]:
+            continue
+        existing = np.where(np.isclose(param.levels, level, atol=1e-7))[0]
+        ring = _hull_ring_at_level(mesh, param.axis, level, param.angles)
+        if ring is None:
+            continue
+        c, ring_radii = ring
+        if len(existing):
+            k = int(existing[0])
+            centroids[k] = c
+            radii[k] = ring_radii
+            valid[k] = True
+        else:
+            ring_levels.append(float(level))
+            centroids.append(c)
+            radii.append(ring_radii)
+            valid.append(True)
+    order = np.argsort(np.asarray(ring_levels))
+    return P.PartParam(
+        param.axis,
+        np.asarray(ring_levels, dtype=np.float64)[order],
+        np.asarray(centroids, dtype=np.float64)[order],
+        np.asarray(radii, dtype=np.float64)[order],
+        param.angles.copy(),
+        np.asarray(valid, dtype=bool)[order],
+    )
 
 
 def build():
@@ -176,6 +170,7 @@ def build():
     param = slice_to_hull_rings(orig, axis='z', step=0.01, n_angular=N_ANGULAR)
 
     reserved = C.reserved_levels('WAIST_YAW')
+    param = insert_exact_hull_rings(orig, param, reserved)
     w = P.connection_weight(param, reserved, ramp=0.04)
 
     # 1) Waist cinch — uniform radial slim, smooth Gaussian dip.
@@ -200,33 +195,7 @@ def build():
         return (dx, 0.0)
     P.spine_shift(param, arch, weight=w)
 
-    rebuilt = W.warp_profile(
-        orig,
-        axis='z',
-        scale_fn=waist_profile_scale,
-        bulges=[dict(center=0.0, width=np.pi * 0.72, gain=waist_profile_bust_gain)],
-        shift_fn=waist_profile_shift,
-        reserved=reserved,
-        ramp=0.035,
-        step=0.0025,
-        smooth_m=9,
-    )
-    rebuilt = W.separate_quantized_components(
-        rebuilt,
-        axis='z',
-        epsilon=2e-4,
-        merge_tolerance=1e-6,
-        component_offset_aliases=WAIST_CONTACT_OFFSET_ALIASES,
-    )
-    rebuilt = W.remove_excess_quantized_nonmanifold_faces(
-        rebuilt,
-        merge_tolerance=1e-6,
-    )
-    rebuilt = W.cap_quantized_boundary_loops(
-        rebuilt,
-        merge_tolerance=1e-6,
-        max_loop_vertices=64,
-    )
+    rebuilt = P.rings_to_mesh(param)
     return orig, param, rebuilt, reserved
 
 
@@ -358,6 +327,7 @@ def render_check(param_orig, param_femme):
 if __name__ == '__main__':
     orig = trimesh.load(ORIG_STL)
     param_orig = slice_to_hull_rings(orig, axis='z', step=0.01, n_angular=N_ANGULAR)
+    param_orig = insert_exact_hull_rings(orig, param_orig, C.reserved_levels('WAIST_YAW'))
 
     orig, param_femme, rebuilt, reserved = build()
     rebuilt.export(OUT_STL)

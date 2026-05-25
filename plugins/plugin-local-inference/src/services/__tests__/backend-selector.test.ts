@@ -30,13 +30,13 @@ describe("selectBackend", () => {
 		).toBe("ffi-streaming");
 	});
 
-	it("desktop falls back to http-server when FFI symbols are absent", () => {
-		expect(
+	it("throws on desktop when FFI symbols are absent", () => {
+		expect(() =>
 			selectBackend({
 				platform: "desktop",
 				ffiSupported: false,
 			}),
-		).toBe("http-server");
+		).toThrow(/streaming-LLM FFI symbols/);
 	});
 
 	it("envOverride=ffi wins on desktop when supported", () => {
@@ -59,36 +59,6 @@ describe("selectBackend", () => {
 		).toThrow(/does not export the streaming-LLM symbols/);
 	});
 
-	it("envOverride=http forces http-server on desktop even when FFI is supported", () => {
-		expect(
-			selectBackend({
-				platform: "desktop",
-				ffiSupported: true,
-				envOverride: "http",
-			}),
-		).toBe("http-server");
-	});
-
-	it("envOverride=http on desktop with no FFI still picks http-server", () => {
-		expect(
-			selectBackend({
-				platform: "desktop",
-				ffiSupported: false,
-				envOverride: "http",
-			}),
-		).toBe("http-server");
-	});
-
-	it("envOverride=http is rejected on mobile", () => {
-		expect(() =>
-			selectBackend({
-				platform: "mobile",
-				ffiSupported: true,
-				envOverride: "http",
-			}),
-		).toThrow(/not supported on mobile/);
-	});
-
 	it("envOverride=auto on desktop with FFI keeps the new default (ffi-streaming)", () => {
 		expect(
 			selectBackend({
@@ -107,7 +77,7 @@ describe("readBackendEnvOverride", () => {
 		);
 	});
 
-	it("normalizes ffi and http aliases", () => {
+	it("normalizes ffi aliases and ignores server aliases", () => {
 		expect(readBackendEnvOverride({ ELIZA_INFERENCE_BACKEND: "FFI" })).toBe(
 			"ffi",
 		);
@@ -116,9 +86,9 @@ describe("readBackendEnvOverride", () => {
 		).toBe("ffi");
 		expect(
 			readBackendEnvOverride({ ELIZA_INFERENCE_BACKEND: "http-server" }),
-		).toBe("http");
+		).toBeNull();
 		expect(readBackendEnvOverride({ ELIZA_INFERENCE_BACKEND: "server" })).toBe(
-			"http",
+			null,
 		);
 	});
 

@@ -485,7 +485,7 @@ function makeHandler(slot: AgentModelSlot): GenerateTextHandler {
 					? `${Math.round(u.cache_hit_rate * 100)}%`
 					: "n/a";
 			const dflashRate =
-				u.dflash_acceptance_rate !== undefined
+				typeof u.dflash_acceptance_rate === "number"
 					? ` dflash=${Math.round(u.dflash_acceptance_rate * 100)}%`
 					: "";
 			logger.info(
@@ -937,7 +937,7 @@ export async function prewarmResponseHandler(
 	roomId: UUID,
 ): Promise<boolean> {
 	if (!localInferenceEngine.hasLoadedModel()) return false;
-	if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+	if (localInferenceEngine.activeBackendId() !== "llama-cpp") return false;
 	try {
 		const prefix = await renderMessageHandlerStablePrefix(runtime, roomId);
 		if (!prefix) return false;
@@ -966,7 +966,7 @@ export async function prewarmSystemPrefix(
 	runtime: IAgentRuntime,
 ): Promise<boolean> {
 	if (!localInferenceEngine.hasLoadedModel()) return false;
-	if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+	if (localInferenceEngine.activeBackendId() !== "llama-cpp") return false;
 	try {
 		const fixedRoomId = runtime.agentId as UUID;
 		const prefix = await renderMessageHandlerStablePrefix(runtime, fixedRoomId);

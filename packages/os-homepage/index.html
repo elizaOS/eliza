@@ -23,7 +23,13 @@
         try {
           const h = window.location.hash;
           const params = h ? new URLSearchParams(h.replace(/^#/, "")) : null;
-          if (params && (params.has("token") || params.has("access_token"))) {
+          if (
+            params &&
+            (params.has("token") ||
+              params.has("access_token") ||
+              params.has("refreshToken") ||
+              params.has("refresh_token"))
+          ) {
             window.__stewardOAuthHash = h;
             history.replaceState(
               null,

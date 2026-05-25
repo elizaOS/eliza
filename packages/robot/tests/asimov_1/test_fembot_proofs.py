@@ -14,12 +14,13 @@ def test_fembot_proof_contracts_match_inventory_required_types() -> None:
     contract_types = tuple(contract.proof_type for contract in FEMBOT_PROOF_CONTRACTS)
 
     assert contract_types == FEMBOT_PROOF_TYPES
-    assert len(contract_types) == 17
+    assert len(contract_types) == 18
     assert len(set(contract_types)) == len(contract_types)
     assert "flatness_or_smoothness" in contract_types
     assert "motor_bearing_ring_gear_pulley_fastener_keepouts" in contract_types
     assert "hardware_measurements" in contract_types
     assert "visual_motion_media" in contract_types
+    assert "all_cad_no_stl_parametric" in contract_types
     assert "collision_sweep" in contract_types
     assert "collider_scale_tuning" in contract_types
     assert "structural_sanity" in contract_types

@@ -13,7 +13,7 @@
  *   - This module is the *runtime gate*. It owns:
  *       1. The process-wide feature flag (`ELIZA_CTX_CHECKPOINTS=1` env, or
  *          `useCtxCheckpoints` constructor option — env wins when set).
- *       2. Capability detection against a running llama-server (`/health`
+ *       2. Capability detection against a running checkpoint runtime (`/health`
  *          probe via the underlying `CheckpointClient`).
  *       3. A no-op fallback path so callers — the `checkpoint-policy.ts`
  *          module in particular — can write unconditional `save / restore /
@@ -29,13 +29,13 @@
  *
  * Feature-flag behavior matrix:
  *
- *   | flag | server-supports | save                  | restore               | erase   | cancel              |
+ *   | flag | runtime-supports | save                  | restore               | erase   | cancel              |
  *   | OFF  | n/a             | no-op + warn          | no-op + warn          | no-op   | SSE-disconnect cb   |
  *   | ON   | NO  (probe=fail)| no-op + warn          | no-op + warn          | no-op   | SSE-disconnect cb   |
  *   | ON   | YES (probe=ok)  | REST POST /slots/.../save | REST POST /slots/.../restore | n/a | DELETE /slots/<id>  |
  *
- * The "SSE-disconnect callback" is supplied by the caller (the voice loop
- * owns the SSE stream and the abort handle); when the flag/probe is off the
+ * The stream-disconnect callback is supplied by the caller (the voice loop
+ * owns the stream and the abort handle); when the flag/probe is off the
  * wrapper just invokes the callback synchronously.
  *
  * This module deliberately does NOT modify `turn-controller.ts`,
@@ -50,7 +50,7 @@ import { logger } from "@elizaos/core";
 import {
 	CheckpointClient,
 	type CheckpointFetch,
-} from "./dflash-checkpoint-client";
+} from "./checkpoint-client";
 import {
 	type CheckpointHandle,
 	type CheckpointManagerLike,
@@ -64,10 +64,8 @@ export type {
 
 /**
  * Env-var name that flips the JS-side feature on. The matching server-side
- * `--ctx-checkpoints` flag is appended automatically by
- * `appendCtxCheckpointFlags` in `dflash-server.ts` when the catalog tier
- * declares `optimizations.ctxCheckpoints` AND the `--help` probe says the
- * binary supports the flag — those two gates are independent of this one.
+ * `--ctx-checkpoints` flag is appended by the native runtime when the catalog
+ * tier declares `optimizations.ctxCheckpoints` and the binding supports it.
  */
 export const CTX_CHECKPOINTS_ENV_VAR = "ELIZA_CTX_CHECKPOINTS";
 
@@ -83,8 +81,7 @@ export const DEFAULT_NAMED_HANDLE_TTL_MS = 10 * 60 * 1000;
 
 /**
  * Read the process-wide feature flag. Truthy values: `1`, `true`, `yes`.
- * Anything else (including absent) is `false`. Matches `readBool` in
- * `dflash-server.ts`.
+ * Anything else (including absent) is `false`.
  */
 export function readCtxCheckpointsEnvFlag(): boolean {
 	const raw = process.env[CTX_CHECKPOINTS_ENV_VAR]?.trim().toLowerCase();
@@ -92,8 +89,8 @@ export function readCtxCheckpointsEnvFlag(): boolean {
 }
 
 /**
- * Caller-supplied "abort the in-flight SSE stream for this slot" hook. The
- * voice loop owns the actual SSE handle (held by `turn-controller.ts` via
+ * Caller-supplied "abort the in-flight stream for this slot" hook. The
+ * voice loop owns the actual stream handle (held by `turn-controller.ts` via
  * the speculative `AbortController`); the policy module hands a thunk in
  * here so `cancel(slotId)` works identically with the flag on or off.
  */
@@ -101,7 +98,7 @@ export type SseDisconnectFn = (slotId: number) => void;
 
 export interface GatedCheckpointManagerOptions {
 	/**
-	 * `http://host:port` base URL of the running llama-server. May be `null`
+	 * `http://host:port` base URL of the running checkpoint runtime. May be `null`
 	 * when the caller has not yet started the server — every method then
 	 * routes through the no-op path until `setBaseUrl` is called.
 	 */
@@ -149,7 +146,7 @@ interface NamedHandleEntry {
  * disconnect when REST is not available.
  *
  * Stateless w.r.t. checkpoint data — handles live in the underlying
- * REST manager / on llama-server's `--slot-save-path` directory. Stateful
+ * REST manager / on the runtime's slot-save directory. Stateful
  * w.r.t. names: the registry maps human-readable names like
  * `'pre-speculative-T123'` to the underlying `CheckpointHandle`.
  */
@@ -223,7 +220,7 @@ export class GatedCheckpointManager {
 	}
 
 	/**
-	 * Probe llama-server for checkpoint support. Caches the result; pass
+	 * Probe the runtime for checkpoint support. Caches the result; pass
 	 * `force=true` to re-probe (e.g. after the server reports a restart).
 	 * Returns `false` when the feature flag is off — the probe is short-
 	 * circuited because there's no point asking the server when the JS side
@@ -247,7 +244,7 @@ export class GatedCheckpointManager {
 			this.serverSupportsCheckpoints = supported;
 			if (!supported) {
 				logger.warn(
-					`[checkpoint-manager] llama-server at ${this.baseUrl} did not advertise ctx-checkpoint support; falling back to SSE-disconnect cancel and no-op save/restore. Verify the buun-llama-cpp build picked up the upstream --ctx-checkpoints merge.`,
+					`[checkpoint-manager] runtime at ${this.baseUrl} did not advertise ctx-checkpoint support; falling back to stream cancel and no-op save/restore.`,
 				);
 			}
 			return supported;
@@ -428,7 +425,7 @@ export class GatedCheckpointManager {
 		if (this.restManager !== null) return this.restManager;
 		if (this.baseUrl === null) {
 			throw new Error(
-				"[checkpoint-manager] baseUrl is null; call setBaseUrl() after starting llama-server",
+				"[checkpoint-manager] baseUrl is null; call setBaseUrl() after starting the runtime",
 			);
 		}
 		this.restManager = new RestCheckpointManager({

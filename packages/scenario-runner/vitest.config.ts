@@ -23,6 +23,12 @@ const workspaceSourceAliases = [
     replacement: path.join(repoRoot, "packages", "shared", "src", "index.ts"),
   },
 ];
+type SourceAliasEntry = {
+  name: string;
+  packageDir: string;
+  indexPath: string;
+  sourceDir: string;
+};
 
 // Resolve `@elizaos/plugin-*` to workspace source. The scenario runtime
 // transitively loads `@elizaos/agent`'s server, whose `server.ts` carries
@@ -37,21 +43,41 @@ const pluginSourceAliases = workspacePluginDirs.flatMap((workspaceDir) =>
   existsSync(workspaceDir)
     ? readdirSync(workspaceDir)
         .filter((name) => name.startsWith("plugin-"))
-        .map((name) => ({
-          name,
-          replacement: [
-            path.join(workspaceDir, name, "src", "index.ts"),
-            path.join(workspaceDir, name, "index.ts"),
-          ].find((candidate) => existsSync(candidate)),
-        }))
+        .map((name): SourceAliasEntry | undefined => {
+          const packageDir = path.join(workspaceDir, name);
+          const sourceIndex = path.join(packageDir, "src", "index.ts");
+          const rootIndex = path.join(packageDir, "index.ts");
+          if (existsSync(sourceIndex)) {
+            return {
+              name,
+              packageDir,
+              indexPath: sourceIndex,
+              sourceDir: path.join(packageDir, "src"),
+            };
+          }
+          if (existsSync(rootIndex)) {
+            return {
+              name,
+              packageDir,
+              indexPath: rootIndex,
+              sourceDir: packageDir,
+            };
+          }
+          return undefined;
+        })
         .filter(
-          (entry): entry is { name: string; replacement: string } =>
-            entry.replacement !== undefined,
+          (entry): entry is SourceAliasEntry => entry !== undefined,
         )
-        .map(({ name, replacement }) => ({
-          find: new RegExp(`^@elizaos/${name}$`),
-          replacement,
-        }))
+        .flatMap(({ name, indexPath, sourceDir }) => [
+          {
+            find: new RegExp(`^@elizaos/${name}$`),
+            replacement: indexPath,
+          },
+          {
+            find: new RegExp(`^@elizaos/${name}/(.*)$`),
+            replacement: path.join(sourceDir, "$1.ts"),
+          },
+        ])
     : [],
 );
 

@@ -1,5 +1,7 @@
 #!/usr/bin/env node
-console.error("[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs");
+console.log(
+  "\x1b[32m[dev-ui LOCAL PATCH START] running patched local dev-ui.mjs\x1b[0m",
+);
 
 /**
  * Development script that starts:
@@ -253,6 +255,47 @@ function createDevChildEnv(baseEnv) {
 
 function shellQuoteArg(value) {
   return /^[A-Za-z0-9_./:=+-]+$/.test(value) ? value : JSON.stringify(value);
+}
+
+function isCodexBundledNode(candidate) {
+  return (
+    process.platform === "darwin" &&
+    candidate.includes(
+      `${path.sep}Applications${path.sep}Codex.app${path.sep}Contents${path.sep}Resources${path.sep}node`,
+    )
+  );
+}
+
+function isUsableNode(candidate) {
+  if (!candidate || isCodexBundledNode(candidate) || !existsSync(candidate)) {
+    return false;
+  }
+  try {
+    execFileSync(candidate, ["-e", "process.stdout.write(process.platform)"], {
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function resolveApiNodeCommand(env) {
+  const pathCandidates = (env.PATH ?? "")
+    .split(path.delimiter)
+    .filter(Boolean)
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
+  const candidates = [
+    env.ELIZA_NODE_PATH,
+    env.npm_node_execpath,
+    ...pathCandidates,
+    "/opt/homebrew/bin/node",
+    "/usr/local/bin/node",
+    "/usr/bin/node",
+  ].filter(Boolean);
+  return candidates.find(isUsableNode) ?? "node";
 }
 
 const visionDepsRetryCommand = [
@@ -1064,8 +1107,9 @@ if (uiOnly) {
     }
   }
 
+  const apiNodeCmd = resolveApiNodeCommand(process.env);
   const apiCmd = [
-    "node",
+    apiNodeCmd,
     "--conditions=eliza-source",
     "--import",
     "tsx",
@@ -1100,6 +1144,10 @@ if (uiOnly) {
     },
     apiSpawnCwd,
   );
+
+  if (apiNodeCmd !== "node") {
+    apiSpawnEnv.PATH = `${path.dirname(apiNodeCmd)}${path.delimiter}${apiSpawnEnv.PATH ?? ""}`;
+  }
 
   const apiSupervisor = createApiSupervisor({
     spawnChild: () =>
@@ -1141,6 +1189,7 @@ if (uiOnly) {
   });
 
   apiSupervisor.start();
+  startVite();
 
   const startTime = Date.now();
   let phase = "port";
@@ -1170,7 +1219,6 @@ if (uiOnly) {
       console.log(
         `\r  ${green(logPrefix)} ${green(`Agent ready`)} ${dim(`(${elapsed}s)`)}          `,
       );
-      startVite();
     })
     .catch((err) => {
       clearInterval(dots);

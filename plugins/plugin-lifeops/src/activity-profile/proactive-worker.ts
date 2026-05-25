@@ -283,7 +283,8 @@ export function resolveProactiveDeliverySource(targetPlatform: string): string {
   if (
     targetPlatform === "web_app" ||
     targetPlatform === "desktop_app" ||
-    targetPlatform === "mobile_app"
+    targetPlatform === "mobile_app" ||
+    targetPlatform === "macos_activity_collector"
   ) {
     return "client_chat";
   }

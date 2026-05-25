@@ -47,7 +47,7 @@ const _ELIZA_1_VISION_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
   ELIZA_1_VISION_TIER_IDS,
 );
 
-export const ELIZA_1_DFLASH_TIER_IDS = [
+export const ELIZA_1_MTP_TIER_IDS = [
   "eliza-1-0_8b",
   "eliza-1-2b",
   "eliza-1-4b",
@@ -56,16 +56,13 @@ export const ELIZA_1_DFLASH_TIER_IDS = [
   "eliza-1-27b-256k",
 ] as const satisfies ReadonlyArray<Eliza1TierId>;
 
-const _ELIZA_1_DFLASH_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
-  ELIZA_1_DFLASH_TIER_IDS,
+const _ELIZA_1_MTP_TIER_ID_SET: ReadonlySet<Eliza1TierId> = new Set(
+  ELIZA_1_MTP_TIER_IDS,
 );
 
-function dflashSupportedForTier(id: Eliza1TierId): boolean {
-  return _ELIZA_1_DFLASH_TIER_ID_SET.has(id);
+function mtpSupportedForTier(id: Eliza1TierId): boolean {
+  return _ELIZA_1_MTP_TIER_ID_SET.has(id);
 }
-
-const MROPE_DFLASH_DISABLED_REASON =
-  "M-RoPE draft-model speculative decoding is gated until elizaOS/eliza#7631 has hardware validation against the current llama.cpp verifier path";
 
 export const FIRST_RUN_DEFAULT_MODEL_ID: Eliza1TierId = "eliza-1-2b";
 
@@ -189,9 +186,6 @@ interface TierSpec {
   contextLength: number;
   textFile: string;
   q4MinRamGb: number;
-  drafterParams: CatalogModel["params"];
-  drafterSizeGb: number;
-  drafterMinRamGb: number;
   gpuProfile?: CatalogModel["gpuProfile"];
   hasEmbedding?: boolean;
   hasVision?: boolean;
@@ -216,9 +210,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "small",
     contextLength: 131072,
     textFile: "text/eliza-1-0_8b-128k.gguf",
-    drafterParams: "0.1B",
-    drafterSizeGb: 0.1,
-    drafterMinRamGb: 2,
     // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
     // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
     // fits even on 2 GB-floor devices when the text model is resident.
@@ -239,9 +230,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "small",
     contextLength: 131072,
     textFile: "text/eliza-1-2b-128k.gguf",
-    drafterParams: "0.3B",
-    drafterSizeGb: 0.3,
-    drafterMinRamGb: 4,
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
     // analysis must work here. The mmproj is ~361 MB Q8_0 (actual:
@@ -261,9 +249,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "mid",
     contextLength: 131072,
     textFile: "text/eliza-1-4b-128k.gguf",
-    drafterParams: "0.8B",
-    drafterSizeGb: 0.7,
-    drafterMinRamGb: 10,
     hasEmbedding: true,
     hasVision: true,
     // WS3: 4B is the last tier that defaults to SD 1.5; flagship-phone
@@ -279,9 +264,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "large",
     contextLength: 131072,
     textFile: "text/eliza-1-9b-128k.gguf",
-    drafterParams: "2B",
-    drafterSizeGb: 1.4,
-    drafterMinRamGb: 12,
     gpuProfile: "rtx-3090",
     hasEmbedding: true,
     hasVision: true,
@@ -299,9 +281,6 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "large",
     contextLength: 131072,
     textFile: "text/eliza-1-27b-128k.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 32,
     gpuProfile: "rtx-4090",
     hasEmbedding: true,
     hasVision: true,
@@ -317,19 +296,12 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "large",
     contextLength: 262144,
     textFile: "text/eliza-1-27b-256k.gguf",
-    drafterParams: "4B",
-    drafterSizeGb: 2.6,
-    drafterMinRamGb: 48,
     gpuProfile: "h200",
     hasEmbedding: true,
     hasVision: true,
     hasImageGen: true,
   },
 };
-
-function drafterId(id: Eliza1TierId): `${Eliza1TierId}-drafter` {
-  return `${id}-drafter`;
-}
 
 function tierSlug(id: Eliza1TierId): string {
   return id.slice("eliza-1-".length);
@@ -471,13 +443,6 @@ function sourceModelForTier(id: Eliza1TierId): CatalogModel["sourceModel"] {
     vad: bundleComponent(id, "vad/silero-vad-v5.gguf"),
   };
 
-  if (dflashSupportedForTier(id)) {
-    components.drafter = bundleComponent(
-      id,
-      `dflash/drafter-${tierSlug(id)}.gguf`,
-    );
-  }
-
   if (spec.hasEmbedding) {
     components.embedding = bundleComponent(
       id,
@@ -503,18 +468,14 @@ function runtimeForTier(
       ? [...BASE_REQUIRED_KERNELS, "turbo3_tcq"]
       : BASE_REQUIRED_KERNELS;
   const runtime: CatalogModel["runtime"] = {
-    preferredBackend: "llama-server",
+    preferredBackend: "llama-cpp",
     optimizations: {
       parallel: 4,
       flashAttention: true,
       requiresKernel,
       // OpenVINO is the right backend for ASR/Whisper on Intel hosts but
-      // never for autoregressive text — DFlash/W4-B above is. A binary that
-      // advertises OpenVINO alongside the full DFlash kernel set stays
-      // eligible because `requiresKernel` is the primary anchor; OpenVINO-
-      // only Intel builds drop out via the same anchor. The dispatcher
-      // sets `GGML_OPENVINO_DISABLE=1` on the spawn env so the GGML
-      // OpenVINO backend stays out of layer placement at runtime.
+      // never for autoregressive text. The text path uses optimized
+      // llama.cpp kernels plus native MTP heads.
       unsupportedKernels: ["openvino"],
       ctxCheckpoints: 4,
       ctxCheckpointInterval: 4096,
@@ -526,25 +487,12 @@ function runtimeForTier(
     },
   };
 
-  if (dflashSupportedForTier(id)) {
-    const optimizations = runtime.optimizations;
-    if (optimizations) {
-      optimizations.requiresKernel = [
-        ...(optimizations.requiresKernel ?? []),
-        "dflash",
-      ];
-    }
-    runtime.dflash = {
-      drafterModelId: drafterId(id),
-      specType: "dflash",
-      contextSize: contextLength,
-      draftContextSize: Math.min(contextLength, 65536),
-      draftMin: 2,
+  if (mtpSupportedForTier(id)) {
+    runtime.mtp = {
+      specType: "draft-mtp",
+      draftMin: 1,
       draftMax: contextLength >= 65536 ? 6 : 4,
       gpuLayers: "auto",
-      draftGpuLayers: "auto",
-      disableThinking: false,
-      disabledReason: MROPE_DFLASH_DISABLED_REASON,
     };
   }
 
@@ -634,9 +582,6 @@ function chatTier(id: Eliza1TierId): CatalogModel {
     bucket: spec.bucket,
     contextLength: spec.contextLength,
     tokenizerFamily: "qwen35",
-    ...(dflashSupportedForTier(id)
-      ? { companionModelIds: [drafterId(id)] }
-      : {}),
     sourceModel: sourceModelForTier(id),
     voiceBackends: ELIZA_1_VOICE_BACKENDS[id],
     runtime: runtimeForTier(id, spec.contextLength),
@@ -651,32 +596,8 @@ function chatTier(id: Eliza1TierId): CatalogModel {
   };
 }
 
-function drafterCompanion(id: Eliza1TierId): CatalogModel {
-  const spec = TIER_SPECS[id];
-  return {
-    id: drafterId(id),
-    displayName: `${tierDisplayName(id)} drafter`,
-    hfRepo: ELIZA_1_HF_REPO,
-    hfPathPrefix: bundleRemotePrefix(id),
-    ggufFile: bundlePath(id, `dflash/drafter-${tierSlug(id)}.gguf`),
-    params: spec.drafterParams,
-    quant: "Eliza-1 drafter companion",
-    sizeGb: spec.drafterSizeGb,
-    minRamGb: spec.drafterMinRamGb,
-    category: "drafter",
-    bucket: spec.bucket,
-    hiddenFromCatalog: true,
-    runtimeRole: "dflash-drafter",
-    companionForModelId: id,
-    tokenizerFamily: "qwen35",
-    blurb: "Companion drafter file.",
-  };
-}
-
-export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.flatMap((id) =>
-  dflashSupportedForTier(id)
-    ? [chatTier(id), drafterCompanion(id)]
-    : [chatTier(id)],
+export const MODEL_CATALOG: CatalogModel[] = ELIZA_1_TIER_IDS.map((id) =>
+  chatTier(id),
 );
 
 export function findCatalogModel(id: string): CatalogModel | undefined {

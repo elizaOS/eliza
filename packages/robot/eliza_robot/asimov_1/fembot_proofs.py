@@ -357,6 +357,29 @@ FEMBOT_PROOF_CONTRACTS: tuple[FembotProofContract, ...] = (
             "separate from manual visual acceptance and engineering signoff."
         ),
     ),
+    FembotProofContract(
+        proof_type="all_cad_no_stl_parametric",
+        label="All-CAD no-STL parametric source",
+        scope="per-link and whole-robot",
+        required_artifact_schema="asimov-fembot-all-cad-readiness-v1",
+        pass_condition=(
+            "Every robot link has an adjustable parametric CAD/B-rep or loft source, "
+            "the primary model no longer depends on STL mesh assets, and WAIST_YAW "
+            "uses a smooth no-cutout chest loft."
+        ),
+        minimum_fields=(
+            "links_with_generated_step_reference",
+            "parametric_part_scripts",
+            "no_stl_mesh_assets",
+            "waist_yaw_no_cutout_accepted",
+            "accepted",
+        ),
+        applies_to=("torso", "head", "arm", "leg", "foot"),
+        notes=(
+            "Primitive simulation surrogates are not enough for final acceptance; "
+            "the production source must be editable CAD/math, not STL meshes."
+        ),
+    ),
 )
 
 

@@ -96,8 +96,8 @@ vi.mock("./structured-output", () => ({
 	spanSamplerPlanRequestFields: [],
 }));
 
-describe("DflashLlamaServer catalog disable reason", () => {
-	it("launches target-only when the catalog disables DFlash", async () => {
+describe("DflashLlamaServer drafter availability", () => {
+	it("ignores catalog disabledReason and keeps the drafter enabled", async () => {
 		const registry = await import("./registry");
 		(
 			registry.listInstalledModels as unknown as ReturnType<typeof vi.fn>
@@ -167,10 +167,13 @@ describe("DflashLlamaServer catalog disable reason", () => {
 			expect(startSpy.mock.calls[0]?.[0]).toMatchObject({
 				targetModelPath: "/models/target.gguf",
 				drafterModelPath: "/models/drafter.gguf",
-				disableDrafter: true,
-				disabledDrafterReason:
-					"Pending hardware validation for M-RoPE speculative decoding; see elizaOS/eliza#7631.",
 			});
+			expect(startSpy.mock.calls[0]?.[0]).not.toMatchObject({
+				disableDrafter: true,
+			});
+			expect(
+				startSpy.mock.calls[0]?.[0]?.disabledDrafterReason,
+			).toBeUndefined();
 		} finally {
 			startSpy.mockRestore();
 		}

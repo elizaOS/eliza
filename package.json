@@ -18,7 +18,7 @@
     "node": "24.15.0"
   },
   "scripts": {
-    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-tsup-dts.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/patch-bigint-buffer-warning.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs && node packages/scripts/ensure-native-plugins-linked.mjs && node plugins/plugin-local-inference/scripts/ensure-llama-cpp-submodule.mjs",
+    "postinstall": "bun packages/scripts/patch-nested-core-dist.mjs && bun packages/scripts/patch-punycode-deprecation.mjs && bun packages/scripts/patch-llama-cpp-capacitor.mjs && bun packages/scripts/ensure-workspace-symlinks.mjs",
     "cloud:mock": "bun scripts/cloud/mock-stack-up.mjs",
     "cloud:mock:fresh": "bun scripts/cloud/mock-stack-up.mjs --reset",
     "fix-deps": "bun packages/scripts/fix-workspace-deps.mjs",
@@ -69,8 +69,8 @@
     "start": "bun run --cwd packages/agent start",
     "start:eliza": "node packages/app-core/scripts/run-node-tsx.mjs packages/app-core/src/entry.ts start",
     "dev:prepare": "turbo run build --filter=@elizaos/app... --filter=!@elizaos/app",
-    "dev": "ELIZA_DEV_SOURCE=1 node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
-    "dev:web:ui": "ELIZA_DEV_SOURCE=1 node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
+    "dev": "ELIZA_DEV_SOURCE=1 ELIZA_DEV_NO_WATCH=0 node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
+    "dev:web:ui": "ELIZA_DEV_SOURCE=1 ELIZA_DEV_NO_WATCH=0 node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app",
     "dev:ui": "ELIZA_DEV_SOURCE=1 node packages/app-core/scripts/rt.mjs packages/app-core/scripts/dev-ui.mjs --name=eliza --app=app --ui-only",
     "dev:desktop": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza bun packages/app-core/scripts/dev-platform.mjs",
     "dev:desktop:watch": "ELIZA_DEV_SOURCE=1 ELIZA_NAMESPACE=eliza ELIZA_DESKTOP_VITE_WATCH=1 bun packages/app-core/scripts/dev-platform.mjs",

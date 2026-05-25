@@ -498,11 +498,11 @@ async function repairRuntimeAfterBoot(
 
   await ensureTextToSpeechHandler(runtime);
   await (await _localInference()).ensureLocalInferenceHandler(runtime);
-  const autonomyEnabled = isRuntimeAutonomyEnabled(process.env);
-  if (autonomyEnabled) {
+  const autonomyLoopEnabled = isRuntimeAutonomyEnabled(process.env);
+  if (autonomyLoopEnabled) {
     await ensureAutonomyBootstrapContext(runtime);
   } else {
-    logger.info("[eliza] Autonomy bootstrap skipped — ENABLE_AUTONOMY=false");
+    logger.info("[eliza] Autonomy bootstrap deferred — autonomous loop disabled");
   }
 
   // ── Register app-specific route plugins ─────────────────────────────
@@ -516,21 +516,19 @@ async function repairRuntimeAfterBoot(
   // dispatch registry (no-op when the registry service isn't present).
   registerCoreSensitiveRequestAdapters(runtime);
 
-  if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
+  if (!runtime.getService("AUTONOMY")) {
     try {
       await startAndRegisterAutonomyService(runtime);
-      logger.info(
-        "[eliza] AutonomyService started after SQL compatibility repair",
-      );
+      logger.info("[eliza] AutonomyService started and waiting");
     } catch (error) {
       throw new Error(
-        `[eliza] AutonomyService restart after SQL compatibility repair failed: ${formatError(error)}`,
+        `[eliza] AutonomyService start failed: ${formatError(error)}`,
       );
     }
   }
 
-  // Enable the autonomy loop so trigger/heartbeat instructions are processed.
-  if (autonomyEnabled) {
+  // Enable the continuous autonomy loop only when explicitly requested.
+  if (autonomyLoopEnabled) {
     const autonomySvc = getAutonomyService(runtime);
     if (autonomySvc) {
       try {
@@ -545,7 +543,9 @@ async function repairRuntimeAfterBoot(
       }
     }
   } else {
-    logger.info("[eliza] AutonomyService disabled — ENABLE_AUTONOMY=false");
+    logger.info(
+      "[eliza] AutonomyService waiting — set ENABLE_AUTONOMY=true to start autonomous loop",
+    );
   }
 
   if (shouldStartTelegramStandaloneBot()) {

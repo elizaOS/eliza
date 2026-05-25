@@ -72,9 +72,9 @@ import {
 	type VoicePipelineEvents,
 } from "./pipeline";
 import {
-	type DflashTextRunner,
-	LlamaServerDraftProposer,
-	LlamaServerTargetVerifier,
+	type MtpTextRunner,
+	MtpDraftProposer,
+	MtpTargetVerifier,
 	MissingAsrTranscriber,
 } from "./pipeline-impls";
 import type { VoiceProfileStore } from "./profile-store";
@@ -1590,7 +1590,7 @@ export class EngineVoiceBridge {
 	 */
 	async runVoiceTurn(
 		audio: TranscriptionAudio,
-		textRunner: DflashTextRunner,
+		textRunner: MtpTextRunner,
 		config: VoicePipelineConfig,
 		events?: VoiceTurnEvents,
 	): Promise<"done" | "token-cap" | "cancelled"> {
@@ -1632,7 +1632,7 @@ export class EngineVoiceBridge {
 
 	/** Construct the `VoicePipeline` for this bridge (no-run). Exposed for tests. */
 	buildPipeline(
-		textRunner: DflashTextRunner,
+		textRunner: MtpTextRunner,
 		config: VoicePipelineConfig,
 		events?: VoicePipelineEvents,
 	): VoicePipeline {
@@ -1640,8 +1640,8 @@ export class EngineVoiceBridge {
 		const deps: VoicePipelineDeps = {
 			scheduler: this.scheduler,
 			transcriber,
-			drafter: new LlamaServerDraftProposer(textRunner),
-			verifier: new LlamaServerTargetVerifier(textRunner),
+			drafter: new MtpDraftProposer(textRunner),
+			verifier: new MtpTargetVerifier(textRunner),
 		};
 		return new VoicePipeline(deps, config, events);
 	}

@@ -1913,7 +1913,7 @@ export function applyDatabaseConfigToEnv(config: ElizaConfig): void {
       const password = pg.password ? encodeURIComponent(pg.password) : "";
       const database = pg.database ?? "postgres";
       const auth = password ? `${user}:${password}` : user;
-      const sslParam = pg.ssl ? "?sslmode=require" : "";
+      const sslParam = pg.ssl ? "?sslmode=verify-full" : "";
       url = `postgresql://${auth}@${host}:${port}/${database}${sslParam}`;
     }
     process.env.POSTGRES_URL = url;
@@ -2789,6 +2789,86 @@ async function registerSqlPluginWithRecovery(
   }
 
   await initializeDatabaseAdapter(runtime, config);
+}
+
+const CORE_PLUGIN_BOOT_DEPENDENCIES = new Map<string, readonly string[]>([
+  ["@elizaos/plugin-coding-tools", ["@elizaos/plugin-shell"]],
+  ["@elizaos/plugin-agent-skills", ["@elizaos/plugin-shell"]],
+  ["@elizaos/plugin-lifeops", ["@elizaos/plugin-google"]],
+]);
+
+async function preregisterCorePluginsInDependencyWaves(args: {
+  runtime: AgentRuntime;
+  resolvedPlugins: RuntimeResolvedPlugin[];
+  alreadyPreRegistered: Set<string>;
+  label?: string;
+}): Promise<void> {
+  const pending = new Map<string, RuntimeResolvedPlugin>();
+  for (const name of CORE_PLUGINS) {
+    if (args.alreadyPreRegistered.has(name)) continue;
+    const resolved = args.resolvedPlugins.find((p) => p.name === name);
+    if (!resolved) {
+      logger.debug(
+        `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
+      );
+      continue;
+    }
+    pending.set(name, resolved);
+  }
+
+  const registered = new Set(args.alreadyPreRegistered);
+  const timeoutMs = 30_000;
+  const context = args.label ? `${args.label}: ` : "";
+
+  const registerOne = async (
+    name: string,
+    resolved: RuntimeResolvedPlugin,
+  ): Promise<void> => {
+    try {
+      const regStart = Date.now();
+      logger.info(`[eliza] ${context}Pre-registering core plugin: ${name}...`);
+      await Promise.race([
+        args.runtime.registerPlugin(resolved.plugin),
+        new Promise<never>((_resolve, reject) =>
+          setTimeout(
+            () => reject(new Error(`Timed out after ${timeoutMs / 1000}s`)),
+            timeoutMs,
+          ),
+        ),
+      ]);
+      registered.add(name);
+      logger.info(
+        `[eliza] ${context}✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
+      );
+    } catch (err) {
+      registered.add(name);
+      logger.warn(
+        `[eliza] ${context}Core plugin ${name} pre-registration failed: ${formatError(err)}`,
+      );
+    } finally {
+      pending.delete(name);
+    }
+  };
+
+  while (pending.size > 0) {
+    const ready: Array<[string, RuntimeResolvedPlugin]> = [];
+    for (const [name, resolved] of pending) {
+      const declaredDependencies = resolved.plugin.dependencies ?? [];
+      const bootDependencies = CORE_PLUGIN_BOOT_DEPENDENCIES.get(name) ?? [];
+      const dependencies = [...declaredDependencies, ...bootDependencies];
+      const hasPendingDependency = dependencies.some(
+        (dependency) => pending.has(dependency) && !registered.has(dependency),
+      );
+      if (!hasPendingDependency) {
+        ready.push([name, resolved]);
+      }
+    }
+
+    const wave = ready.length > 0 ? ready : Array.from(pending);
+    await Promise.all(
+      wave.map(([name, resolved]) => registerOne(name, resolved)),
+    );
+  }
 }
 
 export {
@@ -3870,44 +3950,15 @@ export async function startEliza(
       );
     }
 
-    const alreadyPreRegistered = new Set([
+    const alreadyPreRegistered = new Set<string>([
       "@elizaos/plugin-sql",
       "@elizaos/plugin-local-inference",
     ]);
-    for (const name of CORE_PLUGINS) {
-      if (alreadyPreRegistered.has(name)) continue;
-      const resolved = resolvedPlugins.find((p) => p.name === name);
-      if (!resolved) {
-        logger.debug(
-          `[eliza] Core plugin ${name} not resolved — skipping pre-registration`,
-        );
-        continue;
-      }
-      try {
-        const regStart = Date.now();
-        logger.info(`[eliza] Pre-registering core plugin: ${name}...`);
-        const PLUGIN_REG_TIMEOUT_MS = 30_000;
-        await Promise.race([
-          runtime.registerPlugin(resolved.plugin),
-          new Promise<never>((_resolve, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(`Timed out after ${PLUGIN_REG_TIMEOUT_MS / 1000}s`),
-                ),
-              PLUGIN_REG_TIMEOUT_MS,
-            ),
-          ),
-        ]);
-        logger.info(
-          `[eliza] ✓ ${name} pre-registered (${Date.now() - regStart}ms)`,
-        );
-      } catch (err) {
-        logger.warn(
-          `[eliza] Core plugin ${name} pre-registration failed: ${formatError(err)}`,
-        );
-      }
-    }
+    await preregisterCorePluginsInDependencyWaves({
+      runtime,
+      resolvedPlugins,
+      alreadyPreRegistered,
+    });
   }
 
   const warmAgentSkillsService = async (): Promise<void> => {
@@ -4219,7 +4270,7 @@ export async function startEliza(
   };
 
   const isAutonomyEnabled = (): boolean =>
-    (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
+    ["true", "1"].includes((process.env.ENABLE_AUTONOMY ?? "").toLowerCase());
 
   const startAutonomyServiceIfEnabled = async (
     autonomyEnabled: boolean,
@@ -4275,9 +4326,9 @@ export async function startEliza(
     await seedBundledDocumentsIfEnabled();
     await runStewardEvmPostBoot();
     await installAnthropicWebSearchIfAvailable();
-    const autonomyEnabled = isAutonomyEnabled();
-    await startAutonomyServiceIfEnabled(autonomyEnabled);
-    await enableAutonomyLoopIfAvailable(autonomyEnabled);
+    const autonomyLoopEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(true);
+    await enableAutonomyLoopIfAvailable(autonomyLoopEnabled);
     startAgentSkillsWarmup();
   };
 
@@ -4573,22 +4624,16 @@ export async function startEliza(
               );
             }
 
-            const alreadyPreRegistered = new Set([
+            const alreadyPreRegistered = new Set<string>([
               "@elizaos/plugin-sql",
               "@elizaos/plugin-local-inference",
             ]);
-            for (const name of CORE_PLUGINS) {
-              if (alreadyPreRegistered.has(name)) continue;
-              const resolved = resolvedPlugins.find((p) => p.name === name);
-              if (!resolved) continue;
-              try {
-                await newRuntime.registerPlugin(resolved.plugin);
-              } catch (err) {
-                logger.warn(
-                  `[eliza] Hot-reload: core plugin ${name} pre-registration failed: ${formatError(err)}`,
-                );
-              }
-            }
+            await preregisterCorePluginsInDependencyWaves({
+              runtime: newRuntime,
+              resolvedPlugins,
+              alreadyPreRegistered,
+              label: "Hot-reload",
+            });
           }
 
           assertPersistentDatabaseRequired(newRuntime);
@@ -4643,11 +4688,10 @@ export async function startEliza(
             // non-fatal
           }
 
-          // Ensure AutonomyService survives hot-reload (respects ENABLE_AUTONOMY)
-          const hotReloadAutonomyEnabled =
-            (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
+          // Ensure AutonomyService survives hot-reload; the loop remains opt-in.
+          const hotReloadAutonomyLoopEnabled = isAutonomyEnabled();
 
-          if (hotReloadAutonomyEnabled && !newRuntime.getService("AUTONOMY")) {
+          if (!newRuntime.getService("AUTONOMY")) {
             try {
               await startAndRegisterAutonomyService(newRuntime);
             } catch (err) {
@@ -4657,8 +4701,8 @@ export async function startEliza(
             }
           }
 
-          // Enable the autonomy loop after hot-reload (same as initial boot)
-          if (hotReloadAutonomyEnabled) {
+          // Enable the autonomy loop after hot-reload only when explicitly requested.
+          if (hotReloadAutonomyLoopEnabled) {
             const svc = getAutonomyService(newRuntime);
             if (svc) {
               try {

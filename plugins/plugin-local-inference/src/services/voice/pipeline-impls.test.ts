@@ -3,9 +3,9 @@
  * plus the shared `splitTranscriptToTokens` helper (`pipeline.ts`):
  *   - `splitTranscriptToTokens` round-trips to the original text on join()
  *   - `MissingAsrTranscriber` hard-fails (AGENTS.md §3 — no silent fallback)
- *   - `LlamaServerDraftProposer` honours `maxDraft`, returns [] with no drafter,
+ *   - `MtpDraftProposer` honours `maxDraft`, returns [] with no drafter,
  *     and returns [] on cancel
- *   - `LlamaServerTargetVerifier` derives accept tokens + `done` from the
+ *   - `MtpTargetVerifier` derives accept tokens + `done` from the
  *     server's streamed deltas (and falls back to splitting plain text)
  *   - the impls drive a real `VoicePipeline` end-to-end through a
  *     `VoiceScheduler` (wired-through path) with a stub `StreamingTranscriber`
@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
 import { VoiceStartupError } from "./errors";
 import { splitTranscriptToTokens, VoicePipeline } from "./pipeline";
 import {
-	type DflashTextRunner,
-	LlamaServerDraftProposer,
-	LlamaServerTargetVerifier,
+	type MtpTextRunner,
+	MtpDraftProposer,
+	MtpTargetVerifier,
 	MissingAsrTranscriber,
 } from "./pipeline-impls";
 import { InMemoryAudioSink } from "./ring-buffer";
@@ -60,14 +60,14 @@ function stubTranscriber(transcript: string): StreamingTranscriber {
 }
 
 /**
- * Fake `DflashTextRunner`. Each `generateWithVerifierEvents` call pops the
+ * Fake `MtpTextRunner`. Each `generateWithVerifierEvents` call pops the
  * next scripted response: a list of token texts (emitted as one accept
  * event) plus the joined string as `text`.
  */
 function fakeRunner(args: {
 	hasDrafter: boolean;
 	responses: string[][];
-}): DflashTextRunner & { calls: number } {
+}): MtpTextRunner & { calls: number } {
 	let i = 0;
 	const runner = {
 		calls: 0,
@@ -134,10 +134,10 @@ describe("MissingAsrTranscriber", () => {
 			{
 				scheduler,
 				transcriber: new MissingAsrTranscriber("no asr region"),
-				drafter: new LlamaServerDraftProposer(
+				drafter: new MtpDraftProposer(
 					fakeRunner({ hasDrafter: false, responses: [] }),
 				),
-				verifier: new LlamaServerTargetVerifier(
+				verifier: new MtpTargetVerifier(
 					fakeRunner({ hasDrafter: false, responses: [] }),
 				),
 			},
@@ -147,13 +147,13 @@ describe("MissingAsrTranscriber", () => {
 	});
 });
 
-describe("LlamaServerDraftProposer", () => {
+describe("MtpDraftProposer", () => {
 	it("returns the drafted tokens, clamped to maxDraft", async () => {
 		const runner = fakeRunner({
 			hasDrafter: true,
 			responses: [["A", "B", "C", "D"]],
 		});
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const draft = await proposer.propose({
 			prefix: [{ index: 0, text: "q" }],
 			maxDraft: 2,
@@ -165,7 +165,7 @@ describe("LlamaServerDraftProposer", () => {
 
 	it("returns [] when no drafter is wired", async () => {
 		const runner = fakeRunner({ hasDrafter: false, responses: [["A"]] });
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const draft = await proposer.propose({
 			prefix: [],
 			maxDraft: 4,
@@ -177,7 +177,7 @@ describe("LlamaServerDraftProposer", () => {
 
 	it("returns [] immediately when cancelled", async () => {
 		const runner = fakeRunner({ hasDrafter: true, responses: [["A"]] });
-		const proposer = new LlamaServerDraftProposer(runner);
+		const proposer = new MtpDraftProposer(runner);
 		const draft = await proposer.propose({
 			prefix: [],
 			maxDraft: 4,
@@ -188,7 +188,7 @@ describe("LlamaServerDraftProposer", () => {
 	});
 });
 
-describe("LlamaServerTargetVerifier", () => {
+describe("MtpTargetVerifier", () => {
 	it("derives accepted tokens + done from streamed deltas", async () => {
 		// Step budget for an empty draft is 1; the runner emits exactly one
 		// token, so the verifier reports done (produced < budget? produced==1,
@@ -199,7 +199,7 @@ describe("LlamaServerTargetVerifier", () => {
 			hasDrafter: true,
 			responses: [["X", "Y"], ["Z"]],
 		});
-		const v = new LlamaServerTargetVerifier(runner);
+		const v = new MtpTargetVerifier(runner);
 		const r1 = await v.verify({
 			prefix: [{ index: 0, text: "q" }],
 			draft: [{ index: 1, text: "d" }],
@@ -217,13 +217,13 @@ describe("LlamaServerTargetVerifier", () => {
 	});
 
 	it("falls back to splitting plain text when the server emits no deltas", async () => {
-		const noDeltaRunner: DflashTextRunner = {
+		const noDeltaRunner: MtpTextRunner = {
 			hasDrafter: () => true,
 			async generateWithVerifierEvents() {
 				return { text: "plain answer" };
 			},
 		};
-		const v = new LlamaServerTargetVerifier(noDeltaRunner);
+		const v = new MtpTargetVerifier(noDeltaRunner);
 		const r = await v.verify({
 			prefix: [],
 			draft: [],
@@ -249,8 +249,8 @@ describe("wired-through VoicePipeline (StreamingTranscriber + llama-server draft
 			hasDrafter: true,
 			responses: [["foo.", " bar."], ["end."], []],
 		});
-		const drafter = new LlamaServerDraftProposer(draftRunner);
-		const verifier = new LlamaServerTargetVerifier(verifyRunner);
+		const drafter = new MtpDraftProposer(draftRunner);
+		const verifier = new MtpTargetVerifier(verifyRunner);
 		const sink = new InMemoryAudioSink();
 		const scheduler = new VoiceScheduler(
 			{

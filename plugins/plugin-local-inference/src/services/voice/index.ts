@@ -50,10 +50,6 @@ export {
 	truncateMatryoshka,
 } from "./embedding";
 export {
-	EmbeddingServer,
-	embeddingServerForRoute,
-} from "./embedding-server";
-export {
 	attributeVoiceEmotion,
 	type VoiceEmotionAsrFeatures,
 	type VoiceEmotionAttribution,
@@ -176,10 +172,10 @@ export {
 	type VoicePipelineEvents,
 } from "./pipeline";
 export {
-	type DflashTextRunner,
-	dflashTextRunner,
-	LlamaServerDraftProposer,
-	LlamaServerTargetVerifier,
+	type MtpTextRunner,
+	mtpTextRunner,
+	MtpDraftProposer,
+	MtpTargetVerifier,
 	MissingAsrTranscriber,
 } from "./pipeline-impls";
 export {
@@ -214,8 +210,8 @@ export {
 	VoiceScheduler,
 } from "./scheduler";
 export {
-	createDflashDrafterHandle,
-	type DflashDrafterHandle,
+	createMtpDraftHandle,
+	type MtpDraftHandle,
 	type KernelSet,
 	type MmapRegionHandle,
 	type RefCountedResource,

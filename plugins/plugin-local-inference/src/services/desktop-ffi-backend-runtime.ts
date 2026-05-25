@@ -5,15 +5,15 @@
  * Glues the desktop libllama+shim adapter
  * (`services/desktop-llama-adapter.ts`) into the
  * `FfiStreamingBackend` slot in `BackendDispatcher`. When the dispatcher's
- * `decideBackend()` returns `"llama-server"` (the kernel-required path),
- * the dispatcher now consults `probeFfiActive()` and routes through this
+ * `decideBackend()` returns `"llama-cpp"` (the kernel-required path),
+ * the dispatcher consults `probeFfiActive()` and routes through this
  * runtime when:
  *   - the libllama + shim dylibs are present on disk
  *   - bun:ffi resolves on the current runtime (Bun, not Node)
  *   - the model load succeeds
  *
- * Any of those failing => `acquire()` returns null and the dispatcher
- * falls through to the subprocess `dflashLlamaServer`.
+ * Any of those failing is an actionable runtime error. There is no server
+ * fallback for Eliza-1.
  *
  * Lifecycle:
  *   - One adapter per loaded model. `acquire()` builds it; `release()`
@@ -28,7 +28,7 @@
  *   - slot save/restore — same.
  *   - prewarm — same.
  *   - parallel resize — same.
- *   - speculative decoding — silently ignored (warning logged once).
+ *   - speculative decoding — native MTP heads only; no companion drafter.
  */
 
 import type { BackendPlan } from "./backend";
@@ -81,13 +81,6 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 					"Dispatcher should not have routed here; check probeFfiActive().",
 			);
 		}
-		// Speculative decoding: the catalog entry may declare a drafter
-		// GGUF via `runtime.dflash.drafterModelPath`. The adapter loads +
-		// attaches it lazily when the first `llmStreamOpen` runs with a
-		// non-null `dflashDrafterPath`. We surface the resolved path on
-		// the session so `FfiStreamingBackend.generate()` can pass it
-		// through to the runner.
-		const drafterPath = resolveDrafterPath(plan);
 		const runner = new FfiStreamingRunner(result.binding, result.ctx);
 		const mmprojPath = plan.overrides?.mmprojPath ?? null;
 		const session: FfiBackendSession = {
@@ -95,7 +88,7 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 			ctx: result.ctx,
 			runner,
 			tokenize: (prompt) => result.adapter.tokenize(prompt),
-			drafterPath,
+			mtp: plan.catalog?.runtime?.mtp ?? null,
 			mmprojPath,
 		};
 		this.active = { adapter: result.adapter, session };
@@ -159,19 +152,3 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
  * loads against the same instance go through acquire/release lifecycles.
  */
 export const desktopFfiBackendRuntime = new DesktopFfiBackendRuntime();
-
-/**
- * Resolve a DFlash drafter GGUF path from the plan. The dispatcher's
- * subprocess path reads the drafter from `catalog.runtime.dflash` (see
- * `dflash-server.ts`'s catalog handling); we mirror that here so FFI
- * mode runs speculative decoding against the same drafter. Returns null
- * when the catalog doesn't declare one (drafter-less generation).
- */
-function resolveDrafterPath(plan: BackendPlan): string | null {
-	const dflash = plan.catalog?.runtime?.dflash;
-	if (!dflash || typeof dflash !== "object") return null;
-	const path =
-		(dflash as { drafterModelPath?: unknown }).drafterModelPath ??
-		(dflash as { drafterPath?: unknown }).drafterPath;
-	return typeof path === "string" && path.length > 0 ? path : null;
-}

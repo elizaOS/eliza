@@ -21,9 +21,7 @@ import {
 } from "./active-model";
 import { readEffectiveAssignments, setAssignment } from "./assignments";
 import { registerBundledModels } from "./bundled-models";
-import type { CacheStatsEntry } from "./cache-bridge";
 import { MODEL_CATALOG } from "./catalog";
-import { dflashLlamaServer, getDflashRuntimeStatus } from "./dflash-server";
 import { Downloader } from "./downloader";
 import { localInferenceEngine } from "./engine";
 import { probeHardware } from "./hardware";
@@ -227,14 +225,12 @@ export class LocalInferenceService {
 	}
 
 	/**
-	 * Pull the kernels map from CAPABILITIES.json next to the installed
-	 * llama-server binary. Null when the file is absent or when DFlash isn't
-	 * enabled. Surfaces to the recommender so we don't recommend a model the
-	 * installed binary can't actually run.
+	 * Kernel capability probing is now owned by the native FFI runtime. Null
+	 * means "no static CAPABILITIES.json probe"; the dispatcher still enforces
+	 * runtime-required kernels at load time.
 	 */
 	private installedBinaryKernels(): Partial<Record<string, boolean>> | null {
-		const caps = getDflashRuntimeStatus().capabilities;
-		return caps?.kernels ?? null;
+		return null;
 	}
 
 	async startDownload(
@@ -369,7 +365,7 @@ export class LocalInferenceService {
 	 */
 	async prewarmSystemPrefix(runtime: AgentRuntime): Promise<boolean> {
 		if (!localInferenceEngine.hasLoadedModel()) return false;
-		if (localInferenceEngine.activeBackendId() !== "llama-server") return false;
+		if (localInferenceEngine.activeBackendId() !== "llama-cpp") return false;
 		try {
 			const fixedRoomId = (runtime.agentId ??
 				SYSTEM_PREFIX_CONVERSATION_ID) as UUID;
@@ -397,22 +393,13 @@ export class LocalInferenceService {
 
 	/**
 	 * Diagnostic snapshot of the local prefix-cache state. Returns:
-	 *   - `dflash`: per-slot files persisted by the out-of-process
-	 *     llama-server (size + mtime + age in ms).
 	 *   - `engine`: in-process session-pool size and live cache keys.
 	 * Used by the API layer to render a "local cache" debug panel.
 	 */
 	async getLocalCacheStats(): Promise<{
-		dflash: {
-			modelHash: string | null;
-			slotDir: string | null;
-			parallel: number;
-			files: CacheStatsEntry[];
-		};
 		engine: { size: number; maxSize: number; keys: string[] } | null;
 	}> {
 		return {
-			dflash: await dflashLlamaServer.describeCache(),
 			engine: localInferenceEngine.describeSessionPool(),
 		};
 	}

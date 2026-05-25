@@ -362,11 +362,18 @@ The final target is now tracked by an explicit all-CAD/no-STL readiness proof.
 `cad/asimov-feminine/proofs/fembot-all-cad-readiness.json` confirms that all 28
 links have generated STEP references, with no missing generated STEP links, but
 the loadable MuJoCo model still contains 28 STL mesh assets and 28 mesh visual
-geoms. The proof is therefore `ok` as a blocker inventory and not accepted as
-final geometry. The final acceptance condition is stricter than controlled-loft
-traceability: every simulation body must be backed by CAD-parametric STEP/B-rep
-or loft geometry and a non-STL MuJoCo representation while preserving mates,
-contacts, actuator behavior, and the constrained-joint visual evidence.
+geoms. A new bridge proof,
+`cad/asimov-feminine/proofs/fembot-cad-primitive-mjcf.json`, removes those 28
+mesh assets, replaces the 28 mesh visual geoms with shape-aware generated-CAD
+primitives (26 smooth ellipsoids and 2 flat boxes), and compiles/steps in
+MuJoCo with `nmesh=0` and `nu=25`. The
+all-CAD proof is therefore `ok` as a blocker inventory but not accepted as final
+geometry: ellipsoid/box primitives prove a no-STL simulation path, not the final
+STEP/B-rep or loft surface bodies. The final acceptance condition is stricter
+than controlled-loft traceability: every simulation body must be backed by
+CAD-parametric STEP/B-rep or loft geometry and a non-STL MuJoCo representation
+while preserving mates, contacts, actuator behavior, and the constrained-joint
+visual evidence.
 
 Use the strict gate when claiming any parameterized leaner/feminine variant is
 ready for generation:

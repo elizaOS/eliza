@@ -77,8 +77,6 @@
       "@elizaos/plugin-workflow/*": [
         "../../../../plugins/plugin-workflow/src/*"
       ],
-      "@elizaos/workflows": ["../../../workflows/src/index.ts"],
-      "@elizaos/workflows/*": ["../../../workflows/src/*"],
       "@elizaos/plugin-signal": [
         "../../../../plugins/plugin-signal/src/index.ts"
       ],

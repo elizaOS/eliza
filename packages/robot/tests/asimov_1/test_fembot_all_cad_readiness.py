@@ -29,24 +29,49 @@ def test_fembot_all_cad_readiness_counts_remaining_stl_mesh_blocker() -> None:
     assert report["summary"]["links"] == 28
     assert report["summary"]["links_with_generated_step_reference"] == 28
     assert report["summary"]["missing_generated_step_links"] == []
-    assert report["summary"]["mjcf_mesh_assets"] == 28
-    assert report["summary"]["mjcf_mesh_visual_geoms"] == 28
-    assert report["summary"]["mjcf_stl_mesh_assets"] == 28
-    assert report["summary"]["mjcf_stl_mesh_visual_geoms"] == 28
-    assert report["summary"]["links_still_using_stl_mesh_assets"] == 28
-    assert report["summary"]["no_stl_mesh_assets"] is False
+    assert report["summary"]["parametric_part_scripts"] == 28
+    assert report["summary"]["missing_parametric_part_scripts"] == []
+    assert report["summary"]["waist_yaw_no_cutout_accepted"] is True
+    assert report["summary"]["waist_yaw_generated_sections_ok"] is True
+    assert report["summary"]["mjcf_mesh_assets"] == 0
+    assert report["summary"]["mjcf_mesh_visual_geoms"] == 0
+    assert report["summary"]["mjcf_stl_mesh_assets"] == 0
+    assert report["summary"]["mjcf_stl_mesh_visual_geoms"] == 0
+    assert report["summary"]["links_still_using_stl_mesh_assets"] == 0
+    assert report["summary"]["no_stl_mesh_assets"] is True
+    assert report["summary"]["primary_no_stl_mesh_assets"] is True
+    assert report["summary"]["primary_mjcf_ok"] is True
+    assert report["summary"]["primary_mjcf_nmesh"] == 0
+    assert report["summary"]["primary_visual_mesh_replacement_ok"] is True
+    assert report["summary"]["primary_visual_mesh_assets_removed"] == 28
+    assert report["summary"]["primary_visual_mesh_geoms_replaced"] == 28
+    assert report["summary"]["primary_visual_envelope_failures"] == 0
+    assert report["summary"]["primary_visual_max_bbox_center_delta_m"] == 0.0
+    assert report["summary"]["primary_visual_max_bbox_extent_delta_m"] == 0.0
+    assert report["summary"]["primary_replacement_links"] == 28
+    assert report["summary"]["primary_replacement_ok"] is True
+    assert report["summary"]["no_stl_primitive_surrogate_ok"] is True
+    assert report["summary"]["no_stl_primitive_surrogate_nmesh"] == 0
+    assert report["summary"]["no_stl_primitive_surrogate_visual_replacements"] == 28
+    assert report["summary"]["no_stl_primitive_surrogate_ellipsoid_visuals"] == 26
+    assert report["summary"]["no_stl_primitive_surrogate_box_visuals"] == 2
+    assert (
+        report["summary"]["no_stl_primitive_surrogate_visual_envelope_matches_generated_cad"]
+        is True
+    )
+    assert report["summary"]["no_stl_primitive_surrogate_visual_envelope_failures"] == 0
+    assert report["summary"]["no_stl_primitive_surrogate_max_visual_bbox_center_delta_m"] == 0.0
+    assert report["summary"]["no_stl_primitive_surrogate_max_visual_bbox_extent_delta_m"] == 0.0
     assert report["summary"]["all_cad_parametric_ready"] is False
-    assert "still uses STL mesh assets" in report["summary"]["acceptance_blocker"]
+    assert "primary MuJoCo model now compiles without STL mesh assets" in report["summary"]["acceptance_blocker"]
+    assert report["cad_primitive_mjcf"]["ok"] is True
+    assert report["cad_primitive_mjcf"]["summary"]["nmesh"] == 0
+    assert report["waist_yaw_no_cutout"]["accepted"] is True
+    assert len(report["parametric_part_scripts"]) == 28
+    assert report["cad_primitive_mjcf"]["summary"]["visual_envelope_matches_generated_cad"] is True
 
     by_link = {record["link"]: record for record in report["mesh_assets"]}
-    pelvis = by_link["IMU_ORIGIN"]
-    assert pelvis["uses_stl"] is True
-    assert pelvis["file"] == "IMU_ORIGIN.STL"
-    assert pelvis["generated_step_path"].endswith("/imu_origin.step")
-    assert pelvis["generated_step_sha256"]
-    assert pelvis["generated_step_export_ok"] is True
-    assert pelvis["generated_step_reload_ok"] is True
-    assert pelvis["generated_step_extent_within_tolerance"] is True
+    assert by_link == {}
 
 
 def test_fembot_all_cad_readiness_cli_writes_gateable_proof(tmp_path) -> None:
@@ -71,7 +96,8 @@ def test_fembot_all_cad_readiness_cli_writes_gateable_proof(tmp_path) -> None:
     assert report["ok"] is True
     assert report["accepted"] is False
     assert proc.returncode == 2
-    assert '"mjcf_stl_mesh_assets": 28' in proc.stdout
+    assert '"mjcf_stl_mesh_assets": 0' in proc.stdout
+    assert '"primary_visual_mesh_geoms_replaced": 28' in proc.stdout
 
 
 def test_fembot_inventory_surfaces_all_cad_no_stl_gap() -> None:
@@ -80,6 +106,25 @@ def test_fembot_inventory_surfaces_all_cad_no_stl_gap() -> None:
     assert report["all_cad_readiness"]["ok"] is True
     assert report["all_cad_readiness"]["accepted"] is False
     assert report["all_cad_readiness"]["summary"]["links_with_generated_step_reference"] == 28
-    assert report["all_cad_readiness"]["summary"]["mjcf_stl_mesh_assets"] == 28
-    assert report["all_cad_readiness"]["summary"]["links_still_using_stl_mesh_assets"] == 28
-    assert report["all_cad_readiness"]["summary"]["no_stl_mesh_assets"] is False
+    assert report["all_cad_readiness"]["summary"]["parametric_part_scripts"] == 28
+    assert report["all_cad_readiness"]["summary"]["missing_parametric_part_scripts"] == []
+    assert report["all_cad_readiness"]["summary"]["waist_yaw_no_cutout_accepted"] is True
+    assert report["all_cad_readiness"]["summary"]["mjcf_stl_mesh_assets"] == 0
+    assert report["all_cad_readiness"]["summary"]["links_still_using_stl_mesh_assets"] == 0
+    assert report["all_cad_readiness"]["summary"]["no_stl_mesh_assets"] is True
+    assert report["all_cad_readiness"]["summary"]["primary_visual_mesh_geoms_replaced"] == 28
+    assert report["all_cad_readiness"]["summary"]["primary_replacement_ok"] is True
+    assert report["all_cad_readiness"]["summary"]["no_stl_primitive_surrogate_ok"] is True
+    assert report["all_cad_readiness"]["summary"]["no_stl_primitive_surrogate_nmesh"] == 0
+    assert (
+        report["all_cad_readiness"]["summary"][
+            "no_stl_primitive_surrogate_visual_envelope_matches_generated_cad"
+        ]
+        is True
+    )
+    assert (
+        report["all_cad_readiness"]["summary"][
+            "no_stl_primitive_surrogate_ellipsoid_visuals"
+        ]
+        == 26
+    )

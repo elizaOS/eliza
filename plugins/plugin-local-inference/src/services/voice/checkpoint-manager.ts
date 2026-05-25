@@ -5,7 +5,7 @@
  *
  * Why a manager on top of `CheckpointClient`?
  *
- *   - `CheckpointClient` (in `dflash-checkpoint-client.ts`) is a thin REST
+ *   - `CheckpointClient` (in `checkpoint-client.ts`) is a thin REST
  *     adapter. It is keyed by `(slotId, filename)` because that is what the
  *     fork's `POST /slots/<id>/save?filename=<n>` REST API expects.
  *   - Callers (the voice state machine, voice-bench drivers) don't want to
@@ -27,14 +27,14 @@
  * **MockCheckpointManager** stores a caller-supplied snapshot (token sequence
  * + arbitrary metadata) in memory keyed by the handle. Tests use it to drive
  * the voice state machine deterministically without spinning up a real
- * llama-server.
+ * checkpoint runtime.
  */
 
 import {
 	CheckpointClient,
 	type CheckpointFetch,
 	type CheckpointHandle as RestCheckpointHandle,
-} from "../dflash-checkpoint-client";
+} from "../checkpoint-client";
 
 /**
  * Opaque-to-callers handle returned by `saveCheckpoint`. The fields are
@@ -113,7 +113,7 @@ export class CheckpointHandleInvalidError extends Error {
 
 export interface CheckpointManagerOptions {
 	/**
-	 * Base URL of the llama-server / llama-checkpoint-server. Same shape as
+	 * Base URL of the checkpoint runtime. Same shape as
 	 * `CheckpointClient` — `http://host:port`.
 	 */
 	baseUrl: string;
@@ -144,7 +144,7 @@ const REST_FILENAME_RE = /^[A-Za-z0-9._-]+$/;
  * REST-backed `CheckpointManager`. Wraps `CheckpointClient` and exposes
  * the slot-agnostic save/restore/discard contract. The class is stateful
  * only in so far as it tracks which handles are still live so a double-
- * `discard` is detected; the actual snapshot lives in llama-server's
+ * `discard` is detected; the actual snapshot lives in the runtime's
  * `--slot-save-path` directory.
  */
 export class CheckpointManager implements CheckpointManagerLike {
@@ -221,7 +221,7 @@ export class CheckpointManager implements CheckpointManagerLike {
 	}
 
 	/**
-	 * Probe the underlying llama-server for checkpoint support. Forwarded
+	 * Probe the underlying runtime for checkpoint support. Forwarded
 	 * from `CheckpointClient.probeSupported`. Callers gate the feature flag
 	 * on this.
 	 */
@@ -400,7 +400,7 @@ function defaultResolveSlotId(slotIdString: string): number {
 	for (let i = 0; i < slotIdString.length; i++) {
 		hash = ((hash << 5) - hash + slotIdString.charCodeAt(i)) | 0;
 	}
-	// Coerce to a non-negative integer below the typical llama-server `--parallel`
+	// Coerce to a non-negative integer below the typical runtime parallelism
 	// count. Callers with more than 256 parallel slots should supply their own
 	// resolver.
 	return Math.abs(hash) % 256;

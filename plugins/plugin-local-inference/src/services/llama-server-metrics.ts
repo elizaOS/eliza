@@ -155,6 +155,7 @@ export function parsePrometheusMetrics(
  * already handle the cloud `usage` shape need no change.
  */
 export interface LocalUsageBlock {
+	[key: string]: unknown;
 	input_tokens: number;
 	output_tokens: number;
 	cache_creation_input_tokens: number;

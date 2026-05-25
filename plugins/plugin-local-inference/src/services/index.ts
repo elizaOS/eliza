@@ -59,13 +59,6 @@ export {
 	totalRamMb,
 } from "./device-tier";
 export {
-	type DflashDoctorCheck,
-	type DflashDoctorReport,
-	type DflashDoctorStatus,
-	runDflashDoctor,
-} from "./dflash-doctor";
-export { getDflashRuntimeStatus } from "./dflash-server";
-export {
 	LocalInferenceEngine,
 	localInferenceEngine,
 	resolveIdleUnloadMs,
@@ -114,13 +107,6 @@ export {
 	type VoiceLatencyDevPayload,
 	voiceLatencyTracer,
 } from "./latency-trace";
-export {
-	diffSnapshots,
-	fetchMetricsSnapshot,
-	type LlamaServerMetricSnapshot,
-	type LocalUsageBlock,
-	parsePrometheusMetrics,
-} from "./llama-server-metrics";
 export * from "./manifest/index";
 export {
 	type ArbiterCapability,

@@ -68,7 +68,7 @@ export type ElizaInferenceRegion =
 	| "tts"
 	| "asr"
 	| "text"
-	| "dflash"
+	| "mtp"
 	| "vad"
 	| "wakeword";
 
@@ -102,17 +102,19 @@ export interface LlmStreamConfig {
 	slotId: number;
 	/** Optional prompt cache key used to derive a slot when `slotId === -1`. */
 	promptCacheKey: string | null;
-	/** DFlash drafter bounds; `0` for either disables speculative decoding. */
+	/** MTP drafter bounds; `0` for either disables speculative decoding. */
 	draftMin: number;
 	draftMax: number;
-	/** Absolute path of the drafter GGUF; null disables speculative decoding. */
-	dflashDrafterPath: string | null;
+	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
+	draftModelPath: string | null;
+	/** DFlash companion drafter path for runtimes that attach a separate drafter. */
+	dflashDrafterPath?: string | null;
 }
 
 /**
  * One step of streaming LLM output. `tokens` is the batch of accepted text
  * model token ids the runtime committed this step (>= 1; > 1 only when the
- * DFlash drafter is active and the verifier accepted multiple drafts).
+ * MTP drafter is active and the verifier accepted multiple drafts).
  * `text` is the detokenized text for those tokens. `done` is `true` only
  * on the final step (EOS reached). `drafterDrafted` and `drafterAccepted`
  * are populated when the drafter is active.
@@ -139,7 +141,7 @@ export interface TtsStreamChunk {
 }
 
 /**
- * A native DFlash speculative-step event from
+ * A native MTP speculative-step event from
  * `eliza_inference_set_verifier_callback`. Token-index domain is the
  * generated-output stream (token 0 = first generated token), matching
  * `RejectedTokenRange`. `rejectedFrom`/`rejectedTo` are -1 when nothing
@@ -234,7 +236,7 @@ export interface ElizaInferenceFfi {
 	 */
 	cancelTts(ctx: ElizaInferenceContextHandle): void;
 	/**
-	 * Register (or, with `cb: null`, clear) the native DFlash verifier
+	 * Register (or, with `cb: null`, clear) the native MTP verifier
 	 * callback. The runtime fires `cb` for every speculative accept/reject
 	 * step from the in-process drafter↔target loop. The returned
 	 * `JSCallbackHandle` MUST be kept alive for as long as the callback is
@@ -1579,7 +1581,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			//   off 24 : ptr  prompt_cache_key
 			//   off 32 : i32  draft_min
 			//   off 36 : i32  draft_max
-			//   off 40 : ptr  dflash_drafter_path
+			//   off 40 : ptr  mtp_drafter_path
 			//   sizeof = 48
 			const buf = Buffer.alloc(48);
 			buf.writeInt32LE(config.maxTokens, 0);
@@ -1589,7 +1591,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 			buf.writeFloatLE(config.repeatPenalty, 16);
 			buf.writeInt32LE(config.slotId, 20);
 			const keyArg = cstr(config.promptCacheKey);
-			const drafterArg = cstr(config.dflashDrafterPath);
+			const drafterArg = cstr(config.draftModelPath);
 			buf.writeBigUInt64LE(toPtrBigInt(keyArg.ptr), 24);
 			buf.writeInt32LE(config.draftMin, 32);
 			buf.writeInt32LE(config.draftMax, 36);

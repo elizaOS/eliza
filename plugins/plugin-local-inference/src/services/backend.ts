@@ -6,41 +6,32 @@
  *   - `capacitor-llama`  → in-process via the capacitor-llama binding. Stock
  *     GGUFs, no drafter, no MoE expert offload, no `--lookahead`. Fastest
  *     to start, lowest IPC overhead, narrowest feature surface.
- *   - `llama-server`    → out-of-process llama-server (the buun-llama-cpp
- *     fork). Full optimization surface — DFlash, n-gram drafter, lookahead,
- *     `-ot` MoE offload, TurboQuant KV cache, mlock/no-mmap/mmproj, etc.
+ *   - `llama-cpp`       → the optimized in-process FFI llama.cpp path.
+ *     MTP, n-gram drafter, lookahead, `-ot` MoE offload, TurboQuant KV
+ *     cache, mlock/no-mmap/mmproj, etc. all live here.
  *
  * The dispatcher decides which one to use per-load based on:
  *
- *   1. `ELIZA_LOCAL_BACKEND=node-llama-cpp|llama-server|auto` — operator
+ *   1. `ELIZA_LOCAL_BACKEND=node-llama-cpp|llama-cpp|auto` — operator
  *      override. `auto` (the default) hands the decision to the catalog.
  *   2. Catalog `runtime.optimizations.requiresKernel` — if any specialised
- *      llama-server kernel is required (e.g. `dflash`, `turbo3`), the
- *      dispatcher MUST pick `llama-server`. The in-process binding cannot
+ *      llama.cpp kernel is required (e.g. `turbo3`), the
+ *      dispatcher MUST pick `llama-cpp`. The legacy node binding cannot
  *      provide these kernels at all.
  *   3. Catalog `runtime.preferredBackend` — soft preference. We pick
- *      `llama-server` when this is set AND the binary is available;
- *      otherwise we fall back to `capacitor-llama` unless DFlash is
- *      explicitly required (`ELIZA_DFLASH_REQUIRED=1`).
- *   4. Default: custom `llama-server` when the managed binary is available;
+ *      `llama-cpp` when this is set AND the runtime is available;
+ *      otherwise we fall back to `capacitor-llama`.
+ *   4. Default: optimized llama.cpp when the managed runtime is available;
  *      `capacitor-llama` is only a last-resort compatibility path for hosts
  *      without the custom llama.cpp runtime.
  *
- * The dispatcher does NOT own the spawn body — `llama-server` and the
- * node binding own that. It owns selection only, plus a small load-state
+ * The dispatcher does NOT own backend internals. It owns selection only,
+ * plus a small load-state
  * cache so callers can swap models without touching either backend
  * directly.
  */
 
 import { findCatalogModel } from "./catalog";
-// NOTE: `import type` is erased at runtime — backend.ts and dflash-server.ts
-// can reference each other's *types* without creating a runtime circular.
-// dflash-server.ts already imports types from here (`LocalInferenceBackend`,
-// `BackendPlan`, etc); this is the symmetric type-only edge.
-import type {
-	DflashGenerateResult,
-	DflashRuntimeLoadConfig,
-} from "./dflash-server";
 import type { StructuredGenerateParams } from "./structured-output";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
@@ -62,7 +53,7 @@ export interface BackendLoadOverrides {
 	mmap?: boolean;
 	mlock?: boolean;
 	useGpu?: boolean;
-	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
+	/** Absolute path to a multimodal projector GGUF passed to the FFI runtime. */
 	mmprojPath?: string;
 	/** Eliza-1 bundle root for direct bundle loads not present in the registry. */
 	bundleRoot?: string;
@@ -84,7 +75,7 @@ export interface BackendPlan {
 	modelPath: string;
 	/**
 	 * Catalog model id, when known. The dispatcher uses this to pull
-	 * `runtime.optimizations` and `runtime.dflash` — without it, we can
+	 * `runtime.optimizations` and `runtime.mtp` — without it, we can
 	 * only honour the env override and fall back to `capacitor-llama`.
 	 */
 	modelId?: string;
@@ -113,8 +104,8 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 * keys reuse the same KV cache prefix in both backends:
 	 *   - `capacitor-llama` → routes to a pooled `LlamaChatSession` that
 	 *     retains chat history (and therefore the KV) across calls.
-	 *   - `llama-server`   → derives a deterministic `slot_id` so requests
-	 *     with the same key land on the same persisted slot.
+	 *   - `llama-cpp`      → derives a deterministic slot so requests
+	 *     with the same key land on the same persisted KV state.
 	 * Empty / absent keys fall through to the historical stateless path.
 	 */
 	cacheKey?: string;
@@ -123,8 +114,7 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 *   - `capacitor-llama` passes it to `LlamaChatSession.prompt()` as
 	 *     `stopOnAbortSignal`, so the binding bails out of the generation
 	 *     loop on the next sampler tick.
-	 *   - `llama-server`   wires it into the HTTP request so the outgoing
-	 *     fetch is cancelled and the server-side slot releases the KV.
+	 *   - `llama-cpp`      cancels the active FFI stream.
 	 * Callers that want hard cancel for things like app pause / kill-switch
 	 * pass the same signal here that they pass into `runtime.useModel`.
 	 */
@@ -137,9 +127,9 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	requestTimeoutMs?: number;
 	/**
-	 * Incremental accepted text from the backend. llama-server calls this for
-	 * streamed OpenAI-compatible deltas; node-llama-cpp calls it once with the
-	 * completed text until the binding path exposes token callbacks here.
+	 * Incremental accepted text from the backend. The FFI path calls this as
+	 * accepted chunks arrive; node-llama-cpp calls it once with the completed
+	 * text until that binding exposes token callbacks here.
 	 */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
 	/**
@@ -148,10 +138,8 @@ export interface GenerateArgs extends StructuredGenerateParams {
 	 */
 	voiceOutput?: "user-visible" | "internal";
 	/**
-	 * Native verifier stream from speculative backends. Current llama-server
-	 * builds synthesize accept events from streamed text deltas; future DFlash
-	 * builds should emit exact accept/reject token ranges here so voice TTS
-	 * rollback does not need to infer them from text chunks.
+	 * Native verifier stream from speculative MTP. Exact accept/reject token
+	 * ranges let voice TTS rollback avoid inferring state from text chunks.
 	 */
 	onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
@@ -167,6 +155,40 @@ export interface EmbedResult {
 	tokens: number;
 }
 
+export interface LocalGenerateWithUsageResult {
+	text: string;
+	usage?: {
+		prompt_tokens?: number;
+		completion_tokens?: number;
+		total_tokens?: number;
+		[key: string]: unknown;
+	};
+	slotId?: number;
+	firstTokenMs?: number | null;
+	mtpStats?: {
+		drafted: number;
+		accepted: number;
+		acceptanceRate: number | null;
+	};
+}
+
+export interface LocalRuntimeLoadConfig {
+	modelId: string | null;
+	modelPath: string | null;
+	contextSize: number | null;
+	cacheTypeK: string | null;
+	cacheTypeV: string | null;
+	gpuLayers: number | null;
+	parallel: number;
+	binaryPath: string | null;
+	backend: "capacitor-llama" | "node-llama-cpp" | "llama-cpp" | null;
+	mtp: {
+		specType: "draft-mtp";
+		draftMin: number;
+		draftMax: number;
+	} | null;
+}
+
 /**
  * The backend contract every local-inference implementation satisfies.
  *
@@ -176,7 +198,7 @@ export interface EmbedResult {
  */
 export interface LocalInferenceBackend {
 	/** Identifier for the concrete backend implementation. */
-	readonly id: "capacitor-llama" | "node-llama-cpp" | "llama-server";
+	readonly id: "capacitor-llama" | "node-llama-cpp" | "llama-cpp";
 	available(): Promise<boolean>;
 	load(plan: BackendPlan): Promise<void>;
 	unload(): Promise<void>;
@@ -189,23 +211,17 @@ export interface LocalInferenceBackend {
 	// === via `dispatcher.X?.()` calls in `engine.ts`, with safe fallback
 	// === values for query methods and actionable throws for required ops.
 	// ===
-	// === These exist so engine.ts can drive every llama-server-specific
-	// === feature through the dispatcher instead of importing the
-	// === `dflashLlamaServer` singleton directly. Eventual deletion of
-	// === `dflash-server.ts` (the file) requires (a) every engine call site
-	// === to use these dispatcher methods and (b) a replacement
-	// === implementation of each method on the FFI backend. See
-	// === `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+	// === These exist so engine.ts can drive every optimized llama.cpp-specific
+	// === feature through the dispatcher and keep FFI as the single runtime
+	// === implementation surface.
 
 	/**
 	 * Usage-instrumented variant of `generate`. Returns Anthropic-shape
-	 * usage block + per-turn DFlash speculative stats. Required on the
-	 * llama-server backend; FFI backends will need parity before any
-	 * caller switches to FFI for slot-aware generation.
+	 * usage block plus per-turn MTP stats when available.
 	 */
 	generateWithUsage?(
 		args: GenerateArgs & { slotId?: number },
-	): Promise<DflashGenerateResult>;
+	): Promise<LocalGenerateWithUsageResult>;
 
 	/** Vision describe via mmproj. Requires an mmproj-loaded backend. */
 	describeImage?(args: {
@@ -241,15 +257,13 @@ export interface LocalInferenceBackend {
 	): Promise<boolean>;
 
 	/**
-	 * Resize the backend's parallel slot pool. llama-server-specific —
-	 * the FFI runner has a single-slot lifecycle today. Returns true on
-	 * a real restart, false on no-op (target ≤ current, etc).
+	 * Resize the backend's parallel slot pool. Returns true on a real
+	 * restart/resize, false on no-op (target ≤ current, etc).
 	 */
 	resizeParallel?(target: number): Promise<boolean>;
 
 	/**
-	 * Eviction-style restart that drops the DFlash drafter (`-md`) and
-	 * frees its memory. Returns true when a restart happened.
+	 * Memory-pressure hook for speculative/runtime auxiliary state.
 	 */
 	restartWithoutDrafter?(): Promise<boolean>;
 
@@ -270,15 +284,18 @@ export interface LocalInferenceBackend {
 	 * types, parallel, binary path). Used by engine introspection +
 	 * /api/local-inference/active.
 	 */
-	currentRuntimeLoadConfig?(): DflashRuntimeLoadConfig | null;
+	currentRuntimeLoadConfig?(): LocalRuntimeLoadConfig | null;
 }
 
-export type BackendOverride = "auto" | "capacitor-llama" | "llama-server";
+export type BackendOverride = "auto" | "capacitor-llama" | "llama-cpp";
 
 export function readBackendOverride(): BackendOverride {
 	const raw = process.env.ELIZA_LOCAL_BACKEND?.trim().toLowerCase();
-	if (raw === "capacitor-llama" || raw === "llama-server" || raw === "auto") {
+	if (raw === "capacitor-llama" || raw === "auto") {
 		return raw;
+	}
+	if (raw === "llama-cpp") {
+		return "llama-cpp";
 	}
 	return "auto";
 }
@@ -291,7 +308,7 @@ function envFlag(name: string): boolean {
 /**
  * Opt-in "reduced-optimization local mode" (the cross-platform escape hatch
  * documented in `docs/voice-interactive.md` and `packages/inference/AGENTS.md`
- * §4): when the installed `llama-server` binary does not advertise the
+ * §4): when the installed llama.cpp runtime does not advertise the
  * custom Eliza-1 KV kernels (`turbo3`/`qjl_full`/`polarquant`/…) — i.e. the
  * fork hasn't been built with those kernels dispatched on this backend yet —
  * setting `ELIZA_LOCAL_ALLOW_STOCK_KV=1` lets the model load anyway with
@@ -321,9 +338,8 @@ export function warnReducedOptimizationLocalMode(detail: string): void {
 			`  ELIZA_LOCAL_ALLOW_STOCK_KV=1 is set, so the model is loading with stock\n` +
 			`  f16 KV cache instead of the Eliza-1 TurboQuant/QJL/PolarQuant KV kernels.\n` +
 			`  The voice pipeline will run, but slower and using more memory than a build\n` +
-			`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
-			`  patched; CPU: SIMD TUs). Rebuild the fork with the matching backend\n` +
-			`  (node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>)\n` +
+				`  with the kernels dispatched (Metal: all 5; CUDA: ships them; Vulkan: source-\n` +
+				`  patched; CPU: SIMD TUs). Rebuild the bundled llama.cpp FFI runtime\n` +
 			`  to get the optimized path. This mode is NOT publishable and NOT a default.\n`,
 	);
 }
@@ -334,21 +350,16 @@ export function __resetReducedModeWarnedForTests(): void {
 }
 
 export interface BackendDecision {
-	backend: "capacitor-llama" | "llama-server";
+	backend: "capacitor-llama" | "llama-cpp";
 	/** Why this backend was chosen — for diagnostics and warnings. */
-	reason:
-		| "env-override"
-		| "kernel-required"
-		| "dflash-required"
-		| "preferred-backend"
-		| "default";
+	reason: "env-override" | "kernel-required" | "preferred-backend" | "default";
 	/** Required kernels declared by the catalog, when any. */
 	kernels: LocalRuntimeKernel[];
 	/**
 	 * Set when the dispatcher detected a kernel mismatch — the catalog model
 	 * declares `requiresKernel: [...]` but CAPABILITIES.json next to the
 	 * installed binary reports those kernels as unavailable. The dispatcher
-	 * still routes to llama-server (the only backend that could ever satisfy
+	 * still routes to optimized llama.cpp (the only backend that could satisfy
 	 * those kernels), but the load is expected to fail; the caller should
 	 * surface this to the operator with a clear "rebuild your binary"
 	 * message instead of letting the model silently misbehave.
@@ -363,7 +374,7 @@ export interface BackendDecision {
  * the binary availability, and the env override before calling us.
  *
  * `binaryKernels`, when present, is the parsed CAPABILITIES.json kernels
- * map from the installed llama-server build. The dispatcher uses it to
+ * map from the installed llama.cpp FFI runtime. The dispatcher uses it to
  * compute `unsatisfiedKernels`; null means the binary is older / has no
  * capabilities probe, in which case we trust the model's declaration and
  * let the load attempt clarify.
@@ -371,14 +382,15 @@ export interface BackendDecision {
 export function decideBackend(input: {
 	override: BackendOverride;
 	catalog: CatalogModel | undefined;
-	llamaServerAvailable: boolean;
-	dflashRequired: boolean;
+	llamaCppAvailable: boolean;
 	binaryKernels?: Partial<Record<LocalRuntimeKernel | string, boolean>> | null;
 }): BackendDecision {
-	const { override, catalog, llamaServerAvailable, dflashRequired } = input;
+	const { override, catalog, llamaCppAvailable } = input;
 	const optimizations = catalog?.runtime?.optimizations;
+	const hasOptimizedRuntimeConfig =
+		catalog?.runtime?.mtp !== undefined ||
+		optimizations !== undefined;
 	const kernels = optimizations?.requiresKernel ?? [];
-	const dflashConfigured = catalog?.runtime?.dflash;
 	const preferredBackend = catalog?.runtime?.preferredBackend;
 	const unsatisfiedKernels = computeUnsatisfiedKernels(
 		kernels,
@@ -386,13 +398,13 @@ export function decideBackend(input: {
 	);
 
 	if (override === "capacitor-llama") {
-		if (kernels.length > 0 || dflashRequired) {
+		if (kernels.length > 0 || catalog?.runtime?.mtp !== undefined) {
 			// The override conflicts with a hard requirement. Prefer the kernel
 			// requirement — silently honoring the override would silently break
-			// the model. Surface as a llama-server pick; the load itself will
-			// fail clearly if the binary really is missing.
+			// the model. Surface as a llama.cpp pick; the load itself will
+			// fail clearly if the runtime really is missing.
 			return {
-				backend: "llama-server",
+				backend: "llama-cpp",
 				reason: "kernel-required",
 				kernels,
 				unsatisfiedKernels,
@@ -405,9 +417,9 @@ export function decideBackend(input: {
 			unsatisfiedKernels,
 		};
 	}
-	if (override === "llama-server") {
+	if (override === "llama-cpp") {
 		return {
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "env-override",
 			kernels,
 			unsatisfiedKernels,
@@ -416,23 +428,15 @@ export function decideBackend(input: {
 
 	if (kernels.length > 0) {
 		return {
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "kernel-required",
 			kernels,
 			unsatisfiedKernels,
 		};
 	}
-	if (dflashConfigured && dflashRequired) {
+	if (preferredBackend === "llama-cpp" && llamaCppAvailable) {
 		return {
-			backend: "llama-server",
-			reason: "dflash-required",
-			kernels,
-			unsatisfiedKernels,
-		};
-	}
-	if (preferredBackend === "llama-server" && llamaServerAvailable) {
-		return {
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "preferred-backend",
 			kernels,
 			unsatisfiedKernels,
@@ -446,9 +450,9 @@ export function decideBackend(input: {
 			unsatisfiedKernels,
 		};
 	}
-	if (llamaServerAvailable) {
+	if (llamaCppAvailable && hasOptimizedRuntimeConfig) {
 		return {
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "default",
 			kernels,
 			unsatisfiedKernels,
@@ -503,13 +507,12 @@ export class BackendDispatcher implements LocalInferenceBackend {
 
 	constructor(
 		private readonly nodeLlamaCpp: LocalInferenceBackend,
-		private readonly llamaServer: LocalInferenceBackend,
-		private readonly probeLlamaServerAvailable: () => boolean,
-		private readonly probeDflashRequired: () => boolean,
+		private readonly ffiStreaming: LocalInferenceBackend,
+		private readonly probeFfiAvailable: () => boolean,
 		/**
-		 * Optional capabilities probe that returns the kernels map from
-		 * CAPABILITIES.json next to the installed llama-server binary, or
-		 * null when the file is absent. Used to flag `unsatisfiedKernels`
+		 * Optional capabilities probe that returns the kernels map from the
+		 * installed llama.cpp FFI runtime, or null when no probe is available.
+		 * Used to flag `unsatisfiedKernels`
 		 * in the BackendDecision before load() so callers can give a clean
 		 * "rebuild your fork binary" error instead of a kernel SIGSEGV at
 		 * generation time.
@@ -517,37 +520,15 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		private readonly probeBinaryKernels?: () => Partial<
 			Record<string, boolean>
 		> | null,
-		/**
-		 * In-process FFI streaming backend (production: the desktop
-		 * libllama+shim adapter via bun:ffi — see
-		 * `services/desktop-ffi-backend-runtime.ts`). Replaces the
-		 * subprocess `llamaServer` whenever `probeFfiActive()` returns
-		 * `true`. Both must be supplied; when either is omitted the
-		 * dispatcher routes every `decideBackend() === "llama-server"`
-		 * load through the subprocess fallback unchanged.
-		 */
-		private readonly ffiStreaming?: LocalInferenceBackend,
-		/**
-		 * Companion probe to `ffiStreaming`. Called inside `load()` when
-		 * `decideBackend()` returns `"llama-server"` — `true` routes the
-		 * load through the FFI backend, `false` keeps the subprocess path.
-		 * The engine's probe checks dylib disk presence and honors
-		 * `ELIZA_INFERENCE_BACKEND=http` as the explicit opt-out.
-		 */
-		private readonly probeFfiActive?: () => boolean,
 	) {}
 
 	async available(): Promise<boolean> {
 		const a = await this.nodeLlamaCpp.available();
 		if (a) return true;
-		return this.llamaServer.available();
+		return this.ffiStreaming.available();
 	}
 
-	activeBackendId():
-		| "capacitor-llama"
-		| "node-llama-cpp"
-		| "llama-server"
-		| null {
+	activeBackendId(): "capacitor-llama" | "node-llama-cpp" | "llama-cpp" | null {
 		return this.active ? this.active.id : null;
 	}
 
@@ -564,8 +545,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return decideBackend({
 			override: readBackendOverride(),
 			catalog,
-			llamaServerAvailable: this.probeLlamaServerAvailable(),
-			dflashRequired: this.probeDflashRequired(),
+			llamaCppAvailable: this.probeFfiAvailable(),
 			binaryKernels: this.probeBinaryKernels?.() ?? null,
 		});
 	}
@@ -578,11 +558,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			if (localAllowStockKv()) {
 				// Reduced-optimization local mode: the build hasn't dispatched these
 				// kernels on this backend yet, but the user opted into running with
-				// stock f16 KV instead of hard-refusing. Strip any custom cache-type
-				// override from the plan so the llama-server spawn uses f16, and warn
+					// stock f16 KV instead of hard-refusing. Strip any custom cache-type
+					// override from the plan so the FFI runtime uses f16, and warn
 				// loudly exactly once.
 				warnReducedOptimizationLocalMode(
-					`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama-server binary`,
+						`catalog model requires kernel(s) {${missing}}, not advertised by the installed llama.cpp FFI runtime`,
 				);
 				if (
 					plan.overrides &&
@@ -594,27 +574,19 @@ export class BackendDispatcher implements LocalInferenceBackend {
 				}
 			} else {
 				throw new Error(
-					`[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama-server binary does not advertise them in CAPABILITIES.json. Rebuild the fork with the matching backend (e.g. node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target <triple>), pick a different model, or set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
+					`[local-inference] Catalog model requires kernel(s) {${missing}}, but the installed llama.cpp FFI runtime does not advertise them. Rebuild the bundled runtime for this target, pick a different model, or set ELIZA_LOCAL_ALLOW_STOCK_KV=1 to load with stock f16 KV (reduced-optimization local mode — loud warning, not publishable).`,
 				);
 			}
 		}
-		const ffiStreaming = this.ffiStreaming;
-
-		// FFI is the default desktop path. When the dispatcher routes to
-		// `llama-server` AND a wired FFI backend's probe says go, we
-		// route through it; otherwise the subprocess fallback runs.
-		// `ELIZA_INFERENCE_BACKEND=http` is the explicit opt-out (probe
-		// returns false). No "ffi" opt-in flag — it's the default.
-		const wantsFfi =
-			decision.backend === "llama-server" &&
-			ffiStreaming !== undefined &&
-			(this.probeFfiActive?.() ?? false);
+		if (decision.backend === "llama-cpp" && !this.probeFfiAvailable()) {
+			throw new Error(
+				"[local-inference] Optimized llama.cpp requires the in-process FFI backend. " +
+					"Install/rebuild libelizainference with streaming-LLM + MTP support; " +
+					"server backends are not supported.",
+			);
+		}
 		const target =
-			decision.backend === "llama-server"
-				? wantsFfi
-					? ffiStreaming
-					: this.llamaServer
-				: this.nodeLlamaCpp;
+			decision.backend === "llama-cpp" ? this.ffiStreaming : this.nodeLlamaCpp;
 		if (this.active && this.active !== target) {
 			await this.active.unload();
 		}
@@ -660,7 +632,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
 
 	async generateWithUsage(
 		args: GenerateArgs & { slotId?: number },
-	): Promise<DflashGenerateResult> {
+	): Promise<LocalGenerateWithUsageResult> {
 		this.ensureLoaded();
 		if (!this.active?.generateWithUsage) {
 			throw this.notSupported("generateWithUsage");
@@ -675,7 +647,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		if (!this.active?.describeImage) {
 			throw this.notSupported(
 				"describeImage",
-				"vision describe requires an mmproj-loaded llama-server. Load an Eliza-1 bundle, or wait for FFI mmproj parity.",
+				"vision describe requires an mmproj-loaded llama.cpp FFI runtime. Load an Eliza-1 bundle with its vision projector.",
 			);
 		}
 		return this.active?.describeImage(args);
@@ -736,7 +708,7 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		return this.active?.currentMmprojPath?.() ?? null;
 	}
 
-	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
+	currentRuntimeLoadConfig(): LocalRuntimeLoadConfig | null {
 		return this.active?.currentRuntimeLoadConfig?.() ?? null;
 	}
 

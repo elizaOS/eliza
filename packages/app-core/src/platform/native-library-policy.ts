@@ -10,7 +10,7 @@ export type NativeLibraryPolicyOptions = {
   env?: NodeJS.ProcessEnv;
   execPath?: string;
   expectedBasename: string | readonly string[];
-  moduleDir: string;
+  moduleDir?: string;
   warn?: (message: string) => void;
 };
 
@@ -88,7 +88,15 @@ export function resolveNativeLibraryCandidate(
 
   const resolvedPath = path.isAbsolute(rawPath)
     ? path.normalize(rawPath)
-    : path.resolve(opts.moduleDir, rawPath);
+    : typeof opts.moduleDir === "string" && opts.moduleDir.length > 0
+      ? path.resolve(opts.moduleDir, rawPath)
+      : null;
+  if (!resolvedPath) {
+    opts.warn?.(
+      `Rejected native library candidate ${candidateLabel(candidate)}: relative path cannot be resolved without a module directory.`,
+    );
+    return null;
+  }
 
   if (!existsSync(resolvedPath)) return null;
 

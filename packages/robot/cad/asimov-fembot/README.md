@@ -583,8 +583,14 @@ manufacturing evidence.
 - `scripts/generate_asimov_fembot_all_cad_readiness.py` emits the current
   no-STL blocker inventory. It currently reports 28/28 links with generated
   STEP references and zero missing generated STEP links, but also 28 STL mesh
-  assets and 28 mesh visual geoms in the loadable MuJoCo model. It is `ok` as
-  an inventory and intentionally non-accepted until those STL bodies are gone.
+  assets and 28 mesh visual geoms in the primary loadable MuJoCo model.
+  `scripts/generate_asimov_fembot_cad_primitive_mjcf.py` now emits a bridge
+  proof that removes those 28 mesh assets, replaces the 28 mesh visual geoms
+  with shape-aware generated-CAD primitives (26 smooth ellipsoids and 2 flat
+  boxes), and compiles/steps with `nmesh=0` and `nu=25`. This is progress
+  toward the no-STL target, but it is still intentionally non-accepted until
+  primitive ellipsoids/boxes are replaced by true STEP/B-rep or loft surface
+  bodies.
 - Controlled-loft spline proofs must also prove every accepted fitted ring is a
   closed, nondegenerate loop. The proof schema records endpoint closure gap,
   fitted perimeter, fitted area, and minimum fitted segment length; the first

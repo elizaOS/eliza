@@ -8,7 +8,7 @@
 //        - required-kernel set per tier is satisfied,
 //        - long-context bundles (ctx > 64k) require `turbo3_tcq`,
 //        - structural bundle invariants (voice-preset cache present, lineage
-//          ↔ files consistency, base-v1 provenance coverage, no dflash lie),
+//          ↔ files consistency, base-v1 provenance coverage),
 //        - and — for a *production* release only (`base-v1` / `finetuned-v2` /
 //          `final`, or any `defaultEligible: true` manifest) — every supported
 //          backend kernel-verified `pass` and every eval green. A
@@ -175,14 +175,6 @@ const STRICT_RELEASE_STATES: ReadonlySet<string> = new Set([
 	"final",
 ]);
 
-const DFLASH_TIERS: ReadonlySet<Eliza1Tier> = new Set([
-	"2b",
-	"4b",
-	"9b",
-	"27b",
-	"27b-256k",
-]);
-
 const VISION_TIERS: ReadonlySet<Eliza1Tier> = new Set([
 	"0_8b",
 	"2b",
@@ -242,35 +234,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
-	const dflashEnabled = DFLASH_TIERS.has(m.tier);
 	const visionEnabled = VISION_TIERS.has(m.tier);
-	if (dflashEnabled) {
-		if (m.files.dflash.length === 0) {
-			errors.push(`files.dflash: required for DFlash-enabled tier ${m.tier}`);
-		}
-		if (m.files.dflash.length > 0 && !m.lineage.drafter) {
-			errors.push("lineage.drafter: required when files.dflash is non-empty");
-		}
-		if (m.lineage.drafter && m.files.dflash.length === 0) {
-			errors.push("files.dflash: required when lineage.drafter is present");
-		}
-	} else {
-		if (m.files.dflash.length > 0) {
-			errors.push(
-				`files.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (declaredRequired.has("dflash")) {
-			errors.push(
-				`kernels.required: dflash is unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (m.lineage.drafter) {
-			errors.push(
-				`lineage.drafter: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-	}
 	if (visionEnabled) {
 		if (m.files.vision.length === 0) {
 			errors.push(`files.vision: required for vision-enabled tier ${m.tier}`);
@@ -478,7 +442,6 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 				"text",
 				"voice",
 			];
-			if (dflashEnabled) requiredSlots.push("drafter");
 			for (const slot of ["asr", "vad", "embedding", "vision"] as const) {
 				if ((m.files[slot] ?? []).length > 0) requiredSlots.push(slot);
 			}
@@ -495,44 +458,7 @@ function collectContractErrors(m: Eliza1Manifest): string[] {
 		}
 	}
 
-	// DFlash bench. Staging manifests may record missing or failing DFlash
-	// measurements, but a default bundle is not eligible unless speculative
-	// decoding was actually measured and passed.
-	if (!m.evals.dflash) {
-		if (m.defaultEligible && dflashEnabled) {
-			errors.push("evals.dflash: required when defaultEligible=true");
-		}
-	} else {
-		if (!dflashEnabled) {
-			errors.push(
-				`evals.dflash: unsupported for DFlash-disabled tier ${m.tier}`,
-			);
-		}
-		if (
-			m.evals.dflash.passed &&
-			(m.evals.dflash.acceptanceRate === null ||
-				m.evals.dflash.speedup === null)
-		) {
-			errors.push(
-				"evals.dflash: passed=true but acceptanceRate/speedup is null — a needs-hardware bench cannot pass",
-			);
-		}
-		if (m.defaultEligible && dflashEnabled) {
-			if (!m.evals.dflash.passed) {
-				errors.push("evals.dflash.passed: false for defaultEligible manifest");
-			}
-			if (
-				m.evals.dflash.acceptanceRate === null ||
-				m.evals.dflash.speedup === null
-			) {
-				errors.push(
-					"evals.dflash: defaultEligible requires measured acceptanceRate and speedup",
-				);
-			}
-		}
-	}
-
-	// EAGLE3 bench metadata is always optional and independent from DFlash. When
+	// EAGLE3 bench metadata is always optional. When
 	// present, it may record a not-run/failure state; only a passing claim must
 	// include measured acceptance/speedup values.
 	if (m.evals.eagle3) {

@@ -162,3 +162,25 @@ test("checkout accepts OAuth-style hash token names and strips the fragment", as
     refreshToken: "refresh-token-2",
   });
 });
+
+test("checkout strips refresh token params even when access token comes from hash", async ({
+  page,
+}) => {
+  await installCheckoutMocks(page);
+
+  await page.goto(
+    "/checkout?sku=elizaos-phone&refreshToken=query-refresh-token#access_token=steward-token-3",
+  );
+  await expect(page.getByRole("button", { name: "Pay deposit" })).toBeVisible();
+  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-phone$/);
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
+});
+
+test("checkout strips refresh-only callback fragments", async ({ page }) => {
+  await installCheckoutMocks(page);
+
+  await page.goto("/checkout?sku=elizaos-phone#refresh_token=refresh-token-3");
+  await expect(page.getByRole("button", { name: "Email link" })).toBeVisible();
+  await expect(page).toHaveURL(/\/checkout\?sku=elizaos-phone$/);
+  await expect.poll(() => page.evaluate(() => window.location.hash)).toBe("");
+});

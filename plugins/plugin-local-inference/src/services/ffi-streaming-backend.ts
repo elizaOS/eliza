@@ -1,32 +1,15 @@
 /**
  * In-process FFI streaming backend adapter.
  *
- * Implements `LocalInferenceBackend` so it can be slotted into
- * `BackendDispatcher` as a peer of `LlamaServerBackend` (the subprocess+HTTP
- * `dflash-server` path) and `NodeLlamaCppBackend` (the in-process N-API
- * binding). When the dispatcher's `decideBackend()` returns `"llama-server"`
- * AND `selectBackend()` (`backend-selector.ts`) picks `"ffi-streaming"`,
- * the dispatcher routes load/generate/unload through here instead of the
- * subprocess.
- *
- * STATUS — scaffolding only:
- *   This class is not yet constructed in production. The optional
- *   `ffiStreaming` / `probeFfiActive` parameters on `BackendDispatcher` are
- *   left undefined by `engine.ts`, so the runtime continues to use the
- *   subprocess path unchanged. The architectural prerequisites for
- *   constructing a real `FfiBackendRuntime` (FFI context ownership decision,
- *   tokenizer access, slot-persistence capability probe) are documented in
- *   `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
- *
- * Once those land, `engine.ts` will construct this class with a real runtime
- * and pass it to `BackendDispatcher` — see step D of the wire-up plan.
+ * Implements `LocalInferenceBackend` as the optimized in-process
+ * llama.cpp path used by Eliza-1 on desktop and mobile.
  *
  * What this class deliberately does NOT do:
  *   - Own the FFI context. The `ElizaInferenceFfi` handle is created by the
  *     voice lifecycle service today; the runtime provider passed to this
  *     class is the seam where ownership gets resolved.
  *   - Implement `embed`. Vision describe, embedding, slot save/restore, and
- *     parallel-slot resize all live on `dflashLlamaServer` today and are
+ *     parallel-slot resize all live on `mtpLlamaServer` today and are
  *     called from `engine.ts` directly (bypassing the dispatcher). Until
  *     those are routed through the dispatcher AND the FFI runner gains
  *     parity for each, the dispatcher's existing
@@ -38,6 +21,7 @@ import type {
 	BackendPlan,
 	GenerateArgs,
 	GenerateResult,
+	LocalGenerateWithUsageResult,
 	LocalInferenceBackend,
 } from "./backend";
 import type { FfiStreamingRunner } from "./ffi-streaming-runner";
@@ -94,11 +78,15 @@ export interface FfiBackendSession {
 	 */
 	readonly tokenize: (prompt: string) => Int32Array;
 	/**
-	 * Drafter GGUF path for speculative decoding, when the bundle ships one
-	 * and the loaded binding supports DFlash. `null` disables speculative
-	 * decoding for this session.
+	 * Native MTP speculative-decoding policy from the catalog. `null`
+	 * disables speculative decoding for this session.
 	 */
-	readonly drafterPath: string | null;
+	readonly mtp: {
+		specType: "draft-mtp";
+		draftMin: number;
+		draftMax: number;
+		gpuLayers: number | "auto";
+	} | null;
 	/**
 	 * Multimodal projector (mmproj) GGUF path for vision describe. Resolved
 	 * from `plan.overrides.mmprojPath` at acquire time. `null` disables
@@ -109,14 +97,11 @@ export interface FfiBackendSession {
 
 /**
  * Adapter that satisfies `LocalInferenceBackend` by delegating to
- * `FfiStreamingRunner`. The `id` is intentionally `"llama-server"` because
- * the dispatcher's `decideBackend()` returns `"llama-server"` to mean
- * "the kernel-required path", and this class is the in-process variant of
- * that path. The transport choice (FFI vs subprocess) is orthogonal and
- * lives in `selectBackend()`.
+ * `FfiStreamingRunner`. The `id` is `"llama-cpp"` because this is the
+ * in-process variant of the optimized llama.cpp path.
  */
 export class FfiStreamingBackend implements LocalInferenceBackend {
-	readonly id = "llama-server" as const;
+	readonly id = "llama-cpp" as const;
 
 	private session: FfiBackendSession | null = null;
 	private loadedPath: string | null = null;
@@ -148,30 +133,50 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	}
 
 	async generate(args: GenerateArgs): Promise<GenerateResult> {
+		const result = await this.generateWithUsage(args);
+		return result.text;
+	}
+
+	async generateWithUsage(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<LocalGenerateWithUsageResult> {
 		if (!this.session) {
 			throw new Error(
 				"[ffi-streaming-backend] generate() called before load() — " +
 					"the FFI session has not been acquired.",
 			);
 		}
-		const { runner, tokenize, drafterPath } = this.session;
+		const { runner, tokenize, mtp } = this.session;
 		const result = await runner.generateWithUsage({
 			promptTokens: tokenize(args.prompt),
-			slotId: -1,
+			slotId: args.slotId ?? -1,
 			cacheKey: args.cacheKey,
 			maxTokens: args.maxTokens ?? 2048,
 			temperature: args.temperature ?? 0.7,
 			topP: args.topP ?? 0.9,
 			topK: 40,
 			repeatPenalty: 1.1,
-			draftMin: 0,
-			draftMax: 0,
-			dflashDrafterPath: drafterPath,
+			draftMin: mtp?.draftMin ?? 0,
+			draftMax: mtp?.draftMax ?? 0,
+			draftModelPath: null,
 			signal: args.signal,
 			onTextChunk: args.onTextChunk,
 			onVerifierEvent: args.onVerifierEvent,
 		});
-		return result.text;
+		return {
+			text: result.text,
+			slotId: result.slotId,
+			firstTokenMs: result.firstTokenMs,
+			usage: {
+				completion_tokens: result.accepted,
+			},
+			mtpStats: {
+				drafted: result.drafted,
+				accepted: result.accepted,
+				acceptanceRate:
+					result.drafted > 0 ? result.accepted / result.drafted : null,
+			},
+		};
 	}
 
 	// === Optional `LocalInferenceBackend` methods routed through the runner.
@@ -180,7 +185,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	 * Persist the active session's KV state to a per-conversation file.
 	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
 	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
-	 * mirrors `dflash-server.ts`'s conversation-keyed slot layout
+	 * mirrors `mtp-server.ts`'s conversation-keyed slot layout
 	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
 	 * FFI and subprocess can resume each other's slots — once both
 	 * paths agree on the file format.
@@ -224,7 +229,7 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		opts: { slotId: number; cacheKey: string },
 	): Promise<boolean> {
 		if (!this.session || promptPrefix.length === 0) return false;
-		const { runner, tokenize, drafterPath } = this.session;
+		const { runner, tokenize, mtp } = this.session;
 		await runner.generateWithUsage({
 			promptTokens: tokenize(promptPrefix),
 			slotId: opts.slotId,
@@ -234,30 +239,23 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 			topP: 1,
 			topK: 1,
 			repeatPenalty: 1,
-			draftMin: 0,
-			draftMax: 0,
-			dflashDrafterPath: drafterPath,
+			draftMin: mtp?.draftMin ?? 0,
+			draftMax: mtp?.draftMax ?? 0,
+			draftModelPath: null,
 		});
 		return true;
 	}
 
 	/**
-	 * Speculative-decoding accessors. The FFI runtime resolves the drafter
-	 * path from the catalog's `runtime.dflash` block and attaches it
-	 * lazily on the first `llmStreamOpen` call. `drafterEnabled()` reflects
-	 * whether the session was wired with a drafter path; the adapter
-	 * decides per-generation whether to actually attach based on the
-	 * `dflashDrafterPath` passed in `LlmStreamConfig`.
+	 * Speculative-decoding accessors. Eliza-1 uses native MTP heads in the
+	 * target model; there is no companion drafter path.
 	 */
 	drafterEnabled(): boolean {
-		return (
-			this.session?.drafterPath !== null &&
-			this.session?.drafterPath !== undefined
-		);
+		return this.session?.mtp !== null && this.session?.mtp !== undefined;
 	}
 
 	loadedDrafterModelPath(): string | null {
-		return this.session?.drafterPath ?? null;
+		return null;
 	}
 
 	/**

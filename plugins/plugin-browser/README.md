@@ -40,6 +40,28 @@ Workspace UI, agent actions, and companion extension use the same API surface.
 import { browserBridgePlugin } from "@elizaos/plugin-browser";
 ```
 
+## Browser target routing
+
+The `BROWSER` action routes through `BrowserService`, which keeps a runtime
+registry of browser targets:
+
+- `workspace`: the app-owned browser workspace. On mobile/native app builds
+  this remains the preferred target.
+- `bridge`: a paired Chrome/Safari companion profile, when one is connected.
+- `stagehand`: an optional Stagehand/Playwright fallback. It is skipped on
+  mobile unless `ELIZA_BROWSER_ALLOW_STAGEHAND_ON_MOBILE=true`.
+- Other plugins can register targets through `BrowserService.registerTarget`.
+
+Automatic routing scores all available targets and falls back to the next one
+if an unpinned target fails. Passing `target` to the `BROWSER` action pins a
+specific backend.
+
+Stagehand setup is opportunistic. If `plugins/plugin-browser/stagehand-server`
+exists with source, the service attempts `bun install --ignore-scripts` and a
+TypeScript build unless `ELIZA_BROWSER_STAGEHAND_AUTO_SETUP=false`. To activate
+the fallback target, configure either `ELIZA_BROWSER_STAGEHAND_COMMAND_URL` or
+`STAGEHAND_SERVER_URL`; the latter defaults commands to `/api/browser-command`.
+
 ## Authentication
 
 Companion-scoped endpoints (`/api/browser-bridge/companions/sync`,

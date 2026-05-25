@@ -23,7 +23,7 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
     assert report["ok"] is True
     assert report["accepted"] is False
     assert report["summary"]["required_families"] == 9
-    assert report["summary"]["covered_families"] >= 5
+    assert report["summary"]["covered_families"] == 9
     assert report["summary"]["accepted_families"] == 0
     assert report["summary"]["links_with_motor_keepouts"] > 0
     assert report["summary"]["links_with_joint_axis_keepouts"] > 0
@@ -39,7 +39,12 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
     assert report["summary"]["vendor_envelopes_with_step_product_metadata"] == 67
     assert report["summary"]["vendor_envelopes_with_supplier_codes"] == 8
     assert report["summary"]["unique_vendor_supplier_codes"] == 5
-    assert report["summary"]["unclassified_vendor_supplier_codes"] == 5
+    assert report["summary"]["classified_vendor_supplier_codes"] == 5
+    assert report["summary"]["unclassified_vendor_supplier_codes"] == 0
+    assert report["summary"]["supplier_code_family_counts"] == {
+        "bearing_or_ring": 3,
+        "fastener_or_thread": 2,
+    }
     assert report["summary"]["supplier_code_geometry_loaded_paths"] == 20
     assert report["summary"]["supplier_code_geometry_failed_paths"] == 0
     assert report["summary"]["unique_supplier_code_geometry_loaded_paths"] == 8
@@ -74,12 +79,9 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
         "600": 19,
         "700": 5,
     }
-    assert {
-        "bearing_or_ring",
-        "gear_or_pulley_or_belt",
-        "fastener_or_thread",
-        "wiring_or_service_access",
-    }.issubset(set(report["summary"]["missing_families"]))
+    assert report["summary"]["missing_families"] == []
+    assert report["summary"]["direct_drive_transmission_audited_joints"] == 27
+    assert report["summary"]["wiring_service_access_corridors"] == 26
 
     families = {record["family"]: record for record in report["component_families"]}
     assert families["motor_actuator"]["covered_count"] == 25
@@ -88,9 +90,16 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
     assert families["vendor_off_the_shelf"]["covered_count"] > 0
     assert families["vendor_off_the_shelf"]["covered_count"] == 67
     assert families["vendor_off_the_shelf"]["evidence_count"] == 67
-    assert families["gear_or_pulley_or_belt"]["clearance_geometry_present"] is False
+    assert families["bearing_or_ring"]["covered_count"] == 3
+    assert families["bearing_or_ring"]["clearance_geometry_present"] is True
+    assert families["fastener_or_thread"]["covered_count"] == 2
+    assert families["fastener_or_thread"]["clearance_geometry_present"] is True
+    assert families["gear_or_pulley_or_belt"]["covered_count"] == 27
+    assert families["gear_or_pulley_or_belt"]["clearance_geometry_present"] is True
     assert families["fastener_or_thread"]["accepted"] is False
-    assert "explicit geometry" in report["summary"]["acceptance_blocker"]
+    assert families["wiring_or_service_access"]["covered_count"] == 26
+    assert families["wiring_or_service_access"]["clearance_geometry_present"] is True
+    assert "bearing/ring supplier codes" in report["summary"]["acceptance_blocker"]
     assert report["vendor_envelope_summary"]["unique_vendor_envelopes"] == 67
     assert report["vendor_envelope_summary"]["duplicate_vendor_references"] == 38
     assert report["vendor_envelope_summary"]["unique_vendor_geometry_hashes"] == 46
@@ -103,9 +112,15 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
     assert report["vendor_envelope_summary"]["vendor_envelopes_with_supplier_codes"] == 8
     assert report["vendor_envelope_summary"]["unique_vendor_supplier_codes"] == 5
     assert (
-        report["vendor_envelope_summary"]["unclassified_vendor_supplier_codes"]
-        == 5
+        report["vendor_envelope_summary"]["classified_vendor_supplier_codes"] == 5
     )
+    assert (
+        report["vendor_envelope_summary"]["unclassified_vendor_supplier_codes"] == 0
+    )
+    assert report["vendor_envelope_summary"]["supplier_code_family_counts"] == {
+        "bearing_or_ring": 3,
+        "fastener_or_thread": 2,
+    }
     assert (
         report["vendor_envelope_summary"]["supplier_code_geometry_loaded_paths"]
         == 20
@@ -183,13 +198,18 @@ def test_fembot_component_constraints_name_required_hardware_families() -> None:
         "91390A117",
     }
     assert all(
-        target["classification_status"] == "supplier_code_unclassified"
+        target["classification"]["classification_required_for_acceptance"] is True
         for target in supplier_targets.values()
     )
-    assert all(
-        target["classification_required_for_acceptance"] is True
-        for target in supplier_targets.values()
+    assert supplier_targets["1600-0515-0006"]["classification"]["family"] == "bearing_or_ring"
+    assert (
+        supplier_targets["1600-0515-0006"]["classification"]["classification_status"]
+        == "geometry_inferred_from_step_assembly"
     )
+    assert supplier_targets["1602-0032-0006"]["classification"]["family"] == "bearing_or_ring"
+    assert supplier_targets["2920-0001-0006"]["classification"]["family"] == "bearing_or_ring"
+    assert supplier_targets["2806-0005-0004"]["classification"]["family"] == "fastener_or_thread"
+    assert supplier_targets["91390A117"]["classification"]["family"] == "fastener_or_thread"
     assert all(target["geometry_failed_count"] == 0 for target in supplier_targets.values())
     assert supplier_targets["1600-0515-0006"]["geometry_loaded_count"] == 4
     assert supplier_targets["1600-0515-0006"]["max_body_bbox_extent_m"] == 0.038
@@ -300,10 +320,28 @@ def test_fembot_inventory_surfaces_component_constraint_status() -> None:
         == 5
     )
     assert (
+        report["component_constraints"]["summary"]["classified_vendor_supplier_codes"]
+        == 5
+    )
+    assert (
         report["component_constraints"]["summary"][
             "unclassified_vendor_supplier_codes"
         ]
-        == 5
+        == 0
+    )
+    assert (
+        report["component_constraints"]["summary"]["supplier_code_family_counts"]
+        == {"bearing_or_ring": 3, "fastener_or_thread": 2}
+    )
+    assert (
+        report["component_constraints"]["summary"][
+            "direct_drive_transmission_audited_joints"
+        ]
+        == 27
+    )
+    assert (
+        report["component_constraints"]["summary"]["wiring_service_access_corridors"]
+        == 26
     )
     assert (
         report["component_constraints"]["summary"][
@@ -341,9 +379,7 @@ def test_fembot_inventory_surfaces_component_constraint_status() -> None:
         ]
         == 0
     )
-    assert "wiring_or_service_access" in report["component_constraints"]["summary"][
-        "missing_families"
-    ]
+    assert report["component_constraints"]["summary"]["missing_families"] == []
 
 
 def test_fembot_component_constraints_cli_writes_gateable_proof(tmp_path) -> None:

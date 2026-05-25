@@ -93,10 +93,7 @@ function catalogById(catalog: CatalogModel[]): Map<string, CatalogModel> {
 }
 
 function chatCandidates(catalog: CatalogModel[]): CatalogModel[] {
-	return catalog.filter(
-		(model) =>
-			!model.hiddenFromCatalog && model.runtimeRole !== "dflash-drafter",
-	);
+	return catalog.filter((model) => !model.hiddenFromCatalog);
 }
 
 export function classifyRecommendationPlatform(
@@ -198,10 +195,6 @@ export function assessCatalogModelFit(
 	catalog: CatalogModel[] = MODEL_CATALOG,
 	options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): HardwareFitLevel {
-	if (model.runtime?.dflash) {
-		const byId = catalogById(catalog);
-		if (!byId.has(model.runtime.dflash.drafterModelId)) return "wontfit";
-	}
 	const isMobile = classifyRecommendationPlatform(hardware) === "mobile";
 	const memGb = isMobile ? hardware.totalRamGb : effectiveMemoryGb(hardware);
 	// Single source of truth for the RAM floor + fits-vs-tight cutoff:

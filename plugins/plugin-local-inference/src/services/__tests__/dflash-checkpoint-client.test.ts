@@ -9,7 +9,7 @@ import {
 	CheckpointClient,
 	type CheckpointFetch,
 	CheckpointHttpError,
-} from "../dflash-checkpoint-client";
+} from "../checkpoint-client";
 
 interface RecordedRequest {
 	url: string;

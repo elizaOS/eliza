@@ -33,7 +33,7 @@ import {
 	type RamFitOptions,
 } from "./ram-budget";
 import { recommendForFirstRun } from "./recommendation";
-import { listInstalledModels, touchElizaModel } from "./registry";
+import { touchElizaModel } from "./registry";
 import type {
 	ActiveModelState,
 	CatalogModel,
@@ -211,8 +211,8 @@ export interface LocalInferenceLoader {
 		temperature?: number;
 		/**
 		 * Optional `promptCacheKey` from the runtime cache plan. Loaders
-		 * that implement prefix caching (out-of-process llama-server,
-		 * in-process node-llama-cpp session pool) use this to pin
+		 * that implement prefix caching (the in-process llama.cpp FFI slot
+		 * pool or node-llama-cpp session pool) use this to pin
 		 * subsequent calls with the same key to the same KV cache slot.
 		 * Loaders without prefix caching can ignore the field.
 		 */
@@ -234,8 +234,8 @@ export interface LocalInferenceLoader {
 
 /**
  * Per-load override fields the caller can set. Subset of `LocalInferenceLoadArgs`
- * minus `modelPath` (which the coordinator owns) and minus dflash-only
- * fields (which the catalog `runtime.dflash` block owns end-to-end). The
+ * minus `modelPath` (which the coordinator owns) and minus speculative
+ * fields (which the catalog `runtime.mtp` block owns end-to-end). The
  * route layer accepts this shape on `POST /api/local-inference/active`.
  */
 export interface LocalInferenceLoadOverrides {
@@ -507,27 +507,16 @@ export async function resolveLocalInferenceLoadArgs(
 		args.mmprojPath = mmprojPath;
 	}
 
-	const dflash = runtime?.dflash;
-	if (dflash) {
-		// DFlash launch defaults — per-load overrides for contextSize still win
-		// (and are layered in by `mergeOverrides` below). Do NOT replace the
-		// catalog `contextLength` here for the chat-side context; that belongs
-		// to `applyCatalogDefaults`. The dflash block owns the spec-decode
-		// launch settings only.
-		if (args.contextSize === undefined) args.contextSize = dflash.contextSize;
+	const mtp = runtime?.mtp;
+	if (mtp) {
+		// Native MTP launch defaults. Do NOT replace catalog `contextLength`
+		// here; `applyCatalogDefaults` owns the chat-side context. The MTP
+		// block only owns the speculative draft window.
 		args.useGpu = true;
-		args.draftContextSize = dflash.draftContextSize;
-		args.draftMin = dflash.draftMin;
-		args.draftMax = dflash.draftMax;
-		args.speculativeSamples = dflash.draftMax;
+		args.draftMin = mtp.draftMin;
+		args.draftMax = mtp.draftMax;
+		args.speculativeSamples = mtp.draftMax;
 		args.mobileSpeculative = true;
-		args.disableThinking = dflash.disableThinking;
-
-		const installedModels = await listInstalledModels();
-		const drafter = installedModels.find(
-			(model) => model.id === dflash.drafterModelId,
-		);
-		if (drafter) args.draftModelPath = drafter.path;
 	}
 
 	mergeOverrides(args, overrides);

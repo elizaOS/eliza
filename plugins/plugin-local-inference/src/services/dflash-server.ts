@@ -54,6 +54,7 @@ import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
 	LocalInferenceBackend,
+	LocalRuntimeLoadConfig,
 } from "./backend";
 import { gpuLayersForKvOffload } from "./backend";
 import {
@@ -2898,7 +2899,7 @@ function resolveKeepAliveIntervalMs(): number {
 }
 
 export class DflashLlamaServer implements LocalInferenceBackend {
-	readonly id = "llama-server" as const;
+	readonly id = "llama-cpp" as const;
 
 	private child: ChildProcess | null = null;
 	private baseUrl: string | null = null;
@@ -2990,8 +2991,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		return this.loadedPlan?.targetModelPath ?? null;
 	}
 
-	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
-		return this.loadedRuntimeConfig;
+	currentRuntimeLoadConfig(): LocalRuntimeLoadConfig | null {
+		const runtime = this.loadedRuntimeConfig;
+		if (!runtime) return null;
+		return {
+			modelId: null,
+			modelPath: this.loadedPlan?.targetModelPath ?? null,
+			contextSize: runtime.contextSize,
+			cacheTypeK: runtime.cacheTypeK,
+			cacheTypeV: runtime.cacheTypeV,
+			gpuLayers: runtime.gpuLayers,
+			parallel: runtime.parallel,
+			binaryPath: runtime.binaryPath,
+			backend: this.id,
+			mtp:
+				this.loadedPlan && !this.loadedPlan.disableDrafter
+					? {
+							specType: "draft-mtp",
+							draftMin: this.loadedPlan.draftMin,
+							draftMax: this.loadedPlan.draftMax,
+						}
+					: null,
+		};
 	}
 
 	/**
@@ -3247,91 +3268,28 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		const dflash = catalog?.runtime?.dflash;
 		const optimizations = catalog?.runtime?.optimizations ?? null;
 
-		if (!dflash) {
-			throw new Error(
-				`[dflash] llama-server backend currently requires a catalog 'runtime.dflash' block. Model '${plan.modelId ?? plan.modelPath}' has none — declare DFlash or route this model through capacitor-llama.`,
-			);
-		}
-
 		// The drafter is resolved from the registry by the engine before this
 		// dispatcher call, but the engine no longer pre-builds the dflash plan,
 		// so we resolve it here. Inline import avoids the engine ↔ dflash-server
 		// import cycle.
 		const { listInstalledModels } = await import("./registry");
 		const installed = await listInstalledModels();
+		let synthesizedTarget: InstalledModel | null = null;
+		if (catalog) {
+			synthesizedTarget = await synthesizeInstalledTarget(plan, catalog);
+		}
 		const target =
 			installed.find((m) => m.path === plan.modelPath) ??
 			installed.find((m) => m.id === plan.modelId) ??
-			(await synthesizeInstalledTarget(plan, catalog));
+			synthesizedTarget;
 		if (!target) {
 			throw new Error(
 				`[dflash] No installed model matched plan path/id (${plan.modelPath}; ${plan.modelId ?? "no id"}).`,
 			);
 		}
-		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
-		const drafterBlockReason = drafter
-			? await getDflashDrafterBlockReason(drafter)
-			: null;
-		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
-		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
-		// — not a usable draft model — and some bundles ship no drafter at all.
-		// Rather than hard-fail and leave the tier unusable, fall back to the
-		// already-wired drafter-less path (the same `disableDrafter` mode
-		// `restartWithoutDrafter()` uses for memory eviction): the server runs
-		// target-only, no `-md`. Loud warning because this departs from the
-		// always-on DFlash contract.
-		const catalogDrafterDisabledReason =
-			typeof dflash.disabledReason === "string"
-				? dflash.disabledReason.trim()
-				: "";
-		const drafterUnavailable =
-			catalogDrafterDisabledReason.length > 0 ||
-			!drafter ||
-			drafterBlockReason !== null;
-		const disabledDrafterReason =
-			catalogDrafterDisabledReason.length > 0
-				? catalogDrafterDisabledReason
-				: !drafter
-					? `companion drafter '${dflash.drafterModelId}' is not installed`
-					: drafterBlockReason
-						? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
-						: undefined;
-		if (drafterUnavailable) {
-			console.warn(
-				catalogDrafterDisabledReason.length > 0
-					? `[dflash] ⚠️  ${target.displayName}: ${catalogDrafterDisabledReason} — loading target-only (speculative decoding OFF).`
-					: `[dflash] ⚠️  ${target.displayName}: companion drafter ` +
-							`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
-							`(speculative decoding OFF). Install a valid drafter to restore the ` +
-							`always-on DFlash path.`,
-			);
-		}
 
-		// Per-load overrides win over catalog defaults. The active-model
-		// coordinator merges these in before the dispatcher is called; this
-		// keeps the same precedence on the llama-server path so a benchmark
-		// run that asks for `contextSize: 131072` actually starts the server
-		// with `--ctx-size 131072` instead of the smaller catalog default.
 		const overrides = plan.overrides;
-		const contextSize =
-			typeof overrides?.contextSize === "number"
-				? overrides.contextSize
-				: dflash.contextSize;
-		const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
-		const kvOffload = resolveDflashKvOffload(overrides);
-
-		// Catalog KV-cache types (`runtime.kvCache.typeK/typeV` — `qjl1_256` K +
-		// `q4_polar` V for the >8k Eliza-1 tiers, per inference/AGENTS.md §3).
-		// A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
-		// `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
-		// and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
 		const kvCache = catalog?.runtime?.kvCache;
-		// `ELIZA_LOCAL_ALLOW_STOCK_KV=1` (reduced-optimization local mode) means
-		// the binary may not advertise the custom KV-cache kernels (qjl1_256 /
-		// q4_polar). The backend coordinator strips per-load cacheType *overrides*,
-		// but the catalog's `runtime.kvCache.typeK/V` would still leak through here
-		// and trip `assertCacheTypeSupportedOnBackend` in start(). Drop the catalog
-		// custom KV types too so the server falls back to stock f16 KV.
 		const allowStockKv =
 			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV") ||
 			readBool("ELIZA_LOCAL_ALLOW_STOCK_KV");
@@ -3345,6 +3303,96 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			: typeof overrides?.cacheTypeV === "string"
 				? overrides.cacheTypeV
 				: kvCache?.typeV;
+
+		if (!dflash) {
+			const contextSize =
+				typeof overrides?.contextSize === "number"
+					? overrides.contextSize
+					: (catalog?.contextLength ?? 8192);
+			const kvSpillPlan = await resolveKvSpillPlan({
+				contextSize,
+				catalog,
+				installed: target,
+				voiceEnabled: catalog ? isEliza1TierCatalogId(catalog.id) : false,
+			});
+
+			await this.start(
+				{
+					targetModelPath: target.path,
+					drafterModelPath: target.path,
+					disableDrafter: true,
+					disabledDrafterReason:
+						"catalog does not declare runtime.dflash; launching target-only",
+					contextSize,
+					draftContextSize: 0,
+					draftMin: 0,
+					draftMax: 0,
+					gpuLayers: resolveDflashGpuLayers(overrides, "auto"),
+					draftGpuLayers: 0,
+					kvOffload: resolveDflashKvOffload(overrides) ?? undefined,
+					cacheTypeK,
+					cacheTypeV,
+					disableThinking: false,
+					kvSpillPlan,
+					params: catalog?.params,
+					mmprojPath: overrides?.mmprojPath,
+					bundleId: catalog?.id,
+				},
+				optimizations,
+			);
+			return;
+		}
+
+		const drafter = installed.find((m) => m.id === dflash.drafterModelId);
+		const drafterBlockReason = drafter
+			? await getDflashDrafterBlockReason(drafter)
+			: null;
+		// DFlash is normally always-on (AGENTS.md §4), but staged bundles
+		// ("weights-staged.*") ship a drafter that is a byte-copy of the target
+		// — not a usable draft model — and some bundles ship no drafter at all.
+		// Rather than hard-fail and leave the tier unusable, fall back to the
+		// already-wired drafter-less path (the same `disableDrafter` mode
+		// `restartWithoutDrafter()` uses for memory eviction): the server runs
+		// target-only, no `-md`. Loud warning because this departs from the
+		// always-on DFlash contract.
+		const drafterUnavailable = !drafter || drafterBlockReason !== null;
+		const disabledDrafterReason = !drafter
+			? `companion drafter '${dflash.drafterModelId}' is not installed`
+			: drafterBlockReason
+				? `companion drafter '${dflash.drafterModelId}' is not eligible for DFlash: ${drafterBlockReason}`
+				: undefined;
+		if (drafterUnavailable) {
+			console.warn(
+				`[dflash] ⚠️  ${target.displayName}: companion drafter ` +
+					`'${dflash.drafterModelId}' ${drafterBlockReason ? `is not eligible for DFlash: ${drafterBlockReason}` : "is not installed"} — loading target-only ` +
+					`(speculative decoding OFF). Install a valid drafter to restore the ` +
+					`always-on DFlash path.`,
+			);
+		}
+
+		// Per-load overrides win over catalog defaults. The active-model
+		// coordinator merges these in before the dispatcher is called; this
+		// keeps the same precedence on the llama-server path so a benchmark
+		// run that asks for `contextSize: 131072` actually starts the server
+		// with `--ctx-size 131072` instead of the smaller catalog default.
+		const contextSize =
+			typeof overrides?.contextSize === "number"
+				? overrides.contextSize
+				: dflash.contextSize;
+		const gpuLayers = resolveDflashGpuLayers(overrides, dflash.gpuLayers);
+		const kvOffload = resolveDflashKvOffload(overrides);
+
+		// Catalog KV-cache types (`runtime.kvCache.typeK/typeV` — `qjl1_256` K +
+		// `q4_polar` V for the >8k Eliza-1 tiers, per inference/AGENTS.md §3).
+		// A per-load override (`overrides.cacheTypeK/V`) wins; `start()` then runs
+		// `assertCacheTypeSupportedOnBackend` on whichever value it ends up with,
+		// and the `ELIZA_DFLASH_CACHE_TYPE_K/_V` env vars override even that.
+		// `ELIZA_LOCAL_ALLOW_STOCK_KV=1` (reduced-optimization local mode) means
+		// the binary may not advertise the custom KV-cache kernels (qjl1_256 /
+		// q4_polar). The backend coordinator strips per-load cacheType *overrides*,
+		// but the catalog's `runtime.kvCache.typeK/V` would still leak through here
+		// and trip `assertCacheTypeSupportedOnBackend` in start(). Drop the catalog
+		// custom KV types too so the server falls back to stock f16 KV.
 
 		// KV-cache spill for context > 64k (AGENTS.md §3 item 7). Every Eliza-1
 		// bundle ships the voice loop, so a tier-id match means the tighter voice

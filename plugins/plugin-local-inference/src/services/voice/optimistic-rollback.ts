@@ -33,7 +33,7 @@
 import type {
 	CheckpointClient,
 	CheckpointHandle,
-} from "../dflash-checkpoint-client";
+} from "../checkpoint-client";
 import type { VadEvent, VadEventSource } from "./types";
 
 /**

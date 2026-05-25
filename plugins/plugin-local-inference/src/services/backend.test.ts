@@ -12,7 +12,12 @@ import type { CatalogModel } from "./types";
 const ORIGINAL_ENV = { ...process.env };
 
 afterEach(() => {
-	process.env = { ...ORIGINAL_ENV };
+	for (const key of Object.keys(process.env)) {
+		if (!(key in ORIGINAL_ENV)) delete process.env[key];
+	}
+	for (const [key, value] of Object.entries(ORIGINAL_ENV)) {
+		process.env[key] = value;
+	}
 });
 
 const BASE_CATALOG: CatalogModel = {
@@ -36,6 +41,16 @@ function withRuntime(
 	return { ...base, runtime };
 }
 
+const OPTIMIZED_CATALOG = withRuntime(BASE_CATALOG, {
+	preferredBackend: "llama-cpp",
+	mtp: {
+		specType: "draft-mtp",
+		draftMin: 1,
+		draftMax: 4,
+		gpuLayers: "auto",
+	},
+});
+
 describe("readBackendOverride", () => {
 	it("returns 'auto' when unset", () => {
 		delete process.env.ELIZA_LOCAL_BACKEND;
@@ -50,8 +65,10 @@ describe("readBackendOverride", () => {
 	it("respects explicit overrides", () => {
 		process.env.ELIZA_LOCAL_BACKEND = "capacitor-llama";
 		expect(readBackendOverride()).toBe("capacitor-llama");
+		process.env.ELIZA_LOCAL_BACKEND = "llama-cpp";
+		expect(readBackendOverride()).toBe("llama-cpp");
 		process.env.ELIZA_LOCAL_BACKEND = "llama-server";
-		expect(readBackendOverride()).toBe("llama-server");
+		expect(readBackendOverride()).toBe("auto");
 	});
 });
 
@@ -65,18 +82,29 @@ describe("gpuLayersForKvOffload", () => {
 });
 
 describe("decideBackend", () => {
-	it("defaults to the custom llama-server when available", () => {
+	it("defaults to optimized llama.cpp when available", () => {
+		const decision = decideBackend({
+			override: "auto",
+			catalog: OPTIMIZED_CATALOG,
+			llamaServerAvailable: true,
+			dflashRequired: false,
+		});
+		expect(decision.backend).toBe("llama-cpp");
+		expect(decision.reason).toBe("preferred-backend");
+	});
+
+	it("defaults to capacitor-llama for plain catalog models", () => {
 		const decision = decideBackend({
 			override: "auto",
 			catalog: BASE_CATALOG,
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("capacitor-llama");
 		expect(decision.reason).toBe("default");
 	});
 
-	it("routes to llama-server when a kernel is required", () => {
+	it("routes to optimized llama.cpp when a kernel is required", () => {
 		const catalog = withRuntime(BASE_CATALOG, {
 			optimizations: { requiresKernel: ["dflash"] },
 		});
@@ -86,19 +114,19 @@ describe("decideBackend", () => {
 			llamaServerAvailable: false,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("llama-cpp");
 		expect(decision.reason).toBe("kernel-required");
 		expect(decision.kernels).toEqual(["dflash"]);
 	});
 
 	it("env override wins over default", () => {
 		const decision = decideBackend({
-			override: "llama-server",
+			override: "llama-cpp",
 			catalog: BASE_CATALOG,
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("llama-cpp");
 		expect(decision.reason).toBe("env-override");
 	});
 
@@ -113,13 +141,13 @@ describe("decideBackend", () => {
 			dflashRequired: false,
 		});
 		// The user can't ask the in-process binding to run turbo3.
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("llama-cpp");
 		expect(decision.reason).toBe("kernel-required");
 	});
 
-	it("respects preferredBackend=llama-server when binary available", () => {
+	it("respects preferredBackend=llama-cpp when runtime available", () => {
 		const catalog = withRuntime(BASE_CATALOG, {
-			preferredBackend: "llama-server",
+			preferredBackend: "llama-cpp",
 		});
 		const decision = decideBackend({
 			override: "auto",
@@ -127,13 +155,13 @@ describe("decideBackend", () => {
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("llama-cpp");
 		expect(decision.reason).toBe("preferred-backend");
 	});
 
-	it("falls back to capacitor-llama when preferredBackend=llama-server but binary missing and DFlash not required", () => {
+	it("falls back to capacitor-llama when preferredBackend=llama-cpp but runtime missing and DFlash not required", () => {
 		const catalog = withRuntime(BASE_CATALOG, {
-			preferredBackend: "llama-server",
+			preferredBackend: "llama-cpp",
 		});
 		const decision = decideBackend({
 			override: "auto",
@@ -145,9 +173,9 @@ describe("decideBackend", () => {
 		expect(decision.reason).toBe("default");
 	});
 
-	it("forces llama-server when DFlash is required and configured, even if binary probe is false", () => {
+	it("forces optimized llama.cpp when DFlash is required and configured, even if runtime probe is false", () => {
 		const catalog = withRuntime(BASE_CATALOG, {
-			preferredBackend: "llama-server",
+			preferredBackend: "llama-cpp",
 			dflash: {
 				drafterModelId: "x",
 				specType: "dflash",
@@ -166,18 +194,18 @@ describe("decideBackend", () => {
 			llamaServerAvailable: false,
 			dflashRequired: true,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("llama-cpp");
 		expect(decision.reason).toBe("dflash-required");
 	});
 
-	it("returns default when no catalog entry is supplied", () => {
+	it("returns capacitor-llama default when no catalog entry is supplied", () => {
 		const decision = decideBackend({
 			override: "auto",
 			catalog: undefined,
 			llamaServerAvailable: true,
 			dflashRequired: false,
 		});
-		expect(decision.backend).toBe("llama-server");
+		expect(decision.backend).toBe("capacitor-llama");
 		expect(decision.reason).toBe("default");
 	});
 });
@@ -188,7 +216,7 @@ class FakeBackend implements LocalInferenceBackend {
 	loadCalls: string[] = [];
 	plans: Array<{ modelPath: string; overrides?: unknown }> = [];
 
-	constructor(public readonly id: "capacitor-llama" | "llama-server") {}
+	constructor(public readonly id: "capacitor-llama" | "llama-cpp") {}
 
 	async available(): Promise<boolean> {
 		return true;
@@ -219,54 +247,68 @@ class FakeBackend implements LocalInferenceBackend {
 }
 
 describe("BackendDispatcher", () => {
-	it("loads custom llama-server by default", async () => {
+	it("loads optimized llama.cpp by default", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
 			() => true,
 			() => false,
+			undefined,
+			ffi,
+			() => true,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(d.activeBackendId()).toBe("llama-server");
+		await d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG });
+		expect(d.activeBackendId()).toBe("llama-cpp");
 		expect(node.loaded).toBe(false);
-		expect(server.loaded).toBe(true);
-		expect(await d.generate({ prompt: "hi" })).toBe("llama-server:reply");
+		expect(server.loaded).toBe(false);
+		expect(ffi.loaded).toBe(true);
+		expect(await d.generate({ prompt: "hi" })).toBe("llama-cpp:reply");
 	});
 
 	it("switches backends when the decision differs and unloads the previous", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
 			() => true,
 			() => false,
+			undefined,
+			ffi,
+			() => true,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(d.activeBackendId()).toBe("llama-server");
+		await d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG });
+		expect(d.activeBackendId()).toBe("llama-cpp");
 
 		const kernelCatalog = withRuntime(BASE_CATALOG, {
-			optimizations: { requiresKernel: ["dflash"] },
+			optimizations: { requiresKernel: ["turbo3"] },
 		});
 		await d.load({ modelPath: "/m2.gguf", catalog: kernelCatalog });
-		expect(d.activeBackendId()).toBe("llama-server");
+		expect(d.activeBackendId()).toBe("llama-cpp");
 		expect(node.unloads).toBe(0);
-		expect(server.loaded).toBe(true);
+		expect(server.loaded).toBe(false);
+		expect(ffi.loaded).toBe(true);
 	});
 
 	it("passes multimodal projector overrides through to the selected backend", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
 			() => true,
 			() => false,
+			undefined,
+			ffi,
+			() => true,
 		);
 		const catalog = withRuntime(BASE_CATALOG, {
-			optimizations: { requiresKernel: ["dflash"] },
+			optimizations: { requiresKernel: ["turbo3"] },
 		});
 
 		await d.load({
@@ -275,7 +317,7 @@ describe("BackendDispatcher", () => {
 			overrides: { mmprojPath: "/bundle/vision/mmproj.gguf" },
 		});
 
-		expect(server.plans[0]?.overrides).toMatchObject({
+		expect(ffi.plans[0]?.overrides).toMatchObject({
 			mmprojPath: "/bundle/vision/mmproj.gguf",
 		});
 	});
@@ -283,7 +325,7 @@ describe("BackendDispatcher", () => {
 	it("throws on generate before load", async () => {
 		const d = new BackendDispatcher(
 			new FakeBackend("capacitor-llama"),
-			new FakeBackend("llama-server"),
+			new FakeBackend("llama-cpp"),
 			() => true,
 			() => false,
 		);
@@ -292,10 +334,10 @@ describe("BackendDispatcher", () => {
 		);
 	});
 
-	it("ignores ffiStreaming when probeFfiActive is omitted", async () => {
+	it("rejects optimized llama.cpp loads when probeFfiActive is omitted", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
-		const ffi = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
@@ -305,15 +347,17 @@ describe("BackendDispatcher", () => {
 			ffi,
 			// probeFfiActive omitted
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(server.loaded).toBe(true);
+		await expect(
+			d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG }),
+		).rejects.toThrow(/in-process FFI backend/);
+		expect(server.loaded).toBe(false);
 		expect(ffi.loaded).toBe(false);
 	});
 
-	it("routes the llama-server decision to ffi backend when probe is true", async () => {
+	it("routes the optimized llama.cpp decision to ffi backend when probe is true", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
-		const ffi = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
@@ -323,16 +367,16 @@ describe("BackendDispatcher", () => {
 			ffi,
 			() => true,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		await d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG });
 		expect(ffi.loaded).toBe(true);
 		expect(server.loaded).toBe(false);
-		expect(d.activeBackendId()).toBe("llama-server");
+		expect(d.activeBackendId()).toBe("llama-cpp");
 	});
 
-	it("keeps subprocess when probe is false even with ffi backend supplied", async () => {
+	it("rejects optimized llama.cpp loads when the FFI probe is false", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
-		const ffi = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
@@ -342,21 +386,23 @@ describe("BackendDispatcher", () => {
 			ffi,
 			() => false,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(server.loaded).toBe(true);
+		await expect(
+			d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG }),
+		).rejects.toThrow(/in-process FFI backend/);
+		expect(server.loaded).toBe(false);
 		expect(ffi.loaded).toBe(false);
 	});
 
 	it("does not route to ffi when decision is capacitor-llama", async () => {
 		// Force capacitor-llama via env override; ffi probe MUST not override
-		// (selectBackend is a TRANSPORT decision for the llama-server branch
+		// (selectBackend is a transport decision for the optimized llama.cpp branch
 		// only — it does not apply to the capacitor-llama branch).
 		const prev = process.env.ELIZA_LOCAL_BACKEND;
 		process.env.ELIZA_LOCAL_BACKEND = "capacitor-llama";
 		try {
 			const node = new FakeBackend("capacitor-llama");
-			const server = new FakeBackend("llama-server");
-			const ffi = new FakeBackend("llama-server");
+			const server = new FakeBackend("llama-cpp");
+			const ffi = new FakeBackend("llama-cpp");
 			const d = new BackendDispatcher(
 				node,
 				server,
@@ -375,28 +421,25 @@ describe("BackendDispatcher", () => {
 		}
 	});
 
-	it("falls through to subprocess when no ffi backend is wired", async () => {
-		// The dispatcher's behavior when `ffiStreaming`/`probeFfiActive` are
-		// omitted (e.g. mobile bootstrap that only passes the 4-arg form):
-		// every `decideBackend() === "llama-server"` load goes to the
-		// subprocess. No throw, no env-var opt-in required.
+	it("throws when no ffi backend is wired", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
 			() => true,
 			() => false,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
-		expect(server.loaded).toBe(true);
+		await expect(
+			d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG }),
+		).rejects.toThrow(/in-process FFI backend/);
+		expect(server.loaded).toBe(false);
 	});
 
-	it("unloads ffi backend when switching to subprocess on a later load", async () => {
+	it("unloads ffi backend when switching to capacitor-llama on a later load", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
-		const ffi = new FakeBackend("llama-server");
-		let ffiActive = true;
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
@@ -404,19 +447,26 @@ describe("BackendDispatcher", () => {
 			() => false,
 			undefined,
 			ffi,
-			() => ffiActive,
+			() => true,
 		);
-		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		await d.load({ modelPath: "/m.gguf", catalog: OPTIMIZED_CATALOG });
 		expect(ffi.loaded).toBe(true);
-		ffiActive = false;
-		await d.load({ modelPath: "/m2.gguf", catalog: BASE_CATALOG });
-		expect(ffi.unloads).toBe(1);
-		expect(server.loaded).toBe(true);
+		const prev = process.env.ELIZA_LOCAL_BACKEND;
+		process.env.ELIZA_LOCAL_BACKEND = "capacitor-llama";
+		try {
+			await d.load({ modelPath: "/m2.gguf", catalog: BASE_CATALOG });
+			expect(ffi.unloads).toBe(1);
+			expect(node.loaded).toBe(true);
+			expect(server.loaded).toBe(false);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_LOCAL_BACKEND;
+			else process.env.ELIZA_LOCAL_BACKEND = prev;
+		}
 	});
 });
 
 describe("LocalInferenceEngine backend fallback", () => {
-	it("does not fall back when llama-server was selected for required kernels", async () => {
+	it("does not fall back when optimized llama.cpp was selected for required kernels", async () => {
 		const engine = new LocalInferenceEngine();
 		const internals = engine as unknown as {
 			dispatcher: {
@@ -430,7 +480,7 @@ describe("LocalInferenceEngine backend fallback", () => {
 			throw new Error("missing turbo3 kernel");
 		};
 		internals.dispatcher.decide = () => ({
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "kernel-required",
 			kernels: ["turbo3"],
 			unsatisfiedKernels: ["turbo3"],
@@ -445,7 +495,7 @@ describe("LocalInferenceEngine backend fallback", () => {
 		expect(nodeLoads).toBe(0);
 	});
 
-	it("still falls back when llama-server was only a soft preference", async () => {
+	it("still falls back when optimized llama.cpp was only a soft preference", async () => {
 		const engine = new LocalInferenceEngine();
 		const internals = engine as unknown as {
 			dispatcher: {
@@ -459,7 +509,7 @@ describe("LocalInferenceEngine backend fallback", () => {
 			throw new Error("llama-server unavailable");
 		};
 		internals.dispatcher.decide = () => ({
-			backend: "llama-server",
+			backend: "llama-cpp",
 			reason: "preferred-backend",
 			kernels: [],
 		});
@@ -518,7 +568,7 @@ describe("decideBackend kernel-availability probe", () => {
 
 	it("rejects load when required kernels are unsatisfied", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
@@ -538,18 +588,23 @@ describe("decideBackend kernel-availability probe", () => {
 
 	it("loads cleanly when probed kernels match the requirement", async () => {
 		const node = new FakeBackend("capacitor-llama");
-		const server = new FakeBackend("llama-server");
+		const server = new FakeBackend("llama-cpp");
+		const ffi = new FakeBackend("llama-cpp");
 		const d = new BackendDispatcher(
 			node,
 			server,
 			() => true,
 			() => false,
 			() => ({ dflash: true, turbo3: true }),
+			ffi,
+			() => true,
 		);
 		const catalog = withRuntime(BASE_CATALOG, {
-			optimizations: { requiresKernel: ["dflash"] },
+			optimizations: { requiresKernel: ["turbo3"] },
 		});
 		await d.load({ modelPath: "/m.gguf", catalog });
-		expect(d.activeBackendId()).toBe("llama-server");
+		expect(d.activeBackendId()).toBe("llama-cpp");
+		expect(ffi.loaded).toBe(true);
+		expect(server.loaded).toBe(false);
 	});
 });

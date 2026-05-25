@@ -15,10 +15,10 @@ from eliza_robot.asimov_1.constants import (
     ASIMOV1_MECHANICAL_ROOT,
     ASIMOV1_SOURCE_MESH_DIR,
 )
-from eliza_robot.asimov_1.fembot_assembly import build_fembot_assembly_proof
 from eliza_robot.asimov_1.fembot_all_cad_readiness import (
     build_fembot_all_cad_readiness_proof,
 )
+from eliza_robot.asimov_1.fembot_assembly import build_fembot_assembly_proof
 from eliza_robot.asimov_1.fembot_body_matching import build_fembot_body_matching_proof
 from eliza_robot.asimov_1.fembot_cad_toolchain import build_fembot_cad_toolchain_readiness_proof
 from eliza_robot.asimov_1.fembot_clearance_projection import build_fembot_clearance_projection_proof
@@ -294,6 +294,7 @@ def _missing_group_proofs(
             "structural_sanity",
             "visual_review",
             "visual_motion_media",
+            "all_cad_no_stl_parametric",
         }
     )
     if not collision_sweep_accepted:
@@ -526,6 +527,11 @@ def collect_fembot_inventory(
         records_dict,
         generated_cad_report=generated_cad,
     )
+    if all_cad_readiness.get("accepted"):
+        for record in records_dict:
+            record["missing_proofs"] = [
+                proof for proof in record["missing_proofs"] if proof != "all_cad_no_stl_parametric"
+            ]
     assembly = build_fembot_assembly_proof(
         records_dict,
         mesh_dir=mesh_dir,

@@ -84,7 +84,7 @@ describe("LocalInferenceService activation prewarm", () => {
 		);
 		vi.spyOn(localInferenceEngine, "hasLoadedModel").mockReturnValue(true);
 		vi.spyOn(localInferenceEngine, "activeBackendId").mockReturnValue(
-			"llama-server",
+			"llama-cpp",
 		);
 
 		await expect(service.setActive(runtime, installed.id)).resolves.toEqual(

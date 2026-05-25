@@ -77,8 +77,8 @@ DEFAULT_QUANT = "Q4_K_M"
 _FORK_LLAMA_CPP = _REPO_ROOT / "packages" / "inference" / "llama.cpp"
 
 _VENDOR_HINT = (
-    "The llama.cpp fork submodule should already be checked out by `bun "
-    "install` (scripts/ensure-llama-cpp-submodule.mjs). If it's missing:\n"
+    "The llama.cpp fork submodule should already be checked out. If it's "
+    "missing:\n"
     "  git submodule update --init packages/inference/llama.cpp\n"
     "Then build the llama-quantize binary from it:\n"
     "  cmake -S packages/inference/llama.cpp -B packages/inference/llama.cpp/build \\\n"

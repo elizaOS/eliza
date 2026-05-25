@@ -9,7 +9,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import type { CheckpointFetch } from "../../dflash-checkpoint-client";
+import type { CheckpointFetch } from "../../checkpoint-client";
 import {
 	CheckpointHandleInvalidError,
 	CheckpointManager,

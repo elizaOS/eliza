@@ -1,13 +1,9 @@
 /**
  * In-process streaming-LLM runner.
  *
- * Mirror of the streaming surface that `DflashLlamaServer.generateWithUsage()`
- * exposes (`dflash-server.ts`), but routed through the FFI streaming-LLM
- * ABI declared in `ffi-streaming-llm.h` instead of an HTTP request to a
- * child-process `llama-server`. The token-by-token loop hands `onTextChunk`
- * the same chunks the SSE path produced, and the speculative drafter is
- * driven by the v2 verifier-callback registration so callers don't see a
- * different event stream when they swap backends.
+ * FFI streaming-LLM ABI declared in `ffi-streaming-llm.h`. The
+ * token-by-token loop hands `onTextChunk` accepted chunks and surfaces
+ * verifier events from native MTP.
  *
  * This file deliberately does not own the FFI context or the binding
  * itself. It takes a narrow `LlmStreamingBinding` (see
@@ -19,10 +15,9 @@
  * sessions (one per pinned slot); the runner serialises with
  * `slotInFlight`.
  *
- * Single-flight: same lock pattern as the HTTP server (`slotInFlight`
- * map keyed by slot id, slot id `-1` unlocked). Two concurrent generates
+ * Single-flight: lock map keyed by slot id, slot id `-1` unlocked. Two concurrent generates
  * against the same pinned slot would interleave KV cache state, so the
- * runner serializes them at the JS layer just like the HTTP path does.
+ * runner serializes them at the JS layer.
  */
 
 import { performance } from "node:perf_hooks";
@@ -48,13 +43,13 @@ export interface FfiStreamingGenerateArgs {
 	repeatPenalty: number;
 	draftMin: number;
 	draftMax: number;
-	/** Absolute path of the drafter GGUF; null disables speculative decoding. */
-	dflashDrafterPath: string | null;
+	/** Reserved for separate draft-model speculation; null for Eliza-1 MTP. */
+	draftModelPath: string | null;
 	/** Cancellation signal — fires `llmStreamCancel` on the active session. */
 	signal?: AbortSignal;
-	/** Per-chunk text callback, same shape as `DflashGenerateArgs.onTextChunk`. */
+	/** Per-chunk text callback. */
 	onTextChunk?: (chunk: string) => void | Promise<void>;
-	/** Speculative accept/reject events, same shape as the HTTP path. */
+	/** Speculative accept/reject events from MTP verification. */
 	onVerifierEvent?: (event: VerifierStreamEvent) => void | Promise<void>;
 }
 
@@ -71,10 +66,7 @@ const DEFAULT_MAX_TOKENS_PER_STEP = 32;
 const DEFAULT_MAX_TEXT_BYTES = 1024;
 
 /**
- * Backend used by `aosp-dflash-adapter.ts` and the desktop `auto` route
- * when `selectBackend()` picks `"ffi-streaming"`. The HTTP path stays in
- * `dflash-server.ts` unchanged; this is a parallel runner, not a
- * replacement.
+ * Backend used by the mobile and desktop FFI routes.
  */
 export class FfiStreamingRunner {
 	private readonly slotInFlight = new Map<number, Promise<void>>();
@@ -91,7 +83,7 @@ export class FfiStreamingRunner {
 	) {}
 
 	/**
-	 * Run one generation. Mirrors `DflashLlamaServer.generateWithUsage()`
+	 * Run one generation. Mirrors `MtpLlamaServer.generateWithUsage()`
 	 * — same single-flight rule, same callback shape, same result block
 	 * minus the metrics scrape (FFI does not have a `/metrics` endpoint).
 	 */
@@ -183,7 +175,7 @@ export class FfiStreamingRunner {
 	 * Save the streaming slot KV state to disk. Best called between turns
 	 * — calling mid-stream is racy and the FFI side is allowed to refuse.
 	 * Surfaced here so the conversation registry can persist between
-	 * mobile backgrounds the same way `DflashLlamaServer.persistSlot` does.
+	 * mobile backgrounds the same way `MtpLlamaServer.persistSlot` does.
 	 */
 	saveSlot(stream: LlmStreamHandle, filename: string): void {
 		if (this.ffi.llmStreamSaveSlot === undefined) {
@@ -266,7 +258,7 @@ export class FfiStreamingRunner {
 				promptCacheKey: args.cacheKey ?? null,
 				draftMin: args.draftMin,
 				draftMax: args.draftMax,
-				dflashDrafterPath: args.dflashDrafterPath,
+				draftModelPath: args.draftModelPath,
 			},
 		});
 

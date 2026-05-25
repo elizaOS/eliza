@@ -5,18 +5,15 @@
  *   - `POST /slots/<id>/restore?filename=<name>`  — reload a snapshot
  *   - `DELETE /slots/<id>`                        — cancel in-flight decode
  *
- * Combined with the `--ctx-checkpoints` / `--ctx-checkpoint-interval` flags
- * (wired into `dflash-server.ts`), this is the substrate for the voice
- * optimistic-rollback path: `OptimisticRollbackController` snapshots a slot
- * on `speech-pause`, runs the drafter speculatively against the partial
- * transcript, and restores the snapshot if the user resumes within the
- * rollback window.
+ * Combined with the native runtime's context-checkpoint support, this is the
+ * substrate for the voice optimistic-rollback path:
+ * `OptimisticRollbackController` snapshots a slot on `speech-pause`, runs
+ * speculative generation against the partial transcript, and restores the
+ * snapshot if the user resumes within the rollback window.
  *
  * Upstream feature lands in `master`; our buun-llama-cpp fork hasn't merged
  * the 44-file quant-id conflict yet. The JS code paths ship today behind a
- * feature flag (`enableOptimisticRollback`, default `false`); the moment the
- * upstream merge lands the runtime probe in `dflash-server.ts` flips, the
- * flag can be turned on, and these calls become live.
+ * feature flag (`enableOptimisticRollback`, default `false`).
  */
 
 /**

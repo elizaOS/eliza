@@ -271,6 +271,86 @@ def _generated_link_extents(generated_cad_report: dict[str, Any] | None) -> dict
     return extents
 
 
+def _direct_drive_transmission_evidence(link_keepouts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for record in link_keepouts:
+        joints = record.get("joint_keepouts", [])
+        if not joints:
+            continue
+        actuators = record.get("actuator_keepouts", [])
+        for joint in joints:
+            joint_name = str(joint.get("name") or "")
+            matched_actuator = next(
+                (
+                    actuator
+                    for actuator in actuators
+                    if str(actuator.get("joint") or "") == joint_name
+                ),
+                None,
+            )
+            evidence.append(
+                {
+                    "link": str(record.get("link") or "").upper(),
+                    "joint": joint_name,
+                    "joint_type": joint.get("joint_type"),
+                    "axis": joint.get("axis"),
+                    "range_rad": joint.get("range_rad"),
+                    "armature": joint.get("armature"),
+                    "transmission_type": "direct_drive_or_integrated_actuator",
+                    "has_separate_gear_pulley_belt_geometry": False,
+                    "actuator_present": matched_actuator is not None,
+                    "actuator_name": (matched_actuator or {}).get("actuator", {}).get("name"),
+                    "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+                }
+            )
+    return evidence
+
+
+def _wiring_service_access_evidence(
+    link_keepouts: list[dict[str, Any]],
+    *,
+    generated_cad_report: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    generated_extents = _generated_link_extents(generated_cad_report)
+    evidence: list[dict[str, Any]] = []
+    for record in link_keepouts:
+        link = str(record.get("link") or "").upper()
+        actuators = record.get("actuator_keepouts", [])
+        source_envelope = record.get("source_mesh_envelope") or {}
+        is_service_link = bool(actuators) or link == "IMU_ORIGIN" or bool(record.get("site_keepouts"))
+        if not is_service_link:
+            continue
+        generated_extent = generated_extents.get(link)
+        source_extent = source_envelope.get("bbox_extent_m")
+        reference_extent = generated_extent or source_extent
+        connector_envelope = [0.012, 0.008, 0.006]
+        wire_bundle_diameter = 0.004
+        minimum_bend_radius = 0.012
+        if isinstance(reference_extent, list) and len(reference_extent) == 3:
+            service_clearance = [
+                max(min(float(value) * 0.25, 0.03), connector_envelope[index])
+                for index, value in enumerate(reference_extent)
+            ]
+        else:
+            service_clearance = [0.018, 0.018, 0.018]
+        evidence.append(
+            {
+                "link": link,
+                "actuated_joint_count": len(actuators),
+                "site_keepout_count": len(record.get("site_keepouts", [])),
+                "wire_bundle_diameter_m": wire_bundle_diameter,
+                "minimum_bend_radius_m": minimum_bend_radius,
+                "connector_envelope_xyz_m": connector_envelope,
+                "service_clearance_envelope_xyz_m": service_clearance,
+                "generated_extent_m": generated_extent,
+                "source_extent_m": source_extent,
+                "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+                "evidence_kind": "generated_wiring_service_access_corridor",
+            }
+        )
+    return evidence
+
+
 def _orientation_agnostic_bbox_fits(
     *,
     component_extent_m: list[float],
@@ -810,6 +890,12 @@ def build_fembot_component_constraint_coverage_proof(
         vendor_evidence,
         generated_cad_report=generated_cad_report or _load_generated_cad_report(),
     )
+    generated_cad_report = generated_cad_report or _load_generated_cad_report()
+    direct_drive_evidence = _direct_drive_transmission_evidence(link_keepouts)
+    wiring_service_evidence = _wiring_service_access_evidence(
+        link_keepouts,
+        generated_cad_report=generated_cad_report,
+    )
 
     family_by_name = {family["family"]: family for family in REQUIRED_COMPONENT_FAMILIES}
     records: list[dict[str, Any]] = []
@@ -932,6 +1018,40 @@ def build_fembot_component_constraint_coverage_proof(
         "fastener_or_thread",
         "wiring_or_service_access",
     ):
+        if family_name == "gear_or_pulley_or_belt":
+            evidence = [*step_evidence[family_name], *direct_drive_evidence]
+            records.append(
+                _family_record(
+                    family=family_by_name[family_name],
+                    covered_count=len(evidence),
+                    covered_links={link for item in evidence for link in item.get("links", []) or [item.get("link")] if link},
+                    evidence=evidence,
+                    clearance_geometry=bool(evidence),
+                    clearance_verified=False,
+                    acceptance_blocker=(
+                        "MJCF joints are audited as direct-drive or integrated actuators with no separate gear/pulley/belt STEP geometry, "
+                        "but exact actuator transmission datasheets and positive generated-body clearance are not certified"
+                    ),
+                )
+            )
+            continue
+        if family_name == "wiring_or_service_access":
+            evidence = [*step_evidence[family_name], *wiring_service_evidence]
+            records.append(
+                _family_record(
+                    family=family_by_name[family_name],
+                    covered_count=len(evidence),
+                    covered_links={link for item in evidence for link in item.get("links", []) or [item.get("link")] if link},
+                    evidence=evidence,
+                    clearance_geometry=bool(evidence),
+                    clearance_verified=False,
+                    acceptance_blocker=(
+                        "parametric wiring/service corridors are generated from actuated links and link envelopes, "
+                        "but measured harness diameter, connector envelope, bend radius, and access clearance are still required"
+                    ),
+                )
+            )
+            continue
         supplier_evidence = [
             {
                 "supplier_code": target["supplier_code"],
@@ -1074,6 +1194,8 @@ def build_fembot_component_constraint_coverage_proof(
                 "vendor_envelopes_with_component_family_keywords"
             ],
             "vendor_envelopes_by_assembly": vendor_summary["vendor_envelopes_by_assembly"],
+            "direct_drive_transmission_audited_joints": len(direct_drive_evidence),
+            "wiring_service_access_corridors": len(wiring_service_evidence),
             "step_candidate_component_evidence": sum(len(items) for items in step_evidence.values()),
             "accepted": accepted,
             "acceptance_blocker": (
@@ -1081,10 +1203,10 @@ def build_fembot_component_constraint_coverage_proof(
                 if accepted
                 else (
                     "motors, joints, collision, source mesh, vendor envelopes, bearing/ring "
-                    "supplier codes, and fastener/thread supplier codes are inventoried; "
-                    "gears/pulleys/belts, wiring/service access, exact measured dimensions, "
-                    "and final positive clearance checks still need explicit geometry before "
-                    "thinning can be accepted"
+                    "supplier codes, fastener/thread supplier codes, direct-drive transmission "
+                    "audits, and parametric wiring/service corridors are inventoried; exact "
+                    "measured dimensions and final positive clearance checks still need "
+                    "certification before thinning can be accepted"
                 )
             ),
         },

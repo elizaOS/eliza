@@ -40,6 +40,15 @@ PROMOTED_RESIDUAL_COLLIDER_PAIRS = (
 )
 
 
+def _load_json(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
 def _parse_vec(raw: str | None) -> list[float]:
     if not raw:
         return [0.0, 0.0, 0.0]
@@ -59,6 +68,77 @@ def _mesh_files(root: ET.Element) -> list[str]:
         for mesh in root.findall(".//asset/mesh")
         if mesh.get("file")
     ]
+
+
+def _replace_visual_meshes_with_cad_primitives(
+    *,
+    mjcf_path: Path,
+    generated_cad_report: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from eliza_robot.asimov_1.fembot_cad_primitive_mjcf import (
+        _generated_step_by_link,
+        _mesh_asset_files,
+        _remove_mesh_assets,
+        _replace_mesh_visual_geoms,
+    )
+
+    generated = generated_cad_report or _load_json(
+        ASIMOV_PARAM_PROOFS / "fembot-generated-cad-envelope.json"
+    )
+    if generated is None:
+        return {
+            "enabled": True,
+            "ok": False,
+            "blocking_reason": "missing generated CAD envelope proof",
+            "mesh_assets_removed": 0,
+            "mesh_visual_geoms_replaced": 0,
+            "mesh_visual_geom_replacement_failures": 0,
+            "visual_envelope_failure_count": None,
+            "replacements": [],
+        }
+
+    tree = ET.parse(mjcf_path)
+    root = tree.getroot()
+    compiler = root.find("compiler")
+    if compiler is not None:
+        compiler.attrib.pop("meshdir", None)
+    mesh_asset_files = _mesh_asset_files(root)
+    replacements = _replace_mesh_visual_geoms(
+        root,
+        generated_steps=_generated_step_by_link(generated),
+        mesh_asset_files=mesh_asset_files,
+    )
+    removed_mesh_assets = _remove_mesh_assets(root)
+    ET.indent(tree, space="  ")
+    tree.write(mjcf_path, encoding="utf-8", xml_declaration=False)
+
+    replaced = [record for record in replacements if record.get("replaced")]
+    failed = [record for record in replacements if not record.get("replaced")]
+    envelope_failures = [
+        record
+        for record in replaced
+        if not record.get("visual_envelope_matches_generated_cad")
+    ]
+    return {
+        "enabled": True,
+        "ok": bool(len(replaced) == 28 and not failed and not envelope_failures),
+        "blocking_reason": None
+        if len(replaced) == 28 and not failed and not envelope_failures
+        else "not every visual mesh was replaced by a generated CAD-envelope primitive",
+        "mesh_assets_removed": removed_mesh_assets,
+        "mesh_visual_geoms_replaced": len(replaced),
+        "mesh_visual_geom_replacement_failures": len(failed),
+        "visual_envelope_failure_count": len(envelope_failures),
+        "max_visual_bbox_center_delta_m": max(
+            (float(record.get("visual_bbox_center_delta_m") or 0.0) for record in replaced),
+            default=0.0,
+        ),
+        "max_visual_bbox_extent_delta_m": max(
+            (float(record.get("visual_bbox_extent_delta_m") or 0.0) for record in replaced),
+            default=0.0,
+        ),
+        "replacements": replacements,
+    }
 
 
 def _promote_contact_tuned_colliders(
@@ -257,6 +337,8 @@ def generate_fembot_mjcf(
     mesh_dir: Path = ASIMOV_PARAM_OUTPUT_STL,
     hip_spacing_scale: float = HIP_SPACING_SCALE,
     promote_contact_tuned_colliders: bool = True,
+    replace_visual_meshes_with_cad_primitives: bool = True,
+    generated_cad_report: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Write a generated-fembot MJCF and return a loadable proof record."""
     import mujoco
@@ -307,6 +389,23 @@ def generate_fembot_mjcf(
             "scaled_geoms": [],
         }
 
+    primary_visual_mesh_replacement = {
+        "enabled": False,
+        "ok": True,
+        "blocking_reason": None,
+        "mesh_assets_removed": 0,
+        "mesh_visual_geoms_replaced": 0,
+        "mesh_visual_geom_replacement_failures": 0,
+        "visual_envelope_failure_count": 0,
+        "replacements": [],
+    }
+    if replace_visual_meshes_with_cad_primitives:
+        primary_visual_mesh_replacement = _replace_visual_meshes_with_cad_primitives(
+            mjcf_path=output_mjcf,
+            generated_cad_report=generated_cad_report,
+        )
+        root = ET.parse(output_mjcf).getroot()
+
     missing_meshes = sorted(
         {
             file_name
@@ -348,11 +447,13 @@ def generate_fembot_mjcf(
         and abs(spacing_ratio - hip_spacing_scale) <= 1.0e-9
         and mass_inertia.get("ok")
         and actuator_lag.get("ok")
+        and primary_visual_mesh_replacement.get("ok")
     )
+    accepted = bool(ok and not replace_visual_meshes_with_cad_primitives)
     report = {
         "schema": FEMBOT_MJCF_SCHEMA,
         "ok": ok,
-        "accepted": ok,
+        "accepted": accepted,
         "source": {
             "source_mjcf": str(source_mjcf),
             "source_mjcf_sha256": sha256_file(source_mjcf),
@@ -383,11 +484,46 @@ def generate_fembot_mjcf(
             "mujoco_error": load_error,
             "nmesh": int(model.nmesh) if model is not None else None,
             "nu": int(model.nu) if model is not None else None,
+            "no_stl_mesh_assets": bool(model is not None and int(model.nmesh) == 0),
+            "primary_visual_mesh_replacement_enabled": bool(
+                primary_visual_mesh_replacement.get("enabled")
+            ),
+            "primary_visual_mesh_replacement_ok": bool(
+                primary_visual_mesh_replacement.get("ok")
+            ),
+            "primary_visual_mesh_assets_removed": primary_visual_mesh_replacement.get(
+                "mesh_assets_removed"
+            ),
+            "primary_visual_mesh_geoms_replaced": primary_visual_mesh_replacement.get(
+                "mesh_visual_geoms_replaced"
+            ),
+            "primary_visual_mesh_geom_replacement_failures": (
+                primary_visual_mesh_replacement.get("mesh_visual_geom_replacement_failures")
+            ),
+            "primary_visual_envelope_failure_count": primary_visual_mesh_replacement.get(
+                "visual_envelope_failure_count"
+            ),
+            "primary_visual_max_bbox_center_delta_m": primary_visual_mesh_replacement.get(
+                "max_visual_bbox_center_delta_m"
+            ),
+            "primary_visual_max_bbox_extent_delta_m": primary_visual_mesh_replacement.get(
+                "max_visual_bbox_extent_delta_m"
+            ),
             "mass_inertia_ok": bool(mass_inertia.get("ok")),
             "actuator_lag_ok": bool(actuator_lag.get("ok")),
+            "accepted": accepted,
+            "acceptance_blocker": (
+                "primary fembot MJCF now compiles without STL mesh assets using generated "
+                "CAD-envelope MuJoCo primitives, but final acceptance still requires true "
+                "STEP/B-rep or controlled-loft surface bodies rather than primitive visual "
+                "surrogates"
+            )
+            if ok and replace_visual_meshes_with_cad_primitives
+            else None,
         },
         "hip_bodies": body_positions,
         "contact_tuned_colliders": contact_tuned_colliders,
+        "primary_visual_mesh_replacement": primary_visual_mesh_replacement,
         "mass_inertia": mass_inertia,
         "actuator_lag": actuator_lag,
     }

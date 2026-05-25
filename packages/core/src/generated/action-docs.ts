@@ -3376,8 +3376,19 @@ export const allActionsSpec = {
 		{
 			name: "BROWSER",
 			description:
-				"BROWSER action. Control registered target: workspace default, bridge Chrome/Safari, computeruse Chromium. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
+				"BROWSER action. Control registered browser target: app workspace, bridge Chrome/Safari companion, computeruse Chromium, or Stagehand fallback. BrowserService picks target if omitted. action=autofill_login + domain vault-gated autofills open workspace tab.",
 			parameters: [
+				{
+					name: "target",
+					description:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+					required: false,
+					schema: {
+						type: "string",
+					},
+					descriptionCompressed:
+						"Optional browser target id. Common values: workspace, bridge, computeruse, stagehand.",
+				},
 				{
 					name: "action",
 					description:
@@ -3626,6 +3637,7 @@ export const allActionsSpec = {
 					actions: ["BROWSER"],
 					params: {
 						BROWSER: {
+							target: "example",
 							action: "back",
 							tabAction: "close",
 							domain: "example",

@@ -24,7 +24,6 @@ import type {
 	ProviderStatus,
 } from "@elizaos/shared";
 import { deviceBridge } from "./device-bridge";
-import { getDflashRuntimeStatus } from "./dflash-server";
 import { handlerRegistry } from "./handler-registry";
 import { localInferenceRoot } from "./paths";
 
@@ -62,7 +61,7 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 	label: "Eliza-1 local runtime",
 	kind: "local",
 	description:
-		"On-device Eliza-1 inference with the optimized local runtime when the managed binary and companion files are installed. The bundle serves text, embeddings, TTS, and transcription from one local provider.",
+		"On-device Eliza-1 inference with the optimized local runtime. The bundle serves text, embeddings, TTS, and transcription from one local provider.",
 	supportedSlots: [
 		"TEXT_SMALL",
 		"TEXT_LARGE",
@@ -85,13 +84,10 @@ const LOCAL_PROVIDER: ProviderDefinition = {
 			);
 			if (!hasModel)
 				return { enabled: false, reason: "No local model installed" };
-			const dflash = getDflashRuntimeStatus();
-			return dflash.enabled
-				? {
-						enabled: true,
-						reason: "Eliza-1 model installed; local acceleration available",
-					}
-				: { enabled: true, reason: "GGUF model installed" };
+			return {
+				enabled: true,
+				reason: "Eliza-1 model installed; native local runtime available",
+			};
 		} catch {
 			return { enabled: false, reason: "No local model installed" };
 		}

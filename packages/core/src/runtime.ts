@@ -5608,6 +5608,7 @@ ${section_end}`;
 			const modelParams = {
 				...params,
 				prompt,
+				responseFormat: params.responseFormat ?? { type: "json_object" },
 				promptSegments: segments,
 				providerOptions: {
 					agentName: this.character.name,

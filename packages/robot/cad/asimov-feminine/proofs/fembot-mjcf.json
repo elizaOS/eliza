@@ -1,5 +1,5 @@
 {
-  "accepted": true,
+  "accepted": false,
   "actuator_lag": {
     "actuators_tracked": 25,
     "duration_s": 0.25,
@@ -50,7 +50,7 @@
     "contact_enabled": true,
     "fit_geom_count": 15,
     "length_scale": 0.5,
-    "mjcf": "cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
     "mjcf_sha256": "485b3b98f7473cb1248075eda040360f2926280ea2569cd707bdf2464c3bd9f5",
     "physical_visual_remediation_geom_count": 5,
     "residual_fit_geom_count": 10,
@@ -479,6 +479,7 @@
         "output_size_m": [
           0.024
         ],
+        "preexisting": false,
         "radius_scale": 0.6,
         "source_fromto_m": [
           0.0,
@@ -510,6 +511,7 @@
         "output_size_m": [
           0.024
         ],
+        "preexisting": false,
         "radius_scale": 0.6,
         "source_fromto_m": [
           0.0,
@@ -541,6 +543,7 @@
         "output_size_m": [
           0.065
         ],
+        "preexisting": false,
         "radius_scale": 1.3,
         "source_fromto_m": [
           0.03,
@@ -567,6 +570,7 @@
         ],
         "link": "LEFT_KNEE",
         "name": "left_knee_link_collision_visual_center_distal_rail",
+        "preexisting": false,
         "radius_m": 0.0154,
         "source_name": "left_knee_link_collision"
       },
@@ -582,6 +586,7 @@
         ],
         "link": "RIGHT_KNEE",
         "name": "right_knee_link_collision_visual_center_distal_rail",
+        "preexisting": false,
         "radius_m": 0.0154,
         "source_name": "right_knee_link_collision"
       }
@@ -638,8 +643,1365 @@
   },
   "ok": true,
   "output": {
-    "mjcf": "cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
-    "mjcf_sha256": "485b3b98f7473cb1248075eda040360f2926280ea2569cd707bdf2464c3bd9f5"
+    "mjcf": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/mjcf/asimov_fembot.xml",
+    "mjcf_sha256": "300b486738d6274c420f1c9e979ea5bbb0f31ab44262d1f9f98f151043438f9e"
+  },
+  "primary_visual_mesh_replacement": {
+    "blocking_reason": null,
+    "enabled": true,
+    "max_visual_bbox_center_delta_m": 0.0,
+    "max_visual_bbox_extent_delta_m": 0.0,
+    "mesh_assets_removed": 28,
+    "mesh_visual_geom_replacement_failures": 0,
+    "mesh_visual_geoms_replaced": 28,
+    "ok": true,
+    "replacements": [
+      {
+        "generated_bbox_center_m": [
+          -0.05792704364284873,
+          0.0,
+          -0.012144997715950012
+        ],
+        "generated_bbox_extent_m": [
+          0.06200019635568596,
+          0.13500018954592996,
+          0.18380019697209
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/imu_origin.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "c84ba23df5e686eb9ab00087987101ac27ca487fe24c79a83b8bd8e6465bd6f0",
+        "geom": "imu_origin_cad_primitive_visual",
+        "link": "IMU_ORIGIN",
+        "pos_m": [
+          -0.05792704364284873,
+          0.0,
+          -0.012144997715950012
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_shell_reference",
+        "size_m": [
+          0.03100009817784298,
+          0.06750009477296498,
+          0.091900098486045
+        ],
+        "source_mesh": "pelvis.STL",
+        "source_mesh_file": "IMU_ORIGIN.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.05792704364284873,
+          0.0,
+          -0.012144997715950012
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.06200019635568596,
+          0.13500018954592996,
+          0.18380019697209
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.006374539807438849,
+          0.04549915879033506,
+          0.006999999284744263
+        ],
+        "generated_bbox_extent_m": [
+          0.052250296928733626,
+          0.09499846644493029,
+          0.09600020083447
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_pitch.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "5666925b951391217bf44461e9e8a49e8a5fafaec916167e15a9599192b7255e",
+        "geom": "left_hip_pitch_cad_primitive_visual",
+        "link": "LEFT_HIP_PITCH",
+        "pos_m": [
+          -0.006374539807438849,
+          0.04549915879033506,
+          0.006999999284744263
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.026125148464366813,
+          0.047499233222465145,
+          0.048000100417235
+        ],
+        "source_mesh": "left_hip_pitch_link.STL",
+        "source_mesh_file": "LEFT_HIP_PITCH.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.006374539807438849,
+          0.04549915879033506,
+          0.006999999284744263
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.052250296928733626,
+          0.09499846644493029,
+          0.09600020083447
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.026259614154696465,
+          -0.003690151497721672,
+          -0.017000000923871994
+        ],
+        "generated_bbox_extent_m": [
+          0.0565193978861952,
+          0.01200019929463855,
+          0.08000019821186
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_roll.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "f108d67748cab5b882d3d67f32de8de2cdae39bca1d6dc2abc7991b402292f78",
+        "geom": "left_hip_roll_cad_primitive_visual",
+        "link": "LEFT_HIP_ROLL",
+        "pos_m": [
+          -0.026259614154696465,
+          -0.003690151497721672,
+          -0.017000000923871994
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.0282596989430976,
+          0.006000099647319275,
+          0.04000009910593
+        ],
+        "source_mesh": "left_hip_roll_link.STL",
+        "source_mesh_file": "LEFT_HIP_ROLL.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.026259614154696465,
+          -0.003690151497721672,
+          -0.017000000923871994
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.0565193978861952,
+          0.01200019929463855,
+          0.08000019821186
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.005917290225625038,
+          0.0024154260754585266,
+          -0.07737000659108162
+        ],
+        "generated_bbox_extent_m": [
+          0.015834771927804595,
+          0.012000267896839894,
+          0.30874021234777
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_hip_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "fa6ae83c810104fc139b7456ebba92c450addce76d5197dfc932b1d7592d2af1",
+        "geom": "left_hip_yaw_cad_primitive_visual",
+        "link": "LEFT_HIP_YAW",
+        "pos_m": [
+          0.005917290225625038,
+          0.0024154260754585266,
+          -0.07737000659108162
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.007917385963902297,
+          0.006000133948419947,
+          0.154370106173885
+        ],
+        "source_mesh": "left_hip_yaw_link.STL",
+        "source_mesh_file": "LEFT_HIP_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.005917290225625038,
+          0.0024154260754585266,
+          -0.07737000659108162
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.015834771927804595,
+          0.012000267896839894,
+          0.30874021234777
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.0026807356625795364,
+          0.001222824677824974,
+          -0.1233405414968729
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540634323,
+          0.012000267896838213,
+          0.36964378016836996
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_knee.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "e6a6962ae2f7a8ffe74097313119472ecb88bcc1b383bff0f0ba70b6f1123a0e",
+        "geom": "left_knee_cad_primitive_visual",
+        "link": "LEFT_KNEE",
+        "pos_m": [
+          -0.0026807356625795364,
+          0.001222824677824974,
+          -0.1233405414968729
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.0060000967703171615,
+          0.006000133948419107,
+          0.18482189008418498
+        ],
+        "source_mesh": "left_knee_link.STL",
+        "source_mesh_file": "LEFT_KNEE.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.0026807356625795364,
+          0.001222824677824974,
+          -0.1233405414968729
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540634323,
+          0.012000267896838213,
+          0.36964378016836996
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540632725,
+          0.012000267896839,
+          0.051000191595750005
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_a.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "65cb10a800add5c8c9b84d798b8c8ec1edcba0a6f1df8bd14679bdfba58c3eab",
+        "geom": "left_ankle_a_cad_primitive_visual",
+        "link": "LEFT_ANKLE_A",
+        "pos_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770316363,
+          0.0060001339484195,
+          0.025500095797875003
+        ],
+        "source_mesh": "left_ankle_pitch_link.STL",
+        "source_mesh_file": "LEFT_ANKLE_A.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540632725,
+          0.012000267896839,
+          0.051000191595750005
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.02743939310312271,
+          0.0027236677706241608,
+          -0.0009567625820636749
+        ],
+        "generated_bbox_extent_m": [
+          0.14753019899737613,
+          0.08000019529759753,
+          0.06608667108078001
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_ankle_b.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "c0ca8a10bed0bc39701bfd3677f7ad07f96e1a45ec05b5d443b311b068c67f3f",
+        "geom": "left_ankle_b_cad_primitive_visual",
+        "link": "LEFT_ANKLE_B",
+        "pos_m": [
+          0.02743939310312271,
+          0.0027236677706241608,
+          -0.0009567625820636749
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.07376509949868806,
+          0.04000009764879876,
+          0.033043335540390004
+        ],
+        "source_mesh": "left_ankle_roll_link.STL",
+        "source_mesh_file": "LEFT_ANKLE_B.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.02743939310312271,
+          0.0027236677706241608,
+          -0.0009567625820636749
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.14753019899737613,
+          0.08000019529759753,
+          0.06608667108078001
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.036752833519130945,
+          -0.0020181722939014435,
+          -0.009141463320702314
+        ],
+        "generated_bbox_extent_m": [
+          0.07030546944588101,
+          0.0880363445878,
+          0.04073064122349
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_toe.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "4143b9d616db6f932ef1a2dcff8ca8d1ef3661a8db5942489bda60be283ba1a7",
+        "geom": "left_toe_cad_primitive_visual",
+        "link": "LEFT_TOE",
+        "pos_m": [
+          0.036752833519130945,
+          -0.0020181722939014435,
+          -0.009141463320702314
+        ],
+        "primitive": "box",
+        "replaced": true,
+        "shape_family": "flat_plate_envelope",
+        "size_m": [
+          0.035152734722940504,
+          0.0440181722939,
+          0.020365320611745
+        ],
+        "source_mesh": "left_toe_link.STL",
+        "source_mesh_file": "LEFT_TOE.STL",
+        "surface_intent": "flat",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.036752833519130945,
+          -0.0020181722939014435,
+          -0.009141463320702314
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.07030546944588101,
+          0.0880363445878,
+          0.04073064122349
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.006374947726726532,
+          -0.045425293734297156,
+          0.006999999284744263
+        ],
+        "generated_bbox_extent_m": [
+          0.05225019692874271,
+          0.09485073641218884,
+          0.09600020083447
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_pitch.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "229c557ee4ca0cfe2b84fec4f89d859c94c228c945ebe740dd8f87fa28f9485c",
+        "geom": "right_hip_pitch_cad_primitive_visual",
+        "link": "RIGHT_HIP_PITCH",
+        "pos_m": [
+          -0.006374947726726532,
+          -0.045425293734297156,
+          0.006999999284744263
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.026125098464371357,
+          0.04742536820609442,
+          0.048000100417235
+        ],
+        "source_mesh": "right_hip_pitch_link.STL",
+        "source_mesh_file": "RIGHT_HIP_PITCH.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.006374947726726532,
+          -0.045425293734297156,
+          0.006999999284744263
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.05225019692874271,
+          0.09485073641218884,
+          0.09600020083447
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.026259614154696465,
+          0.0036991294473409653,
+          -0.017000000923871994
+        ],
+        "generated_bbox_extent_m": [
+          0.0565193978861952,
+          0.012000199294638879,
+          0.08000019821186
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_roll.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "44678f5d5018f12b15082e941c756a7d7d36323bb5b31da6630a5cac688a7bcc",
+        "geom": "right_hip_roll_cad_primitive_visual",
+        "link": "RIGHT_HIP_ROLL",
+        "pos_m": [
+          -0.026259614154696465,
+          0.0036991294473409653,
+          -0.017000000923871994
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.0282596989430976,
+          0.006000099647319439,
+          0.04000009910593
+        ],
+        "source_mesh": "right_hip_roll_link.STL",
+        "source_mesh_file": "RIGHT_HIP_ROLL.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.026259614154696465,
+          0.0036991294473409653,
+          -0.017000000923871994
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.0565193978861952,
+          0.012000199294638879,
+          0.08000019821186
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.005917290225625038,
+          -0.0024138260632753372,
+          -0.07736999914050102
+        ],
+        "generated_bbox_extent_m": [
+          0.015834771927804595,
+          0.01200026789683905,
+          0.30874022724893
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_hip_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "942eb4ab6b673056b2edc2d706b08d1c850121077796979d30776246bd7ca93c",
+        "geom": "right_hip_yaw_cad_primitive_visual",
+        "link": "RIGHT_HIP_YAW",
+        "pos_m": [
+          0.005917290225625038,
+          -0.0024138260632753372,
+          -0.07736999914050102
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.007917385963902297,
+          0.006000133948419525,
+          0.154370113624465
+        ],
+        "source_mesh": "right_hip_yaw_link.STL",
+        "source_mesh_file": "RIGHT_HIP_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.005917290225625038,
+          -0.0024138260632753372,
+          -0.07736999914050102
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.015834771927804595,
+          0.01200026789683905,
+          0.30874022724893
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.002505192533135414,
+          -0.0011232290416955948,
+          -0.1233405414968729
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540635477,
+          0.012000267896838664,
+          0.36964378016836996
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_knee.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "dab4f6300ec873c0306d775a30d70011e5a1a5284369ff2506d1affdd52b9725",
+        "geom": "right_knee_cad_primitive_visual",
+        "link": "RIGHT_KNEE",
+        "pos_m": [
+          -0.002505192533135414,
+          -0.0011232290416955948,
+          -0.1233405414968729
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770317738,
+          0.006000133948419332,
+          0.18482189008418498
+        ],
+        "source_mesh": "right_knee_link.STL",
+        "source_mesh_file": "RIGHT_KNEE.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.002505192533135414,
+          -0.0011232290416955948,
+          -0.1233405414968729
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540635477,
+          0.012000267896838664,
+          0.36964378016836996
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540632725,
+          0.012000267896839,
+          0.051000191595750005
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_a.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "ec6d32e3472204c4926dcf059c89df59613dd78832244108c446ba1f5063ca3b",
+        "geom": "right_ankle_a_cad_primitive_visual",
+        "link": "RIGHT_ANKLE_A",
+        "pos_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770316363,
+          0.0060001339484195,
+          0.025500095797875003
+        ],
+        "source_mesh": "right_ankle_pitch_link.STL",
+        "source_mesh_file": "RIGHT_ANKLE_A.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.001499999314546585,
+          0.0,
+          -0.007499996572732925
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540632725,
+          0.012000267896839,
+          0.051000191595750005
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.027439383789896965,
+          -0.0027269218116998672,
+          -0.0009508393704891205
+        ],
+        "generated_bbox_extent_m": [
+          0.14747019899800617,
+          0.08000019529759783,
+          0.06609851750393
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_ankle_b.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "9def844ac3b94d5df650db7616fe63fa1188ca007f72b43ff9ab4a11e0996372",
+        "geom": "right_ankle_b_cad_primitive_visual",
+        "link": "RIGHT_ANKLE_B",
+        "pos_m": [
+          0.027439383789896965,
+          -0.0027269218116998672,
+          -0.0009508393704891205
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.07373509949900309,
+          0.040000097648798916,
+          0.033049258751965
+        ],
+        "source_mesh": "right_ankle_roll_link.STL",
+        "source_mesh_file": "RIGHT_ANKLE_B.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.027439383789896965,
+          -0.0027269218116998672,
+          -0.0009508393704891205
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.14747019899800617,
+          0.08000019529759783,
+          0.06609851750393
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.036752833519130945,
+          0.0020181722939014435,
+          -0.009141798596829176
+        ],
+        "generated_bbox_extent_m": [
+          0.07030546944588101,
+          0.0880363445878,
+          0.04072997067124
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_toe.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "ca7bd0a00c8dc72462a7cfd8d8f075fe204c35196f96616f42e1ac9f6ae16bb2",
+        "geom": "right_toe_cad_primitive_visual",
+        "link": "RIGHT_TOE",
+        "pos_m": [
+          0.036752833519130945,
+          0.0020181722939014435,
+          -0.009141798596829176
+        ],
+        "primitive": "box",
+        "replaced": true,
+        "shape_family": "flat_plate_envelope",
+        "size_m": [
+          0.035152734722940504,
+          0.0440181722939,
+          0.02036498533562
+        ],
+        "source_mesh": "right_toe_link.STL",
+        "source_mesh_file": "RIGHT_TOE.STL",
+        "surface_intent": "flat",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.036752833519130945,
+          0.0020181722939014435,
+          -0.009141798596829176
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.07030546944588101,
+          0.0880363445878,
+          0.04072997067124
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.007798537611961365,
+          0.0,
+          0.18733354518190026
+        ],
+        "generated_bbox_extent_m": [
+          0.0362130232247276,
+          0.2030001986204597,
+          0.38166717602669503
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/waist_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "d1b506392b2668035465848d226ad2a5fa6e2189f85de9b2471c3a33f8ce0c98",
+        "geom": "waist_yaw_cad_primitive_visual",
+        "link": "WAIST_YAW",
+        "pos_m": [
+          -0.007798537611961365,
+          0.0,
+          0.18733354518190026
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_shell_reference",
+        "size_m": [
+          0.0181065116123638,
+          0.10150009931022985,
+          0.19083358801334752
+        ],
+        "source_mesh": "waist_yaw_link.STL",
+        "source_mesh_file": "WAIST_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.007798537611961365,
+          0.0,
+          0.18733354518190026
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.0362130232247276,
+          0.2030001986204597,
+          0.38166717602669503
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          7.700175046920776e-06,
+          -0.002499999478459358,
+          0.03533313621301204
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540634078,
+          0.01200026789683811,
+          0.074666472616015
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "535081930639a153089052a4ea55d3277996eb7d1ade9226c9cfe34ff488bbb4",
+        "geom": "neck_yaw_cad_primitive_visual",
+        "link": "NECK_YAW",
+        "pos_m": [
+          7.700175046920776e-06,
+          -0.002499999478459358,
+          0.03533313621301204
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_shell_reference",
+        "size_m": [
+          0.006000096770317039,
+          0.006000133948419055,
+          0.0373332363080075
+        ],
+        "source_mesh": "neck_yaw_link.STL",
+        "source_mesh_file": "NECK_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          7.700175046920776e-06,
+          -0.002499999478459358,
+          0.03533313621301204
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540634078,
+          0.01200026789683811,
+          0.074666472616015
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.012757148593664171,
+          0.0008880607783794403,
+          0.040927959606051445
+        ],
+        "generated_bbox_extent_m": [
+          0.04000017846877603,
+          0.012000267896839643,
+          0.18396028387199
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/neck_pitch.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "ff2918f84e974096a6c60bd40d6d6c855ef1f53de9f952cfd72dc3b1c9c1ce59",
+        "geom": "neck_pitch_cad_primitive_visual",
+        "link": "NECK_PITCH",
+        "pos_m": [
+          0.012757148593664171,
+          0.0008880607783794403,
+          0.040927959606051445
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_shell_reference",
+        "size_m": [
+          0.020000089234388015,
+          0.006000133948419821,
+          0.091980141935995
+        ],
+        "source_mesh": "neck_pitch_link.STL",
+        "source_mesh_file": "NECK_PITCH.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.012757148593664171,
+          0.0008880607783794403,
+          0.040927959606051445
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.04000017846877603,
+          0.012000267896839643,
+          0.18396028387199
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -5.000084638595581e-05,
+          -0.040353224612772465,
+          -3.167055547237396e-05
+        ],
+        "generated_bbox_extent_m": [
+          0.012000199294639684,
+          0.08470660362963141,
+          0.08274209755321002
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_pitch.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "649fa844693bca9be6c17156aa5334d3b310c385ea6d7662fe4a351360ffbfe0",
+        "geom": "right_shoulder_pitch_cad_primitive_visual",
+        "link": "RIGHT_SHOULDER_PITCH",
+        "pos_m": [
+          -5.000084638595581e-05,
+          -0.040353224612772465,
+          -3.167055547237396e-05
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000099647319842,
+          0.042353301814815704,
+          0.04137104877660501
+        ],
+        "source_mesh": "right_shoulder_pitch_link.STL",
+        "source_mesh_file": "RIGHT_SHOULDER_PITCH.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -5.000084638595581e-05,
+          -0.040353224612772465,
+          -3.167055547237396e-05
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000199294639684,
+          0.08470660362963141,
+          0.08274209755321002
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "generated_bbox_extent_m": [
+          0.012000267896839091,
+          0.024000187081269105,
+          0.18338238331291
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_roll.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "ebef2c7b8ae9cbdc6d08dde6805bfac67f285e2195709210a840d0c0c50b2a05",
+        "geom": "right_shoulder_roll_cad_primitive_visual",
+        "link": "RIGHT_SHOULDER_ROLL",
+        "pos_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.0060001339484195455,
+          0.012000093540634553,
+          0.091691191656455
+        ],
+        "source_mesh": "right_shoulder_roll_link.STL",
+        "source_mesh_file": "RIGHT_SHOULDER_ROLL.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000267896839091,
+          0.024000187081269105,
+          0.18338238331291
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.0005140546709299088,
+          9.999983012676239e-05,
+          -0.06267565255984664
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540634817,
+          0.012000267896839327,
+          0.13535150489624098
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_shoulder_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "b24e81ba0b7c9a1e07a35c48abf534c7165d3c612147f7436f8abb0ebcbabcc1",
+        "geom": "right_shoulder_yaw_cad_primitive_visual",
+        "link": "RIGHT_SHOULDER_YAW",
+        "pos_m": [
+          -0.0005140546709299088,
+          9.999983012676239e-05,
+          -0.06267565255984664
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770317409,
+          0.0060001339484196635,
+          0.06767575244812049
+        ],
+        "source_mesh": "right_shoulder_yaw_link.STL",
+        "source_mesh_file": "RIGHT_SHOULDER_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.0005140546709299088,
+          9.999983012676239e-05,
+          -0.06267565255984664
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540634817,
+          0.012000267896839327,
+          0.13535150489624098
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.037004679441452026,
+          0.0,
+          -0.03228023648262024
+        ],
+        "generated_bbox_extent_m": [
+          0.10999084036968369,
+          0.024000198589278515,
+          0.13205841812152003
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_elbow.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "c7ca2d99d723831abb1b4f0181302cf14c9899afb40e1a3704ed3c1c15db0802",
+        "geom": "right_elbow_cad_primitive_visual",
+        "link": "RIGHT_ELBOW",
+        "pos_m": [
+          0.037004679441452026,
+          0.0,
+          -0.03228023648262024
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.054995420184841846,
+          0.012000099294639258,
+          0.06602920906076001
+        ],
+        "source_mesh": "right_elbow_link.STL",
+        "source_mesh_file": "RIGHT_ELBOW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.037004679441452026,
+          0.0,
+          -0.03228023648262024
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.10999084036968369,
+          0.024000198589278515,
+          0.13205841812152003
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.0038918638601899147,
+          -9.313225746154785e-10,
+          -0.0032139383256435394
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540634325,
+          0.0120002678968389,
+          0.0403724114861
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/right_wrist_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "a3d454aea627020e611cccd8a36c646bd8db4b9d9bf50c551b0b545a962fae39",
+        "geom": "right_wrist_yaw_cad_primitive_visual",
+        "link": "RIGHT_WRIST_YAW",
+        "pos_m": [
+          0.0038918638601899147,
+          -9.313225746154785e-10,
+          -0.0032139383256435394
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770317162,
+          0.00600013394841945,
+          0.02018620574305
+        ],
+        "source_mesh": "right_wrist_yaw_link.STL",
+        "source_mesh_file": "RIGHT_WRIST_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.0038918638601899147,
+          -9.313225746154785e-10,
+          -0.0032139383256435394
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540634325,
+          0.0120002678968389,
+          0.0403724114861
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          5.000084638595581e-05,
+          0.040353224612772465,
+          0.0
+        ],
+        "generated_bbox_extent_m": [
+          0.012000199294639712,
+          0.08470660362971269,
+          0.06670664879342
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_pitch.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "eed970705ae3c62dacda2dd82a539c92a92aa52a4dc430995ed1707f0be279c0",
+        "geom": "left_shoulder_pitch_cad_primitive_visual",
+        "link": "LEFT_SHOULDER_PITCH",
+        "pos_m": [
+          5.000084638595581e-05,
+          0.040353224612772465,
+          0.0
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000099647319856,
+          0.042353301814856345,
+          0.03335332439671
+        ],
+        "source_mesh": "left_shoulder_pitch_link.STL",
+        "source_mesh_file": "LEFT_SHOULDER_PITCH.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          5.000084638595581e-05,
+          0.040353224612772465,
+          0.0
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000199294639712,
+          0.08470660362971269,
+          0.06670664879342
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "generated_bbox_extent_m": [
+          0.012000267896839091,
+          0.024000187081269105,
+          0.18338238331291
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_roll.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "10fe4dbdcc61a7c93215012bfd6f5233bd79b6ffa4870159a39239f5016e6c9f",
+        "geom": "left_shoulder_roll_cad_primitive_visual",
+        "link": "LEFT_SHOULDER_ROLL",
+        "pos_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.0060001339484195455,
+          0.012000093540634553,
+          0.091691191656455
+        ],
+        "source_mesh": "left_shoulder_roll_link.STL",
+        "source_mesh_file": "LEFT_SHOULDER_ROLL.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -4.999898374080658e-05,
+          0.0,
+          -0.04180765151977539
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000267896839091,
+          0.024000187081269105,
+          0.18338238331291
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          -0.0005140546709299088,
+          0.000499999150633812,
+          -0.06252565002068877
+        ],
+        "generated_bbox_extent_m": [
+          0.012000193540634817,
+          0.012000267896839112,
+          0.135051499818241
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_shoulder_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "97f0a7e4da195b30e7dd40194f5ae866bd5bacd751410c37eedabe9b28da7c81",
+        "geom": "left_shoulder_yaw_cad_primitive_visual",
+        "link": "LEFT_SHOULDER_YAW",
+        "pos_m": [
+          -0.0005140546709299088,
+          0.000499999150633812,
+          -0.06252565002068877
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770317409,
+          0.006000133948419556,
+          0.0675257499091205
+        ],
+        "source_mesh": "left_shoulder_yaw_link.STL",
+        "source_mesh_file": "LEFT_SHOULDER_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          -0.0005140546709299088,
+          0.000499999150633812,
+          -0.06252565002068877
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.012000193540634817,
+          0.012000267896839112,
+          0.135051499818241
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.03696909174323082,
+          0.0,
+          -0.0323251374065876
+        ],
+        "generated_bbox_extent_m": [
+          0.11006201576563879,
+          0.024000198589278515,
+          0.13214821996946002
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_elbow.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "b35de7775e91bd92b29862709235336f78322a863aabdb8964cdc90fa5d1cbc0",
+        "geom": "left_elbow_cad_primitive_visual",
+        "link": "LEFT_ELBOW",
+        "pos_m": [
+          0.03696909174323082,
+          0.0,
+          -0.0323251374065876
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.055031007882819394,
+          0.012000099294639258,
+          0.06607410998473001
+        ],
+        "source_mesh": "left_elbow_link.STL",
+        "source_mesh_file": "LEFT_ELBOW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.03696909174323082,
+          0.0,
+          -0.0323251374065876
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.11006201576563879,
+          0.024000198589278515,
+          0.13214821996946002
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      },
+      {
+        "generated_bbox_center_m": [
+          0.0038924352265894413,
+          0.0,
+          -0.003213937394320965
+        ],
+        "generated_bbox_extent_m": [
+          0.01200019354063355,
+          0.012000267896839,
+          0.0403212464865
+        ],
+        "generated_step_extent_within_tolerance": true,
+        "generated_step_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/generated-cad/adjusted-envelope-step/left_wrist_yaw.step",
+        "generated_step_reload_ok": true,
+        "generated_step_sha256": "b5f57d48c5c4a813f343e46334f13d2cee13739f2292d8b66ee9f1fb943b0a08",
+        "geom": "left_wrist_yaw_cad_primitive_visual",
+        "link": "LEFT_WRIST_YAW",
+        "pos_m": [
+          0.0038924352265894413,
+          0.0,
+          -0.003213937394320965
+        ],
+        "primitive": "ellipsoid",
+        "replaced": true,
+        "shape_family": "hollow_lofted_elliptic_limb_reference",
+        "size_m": [
+          0.006000096770316775,
+          0.0060001339484195,
+          0.02016062324325
+        ],
+        "source_mesh": "left_wrist_yaw_link.STL",
+        "source_mesh_file": "LEFT_WRIST_YAW.STL",
+        "surface_intent": "smooth",
+        "visual_bbox_center_delta_m": 0.0,
+        "visual_bbox_center_m": [
+          0.0038924352265894413,
+          0.0,
+          -0.003213937394320965
+        ],
+        "visual_bbox_extent_delta_m": 0.0,
+        "visual_bbox_extent_m": [
+          0.01200019354063355,
+          0.012000267896839,
+          0.0403212464865
+        ],
+        "visual_envelope_matches_generated_cad": true,
+        "visual_envelope_tolerance_m": 1e-09
+      }
+    ],
+    "visual_envelope_failure_count": 0
   },
   "schema": "asimov-fembot-mjcf-v1",
   "source": {
@@ -648,6 +2010,8 @@
     "source_mjcf_sha256": "1699a8f5313cd6c9f43eeca4012c8b5390a1db3a924c89ca7a46cefdb47cfce9"
   },
   "summary": {
+    "acceptance_blocker": "primary fembot MJCF now compiles without STL mesh assets using generated CAD-envelope MuJoCo primitives, but final acceptance still requires true STEP/B-rep or controlled-loft surface bodies rather than primitive visual surrogates",
+    "accepted": false,
     "actuator_lag_ok": true,
     "contact_tuned_collider_fit_geom_count": 15,
     "contact_tuned_collider_physical_visual_remediation_geom_count": 5,
@@ -660,9 +2024,18 @@
     "missing_meshes": [],
     "mujoco_compiled": true,
     "mujoco_error": null,
-    "nmesh": 28,
+    "nmesh": 0,
+    "no_stl_mesh_assets": true,
     "nu": 25,
     "output_hip_spacing_m": 0.1296,
+    "primary_visual_envelope_failure_count": 0,
+    "primary_visual_max_bbox_center_delta_m": 0.0,
+    "primary_visual_max_bbox_extent_delta_m": 0.0,
+    "primary_visual_mesh_assets_removed": 28,
+    "primary_visual_mesh_geom_replacement_failures": 0,
+    "primary_visual_mesh_geoms_replaced": 28,
+    "primary_visual_mesh_replacement_enabled": true,
+    "primary_visual_mesh_replacement_ok": true,
     "source_hip_spacing_m": 0.135
   }
 }

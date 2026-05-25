@@ -36,7 +36,6 @@ These packages exist in the monorepo but should NOT appear in the docs site:
 
 | Package                                | Reason                                                              |
 | -------------------------------------- | ------------------------------------------------------------------- |
-| `packages/workflows/`                  | Type contracts for plugin consumption; not user-facing.             |
 | `packages/contracts/`                  | Pure type definitions extracted from core; internal.                |
 | `packages/native/`                     | Internal runtime + plugin implementations.                          |
 | `packages/bun-ios-runtime/`            | Internal iOS runtime detail; surfaced via mobile docs only.         |

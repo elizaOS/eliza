@@ -1167,53 +1167,53 @@
     {
       "available": true,
       "bbox_extent_ratio": [
-        0.9827755620353963,
-        0.9999435842037201,
-        1.0
+        1.0003143006453172,
+        1.0,
+        0.9908297734573501
       ],
       "link": "WAIST_YAW",
-      "non_spine_area_ratio": 0.9827201179694997,
-      "output_sha256": "cdaf9fa370b2e52b0f726fdb2119d43d5bb08bdc5779bf30244a518adc193fe3",
+      "non_spine_area_ratio": 1.0003143006453172,
+      "output_sha256": "3aa03b921c1f50fcdab16b54fc48817bc99c68aff5f29dde5ccb4c8ee97dfac9",
       "output_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/cad/asimov-feminine/output/stl/WAIST_YAW.STL",
       "sections": {
         "high": {
           "available": true,
           "level_m": 0.28275028918869793,
-          "output_points": 17092,
+          "output_points": 1152,
           "source_points": 17092,
-          "x_center_delta_m": 0.008468817919492722,
-          "x_extent_ratio": 1.1007777918736166,
-          "x_max_delta_m": 0.016855522990226746,
-          "x_min_delta_m": 8.211284875869751e-05,
-          "y_extent_ratio": 0.9967014491558075
+          "x_center_delta_m": 0.009519089013338089,
+          "x_extent_ratio": 1.0756801359121377,
+          "x_max_delta_m": 0.015817172825336456,
+          "x_min_delta_m": 0.0032210052013397217,
+          "y_extent_ratio": 0.973800927400589
         },
         "low": {
           "available": true,
           "level_m": 0.09191680117510259,
-          "output_points": 68685,
+          "output_points": 1152,
           "source_points": 68685,
-          "x_center_delta_m": -0.0005832090973854065,
-          "x_extent_ratio": 0.9501805440105053,
-          "x_max_delta_m": -0.004607208073139191,
-          "x_min_delta_m": 0.0034407898783683777,
-          "y_extent_ratio": 0.9424280067713494
+          "x_center_delta_m": -0.00152694433927536,
+          "x_extent_ratio": 0.9773192206557236,
+          "x_max_delta_m": -0.003358907997608185,
+          "x_min_delta_m": 0.0003050193190574646,
+          "y_extent_ratio": 0.9820956246665142
         },
         "mid": {
           "available": true,
           "level_m": 0.18733354518190026,
-          "output_points": 55136,
+          "output_points": 1152,
           "source_points": 55136,
-          "x_center_delta_m": -0.00950586050748825,
-          "x_extent_ratio": 0.9475850442082497,
-          "x_max_delta_m": -0.014830343425273895,
-          "x_min_delta_m": -0.004181377589702606,
-          "y_extent_ratio": 0.9477832463754609
+          "x_center_delta_m": -0.01057516410946846,
+          "x_extent_ratio": 0.9811003906221206,
+          "x_max_delta_m": -0.012495048344135284,
+          "x_min_delta_m": -0.008655279874801636,
+          "y_extent_ratio": 0.9658988325360452
         }
       },
       "source_sha256": "24d5000c0a90bc5b053c6734ce517d8d23e9957d3ee59994e1b65d3a1db52a7d",
       "source_stl": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/robot/vendor/asimov-1/sim-model/assets/meshes/WAIST_YAW.STL",
       "spine": "z",
-      "spine_extent_ratio": 1.0
+      "spine_extent_ratio": 0.9908297734573501
     }
   ],
   "ok": true,
@@ -1306,11 +1306,11 @@
           "IMU_ORIGIN"
         ],
         "available_link_count": 2,
-        "max_spine_extent_delta": 0.0,
-        "median_non_spine_area_ratio": 0.9913680830177753,
-        "median_waist_section_area_ratio": 0.8141403694176328,
+        "max_spine_extent_delta": 0.009170226542649873,
+        "median_non_spine_area_ratio": 1.000165174355684,
+        "median_waist_section_area_ratio": 0.8463124565895012,
         "waist_section_area_ratios": [
-          0.895476756164737,
+          0.9598209305084737,
           0.7328039826705286
         ]
       },
@@ -1376,9 +1376,9 @@
           "WAIST_YAW"
         ],
         "available_link_count": 1,
-        "bust_band_x_max_delta_m": 0.016855522990226746,
-        "max_spine_extent_delta": 0.0,
-        "median_non_spine_area_ratio": 0.9827201179694997
+        "bust_band_x_max_delta_m": 0.015817172825336456,
+        "max_spine_extent_delta": 0.009170226542649873,
+        "median_non_spine_area_ratio": 1.0003143006453172
       },
       "name": "bust_front_gain"
     },
@@ -1395,9 +1395,9 @@
           "WAIST_YAW"
         ],
         "available_link_count": 1,
-        "max_spine_extent_delta": 0.0,
-        "median_non_spine_area_ratio": 0.9827201179694997,
-        "mid_torso_x_center_delta_m": -0.00950586050748825
+        "max_spine_extent_delta": 0.009170226542649873,
+        "median_non_spine_area_ratio": 1.0003143006453172,
+        "mid_torso_x_center_delta_m": -0.01057516410946846
       },
       "name": "back_arch_shift_m"
     },

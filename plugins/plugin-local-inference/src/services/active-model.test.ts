@@ -109,6 +109,20 @@ describe("resolveLocalInferenceLoadArgs", () => {
 });
 
 describe("getDflashTargetMetaBlockReason", () => {
+	it("does not block local DFlash only because target-meta is not publishable", () => {
+		expect(
+			getDflashTargetMetaBlockReason({
+				publishEligible: false,
+				drafter: {
+					matchesTargetCheckpoint: true,
+					provenance: "local-validation",
+					sha256: "drafter",
+				},
+				targetText: { sha256: "target" },
+			}),
+		).toBeNull();
+	});
+
 	it("blocks staged stamp-only DFlash drafters", () => {
 		expect(
 			getDflashTargetMetaBlockReason({
@@ -120,7 +134,7 @@ describe("getDflashTargetMetaBlockReason", () => {
 				},
 				targetText: { sha256: "abc" },
 			}),
-		).toBe("target-meta is not publishable");
+		).toBe("drafter is stamp-only");
 	});
 
 	it("blocks drafters with the same bytes as the target model", () => {

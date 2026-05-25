@@ -2853,60 +2853,1618 @@
       "required_geometry": "non-scaled vendor STEP envelopes and mounting patterns"
     },
     {
-      "acceptance_blocker": "no named STEP, MJCF, or manifest geometry has been classified for this component family",
+      "acceptance_blocker": "classified STEP/vendor geometry exists, but exact measured dimensions and positive generated-body clearance are not certified",
       "accepted": false,
-      "clearance_geometry_present": false,
+      "clearance_geometry_present": true,
       "clearance_proof_required": true,
       "clearance_verified": false,
-      "covered_count": 0,
-      "covered_links": [],
-      "evidence": [],
-      "evidence_count": 0,
+      "covered_count": 3,
+      "covered_links": [
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_TOE",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_TOE"
+      ],
+      "evidence": [
+        {
+          "classification_status": "geometry_inferred_from_step_assembly",
+          "component_type": "bearing or bearing subcomponent in 1602 pillow-block assembly",
+          "datasheet_backed": false,
+          "evidence_kind": "classified_supplier_code_step_geometry",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 6,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "max_body_bbox_extent_m": 0.038,
+          "path_count": 4,
+          "referenced_by_groups": [
+            "foot",
+            "leg"
+          ],
+          "referenced_by_links": [
+            "LEFT_ANKLE_A",
+            "LEFT_ANKLE_B",
+            "LEFT_HIP_PITCH",
+            "LEFT_HIP_ROLL",
+            "LEFT_HIP_YAW",
+            "LEFT_KNEE",
+            "LEFT_TOE",
+            "RIGHT_ANKLE_A",
+            "RIGHT_ANKLE_B",
+            "RIGHT_HIP_PITCH",
+            "RIGHT_HIP_ROLL",
+            "RIGHT_HIP_YAW",
+            "RIGHT_KNEE",
+            "RIGHT_TOE"
+          ],
+          "source": "STEP product metadata groups this code with 1602-0032-0006 pillow-block geometry",
+          "source_url": null,
+          "supplier_code": "1600-0515-0006"
+        },
+        {
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "6 mm bore pillow block with press-fit bearing",
+          "datasheet_backed": true,
+          "evidence_kind": "classified_supplier_code_step_geometry",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 6,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "max_body_bbox_extent_m": 0.038,
+          "path_count": 4,
+          "referenced_by_groups": [
+            "foot",
+            "leg"
+          ],
+          "referenced_by_links": [
+            "LEFT_ANKLE_A",
+            "LEFT_ANKLE_B",
+            "LEFT_HIP_PITCH",
+            "LEFT_HIP_ROLL",
+            "LEFT_HIP_YAW",
+            "LEFT_KNEE",
+            "LEFT_TOE",
+            "RIGHT_ANKLE_A",
+            "RIGHT_ANKLE_B",
+            "RIGHT_HIP_PITCH",
+            "RIGHT_HIP_ROLL",
+            "RIGHT_HIP_YAW",
+            "RIGHT_KNEE",
+            "RIGHT_TOE"
+          ],
+          "source": "ServoCity/goBILDA pillow-block catalog",
+          "source_url": "https://www.servocity.com/gobilda-pillow-blocks/",
+          "supplier_code": "1602-0032-0006"
+        },
+        {
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "6 mm bore steel set-screw shaft collar",
+          "datasheet_backed": true,
+          "evidence_kind": "classified_supplier_code_step_geometry",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "max_body_bbox_extent_m": 0.013500000200000003,
+          "path_count": 4,
+          "referenced_by_groups": [
+            "foot",
+            "leg"
+          ],
+          "referenced_by_links": [
+            "LEFT_ANKLE_A",
+            "LEFT_ANKLE_B",
+            "LEFT_HIP_PITCH",
+            "LEFT_HIP_ROLL",
+            "LEFT_HIP_YAW",
+            "LEFT_KNEE",
+            "LEFT_TOE",
+            "RIGHT_ANKLE_A",
+            "RIGHT_ANKLE_B",
+            "RIGHT_HIP_PITCH",
+            "RIGHT_HIP_ROLL",
+            "RIGHT_HIP_YAW",
+            "RIGHT_KNEE",
+            "RIGHT_TOE"
+          ],
+          "source": "ServoCity collars catalog",
+          "source_url": "https://www.servocity.com/collars/",
+          "supplier_code": "2920-0001-0006"
+        }
+      ],
+      "evidence_count": 3,
       "family": "bearing_or_ring",
       "label": "Bearings, bushings, rings, races, and washers",
       "required": true,
       "required_geometry": "named bearing/ring geometry with bore, outer diameter, width, and retained clearance"
     },
     {
-      "acceptance_blocker": "no named STEP, MJCF, or manifest geometry has been classified for this component family",
+      "acceptance_blocker": "MJCF joints are audited as direct-drive or integrated actuators with no separate gear/pulley/belt STEP geometry, but exact actuator transmission datasheets and positive generated-body clearance are not certified",
       "accepted": false,
-      "clearance_geometry_present": false,
+      "clearance_geometry_present": true,
       "clearance_proof_required": true,
       "clearance_verified": false,
-      "covered_count": 0,
-      "covered_links": [],
-      "evidence": [],
-      "evidence_count": 0,
+      "covered_count": 27,
+      "covered_links": [
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "LEFT_TOE",
+        "LEFT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_ELBOW",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_YAW",
+        "RIGHT_TOE",
+        "RIGHT_WRIST_YAW",
+        "WAIST_YAW"
+      ],
+      "evidence": [
+        {
+          "actuator_name": "waist_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.095625,
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "waist_yaw_joint",
+          "joint_type": "hinge",
+          "link": "WAIST_YAW",
+          "range_rad": [
+            -1.570796,
+            1.570796
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "neck_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            0.0,
+            0.0,
+            1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "neck_yaw_joint",
+          "joint_type": "hinge",
+          "link": "NECK_YAW",
+          "range_rad": [
+            -1.570796,
+            1.570796
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "neck_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "neck_pitch_joint",
+          "joint_type": "hinge",
+          "link": "NECK_PITCH",
+          "range_rad": [
+            -0.785398,
+            0.785398
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_shoulder_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.11,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_shoulder_pitch_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_SHOULDER_PITCH",
+          "range_rad": [
+            -3.141593,
+            0.872665
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_shoulder_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.11,
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_shoulder_pitch_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_SHOULDER_PITCH",
+          "range_rad": [
+            -0.872665,
+            3.141593
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_shoulder_roll_joint",
+          "actuator_present": true,
+          "armature": 0.0339552,
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_shoulder_roll_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_SHOULDER_ROLL",
+          "range_rad": [
+            -1.570796,
+            0.0
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_shoulder_roll_joint",
+          "actuator_present": true,
+          "armature": 0.0339552,
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_shoulder_roll_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_SHOULDER_ROLL",
+          "range_rad": [
+            0.0,
+            1.570796
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_shoulder_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.038,
+          "axis": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_shoulder_yaw_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_SHOULDER_YAW",
+          "range_rad": [
+            -1.570796,
+            1.570796
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_shoulder_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.038,
+          "axis": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_shoulder_yaw_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_SHOULDER_YAW",
+          "range_rad": [
+            -1.570796,
+            1.570796
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_elbow_joint",
+          "actuator_present": true,
+          "armature": 0.0282528,
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_elbow_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_ELBOW",
+          "range_rad": [
+            0.0,
+            2.443461
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_elbow_joint",
+          "actuator_present": true,
+          "armature": 0.0282528,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_elbow_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_ELBOW",
+          "range_rad": [
+            -2.443461,
+            0.0
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_wrist_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.0282528,
+          "axis": [
+            0.766044443118927,
+            0.0,
+            -0.642787609686601
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_wrist_yaw_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_WRIST_YAW",
+          "range_rad": [
+            -3.141593,
+            3.141593
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_wrist_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.0282528,
+          "axis": [
+            0.766044443118981,
+            0.0,
+            -0.642787609686536
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_wrist_yaw_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_WRIST_YAW",
+          "range_rad": [
+            -3.141593,
+            3.141593
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_hip_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.095625,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_hip_pitch_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_HIP_PITCH",
+          "range_rad": [
+            -2.094395,
+            1.0
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_hip_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.095625,
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_hip_pitch_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_HIP_PITCH",
+          "range_rad": [
+            -1.0,
+            2.094395
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_hip_roll_joint",
+          "actuator_present": true,
+          "armature": 0.11,
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_hip_roll_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_HIP_ROLL",
+          "range_rad": [
+            -0.785398,
+            0.785398
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_hip_roll_joint",
+          "actuator_present": true,
+          "armature": 0.11,
+          "axis": [
+            1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_hip_roll_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_HIP_ROLL",
+          "range_rad": [
+            -0.785398,
+            0.785398
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_hip_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.038,
+          "axis": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_hip_yaw_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_HIP_YAW",
+          "range_rad": [
+            -0.785398,
+            0.785398
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_hip_yaw_joint",
+          "actuator_present": true,
+          "armature": 0.038,
+          "axis": [
+            0.0,
+            0.0,
+            -1.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_hip_yaw_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_HIP_YAW",
+          "range_rad": [
+            -0.785398,
+            0.785398
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_knee_joint",
+          "actuator_present": true,
+          "armature": 0.0339552,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_knee_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_KNEE",
+          "range_rad": [
+            0.0,
+            1.5
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_knee_joint",
+          "actuator_present": true,
+          "armature": 0.0339552,
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_knee_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_KNEE",
+          "range_rad": [
+            -1.5,
+            0.0
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_ankle_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            0.0,
+            1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_ankle_pitch_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_ANKLE_A",
+          "range_rad": [
+            -0.35,
+            0.35
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_ankle_pitch_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            0.0,
+            -1.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_ankle_pitch_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_ANKLE_A",
+          "range_rad": [
+            -0.35,
+            0.35
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "left_ankle_roll_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_ankle_roll_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_ANKLE_B",
+          "range_rad": [
+            -0.1,
+            0.1
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": "right_ankle_roll_joint",
+          "actuator_present": true,
+          "armature": 0.0565056,
+          "axis": [
+            -1.0,
+            0.0,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_ankle_roll_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_ANKLE_B",
+          "range_rad": [
+            -0.1,
+            0.1
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": null,
+          "actuator_present": false,
+          "armature": 0.001,
+          "axis": [
+            0.010532,
+            0.99994,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "left_toe_joint",
+          "joint_type": "hinge",
+          "link": "LEFT_TOE",
+          "range_rad": [
+            -1.047,
+            0.0
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        },
+        {
+          "actuator_name": null,
+          "actuator_present": false,
+          "armature": 0.001,
+          "axis": [
+            0.0074685,
+            -0.99997,
+            0.0
+          ],
+          "evidence_kind": "mjcf_direct_drive_transmission_absence_audit",
+          "has_separate_gear_pulley_belt_geometry": false,
+          "joint": "right_toe_joint",
+          "joint_type": "hinge",
+          "link": "RIGHT_TOE",
+          "range_rad": [
+            0.0,
+            1.047
+          ],
+          "transmission_type": "direct_drive_or_integrated_actuator"
+        }
+      ],
+      "evidence_count": 27,
       "family": "gear_or_pulley_or_belt",
       "label": "Gears, pulleys, belts, and sprockets",
       "required": true,
       "required_geometry": "named transmission geometry with pitch/diameter/tooth or belt path envelope"
     },
     {
-      "acceptance_blocker": "no named STEP, MJCF, or manifest geometry has been classified for this component family",
+      "acceptance_blocker": "classified STEP/vendor geometry exists, but exact measured dimensions and positive generated-body clearance are not certified",
       "accepted": false,
-      "clearance_geometry_present": false,
+      "clearance_geometry_present": true,
       "clearance_proof_required": true,
       "clearance_verified": false,
-      "covered_count": 0,
-      "covered_links": [],
-      "evidence": [],
-      "evidence_count": 0,
+      "covered_count": 2,
+      "covered_links": [
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_TOE",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_TOE"
+      ],
+      "evidence": [
+        {
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "M5 x 0.8 mm cup-point set screw, 4 mm length",
+          "datasheet_backed": true,
+          "evidence_kind": "classified_supplier_code_step_geometry",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "max_body_bbox_extent_m": 0.013500000200000003,
+          "path_count": 4,
+          "referenced_by_groups": [
+            "foot",
+            "leg"
+          ],
+          "referenced_by_links": [
+            "LEFT_ANKLE_A",
+            "LEFT_ANKLE_B",
+            "LEFT_HIP_PITCH",
+            "LEFT_HIP_ROLL",
+            "LEFT_HIP_YAW",
+            "LEFT_KNEE",
+            "LEFT_TOE",
+            "RIGHT_ANKLE_A",
+            "RIGHT_ANKLE_B",
+            "RIGHT_HIP_PITCH",
+            "RIGHT_HIP_ROLL",
+            "RIGHT_HIP_YAW",
+            "RIGHT_KNEE",
+            "RIGHT_TOE"
+          ],
+          "source": "ServoCity set-screw catalog",
+          "source_url": "https://www.servocity.com/set-screws/",
+          "supplier_code": "2806-0005-0004"
+        },
+        {
+          "classification_status": "classified_from_cross_reference",
+          "component_type": "M5 x 0.8 mm cup-point set screw, 5 mm length",
+          "datasheet_backed": true,
+          "evidence_kind": "classified_supplier_code_step_geometry",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "max_body_bbox_extent_m": 0.013500000200000003,
+          "path_count": 4,
+          "referenced_by_groups": [
+            "foot",
+            "leg"
+          ],
+          "referenced_by_links": [
+            "LEFT_ANKLE_A",
+            "LEFT_ANKLE_B",
+            "LEFT_HIP_PITCH",
+            "LEFT_HIP_ROLL",
+            "LEFT_HIP_YAW",
+            "LEFT_KNEE",
+            "LEFT_TOE",
+            "RIGHT_ANKLE_A",
+            "RIGHT_ANKLE_B",
+            "RIGHT_HIP_PITCH",
+            "RIGHT_HIP_ROLL",
+            "RIGHT_HIP_YAW",
+            "RIGHT_KNEE",
+            "RIGHT_TOE"
+          ],
+          "source": "McMaster-equivalent DIN 916 / ISO 4029 set-screw listing",
+          "source_url": "https://www.mcmaster.com/products/set-screws/specifications-met~iso-4029/",
+          "supplier_code": "91390A117"
+        }
+      ],
+      "evidence_count": 2,
       "family": "fastener_or_thread",
       "label": "Fasteners, inserts, spacers, standoffs, and threads",
       "required": true,
       "required_geometry": "screw/bolt/nut/thread geometry with edge-distance and tool-access checks"
     },
     {
-      "acceptance_blocker": "no named STEP, MJCF, or manifest geometry has been classified for this component family",
+      "acceptance_blocker": "parametric wiring/service corridors are generated from actuated links and link envelopes, but measured harness diameter, connector envelope, bend radius, and access clearance are still required",
       "accepted": false,
-      "clearance_geometry_present": false,
+      "clearance_geometry_present": true,
       "clearance_proof_required": true,
       "clearance_verified": false,
-      "covered_count": 0,
-      "covered_links": [],
-      "evidence": [],
-      "evidence_count": 0,
+      "covered_count": 26,
+      "covered_links": [
+        "IMU_ORIGIN",
+        "LEFT_ANKLE_A",
+        "LEFT_ANKLE_B",
+        "LEFT_ELBOW",
+        "LEFT_HIP_PITCH",
+        "LEFT_HIP_ROLL",
+        "LEFT_HIP_YAW",
+        "LEFT_KNEE",
+        "LEFT_SHOULDER_PITCH",
+        "LEFT_SHOULDER_ROLL",
+        "LEFT_SHOULDER_YAW",
+        "LEFT_WRIST_YAW",
+        "NECK_PITCH",
+        "NECK_YAW",
+        "RIGHT_ANKLE_A",
+        "RIGHT_ANKLE_B",
+        "RIGHT_ELBOW",
+        "RIGHT_HIP_PITCH",
+        "RIGHT_HIP_ROLL",
+        "RIGHT_HIP_YAW",
+        "RIGHT_KNEE",
+        "RIGHT_SHOULDER_PITCH",
+        "RIGHT_SHOULDER_ROLL",
+        "RIGHT_SHOULDER_YAW",
+        "RIGHT_WRIST_YAW",
+        "WAIST_YAW"
+      ],
+      "evidence": [
+        {
+          "actuated_joint_count": 0,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.06200019635568596,
+            0.13500018954592996,
+            0.18380019697209
+          ],
+          "link": "IMU_ORIGIN",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.01550004908892149,
+            0.03,
+            0.03
+          ],
+          "site_keepout_count": 2,
+          "source_extent_m": [
+            0.13185408432036638,
+            0.13499999046325684,
+            0.18379999697208405
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.0362130232247276,
+            0.2030001986204597,
+            0.38166717602669503
+          ],
+          "link": "WAIST_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.03,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.21884702146053314,
+            0.25,
+            0.3816669760271907
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540634078,
+            0.01200026789683811,
+            0.074666472616015
+          ],
+          "link": "NECK_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.01866661815400375
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.07068441063165665,
+            0.060499999672174454,
+            0.07466627261601388
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.04000017846877603,
+            0.012000267896839643,
+            0.18396028387199
+          ],
+          "link": "NECK_PITCH",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.1687920019030571,
+            0.13140400499105453,
+            0.18396008387207985
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000199294639712,
+            0.08470660362971269,
+            0.06670664879342
+          ],
+          "link": "LEFT_SHOULDER_PITCH",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.021176650907428173,
+            0.016676662198355
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.08659999817609787,
+            0.11670644395053387,
+            0.06670644879341125
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000199294639684,
+            0.08470660362963141,
+            0.08274209755321002
+          ],
+          "link": "RIGHT_SHOULDER_PITCH",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.021176650907407852,
+            0.020685524388302505
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.08659999817609787,
+            0.11670644395053387,
+            0.08274189755320549
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000267896839091,
+            0.024000187081269105,
+            0.18338238331291
+          ],
+          "link": "LEFT_SHOULDER_ROLL",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.07459999993443489,
+            0.10000000149011612,
+            0.18338218331336975
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000267896839091,
+            0.024000187081269105,
+            0.18338238331291
+          ],
+          "link": "RIGHT_SHOULDER_ROLL",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.07459999993443489,
+            0.10000000149011612,
+            0.18338218331336975
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540634817,
+            0.012000267896839112,
+            0.135051499818241
+          ],
+          "link": "LEFT_SHOULDER_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.06852789595723152,
+            0.06450000032782555,
+            0.13505129981786013
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540634817,
+            0.012000267896839327,
+            0.13535150489624098
+          ],
+          "link": "RIGHT_SHOULDER_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.06852789595723152,
+            0.0656999982893467,
+            0.13535130489617586
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.11006201576563879,
+            0.024000198589278515,
+            0.13214821996946002
+          ],
+          "link": "LEFT_ELBOW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.027515503941409697,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.1414158120751381,
+            0.07349999994039536,
+            0.13214801996946335
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.10999084036968369,
+            0.024000198589278515,
+            0.13205841812152003
+          ],
+          "link": "RIGHT_ELBOW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.027497710092420923,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.1414869874715805,
+            0.07349999994039536,
+            0.13205821812152863
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.01200019354063355,
+            0.012000267896839,
+            0.0403212464865
+          ],
+          "link": "LEFT_WRIST_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.010080311621625
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.03803807031363249,
+            0.03759061545133591,
+            0.040321046486496925
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540634325,
+            0.0120002678968389,
+            0.0403724114861
+          ],
+          "link": "RIGHT_WRIST_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.010093102871525
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.03807985968887806,
+            0.03759999759495258,
+            0.04037221148610115
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.052250296928733626,
+            0.09499846644493029,
+            0.09600020083447
+          ],
+          "link": "LEFT_HIP_PITCH",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.013062574232183407,
+            0.023749616611232573,
+            0.0240000502086175
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.09724928066134453,
+            0.09899831237271428,
+            0.09600000083446503
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.05225019692874271,
+            0.09485073641218884,
+            0.09600020083447
+          ],
+          "link": "RIGHT_HIP_PITCH",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.013062549232185678,
+            0.02371268410304721,
+            0.0240000502086175
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.09725009649991989,
+            0.09885058226063848,
+            0.09600000083446503
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.0565193978861952,
+            0.01200019929463855,
+            0.08000019821186
+          ],
+          "link": "LEFT_HIP_ROLL",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.0141298494715488,
+            0.008,
+            0.020000049552965
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.07251923158764839,
+            0.05338030308485031,
+            0.07999999821186066
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.0565193978861952,
+            0.012000199294638879,
+            0.08000019821186
+          ],
+          "link": "RIGHT_HIP_ROLL",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.0141298494715488,
+            0.008,
+            0.020000049552965
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.07251923158764839,
+            0.0533982589840889,
+            0.07999999821186066
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.015834771927804595,
+            0.012000267896839894,
+            0.30874021234777
+          ],
+          "link": "LEFT_HIP_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.12319221720099449,
+            0.11502362042665482,
+            0.3087400123476982
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.015834771927804595,
+            0.01200026789683905,
+            0.30874022724893
+          ],
+          "link": "RIGHT_HIP_YAW",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.12319221720099449,
+            0.11502033844590187,
+            0.3087400272488594
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540634323,
+            0.012000267896838213,
+            0.36964378016836996
+          ],
+          "link": "LEFT_KNEE",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.12836166843771935,
+            0.10094565525650978,
+            0.36964358016848564
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540635477,
+            0.012000267896838664,
+            0.36964378016836996
+          ],
+          "link": "RIGHT_KNEE",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.03
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.1280105821788311,
+            0.10094646736979485,
+            0.36964358016848564
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540632725,
+            0.012000267896839,
+            0.051000191595750005
+          ],
+          "link": "LEFT_ANKLE_A",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.012750047898937501
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.050999999046325684,
+            0.050999999046325684,
+            0.05099999159574509
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.012000193540632725,
+            0.012000267896839,
+            0.051000191595750005
+          ],
+          "link": "RIGHT_ANKLE_A",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.012750047898937501
+          ],
+          "site_keepout_count": 0,
+          "source_extent_m": [
+            0.050999999046325684,
+            0.050999999046325684,
+            0.05099999159574509
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.14753019899737613,
+            0.08000019529759753,
+            0.06608667108078001
+          ],
+          "link": "LEFT_ANKLE_B",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.03,
+            0.02000004882439938,
+            0.016521667770195002
+          ],
+          "site_keepout_count": 1,
+          "source_extent_m": [
+            0.151763454079628,
+            0.0968388170003891,
+            0.06608647108078003
+          ],
+          "wire_bundle_diameter_m": 0.004
+        },
+        {
+          "actuated_joint_count": 1,
+          "connector_envelope_xyz_m": [
+            0.012,
+            0.008,
+            0.006
+          ],
+          "evidence_kind": "generated_wiring_service_access_corridor",
+          "generated_extent_m": [
+            0.14747019899800617,
+            0.08000019529759783,
+            0.06609851750393
+          ],
+          "link": "RIGHT_ANKLE_B",
+          "measurement_status": "parametric_placeholder_requires_exact_harness_measurement",
+          "minimum_bend_radius_m": 0.012,
+          "service_clearance_envelope_xyz_m": [
+            0.03,
+            0.020000048824399458,
+            0.0165246293759825
+          ],
+          "site_keepout_count": 1,
+          "source_extent_m": [
+            0.15176347270607948,
+            0.09683230891823769,
+            0.06609831750392914
+          ],
+          "wire_bundle_diameter_m": 0.004
+        }
+      ],
+      "evidence_count": 26,
       "family": "wiring_or_service_access",
       "label": "Wiring, connectors, harnesses, and service access",
       "required": true,
@@ -2916,10 +4474,12 @@
   "ok": true,
   "schema": "asimov-fembot-component-constraint-coverage-v1",
   "summary": {
-    "acceptance_blocker": "motors, joints, collision, source mesh, and vendor envelopes are inventoried; bearings/rings, gears/pulleys/belts, fasteners/threads, wiring/service access, and final positive clearance checks still need explicit geometry before thinning can be accepted",
+    "acceptance_blocker": "motors, joints, collision, source mesh, vendor envelopes, bearing/ring supplier codes, fastener/thread supplier codes, direct-drive transmission audits, and parametric wiring/service corridors are inventoried; exact measured dimensions and final positive clearance checks still need certification before thinning can be accepted",
     "accepted": false,
     "accepted_families": 0,
-    "covered_families": 5,
+    "classified_vendor_supplier_codes": 5,
+    "covered_families": 9,
+    "direct_drive_transmission_audited_joints": 27,
     "duplicate_off_the_shelf_vendor_geometry_hashes": 10,
     "duplicate_off_the_shelf_vendor_geometry_paths": 31,
     "duplicate_off_the_shelf_vendor_references": 38,
@@ -2928,21 +4488,24 @@
       "joint_axis",
       "collision_capsule",
       "source_mesh_envelope",
-      "vendor_off_the_shelf"
-    ],
-    "links_with_collision_keepouts": 17,
-    "links_with_joint_axis_keepouts": 27,
-    "links_with_motor_keepouts": 25,
-    "missing_families": [
+      "vendor_off_the_shelf",
       "bearing_or_ring",
       "gear_or_pulley_or_belt",
       "fastener_or_thread",
       "wiring_or_service_access"
     ],
+    "links_with_collision_keepouts": 17,
+    "links_with_joint_axis_keepouts": 27,
+    "links_with_motor_keepouts": 25,
+    "missing_families": [],
     "off_the_shelf_vendor_envelopes": 105,
     "required_families": 9,
     "source_mesh_envelopes": 28,
     "step_candidate_component_evidence": 0,
+    "supplier_code_family_counts": {
+      "bearing_or_ring": 3,
+      "fastener_or_thread": 2
+    },
     "supplier_code_fit_margin_m": 0.002,
     "supplier_code_generated_link_fit_checked": 70,
     "supplier_code_generated_link_fit_fail": 36,
@@ -2962,7 +4525,7 @@
       "LEFT_HIP_ROLL",
       "RIGHT_HIP_ROLL"
     ],
-    "unclassified_vendor_supplier_codes": 5,
+    "unclassified_vendor_supplier_codes": 0,
     "unique_off_the_shelf_vendor_envelopes": 67,
     "unique_off_the_shelf_vendor_geometry_hashes": 46,
     "unique_supplier_code_geometry_failed_paths": 0,
@@ -2979,9 +4542,11 @@
     },
     "vendor_envelopes_with_component_family_keywords": 0,
     "vendor_envelopes_with_step_product_metadata": 67,
-    "vendor_envelopes_with_supplier_codes": 8
+    "vendor_envelopes_with_supplier_codes": 8,
+    "wiring_service_access_corridors": 26
   },
   "vendor_envelope_summary": {
+    "classified_vendor_supplier_codes": 5,
     "component_family_keyword_records": [],
     "duplicate_vendor_geometry_groups": [
       {
@@ -3461,8 +5026,20 @@
           "500",
           "600"
         ],
-        "classification_required_for_acceptance": true,
-        "classification_status": "supplier_code_unclassified",
+        "classification": {
+          "classification_required_for_acceptance": true,
+          "classification_status": "geometry_inferred_from_step_assembly",
+          "component_type": "bearing or bearing subcomponent in 1602 pillow-block assembly",
+          "datasheet_backed": false,
+          "family": "bearing_or_ring",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 6,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "source": "STEP product metadata groups this code with 1602-0032-0006 pillow-block geometry",
+          "source_url": null,
+          "supplier_code": "1600-0515-0006"
+        },
         "generated_link_fit_checked_count": 14,
         "generated_link_fit_fail_count": 6,
         "generated_link_fit_pass_count": 8,
@@ -4057,8 +5634,20 @@
           "500",
           "600"
         ],
-        "classification_required_for_acceptance": true,
-        "classification_status": "supplier_code_unclassified",
+        "classification": {
+          "classification_required_for_acceptance": true,
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "6 mm bore pillow block with press-fit bearing",
+          "datasheet_backed": true,
+          "family": "bearing_or_ring",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 6,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "source": "ServoCity/goBILDA pillow-block catalog",
+          "source_url": "https://www.servocity.com/gobilda-pillow-blocks/",
+          "supplier_code": "1602-0032-0006"
+        },
         "generated_link_fit_checked_count": 14,
         "generated_link_fit_fail_count": 6,
         "generated_link_fit_pass_count": 8,
@@ -4653,8 +6242,20 @@
           "500",
           "600"
         ],
-        "classification_required_for_acceptance": true,
-        "classification_status": "supplier_code_unclassified",
+        "classification": {
+          "classification_required_for_acceptance": true,
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "M5 x 0.8 mm cup-point set screw, 4 mm length",
+          "datasheet_backed": true,
+          "family": "fastener_or_thread",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "source": "ServoCity set-screw catalog",
+          "source_url": "https://www.servocity.com/set-screws/",
+          "supplier_code": "2806-0005-0004"
+        },
         "generated_link_fit_checked_count": 14,
         "generated_link_fit_fail_count": 8,
         "generated_link_fit_pass_count": 6,
@@ -5209,8 +6810,20 @@
           "500",
           "600"
         ],
-        "classification_required_for_acceptance": true,
-        "classification_status": "supplier_code_unclassified",
+        "classification": {
+          "classification_required_for_acceptance": true,
+          "classification_status": "classified_from_vendor_catalog",
+          "component_type": "6 mm bore steel set-screw shaft collar",
+          "datasheet_backed": true,
+          "family": "bearing_or_ring",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "source": "ServoCity collars catalog",
+          "source_url": "https://www.servocity.com/collars/",
+          "supplier_code": "2920-0001-0006"
+        },
         "generated_link_fit_checked_count": 14,
         "generated_link_fit_fail_count": 8,
         "generated_link_fit_pass_count": 6,
@@ -5765,8 +7378,20 @@
           "500",
           "600"
         ],
-        "classification_required_for_acceptance": true,
-        "classification_status": "supplier_code_unclassified",
+        "classification": {
+          "classification_required_for_acceptance": true,
+          "classification_status": "classified_from_cross_reference",
+          "component_type": "M5 x 0.8 mm cup-point set screw, 5 mm length",
+          "datasheet_backed": true,
+          "family": "fastener_or_thread",
+          "generated_link_fit_checked_count": 14,
+          "generated_link_fit_fail_count": 8,
+          "geometry_failed_count": 0,
+          "geometry_loaded_count": 4,
+          "source": "McMaster-equivalent DIN 916 / ISO 4029 set-screw listing",
+          "source_url": "https://www.mcmaster.com/products/set-screws/specifications-met~iso-4029/",
+          "supplier_code": "91390A117"
+        },
         "generated_link_fit_checked_count": 14,
         "generated_link_fit_fail_count": 8,
         "generated_link_fit_pass_count": 6,
@@ -6317,6 +7942,10 @@
         "total_volume_m3": 3.6636866301807024e-06
       }
     ],
+    "supplier_code_family_counts": {
+      "bearing_or_ring": 3,
+      "fastener_or_thread": 2
+    },
     "supplier_code_fit_margin_m": 0.002,
     "supplier_code_generated_link_fit_checked": 70,
     "supplier_code_generated_link_fit_fail": 36,
@@ -6770,7 +8399,7 @@
       "LEFT_HIP_ROLL",
       "RIGHT_HIP_ROLL"
     ],
-    "unclassified_vendor_supplier_codes": 5,
+    "unclassified_vendor_supplier_codes": 0,
     "unique_supplier_code_geometry_failed_paths": 0,
     "unique_supplier_code_geometry_loaded_paths": 8,
     "unique_vendor_envelope_records": [

@@ -44,6 +44,8 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
         "hollow_lofted_elliptic_shell_reference": 4,
     }
     assert report["summary"]["surface_intent_counts"] == {"flat": 2, "smooth": 26}
+    assert report["summary"]["smooth_chest_no_cutout_loft_links"] == ["WAIST_YAW"]
+    assert report["summary"]["stl_or_mesh_source_links"] == []
     assert report["summary"]["hollow_shell_links"] == 26
     assert report["summary"]["flat_plate_links"] == 2
     assert report["summary"]["wall_thickness_m"] == 0.0012
@@ -86,8 +88,8 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert report["summary"]["pocketed_preview_reloads"] == 26
     assert report["summary"]["pocketed_preview_failures"] == 0
     assert report["summary"]["pocketed_preview_fragmented_links"] == 7
-    assert report["summary"]["pocketed_preview_high_volume_loss_links"] == 9
-    assert report["summary"]["pocketed_preview_structural_risk_links"] == 11
+    assert report["summary"]["pocketed_preview_high_volume_loss_links"] == 10
+    assert report["summary"]["pocketed_preview_structural_risk_links"] == 12
     assert report["summary"]["pocketed_preview_top_structural_risk_links"][:4] == [
         "LEFT_WRIST_YAW",
         "RIGHT_WRIST_YAW",
@@ -176,6 +178,13 @@ def test_fembot_generated_cad_exports_adjusted_envelope_steps(tmp_path) -> None:
     assert left_toe["manufacturing_adjusted_plate"]["height_delta_m"] == 0.0
     assert left_toe["manufacturing_adjusted_plate"]["process_floor_satisfied"] is True
     assert left_toe["manufacturing_adjusted_plate"]["step_sha256"]
+
+    waist_yaw = {record["link"]: record for record in report["link_steps"]}["WAIST_YAW"]
+    assert waist_yaw["smooth_chest_no_cutout_loft"] is True
+    assert waist_yaw["parametric_source"] == "cadquery_multi_section_loft"
+    assert "front M logo/cutout omitted" in waist_yaw["cutout_policy"]
+    assert waist_yaw["step_path"].endswith("waist_yaw.step")
+    assert waist_yaw["extent_within_tolerance"] is True
 
     neck_pitch = {record["link"]: record for record in report["link_steps"]}["NECK_PITCH"]
     assert neck_pitch["shape_family"] == "hollow_lofted_elliptic_shell_reference"
@@ -266,7 +275,7 @@ def test_fembot_inventory_surfaces_generated_cad_status() -> None:
     assert report["generated_cad"]["summary"]["remediation_pocket_step_exports"] == 73
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_exports"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_exports"] == 26
-    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 11
+    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 12
     assert report["generated_cad"]["summary"]["bulged_preview_exports"] == 26
     assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 4
     assert report["generated_cad"]["summary"]["bulged_preview_residual_structural_risk_links"] == 4

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   defaultVoiceQuantForTier,
-  ELIZA_1_DFLASH_TIER_IDS,
+  ELIZA_1_MTP_TIER_IDS,
   ELIZA_1_TIER_IDS,
   ELIZA_1_VISION_TIER_IDS,
   MODEL_CATALOG,
@@ -122,52 +122,16 @@ describe("Eliza-1 runtime quant metadata", () => {
       expect(entry?.runtime?.optimizations?.requiresKernel).toContain(
         "polarquant",
       );
-      if (ELIZA_1_DFLASH_TIER_IDS.includes(id)) {
-        expect(entry?.runtime?.dflash?.disabledReason).toContain("#7631");
-      } else {
-        expect(entry?.runtime?.dflash).toBeUndefined();
-      }
+      expect(entry?.runtime?.dflash).toBeUndefined();
     }
   });
 
-  it("attaches a tiny DFlash companion to the 0.8B tier", () => {
-    const entry = MODEL_CATALOG.find((model) => model.id === "eliza-1-0_8b");
-
-    expect(entry?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
-    expect(entry?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
-    const drafter = MODEL_CATALOG.find(
-      (model) => model.id === "eliza-1-0_8b-drafter",
-    );
-    expect(drafter?.params).toBe("0.1B");
-    expect(drafter?.sizeGb).toBe(0.1);
-    expect(entry?.runtime?.optimizations?.requiresKernel).toContain("dflash");
-    expect(
-      MODEL_CATALOG.some((model) => model.id === "eliza-1-0_8b-drafter"),
-    ).toBe(true);
-    expect(entry?.sourceModel?.components.drafter?.file).toBe(
-      "bundles/0_8b/dflash/drafter-0_8b.gguf",
-    );
-  });
-
-  it("attaches the 0.3B DFlash companion to the 2B tier", () => {
-    const drafter = MODEL_CATALOG.find(
-      (model) => model.id === "eliza-1-2b-drafter",
-    );
-
-    expect(drafter?.params).toBe("0.3B");
-    expect(drafter?.sizeGb).toBe(0.3);
-  });
-
-  it("gates M-RoPE DFlash tiers until the verifier path is hardware-validated", () => {
-    for (const id of [
-      "eliza-1-0_8b",
-      "eliza-1-2b",
-      "eliza-1-4b",
-      "eliza-1-9b",
-      "eliza-1-27b",
-    ]) {
+  it("enables native MTP metadata for MTP tiers without companion drafters", () => {
+    for (const id of ELIZA_1_MTP_TIER_IDS) {
       const entry = MODEL_CATALOG.find((model) => model.id === id);
-      expect(entry?.runtime?.dflash?.disabledReason).toMatch(/7631/);
+      expect(entry?.runtime?.mtp?.specType).toBe("draft-mtp");
+      expect(entry?.runtime?.dflash).toBeUndefined();
+      expect(entry?.companionModelIds).toBeUndefined();
     }
   });
 

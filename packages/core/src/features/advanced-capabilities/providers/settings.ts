@@ -351,7 +351,7 @@ export const settingsProvider: Provider = {
 			}
 
 			if (!worldSettings) {
-				logger.info(
+				logger.debug(
 					{
 						src: "plugin:advanced-capabilities:provider:settings",
 						agentId: runtime.agentId,

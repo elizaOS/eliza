@@ -72,8 +72,8 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
     assert report["generated_cad"]["summary"]["remediation_link_pocket_set_reloads"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_exports"] == 26
     assert report["generated_cad"]["summary"]["pocketed_preview_fragmented_links"] == 7
-    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 11
-    assert report["generated_cad"]["summary"]["pocketed_preview_high_volume_loss_links"] == 9
+    assert report["generated_cad"]["summary"]["pocketed_preview_structural_risk_links"] == 12
+    assert report["generated_cad"]["summary"]["pocketed_preview_high_volume_loss_links"] == 10
     assert report["generated_cad"]["summary"]["bulged_preview_exports"] == 26
     assert report["generated_cad"]["summary"]["bulged_preview_high_volume_loss_links"] == 0
     assert report["generated_cad"]["summary"]["bulged_preview_fragmented_links"] == 4
@@ -338,6 +338,7 @@ def test_fembot_inventory_is_stricter_than_visual_parametric_experiment() -> Non
         assert "manufacturing_process" in group["missing_proofs"]
         assert "hardware_measurements" in group["missing_proofs"]
         assert "collision_sweep" in group["missing_proofs"]
+        assert "all_cad_no_stl_parametric" in group["missing_proofs"]
         assert "visual_motion_media" in group["required_proofs"]
         assert "visual_motion_media" not in group["missing_proofs"]
         assert group["step_candidate_count"] == len(group["step_candidates"])

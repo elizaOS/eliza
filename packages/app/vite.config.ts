@@ -953,15 +953,38 @@ function asyncLocalStoragePatchPlugin(): Plugin {
   };
 }
 
+function isIgnoredWorkspaceGeneratedOutput(normalizedFile: string): boolean {
+  return (
+    normalizedFile.includes("/packages/app/.vite/") ||
+    normalizedFile.includes("/.turbo/") ||
+    normalizedFile.includes("/.wrangler/") ||
+    normalizedFile.includes("/output/generated-cad/") ||
+    normalizedFile.includes("/packages/robot/") ||
+    normalizedFile.includes("/src/i18n/generated/") ||
+    normalizedFile.endsWith(".d.ts") ||
+    normalizedFile.endsWith(".d.ts.map") ||
+    normalizedFile.endsWith(".log") ||
+    normalizedFile.endsWith(".tsbuildinfo") ||
+    /^.*\/packages\/.*\/dist\//.test(normalizedFile)
+  );
+}
+
 function watchWorkspacePackagesPlugin(): Plugin {
   return {
     name: "watch-workspace-packages",
     configureServer(server) {
+      const watcherStartedAt = Date.now();
+      const seenMtimes = new Map<string, number>();
       server.watcher.add(path.resolve(elizaRoot, "packages"));
       server.watcher.add(nativePluginsRoot);
       server.watcher.on("change", (file) => {
         const normalizedFile = file.split(path.sep).join("/");
-        if (normalizedFile.includes("/packages/app/.vite/")) return;
+        if (isIgnoredWorkspaceGeneratedOutput(normalizedFile)) return;
+        const stat = fs.statSync(file, { throwIfNoEntry: false });
+        if (!stat) return;
+        if (stat.mtimeMs < watcherStartedAt - 1000) return;
+        if (seenMtimes.get(normalizedFile) === stat.mtimeMs) return;
+        seenMtimes.set(normalizedFile, stat.mtimeMs);
         if (file.includes("/packages/")) {
           if (file.endsWith("package.json")) {
             server.restart();
@@ -1444,6 +1467,7 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
+    noDiscovery: process.env.ELIZA_APP_VITE_NO_DISCOVERY === "1",
     include: [
       "react",
       "react-dom",
@@ -1691,6 +1715,17 @@ export default defineConfig({
         "**/electrobun/build/**",
         "**/electrobun/artifacts/**",
         "**/packages/app/.vite/**",
+        "**/packages/**/.turbo/**",
+        "**/packages/**/.wrangler/**",
+        "**/packages/**/dist/**",
+        "**/packages/**/*.log",
+        "**/plugins/**/.turbo/**",
+        "**/*.d.ts",
+        "**/*.d.ts.map",
+        "**/*.tsbuildinfo",
+        "**/packages/**/output/generated-cad/**",
+        "**/packages/robot/**",
+        "**/packages/**/src/i18n/generated/**",
         "**/packages/benchmarks/**",
         "**/packages/os/**",
         "**/packages/training/data/raw/**",

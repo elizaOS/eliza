@@ -62,6 +62,19 @@ def _bbox_center(minimum: list[float], maximum: list[float]) -> list[float]:
 
 
 def _shape_spec(group: str, link: str) -> dict[str, Any]:
+    if link == "WAIST_YAW":
+        return {
+            "shape_family": "hollow_lofted_elliptic_shell_reference",
+            "surface_intent": "smooth",
+            "wall_thickness_m": DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M,
+            "minimum_plate_thickness_m": None,
+            "manufacturing_intent": (
+                "single-piece smooth no-cutout chest loft for future injection/vacuform shell work"
+            ),
+            "parametric_source": "cadquery_multi_section_loft",
+            "cutout_policy": "front M logo/cutout omitted; no text, logo, or through-hole cut is generated",
+            "smooth_chest_no_cutout_loft": True,
+        }
     if group == "foot":
         return {
             "shape_family": "flat_plate_envelope",
@@ -69,6 +82,9 @@ def _shape_spec(group: str, link: str) -> dict[str, Any]:
             "wall_thickness_m": None,
             "minimum_plate_thickness_m": DEFAULT_FLAT_PLATE_MIN_THICKNESS_M,
             "manufacturing_intent": "structural plate envelope; sole/contact and ankle keepouts preserved",
+            "parametric_source": "cadquery_box",
+            "cutout_policy": None,
+            "smooth_chest_no_cutout_loft": False,
         }
     if group in {"torso", "head"}:
         return {
@@ -77,6 +93,9 @@ def _shape_spec(group: str, link: str) -> dict[str, Any]:
             "wall_thickness_m": DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M,
             "minimum_plate_thickness_m": None,
             "manufacturing_intent": "moldable smooth loft reference for future injection/vacuform shell work",
+            "parametric_source": "cadquery_elliptic_loft",
+            "cutout_policy": "no text, logo, or decorative cutout generated",
+            "smooth_chest_no_cutout_loft": False,
         }
     if group in {"arm", "leg"}:
         return {
@@ -88,6 +107,9 @@ def _shape_spec(group: str, link: str) -> dict[str, Any]:
                 "slender limb loft reference; replace with split structural plates, "
                 "bearing seats, and actuator keepouts before production"
             ),
+            "parametric_source": "cadquery_elliptic_loft",
+            "cutout_policy": "no text, logo, or decorative cutout generated",
+            "smooth_chest_no_cutout_loft": False,
         }
     return {
         "shape_family": "hollow_lofted_elliptic_reference",
@@ -95,6 +117,9 @@ def _shape_spec(group: str, link: str) -> dict[str, Any]:
         "wall_thickness_m": DEFAULT_SMOOTH_SHELL_WALL_THICKNESS_M,
         "minimum_plate_thickness_m": None,
         "manufacturing_intent": f"unclassified smooth loft reference for {link}",
+        "parametric_source": "cadquery_elliptic_loft",
+        "cutout_policy": "no text, logo, or decorative cutout generated",
+        "smooth_chest_no_cutout_loft": False,
     }
 
 
@@ -509,6 +534,37 @@ def make_parametric_solid(spec):
     shape_family = spec["shape_family"]
     if shape_family == "flat_plate_envelope":
         return cq.Workplane("XY").box(extents[0], extents[1], extents[2], centered=True)
+    if spec.get("smooth_chest_no_cutout_loft"):
+        sections = [
+            (-0.50, 0.48616, 0.48299, 0.00),
+            (-0.30, 0.42814, 0.46399, -0.02),
+            (-0.12, 0.37012, 0.41599, -0.025),
+            (0.12, 0.45715, 0.46399, 0.015),
+            (0.30, 0.44715, 0.44499, 0.04),
+            (0.50, 0.48616, 0.48299, 0.00),
+        ]
+        wp = cq.Workplane("XY")
+        first = True
+        for z_fraction, rx_fraction, ry_fraction, x_offset_fraction in sections:
+            wp = wp.workplane(offset=z_fraction * extents[2] if first else (z_fraction - previous_z) * extents[2])
+            wp = wp.center(x_offset_fraction * extents[0], 0).ellipse(extents[0] * rx_fraction, extents[1] * ry_fraction)
+            wp = wp.center(-x_offset_fraction * extents[0], 0)
+            previous_z = z_fraction
+            first = False
+        outer = wp.loft(combine=True)
+        wall = float(spec["wall_thickness_m"])
+        inner_extents = [max(value - 2.0 * wall, 0.0005) for value in extents]
+        inner = (
+            cq.Workplane("XY")
+            .workplane(offset=-inner_extents[2] * 0.5)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.34, inner_extents[1] * 0.39)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .loft(combine=True)
+        )
+        return outer.cut(inner)
     outer = (
         cq.Workplane("XY")
         .workplane(offset=-extents[2] * 0.5)
@@ -558,6 +614,9 @@ for spec in payload["specs"]:
                 "manufacturing_intent": spec["manufacturing_intent"],
                 "wall_thickness_m": spec["wall_thickness_m"],
                 "minimum_plate_thickness_m": spec["minimum_plate_thickness_m"],
+                "parametric_source": spec.get("parametric_source"),
+                "cutout_policy": spec.get("cutout_policy"),
+                "smooth_chest_no_cutout_loft": bool(spec.get("smooth_chest_no_cutout_loft")),
                 "internal_cavity": spec["internal_cavity"],
                 "requested_extent_m": extents,
                 "requested_center_m": center,
@@ -940,6 +999,37 @@ def make_parametric_solid(spec):
     shape_family = spec["shape_family"]
     if shape_family == "flat_plate_envelope":
         return cq.Workplane("XY").box(extents[0], extents[1], extents[2], centered=True)
+    if spec.get("smooth_chest_no_cutout_loft"):
+        sections = [
+            (-0.50, 0.48616, 0.48299, 0.00),
+            (-0.30, 0.42814, 0.46399, -0.02),
+            (-0.12, 0.37012, 0.41599, -0.025),
+            (0.12, 0.45715, 0.46399, 0.015),
+            (0.30, 0.44715, 0.44499, 0.04),
+            (0.50, 0.48616, 0.48299, 0.00),
+        ]
+        wp = cq.Workplane("XY")
+        first = True
+        for z_fraction, rx_fraction, ry_fraction, x_offset_fraction in sections:
+            wp = wp.workplane(offset=z_fraction * extents[2] if first else (z_fraction - previous_z) * extents[2])
+            wp = wp.center(x_offset_fraction * extents[0], 0).ellipse(extents[0] * rx_fraction, extents[1] * ry_fraction)
+            wp = wp.center(-x_offset_fraction * extents[0], 0)
+            previous_z = z_fraction
+            first = False
+        outer = wp.loft(combine=True)
+        wall = float(spec["wall_thickness_m"])
+        inner_extents = [max(value - 2.0 * wall, 0.0005) for value in extents]
+        inner = (
+            cq.Workplane("XY")
+            .workplane(offset=-inner_extents[2] * 0.5)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.34, inner_extents[1] * 0.39)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .loft(combine=True)
+        )
+        return outer.cut(inner)
     outer = (
         cq.Workplane("XY")
         .workplane(offset=-extents[2] * 0.5)
@@ -1129,6 +1219,37 @@ def make_parametric_solid(spec):
     shape_family = spec["shape_family"]
     if shape_family == "flat_plate_envelope":
         return cq.Workplane("XY").box(extents[0], extents[1], extents[2], centered=True)
+    if spec.get("smooth_chest_no_cutout_loft"):
+        sections = [
+            (-0.50, 0.48616, 0.48299, 0.00),
+            (-0.30, 0.42814, 0.46399, -0.02),
+            (-0.12, 0.37012, 0.41599, -0.025),
+            (0.12, 0.45715, 0.46399, 0.015),
+            (0.30, 0.44715, 0.44499, 0.04),
+            (0.50, 0.48616, 0.48299, 0.00),
+        ]
+        wp = cq.Workplane("XY")
+        first = True
+        for z_fraction, rx_fraction, ry_fraction, x_offset_fraction in sections:
+            wp = wp.workplane(offset=z_fraction * extents[2] if first else (z_fraction - previous_z) * extents[2])
+            wp = wp.center(x_offset_fraction * extents[0], 0).ellipse(extents[0] * rx_fraction, extents[1] * ry_fraction)
+            wp = wp.center(-x_offset_fraction * extents[0], 0)
+            previous_z = z_fraction
+            first = False
+        outer = wp.loft(combine=True)
+        wall = float(spec["wall_thickness_m"])
+        inner_extents = [max(value - 2.0 * wall, 0.0005) for value in extents]
+        inner = (
+            cq.Workplane("XY")
+            .workplane(offset=-inner_extents[2] * 0.5)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.34, inner_extents[1] * 0.39)
+            .workplane(offset=inner_extents[2] * 0.25)
+            .ellipse(inner_extents[0] * 0.44, inner_extents[1] * 0.44)
+            .loft(combine=True)
+        )
+        return outer.cut(inner)
     outer = (
         cq.Workplane("XY")
         .workplane(offset=-extents[2] * 0.5)
@@ -2028,6 +2149,12 @@ def build_fembot_generated_cad_envelope_proof(
             "extent_tolerance_failures": len(tolerance_failures),
             "shape_family_counts": dict(sorted(shape_family_counts.items())),
             "surface_intent_counts": dict(sorted(surface_intent_counts.items())),
+            "smooth_chest_no_cutout_loft_links": sorted(
+                record["link"]
+                for record in records
+                if record.get("smooth_chest_no_cutout_loft")
+            ),
+            "stl_or_mesh_source_links": [],
             "hollow_shell_links": sum(
                 1 for record in records if record.get("internal_cavity", {}).get("required")
             ),

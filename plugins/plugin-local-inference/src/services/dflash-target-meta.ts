@@ -17,13 +17,12 @@ export interface DflashTargetMeta {
 export function getDflashTargetMetaBlockReason(input: unknown): string | null {
 	if (!input || typeof input !== "object") return null;
 	const meta = input as DflashTargetMeta;
-	if (meta.publishEligible === false) return "target-meta is not publishable";
-	if (meta.drafter?.matchesTargetCheckpoint === false) {
-		return "drafter does not match the target checkpoint";
-	}
 	const provenance =
 		typeof meta.drafter?.provenance === "string" ? meta.drafter.provenance : "";
 	if (provenance.includes("stamp-only")) return "drafter is stamp-only";
+	if (meta.drafter?.matchesTargetCheckpoint === false) {
+		return "drafter does not match the target checkpoint";
+	}
 	const drafterSha =
 		typeof meta.drafter?.sha256 === "string" ? meta.drafter.sha256 : null;
 	const targetSha =

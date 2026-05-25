@@ -16,7 +16,7 @@ import {
 	GatedCheckpointManager,
 	readCtxCheckpointsEnvFlag,
 } from "../checkpoint-manager";
-import type { CheckpointFetch } from "../dflash-checkpoint-client";
+import type { CheckpointFetch } from "../checkpoint-client";
 
 interface Recorded {
 	url: string;

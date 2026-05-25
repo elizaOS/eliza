@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Ensure every workspace package under the repo workspace roots is symlinked
- * into `node_modules/@elizaos/<basename>`.
+ * into the node_modules roots that need direct workspace package resolution.
  *
  * Why this exists: `bun install --frozen-lockfile` matches the workspace
  * globs in package.json but only creates symlinks for packages that
@@ -14,7 +14,7 @@
  * package).
  *
  * This script reads each workspace package.json, takes its `name`
- * (typically `@elizaos/<basename>`), and ensures
+ * (typically `@elizaos/<basename>`), and ensures each configured
  * `node_modules/@elizaos/<basename>` resolves to the workspace dir via
  * a relative symlink. Idempotent — skips packages that already resolve.
  */
@@ -43,6 +43,7 @@ const WORKSPACE_DIRS = [
   "plugins",
 ];
 
+const NODE_MODULES_DIRS = ["node_modules", "packages/app/node_modules"];
 const MAX_WORKSPACE_SCAN_DEPTH = 3;
 
 function listWorkspacePackageDirs() {
@@ -105,27 +106,36 @@ function ensureSymlink(linkPath, targetDir) {
 function main() {
   const created = [];
   const skipped = [];
+  const missingRoots = [];
 
   for (const pkgDir of listWorkspacePackageDirs()) {
     const name = readPackageName(pkgDir);
     if (!name || !name.startsWith("@elizaos/")) continue;
 
-    const linkPath = join(REPO_ROOT, "node_modules", name);
-    try {
-      const made = ensureSymlink(linkPath, pkgDir);
-      if (made) created.push(name);
-      else skipped.push(name);
-    } catch (err) {
-      console.warn(
-        `[ensure-workspace-symlinks] failed for ${name}: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+    for (const root of NODE_MODULES_DIRS) {
+      const nodeModulesRoot = join(REPO_ROOT, root);
+      if (!existsSync(nodeModulesRoot)) {
+        missingRoots.push(root);
+        continue;
+      }
+      const linkPath = join(nodeModulesRoot, name);
+      try {
+        const made = ensureSymlink(linkPath, pkgDir);
+        if (made) created.push(`${root}/${name}`);
+        else skipped.push(`${root}/${name}`);
+      } catch (err) {
+        console.warn(
+          `[ensure-workspace-symlinks] failed for ${root}/${name}: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
     }
   }
 
+  const missingUnique = new Set(missingRoots);
   console.log(
-    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length}`,
+    `[ensure-workspace-symlinks] created=${created.length} skipped=${skipped.length} missing-roots=${missingUnique.size}`,
   );
 }
 
