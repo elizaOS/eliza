@@ -163,8 +163,10 @@ void eliza_llama_log_silence(void) {
 
 int32_t eliza_llama_context_attach_drafter(
     void* main_ctx, void* drafter_model,
-    uint32_t n_ctx_draft, int32_t n_gpu_layers_draft) {
-    (void)main_ctx; (void)drafter_model; (void)n_ctx_draft; (void)n_gpu_layers_draft;
+    uint32_t n_ctx_draft, int32_t n_gpu_layers_draft,
+    int32_t n_parallel) {
+    (void)main_ctx; (void)drafter_model; (void)n_ctx_draft;
+    (void)n_gpu_layers_draft; (void)n_parallel;
     return -38; // -ENOSYS
 }
 
