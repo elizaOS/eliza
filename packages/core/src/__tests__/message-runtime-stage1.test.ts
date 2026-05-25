@@ -1916,6 +1916,39 @@ android smoke model works`,
 		});
 	});
 
+	it("current_turn_boundary allows recall questions to read from visible prior_message blocks", async () => {
+		// Live regression: on 2026-05-25 the bot replied "I'm not able to
+		// search the Discord channel history directly — there's no tool for
+		// that in this environment" when asked about a token that WAS in
+		// prior_message context (trajectory tj-b1ee98c2593f97.json). Root
+		// cause: the current_turn_boundary rule explicitly forbade merging
+		// prior_message context into the current task, with no exception for
+		// recall questions. The fix carves out an exception for
+		// who-mentioned-X / did-anyone-bring-up-Y / what-was-said-about-Z
+		// queries, bounded to what is literally visible in the rendered
+		// prior_message blocks (so the model cannot fabricate a search
+		// across messages it can't see).
+		const sourceText = await readFile(
+			join(import.meta.dirname, "..", "services", "message.ts"),
+			"utf-8",
+		);
+		expect(sourceText).toContain(
+			"Exception for visible-context recall: when the final message asks a recall question",
+		);
+		expect(sourceText).toContain(
+			"who mentioned X, did anyone bring up Y, what did I say about Z, what was the last message",
+		);
+		expect(sourceText).toContain(
+			"you may scan the prior_message blocks above and answer from what is literally visible there",
+		);
+		expect(sourceText).toContain(
+			"If the asked-about token does not appear in any visible prior_message block, say so plainly",
+		);
+		expect(sourceText).toContain(
+			"there is no separate chat-history search tool",
+		);
+	});
+
 	it("renders platform reply references as current-turn context", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
